@@ -9,6 +9,180 @@ namespace OpenClaw.Tray.Tests.Presentation;
 /// </summary>
 public sealed class SettingsStoreTests
 {
+    [Fact]
+    public void HostedSetupInitializesBalancedOnceAndPreservesCustomEditsAcrossResume()
+    {
+        using var store = NewStore(out var settings, out _, out var temp);
+        using (temp)
+        {
+            var setup = new SetupSettingsWriter(store);
+            setup.Apply(new Dictionary<string, bool>(), OpenClaw.Shared.SystemRunAccessPreset.Balanced, initializationOnly: true);
+            Assert.Equal(OpenClaw.Shared.SystemRunFilesystemScope.UserFilesReadOnly, settings.SystemRunFilesystemScope);
+            Assert.True(settings.SystemRunAllowOutbound);
+            Assert.Empty(settings.SandboxCustomFolders);
+            settings.SystemRunFilesystemScope = OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders;
+            settings.SandboxCustomFolders =
+                [new() { Path = @"C:\selected", Access = OpenClaw.Shared.SandboxFolderAccess.ReadOnly }];
+            settings.SandboxClipboard = OpenClaw.Shared.SandboxClipboardMode.Both;
+            settings.SaveOrThrow();
+            var fingerprint = settings.SystemRunPolicyFingerprint;
+            setup.Apply(new Dictionary<string, bool>(), OpenClaw.Shared.SystemRunAccessPreset.Balanced, initializationOnly: true);
+            Assert.Equal(fingerprint, settings.SystemRunPolicyFingerprint);
+            var resumed = new SetupSettingsWriter(store);
+            resumed.Apply(new Dictionary<string, bool>(), OpenClaw.Shared.SystemRunAccessPreset.Balanced, initializationOnly: true);
+            Assert.Equal(fingerprint, settings.SystemRunPolicyFingerprint);
+        }
+    }
+
+    [Fact]
+    public void HostedSetupExplicitPresetRejectsStalePermissionIntentBeforeOtherWrites()
+    {
+        using var store = NewStore(out var settings, out _, out var temp);
+        using (temp)
+        {
+            var setup = new SetupSettingsWriter(store);
+            settings.SandboxCustomFolders =
+                [new() { Path = @"C:\selected", Access = OpenClaw.Shared.SandboxFolderAccess.ReadOnly }];
+            settings.SaveOrThrow();
+            var fingerprint = settings.SystemRunPolicyFingerprint;
+            var nodeMode = settings.EnableNodeMode;
+            Assert.Throws<InvalidOperationException>(() => setup.Apply(
+                new Dictionary<string, bool> { ["EnableNodeMode"] = !nodeMode },
+                OpenClaw.Shared.SystemRunAccessPreset.Open));
+            Assert.Equal(nodeMode, settings.EnableNodeMode);
+            Assert.Equal(fingerprint, settings.SystemRunPolicyFingerprint);
+        }
+    }
+
+    [Fact]
+    public async Task HostedSetupSerializesWithBackgroundSettingsMutationWithoutLosingUnrelatedFields()
+    {
+        using var store = NewStore(out var settings, out _, out var temp);
+        using (temp)
+        using (var release = new ManualResetEventSlim())
+        {
+            var timeout = TimeSpan.FromSeconds(5);
+            // The holder must outlast the writer-start wait plus the 150 ms window, so only the
+            // test's release can end it. A self-release would complete it during that window.
+            var holderTimeout = timeout * 2;
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var writingStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var path = Path.Combine(temp.Path, "settings.json");
+            File.WriteAllText(path, """{"UnrelatedSentinel":"keep"}""");
+            settings.Load();
+            var setup = new SetupSettingsWriter(store);
+            // Both writers block in production code, so they must not depend on available pool workers.
+            var background = Task.Factory.StartNew(() => store.Update(null, editor =>
+            {
+                editor.NotificationSound = "background";
+                entered.SetResult();
+                if (!release.Wait(holderTimeout))
+                    throw new TimeoutException("The background settings writer was not released.");
+            }), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            Task? writing = null;
+            Exception? failure = null;
+            try
+            {
+                var ready = await Task.WhenAny(entered.Task, background).WaitAsync(timeout);
+                await ready;
+                writing = Task.Factory.StartNew(() =>
+                {
+                    writingStarted.SetResult();
+                    setup.Apply(new Dictionary<string, bool> { ["NodeCameraEnabled"] = false });
+                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                var started = await Task.WhenAny(writingStarted.Task, writing).WaitAsync(timeout);
+                await started;
+                Assert.False(background.IsCompleted);
+                Assert.NotSame(writing, await Task.WhenAny(writing, Task.Delay(150)));
+                Assert.False(background.IsCompleted);
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+                throw;
+            }
+            finally
+            {
+                release.Set();
+                // Join both workers before the fixtures are disposed. After an earlier failure, a
+                // worker fault is secondary and must not replace that failure.
+                var workers = Task.WhenAll(background, writing ?? Task.CompletedTask);
+                if (failure is null)
+                {
+                    await workers;
+                }
+                else
+                {
+                    await Task.WhenAny(workers);
+                    _ = workers.Exception;
+                }
+            }
+            var saved = new SettingsManager(temp.Path);
+            Assert.Equal("background", saved.NotificationSound);
+            Assert.False(saved.NodeCameraEnabled);
+            using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            Assert.Equal("keep", json.RootElement.GetProperty("UnrelatedSentinel").GetString());
+        }
+    }
+
+    [Fact]
+    public void HostedSetupRejectsSameFieldConflictBeforeMutatingOtherFields()
+    {
+        using var store = NewStore(out var settings, out _, out var temp);
+        using (temp)
+        {
+            var setup = new SetupSettingsWriter(store);
+            store.Update(null, editor => editor.NodeCameraEnabled = false);
+            var before = File.ReadAllBytes(Path.Combine(temp.Path, "settings.json"));
+            Assert.Throws<InvalidOperationException>(() => setup.Apply(new Dictionary<string, bool>
+            { ["EnableNodeMode"] = true, ["NodeCameraEnabled"] = true }));
+            Assert.False(settings.EnableNodeMode);
+            Assert.False(settings.NodeCameraEnabled);
+            Assert.Equal(before, File.ReadAllBytes(Path.Combine(temp.Path, "settings.json")));
+        }
+    }
+
+    [Fact]
+    public void StaleSettingsInstanceCannotOverwriteAnotherWriterAndFailedUpdateRollsBack()
+    {
+        using var store = NewStore(out var settings, out _, out var temp);
+        using (temp)
+        {
+            store.Update(null, editor => editor.GlobalHotkeyEnabled = true);
+            var other = new SettingsManager(temp.Path);
+            other.NotificationSound = "other-writer";
+            other.SaveOrThrow();
+            var before = File.ReadAllBytes(Path.Combine(temp.Path, "settings.json"));
+            Assert.Throws<SettingsPersistenceConflictException>(() => store.Update(null, editor => editor.GlobalHotkeyEnabled = false));
+            Assert.True(settings.GlobalHotkeyEnabled);
+            Assert.Equal(before, File.ReadAllBytes(Path.Combine(temp.Path, "settings.json")));
+            settings.Load();
+            store.Update(null, editor => editor.GlobalHotkeyEnabled = false);
+            Assert.Equal("other-writer", settings.NotificationSound);
+            Assert.False(settings.GlobalHotkeyEnabled);
+        }
+    }
+
+    [Theory]
+    [InlineData("{")]
+    [InlineData("null")]
+    [InlineData("[]")]
+    public void UnchangedInvalidSettingsJsonCanBeReplaced(string invalidJson)
+    {
+        using var temp = new TempDir();
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, invalidJson);
+        var settings = new SettingsManager(temp.Path)
+        {
+            NotificationSound = "recovered"
+        };
+
+        settings.SaveOrThrow();
+
+        var reloaded = new SettingsManager(temp.Path);
+        Assert.Equal("recovered", reloaded.NotificationSound);
+    }
+
     private static SettingsStore NewStore(out SettingsManager settings, out RecordingUiDispatcher dispatcher, out TempDir temp)
     {
         temp = new TempDir();

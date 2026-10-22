@@ -8,7 +8,6 @@ namespace OpenClawTray.Presentation;
 
 internal enum HubPageKind
 {
-    Chat,
     Connection,
     LocalAi,
     Channels,
@@ -85,6 +84,15 @@ internal sealed record HubCommandContext(
 
 internal static class HubPageRegistry
 {
+    internal static string GetNativeSetupPage(OpenClaw.SetupEngine.SetupNativeDestination destination) => destination switch
+    {
+        OpenClaw.SetupEngine.SetupNativeDestination.Chat => "chat",
+        OpenClaw.SetupEngine.SetupNativeDestination.Skills => "skills",
+        OpenClaw.SetupEngine.SetupNativeDestination.WhatsApp or OpenClaw.SetupEngine.SetupNativeDestination.Telegram or
+            OpenClaw.SetupEngine.SetupNativeDestination.Channels => "channels",
+        _ => throw new ArgumentOutOfRangeException(nameof(destination)),
+    };
+
     public static ImmutableArray<string> CommandResourceKeys { get; } =
     [
         "Command_GoToConnection_Title",
@@ -119,8 +127,6 @@ internal static class HubPageRegistry
         "Command_GoToSettings_Subtitle",
         "Command_GoToNotifications_Title",
         "Command_GoToNotifications_Subtitle",
-        "Command_OpenChatWindow_Title",
-        "Command_OpenChatWindow_Subtitle",
         "Command_OpenDashboard_Title",
         "Command_OpenDashboard_Subtitle",
         "Command_GoToDiagnostics_Title",
@@ -146,7 +152,6 @@ internal static class HubPageRegistry
 
     public static HubPageKind? ResolvePage(string? tag) => tag switch
     {
-        "chat" => HubPageKind.Chat,
         "connection" => HubPageKind.Connection,
         "local-ai" => HubPageKind.LocalAi,
         "channels" => HubPageKind.Channels,
@@ -222,7 +227,6 @@ internal static class HubPageRegistry
 #if !OPENCLAW_TRAY_TESTS
     public static Type? ResolvePageType(string? tag) => ResolvePage(tag) switch
     {
-        HubPageKind.Chat => typeof(ChatPage),
         HubPageKind.Connection => typeof(ConnectionPage),
         HubPageKind.LocalAi => typeof(LocalAiPage),
         HubPageKind.Channels => typeof(ChannelsPage),
@@ -273,7 +277,6 @@ internal static class HubPageRegistry
         AddNavigation(commands, context, "🛡️", "Command_GoToPermissions", "permissions");
         AddNavigation(commands, context, "⚙️", "Command_GoToSettings", "settings");
         AddNavigation(commands, context, "🔔", "Command_GoToNotifications", "notifications");
-        AddNavigation(commands, context, "💬", "Command_OpenChatWindow", "chat");
         commands.Add(new HubCommand(
             "🌐",
             Get(context, "Command_OpenDashboard_Title"),

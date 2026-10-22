@@ -36,6 +36,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
     /// Set as OPENCLAW_TRAY_DATA_DIR env var.
     /// </summary>
     public string DataDir { get; }
+    public string RoamingAppDataRoot { get; }
     public string LocalAppDataRoot { get; }
 
     public int McpPort { get; private set; }
@@ -68,6 +69,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         {
             _distroName = "OpenClawE2E-disabled";
             DataDir = string.Empty;
+            RoamingAppDataRoot = string.Empty;
             LocalAppDataRoot = string.Empty;
             ArtifactDir = string.Empty;
             _configPath = string.Empty;
@@ -88,7 +90,9 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 runId)
             : Path.Combine(Path.GetTempPath(), $"openclaw-e2e-{runId}");
         LocalAppDataRoot = Path.Combine(Path.GetTempPath(), $"openclaw-e2e-localappdata-{runId}");
+        RoamingAppDataRoot = Path.Combine(Path.GetTempPath(), $"openclaw-e2e-roaming-{runId}");
         Directory.CreateDirectory(DataDir);
+        Directory.CreateDirectory(RoamingAppDataRoot);
         Directory.CreateDirectory(LocalAppDataRoot);
 
         // Artifact dir under repo TestResults — persists after cleanup for CI upload
@@ -139,7 +143,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         var setupLogPath = Path.Combine(ArtifactDir, "setup-engine.jsonl");
 
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", DataDir);
-        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", DataDir);
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", RoamingAppDataRoot);
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", LocalAppDataRoot);
 
         var setupArguments = new List<string>
@@ -165,7 +169,10 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             setupArguments.Add(candidatePackage);
         }
 
-        var exitCode = await Program.Main([.. setupArguments]);
+        var exitCode = await Program.RunWithFailureDiagnosticAsync(
+            [.. setupArguments],
+            (ctx, stepId, result) => GatewayRestartFailureDiagnostic.CaptureAsync(
+                ctx, stepId, result, Path.Combine(ArtifactDir, "gateway-restart-diagnostic.json")));
 
         if (exitCode != 0)
         {
@@ -235,17 +242,12 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         var uninstallLogPath = Path.Combine(ArtifactDir, "uninstall-engine.jsonl");
 
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", DataDir);
-        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", DataDir);
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", RoamingAppDataRoot);
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", LocalAppDataRoot);
 
         try
         {
-            var exitCode = await Program.Main([
-                "--config", _configPath,
-                "--uninstall",
-                "--confirm-destructive",
-                "--log-path", uninstallLogPath
-            ]);
+            var exitCode = await Program.Main(BuildUninstallArguments(_configPath, _distroName, uninstallLogPath));
             Log($"Uninstall completed with exit code {exitCode}.");
         }
 
@@ -262,9 +264,23 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         catch (Exception ex) { Log($"Warning: temp dir cleanup failed: {ex.Message}"); }
         try { Directory.Delete(LocalAppDataRoot, recursive: true); }
         catch (Exception ex) { Log($"Warning: temp local appdata cleanup failed: {ex.Message}"); }
+        try { Directory.Delete(RoamingAppDataRoot, recursive: true); }
+        catch (Exception ex) { Log($"Warning: temp roaming appdata cleanup failed: {ex.Message}"); }
 
         Log("Teardown complete.");
     }
+
+    internal static string[] BuildUninstallArguments(string configPath, string distroName, string logPath) =>
+    [
+        "--config", configPath,
+        "--uninstall",
+        "--confirm-destructive",
+        // AutoStart=false does not suppress full uninstall's host startup cleanup.
+        // Reuse the fixture's unique distro identity, never the installed app's names.
+        "--autostart-name", $"{distroName}-Tray",
+        "--startup-task-name", $"{distroName}-Startup",
+        "--log-path", logPath
+    ];
 
     public void SetTrayEnvironmentVariable(string name, string value)
     {
@@ -354,14 +370,12 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 ["openclaw-setup"] = "true",
                 ["security-disclaimer"] = "true",
                 ["i-understand-this-is-personal-by-default-and-shared-multi-user-use-requires-lock-down-continue"] = "true",
-                ["setup-mode"] = "quickstart",
                 ["existing-config-detected"] = "true",
                 ["config-handling"] = "keep",
                 ["quickstart"] = "true",
                 ["model-auth-provider"] = "skip",
                 ["default-model"] = "__keep__",
                 ["select-channel-quickstart"] = "__skip__",
-                ["search-provider"] = "__skip__",
                 ["configure-skills-now-recommended"] = "false",
             },
             Settings = new
@@ -604,7 +618,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             RedirectStandardError = true,
         };
         psi.Environment["OPENCLAW_TRAY_DATA_DIR"] = DataDir;
-        psi.Environment["OPENCLAW_TRAY_APPDATA_DIR"] = DataDir;
+        psi.Environment["OPENCLAW_TRAY_APPDATA_DIR"] = RoamingAppDataRoot;
         psi.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"] = LocalAppDataRoot;
         psi.Environment["OPENCLAW_MCP_PORT"] = McpPort.ToString();
         psi.Environment["OPENCLAW_SUPPRESS_EXTERNAL_BROWSER"] = "1";
@@ -706,8 +720,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     public (string GatewayUrl, string? SharedGatewayToken, string ActiveId) ReadActiveGatewayRecord()
     {
-        var gatewaysPath = Path.Combine(DataDir, "gateways.json");
-        using var doc = JsonDocument.Parse(File.ReadAllText(gatewaysPath));
+        using var doc = GatewayRegistryFile.Read(DataDir);
         var root = doc.RootElement;
         var activeId = TryGetPropertyIgnoreCase(root, "ActiveId", out var activeIdElement)
             ? activeIdElement.GetString()
@@ -765,8 +778,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             nodeToken.ValueKind == JsonValueKind.String &&
             !string.IsNullOrWhiteSpace(nodeToken.GetString());
 
-        var gatewaysPath = Path.Combine(DataDir, "gateways.json");
-        using var gatewaysDoc = JsonDocument.Parse(File.ReadAllText(gatewaysPath));
+        using var gatewaysDoc = GatewayRegistryFile.Read(DataDir);
         var hasBootstrapToken = false;
         if (TryGetPropertyIgnoreCase(gatewaysDoc.RootElement, "Gateways", out var gatewaysElement) &&
             gatewaysElement.ValueKind == JsonValueKind.Array)

@@ -194,7 +194,8 @@ public sealed class MediaResolver : IDisposable
             }
             else
             {
-                var fetched = await FetchBoundedAsync(url, cancellationToken).ConfigureAwait(false);
+                // Native image sources must be created on the calling UI thread.
+                var fetched = await FetchBoundedAsync(url, cancellationToken);
                 if (fetched is null) return null;
                 bytes = fetched.Value.Bytes;
                 var ct = fetched.Value.ContentType;
@@ -333,7 +334,7 @@ public sealed class MediaResolver : IDisposable
     /// </summary>
     private async Task<ImageSource?> SvgFromBytesAsync(byte[] bytes, CancellationToken cancellationToken)
     {
-        if (!await s_svgDecodeSemaphore.WaitAsync(SvgRenderTimeout, cancellationToken).ConfigureAwait(false))
+        if (!await s_svgDecodeSemaphore.WaitAsync(SvgRenderTimeout, cancellationToken))
         {
             _logger.Warn("[A2UI] SVG decode queue saturated");
             return null;

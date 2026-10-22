@@ -34,6 +34,7 @@ public sealed partial class CronPage : Page
     private string? _lastHistoryRenderSignature = null;
     private CancellationTokenSource? _infoDismissCts = null; // auto-dismiss timer for InfoBar
     private readonly AsyncListLoadingState _cronLoading = new();
+    private bool _submittingJob;
 
     public CronPage()
     {
@@ -51,7 +52,7 @@ public sealed partial class CronPage : Page
         _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         var client = CurrentApp.GatewayClient;
-        if (client != null)
+        if (client is { IsConnectedToGateway: true })
         {
             ConnectionInfoBar.IsOpen = false;
 
@@ -292,6 +293,7 @@ public sealed partial class CronPage : Page
 
     // --- Job creation/edit form ---
     private string? _editingJobId = null; // null = creating new, set = editing existing
+    private string? _preservedScheduleTz;
 
     private void OnNewJobClick(object sender, RoutedEventArgs e)
     {
@@ -326,11 +328,16 @@ public sealed partial class CronPage : Page
         var kind = vm.ScheduleKind;
         FormScheduleKind.SelectedIndex = kind switch { "at" => 1, "cron" => 2, _ => 0 };
         UpdateScheduleFieldVisibility(kind);
+        _preservedScheduleTz = null;
+        FormTimezone.SelectedIndex = -1;
 
         if (kind == "cron")
         {
             FormCronExpr.Text = vm.ScheduleExpr;
-            SelectComboByTag(FormTimezone, vm.ScheduleTz);
+            var timezoneEdit = CronScheduleTimezone.BeginEdit(vm.ScheduleTz, ListedComboTags(FormTimezone));
+            _preservedScheduleTz = timezoneEdit.PreservedUnlisted;
+            if (timezoneEdit.SelectedTag != null)
+                SelectComboByTag(FormTimezone, timezoneEdit.SelectedTag);
             HighlightPreset(vm.ScheduleExpr);
         }
         else if (kind == "every")
@@ -373,10 +380,15 @@ public sealed partial class CronPage : Page
         RestoreFormFromInline();
         JobFormPanel.Visibility = Visibility.Collapsed;
         _editingJobId = null;
+        _preservedScheduleTz = null;
     }
 
-    private void OnFormSaveClick(object sender, RoutedEventArgs e)
+    private void OnFormSaveClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(SaveFormAsync, new AppLogger(), nameof(OnFormSaveClick));
+
+    private async Task SaveFormAsync()
     {
+        if (_submittingJob) return;
         if (!_cronLoading.CanEdit)
         {
             ShowFormError("Wait for the latest cron jobs to finish loading before saving changes.");
@@ -398,7 +410,7 @@ public sealed partial class CronPage : Page
             return;
         }
 
-        if (CurrentApp.GatewayClient == null)
+        if (CurrentApp.GatewayClient is not { IsConnectedToGateway: true } client)
         {
             ShowFormError("Not connected to gateway.");
             return;
@@ -416,7 +428,7 @@ public sealed partial class CronPage : Page
                 ShowFormError("Cron expression is required.");
                 return;
             }
-            var tz = GetSelectedTag(FormTimezone);
+            var tz = CronScheduleTimezone.ResolveSave(_preservedScheduleTz, GetSelectedTag(FormTimezone));
             var sched = new Dictionary<string, object> { ["kind"] = "cron", ["expr"] = expr };
             if (!string.IsNullOrEmpty(tz)) sched["tz"] = tz;
             schedule = sched;
@@ -463,6 +475,7 @@ public sealed partial class CronPage : Page
         var sessionTarget = GetSelectedTag(FormSessionTarget) ?? "isolated";
         var wakeMode = GetSelectedTag(FormWakeMode) ?? "now";
 
+        Func<Task<bool>> submit;
         if (_editingJobId != null)
         {
             // Update existing job — payload.kind depends on sessionTarget
@@ -482,7 +495,8 @@ public sealed partial class CronPage : Page
             if (kind == "at")
                 patch["deleteAfterRun"] = FormDeleteAfterRun.IsChecked == true;
 
-            _ = CurrentApp.GatewayClient.UpdateCronJobAsync(_editingJobId, patch);
+            var jobId = _editingJobId;
+            submit = () => client.UpdateCronJobAsync(jobId, patch);
         }
         else
         {
@@ -504,17 +518,45 @@ public sealed partial class CronPage : Page
             if (kind == "at")
                 job["deleteAfterRun"] = FormDeleteAfterRun.IsChecked == true;
 
-            _ = CurrentApp.GatewayClient.AddCronJobAsync(job);
+            submit = () => client.AddCronJobAsync(job);
         }
 
-        RestoreFormFromInline();
-        JobFormPanel.Visibility = Visibility.Collapsed;
-        _editingJobId = null;
+        _submittingJob = true;
+        FormSaveButton.IsEnabled = false;
+        try
+        {
+            if (!await submit())
+            {
+                ShowFormError(LocalizationHelper.GetString("WorkspaceShell_AutomationSendFailed"));
+                return;
+            }
+            if (!IsLoaded) return;
+            RestoreFormFromInline();
+            JobFormPanel.Visibility = Visibility.Collapsed;
+            _editingJobId = null;
+            _preservedScheduleTz = null;
+            JobCompletedInfoBar.Title = string.Empty;
+            JobCompletedInfoBar.Message = LocalizationHelper.GetString("WorkspaceShell_AutomationSubmitted");
+            JobCompletedInfoBar.Severity = InfoBarSeverity.Informational;
+            JobCompletedInfoBar.IsOpen = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Automation submission failed: {ex}");
+            if (IsLoaded) ShowFormError(ex.Message);
+        }
+        finally
+        {
+            _submittingJob = false;
+            if (IsLoaded) UpdateCronLoadingVisuals();
+        }
     }
 
     private void OnScheduleKindChanged(object sender, SelectionChangedEventArgs e)
     {
         var kind = GetSelectedTag(FormScheduleKind) ?? "cron";
+        if (kind != "cron")
+            _preservedScheduleTz = null;
         UpdateScheduleFieldVisibility(kind);
     }
 
@@ -575,6 +617,7 @@ public sealed partial class CronPage : Page
     {
         FormName.Text = "";
         FormCronExpr.Text = "";
+        _preservedScheduleTz = null;
         FormTimezone.SelectedIndex = -1;
         FormEveryValue.Text = "30";
         FormEveryUnit.SelectedIndex = 0; // Minutes
@@ -672,6 +715,15 @@ public sealed partial class CronPage : Page
     private static string? GetSelectedTag(ComboBox combo)
     {
         return (combo.SelectedItem as ComboBoxItem)?.Tag as string;
+    }
+
+    private static IEnumerable<string> ListedComboTags(ComboBox combo)
+    {
+        foreach (var item in combo.Items)
+        {
+            if (item is ComboBoxItem { Tag: string tag } && !string.IsNullOrEmpty(tag))
+                yield return tag;
+        }
     }
 
     private static void SelectComboByTag(ComboBox combo, string? tag)
@@ -936,6 +988,13 @@ public sealed partial class CronPage : Page
                         if (_historyJobId == vm.Id && CurrentApp.GatewayClient != null)
                             _ = CurrentApp.GatewayClient.RequestCronRunsAsync(vm.Id, limit: 20, offset: 0);
                     }
+                    else if (oldVm != null && CronRunningLatch.ShouldClearBecauseNextRunMoved(
+                        vm.RunningAtMs,
+                        vm.NextRunAtMs,
+                        oldVm.NextRunAtMs))
+                    {
+                        ClearRunningJob(vm.Id);
+                    }
                 }
             }
 
@@ -960,7 +1019,6 @@ public sealed partial class CronPage : Page
 
             _jobs = jobs;
             _cronLoading.Complete(jobs.Count);
-
             // Restore expanded state from persisted set
             foreach (var vm in _jobs)
             {
@@ -1029,10 +1087,10 @@ public sealed partial class CronPage : Page
         LoadingState.Visibility = _cronLoading.ShouldShowLoading ? Visibility.Visible : Visibility.Collapsed;
         JobsListPanel.Visibility = _cronLoading.ShouldShowContent ? Visibility.Visible : Visibility.Collapsed;
         EmptyState.Visibility = _cronLoading.ShouldShowEmpty ? Visibility.Visible : Visibility.Collapsed;
-        var canUseGateway = CurrentApp.GatewayClient != null && _cronLoading.CanEdit;
+        var canUseGateway = CurrentApp.GatewayClient is { IsConnectedToGateway: true } && _cronLoading.CanEdit;
         NewJobButton.IsEnabled = canUseGateway;
         RefreshButton.IsEnabled = canUseGateway;
-        FormSaveButton.IsEnabled = _cronLoading.CanEdit;
+        FormSaveButton.IsEnabled = canUseGateway && !_submittingJob;
     }
 
     private void ShowDisconnected()
@@ -1331,6 +1389,7 @@ public sealed partial class CronPage : Page
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });               // 6: chevron
 
         var nameText = new TextBlock { Text = vm.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(nameText, $"CronJobTitle:{vm.Id}");
         Grid.SetColumn(nameText, 0);
         headerGrid.Children.Add(nameText);
 
@@ -1535,6 +1594,9 @@ public sealed partial class CronPage : Page
             IsEnabled = _cronLoading.CanEdit
         };
         btn.Content = MakeActionButtonContent(glyph, text);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(btn, $"Cron{actionName}:{jobId}");
+        if (actionName == "Edit")
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(btn, text);
         btn.Click += handler;
         return btn;
     }
@@ -1688,9 +1750,6 @@ public sealed partial class CronPage : Page
             return;
 
         CurrentApp.PendingChatSessionKey = sessionKey;
-        if (CurrentApp.ActiveHubWindow is HubWindow hub)
-            hub.PendingChatSessionKey = sessionKey;
-
         ((IAppCommands)CurrentApp).Navigate("chat");
     }
 

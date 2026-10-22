@@ -23,7 +23,7 @@ public class SkillMdDriftTests
     {
         var skillMdPath = LocateSkillMd();
         var content = File.ReadAllText(skillMdPath);
-        Assert.Contains("\"provider\": \"piper|windows|elevenlabs|minimax\"", content);
+        Assert.Contains("\"provider\": \"kokoro|piper|windows|elevenlabs|minimax\"", content);
 
         var documented = ParseCommandHeadings(content);
         var canonical = new HashSet<string>(McpToolBridge.KnownCommands, StringComparer.Ordinal);

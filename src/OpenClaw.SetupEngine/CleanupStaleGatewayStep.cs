@@ -38,8 +38,7 @@ public sealed class CleanupStaleGatewayStep : SetupStep
 
         // Remove stale setup-managed records for our local URL. Multiple records
         // can exist when an older unmarked record sorts before managed records.
-        var registry = new GatewayRegistry(ctx.DataDir, logger: new SetupOpenClawLogger(ctx.Logger));
-        registry.Load();
+        var registry = ctx.LoadSetupRegistry();
         var staleRecords = new List<GatewayRecord>();
         foreach (var existing in registry.FindAllByUrl(ctx.GatewayUrl!))
         {
@@ -64,7 +63,7 @@ public sealed class CleanupStaleGatewayStep : SetupStep
 
             // Persist the complete record and active-ID transition before deleting
             // identities so the durable registry never references a missing identity.
-            registry.Save();
+            ctx.SaveSetupRegistry(registry);
 
             var cleanupFailures = new List<(GatewayRecord Record, Exception Error)>();
             foreach (var staleRecord in staleRecords)
@@ -100,7 +99,7 @@ public sealed class CleanupStaleGatewayStep : SetupStep
                     registry.SetActive(originalActiveId);
                 }
 
-                registry.Save();
+                ctx.SaveSetupRegistry(registry);
                 throw new AggregateException(
                     "One or more stale gateway identities could not be removed. " +
                     "Their registry records were restored so cleanup can be retried.",

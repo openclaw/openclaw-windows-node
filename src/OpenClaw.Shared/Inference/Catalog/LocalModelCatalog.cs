@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 
 namespace OpenClaw.Shared.Inference.Catalog;
@@ -13,6 +14,10 @@ public enum KvCachePrecision
 public enum SpeculativeDecodingMode
 {
     DraftMtp = 0,
+    /// <summary>No speculative decoding; the target model runs standalone.</summary>
+    None = 1,
+    /// <summary>Draft-flash decoding using a separate, independently pinned draft checkpoint.</summary>
+    DraftDFlash = 2,
 }
 
 /// <summary>Sampling values recommended for the model's thinking mode.</summary>
@@ -38,8 +43,17 @@ public sealed record LocalModelRunRecipe
         bool offloadAllLayers,
         SpeculativeDecodingMode speculativeDecoding,
         int speculativeDraftMaxTokens,
-        ModelSamplingPreset sampling)
+        ModelSamplingPreset sampling,
+        PinnedArtifact? draftWeights = null,
+        int draftAttentionLayerCount = 1,
+        int? promptCacheMiB = null,
+        int? maximumContextCheckpoints = null,
+        int? draftGpuLayers = null)
     {
+        if (speculativeDecoding == SpeculativeDecodingMode.DraftDFlash && draftWeights is null)
+            throw new ArgumentException("Draft-flash decoding requires a pinned draft checkpoint.", nameof(draftWeights));
+        if (speculativeDecoding != SpeculativeDecodingMode.DraftDFlash && draftWeights is not null)
+            throw new ArgumentException("Only draft-flash decoding uses a separate draft checkpoint.", nameof(draftWeights));
         if (batchTokens <= 0)
             throw new ArgumentOutOfRangeException(nameof(batchTokens));
         if (microBatchTokens <= 0 || microBatchTokens > batchTokens)
@@ -52,8 +66,19 @@ public sealed record LocalModelRunRecipe
             throw new ArgumentOutOfRangeException(nameof(keyValueHeadCount));
         if (keyValueHeadDimension <= 0)
             throw new ArgumentOutOfRangeException(nameof(keyValueHeadDimension));
-        if (speculativeDraftMaxTokens <= 0)
+        if (speculativeDraftMaxTokens < 0 ||
+            (speculativeDraftMaxTokens == 0 && speculativeDecoding != SpeculativeDecodingMode.None))
             throw new ArgumentOutOfRangeException(nameof(speculativeDraftMaxTokens));
+        if (draftAttentionLayerCount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(draftAttentionLayerCount));
+        if (promptCacheMiB is < 0)
+            throw new ArgumentOutOfRangeException(nameof(promptCacheMiB));
+        if (maximumContextCheckpoints is < 0)
+            throw new ArgumentOutOfRangeException(nameof(maximumContextCheckpoints));
+        if (draftGpuLayers is < 0)
+            throw new ArgumentOutOfRangeException(nameof(draftGpuLayers));
+        if (draftGpuLayers.HasValue && speculativeDecoding != SpeculativeDecodingMode.DraftDFlash)
+            throw new ArgumentException("Separate draft GPU layers require draft-flash decoding.", nameof(draftGpuLayers));
         ArgumentNullException.ThrowIfNull(sampling);
 
         BatchTokens = batchTokens;
@@ -67,6 +92,11 @@ public sealed record LocalModelRunRecipe
         SpeculativeDecoding = speculativeDecoding;
         SpeculativeDraftMaxTokens = speculativeDraftMaxTokens;
         Sampling = sampling;
+        DraftWeights = draftWeights;
+        DraftAttentionLayerCount = draftAttentionLayerCount;
+        PromptCacheMiB = promptCacheMiB;
+        MaximumContextCheckpoints = maximumContextCheckpoints;
+        DraftGpuLayers = draftGpuLayers;
     }
 
     public int BatchTokens { get; }
@@ -80,6 +110,16 @@ public sealed record LocalModelRunRecipe
     public SpeculativeDecodingMode SpeculativeDecoding { get; }
     public int SpeculativeDraftMaxTokens { get; }
     public ModelSamplingPreset Sampling { get; }
+    /// <summary>The independently pinned draft checkpoint, set only for <see cref="SpeculativeDecodingMode.DraftDFlash"/>.</summary>
+    public PinnedArtifact? DraftWeights { get; }
+    /// <summary>Attention layers in the drafter, using the target's KV head geometry.</summary>
+    public int DraftAttentionLayerCount { get; }
+    /// <summary>Saved-prompt RAM budget in MiB. Zero disables it; null keeps the runtime default.</summary>
+    public int? PromptCacheMiB { get; }
+    /// <summary>Maximum serialized context checkpoints per slot, or null for the runtime default.</summary>
+    public int? MaximumContextCheckpoints { get; }
+    /// <summary>GPU layers for a separate DFlash drafter, or null for the runtime default.</summary>
+    public int? DraftGpuLayers { get; }
 }
 
 /// <summary>A downloadable GGUF model and its deterministic llama-server recipe.</summary>
@@ -93,7 +133,10 @@ public sealed record LocalModelInfo(
     bool IsDefault,
     bool IsExplicitAlternative,
     bool SupportsVision,
-    int RecommendationPriority = 0);
+    int RecommendationPriority = 0,
+    string RuntimeFamily = "llama.cpp",
+    long MinimumSystemMemoryBytes = 0,
+    long MinimumFreeDiskBytes = 0);
 
 /// <summary>The capacity-sensitive settings selected for one model launch.</summary>
 public sealed record LocalInferenceRunProfile
@@ -132,8 +175,10 @@ public sealed record LocalInferenceRunProfile
 }
 
 /// <summary>Immutable Hugging Face model pins offered by the Windows local inference flow.</summary>
-public static class LocalModelCatalog
+public static partial class LocalModelCatalog
 {
+    public const string Bonsai2ModelId = "bonsai-2-27b-ptq1-0";
+    public const string NemotronBoltModelId = "nemotron-3.5-bolt-74b-a9b-iq2-lilicorr";
     public const string Qwen38_27BModelId = "qwen3.8-27b-mtp-ud-q4-k-m";
     public const string Qwen35BModelId = "qwen3.6-35b-a3b-mtp-q4-k-m";
     public const string Qwen27BModelId = "qwen3.6-27b-mtp-q4-k-m";
@@ -142,10 +187,22 @@ public static class LocalModelCatalog
     /// Qwen3.5 9B receipt keeps resolving and launching across upgrade.
     /// </summary>
     public const string Qwen9BModelId = "qwen3.5-9b-mtp-q4-k-m";
+    /// <summary>RTX Spark 48GB-SKU recipe. Never offered on the generic dGPU path; see <c>RtxSparkInferenceSelector</c>.</summary>
+    public const string Qwen35B_Q4KSModelId = "qwen3.6-35b-a3b-mtp-ud-q4-k-s";
+    /// <summary>
+    /// Retired from new installs: the 2026-09-30 recipe set replaced this quantization
+    /// with <see cref="Qwen35B_Q4KSModelId"/>. Retained only so an already-installed
+    /// managed receipt keeps resolving and launching across upgrade.
+    /// </summary>
+    public const string Qwen35B_IQ4XSModelId = "qwen3.6-35b-a3b-mtp-ud-iq4-xs";
+    /// <summary>RTX Spark 128GB-SKU default recipe. Never offered on the generic dGPU path; see <c>RtxSparkInferenceSelector</c>.</summary>
+    public const string Qwen38_27B_DFlashModelId = "qwen3.8-27b-dflash-ud-q4-k-m";
     public const int NativeContextTokens = 262_144;
     public const int IntermediateContextTokens = 196_608;
     public const int ReducedContextTokens = 131_072;
     public const int MinimumContextTokens = 65_536;
+    /// <summary>RTX Spark 48GB-SKU context tier (98,304 tokens); see <see cref="Qwen35B_Q4KSModelId"/>.</summary>
+    public const int RtxSpark48GbContextTokens = 98_304;
 
     // Measured-conservative allowances for compute buffers, recurrent state,
     // CUDA graphs, allocator alignment, and miscellaneous backend allocations.
@@ -171,6 +228,10 @@ public static class LocalModelCatalog
     private static readonly HuggingFaceRevisionSource s_qwen9BSource = new(
         "unsloth/Qwen3.5-9B-MTP-GGUF",
         "9716a636ee4bddc3fed678220b7a33dd2a4160ae");
+
+    private static readonly HuggingFaceRevisionSource s_qwen38_27BDFlashDraftSource = new(
+        "z-lab/Qwen3.8-27B-DFlash2-GGUF",
+        "2d9571f8ce46e151f61c6499c99dee6079e1d610");
 
     private static readonly ReadOnlyCollection<LocalModelInfo> s_models = Array.AsReadOnly(
         new[]
@@ -208,7 +269,8 @@ public static class LocalModelCatalog
                 Recipe(
                     fullAttentionLayerCount: 10,
                     keyValueHeadCount: 2,
-                    temperature: 0.6),
+                    temperature: 0.6,
+                    speculativeDraftMaxTokens: 2),
                 IsDefault: false,
                 IsExplicitAlternative: true,
                 SupportsVision: false,
@@ -232,6 +294,91 @@ public static class LocalModelCatalog
                 IsExplicitAlternative: true,
                 SupportsVision: false,
                 RecommendationPriority: 200),
+            // RTX Spark SKU recipes below, offered by RtxSparkInferenceSelector
+            // keyed off the detected Spark unified-memory SKU. RecommendationPriority: 0
+            // alone does not exclude a model from the generic dGPU default pick --
+            // it only loses every tie-break against a positive-priority model that
+            // fits. LocalInferenceSelector.SelectDefaultModelAndProfile separately
+            // excludes IsExplicitAlternative models at this priority (see its
+            // comment) so the always-alternative-only ones can't still win by
+            // tie-break/fallback ordering among themselves.
+            new LocalModelInfo(
+                Qwen35B_Q4KSModelId,
+                "Qwen3.6 35B-A3B (UD-Q4_K_S)",
+                "Qwen3.6",
+                "UD-Q4_K_S",
+                ModelArtifact(
+                    Qwen35B_Q4KSModelId,
+                    s_qwen35BSource,
+                    "Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+                    21_388_319_008,
+                    "2bee952b218e4a481430c59d8d3bdc7bae20bed0eb501326340c5fca7ae95d42"),
+                Recipe(
+                    fullAttentionLayerCount: 10,
+                    keyValueHeadCount: 2,
+                    temperature: 0.6,
+                    speculativeDraftMaxTokens: 2),
+                IsDefault: false,
+                IsExplicitAlternative: false,
+                SupportsVision: false,
+                RecommendationPriority: 0),
+            new LocalModelInfo(
+                Qwen38_27B_DFlashModelId,
+                "Qwen3.8 27B (UD-Q4_K_M, DFlash)",
+                "Qwen3.8",
+                "UD-Q4_K_M",
+                ModelArtifact(
+                    Qwen38_27B_DFlashModelId,
+                    s_qwen38_27BSource,
+                    "Qwen3.8-27B-UD-Q4_K_M.gguf",
+                    16_464_440_224,
+                    "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"),
+                Recipe(
+                    fullAttentionLayerCount: 16,
+                    keyValueHeadCount: 4,
+                    temperature: 1.0,
+                    batchTokens: 4_096,
+                    microBatchTokens: 512,
+                    speculativeDecoding: SpeculativeDecodingMode.DraftDFlash,
+                    speculativeDraftMaxTokens: 7,
+                    draftWeights: ModelArtifact(
+                        "qwen3.8-27b-dflash2-q4-k-m",
+                        s_qwen38_27BDFlashDraftSource,
+                        "Qwen3.8-27B-DFlash2-Q4_K_M.gguf",
+                        1_143_006_816,
+                        "1a25c56858e1ebe93f2718ac1d49d1151f9323325c1bbfd6209370f4db131ebd")),
+                IsDefault: false,
+                IsExplicitAlternative: false,
+                SupportsVision: false,
+                RecommendationPriority: 0),
+            new LocalModelInfo(
+                Bonsai2ModelId,
+                "Bonsai 2 27B (PTQ1_0, experimental)",
+                "Qwen3.8",
+                "PTQ1_0",
+                new PinnedArtifact(
+                    Bonsai2ModelId,
+                    ArtifactRole.ModelWeights,
+                    new HuggingFaceRevisionSource("prism-ml/Ternary-Bonsai-2-27B-gguf",
+                        "b072e1d3b35a0a630cece372c2127528e0994386"),
+                    "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
+                    5_946_648_928,
+                    new Sha256Digest("53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3"),
+                    new CatalogProvenance("prism-bonsai-2", "Bonsai 2 27B", "Prism ML",
+                        new Uri("https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf"),
+                        "Apache-2.0",
+                        new Uri("https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/blob/b072e1d3b35a0a630cece372c2127528e0994386/LICENSE"),
+                        "Pinned PTQ1_0 text-only profile with an 8K context and no speculative decoding.")),
+                new LocalModelRunRecipe(512, 128, 1, 16, 4, 256, true, true,
+                    SpeculativeDecodingMode.None, 0, new ModelSamplingPreset(1.0, 20, 0.95, 0.05, 1.0, 0.0)),
+                IsDefault: false,
+                IsExplicitAlternative: true,
+                SupportsVision: false,
+                RecommendationPriority: 100,
+                RuntimeFamily: BonsaiRuntimeCatalog.Family,
+                MinimumSystemMemoryBytes: 16L * 1024 * 1024 * 1024,
+                MinimumFreeDiskBytes: 8L * 1024 * 1024 * 1024),
+            CreateNemotronBolt(),
         });
 
     // Retired from new installs and never offered, recommended, or selectable.
@@ -260,13 +407,48 @@ public static class LocalModelCatalog
                 IsExplicitAlternative: false,
                 SupportsVision: false,
                 RecommendationPriority: 0),
+            new LocalModelInfo(
+                Qwen35B_IQ4XSModelId,
+                "Qwen3.6 35B-A3B (UD-IQ4_XS)",
+                "Qwen3.6",
+                "UD-IQ4_XS",
+                ModelArtifact(
+                    Qwen35B_IQ4XSModelId,
+                    s_qwen35BSource,
+                    "Qwen3.6-35B-A3B-UD-IQ4_XS.gguf",
+                    18_209_036_576,
+                    "df27a780435b7b45c2597536112ea3cb091f8544c3d0c3318d9f4258b31f7adf"),
+                Recipe(
+                    fullAttentionLayerCount: 10,
+                    keyValueHeadCount: 2,
+                    temperature: 0.6,
+                    speculativeDraftMaxTokens: 2),
+                IsDefault: false,
+                IsExplicitAlternative: false,
+                SupportsVision: false,
+                RecommendationPriority: 0),
         });
 
     private static readonly IReadOnlyDictionary<string, ReadOnlyCollection<LocalInferenceRunProfile>>
         s_profilesByModel = s_models
-            .Select(model => (model, profiles: Array.AsReadOnly(CreateProfiles(model))))
+            .Select(model => (model, profiles: Array.AsReadOnly(
+                model.Id == Bonsai2ModelId
+                    ? [new LocalInferenceRunProfile("ctx-8192-f16", 8192,
+                        KvCachePrecision.F16, KvCachePrecision.F16, KvCachePrecision.F16, KvCachePrecision.F16,
+                        1536L * 1024 * 1024)]
+                    : string.Equals(model.Id, Qwen35B_Q4KSModelId, StringComparison.Ordinal)
+                    ? CreateRtxSpark48GbProfiles(model)
+                    : string.Equals(model.Id, NemotronBoltModelId, StringComparison.Ordinal)
+                        ? CreateNemotronBoltProfiles()
+                        : CreateProfiles(model))))
             .Concat(s_legacyModels
-                .Select(model => (model, profiles: Array.AsReadOnly(CreateLegacyProfiles(model)))))
+                .Select(model => (model, profiles: Array.AsReadOnly(
+                    // The retired 48GB-SKU quantization was only ever installed at that
+                    // SKU's fixed tier, not the pre-profile native/F16 one, so it keeps
+                    // the same profile set it was recorded under.
+                    string.Equals(model.Id, Qwen35B_IQ4XSModelId, StringComparison.Ordinal)
+                        ? CreateRtxSpark48GbProfiles(model)
+                        : CreateLegacyProfiles(model)))))
             .ToDictionary(
                 entry => entry.model.Id,
                 entry => entry.profiles,
@@ -332,9 +514,9 @@ public static class LocalModelCatalog
     /// Resolves a model that an existing installation receipt may reference,
     /// including retired entries that are no longer offered for new installs.
     /// Use this only on installed-receipt validation, launch, and display
-    /// paths. Selection, recommendation, and eligibility must keep using
+    /// paths. Fresh selection, recommendation, and eligibility must keep using
     /// <see cref="Find"/> and <see cref="Models"/> so retired models are never
-    /// offered again.
+    /// offered again; receipt-aware eligibility may resolve the installed model.
     /// </summary>
     public static LocalModelInfo? FindInstalled(string? id) =>
         Find(id) ??
@@ -343,8 +525,44 @@ public static class LocalModelCatalog
             : s_legacyModels.SingleOrDefault(model =>
                 string.Equals(model.Id, id, StringComparison.OrdinalIgnoreCase)));
 
+    /// <summary>
+    /// Retains known earlier artifact pins under the same catalog id when the
+    /// receipt names their source URL. Full receipt validation is still required.
+    /// </summary>
+    public static LocalModelInfo? FindInstalled(string? id, string? modelSourceUrl) =>
+        string.Equals(id, NemotronBoltModelId, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(modelSourceUrl, s_prereleaseNemotronBolt.Weights.DownloadUri.AbsoluteUri, StringComparison.Ordinal)
+            ? s_prereleaseNemotronBolt
+            : FindInstalled(id);
+
     /// <summary>True when the id resolves only to a retired catalog entry.</summary>
     public static bool IsLegacy(string? id) => Find(id) is null && FindInstalled(id) is not null;
+
+    /// <summary>
+    /// Everything setup downloads and llama-server loads for this recipe: the pinned
+    /// weights plus the DFlash draft checkpoint, if any. Use this for ranking, capacity
+    /// checks, and user-facing download-size disclosure -- the draft checkpoint is a
+    /// separate pinned artifact, not part of the target model's own weights, but it is
+    /// still bytes the user consents to, setup fetches, and the runtime loads.
+    /// </summary>
+    public static long TotalDownloadSizeBytes(LocalModelInfo model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        return model.Weights.SizeBytes + (model.Recipe.DraftWeights?.SizeBytes ?? 0);
+    }
+
+    /// <summary>
+    /// The recipe's additional pinned artifacts beyond its primary weights, in the
+    /// fixed order every acquirer, manifest, and launch path must agree on. Today that
+    /// is the DFlash draft checkpoint, when the recipe pins one.
+    /// </summary>
+    public static ImmutableArray<PinnedArtifact> AdditionalArtifacts(LocalModelInfo model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        return model.Recipe.DraftWeights is { } draftWeights
+            ? [draftWeights]
+            : ImmutableArray<PinnedArtifact>.Empty;
+    }
 
     private static LocalInferenceRunProfile[] CreateProfiles(LocalModelInfo model) =>
     [
@@ -367,6 +585,14 @@ public static class LocalModelCatalog
         Profile(model, NativeContextTokens, KvCachePrecision.F16),
     ];
 
+    // The RTX Spark 48GB-SKU recipe launches at a single fixed context/KV
+    // tier (98,304 tokens, F16 KV) rather than the shared cross-product of
+    // tiers other models expose.
+    private static LocalInferenceRunProfile[] CreateRtxSpark48GbProfiles(LocalModelInfo model) =>
+    [
+        Profile(model, RtxSpark48GbContextTokens, KvCachePrecision.F16),
+    ];
+
     private static LocalInferenceRunProfile Profile(
         LocalModelInfo model,
         int contextTokens,
@@ -377,6 +603,7 @@ public static class LocalModelCatalog
             NativeContextTokens => RuntimeWorkspaceReserveBytes,
             IntermediateContextTokens => IntermediateContextWorkspaceReserveBytes,
             ReducedContextTokens => ReducedContextWorkspaceReserveBytes,
+            RtxSpark48GbContextTokens => ReducedContextWorkspaceReserveBytes,
             MinimumContextTokens => MinimumContextWorkspaceReserveBytes,
             _ => throw new ArgumentOutOfRangeException(nameof(contextTokens)),
         };
@@ -408,23 +635,29 @@ public static class LocalModelCatalog
     private static LocalModelRunRecipe Recipe(
         int fullAttentionLayerCount,
         int keyValueHeadCount,
-        double temperature) =>
+        double temperature,
+        int batchTokens = 4_096,
+        int microBatchTokens = 4_096,
+        SpeculativeDecodingMode speculativeDecoding = SpeculativeDecodingMode.DraftMtp,
+        int speculativeDraftMaxTokens = 3,
+        PinnedArtifact? draftWeights = null) =>
         new(
-            batchTokens: 4_096,
-            microBatchTokens: 4_096,
+            batchTokens: batchTokens,
+            microBatchTokens: microBatchTokens,
             parallelRequests: 1,
             fullAttentionLayerCount: fullAttentionLayerCount,
             keyValueHeadCount: keyValueHeadCount,
             keyValueHeadDimension: 256,
             flashAttention: true,
             offloadAllLayers: true,
-            speculativeDecoding: SpeculativeDecodingMode.DraftMtp,
-            speculativeDraftMaxTokens: 3,
+            speculativeDecoding: speculativeDecoding,
+            speculativeDraftMaxTokens: speculativeDraftMaxTokens,
             sampling: new ModelSamplingPreset(
                 Temperature: temperature,
                 TopK: 20,
                 TopP: 0.95,
                 MinP: 0.0,
                 RepetitionPenalty: 1.0,
-                PresencePenalty: 0.0));
+                PresencePenalty: 0.0),
+            draftWeights: draftWeights);
 }

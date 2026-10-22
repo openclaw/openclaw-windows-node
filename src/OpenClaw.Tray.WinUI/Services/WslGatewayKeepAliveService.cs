@@ -44,6 +44,14 @@ internal sealed class WslGatewayKeepAliveService(
             if (settings is null) return;
 
             var activeRecord = _getRegistry()?.GetActive();
+            // An isolated profile has no authority to adopt the normal user's
+            // default distro or clean up keepalives discovered outside its records.
+            if (!WslKeepAlivePolicy.CanManageGateway(activeRecord, AppIdentity.IsIsolated))
+            {
+                Logger.Info("[WslKeepAlive] Isolated profile has no explicitly managed gateway; skipping lifecycle actions.");
+                return;
+            }
+
             if (!WslKeepAlivePolicy.ShouldStart(activeRecord, settings.GetEffectiveGatewayUrl()))
             {
                 await StopStaleLocalGatewayKeepAliveAsync();
@@ -214,7 +222,7 @@ internal sealed class WslGatewayKeepAliveService(
                 !doc.RootElement.TryGetProperty("Pid", out var pidElement) ||
                 !pidElement.TryGetInt32(out var pid) ||
                 !doc.RootElement.TryGetProperty("StartTimeUtc", out var startElement) ||
-                !startElement.TryGetDateTime(out var markerStartTimeUtc))
+                !WslKeepAlivePolicy.TryReadMarkerStartTimeUtc(startElement, out var markerStartTimeUtc))
             {
                 return false;
             }

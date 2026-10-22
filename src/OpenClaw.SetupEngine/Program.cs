@@ -39,6 +39,19 @@ public static class Program
     ]);
 
     public static async Task<int> Main(string[] args)
+        => await RunAsync(args, null);
+
+    internal static Task<int> RunWithFailureDiagnosticAsync(
+        string[] args,
+        Func<SetupContext, string, StepResult, Task> beforeFailureRollback)
+    {
+        ArgumentNullException.ThrowIfNull(beforeFailureRollback);
+        return RunAsync(args, beforeFailureRollback);
+    }
+
+    private static async Task<int> RunAsync(
+        string[] args,
+        Func<SetupContext, string, StepResult, Task>? beforeFailureRollback)
     {
         Console.WriteLine($"OpenClaw Setup Engine {AppVersionInfo.DisplayVersion}");
         Console.WriteLine("─────────────────────────────");
@@ -287,7 +300,7 @@ public static class Program
             steps = BuildSteps(config);
         }
 
-        var pipeline = new SetupPipeline(steps);
+        var pipeline = new SetupPipeline(steps, rollbackOnFailureOverride: null, beforeFailureRollback);
 
         pipeline.StepProgress += (_, e) =>
         {

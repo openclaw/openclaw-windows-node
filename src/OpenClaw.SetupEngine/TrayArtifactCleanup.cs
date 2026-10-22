@@ -76,7 +76,7 @@ public static class TrayArtifactCleanup
         DeleteFileIfExists(Path.Combine(localDataDir, "exec-policy.json"), "local exec-policy.json", logger);
 
         // 4. Reset onboarding settings in settings.json
-        ResetOnboardingSettings(appDataDir, logger, preserveNodeSettings: HasRemainingGatewayRecords(appDataDir, logger));
+        ApplyOnboardingReset(appDataDir, logger);
 
         // 5. Optionally delete gateway logs
         if (!preserveLogs)
@@ -126,18 +126,43 @@ public static class TrayArtifactCleanup
         }
     }
 
-    private static bool HasRemainingGatewayRecords(string appDataDir, SetupLogger logger)
+    private enum GatewayRegistryInspection
+    {
+        HasRecords,
+        NoRecords,
+        Unreadable,
+    }
+
+    internal static void ApplyOnboardingReset(string appDataDir, SetupLogger logger)
+    {
+        switch (InspectGatewayRegistry(appDataDir, logger))
+        {
+            case GatewayRegistryInspection.HasRecords:
+                ResetOnboardingSettings(appDataDir, logger, preserveNodeSettings: true);
+                break;
+            case GatewayRegistryInspection.NoRecords:
+                ResetOnboardingSettings(appDataDir, logger, preserveNodeSettings: false);
+                break;
+            default:
+                logger.Warn("[Uninstall] Left onboarding settings unchanged because the gateway registry could not be read.");
+                break;
+        }
+    }
+
+    private static GatewayRegistryInspection InspectGatewayRegistry(string appDataDir, SetupLogger logger)
     {
         try
         {
             var registry = new GatewayRegistry(appDataDir);
             registry.Load();
-            return registry.GetAll().Count > 0;
+            return registry.GetAll().Count > 0
+                ? GatewayRegistryInspection.HasRecords
+                : GatewayRegistryInspection.NoRecords;
         }
         catch (Exception ex)
         {
             logger.Warn($"[Uninstall] Failed to inspect gateway registry: {ex.Message}");
-            return false;
+            return GatewayRegistryInspection.Unreadable;
         }
     }
 
@@ -152,6 +177,7 @@ public static class TrayArtifactCleanup
 
         try
         {
+            using var lease = OpenClaw.Shared.PersistenceFileLease.Acquire(settingsPath);
             var json = File.ReadAllText(settingsPath);
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             var root = doc.RootElement;
@@ -162,12 +188,16 @@ public static class TrayArtifactCleanup
 
             bool changed = false;
 
-            // Reset GatewayUrl to empty
-            if (dict.ContainsKey("GatewayUrl"))
-            {
-                dict.Remove("GatewayUrl");
+            // Drop the saved URL and legacy Token / BootstrapToken together, even
+            // when preserveNodeSettings is true. A later launch falls back to the
+            // default local URL and must not import leftovers. Node mode and
+            // autostart stay only when that flag is set.
+            if (dict.Remove("GatewayUrl"))
                 changed = true;
-            }
+            if (dict.Remove("Token"))
+                changed = true;
+            if (dict.Remove("BootstrapToken"))
+                changed = true;
 
             if (!preserveNodeSettings && dict.ContainsKey("EnableNodeMode"))
             {
@@ -186,8 +216,8 @@ public static class TrayArtifactCleanup
                 var updatedJson = System.Text.Json.JsonSerializer.Serialize(dict, SetupConfig.JsonWriteOptions);
                 AtomicFile.WriteAllText(settingsPath, updatedJson);
                 logger.Info(preserveNodeSettings
-                    ? "[Uninstall] Reset onboarding settings (GatewayUrl)"
-                    : "[Uninstall] Reset onboarding settings (GatewayUrl, EnableNodeMode, AutoStart)");
+                    ? "[Uninstall] Reset onboarding settings (GatewayUrl, Token, BootstrapToken); node settings preserved"
+                    : "[Uninstall] Reset onboarding settings (GatewayUrl, Token, BootstrapToken, EnableNodeMode, AutoStart)");
             }
             else
             {

@@ -5,6 +5,34 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ChatTimelinePresentationTests
 {
     [Fact]
+    public void GatewayDashboard_StaysInConnectionCardNotChat()
+    {
+        var pages = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Pages");
+        var chat = File.ReadAllText(Path.Combine(pages, "ChatPage.xaml"));
+        Assert.DoesNotContain("ChatDashboard", chat);
+        Assert.DoesNotContain("OnOpenDashboard", File.ReadAllText(Path.Combine(pages, "ChatPage.xaml.cs")));
+        var connection = System.Xml.Linq.XDocument.Load(Path.Combine(pages, "ConnectionPage.xaml"));
+        var card = connection.Descendants().Single(element =>
+            (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardCard");
+        Assert.Contains(card.Descendants(), element => (string?)element.Attribute("Click") == "OnOpenDashboard");
+        Assert.Contains(card.Descendants(), element =>
+            (string?)element.Attribute("Text") == "Channels, integrations and gateway settings");
+    }
+
+    [Fact]
+    public void WelcomeSuggestions_UseBorderlessGraySubtleChrome()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatWelcome.cs"));
+        Assert.Contains(".BorderThickness(0)", source);
+        Assert.Contains("ChatVisuals.ToolbarButtonResources(resources)", source);
+        Assert.Contains("Theme.Ref(\"ControlAltFillColorSecondaryBrush\")", source);
+        Assert.Contains("onSuggestionPicked?.Invoke(suggestion.Prompt)", source);
+        Assert.Contains("!disabled && onSuggestionPicked is not null", source);
+        Assert.Contains(".IsEnabled(enabled)", source);
+    }
+
+    [Fact]
     public void ReactorTimeline_UsesNonSelectableItemsViewContainersAndAnnotatedScrollBar()
     {
         var timeline = File.ReadAllText(Path.Combine(
@@ -250,7 +278,7 @@ public sealed class ChatTimelinePresentationTests
                 StringSplitOptions.None).Length - 1);
         Assert.Contains("\"ChatComposerAttach\"", composer);
         Assert.DoesNotContain("\"ChatComposerMore\"", composer);
-        Assert.Contains("\"ChatComposerSessionPicker\"", composer);
+        Assert.DoesNotContain("\"ChatComposerSessionPicker\"", composer);
         Assert.Contains("\"ChatComposerModelPicker\"", composer);
         Assert.Contains("\"ChatComposerReasoningPicker\"", composer);
         Assert.Contains("\"ChatComposerVoice\"", composer);
@@ -282,7 +310,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorComposer_BoundsAndAnnouncesQueuedMessages()
+    public void ReactorTimeline_OwnsQueuedMessagesOutsideComposer()
     {
         var composer = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -291,9 +319,47 @@ public sealed class ChatTimelinePresentationTests
             "Chat",
             "ReactorChatComposer.cs"));
 
-        Assert.Contains("ScrollView(VStack(4, queuedRows))", composer);
-        Assert.Contains(".MaxHeight(viewportWidth < ChatVisuals.FooterBreakpoint ? 144 : 220)", composer);
-        Assert.Contains("AutomationLiveSetting.Polite", composer);
+        var timeline = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs"));
+        var root = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawReactorChatRoot.cs"));
+
+        Assert.DoesNotContain("queuedPanel", composer);
+        Assert.DoesNotContain("queuedRows", composer);
+        Assert.Contains("ReactorTimelineRow.FromQueuedMessage(props, message)", timeline);
+        Assert.Contains("Chat_Timeline_Pending", timeline);
+        Assert.Contains("AutomationLiveSetting.Polite", timeline);
+        Assert.Contains("queuedMessages.Count == 0", root);
+        Assert.Contains("props.ComposerSession.Controller.CancelQueuedMessage", root);
+    }
+
+    [Fact]
+    public void PendingMessages_RevealFooterOnHoverOrFocusWithoutCollapsingLayout()
+    {
+        var timeline = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs"));
+        Assert.Contains(".OnPointerEntered((_, _) => SetEntryHovered(HoverKey(row), true))", timeline);
+        Assert.Contains(".OnPointerExited((_, _) => SetEntryHovered(HoverKey(row), false))", timeline);
+        Assert.Contains(".OnGotFocus((_, _) => setFocusedRowKey(row.Key))", timeline);
+        Assert.Contains(".OnLostFocus((_, _) => setFocusedRowKey(null))", timeline);
+        Assert.Contains("var showFooter = queuedMessage is null || failed || isHovered || isFocused", timeline);
+        Assert.Contains(".Opacity(showFooter ? 1 : 0)", timeline);
+        Assert.Contains(".Set(panel => panel.IsHitTestVisible = showFooter)", timeline);
+    }
+
+    [Theory]
+    [InlineData("Default")]
+    [InlineData("Light")]
+    [InlineData("HighContrast")]
+    public void PendingMessages_UseTransparentBubbleFill(string theme)
+    {
+        var document = System.Xml.Linq.XDocument.Load(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Themes", "ChatResources.xaml"));
+        System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var dictionary = document.Descendants().Single(element => (string?)element.Attribute(x + "Key") == theme);
+        var pending = dictionary.Elements().Single(element => (string?)element.Attribute(x + "Key") == "ChatPendingUserBrush");
+        Assert.Equal("Transparent", (string?)pending.Attribute("Color"));
+        Assert.Null(pending.Attribute("Opacity"));
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.GatewayFixtureHost;
+using OpenClaw.Shared;
 
 namespace OpenClaw.Tray.IntegrationTests;
 
@@ -52,8 +53,25 @@ public sealed class GatewayFixtureProfileTests
             "NodeOllamaInferenceEnabled", "VoiceTtsEnabled", "UseLegacyWebChat"
         })
             Assert.False(settings.RootElement.GetProperty(disabled).GetBoolean(), disabled);
+        Assert.False(profile.NodeBrowserProxyEnabled);
         Assert.False(File.Exists(Path.Combine(profile.DataDirectory, "device-key-ed25519.json")));
         Assert.Empty(Directory.EnumerateFiles(profile.SetupDirectory));
+    }
+
+    [Fact]
+    public void BrowserProxyProfileKeepsExecutionCapabilitiesOff()
+    {
+        using var profile = new GatewayFixtureProfile(Endpoint, "only-this-fixture", enableNodeBrowserProxy: true);
+        Assert.True(profile.NodeBrowserProxyEnabled);
+        using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(profile.DataDirectory, "settings.json")));
+        Assert.True(settings.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.True(settings.RootElement.GetProperty("EnableMcpServer").GetBoolean());
+        Assert.True(settings.RootElement.GetProperty("NodeBrowserProxyEnabled").GetBoolean());
+        foreach (var disabled in new[]
+        {
+            "NodeSystemRunEnabled", "NodeScreenEnabled", "NodeCameraEnabled", "NodeLocationEnabled", "NodeCanvasEnabled"
+        })
+            Assert.False(settings.RootElement.GetProperty(disabled).GetBoolean(), disabled);
     }
 
     [Fact]
@@ -91,13 +109,33 @@ public sealed class GatewayFixtureProfileTests
         Assert.False(start.UseShellExecute);
         Assert.Equal(profile.DataDirectory, start.Environment["OPENCLAW_TRAY_DATA_DIR"]);
         Assert.Equal(profile.SetupDirectory, start.Environment["OPENCLAW_TRAY_LOCAL_DATA_DIR"]);
+        Assert.Equal(profile.RoamingRoot, start.Environment["OPENCLAW_TRAY_APPDATA_DIR"]);
+        Assert.Equal(profile.LocalRoot, start.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"]);
+        Assert.Equal(4, new[] { profile.DataDirectory, profile.SetupDirectory, profile.RoamingRoot, profile.LocalRoot }
+            .Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.True(Directory.Exists(profile.LocalRoot));
+        Assert.True(Directory.Exists(profile.RoamingRoot));
         Assert.Equal("1", start.Environment["OPENCLAW_GATEWAY_FIXTURE"]);
         Assert.Equal("49233", start.Environment["OPENCLAW_MCP_PORT"]);
         Assert.False(start.Environment.ContainsKey("OPENCLAW_ACCESSIBILITY_TEST_CHAT"));
         Assert.False(start.Environment.ContainsKey("OPENCLAW_FORCE_ONBOARDING"));
-        Assert.False(start.Environment.ContainsKey("OPENCLAW_TRAY_LOCALAPPDATA_DIR"));
+        Assert.Equal(Path.Combine(profile.RunDirectory, "local"), start.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"]);
+        Assert.Equal(profile.SetupDirectory, GatewayFixtureIsolation.Get(
+            name => start.Environment.TryGetValue(name, out var value) ? value : null).LocalDataDirectory);
         Assert.False(start.Environment.ContainsKey("OPENCLAW_FUTURE_UNRECOGNIZED_OVERRIDE"));
         Assert.Equal("must-not-use", Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR"));
+        Assert.Equal("must-not-use", Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR"));
+        Assert.Empty(start.ArgumentList);
+    }
+
+    [Fact]
+    public void SetupHandoffIsExplicitAndPassedAsOneOpaqueArgument()
+    {
+        using var app = CreateFakeSupportedApp();
+        using var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        var start = profile.CreateStartInfo(app.Combine("OpenClaw.Tray.WinUI.exe"), 49233, "native:synthetic-handoff");
+        Assert.Equal(new[] { "--post-setup-launch", "native:synthetic-handoff" }, start.ArgumentList);
+        Assert.Equal(profile.LocalRoot, start.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"]);
     }
 
     [Theory]

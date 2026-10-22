@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -22,6 +23,99 @@ namespace OpenClaw.Tray.UITests;
 /// </summary>
 public static class TestSupport
 {
+    public static Task WaitForSettingsCardReadyAsync(Page page, SettingsCard card) =>
+        WaitForRenderedConditionAsync(
+            () => card.IsLoaded && card.IsEnabled && card.IsClickEnabled &&
+                page.XamlRoot is not null && ReferenceEquals(page.XamlRoot, card.XamlRoot),
+            $"{page.GetType().Name}.{card.Name} ready for invocation",
+            () => $"IsLoaded={card.IsLoaded}, IsEnabled={card.IsEnabled}, " +
+                $"IsClickEnabled={card.IsClickEnabled}, PageHasXamlRoot={page.XamlRoot is not null}, " +
+                $"SameXamlRoot={ReferenceEquals(page.XamlRoot, card.XamlRoot)}");
+
+    /// <summary>Exercise the XAML-wired action boundary, not the toolkit's native input provider.</summary>
+    public static void InvokeSettingsCardAction(Page page, SettingsCard card, string handler)
+    {
+        Assert.True(card.IsLoaded && card.IsEnabled && card.IsClickEnabled,
+            $"{page.GetType().Name}.{card.Name}: IsLoaded={card.IsLoaded}, " +
+            $"IsEnabled={card.IsEnabled}, IsClickEnabled={card.IsClickEnabled}.");
+        Assert.NotNull(page.XamlRoot);
+        Assert.Same(page.XamlRoot, card.XamlRoot);
+        // The toolkit advertises Invoke but its managed and native providers reject it.
+        // Keep actual keyboard/pointer coverage in NativeOnboardingProof, never synthesize OS input here.
+        var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
+            ?? throw new InvalidOperationException("Set OPENCLAW_REPO_ROOT for framework UI tests.");
+        var xaml = System.Xml.Linq.XDocument.Load(System.IO.Path.Combine(root,
+            "src", "OpenClaw.SetupEngine.UI", "Pages", page.GetType().Name + ".xaml"));
+        var declarations = xaml.Descendants().Where(element => element.Name.LocalName == "SettingsCard").ToArray();
+        if (!string.IsNullOrEmpty(card.Name))
+        {
+            System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+            var declaration = Assert.Single(declarations, element => (string?)element.Attribute(x + "Name") == card.Name);
+            Assert.Equal(handler, (string?)declaration.Attribute("Click"));
+        }
+        else if (page is OpenClaw.SetupEngine.UI.Pages.AdvancedSetupPage)
+        {
+            // This page has exactly four flat siblings, unlike repeated AI DataTemplate rows.
+            var parent = Assert.IsType<StackPanel>(VisualTreeHelper.GetParent(card));
+            var siblings = parent.Children.OfType<SettingsCard>().ToArray();
+            Assert.Equal(4, siblings.Length);
+            Assert.Equal(siblings.Length, declarations.Length);
+            Assert.All(declarations, element => Assert.Same(declarations[0].Parent, element.Parent));
+            var index = Array.IndexOf(siblings, card);
+            Assert.InRange(index, 0, declarations.Length - 1);
+            Assert.Equal(handler, (string?)declarations[index].Attribute("Click"));
+        }
+        else
+        {
+            Assert.Fail("Unsupported unnamed SettingsCard. Use a template-scoped name or the Advanced Setup sibling contract.");
+        }
+        var action = page.GetType().GetMethod(handler,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(action);
+        action.Invoke(page, [card, new RoutedEventArgs()]);
+    }
+
+    public static async Task WaitForRenderedConditionAsync(
+        Func<bool> predicate, string operation, Func<string>? diagnostics = null)
+    {
+        var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Check(object? sender, object args)
+        {
+            if (predicate()) settled.TrySetResult();
+        }
+        CompositionTarget.Rendering += Check;
+        try
+        {
+            Check(null, EventArgs.Empty);
+            await settled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail($"Timed out waiting for {operation}." +
+                (diagnostics is null ? "" : $" {diagnostics()}"));
+        }
+        finally
+        {
+            CompositionTarget.Rendering -= Check;
+        }
+    }
+
+    public static async Task WaitForSettingsExpanderSettledAsync(
+        UIThreadFixture ui, SettingsExpander expander, bool expanded)
+    {
+        Assert.Equal(expanded, expander.IsExpanded);
+        expander.UpdateLayout();
+        await ui.YieldToRenderAsync();
+        var content = Assert.Single(FindDescendants<Border>(expander), border => border.Name == "ExpanderContent");
+        var transform = Assert.IsType<CompositeTransform>(content.RenderTransform);
+        // Toolkit changes IsExpanded before its visibility/translation transition finishes.
+        await WaitForRenderedConditionAsync(
+            () => content.Visibility == (expanded ? Visibility.Visible : Visibility.Collapsed) &&
+                (!expanded || transform.TranslateY == 0), "SettingsExpander transition");
+        expander.UpdateLayout();
+        await ui.YieldToRenderAsync();
+    }
+
     /// <summary>Build a fresh router/registry/datamodel/sink stack for one test.</summary>
     public static TestHarness BuildHarness(UIThreadFixture ui)
     {

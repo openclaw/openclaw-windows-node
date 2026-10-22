@@ -75,6 +75,38 @@ public sealed class MxcSetupAndConnectTests
     }
 
     [MxcE2EFact]
+    public async Task RealGateway_FocusedAiDiscovery_UsesAdvertisedOperatorContract()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        await using var session = await SetupGatewaySession.ConnectAsync(_fixture.DataDir, ct: timeout.Token);
+        Assert.Contains("openclaw.setup.detect", session.Client.AdvertisedServerMethods);
+        Assert.Contains("operator.admin", session.Client.GrantedOperatorScopes);
+        var client = new GatewayAiSetupClient(new GatewayAiSetupTransport(session.Client, session.GetRoute));
+        var detection = await client.DetectAsync(timeout.Token);
+        Assert.NotNull(detection);
+        Assert.Equal(GatewayAiSetupPhase.Choosing, client.Phase);
+        Assert.Null(client.Selection);
+        Assert.Null(client.SessionId);
+        Assert.False(string.IsNullOrWhiteSpace(detection.Workspace));
+
+        await File.WriteAllTextAsync(
+            Path.Combine(_fixture.ArtifactDir, "focused-ai-discovery.json"),
+            JsonSerializer.Serialize(new
+            {
+                method = "openclaw.setup.detect",
+                advertised = true,
+                operatorAdmin = true,
+                candidates = detection.Candidates.Length,
+                manualProviders = detection.ManualProviders.Length,
+                authOptions = detection.AuthOptions.Length,
+                prepareOptions = detection.PrepareOptions.Length,
+                selectionMade = false,
+                wizardStarted = false,
+            }, new JsonSerializerOptions { WriteIndented = true }),
+            timeout.Token);
+    }
+
+    [MxcE2EFact]
     public async Task MirroredWslSafeGatewayPort_IsListeningAndRecorded()
     {
         Assert.InRange(
@@ -189,17 +221,15 @@ public sealed class MxcSetupAndConnectTests
         var requestLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
-            "[mxc] system.run sandbox request",
-            "executor=mxc-direct-appc",
-            "contained=True",
-            "shell=<direct-argv>",
-            "uiAllowWindows=True");
+            "[mxc] operation=spawn",
+            "requested=base-container",
+            "applied=unknown");
         var resultLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
-            "[mxc] system.run sandbox result",
-            "exitCode=0",
-            "containment=mxc");
+            "[mxc] operation=exit",
+            "exit=0",
+            "applied=unknown");
 
         Console.WriteLine($"[E2E] MXC request diagnostic: {requestLog}");
         Console.WriteLine($"[E2E] MXC result diagnostic: {resultLog}");
@@ -265,10 +295,9 @@ public sealed class MxcSetupAndConnectTests
         var requestLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
-            "[mxc] system.run sandbox request",
-            "executor=mxc-direct-appc",
-            "contained=True",
-            "shell=<direct-argv>");
+            "[mxc] operation=spawn",
+            "requested=base-container",
+            "applied=unknown");
 
         AssertApprovedCommandRan(payload, nameof(RealGateway_SystemRun_UsesBoundExecutableAllowlistRule));
 
@@ -488,16 +517,15 @@ public sealed class MxcSetupAndConnectTests
         var requestLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
-            "[mxc] system.run sandbox request",
-            "executor=mxc-direct-appc",
-            "contained=True",
-            "shell=<direct-argv>");
+            "[mxc] operation=spawn",
+            "requested=base-container",
+            "applied=unknown");
         var resultLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
-            "[mxc] system.run sandbox result",
-            $"exitCode={exitCode}",
-            "containment=mxc");
+            "[mxc] operation=exit",
+            $"exit={exitCode}",
+            "applied=unknown");
 
         Console.WriteLine(
             $"[E2E] MXC denied-write payload: exitCode={exitCode}; stdoutLength={stdout.Length}; stderrLength={stderr.Length}; fileExists={blockedFileExists}");

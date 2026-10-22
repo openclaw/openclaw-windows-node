@@ -31,9 +31,16 @@ internal enum AutoStartState
 /// </remarks>
 internal sealed class AutoStartRefusedException : InvalidOperationException
 {
-    public AutoStartRefusedException(string message) : base(message)
+    public AutoStartRefusedException(string message, bool isDurable = false) : base(message)
     {
+        IsDurable = isDurable;
     }
+
+    /// <summary>
+    /// True only when Windows gave a durable answer (DisabledByUser / DisabledByPolicy).
+    /// Transient non-answers and fixture refusals must stay retryable.
+    /// </summary>
+    public bool IsDurable { get; }
 }
 
 /// <summary>

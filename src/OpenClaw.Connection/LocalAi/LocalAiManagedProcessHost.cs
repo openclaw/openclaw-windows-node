@@ -91,17 +91,19 @@ internal sealed class WindowsLocalAiManagedProcessHost(IOpenClawLogger logger) :
             EnableRaisingEvents = false,
         };
         SafeJobHandle? job = null;
+        string Redact(string line) => spec.Environment.TryGetValue("LLAMA_API_KEY", out var key) &&
+            !string.IsNullOrEmpty(key) ? line.Replace(key, "[REDACTED]", StringComparison.Ordinal) : line;
         try
         {
             process.OutputDataReceived += (_, eventArgs) =>
             {
                 if (eventArgs.Data is not null)
-                    stdout.WriteLine(eventArgs.Data);
+                    stdout.WriteLine(Redact(eventArgs.Data));
             };
             process.ErrorDataReceived += (_, eventArgs) =>
             {
                 if (eventArgs.Data is not null)
-                    stderr.WriteLine(eventArgs.Data);
+                    stderr.WriteLine(Redact(eventArgs.Data));
             };
             if (!process.Start())
                 throw new InvalidOperationException("The managed local inference process did not start.");

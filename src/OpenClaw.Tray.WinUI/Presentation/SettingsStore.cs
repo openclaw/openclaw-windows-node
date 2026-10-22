@@ -60,8 +60,7 @@ internal sealed class SettingsStore : ISettingsStore
             BeginSaveOrigin(origin);
             try
             {
-                edit(new Editor(_settings));
-                _settings.Save();
+                _settings.UpdateAndSave(() => edit(new Editor(_settings)));
             }
             finally
             {
@@ -138,6 +137,8 @@ internal sealed class SettingsStore : ISettingsStore
     private SettingsSnapshot CreateSnapshot(long version) => new()
     {
         Version = version,
+        SystemRunFilesystemScope = _settings.SystemRunFilesystemScope,
+        SystemRunPolicyFingerprint = _settings.SystemRunPolicyFingerprint,
         AutoStart = _settings.AutoStart,
         GlobalHotkeyEnabled = _settings.GlobalHotkeyEnabled,
         UseLegacyWebChat = _settings.UseLegacyWebChat,
@@ -164,6 +165,7 @@ internal sealed class SettingsStore : ISettingsStore
         NodeTtsEnabled = _settings.NodeTtsEnabled,
         NodeSttEnabled = _settings.NodeSttEnabled,
         NodeOllamaInferenceEnabled = _settings.NodeOllamaInferenceEnabled,
+        EnableManagedLocalGatewayAutoRepair = _settings.EnableManagedLocalGatewayAutoRepair,
         SttModelName = _settings.SttModelName,
         TtsProvider = _settings.TtsProvider,
         TtsPiperVoiceId = _settings.TtsPiperVoiceId,
@@ -185,6 +187,7 @@ internal sealed class SettingsStore : ISettingsStore
         private readonly SettingsManager _settings;
 
         public Editor(SettingsManager settings) => _settings = settings;
+        public void ApplySystemRunPreset(OpenClaw.Shared.SystemRunAccessPreset preset) => _settings.ApplySystemRunPreset(preset);
 
         public bool AutoStart { set => _settings.AutoStart = value; }
         public bool GlobalHotkeyEnabled { set => _settings.GlobalHotkeyEnabled = value; }
@@ -212,6 +215,7 @@ internal sealed class SettingsStore : ISettingsStore
         public bool NodeTtsEnabled { set => _settings.NodeTtsEnabled = value; }
         public bool NodeSttEnabled { set => _settings.NodeSttEnabled = value; }
         public bool NodeOllamaInferenceEnabled { set => _settings.NodeOllamaInferenceEnabled = value; }
+        public bool EnableManagedLocalGatewayAutoRepair { set => _settings.EnableManagedLocalGatewayAutoRepair = value; }
         public bool ScreenRecordingConsentGiven { set => _settings.ScreenRecordingConsentGiven = value; }
         public bool CameraRecordingConsentGiven { set => _settings.CameraRecordingConsentGiven = value; }
         public bool LocationConsentGiven { set => _settings.LocationConsentGiven = value; }

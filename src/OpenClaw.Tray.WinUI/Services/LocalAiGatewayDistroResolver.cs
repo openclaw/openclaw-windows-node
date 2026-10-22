@@ -93,8 +93,9 @@ internal static class LocalAiSetupRoutePolicy
 internal sealed class LocalAiGatewayDistroResolver : ILocalAiGatewayDistroResolver
 {
     private readonly GatewayRegistry? _registry;
-    private readonly string? _gatewayId;
-    private readonly string? _distroName;
+    private readonly object _bindingGate = new();
+    private string? _gatewayId;
+    private string? _distroName;
     private readonly string? _initialFailure;
 
     public LocalAiGatewayDistroResolver(GatewayRegistry? registry)
@@ -110,8 +111,8 @@ internal sealed class LocalAiGatewayDistroResolver : ILocalAiGatewayDistroResolv
         IReadOnlyList<GatewayRecord> owners = FindOwners(registry.GetAll());
         if (owners.Count == 0)
         {
-            _initialFailure =
-                "No explicit setup-managed WSL gateway owns the Local AI installation; refusing to change its gateway route.";
+            // First-run setup has not saved its owner yet. Bind once when the
+            // canonical registry adopts the completed setup, never on a disk-only discovery.
             return;
         }
 
@@ -129,16 +130,30 @@ internal sealed class LocalAiGatewayDistroResolver : ILocalAiGatewayDistroResolv
 
     public LocalAiGatewayDistroResolution Resolve()
     {
+        lock (_bindingGate)
+            return ResolveCore();
+    }
+
+    private LocalAiGatewayDistroResolution ResolveCore()
+    {
         if (_initialFailure is not null)
             return LocalAiGatewayDistroResolution.Failed(_initialFailure);
-        if (_registry is null || _gatewayId is null || _distroName is null)
+        if (_registry is null)
         {
             return LocalAiGatewayDistroResolution.Failed(
                 "The gateway registry is unavailable; refusing to change the Local AI gateway route.");
         }
 
         IReadOnlyList<GatewayRecord> owners = FindOwners(_registry.GetAll());
-        if (owners.Count != 1 ||
+        if (_gatewayId is null && owners.Count == 0)
+            return LocalAiGatewayDistroResolution.Failed(
+                "No explicit setup-managed WSL gateway owns the Local AI installation; refusing to change its gateway route.");
+        if (_gatewayId is null && owners.Count == 1)
+        {
+            _gatewayId = owners[0].Id;
+            _distroName = GatewayRecordEditing.ResolveManagedDistroName(owners[0])!.Trim();
+        }
+        if (_gatewayId is null || _distroName is null || owners.Count != 1 ||
             !string.Equals(owners[0].Id, _gatewayId, StringComparison.Ordinal) ||
             !string.Equals(
                 GatewayRecordEditing.ResolveManagedDistroName(owners[0])?.Trim(),

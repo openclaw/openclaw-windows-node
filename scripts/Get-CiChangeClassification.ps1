@@ -15,7 +15,9 @@ param(
     [string]$BaseSha,
     [string]$HeadSha = $env:GITHUB_SHA,
     [string]$RepoRoot,
-    [string[]]$ChangedPaths
+    [string[]]$ChangedPaths,
+    [switch]$Explain,
+    [switch]$Human
 )
 
 Set-StrictMode -Version Latest
@@ -26,6 +28,9 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
     $RepoRoot = Split-Path -Parent $scriptRoot
 }
 $repoRootPath = [System.IO.Path]::GetFullPath($RepoRoot)
+$pathReasons = [System.Collections.Generic.List[object]]::new()
+$decisionReason = 'recognized-paths'
+$paths = @()
 
 function New-Impact([string]$Classification) {
     [ordered]@{
@@ -67,7 +72,93 @@ function New-FullImpact {
 
 function Complete-Impact([System.Collections.IDictionary]$Impact) {
     $global:LASTEXITCODE = 0
-    $Impact | ConvertTo-Json -Compress
+    if (-not $Explain -and -not $Human) {
+        $Impact | ConvertTo-Json -Compress
+        return
+    }
+    $selectedPaths = @(
+        foreach ($path in $paths) {
+            $known = @($pathReasons | Where-Object { $_.path -ceq [string]$path })
+            if ($known.Count) { $known[0] }
+            else { [pscustomobject]@{ path = [string]$path; reason = $decisionReason; lanes = @() } }
+        }
+    )
+    $localCommands = @()
+    if ($Impact.classification -ne 'docs_only') {
+        $localCommands = @(
+            '.\build.ps1',
+            'dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj --no-restore',
+            'dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj --no-restore'
+        )
+    }
+    $candidates = @()
+    if ($Impact.classification -ne 'docs_only') {
+        $inventory = Get-Content -LiteralPath (Join-Path $repoRootPath '.github\proof-pools.json') -Raw | ConvertFrom-Json
+        $candidates = @(
+            foreach ($pool in $inventory.pools) {
+                [pscustomobject][ordered]@{
+                    id = $pool.id
+                    reason = 'Inventory candidate, not an automatic path-based requirement. Review requiredWhen against the behavior change.'
+                    requiredWhen = @($pool.selection.requiredWhen)
+                    commands = @($pool.authoritativeCommands)
+                    prerequisites = @($pool.requiredCapabilities)
+                    doesNotProve = @($pool.selection.doesNotProve)
+                    evidencePolicy = $pool.evidencePolicy
+                    applicability = 'review-required'
+                    authorization = 'explicit-approval-required'
+                    status = 'not-run'
+                }
+            }
+        )
+    }
+    $plan = [ordered]@{
+        schemaVersion = 1
+        impact = $Impact
+        reason = $decisionReason
+        selectedPaths = $selectedPaths
+        hostedLanes = @('change-classification', 'fast-validation', 'proof-pool-contracts', 'ci-gate') + @(
+            if ($Impact.x64_release -or $Impact.arm64_release) { 'metadata'; 'build-msix'; 'build-msix-bundle' }
+        ) + @(
+            $Impact.Keys | Where-Object { $_ -notin @('classification', 'full') -and $Impact[$_] } | ForEach-Object {
+                switch ($_) {
+                    'x64_release' { 'build-x64' }
+                    'arm64_release' { 'build-arm64' }
+                    default { $_.Replace('_', '-') }
+                }
+            }
+        )
+        mandatoryLocal = [ordered]@{
+            required = $Impact.classification -ne 'docs_only'
+            commands = $localCommands
+            note = 'Code changes require full build, Shared, and Tray even when hosted lanes are narrower. First-run tests must restore/build; a no-report exit is not a pass. Add subsystem-specific validation separately.'
+        }
+        customProofCandidates = $candidates
+        boundary = 'Read-only plan. Hosted lanes describe impact-selected CI Gate jobs; event/authorization-conditioned reservation and publication jobs remain governed by ci.yml. No tests, runtime launches, authentication, host leases, or CI dispatch. Candidate inventory is not exhaustive behavioral analysis or proof.'
+    }
+    if ($Human) {
+        Write-Output "Classification: $($Impact.classification) ($decisionReason)"
+        foreach ($entry in $selectedPaths) { Write-Output "  $($entry.path): $($entry.reason); lanes=$($entry.lanes -join ', ')" }
+        Write-Output "Hosted lanes: $($plan.hostedLanes -join ', ')"
+        Write-Output "Mandatory local code-change closeout:"
+        foreach ($command in $localCommands) { Write-Output "  $command" }
+        if (-not $localCommands.Count) { Write-Output '  Documentation checks only; no runtime tests selected.' }
+        foreach ($candidate in $candidates) {
+            Write-Output "Candidate $($candidate.id): review applicability and obtain explicit approval; not run."
+            Write-Output "  Required when: $($candidate.requiredWhen -join '; ')"
+            Write-Output "  Prerequisites: $($candidate.prerequisites -join ', ')"
+            foreach ($command in $candidate.commands) { Write-Output "  $($command.id): $($command.command)" }
+            Write-Output "  Does not prove: $($candidate.doesNotProve -join '; ')"
+        }
+        Write-Output $plan.boundary
+    } else { $plan | ConvertTo-Json -Depth 15 }
+}
+
+function Add-PathReason([string]$Path, [string]$Reason, [System.Collections.IDictionary]$Lanes) {
+    $pathReasons.Add([pscustomobject]@{
+        path = $Path
+        reason = $Reason
+        lanes = @($Lanes.Keys | Where-Object { $_ -notin @('classification', 'full') -and $Lanes[$_] })
+    })
 }
 
 function Add-Lanes {
@@ -96,7 +187,7 @@ function ConvertTo-NormalizedPath([string]$Path) {
 
     $normalizedPath = $Path.Trim().Replace("\", "/")
     if ($normalizedPath.StartsWith("/", [StringComparison]::Ordinal) -or
-        $normalizedPath.Contains("..", [StringComparison]::Ordinal) -or
+        $normalizedPath.Contains("..") -or
         $normalizedPath.Contains([char]0)) {
         return $null
     }
@@ -111,7 +202,8 @@ function Test-IsSafeDocumentationPath([string]$Path) {
         "DEVELOPMENT.md",
         "README.md",
         "SECURITY.md",
-        ".github/pull_request_template.md"
+        ".github/pull_request_template.md",
+        "src/OpenClaw.Tray.WinUI/AGENTS.md"
     ) | ForEach-Object { [void]$rootDocumentation.Add($_) }
     if ($rootDocumentation.Contains($Path)) {
         return $true
@@ -246,6 +338,8 @@ function Add-PathImpact {
 }
 
 if ($EventName -ne "pull_request") {
+    $decisionReason = 'non-pull-request-event'
+    $paths = @($ChangedPaths)
     Complete-Impact (New-FullImpact -IncludeArm64)
     return
 }
@@ -260,15 +354,21 @@ if ($PSBoundParameters.ContainsKey("ChangedPaths")) {
         $BaseSha -notmatch $shaPattern -or
         $HeadSha -notmatch $shaPattern) {
         Write-Warning "CI diff revisions are missing or invalid. Selecting full validation."
+        $decisionReason = 'invalid-or-missing-revisions'
         Complete-Impact (New-FullImpact)
         return
     }
 
     foreach ($sha in @($BaseSha, $HeadSha)) {
-        & git -C $repoRootPath cat-file -e "$sha^{commit}" 2>$null
-        if ($LASTEXITCODE -ne 0) {
+        $revisionAvailable = $false
+        try {
+            & git -C $repoRootPath cat-file -e "$sha^{commit}" 2>$null
+            $revisionAvailable = $LASTEXITCODE -eq 0
+        } catch { $revisionAvailable = $false }
+        if (-not $revisionAvailable) {
             $global:LASTEXITCODE = 0
             Write-Warning "CI diff revision '$sha' is unavailable. Selecting full validation."
+            $decisionReason = 'unavailable-revision'
             Complete-Impact (New-FullImpact)
             return
         }
@@ -282,6 +382,7 @@ if ($PSBoundParameters.ContainsKey("ChangedPaths")) {
         $global:LASTEXITCODE = 0
     } catch {
         Write-Warning "CI diff failed. Selecting full validation: $($_.Exception.Message)"
+        $decisionReason = 'diff-failed'
         Complete-Impact (New-FullImpact)
         return
     }
@@ -289,6 +390,7 @@ if ($PSBoundParameters.ContainsKey("ChangedPaths")) {
     if ($gitExitCode -ne 0) {
         $detail = ($diffOutput | Out-String).Trim()
         Write-Warning "CI diff exited with code $gitExitCode. Selecting full validation: $detail"
+        $decisionReason = 'diff-failed'
         Complete-Impact (New-FullImpact)
         return
     }
@@ -297,42 +399,68 @@ if ($PSBoundParameters.ContainsKey("ChangedPaths")) {
 
 if ($paths.Count -eq 0) {
     Write-Warning "CI diff contained no changed paths. Selecting full validation."
+    $decisionReason = 'empty-diff'
     Complete-Impact (New-FullImpact)
     return
 }
 
 $impact = New-Impact "targeted"
 $hasProductChange = $false
+$hasFastOnlyChange = $false
 foreach ($changedPath in $paths) {
     $normalizedPath = ConvertTo-NormalizedPath ([string]$changedPath)
     if ($null -eq $normalizedPath) {
+        $decisionReason = 'invalid-path'
+        Add-PathReason ([string]$changedPath) $decisionReason (New-FullImpact)
         Complete-Impact (New-FullImpact)
         return
+    }
+    # These repository-only tools are exercised by always-on fast-validation.
+    if ($normalizedPath -cin @(
+            ".github/scripts/repository-triage.cjs",
+            ".github/scripts/repository-triage.test.cjs")) {
+        $hasFastOnlyChange = $true
+        Add-PathReason $changedPath 'always-on-repository-tooling-checks' (New-Impact 'fast_only')
+        continue
     }
     if ($normalizedPath.Equals(
             ".agents/skills/winnode/SKILL.md",
             [StringComparison]::OrdinalIgnoreCase)) {
         $hasProductChange = $true
         Add-Lanes -Impact $impact -Core
+        $skillImpact = New-Impact 'targeted'
+        Add-Lanes -Impact $skillImpact -Core
+        Add-PathReason $changedPath 'shipped-winnode-command-contract' $skillImpact
         continue
     }
     if (Test-IsSafeDocumentationPath $normalizedPath) {
+        Add-PathReason $changedPath 'maintained-documentation-checks' (New-Impact 'docs_only')
         continue
     }
 
     $hasProductChange = $true
     if (Test-IsBuildInfrastructurePath $normalizedPath) {
+        $decisionReason = 'build-or-validation-infrastructure'
+        Add-PathReason $changedPath $decisionReason (New-FullImpact)
         Complete-Impact (New-FullImpact)
         return
     }
-    if (-not (Add-PathImpact -Impact $impact -Path $normalizedPath)) {
+    $pathImpact = New-Impact 'targeted'
+    if (-not (Add-PathImpact -Impact $pathImpact -Path $normalizedPath)) {
+        $decisionReason = 'unknown-path'
+        Add-PathReason $changedPath $decisionReason (New-FullImpact)
         Complete-Impact (New-FullImpact)
         return
+    }
+    Add-PathReason $changedPath 'recognized-project-boundary' $pathImpact
+    foreach ($key in $pathImpact.Keys) {
+        if ($key -ne 'classification' -and $pathImpact[$key]) { $impact[$key] = $true }
     }
 }
 
 if (-not $hasProductChange) {
-    Complete-Impact (New-Impact "docs_only")
+    $classification = if ($hasFastOnlyChange) { "fast_only" } else { "docs_only" }
+    Complete-Impact (New-Impact $classification)
     return
 }
 

@@ -10,6 +10,46 @@ public sealed class LlamaServerInferenceClientTests
     private const string ModelAlias = "qwen3.6-27b-mtp-q4-k-m";
     private static readonly Uri s_endpoint = new("http://127.0.0.1:18803/v1");
 
+    [Fact]
+    public async Task AuthenticatedInference_SendsCredentialOnlyAsHeaderAndRedactsEchoedError()
+    {
+        const string apiKey = "local-test-credential";
+        using var client = new LlamaServerInferenceClient(new DelegateHandler(async (request, ct) =>
+        {
+            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+            Assert.Equal(apiKey, request.Headers.Authorization?.Parameter);
+            Assert.DoesNotContain(apiKey, request.RequestUri!.AbsoluteUri);
+            Assert.DoesNotContain(apiKey, await request.Content!.ReadAsStringAsync(ct));
+            return Response(HttpStatusCode.Unauthorized,
+                JsonSerializer.Serialize(new { error = new { message = $"Rejected {apiKey}" } }));
+        }), () => apiKey);
+        var error = await Assert.ThrowsAsync<LlamaServerInferenceException>(() => client.VerifyAsync(s_endpoint, ModelAlias));
+        Assert.Equal(401, error.StatusCode);
+        Assert.DoesNotContain(apiKey, error.Message);
+        Assert.DoesNotContain(apiKey, error.ServerError ?? "");
+    }
+
+    [Fact]
+    public async Task EmptyAuthenticationCredentialFailsBeforeSendingRequest()
+    {
+        using var client = new LlamaServerInferenceClient(new DelegateHandler((_, _) =>
+            throw new InvalidOperationException("A request must not be sent")), () => "");
+        await Assert.ThrowsAsync<InvalidDataException>(() => client.VerifyAsync(s_endpoint, ModelAlias));
+    }
+
+    [Fact]
+    public async Task CredentialRedactionPrecedesErrorTruncation()
+    {
+        const string apiKey = "local-test-credential";
+        using var client = new LlamaServerInferenceClient(new DelegateHandler((_, _) =>
+            Task.FromResult(Response(HttpStatusCode.Unauthorized, JsonSerializer.Serialize(new
+            {
+                error = new { message = new string('x', 390) + apiKey },
+            })))), () => apiKey);
+        var error = await Assert.ThrowsAsync<LlamaServerInferenceException>(() => client.VerifyAsync(s_endpoint, ModelAlias));
+        Assert.DoesNotContain("local-test", error.Message);
+    }
+
     /// <summary>
     /// The body llama-server actually returns when a model instance dies during load — the case
     /// that previously surfaced as a bare "HTTP 500 (InternalServerError)" with no root cause.

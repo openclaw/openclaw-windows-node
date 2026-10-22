@@ -123,7 +123,8 @@ internal sealed record OperatorConnectEnvelopeOptions(
     ConnectCredential Credential,
     string? Nonce,
     long? ChallengeTimestampMs,
-    bool UseV2Signature);
+    bool UseV2Signature,
+    bool SupportsExecApprovals = false);
 
 internal sealed record NodeConnectEnvelopeOptions(
     string RequestId,
@@ -252,6 +253,7 @@ internal sealed class PreparedConnectEnvelope
     }
 
     internal long SignedAt => SigningArguments.SignedAtMs;
+    internal string SigningDeviceId => _signer.DeviceId;
     internal string? Nonce => _serializedNonce;
     internal bool CanSign =>
         _profile == ConnectEnvelopeProfile.Operator ||
@@ -340,6 +342,9 @@ internal static class ConnectEnvelopeBuilder
     private const string OperatorClientId = "cli";
     private const string OperatorClientMode = "cli";
     private const string OperatorDisplayName = "OpenClaw Windows Tray";
+    private const string ModelSelectionPolicyCapability = "model-selection-policy";
+    // Advertising this cap keeps approvals routable, so headless clients must omit it.
+    private static readonly string[] OperatorCaps = ["exec-approvals", ModelSelectionPolicyCapability];
     private const string NodeClientId = "node-host";
     private const string NodeClientMode = "node";
     private const string NodeRole = "node";
@@ -374,7 +379,9 @@ internal static class ConnectEnvelopeBuilder
             WindowsClientMetadata.Platform,
             WindowsClientMetadata.DeviceFamily,
             OperatorDisplayName,
-            [],
+            options.Role == "operator"
+                ? options.SupportsExecApprovals ? OperatorCaps : [ModelSelectionPolicyCapability]
+                : [],
             [],
             new Dictionary<string, bool>(),
             options.Credential,

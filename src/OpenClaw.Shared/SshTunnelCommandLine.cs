@@ -13,10 +13,24 @@ public static class SshTunnelCommandLine
     private const string BaseOptions =
         "-o BatchMode=yes " +
         "-o ExitOnForwardFailure=yes " +
+        "-o GatewayPorts=no " +
         "-o ServerAliveInterval=15 " +
         "-o ServerAliveCountMax=3 " +
         "-o TCPKeepAlive=yes " +
         "-N ";
+
+    // Open Terminal passes user@host as one ssh.exe argument. Reject the same
+    // charset as the tunnel, and a leading '-', before that argument is built.
+    public static void ValidateUserAndHost(string user, string host)
+    {
+        user = user.Trim();
+        host = host.Trim();
+
+        if (user.StartsWith('-') || !s_validSshUser.IsMatch(user))
+            throw new ArgumentException($"SSH user contains invalid characters: '{user}'", nameof(user));
+        if (host.StartsWith('-') || !s_validSshHost.IsMatch(host))
+            throw new ArgumentException($"SSH host contains invalid characters: '{host}'", nameof(host));
+    }
 
     public static string BuildArguments(string user, string host, int remotePort, int localPort)
         => BuildArguments(user, host, remotePort, localPort, includeBrowserProxyForward: false);
@@ -76,7 +90,7 @@ public static class SshTunnelCommandLine
 
     private static void AppendLocalForward(StringBuilder sb, int localPort, int remotePort)
     {
-        sb.Append("-L ");
+        sb.Append("-L 127.0.0.1:");
         sb.Append(localPort);
         sb.Append(":127.0.0.1:");
         sb.Append(remotePort);

@@ -3,6 +3,8 @@ using OpenClaw.Shared;
 
 namespace OpenClaw.Connection;
 
+public sealed record GatewayRegistrySnapshot(IReadOnlyList<GatewayRecord> Records, string? ActiveId);
+
 /// <summary>
 /// Pure data catalog of known gateway endpoints. Persistence only — no runtime state.
 /// Thread-safe: lock-protected internal list; events fire outside the lock.
@@ -16,6 +18,8 @@ public sealed class GatewayRegistry
     private readonly IOpenClawLogger _logger;
     private List<GatewayRecord> _records = [];
     private string? _activeId;
+    private GatewayRegistrySnapshot _persisted = new([], null);
+    private string? _persistedInvalidJson;
 
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
@@ -61,12 +65,129 @@ public sealed class GatewayRegistry
         get { lock (_lock) return _activeId; }
     }
 
+    public GatewayRegistrySnapshot GetSnapshot()
+    {
+        lock (_lock) return new(_records.ToArray(), _activeId);
+    }
+
+    public static bool HasSameSetupAuthority(GatewayRegistrySnapshot left, GatewayRegistrySnapshot right) =>
+        left.ActiveId == right.ActiveId &&
+        left.Records.Select(record => record with { LastConnected = null }).SequenceEqual(
+            right.Records.Select(record => record with { LastConnected = null }));
+
+    public GatewayRegistrySnapshot CapturePersistedSnapshot()
+    {
+        lock (_lock)
+        {
+            using var lease = PersistenceFileLease.Acquire(_filePath);
+            var data = _fs.FileExists(_filePath)
+                ? JsonSerializer.Deserialize<RegistryData>(_fs.ReadAllText(_filePath), s_jsonOptions)
+                    ?? throw new InvalidDataException("The saved Gateway registry is invalid.")
+                : new RegistryData();
+            if (!HasSameSetupAuthority(new(_records, _activeId), new(data.Gateways ?? [], data.ActiveId)))
+                throw new InvalidOperationException("The Gateway registry has unsaved or external changes. Refresh before setup.");
+            _persisted = new((data.Gateways ?? []).ToArray(), data.ActiveId);
+            return new(_records.ToArray(), _activeId);
+        }
+    }
+
+    public GatewayRegistrySnapshot ReconcileCompletedSetup(
+        GatewayRegistrySnapshot baseline, GatewayRegistrySnapshot expectedOutput, string gatewayId) =>
+        ReconcileSetupOutcome(baseline, expectedOutput, gatewayId);
+
+    /// <summary>Settles known pipeline/rollback output on every outcome, including an empty registry.</summary>
+    public GatewayRegistrySnapshot ReconcileSetupOutcome(
+        GatewayRegistrySnapshot baseline, GatewayRegistrySnapshot expectedOutput, string? completedGatewayId = null) =>
+        AdoptPersistedCore(baseline, expectedOutput, completedGatewayId);
+
+    /// <summary>Explicit conflict recovery. Only the admitted, unchanged in-memory state may be replaced.</summary>
+    public GatewayRegistrySnapshot AdoptPersistedSnapshot(GatewayRegistrySnapshot expectedMemory) =>
+        AdoptPersistedCore(expectedMemory, null, null);
+
+    private GatewayRegistrySnapshot AdoptPersistedCore(
+        GatewayRegistrySnapshot baseline, GatewayRegistrySnapshot? expectedOutput, string? completedGatewayId)
+    {
+        GatewayRegistrySnapshot snapshot;
+        bool changed;
+        lock (_lock)
+        {
+            using var lease = PersistenceFileLease.Acquire(_filePath);
+            if (!HasSameSetupAuthority(new(_records, _activeId), baseline))
+                throw new InvalidOperationException("The Gateway registry changed during setup. Refresh before continuing.");
+            var data = _fs.FileExists(_filePath)
+                ? JsonSerializer.Deserialize<RegistryData>(_fs.ReadAllText(_filePath), s_jsonOptions)
+                    ?? throw new InvalidDataException("The saved Gateway registry is invalid.")
+                : new RegistryData();
+            var records = data.Gateways ?? [];
+            if (records.Any(record => string.IsNullOrWhiteSpace(record.Id)) ||
+                records.Select(record => record.Id).Distinct(StringComparer.Ordinal).Count() != records.Count ||
+                data.ActiveId is not null && records.All(record => record.Id != data.ActiveId) ||
+                completedGatewayId is not null && data.ActiveId != completedGatewayId ||
+                expectedOutput is not null && !HasSameSetupAuthority(new(records, data.ActiveId), expectedOutput))
+                throw new InvalidDataException("The saved Gateway registry does not match this setup operation. Refresh before continuing.");
+            var current = _records.ToDictionary(record => record.Id);
+            _records = records.Select(record =>
+                current.TryGetValue(record.Id, out var canonical) && canonical.LastConnected is { } connected &&
+                (record.LastConnected is null || connected > record.LastConnected)
+                    ? record with { LastConnected = connected } : record).ToList();
+            _activeId = data.ActiveId;
+            _persisted = new(records.ToArray(), data.ActiveId);
+            snapshot = new(_records.ToArray(), _activeId);
+            changed = !HasSameSetupAuthority(baseline, snapshot);
+        }
+        if (changed) Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot.Records, snapshot.ActiveId));
+        return snapshot;
+    }
+
+    /// <summary>Applies an operation-owned state atomically; concurrent memory or disk authority is preserved.</summary>
+    public GatewayRegistrySnapshot ReplaceSnapshotAndSave(GatewayRegistrySnapshot expectedMemory, GatewayRegistrySnapshot replacement)
+    {
+        GatewayRegistrySnapshot snapshot;
+        lock (_lock)
+        {
+            if (!HasSameSetupAuthority(new(_records, _activeId), expectedMemory))
+                throw new InvalidOperationException("The live Gateway registry changed during the operation.");
+            var previousRecords = _records;
+            var previousActive = _activeId;
+            _records = replacement.Records.ToList();
+            _activeId = replacement.ActiveId;
+            try { SaveLocked(expectedMemory); }
+            catch { _records = previousRecords; _activeId = previousActive; throw; }
+            snapshot = new(_records.ToArray(), _activeId);
+        }
+        Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot.Records, snapshot.ActiveId));
+        return snapshot;
+    }
+
     /// <summary>
     /// Returns the identity directory path for a given gateway ID.
     /// </summary>
     public string GetIdentityDirectory(string gatewayId)
     {
         return Path.Combine(_gatewaysDir, gatewayId);
+    }
+
+    /// <summary>Deletes only an operation's unchanged new key file after confirming no live or saved record adopted it.</summary>
+    public bool RemoveUnregisteredIdentity(string gatewayId, DeviceIdentityReplacementTransaction creation)
+    {
+        if (!Guid.TryParse(gatewayId, out _))
+            throw new ArgumentException("Candidate identity requires a generated gateway ID.", nameof(gatewayId));
+        lock (_lock)
+        {
+            using var lease = PersistenceFileLease.Acquire(_filePath);
+            var disk = _fs.FileExists(_filePath)
+                ? JsonSerializer.Deserialize<RegistryData>(_fs.ReadAllText(_filePath), s_jsonOptions)
+                    ?? throw new InvalidDataException("The saved Gateway registry is invalid.")
+                : new RegistryData();
+            if (_records.Any(record => record.Id == gatewayId) || disk.Gateways?.Any(record => record.Id == gatewayId) == true)
+                return false;
+            var directory = GetIdentityDirectory(gatewayId);
+            var key = Path.GetFullPath(Path.Combine(directory, "device-key-ed25519.json"));
+            if (!string.Equals(key, Path.GetFullPath(creation.IdentityPath),
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new ArgumentException("The creation transaction does not belong to this candidate.", nameof(creation));
+            return DeviceIdentity.RemoveCreatedIdentity(creation);
+        }
     }
 
     // ─── Mutate ───
@@ -161,6 +282,7 @@ public sealed class GatewayRegistry
             try
             {
                 SaveLocked();
+                updated = _records[idx];
             }
             catch
             {
@@ -178,15 +300,43 @@ public sealed class GatewayRegistry
 
     // ─── Persistence ───
 
-    public void Save()
+    public void Save() => Save(expected: null);
+
+    public void Save(GatewayRegistrySnapshot? expected)
     {
         lock (_lock)
-            SaveLocked();
+            SaveLocked(expected);
     }
 
-    private void SaveLocked()
+    private void SaveLocked(GatewayRegistrySnapshot? expected = null)
     {
-        var data = new RegistryData { Gateways = _records.ToList(), ActiveId = _activeId };
+        using var lease = PersistenceFileLease.Acquire(_filePath);
+        var diskJson = _fs.FileExists(_filePath) ? _fs.ReadAllText(_filePath) : null;
+        RegistryData disk;
+        try
+        {
+            disk = diskJson is null
+                ? new RegistryData()
+                : JsonSerializer.Deserialize<RegistryData>(diskJson, s_jsonOptions)
+                    ?? throw new InvalidDataException("The saved Gateway registry is invalid.");
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException &&
+            _persistedInvalidJson is not null &&
+            string.Equals(diskJson, _persistedInvalidJson, StringComparison.Ordinal))
+        {
+            disk = new RegistryData();
+        }
+        var diskSnapshot = new GatewayRegistrySnapshot(disk.Gateways ?? [], disk.ActiveId);
+        if (!HasSameSetupAuthority(diskSnapshot, _persisted) ||
+            expected is not null && !HasSameSetupAuthority(diskSnapshot, expected))
+            throw new InvalidOperationException("The saved Gateway registry changed. Reload before saving.");
+        var diskById = diskSnapshot.Records.ToDictionary(record => record.Id);
+        var records = _records.Select(record =>
+            diskById.TryGetValue(record.Id, out var current) &&
+            (record with { LastConnected = null }) == (current with { LastConnected = null }) &&
+            current.LastConnected is { } stamp && (record.LastConnected is null || stamp > record.LastConnected)
+                ? record with { LastConnected = stamp } : record).ToList();
+        var data = new RegistryData { Gateways = records, ActiveId = _activeId };
         var json = JsonSerializer.Serialize(data, s_jsonOptions);
 
         var dir = Path.GetDirectoryName(_filePath);
@@ -199,7 +349,10 @@ public sealed class GatewayRegistry
         try
         {
             _fs.WriteAllText(tempPath, json);
-            File.Move(tempPath, _filePath, overwrite: true);
+            _fs.MoveFile(tempPath, _filePath, overwrite: true);
+            _records = records;
+            _persisted = new(records.ToArray(), _activeId);
+            _persistedInvalidJson = null;
         }
         catch
         {
@@ -223,25 +376,36 @@ public sealed class GatewayRegistry
 
     public void Load()
     {
-        if (!_fs.FileExists(_filePath))
-            return;
-
-        try
+        lock (_lock)
         {
-            var json = _fs.ReadAllText(_filePath);
-            var data = JsonSerializer.Deserialize<RegistryData>(json, s_jsonOptions);
-            if (data != null)
+            using var lease = PersistenceFileLease.Acquire(_filePath);
+            if (!_fs.FileExists(_filePath))
             {
-                lock (_lock)
-                {
-                    _records = data.Gateways ?? [];
-                    _activeId = data.ActiveId;
-                }
+                _records = [];
+                _activeId = null;
+                _persisted = new([], null);
+                _persistedInvalidJson = null;
+                return;
             }
-        }
-        catch (JsonException ex)
-        {
-            _logger.Warn($"Gateway registry file '{_filePath}' is not valid JSON; starting with an empty registry. {ex.Message}");
+            string? json = null;
+            try
+            {
+                json = _fs.ReadAllText(_filePath);
+                var data = JsonSerializer.Deserialize<RegistryData>(json, s_jsonOptions)
+                    ?? throw new InvalidDataException("The saved Gateway registry is invalid.");
+                _records = data.Gateways ?? [];
+                _activeId = data.ActiveId;
+                _persisted = new(_records.ToArray(), _activeId);
+                _persistedInvalidJson = null;
+            }
+            catch (Exception ex) when (ex is JsonException or InvalidDataException)
+            {
+                _records = [];
+                _activeId = null;
+                _persisted = new([], null);
+                _persistedInvalidJson = json;
+                _logger.Warn($"Gateway registry file '{_filePath}' is not valid JSON; starting with an empty registry. {ex.Message}");
+            }
         }
     }
 

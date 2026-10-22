@@ -18,6 +18,46 @@ public class ActivationRouterTests
 
     private static ActivationRouter CreateRouter() => new(Scheme, UniquePipeName());
 
+    [Fact]
+    public async Task MigrationShutdown_UsesCurrentUserIpcWithoutCreatingADeepLinkRoute()
+    {
+        var name = UniquePipeName();
+        var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var listener = new ActivationRouter(Scheme, name, () => requested.TrySetResult());
+        await using var sender = new ActivationRouter(Scheme, name);
+        var sink = new FakeSink();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await listener.StartForwardedActivationListenerAsync(sink, timeout.Token);
+        Assert.True(await sender.RequestMigrationShutdownAsync(timeout.Token));
+        await requested.Task.WaitAsync(timeout.Token);
+        Assert.Empty(sink.Dispatched);
+        Assert.IsType<ActivationPlan.Ignore>(listener.PlanLaunch(Input(
+            protocolUri: "openclaw://migration-shutdown")));
+    }
+
+    [Fact]
+    public async Task MigrationShutdown_MissingListenerReturnsManualFallback()
+    {
+        await using var sender = CreateRouter();
+        Assert.False(await sender.RequestMigrationShutdownAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task MigrationShutdown_DisabledReceiverDoesNotDisruptSubsequentActivation()
+    {
+        var name = UniquePipeName();
+        await using var listener = new ActivationRouter(Scheme, name);
+        await using var sender = new ActivationRouter(Scheme, name);
+        var sink = new FakeSink();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await listener.StartForwardedActivationListenerAsync(sink, timeout.Token);
+        Assert.True(await sender.RequestMigrationShutdownAsync(timeout.Token));
+        Assert.True(await ForwardWithRetryAsync(sender, "openclaw://settings", timeout.Token));
+        while (sink.Dispatched.Count == 0)
+            await Task.Delay(10, timeout.Token);
+        Assert.IsType<ActivationRoute.OpenHub>(Assert.Single(sink.Dispatched));
+    }
+
     private sealed class FakeSink : IActivationPlanSink
     {
         public List<ActivationRoute> Dispatched { get; } = new();
@@ -67,10 +107,90 @@ public class ActivationRouterTests
         string? protocolUri = null,
         IReadOnlyList<string>? args = null,
         string? postSetupLaunch = null,
-        bool setupShown = false) =>
-        new(protocolUri, args ?? Array.Empty<string>(), postSetupLaunch, setupShown);
+        bool setupShown = false,
+        LaunchActivationKind kind = LaunchActivationKind.Launch) =>
+        new(protocolUri, args ?? Array.Empty<string>(), postSetupLaunch, setupShown, kind);
 
     #region PlanLaunch precedence
+
+    [Theory]
+    [InlineData(false, null, null, null, true, null)]
+    [InlineData(true, null, null, null, false, null)]
+    [InlineData(false, "--background", null, null, false, null)]
+    [InlineData(true, "--background", null, null, false, null)]
+    [InlineData(false, "--post-setup-restart", null, null, false, null)]
+    [InlineData(false, "--post-setup-restart", null, "chat", true, "chat")]
+    [InlineData(false, "--background", "openclaw://settings", null, true, "settings")]
+    [InlineData(true, null, "openclaw://settings", null, true, "settings")]
+    [InlineData(true, "openclaw://chat", null, null, true, "chat")]
+    public async Task InitialAndSecondaryLaunches_PreserveStartupKindAndExplicitIntent(
+        bool startupTask, string? argument, string? protocolUri, string? postSetupLaunch,
+        bool shouldDispatch, string? expectedPage)
+    {
+        var name = UniquePipeName();
+        await using var listener = new ActivationRouter(Scheme, name);
+        await using var sender = new ActivationRouter(Scheme, name);
+        var initialSink = new FakeSink();
+        var secondarySink = new FakeSink();
+        var input = Input(
+            args: argument is null ? ["app.exe"] : ["app.exe", argument],
+            protocolUri: protocolUri, postSetupLaunch: postSetupLaunch,
+            kind: startupTask ? LaunchActivationKind.StartupTask :
+                protocolUri is not null ? LaunchActivationKind.Protocol : LaunchActivationKind.Launch);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(shouldDispatch, await sender.DispatchPlanAsync(
+            sender.PlanLaunch(input), initialSink, timeout.Token));
+        await listener.StartForwardedActivationListenerAsync(secondarySink, timeout.Token);
+        Assert.Equal(shouldDispatch, await sender.ForwardLaunchToPrimaryAsync(input, timeout.Token));
+        if (shouldDispatch)
+        {
+            while (secondarySink.Dispatched.Count == 0)
+                await Task.Delay(10, timeout.Token);
+            Assert.Equal(expectedPage, Assert.IsType<ActivationRoute.OpenHub>(Assert.Single(initialSink.Dispatched)).Page);
+            Assert.Equal(expectedPage, Assert.IsType<ActivationRoute.OpenHub>(Assert.Single(secondarySink.Dispatched)).Page);
+        }
+        else
+        {
+            Assert.Empty(initialSink.Dispatched);
+            Assert.Empty(secondarySink.Dispatched);
+        }
+    }
+
+    [Fact]
+    public async Task NativeSetupRestart_UsesTheSameReceiptForInitialAndSecondaryLaunch()
+    {
+        var name = UniquePipeName();
+        await using var listener = new ActivationRouter(Scheme, name);
+        await using var sender = new ActivationRouter(Scheme, name);
+        var handle = "ai-v3:" + new string('a', 64);
+        var input = Input(args: ["app.exe", "--post-setup-restart"], postSetupLaunch: handle,
+            kind: LaunchActivationKind.StartupTask);
+        var initial = Assert.IsType<ActivationRoute.CompleteAiSetup>(
+            Assert.IsType<ActivationPlan.Dispatch>(sender.PlanLaunch(input)).Route);
+        Assert.Equal(handle, initial.Handle);
+        var sink = new FakeSink();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await listener.StartForwardedActivationListenerAsync(sink, timeout.Token);
+        Assert.True(await sender.ForwardLaunchToPrimaryAsync(input, timeout.Token));
+        while (sink.Dispatched.Count == 0)
+            await Task.Delay(10, timeout.Token);
+        Assert.Equal(handle, Assert.IsType<ActivationRoute.CompleteAiSetup>(Assert.Single(sink.Dispatched)).Handle);
+        var setupShown = input with { SetupShownDuringStartup = true };
+        Assert.IsType<ActivationPlan.Ignore>(sender.PlanLaunch(setupShown));
+        Assert.False(await sender.ForwardLaunchToPrimaryAsync(setupShown, timeout.Token));
+    }
+
+    [Fact]
+    public void NativeActivationAdapter_PreservesStartupKindForBothEntryPaths()
+    {
+        // retirement_condition: replace with packaged activation tests when the native adapter is executable here.
+        var app = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        Assert.Contains("ExtendedActivationKind.StartupTask => LaunchActivationKind.StartupTask", app);
+        Assert.Contains("Kind: activation.Kind), CancellationToken.None)", app);
+        Assert.Contains("setupShownDuringStartup,\n            activation.Kind)", app.Replace("\r\n", "\n"));
+    }
 
     [Fact]
     public void PlanLaunch_ProtocolUriTakesPrecedenceOverCommandLineAndPostSetup()
@@ -122,11 +242,40 @@ public class ActivationRouterTests
         Assert.Equal("chat", route.Page);
     }
 
+    [Theory]
+    [InlineData("settings", "settings")]
+    [InlineData("SETTINGS", "settings")]
+    [InlineData("connection", "connection")]
+    [InlineData("CONNECTION", "connection")]
+    public void PlanLaunch_PostSetupWithoutGateway_OpensSettings(string target, string page)
+    {
+        var plan = CreateRouter().PlanLaunch(Input(postSetupLaunch: target));
+        var dispatch = Assert.IsType<ActivationPlan.Dispatch>(plan);
+        Assert.Equal(page, Assert.IsType<ActivationRoute.OpenHub>(dispatch.Route).Page);
+    }
+
     [Fact]
-    public void PlanLaunch_ReturnsIgnore_WhenNoCandidatePresent()
+    public void PlanLaunch_UnknownPostSetupTarget_IsNotAnActivation()
+    {
+        Assert.IsType<ActivationPlan.Ignore>(
+            CreateRouter().PlanLaunch(Input(postSetupLaunch: "browser")));
+    }
+
+    [Fact]
+    public void PlanLaunch_OpensWorkspace_WhenNoCandidatePresent()
     {
         var router = CreateRouter();
         var plan = router.PlanLaunch(Input());
+        var dispatch = Assert.IsType<ActivationPlan.Dispatch>(plan);
+        Assert.IsType<ActivationRoute.OpenHub>(dispatch.Route);
+    }
+
+    [Theory]
+    [InlineData("--background")]
+    [InlineData("--post-setup-restart")]
+    public void PlanLaunch_BackgroundAndRestartRemainQuiet(string argument)
+    {
+        var plan = CreateRouter().PlanLaunch(Input(args: new[] { "app.exe", argument }));
         Assert.IsType<ActivationPlan.Ignore>(plan);
     }
 

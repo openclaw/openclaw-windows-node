@@ -13,8 +13,73 @@ internal static partial class ApprovalRequestHelper
 {
     internal const string RequestIdEnvironmentVariable = "OPENCLAW_APPROVAL_REQUEST_ID";
 
+    internal static async Task<PendingRequestBaseline> CaptureSetupBaselineOnceAsync(
+        SetupContext ctx,
+        ApprovalRequestKind kind,
+        CancellationToken ct)
+    {
+        var baseline = kind switch
+        {
+            ApprovalRequestKind.Device => ctx.SetupDeviceApprovalBaseline,
+            ApprovalRequestKind.Node => ctx.SetupNodeApprovalBaseline,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+        };
+        if (baseline is not null)
+            return baseline;
+
+        baseline = await CapturePendingRequestBaselineAsync(ctx, kind, ct);
+        if (baseline.Success || baseline.PluginNotFound)
+        {
+            if (kind == ApprovalRequestKind.Device)
+                ctx.SetupDeviceApprovalBaseline = baseline;
+            else
+                ctx.SetupNodeApprovalBaseline = baseline;
+        }
+
+        return baseline;
+    }
+
+    internal static async Task<PendingRequestBaseline> CapturePendingRequestBaselineAsync(
+        SetupContext ctx,
+        ApprovalRequestKind kind,
+        CancellationToken ct)
+    {
+        var authorization = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+        if (string.IsNullOrWhiteSpace(authorization))
+            return PendingRequestBaseline.Fail("No gateway token is available to capture the pending approval baseline.");
+
+        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = authorization };
+        var noun = Noun(kind);
+        var pending = await ctx.Commands.RunInWslAsync(
+            ctx.DistroName!,
+            $"""{ctx.WslPathPrefix} && openclaw {noun} list --json""",
+            TimeSpan.FromSeconds(30),
+            env,
+            ct,
+            inputViaStdin: true);
+
+        var output = $"{pending.Stdout.Trim()} {pending.Stderr.Trim()}".Trim();
+        if (pending.ExitCode != 0)
+        {
+            return PendingRequestBaseline.Fail(
+                $"Could not capture pending {noun} before opening the setup socket (exit {pending.ExitCode}): {output}",
+                IsPluginNotFoundError(output));
+        }
+
+        var parsed = TryReadPendingRequestIds(pending.Stdout.Trim());
+        if (parsed.Success)
+            return PendingRequestBaseline.SuccessResult(parsed.RequestIds);
+
+        if (IsExplicitNoPendingMessage(pending.Stdout))
+            return PendingRequestBaseline.SuccessResult([]);
+
+        return PendingRequestBaseline.Fail(
+            $"Could not capture pending {noun} before opening the setup socket: {parsed.Error}");
+    }
+
     internal static bool IsSafeRequestId(string? requestId)
         => !string.IsNullOrWhiteSpace(requestId)
+            && !string.Equals(requestId.Trim(), "latest", StringComparison.OrdinalIgnoreCase)
             && SafeRequestIdPattern().IsMatch(requestId.Trim());
 
     internal static string ApprovalCommand(ApprovalRequestKind kind)
@@ -81,6 +146,135 @@ internal static partial class ApprovalRequestHelper
         {
             return RequestIdParseResult.NotFound($"Approval output was not valid JSON: {ex.Message}");
         }
+    }
+
+    internal static void RequireMatchingDeviceRequest(
+        string json, string requestId, string deviceId, string publicKey)
+    {
+        if (!IsSafeRequestId(requestId))
+            throw new InvalidOperationException("The Gateway returned an unsafe pairing request ID.");
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Object ||
+            !document.RootElement.TryGetProperty("pending", out var pending) ||
+            pending.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("The Gateway did not return a pending device request list.");
+
+        var matches = pending.EnumerateArray().Where(item =>
+            item.ValueKind == JsonValueKind.Object &&
+            item.TryGetProperty("requestId", out var id) &&
+            id.ValueKind == JsonValueKind.String && id.GetString() == requestId).ToArray();
+        if (matches.Length != 1 ||
+            !matches[0].TryGetProperty("deviceId", out var device) ||
+            device.ValueKind != JsonValueKind.String || device.GetString() != deviceId ||
+            !matches[0].TryGetProperty("publicKey", out var key) ||
+            key.ValueKind != JsonValueKind.String || key.GetString() != publicKey)
+            throw new InvalidOperationException(
+                "The pending pairing request does not uniquely match this setup's Companion identity.");
+    }
+
+    internal static RequestIdParseResult TrySelectPendingRequestForDevice(
+        string json,
+        string? deviceId,
+        IReadOnlySet<string> requestIdsBeforeConnect,
+        bool matchNodeId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+            return RequestIdParseResult.NotFound("Operator device ID is missing, so no pending request can be bound to the socket setup opened.");
+
+        if (string.IsNullOrWhiteSpace(json))
+            return RequestIdParseResult.NotFound("Pending approval output was empty.");
+
+        var wantedDeviceId = deviceId.Trim();
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("pending", out var pending) ||
+                pending.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            {
+                return RequestIdParseResult.NotFound("No pending approval request was found.");
+            }
+
+            if (pending.ValueKind != JsonValueKind.Array)
+                return RequestIdParseResult.NotFound("Pending approval output did not contain an array.");
+
+            string? match = null;
+            foreach (var item in pending.EnumerateArray())
+            {
+                if (!PendingItemMatchesDevice(item, wantedDeviceId, matchNodeId))
+                    continue;
+
+                if (!RoleMatchesSelection(item, matchNodeId))
+                    continue;
+
+                var parsed = TryReadRequestId(item);
+                if (!parsed.Success)
+                    return RequestIdParseResult.NotFound(parsed.Error ?? "Pending approval request did not include a safe request ID.");
+
+                if (requestIdsBeforeConnect.Contains(parsed.RequestId!))
+                    continue;
+
+                if (match is not null)
+                    return RequestIdParseResult.NotFound("Multiple new pending approval requests match the socket setup opened; refusing to auto-approve an ambiguous request.");
+
+                match = parsed.RequestId;
+            }
+
+            return match is null
+                ? RequestIdParseResult.NotFound("No new pending approval request matched the socket setup opened.")
+                : RequestIdParseResult.Found(match);
+        }
+        catch (JsonException ex)
+        {
+            return RequestIdParseResult.NotFound($"Pending approval output was not valid JSON: {ex.Message}");
+        }
+    }
+
+    internal static bool IsNothingToDrain(RequestIdParseResult parsed)
+    {
+        if (parsed.Success || string.IsNullOrWhiteSpace(parsed.Error))
+            return false;
+
+        return parsed.Error.Contains("No pending approval request was found.", StringComparison.Ordinal)
+            || parsed.Error.Contains("No new pending approval request matched the socket setup opened.", StringComparison.Ordinal)
+            || parsed.Error.Contains("Operator device ID is missing", StringComparison.Ordinal);
+    }
+
+    private static bool PendingItemMatchesDevice(JsonElement item, string wantedDeviceId, bool matchNodeId)
+    {
+        var matched = false;
+        if (item.TryGetProperty("deviceId", out var deviceElement) &&
+            deviceElement.ValueKind == JsonValueKind.String &&
+            string.Equals(deviceElement.GetString()?.Trim(), wantedDeviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            matched = true;
+        }
+
+        if (matchNodeId &&
+            item.TryGetProperty("nodeId", out var nodeElement) &&
+            nodeElement.ValueKind == JsonValueKind.String &&
+            string.Equals(nodeElement.GetString()?.Trim(), wantedDeviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            matched = true;
+        }
+
+        return matched;
+    }
+
+    private static bool RoleMatchesSelection(JsonElement item, bool matchNodeId)
+    {
+        if (!item.TryGetProperty("role", out var roleElement) ||
+            roleElement.ValueKind != JsonValueKind.String)
+        {
+            return true;
+        }
+
+        var role = roleElement.GetString()?.Trim();
+        if (string.IsNullOrEmpty(role))
+            return true;
+
+        return matchNodeId
+            ? !string.Equals(role, "operator", StringComparison.OrdinalIgnoreCase)
+            : string.Equals(role, "operator", StringComparison.OrdinalIgnoreCase);
     }
 
     internal static RequestIdParseResult TryReadSinglePendingRequestId(string json)
@@ -154,6 +348,13 @@ internal static partial class ApprovalRequestHelper
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
         };
 
+    internal static bool IsExplicitNoPendingMessage(string output)
+    {
+        var message = output.Trim().TrimEnd('.');
+        return string.Equals(message, "No pending device approvals", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(message, "No pending node approvals", StringComparison.OrdinalIgnoreCase);
+    }
+
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", RegexOptions.Compiled)]
     private static partial Regex SafeRequestIdPattern();
 }
@@ -168,4 +369,17 @@ internal sealed record PendingRequestIdsParseResult(bool Success, IReadOnlyList<
 {
     public static PendingRequestIdsParseResult SuccessResult(IReadOnlyList<string> requestIds) => new(true, requestIds, null);
     public static PendingRequestIdsParseResult Fail(string error) => new(false, [], error);
+}
+
+internal sealed record PendingRequestBaseline(
+    bool Success,
+    IReadOnlySet<string> RequestIds,
+    string? Error,
+    bool PluginNotFound)
+{
+    public static PendingRequestBaseline SuccessResult(IEnumerable<string> requestIds) =>
+        new(true, new HashSet<string>(requestIds, StringComparer.Ordinal), null, false);
+
+    public static PendingRequestBaseline Fail(string error, bool pluginNotFound = false) =>
+        new(false, new HashSet<string>(StringComparer.Ordinal), error, pluginNotFound);
 }

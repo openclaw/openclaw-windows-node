@@ -235,7 +235,7 @@ public sealed class DiagnosticsPageContractTests
         // Each copy handler must pass a human-readable label that
         // shows up in the feedback message.
         Assert.Contains("CopyDiagnosticText(\"Support context\"", cs);
-        Assert.Contains("CopyDiagnosticText(\r\n            \"Summary debug bundle\"", cs);
+        Assert.Contains("CopyDiagnosticText(\n            \"Summary debug bundle\"", cs.Replace("\r\n", "\n"));
         Assert.Contains("CopyDiagnosticText(\"Browser setup guidance\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Port diagnostics\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Capability diagnostics\"", cs);
@@ -475,66 +475,81 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
-    public void HubWindow_NavPaneToggle_LivesInTitleBarAndHidesBuiltInToggle()
+    public void HubWindow_NativeTitleBar_SeparatesSidebarSearchAndHistory()
     {
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml");
-        Assert.Contains("x:Uid=\"NavPaneToggleButton\"", xaml);
-        Assert.Contains("x:Name=\"NavPaneToggleButton\"", xaml);
-        Assert.Contains("Click=\"OnNavPaneToggleButtonClick\"", xaml);
-        Assert.Contains("AutomationProperties.Name=\"Toggle navigation pane\"", xaml);
-        Assert.Contains("ToolTipService.ToolTip=\"Toggle navigation pane\"", xaml);
-        Assert.Contains("MinWidth=\"32\" MinHeight=\"32\"", xaml);
-        Assert.Contains("Padding=\"9,0,140,0\"", xaml);
-        Assert.Contains("Background=\"Transparent\"", xaml);
-        Assert.Contains("BorderBrush=\"Transparent\"", xaml);
-        Assert.Contains("BorderThickness=\"0\"", xaml);
-        Assert.Contains("FontSize=\"16\"", xaml);
-        Assert.Contains("xmlns:controls=\"using:OpenClawTray.Controls\"", xaml);
-        // The brand mark is merged into the pane toggle: hovering swaps the lobster for the toggle glyph.
-        Assert.Contains("<controls:BrandMark x:Name=\"BrandToggleMark\"", xaml);
-        Assert.Contains("MarkSize=\"18\"", xaml);
-        Assert.Contains("x:Name=\"BrandToggleGlyph\"", xaml);
-        // The reveal glyph is the Fluent DockLeft (panel-left) icon, not the hamburger.
-        Assert.Contains("Glyph=\"&#xE90C;\"", xaml);
-        Assert.Contains("PointerEntered=\"OnBrandTogglePointerEntered\"", xaml);
-        Assert.Contains("PointerExited=\"OnBrandTogglePointerExited\"", xaml);
-        Assert.DoesNotContain("Translation=\"0,-1,0\"", xaml);
+        var document = System.Xml.Linq.XDocument.Parse(xaml);
+        System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var title = document.Descendants().Single(element => element.Name.LocalName == "TitleBar");
+        Assert.Equal("OpenClaw Settings", (string?)title.Attribute("Title"));
+        var header = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "SettingsNavigationToolbar");
+        var buttons = header.Descendants().Where(element => element.Name.LocalName == "Button").ToArray();
+        Assert.Equal(new[] { "NavPaneToggleButton", "SettingsSearchButton", "NavBackButton", "NavForwardButton" },
+            buttons.Select(element => (string?)element.Attribute(x + "Name")));
+        Assert.All(buttons, button =>
+        {
+            Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)button.Attribute("Style"));
+            Assert.Equal("40", (string?)button.Attribute("Height"));
+            Assert.Equal("40", (string?)button.Attribute("Width"));
+        });
+        Assert.DoesNotContain(title.Descendants(), element => (string?)element.Attribute(x + "Name") == "NavPaneToggleButton");
+        var toggle = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "NavPaneToggleButton");
+        Assert.Equal("SettingsNavigationToolbar", (string?)toggle.Parent!.Attribute(x + "Name"));
+        Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)toggle.Attribute("Style"));
         Assert.Contains("IsPaneToggleButtonVisible=\"False\"", xaml);
-        Assert.Contains("x:Name=\"NavContentHost\"", xaml);
-        Assert.Contains("x:Name=\"NavContentClip\"", xaml);
-        Assert.Contains("SizeChanged=\"OnNavContentHostSizeChanged\"", xaml);
-        Assert.DoesNotContain("x:Name=\"TitleContentDivider\"", xaml);
-
-        var titleBarIndex = xaml.IndexOf("x:Name=\"AppTitleBar\"", StringComparison.Ordinal);
-        var toggleIndex = xaml.IndexOf("x:Name=\"NavPaneToggleButton\"", StringComparison.Ordinal);
-        var iconIndex = xaml.IndexOf("<controls:BrandMark x:Name=\"BrandToggleMark\"", StringComparison.Ordinal);
-        var navViewIndex = xaml.IndexOf("x:Name=\"NavView\"", StringComparison.Ordinal);
-        Assert.True(titleBarIndex >= 0, "The hub title bar must exist.");
-        Assert.True(toggleIndex > titleBarIndex, "The nav pane toggle must live inside the title bar block.");
-        Assert.True(toggleIndex < iconIndex, "The brand mark must live inside the nav pane toggle button.");
-        Assert.True(toggleIndex < navViewIndex, "The nav pane toggle must be outside the NavigationView pane.");
-
-        // The back button now sits directly left of the search box (Teams style),
-        // after the title and before the search field.
-        // The back button uses the Fluent ChevronLeft glyph and shares the search's centered group.
-        Assert.Contains("Glyph=\"&#xE76B;\"", xaml);
-        // Both title-bar icon buttons carry a subtle hover/pressed affordance.
-        Assert.Contains("<SolidColorBrush x:Key=\"ButtonBackgroundPointerOver\" Color=\"{ThemeResource SubtleFillColorSecondary}\"/>", xaml);
-        Assert.Contains("<SolidColorBrush x:Key=\"ButtonBackgroundPressed\" Color=\"{ThemeResource SubtleFillColorTertiary}\"/>", xaml);
-
-        var backIndex = xaml.IndexOf("x:Name=\"NavBackButton\"", StringComparison.Ordinal);
-        var titleTextIndex = xaml.IndexOf("x:Name=\"TitleText\"", StringComparison.Ordinal);
-        var searchIndex = xaml.IndexOf("x:Name=\"TitleSearchBox\"", StringComparison.Ordinal);
-        Assert.True(backIndex > titleTextIndex, "The back button must appear after the title.");
-        Assert.True(backIndex < searchIndex, "The back button must appear directly before the search box.");
-
         var cs = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
-        Assert.Contains("private void OnNavPaneToggleButtonClick", cs);
+        Assert.Contains("AppTitleBar.IconSource = new BitmapIconSource", cs);
+        Assert.Contains("new Uri(BrandAssets.RedBotMarkUri)", cs);
+        Assert.Contains("AppTitleBar.Title = Title", cs);
         Assert.Contains("NavView.IsPaneOpen = !NavView.IsPaneOpen;", cs);
-        Assert.Contains("private void OnBrandTogglePointerEntered", cs);
-        Assert.Contains("private void OnBrandTogglePointerExited", cs);
-        Assert.Contains("private void OnNavContentHostSizeChanged", cs);
+        Assert.Contains("ContentFrame.GoForward()", cs);
+        Assert.Contains("NavForwardButton.IsEnabled = ContentFrame.CanGoForward", cs);
+        Assert.Contains("ContentFrame.ForwardStack.RemoveAt(i)", cs);
+        Assert.Contains("CommandSearchFlyout.ShowAt(NavView.IsPaneOpen ? SettingsSearchButton : NavPaneToggleButton)", cs);
         Assert.Contains("NavContentClip.Rect = new global::Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height);", cs);
+    }
+
+    [Fact]
+    public void HubWindow_StatusActions_PrecedeNativeFooterRoutes_OutsideTitleBar()
+    {
+        var document = System.Xml.Linq.XDocument.Parse(Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml"));
+        System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var footer = document.Descendants().Single(element => element.Name.LocalName == "NavigationView.FooterMenuItems");
+        Assert.Equal(new[] { "NavigationViewItemHeader", "NavigationViewItem", "NavigationViewItem" },
+            footer.Elements().Select(element => element.Name.LocalName));
+        Assert.Equal(new[] { "debug", "settings" }, footer.Elements().Skip(1).Select(element => (string?)element.Attribute("Tag")));
+        var header = footer.Elements().First();
+        Assert.Equal("True", (string?)header.Attribute("IsEnabled"));
+        foreach (var name in new[] { "StatusPillButton" })
+        {
+            var button = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
+            Assert.Contains(header, button.Ancestors());
+            Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)button.Attribute("Style"));
+            Assert.Equal("40", (string?)button.Attribute("Height"));
+            Assert.DoesNotContain(button.Ancestors(), element => element.Name.LocalName == "TitleBar");
+            Assert.Single(button.Descendants(), element => element.Name.LocalName == "Flyout");
+        }
+        Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "NotificationsBellButton");
+    }
+
+    [Fact]
+    public void ShellFlyoutContent_HasFocusedOwners()
+    {
+        var hub = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
+        var workspace = Read("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs");
+        foreach (var shell in new[] { hub, workspace })
+        {
+            Assert.DoesNotContain("SyncBellItems(", shell);
+            Assert.DoesNotContain("GatewayRowDetail.Text", shell);
+            Assert.DoesNotContain("CountEnabledCapabilities(", shell);
+        }
+        Assert.Contains("SyncBellItems(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "NotificationFlyoutContent.xaml.cs"));
+        Assert.Contains("ConnectionStatusPresenter.NodeRow(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "GatewayStatusContent.xaml.cs"));
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml");
+        Assert.Contains("Opening=\"OnNotificationsOpening\"", xaml);
+        Assert.DoesNotContain("Click=\"OnNotifications\"", xaml);
+        Assert.Contains("_notifications.Changed -= OnNotificationsChanged;", workspace);
+        Assert.Contains("NotificationContent.Unbind();", workspace);
     }
 
     [Fact]

@@ -1,5 +1,11 @@
 # Setup wizard UX refresh - screens & accessibility proof
 
+Historical capture set. Current onboarding display names are Strict, Balanced
+(Recommended), and Open; their internal capability memberships are unchanged.
+The ordinary capabilities page no longer has a Windows-access panel. See
+[`ONBOARDING_WIZARD.md`](../ONBOARDING_WIZARD.md) for the current flow. These older
+images are not proof of the current UI.
+
 Screenshots captured from the live isolated dev app (`OPENCLAW_FORCE_ONBOARDING=1`,
 `run-app-local.ps1 -NoBuild -Isolated`) walking the full gateway setup + onboard flow.
 Accessibility was scanned per-screen with a standalone Axe.Windows (v2.4.1) scanner

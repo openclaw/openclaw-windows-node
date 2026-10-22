@@ -285,7 +285,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding Pattern}"
+                                    <TextBlock Grid.Column="0" Text="{Binding DisplayText}"
                                                FontFamily="Consolas" FontSize="13"
                                                VerticalAlignment="Center"
                                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"

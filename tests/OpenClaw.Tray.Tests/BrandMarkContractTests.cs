@@ -37,7 +37,10 @@ public sealed class BrandMarkContractTests
     [Fact]
     public void KnownBrandSurfaces_UseBrandMark()
     {
-        Assert.Contains("controls:BrandMark", ReadTrayFile("Windows", "HubWindow.xaml"));
+        Assert.DoesNotContain("controls:BrandMark", ReadTrayFile("Windows", "HubWindow.xaml"));
+        Assert.Contains("<TitleBar ", ReadTrayFile("Windows", "WorkspaceWindow.xaml"));
+        Assert.Contains("WorkspaceTitleBar.IconSource = new BitmapIconSource", ReadTrayFile("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("BrandAssets.RedBotMarkUri", ReadTrayFile("Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("controls:BrandMark", ReadTrayFile("Pages", "AgentEventsPage.xaml"));
 
         var expectedCodeFiles = new[]

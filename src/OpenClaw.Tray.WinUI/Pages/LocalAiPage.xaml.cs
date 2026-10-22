@@ -43,6 +43,12 @@ public sealed partial class LocalAiPage : Page
     {
         if (_viewModel is null)
             return;
+        LocalAiProfileSelectionText.Text = _viewModel.ProfileRecommendation is { } recommendation
+            ? LocalizationHelper.Format("LocalAi_ProfileFallback", recommendation.PreferredModelName,
+                recommendation.SelectedModelName, recommendation.ContextTokens)
+            : string.Empty;
+        LocalAiProfileSelectionText.Visibility = _viewModel.ProfileRecommendation is null
+            ? Visibility.Collapsed : Visibility.Visible;
         EngineStatusText.Text = LocalizationHelper.GetString(_viewModel.EngineStatusResourceKey);
         EngineOwnershipText.Text = LocalizationHelper.GetString(_viewModel.EngineOwnershipResourceKey);
         EngineVersionText.Text = _viewModel.EngineVersion ?? LocalizationHelper.GetString("LocalAiPage_Value_Unknown");
@@ -86,6 +92,8 @@ public sealed partial class LocalAiPage : Page
 
         ActionErrorText.Text = _viewModel.ActionError ?? string.Empty;
         ActionErrorText.Visibility = string.IsNullOrWhiteSpace(ActionErrorText.Text) ? Visibility.Collapsed : Visibility.Visible;
+        NativeSelectionGuidanceText.Text = LocalizationHelper.GetString("LocalAiPage_NativeSelectionRequired");
+        NativeSelectionGuidanceText.Visibility = _viewModel.RequiresNativeSelection ? Visibility.Visible : Visibility.Collapsed;
         EngineBusyIndicator.IsActive = _viewModel.IsBusy;
         EngineBusyIndicator.Visibility = _viewModel.IsBusy ? Visibility.Visible : Visibility.Collapsed;
         LocalAiUnavailableInfoBar.Visibility =
@@ -116,12 +124,14 @@ public sealed partial class LocalAiPage : Page
                     ? "LocalAiPage_UnavailableProbeMessage"
                     : "LocalAiPage_UnavailableRequirementsMessage");
         }
-        LocalAiRecheckAvailabilityButton.Visibility = _viewModel.HasAvailabilityProbeError
+        LocalAiRecheckAvailabilityButton.Visibility = _viewModel.CanRecheckAvailability
             ? Visibility.Visible
             : Visibility.Collapsed;
         LocalAiRecheckAvailabilityButton.IsEnabled = _viewModel.CanRecheckAvailability;
         StartButton.IsEnabled = _viewModel.CanStart;
         StopButton.IsEnabled = _viewModel.CanStop;
+        ReleaseOwnershipButton.Visibility = _viewModel.ShowReleaseOwnership ? Visibility.Visible : Visibility.Collapsed;
+        ReleaseOwnershipButton.IsEnabled = _viewModel.CanReleaseOwnership;
         RestartButton.IsEnabled = _viewModel.CanRestart;
         OpenLogsButton.IsEnabled = _viewModel.CanOpenLogs;
         RetrySetupButton.IsEnabled = _viewModel.CanRetrySetup;
@@ -134,6 +144,7 @@ public sealed partial class LocalAiPage : Page
 
     private void OnStart(object sender, RoutedEventArgs e) => RunAction(() => _viewModel?.StartAsync() ?? Task.FromResult(false), nameof(OnStart));
     private void OnStop(object sender, RoutedEventArgs e) => RunAction(() => _viewModel?.StopAsync() ?? Task.FromResult(false), nameof(OnStop));
+    private void OnReleaseOwnership(object sender, RoutedEventArgs e) => RunAction(() => _viewModel?.ReleaseOwnershipAsync() ?? Task.FromResult(false), nameof(OnReleaseOwnership));
     private void OnRestart(object sender, RoutedEventArgs e) => RunAction(() => _viewModel?.RestartAsync() ?? Task.FromResult(false), nameof(OnRestart));
     private void OnOpenLogs(object sender, RoutedEventArgs e) => _viewModel?.OpenLogs();
     private void OnRetrySetup(object sender, RoutedEventArgs e) => _viewModel?.RetrySetup();
@@ -173,6 +184,10 @@ public sealed partial class LocalAiPage : Page
                 reason.DetectedGigabytes is { } detected
                     ? FormatGigabytes(detected)
                     : LocalizationHelper.GetString("LocalAi_Reason_UnknownMemoryAmount")),
+        LocalInferenceUnavailableReasonKind.InsufficientSystemMemory =>
+            LocalizationHelper.Format("LocalAi_Reason_InsufficientSystemMemory", FormatGigabytes(reason.RequiredSystemGigabytes)),
+        LocalInferenceUnavailableReasonKind.InsufficientDiskSpace =>
+            LocalizationHelper.Format("LocalAi_Reason_InsufficientDiskSpace", FormatGigabytes(reason.RequiredDiskGigabytes)),
         LocalInferenceUnavailableReasonKind.DriverTooOld =>
             LocalizationHelper.Format(
                 "LocalAi_Reason_DriverTooOld",

@@ -180,7 +180,8 @@ public sealed class SurfaceHost : IDisposable
         DisposeSubscriptions();
         _root.Children.Clear();
         _renderingIds.Clear();
-        _secretPaths.Clear();
+        // Registered secret paths last for the life of the surface. A later
+        // rebuild that drops the obscured field must not expose the value.
         _renderDepth = 0;
         _renderCount = 0;
         _mediaBudget = new MediaLoadBudget();

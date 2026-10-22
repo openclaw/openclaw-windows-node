@@ -3,27 +3,21 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AccessibilityThemeResourceSourceTests
 {
     [Fact]
-    public void ChatShell_UsesOneGalleryContentLayerAndPreservesHighContrast()
+    public void MainWindowShells_PreserveMicaAndHighContrastChatResources()
     {
-        // Retirement: replace when both production window shells can be mounted in native tests.
+        // Retirement: replace when production window shells can be mounted in native tests.
         var hub = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml"));
-        var popup = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml"));
+        var workspace = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml"));
         var resources = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Themes", "ChatResources.xaml"));
         System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         Assert.Single(hub.Descendants(), element => element.Name.LocalName == "MicaBackdrop");
-        Assert.Contains("SystemBackdrop = new MicaBackdrop();",
-            ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml.cs"));
-        foreach (var shell in new[] { hub, popup })
+        Assert.Single(workspace.Descendants(), element => element.Name.LocalName == "MicaBackdrop");
+        foreach (var shell in new[] { hub, workspace })
         {
             var title = shell.Descendants().Single(element =>
-                (string?)element.Attribute(x + "Name") == (shell == hub ? "AppTitleBar" : "ChatTitleBar"));
+                (string?)element.Attribute(x + "Name") == (shell == hub ? "AppTitleBar" : "WorkspaceTitleBar"));
             Assert.Null(title.Attribute("Background"));
         }
-        var layer = Assert.Single(popup.Descendants(), element =>
-            (string?)element.Attribute("Background") == "{ThemeResource NavigationViewContentBackground}");
-        Assert.Equal("1", (string?)layer.Attribute("Grid.Row"));
-        Assert.Null(layer.Attribute("Visibility"));
-        Assert.Equal("False", (string?)layer.Attribute("IsHitTestVisible"));
         Assert.DoesNotContain(hub.Descendants(), element =>
             (string?)element.Attribute("Background") == "{ThemeResource NavigationViewContentBackground}");
         foreach (var theme in resources.Descendants().Where(element =>
@@ -63,7 +57,8 @@ public sealed class AccessibilityThemeResourceSourceTests
         Assert.Contains("Theme.Ref(\"CardBackgroundFillColorDefaultBrush\")", timeline);
         Assert.Contains("Theme.Ref(\"ControlStrokeColorDefaultBrush\")", timeline);
         Assert.Contains("ConnectionCapabilityPillSuccessBrush", connectionXaml);
-        Assert.Contains("ImageIcon Source=\"{StaticResource Chat_Icon}\"", hubXaml);
+        Assert.Contains("Source=\"{StaticResource Chat_Icon}\"", hubXaml);
+        Assert.Contains("MicaBackdrop", ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml"));
         Assert.Contains("new ImageIcon", hub);
         Assert.Contains("NavView.Resources[\"Agents_Icon\"]", hub);
         Assert.Contains("ApplyHighContrastFallbackIfNeeded", hub);

@@ -2,3 +2,5 @@
 *.md text eol=lf
 *.excalidraw text eol=lf
 docs/diagrams/*.svg text eol=lf
+# Vendored provider artwork is verified byte-for-byte against pinned upstream files.
+src/OpenClaw.Tray.WinUI/Assets/Setup/ProviderIcons/*.svg text eol=lf

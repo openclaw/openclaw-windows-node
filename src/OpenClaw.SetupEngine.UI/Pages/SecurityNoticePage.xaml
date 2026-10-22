@@ -3,41 +3,64 @@
     x:Class="OpenClaw.SetupEngine.UI.Pages.SecurityNoticePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls"
+    xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
     NavigationCacheMode="Disabled">
 
-    <Grid Padding="48,28,48,24" RowDefinitions="Auto,*,Auto">
+    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto">
 
-        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Spacing="12">
-            <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png"
-                   Width="96" Height="96" HorizontalAlignment="Center"
-                   AutomationProperties.AccessibilityView="Raw" />
-            <TextBlock Text="Welcome to OpenClaw"
+        <StackPanel Grid.Row="0" HorizontalAlignment="Stretch" Spacing="4">
+            <controls:OnboardingMascot x:Name="MascotHero" Mood="Idle"
+                                      HorizontalAlignment="Center" />
+            <TextBlock x:Uid="Onboarding_V2_WelcomeTitle" Text="Welcome to OpenClaw"
                        Style="{StaticResource TitleTextBlockStyle}"
-                       HorizontalAlignment="Center" />
-            <TextBlock TextWrapping="Wrap" TextAlignment="Center" MaxWidth="480"
+                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+            <TextBlock x:Name="WelcomeDescription" x:Uid="Onboarding_Flow_WelcomeDescription"
+                       TextWrapping="Wrap" TextAlignment="Center" MaxWidth="480"
                        Style="{StaticResource BodyTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center"
-                       Text="OpenClaw runs your personal AI agent through a private gateway on this PC: reachable from chat apps like WhatsApp or Telegram." />
+                       Text="OpenClaw is your AI assistant for getting things done on your PC." />
         </StackPanel>
 
-        <InfoBar Grid.Row="1" VerticalAlignment="Top" Margin="0,24,0,0" MaxWidth="560"
-                 IsOpen="True" IsClosable="False" Severity="Warning"
-                 Title="Security notice"
-                 Message="The AI agent you connect (for example, Claude) can take powerful actions on this PC, including running commands, reading and writing files, and capturing your screen. Those actions depend on what you allow.&#x0a;&#x0a;Only set this up on a computer you trust, and only continue if you understand the risks and trust the prompts and integrations you use. You choose exactly what to allow in the next steps." />
+        <ScrollViewer Grid.Row="1" Margin="0,24,0,16" MaxWidth="640" HorizontalContentAlignment="Stretch">
+            <StackPanel Spacing="8">
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                <StackPanel Spacing="0">
+                <tk:SettingsCard x:Name="PcFeature" x:Uid="Onboarding_V2_WelcomePc"
+                                 Background="Transparent" BorderThickness="0" CornerRadius="0"
+                                 Header="Let agents help on this PC" Description="Choose which PC capabilities to enable. Windows permissions and execution approvals remain separate." />
+                <tk:SettingsCard x:Name="GatewayFeature" x:Uid="Onboarding_V2_WelcomeGateway"
+                                 Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0"
+                                 Header="Keep your Gateway under your control" Description="Run a private WSL Gateway here or connect to an existing one." />
+                <tk:SettingsCard x:Name="ChatFeature" x:Uid="Onboarding_V2_WelcomeChat"
+                                 Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0"
+                                 Header="Chat with your AI" Description="Use native Chat with an AI provider you choose." />
+                </StackPanel>
+                </Border>
+                <InfoBar x:Uid="Onboarding_V2_WelcomeTrust" Margin="0,8,0,0"
+                         IsOpen="True" IsClosable="False" Severity="Warning"
+                         Title="Before you get started"
+                         Message="AI agents are powerful and giving them access to your PC carries risks. They can make mistakes, change or delete files, or expose private information.&#x0a;&#x0a;You can control and limit OpenClaw’s access to your PC.">
+                    <InfoBar.ActionButton>
+                        <HyperlinkButton x:Uid="Onboarding_Copy_SafetyLink" Content="Learn more about risks and safety"
+                                         NavigateUri="https://trust.openclaw.ai">
+                            <HyperlinkButton.ContentTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="400" Style="{StaticResource BodyTextBlockStyle}" />
+                                </DataTemplate>
+                            </HyperlinkButton.ContentTemplate>
+                        </HyperlinkButton>
+                    </InfoBar.ActionButton>
+                </InfoBar>
+            </StackPanel>
+        </ScrollViewer>
 
         <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
-            <StackPanel Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8"
-                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                        IsTabStop="False" AutomationProperties.Name="Step 1 of 6">
-                <Border Width="20" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupIndicatorAccentBrush}" />
-                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
-                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
-                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
-                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
-                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
-            </StackPanel>
-            <Button Grid.Column="1" x:Name="ContinueButton" Content="Continue"
+            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="2"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <Button Grid.Column="1" x:Name="ContinueButton" x:Uid="Onboarding_V2_Continue" Content="Continue"
                     MinWidth="100" HorizontalAlignment="Right"
                     Style="{StaticResource AccentButtonStyle}"
                     Click="Continue_Click" />

@@ -1,6 +1,6 @@
 using OpenClaw.Shared.Inference.Catalog;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 
 namespace OpenClaw.SetupEngine;
 
@@ -16,13 +16,17 @@ internal sealed record LlamaRuntimeInstallResult(
     LlamaRuntimeInstallDisposition Disposition,
     bool CreatedThisRun,
     IReadOnlyList<LocalAiVerifiedArchive> VerifiedArchives,
-    LocalAiArtifactRollbackMetadata? Rollback);
+    LocalAiArtifactRollbackMetadata? Rollback,
+    int ReusedCachedArchiveCount = 0);
 
-internal sealed record LlamaRuntimeInspection(bool IsValid, string? VersionOutput, string? Error);
+internal sealed record LlamaRuntimeInspection(bool IsValid, string? Error);
 
 internal interface ILlamaRuntimeInspector
 {
-    Task<LlamaRuntimeInspection> InspectAsync(string installDirectory, CancellationToken cancellationToken);
+    Task<LlamaRuntimeInspection> InspectAsync(
+        string installDirectory,
+        LlamaRuntimeVariant runtime,
+        CancellationToken cancellationToken);
 }
 
 internal interface ILlamaRuntimeAcquirer
@@ -41,18 +45,31 @@ internal sealed class LlamaRuntimeInstaller : ILlamaRuntimeAcquirer
     private const int MaximumDeleteAttempts = 8;
     private readonly LocalAiArtifactInstaller _artifactInstaller;
     private readonly ILlamaRuntimeInspector _inspector;
+    private readonly LocalAiVcRuntimeStager? _vcRuntimeStager;
 
     public LlamaRuntimeInstaller(HttpClient httpClient)
-        : this(new LocalAiArtifactInstaller(httpClient), new WindowsLlamaRuntimeInspector())
+        : this(
+            new LocalAiArtifactInstaller(httpClient),
+            new WindowsLlamaRuntimeInspector(),
+            new LocalAiVcRuntimeStager(AppContext.BaseDirectory))
     {
     }
 
     internal LlamaRuntimeInstaller(
         LocalAiArtifactInstaller artifactInstaller,
         ILlamaRuntimeInspector inspector)
+        : this(artifactInstaller, inspector, vcRuntimeStager: null)
+    {
+    }
+
+    internal LlamaRuntimeInstaller(
+        LocalAiArtifactInstaller artifactInstaller,
+        ILlamaRuntimeInspector inspector,
+        LocalAiVcRuntimeStager? vcRuntimeStager)
     {
         _artifactInstaller = artifactInstaller ?? throw new ArgumentNullException(nameof(artifactInstaller));
         _inspector = inspector ?? throw new ArgumentNullException(nameof(inspector));
+        _vcRuntimeStager = vcRuntimeStager;
     }
 
     public event EventHandler<LocalAiArtifactInstallProgress>? ProgressChanged
@@ -61,6 +78,37 @@ internal sealed class LlamaRuntimeInstaller : ILlamaRuntimeAcquirer
         remove => _artifactInstaller.ProgressChanged -= value;
     }
 
+    /// <summary>
+    /// Installs the pinned llama-server runtime and returns it only after its
+    /// required payload passes structural inspection.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A leftover runtime directory at the target path that no receipt claims is removed
+    /// first. The pinned archives are then installed through
+    /// <see cref="LocalAiArtifactInstaller.InstallAsync"/>, which may reuse verified
+    /// archives from the cache.
+    /// </para>
+    /// <para>
+    /// Cache retention is committed only after inspection accepts the runtime and
+    /// cancellation is checked. If inspection rejects the runtime or the install is
+    /// cancelled, the promoted directory is deleted and the archive cache keeps its
+    /// previous complete sets.
+    /// </para>
+    /// </remarks>
+    /// <param name="localDataDirectory">App-owned local data root that contains the Local AI tree and the archive cache.</param>
+    /// <param name="runtime">Catalog runtime variant whose artifacts are installed.</param>
+    /// <param name="progress">Optional per-phase progress observer, in addition to <see cref="ProgressChanged"/>.</param>
+    /// <param name="cancellationToken">Cancels acquisition and inspection.</param>
+    /// <returns>
+    /// The accepted install, created this run. The caller owns its rollback directory and
+    /// should remove it through <see cref="RemoveInstalledRuntime"/>.
+    /// </returns>
+    /// <exception cref="LocalAiArtifactInstallException">
+    /// The path is unsafe, a leftover runtime cannot be removed safely, acquisition fails,
+    /// or inspection rejects the runtime.
+    /// </exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public async Task<LlamaRuntimeInstallResult> InstallAsync(
         string localDataDirectory,
         LlamaRuntimeVariant runtime,
@@ -102,8 +150,10 @@ internal sealed class LlamaRuntimeInstaller : ILlamaRuntimeAcquirer
 
         try
         {
+            _vcRuntimeStager?.Stage(installed.InstallDirectory);
             LlamaRuntimeInspection inspection = await _inspector.InspectAsync(
                     installed.InstallDirectory,
+                    runtime,
                     cancellationToken)
                 .ConfigureAwait(false);
             if (!inspection.IsValid)
@@ -112,13 +162,19 @@ internal sealed class LlamaRuntimeInstaller : ILlamaRuntimeAcquirer
                     inspection.Error ?? "The installed llama-server runtime did not pass validation.");
             }
 
+            // Commit cache retention only once the runtime is accepted and the caller has
+            // not cancelled, so a rejected install never evicts older cached runtime sets.
+            cancellationToken.ThrowIfCancellationRequested();
+            _artifactInstaller.CommitArchiveCacheSet(localDataDirectory, archives);
+
             return new LlamaRuntimeInstallResult(
                 installed.InstallDirectory,
                 Path.Combine(installed.InstallDirectory, LlamaRuntimeCatalog.ServerExecutableName),
                 LlamaRuntimeInstallDisposition.Installed,
                 CreatedThisRun: true,
                 installed.VerifiedArchives,
-                installed.Rollback);
+                installed.Rollback,
+                installed.ReusedCachedArchiveCount);
         }
         catch
         {
@@ -130,7 +186,7 @@ internal sealed class LlamaRuntimeInstaller : ILlamaRuntimeAcquirer
     internal static LocalAiComponentIdentity Component(LlamaRuntimeVariant runtime) =>
         new(
             "llama-server",
-            LlamaRuntimeCatalog.ReleaseTag,
+            runtime.ReleaseTag,
             runtime.Architecture switch
             {
                 Architecture.X64 => "win-x64",
@@ -210,97 +266,66 @@ internal sealed class LlamaRuntimeInstaller : ILlamaRuntimeAcquirer
 
 internal sealed class WindowsLlamaRuntimeInspector : ILlamaRuntimeInspector
 {
-    private static readonly string[] RequiredFiles =
-    [
-        LlamaRuntimeCatalog.ServerExecutableName,
-        "ggml-cuda.dll",
-        "cudart64_13.dll",
-        "cublas64_13.dll",
-        "cublasLt64_13.dll",
-    ];
-
     public async Task<LlamaRuntimeInspection> InspectAsync(
         string installDirectory,
+        LlamaRuntimeVariant runtime,
         CancellationToken cancellationToken)
     {
-        foreach (string fileName in RequiredFiles)
+        cancellationToken.ThrowIfCancellationRequested();
+        if (runtime.RequiredFiles.Count == 0)
+        {
+            return new LlamaRuntimeInspection(
+                false,
+                $"The catalog has no deterministic file manifest for llama-server runtime '{runtime.Id}'.");
+        }
+
+        foreach (LlamaRuntimeFile file in runtime.RequiredFiles)
+        {
+            string path = Path.Combine(installDirectory, file.FileName);
+            try
+            {
+                var info = new FileInfo(path);
+                if (!info.Exists ||
+                    (info.Attributes & FileAttributes.ReparsePoint) != 0 ||
+                    info.Length != file.SizeBytes)
+                {
+                    return new LlamaRuntimeInspection(
+                        false,
+                        $"The llama-server runtime file '{file.FileName}' is missing, unsafe, or has the wrong size.");
+                }
+
+                await using FileStream stream = File.OpenRead(path);
+                byte[] actualHash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
+                if (!CryptographicOperations.FixedTimeEquals(
+                        actualHash,
+                        Convert.FromHexString(file.Sha256.Value)))
+                {
+                    return new LlamaRuntimeInspection(
+                        false,
+                        $"The llama-server runtime file '{file.FileName}' does not match its pinned SHA-256 digest.");
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return new LlamaRuntimeInspection(
+                    false,
+                    $"The llama-server runtime file '{file.FileName}' could not be verified: {exception.Message}");
+            }
+        }
+
+        foreach (string fileName in LocalAiVcRuntimeStager.RequiredFiles)
         {
             string path = Path.Combine(installDirectory, fileName);
             if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
-                return new LlamaRuntimeInspection(false, null, $"The llama-server runtime is missing required file '{fileName}'.");
+            {
+                return new LlamaRuntimeInspection(
+                    false,
+                    $"The llama-server runtime is missing required file '{fileName}'.");
+            }
         }
 
-        string executable = Path.Combine(installDirectory, LlamaRuntimeCatalog.ServerExecutableName);
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = executable,
-            WorkingDirectory = installDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        startInfo.ArgumentList.Add("--version");
-
-        using var process = new Process { StartInfo = startInfo };
-        try
-        {
-            if (!process.Start())
-                return new LlamaRuntimeInspection(false, null, "llama-server --version did not start.");
-
-            Task<string> stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            Task<string> stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
-            await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
-            string output = (await stdout.ConfigureAwait(false)) + Environment.NewLine +
-                (await stderr.ConfigureAwait(false));
-            if (process.ExitCode != 0)
-                return new LlamaRuntimeInspection(false, output, "llama-server --version returned a nonzero exit code.");
-            return ValidateVersionOutput(output);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            KillProcessTree(process);
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            KillProcessTree(process);
-            return new LlamaRuntimeInspection(false, null, "llama-server --version timed out.");
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            return new LlamaRuntimeInspection(false, null, $"llama-server --version failed: {exception.Message}");
-        }
-    }
-
-    internal static LlamaRuntimeInspection ValidateVersionOutput(string output)
-    {
-        bool buildMatches = output.Contains(
-            $"build {LlamaRuntimeCatalog.ReleaseTag[1..]}",
-            StringComparison.OrdinalIgnoreCase);
-        bool commitMatches = output.Contains(
-            LlamaRuntimeCatalog.ReleaseCommitSha[..9],
-            StringComparison.OrdinalIgnoreCase);
-        return buildMatches && commitMatches
-            ? new LlamaRuntimeInspection(true, output, null)
-            : new LlamaRuntimeInspection(
-                false,
-                output,
-                $"llama-server did not report the pinned {LlamaRuntimeCatalog.ReleaseTag} build and source commit.");
-    }
-
-    private static void KillProcessTree(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-                process.Kill(entireProcessTree: true);
-        }
-        catch
-        {
-            // Best-effort cleanup during cancellation or timeout.
-        }
+        // Runtime execution and health belong to StartLocalAiRuntimeStep. Inspection stays
+        // deterministic by checking the exact catalog-pinned bytes without launching them.
+        return new LlamaRuntimeInspection(true, null);
     }
 }

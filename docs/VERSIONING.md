@@ -19,11 +19,18 @@ release line and strictly advance that line's correction number. A correction
 tag must not be published if that exact tag already exists or a newer
 stable/correction release has already been published.
 
-Windows Hub release tags are an independent version domain. They are not
-validated against, or required to match, any other repository's releases.
-Managed Gateway setup resolves the npm `latest` package independently and
-verifies that the protocol-v4 handshake reports the installed package version.
-A Windows Hub correction release does not select a Gateway package version.
+Windows Hub stable and correction releases remain an independent version
+domain. Managed Gateway setup resolves the npm `latest` package independently
+and verifies that the protocol-v4 handshake reports the installed package
+version. A Windows Hub correction release does not select a Gateway package
+version.
+
+The daily Windows alpha train is the narrow exception. Before creating a tag,
+the workflow reads the canonical latest stable release from
+`openclaw/openclaw`. If that Gateway release line is numerically newer than the
+GitVersion-derived Windows line, the workflow starts the matching Windows train
+at `vX.Y.Z-alpha.1`. Equal or older Gateway lines leave GitVersion's result
+unchanged, so the lookup can advance but never downgrade Windows.
 
 `GitVersion.yml` controls how tag history becomes SemVer. The product build
 imports GitVersion through `src\Directory.Build.props`, so normal `dotnet build`,
@@ -51,9 +58,75 @@ GitVersion advances to the next alpha prerelease until another tag pins the
 version. For example, after `v0.6.0-alpha.5`, an untagged commit on `master`
 may resolve to `0.6.0-alpha.6`.
 
-`GitVersion.yml` intentionally gives the `master`/`main` branch the `alpha`
-label so alpha tags are treated as exact version sources. Do not remove that
-label unless the release train stops using alpha tags.
+`GitVersion.yml` intentionally gives `master`/`main` and `release/*` branches
+the `alpha` label so alpha tags are treated as exact version sources. Release
+branches also preserve the version when the current commit is tagged. This
+overrides GitVersion's default beta release-branch policy without weakening the
+CI guard that requires the computed version to match the release tag.
+
+### Selective alpha backports
+
+Use a release branch from the intended published alpha when only selected fixes
+should ship. GitVersion reads the candidate's configuration, not current main.
+If the base predates the release-branch versioning repair, first cherry-pick the
+reviewed commit that adds the `release` branch override in `GitVersion.yml`.
+Omit that cherry-pick only when the base already contains the repair.
+
+In an isolated checkout, prepare the candidate without creating its release tag:
+
+```powershell
+$baseTag = '<published-alpha-tag>'
+$releaseTag = '<new-unused-alpha-tag>'
+$versioningRepairCommit = '<reviewed-release-versioning-repair-commit>'
+$fixCommit = '<reviewed-fix-commit>'
+git switch -c "release/$releaseTag" $baseTag
+# Required when the base predates the versioning repair.
+git cherry-pick -x $versioningRepairCommit
+git cherry-pick -x $fixCommit
+```
+
+Before tagging this checkout, verify the proposed tag in a disposable full-history
+clone using the same release branch name. The following check must print the
+exact tag version without its `v` prefix. A mismatch is a release blocker, not a
+reason to override the computed version:
+
+```powershell
+$verificationRepo = Join-Path ([IO.Path]::GetTempPath()) "openclaw-release-check-$([guid]::NewGuid().ToString('N'))"
+git clone --no-hardlinks --branch "release/$releaseTag" . $verificationRepo
+if ($LASTEXITCODE -ne 0) { throw 'Could not clone the release candidate.' }
+Push-Location $verificationRepo
+try {
+    git tag $releaseTag
+    if ($LASTEXITCODE -ne 0) { throw 'Could not create the disposable verification tag.' }
+    $computedVersion = ./scripts/Get-OpenClawVersion.ps1 -Variable SemVer
+    if ($computedVersion -cne $releaseTag.Substring(1)) {
+        throw "Release version mismatch: $computedVersion versus $releaseTag."
+    }
+    Write-Host "Verified $releaseTag at $(git rev-parse HEAD)."
+} finally {
+    Pop-Location
+    Remove-Item -LiteralPath $verificationRepo -Recurse -Force
+}
+```
+
+Only after verification succeeds, create and push the actual release tag from
+the original candidate checkout:
+
+```powershell
+git tag $releaseTag
+git push --atomic origin "refs/heads/release/$releaseTag" "refs/tags/$releaseTag"
+```
+
+Choose an unused version that advances the intended release line. Do not move
+an existing tag or reuse a reserved MSIX package identity after deleting a
+release. A maintainer's tag push starts the same full validation, signing, and
+publication gates as a main-based alpha. The daily alpha launcher is not the
+backport entry point: it always selects current `main`. Tags pushed with
+`GITHUB_TOKEN` still require the explicit CI dispatch described below.
+
+CI runs `scripts/test-release-branch-versioning.ps1` with the pinned GitVersion
+tool. Disposable repositories cover lightweight and annotated alpha/stable tags,
+tag checkouts, and newer main changes that must remain excluded.
 
 ## Assembly metadata
 
@@ -90,9 +163,11 @@ and runs only the one matching the current Pacific UTC offset. It compares the
 default-branch head with all published GitHub Releases and does nothing when
 one already points at that commit. It defers while an unpublished non-alpha tag
 points at the head. When changes exist, it uses the same GitVersion 6.8.x line
-to create the next canonical `vX.Y.Z-alpha.N` tag and refuses to create a tag
-that is not strictly newer than the newest reachable canonical alpha tag. It
-then explicitly dispatches the Build and Test workflow at that tag. The
+and compares that alpha with the canonical latest stable `openclaw/openclaw`
+release. A newer Gateway line starts at `vX.Y.Z-alpha.1`; otherwise the
+GitVersion alpha is kept. The workflow refuses to create a tag that is not
+strictly newer than the newest reachable canonical alpha tag. It then explicitly
+dispatches the Build and Test workflow at that tag. The
 explicit dispatch is required because a tag pushed with the workflow's
 `GITHUB_TOKEN` does not itself start another workflow. The normal test, E2E,
 build, signing, and release jobs remain the publication gate; the alpha GitHub
@@ -102,6 +177,13 @@ once they are older than 30 days. It intentionally retains every Git tag so
 GitVersion can continue deriving the next monotonic alpha version from complete
 tag history. If the new release is not yet visible through the Releases API,
 cleanup defers until the next alpha publication.
+
+Alpha release notes explicitly compare the new tag with the newest reachable
+published canonical alpha tag. This avoids GitHub's automatic previous-tag
+selection accumulating changes from an older alpha. Within each generated
+GitHub release-note section, pull requests follow the Compare API's
+oldest-to-newest chronological commit order. The first published alpha falls
+back to GitHub's normal comparison-base selection.
 
 GitVersion interprets `X.Y.Z-N` as a prerelease, so numeric stable corrections
 use one narrow exception: the release-version step recognizes the correction
@@ -163,8 +245,9 @@ For example:
 - Keep numeric correction tags behind the stable-ordering validation in both
   release resolution and publication; never classify every hyphenated tag as a
   prerelease without recognizing this exception.
-- Keep the correction validator free of other repositories' release APIs. Windows
-  Hub release tags and the pinned Gateway version are separate domains.
+- Keep the correction validator free of other repositories' release APIs.
+  Stable correction ordering and Gateway-aligned daily alpha selection are
+  separate policies.
 
 ## References
 

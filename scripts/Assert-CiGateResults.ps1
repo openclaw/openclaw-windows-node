@@ -86,6 +86,11 @@ switch ($Classification) {
             throw "Docs-only classification may not require product lanes."
         }
     }
+    "fast_only" {
+        if ($full -or @($required.Values | Where-Object { $_ }).Count -ne 0) {
+            throw "Fast-only classification may not require product lanes."
+        }
+    }
     "targeted" {
         if ($full) {
             throw "Targeted classification may not set full=true."

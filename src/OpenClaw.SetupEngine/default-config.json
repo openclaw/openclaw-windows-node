@@ -18,18 +18,17 @@
   "SkipWizard": false,
   // Answers for the gateway wizard when SkipWizard is false. Keys use stable
   // normalized step titles/messages; select values must match gateway option values.
+  // Companion-managed choices use policy defaults. Conflicting explicit answers fail setup.
   "WizardAnswers": {
     "openclaw-setup": "true",
     "security-disclaimer": "true",
     "i-understand-this-is-personal-by-default-and-shared-multi-user-use-requires-lock-down-continue": "true",
-    "setup-mode": "quickstart",
     "existing-config-detected": "true",
     "config-handling": "keep",
     "quickstart": "true",
     "model-auth-provider": "skip",
     "default-model": "__keep__",
     "select-channel-quickstart": "__skip__",
-    "search-provider": "__skip__",
     "configure-skills-now-recommended": "false"
   },
   // Log verbosity: "trace", "debug", "info", "warn", "error"
@@ -108,7 +107,9 @@
     "Port": 0,
     // The setup UI sets this only after explaining that applying mirrored mode stops running WSL distros once.
     "WslMirroredNetworkingConsent": false,
-    "HealthTimeoutSeconds": 15,
+    // The first router start after an install pays a Windows Defender scan of the
+    // freshly extracted ~700 MB CUDA runtime (measured 26.0 s cold, 0.17 s once cached).
+    "HealthTimeoutSeconds": 90,
     "AcquisitionTimeoutSeconds": 7200,
     // Includes first-request model load and a short verification completion.
     "InferenceTimeoutSeconds": 600

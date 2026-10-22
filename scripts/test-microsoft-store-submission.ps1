@@ -57,8 +57,8 @@ function New-Submission([string]$Id) {
         Trailers = @()
         FileUploadUrl = 'https://storage.example.invalid/upload?sas=redacted'
         ApplicationPackages = @(
-            [pscustomobject]@{ FileName = 'old-x64.msix'; FileStatus = 'Published' },
-            [pscustomobject]@{ FileName = 'old-arm64.msix'; FileStatus = 'Published' }
+            [pscustomobject]@{ FileName = 'old-x64.msix'; FileStatus = 'Uploaded'; minimumDirectXVersion = 'None'; minimumSystemRam = 'None' },
+            [pscustomobject]@{ FileName = 'old-arm64.msix'; FileStatus = 'Uploaded'; minimumDirectXVersion = 'None'; minimumSystemRam = 'None' }
         )
         PackageDeliveryOptions = [pscustomobject]@{
             PackageRollout = [pscustomobject]@{
@@ -80,6 +80,8 @@ function Reset-Fixture {
     $global:OpenClawStoreTest_replaceAfterUpload = $false
     $global:OpenClawStoreTest_driftAfterUpload = $false
     $global:OpenClawStoreTest_mutatePackagesAfterUpload = $false
+    $global:OpenClawStoreTest_wrongIdentity = $false
+    $global:OpenClawStoreTest_serverFields = $false
     $global:OpenClawStoreTest_uploadHash = $null
     $global:OpenClawStoreTest_uploadedEntries = @()
 }
@@ -104,6 +106,8 @@ $httpInvoker = {
     if ($Method -eq 'Get' -and $Uri -ceq $applicationPath) {
         return [pscustomobject]@{
             Id = $applicationId
+            PackageIdentityName = if ($global:OpenClawStoreTest_wrongIdentity) { 'Other.Product' } else { 'Test.OpenClaw' }
+            PublisherName = 'CN=Test'
             PendingApplicationSubmission = if ($null -eq $global:OpenClawStoreTest_pendingId) { $null } else { [pscustomobject]@{ Id = $global:OpenClawStoreTest_pendingId } }
             LastPublishedApplicationSubmission = [pscustomobject]@{ Id = 'published-1' }
         }
@@ -160,6 +164,14 @@ $uploadInvoker = {
     $archive = [IO.Compression.ZipFile]::OpenRead($Path)
     try { $global:OpenClawStoreTest_uploadedEntries = @($archive.Entries.FullName) }
     finally { $archive.Dispose() }
+    if ($global:OpenClawStoreTest_serverFields) {
+        $package = $global:OpenClawStoreTest_draft.ApplicationPackages[-1]
+        $package.FileStatus = 'Uploaded'
+        $package | Add-Member Id 'server-package-id'
+        $package | Add-Member Architecture 'x64'
+        $global:OpenClawStoreTest_draft.PackageDeliveryOptions.PackageRollout | Add-Member PackageRolloutStatus 'PackageRolloutNotStarted'
+        $global:OpenClawStoreTest_draft.PackageDeliveryOptions.PackageRollout | Add-Member FallbackSubmissionId 'published-1'
+    }
     if ($global:OpenClawStoreTest_driftAfterUpload) {
         $global:OpenClawStoreTest_draft.Listings.'en-us'.description = 'Unexpected replacement'
     }
@@ -179,6 +191,7 @@ function Invoke-Submission {
         [string]$EvidencePath = (Join-Path $testRoot 'evidence.json')
     )
     & $scriptPath -BundlePath $BundlePath -ApplicationId $applicationId `
+        -PackageIdentityName 'Test.OpenClaw' -Publisher 'CN=Test' `
         -TenantId $tenantId -ClientId $clientId `
         -ClientAssertionFile (Join-Path $testRoot 'assertion.jwt') `
         -PolicyPath $PolicyPath -EvidencePath $EvidencePath `
@@ -187,7 +200,10 @@ function Invoke-Submission {
 
 New-Item -Path $testRoot -ItemType Directory | Out-Null
 try {
-    [IO.File]::WriteAllText((Join-Path $testRoot 'OpenClaw.msixbundle'), 'bundle-fixture')
+    $bundleRoot = Join-Path $testRoot 'bundle/AppxMetadata'
+    New-Item $bundleRoot -ItemType Directory -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $bundleRoot 'AppxBundleManifest.xml'), '<Bundle><Identity Name="Test.OpenClaw" Publisher="CN=Test" /></Bundle>')
+    [IO.Compression.ZipFile]::CreateFromDirectory((Split-Path $bundleRoot -Parent), (Join-Path $testRoot 'OpenClaw.msixbundle'))
     [IO.File]::WriteAllText((Join-Path $testRoot 'assertion.jwt'), 'header.payload.signature')
     [ordered]@{
         schemaVersion = 1
@@ -221,6 +237,16 @@ try {
         [string]$evidence.preparedMutationSha256 -cne [string]$evidence.verifiedMutationSha256) {
         throw 'Store evidence did not bind the verified and committed draft.'
     }
+
+    Reset-Fixture
+    $global:OpenClawStoreTest_wrongIdentity = $true
+    Assert-Fails -MessagePattern 'product does not match' -Action { Invoke-Submission }
+    if ($global:OpenClawStoreTest_calls -match 'isMinimalResponse') { throw 'Wrong-product preflight created a draft.' }
+
+    Reset-Fixture
+    $global:OpenClawStoreTest_serverFields = $true
+    $global:OpenClawStoreTest_published.PSObject.Properties.Remove('TargetPublishDate')
+    Invoke-Submission
 
     Reset-Fixture
     $global:OpenClawStoreTest_pendingId = 'human-draft'

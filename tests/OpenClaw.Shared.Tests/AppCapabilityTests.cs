@@ -67,6 +67,38 @@ public class AppCapabilityTests
     }
 
     [Fact]
+    public async Task Navigate_WithHandlerErrorPayload_ReturnsCommandError()
+    {
+        var cap = new AppCapability(NullLogger.Instance)
+        {
+            NavigateHandler = _ => Task.FromResult<object?>(new { navigated = false, error = "Unknown Workspace route." })
+        };
+        var response = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "1", Command = "app.navigate", Args = ParseArgs("""{"page":"workspace:unknown"}""")
+        });
+        Assert.False(response.Ok);
+        Assert.Equal("Unknown Workspace route.", response.Error);
+    }
+
+    [Fact]
+    public async Task Navigate_WithSuccessfulHandler_PreservesSuccessPayload()
+    {
+        var cap = new AppCapability(NullLogger.Instance)
+        {
+            NavigateHandler = page => Task.FromResult<object?>(new { navigated = true, page })
+        };
+        var response = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "1", Command = "app.navigate", Args = ParseArgs("""{"page":"workspace:home"}""")
+        });
+        Assert.True(response.Ok);
+        var payload = JsonSerializer.SerializeToElement(response.Payload);
+        Assert.True(payload.GetProperty("navigated").GetBoolean());
+        Assert.Equal("workspace:home", payload.GetProperty("page").GetString());
+    }
+
+    [Fact]
     public async Task Status_WithHandler_ReturnsData()
     {
         var cap = new AppCapability(NullLogger.Instance);

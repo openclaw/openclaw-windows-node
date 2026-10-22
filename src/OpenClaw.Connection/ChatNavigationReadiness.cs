@@ -28,12 +28,21 @@ public static class ChatNavigationReadiness
             if (IsOperatorHandshakeReady(connectionManager))
                 return true;
 
-            var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeout, cancellationToken)).ConfigureAwait(true);
-            if (completed == tcs.Task)
-                return await tcs.Task.ConfigureAwait(true);
+            // Settle the outcome in the callbacks, not in their asynchronously scheduled continuations.
+            using var cancellationRegistration = cancellationToken.Register(
+                static (state, token) => ((TaskCompletionSource<bool>)state!).TrySetCanceled(token),
+                tcs);
+            using var deadline = new CancellationTokenSource(timeout);
+            using var deadlineRegistration = deadline.Token.Register(
+                static state => ((TaskCompletionSource<bool>)state!).TrySetResult(false),
+                tcs);
+            if ((long)timeout.TotalMilliseconds == 0)
+                deadline.Cancel();
 
-            cancellationToken.ThrowIfCancellationRequested();
-            return false;
+            var ready = await tcs.Task.ConfigureAwait(true);
+            if (!ready)
+                cancellationToken.ThrowIfCancellationRequested();
+            return ready;
         }
         finally
         {

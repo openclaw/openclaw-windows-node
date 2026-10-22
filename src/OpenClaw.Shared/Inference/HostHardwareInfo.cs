@@ -52,7 +52,17 @@ public sealed record GpuInfo(
     long? FreeSharedGpuMemoryBytes = null,
     string? DriverVersion = null,
     int? CudaMajorVersion = null,
-    string? StableId = null);
+    string? StableId = null)
+{
+    /// <summary>
+    /// True for an RTX Spark unified-memory adapter (e.g. "NVIDIA RTX Spark
+    /// N1X"), identified by its driver-reported name. RTX Spark is routed
+    /// through a fixed SKU recipe table instead of the generic capacity
+    /// fit-test; see <c>RtxSparkInferenceSelector</c>.
+    /// </summary>
+    public bool IsRtxSpark =>
+        Name.Contains("RTX Spark", StringComparison.OrdinalIgnoreCase);
+}
 
 /// <summary>
 /// Snapshot of the host's inference-relevant hardware. Every probed field is
@@ -64,13 +74,18 @@ public sealed record GpuInfo(
 /// <param name="AvailablePhysicalMemoryBytes">Currently free system RAM, or null when the query failed.</param>
 /// <param name="Gpus">All detected adapters, in the order the source reported them.</param>
 /// <param name="VulkanAvailable">True when a Vulkan loader is present on the machine.</param>
+/// <param name="LocalAiDiskSpace">Free space and volume placement for the runtime and model cache, or null when unknown.</param>
 public sealed record HostHardwareInfo(
     Architecture CpuArchitecture,
     long? TotalPhysicalMemoryBytes,
     long? AvailablePhysicalMemoryBytes,
     IReadOnlyList<GpuInfo> Gpus,
-    bool VulkanAvailable)
+    bool VulkanAvailable,
+    LocalAiDiskSpaceInfo? LocalAiDiskSpace = null)
 {
+    /// <summary>Current Windows commit budget, or null when the memory query failed.</summary>
+    public long? AvailableCommitMemoryBytes { get; init; }
+
     /// <summary>
     /// The "we learned nothing" result. Qualified selectors must treat it as
     /// unsupported rather than selecting a fallback backend.

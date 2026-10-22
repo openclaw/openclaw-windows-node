@@ -54,7 +54,7 @@ public static class GatewayTerminalLaunchCommandBuilder
         }
 
         var distroName = accessPlan.DistroName!;
-        var script = $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw doctor || true && exec bash";
+        var script = BuildDoctorShellScript();
 
         if (!string.IsNullOrWhiteSpace(windowsTerminalPath))
         {
@@ -88,6 +88,19 @@ public static class GatewayTerminalLaunchCommandBuilder
             false);
     }
 
+    // wsl.exe expands $PATH in an argument before bash parses it. A quote in
+    // the Windows PATH then breaks this script. The backslash leaves the
+    // dollar for bash, which expands the Linux PATH inside the quotes. Stdin
+    // gateway scripts keep OpenClawWslPathPrefix unchanged.
+    internal static string BuildDoctorShellScript()
+    {
+        var prefix = WslGatewayControlCommandBuilder.OpenClawWslPathPrefix.Replace(
+            "$PATH",
+            @"\$PATH",
+            StringComparison.Ordinal);
+        return $"{prefix} && openclaw doctor || true && exec bash";
+    }
+
     private static GatewayTerminalLaunchCommand BuildWslCommand(GatewayHostAccessPlan accessPlan, string? windowsTerminalPath)
     {
         var distroName = RequireValue(accessPlan.DistroName, "WSL distro name is required.");
@@ -114,8 +127,9 @@ public static class GatewayTerminalLaunchCommandBuilder
 
     private static GatewayTerminalLaunchCommand BuildSshCommand(GatewayHostAccessPlan accessPlan, string? windowsTerminalPath)
     {
-        var user = RequireValue(accessPlan.SshUser, "SSH user is required.");
-        var host = RequireValue(accessPlan.SshHost, "SSH host is required.");
+        var user = RequireValue(accessPlan.SshUser, "SSH user is required.").Trim();
+        var host = RequireValue(accessPlan.SshHost, "SSH host is required.").Trim();
+        SshTunnelCommandLine.ValidateUserAndHost(user, host);
         var endpoint = $"{user}@{host}";
 
         if (!string.IsNullOrWhiteSpace(windowsTerminalPath))

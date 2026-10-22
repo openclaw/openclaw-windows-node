@@ -132,12 +132,13 @@ internal static class StartupSetupState
             return false;
         }
 
-        if (settings.EnableNodeMode)
+        if (settings.EnableNodeMode &&
+            (HasStoredNodeDeviceToken(dataPath, registry) || HasBootstrapGatewayRecord(registry)))
         {
-            return !HasStoredNodeDeviceToken(dataPath, registry)
-                && !HasBootstrapGatewayRecord(registry);
+            return false;
         }
 
+        // Node pairing readiness is independent of whether a gateway was configured.
         if (registry is not null
             && SetupExistingGatewayClassifier.HasAnyExistingGatewayConnection(registry, settings, dataPath))
         {

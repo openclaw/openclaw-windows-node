@@ -102,10 +102,10 @@ public sealed class GatewayFixtureIsolationContractTests
     public void ToastBoundaries_DoNotInitializeInstalledRegistrationInFixtureMode()
     {
         Assert.Matches(
-            @"if \(!GatewayFixtureIsolation\.IsEnabled\)\s+ToastNotificationManagerCompat\.OnActivated \+= OnToastActivated;",
+            @"if \(!GatewayFixtureIsolation\.IsEnabled && !AppIdentity\.IsIsolated\)\s+ToastNotificationManagerCompat\.OnActivated \+= OnToastActivated;",
             ReadTraySource("App.xaml.cs"));
         Assert.Matches(
-            @"if \(!GatewayFixtureIsolation\.IsEnabled\)\s+ToastNotificationManagerCompat\.OnActivated -= OnToastActivated;",
+            @"if \(!GatewayFixtureIsolation\.IsEnabled && !AppIdentity\.IsIsolated\)\s+ToastNotificationManagerCompat\.OnActivated -= OnToastActivated;",
             ReadTraySource("App.AppShutdownCoordinator.cs"));
         var body = BodyAfter(ReadTraySource("Services", "ToastService.cs"),
             "public void ShowToast(ToastContentBuilder builder, string? toastTag = null, string? deviceId = null)");

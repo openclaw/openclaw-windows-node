@@ -13,6 +13,7 @@ internal abstract record ActivationRoute
     internal sealed record OpenHub(string? Page) : ActivationRoute;
     internal sealed record OpenSetup : ActivationRoute;
     internal sealed record OpenDashboard(string? Path) : ActivationRoute;
+    internal sealed record CompleteAiSetup(string? Handle) : ActivationRoute;
     internal sealed record OpenChat(string? SessionKey) : ActivationRoute;
     internal sealed record OpenUrl(string Uri) : ActivationRoute;
     internal sealed record OpenTrayMenu : ActivationRoute;

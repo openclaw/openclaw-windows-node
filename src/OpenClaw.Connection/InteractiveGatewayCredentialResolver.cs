@@ -60,6 +60,11 @@ public static class InteractiveGatewayCredentialResolver
         var active = registry?.GetActive();
         if (active != null && !string.IsNullOrWhiteSpace(active.Url))
         {
+            if (active.NativePackageFamilyName is not null && authorizeCredential is null)
+            {
+                credential = null;
+                return false;
+            }
             // For HTTP surfaces (chat), prefer SharedGatewayToken over DeviceToken.
             // DeviceToken is for WebSocket auth (auth.deviceToken); SharedGatewayToken
             // is for HTTP ?token= auth which the chat/dashboard endpoints expect.
@@ -102,7 +107,8 @@ public static class InteractiveGatewayCredentialResolver
                 return true;
             }
 
-            if (!string.Equals(active.Url, effectiveGatewayUrl, StringComparison.OrdinalIgnoreCase))
+            if (active.NativePackageFamilyName is not null ||
+                !string.Equals(active.Url, effectiveGatewayUrl, StringComparison.OrdinalIgnoreCase))
             {
                 credential = null;
                 return false;

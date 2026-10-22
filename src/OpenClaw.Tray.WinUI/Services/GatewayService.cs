@@ -129,6 +129,7 @@ internal sealed class GatewayService
         client.DevicePairListUpdated += OnDevicePairListUpdated;
         client.ModelsListUpdated += OnModelsListUpdated;
         client.PresenceUpdated += OnPresenceUpdated;
+        client.SelfProfileChanged += OnSelfProfileChanged;
         client.AgentsListUpdated += OnAgentsListUpdated;
         client.AgentFilesListUpdated += OnAgentFilesListUpdated;
         client.AgentFileContentUpdated += OnAgentFileContentUpdated;
@@ -160,12 +161,19 @@ internal sealed class GatewayService
         client.DevicePairListUpdated -= OnDevicePairListUpdated;
         client.ModelsListUpdated -= OnModelsListUpdated;
         client.PresenceUpdated -= OnPresenceUpdated;
+        client.SelfProfileChanged -= OnSelfProfileChanged;
         client.AgentsListUpdated -= OnAgentsListUpdated;
         client.AgentFilesListUpdated -= OnAgentFilesListUpdated;
         client.AgentFileContentUpdated -= OnAgentFileContentUpdated;
     }
 
     // ── Category C: Re-raised events (update AppState + re-raise for App) ──
+
+    private void OnSelfProfileChanged(object? sender, EventArgs e)
+    {
+        if (sender != _currentClient) return;
+        EnqueueModelUpdate(() => _state.SelfProfileRevision++);
+    }
 
     private void OnConnectionStatusChanged(object? sender, ConnectionStatus status)
     {

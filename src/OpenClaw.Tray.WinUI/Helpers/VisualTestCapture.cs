@@ -133,7 +133,12 @@ internal static class VisualTestCapture
 
     private static Action ApplyCaptureBackground(FrameworkElement root)
     {
-        var background = new SolidColorBrush(Microsoft.UI.Colors.White);
+        // RenderTargetBitmap cannot capture Mica. Resolve the native opaque
+        // background in the captured window's theme, not the process default.
+        var backdrop = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+            """<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"/>""");
+        backdrop.RequestedTheme = root.ActualTheme;
+        var background = backdrop.Background;
 
         switch (root)
         {

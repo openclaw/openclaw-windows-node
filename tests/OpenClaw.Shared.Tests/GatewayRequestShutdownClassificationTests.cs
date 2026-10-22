@@ -40,7 +40,7 @@ public sealed class GatewayRequestShutdownClassificationTests
         var elapsed = Stopwatch.StartNew();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => requestTask);
         Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(4),
-            "shutdown must classify immediately instead of waiting out the 5s chat.send budget");
+            "shutdown must classify immediately instead of waiting out the 30s chat.send budget");
     }
 
     [Fact]
@@ -137,6 +137,28 @@ public sealed class GatewayRequestShutdownClassificationTests
             // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
             await Task.Delay(25);
         }
+
+        MarkHandshakeReady(client);
+    }
+
+    private static void MarkHandshakeReady(OpenClawGatewayClient client)
+    {
+        var generationProperty = typeof(WebSocketClientBase).GetProperty(
+            "CurrentConnectionGeneration",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        var generation = (long)generationProperty!.GetValue(client)!;
+        SetPrivateField(client, "_mainSessionKeyIsCanonical", true);
+        SetPrivateField(client, "_mainSessionKey", "agent:main:main");
+        SetPrivateField(client, "_handshakeConnectionGeneration", generation);
+        SetPrivateField(client, "_hasHandshakeSnapshot", true);
+    }
+
+    private static void SetPrivateField(OpenClawGatewayClient client, string fieldName, object? value)
+    {
+        var field = typeof(OpenClawGatewayClient).GetField(
+            fieldName,
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        field!.SetValue(client, value);
     }
 
     /// <summary>Reads server-side frames (skipping the connect handshake traffic) until

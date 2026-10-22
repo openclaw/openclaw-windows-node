@@ -5,10 +5,10 @@ public sealed class ConnectionRegressionSourceTests
     [Fact]
     public void Dashboard_TokenQuery_IsLimitedToSharedGatewayToken()
     {
-        var appSource = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
+        var launcherSource = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "GatewayDashboardLauncher.cs");
 
-        Assert.Contains("credentialSource == CredentialResolver.SourceSharedGatewayToken", appSource);
-        Assert.DoesNotContain("if (!isBootstrapToken && !string.IsNullOrEmpty(token))", appSource);
+        Assert.Contains("!credential.IsBootstrapToken && credential.Source == CredentialResolver.SourceSharedGatewayToken", launcherSource);
+        Assert.DoesNotContain("if (!isBootstrapToken && !string.IsNullOrEmpty(token))", launcherSource);
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public sealed class ConnectionRegressionSourceTests
         var pageSource = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs");
 
         Assert.Contains("private void ClearAddGatewaySshFields()", pageSource);
-        Assert.Contains("ClearAddGatewaySshFields();\r\n        ShowAddPane(\"setup\");", pageSource);
+        Assert.Contains("ClearAddGatewaySshFields();\n        ShowAddPane(\"setup\");", pageSource.Replace("\r\n", "\n"));
         Assert.Contains("AddSshExpander.IsExpanded = false;", pageSource);
         Assert.Contains("AddSshUserBox.Text = \"\";", pageSource);
         Assert.Contains("AddSshHostBox.Text = \"\";", pageSource);

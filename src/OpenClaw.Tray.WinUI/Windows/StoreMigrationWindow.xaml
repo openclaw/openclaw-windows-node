@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="OpenClawTray.Windows.StoreMigrationWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls">
+    <Grid x:Name="Root">
+        <Grid.Resources>
+            <DataTemplate x:Key="WrappedAction">
+                <TextBlock Text="{Binding}" TextWrapping="Wrap" TextTrimming="None" TextAlignment="Center"
+                           MaxWidth="240" Style="{StaticResource BodyTextBlockStyle}"/>
+            </DataTemplate>
+        </Grid.Resources>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid x:Name="TitleBarDrag" Padding="12,0,160,0" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <controls:OnboardingMascot Width="24" Height="24"
+                                      IsAnimationEnabled="False" IsInteractive="False"/>
+            <TextBlock x:Name="TitleBarText" Grid.Column="1" Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       AutomationProperties.AccessibilityView="Raw"/>
+        </Grid>
+        <Grid Grid.Row="1" Padding="40,4,40,24" RowSpacing="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <ScrollViewer x:Name="MigrationContent" MaxWidth="560"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          VerticalContentAlignment="Center" IsTabStop="False"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="16">
+                    <StackPanel Spacing="4" HorizontalAlignment="Stretch">
+                        <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious"
+                                                  HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="Heading" Style="{StaticResource TitleTextBlockStyle}"
+                                   TextAlignment="Center" TextWrapping="Wrap"
+                                   AutomationProperties.HeadingLevel="Level1"/>
+                    </StackPanel>
+                    <Border Padding="16" CornerRadius="{ThemeResource OverlayCornerRadius}" BorderThickness="1"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                        <StackPanel Spacing="12">
+                            <ProgressRing x:Name="Progress" Width="32" Height="32"
+                                          HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="Status" Style="{StaticResource BodyTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                       AutomationProperties.AutomationId="MigrationStatus"
+                                       AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="ConsentSteps" Spacing="12" Visibility="Collapsed">
+                                <StackPanel Spacing="4">
+                                    <TextBlock x:Name="PrepareStepTitle" Style="{StaticResource BodyStrongTextBlockStyle}"
+                                               TextWrapping="Wrap" AutomationProperties.HeadingLevel="Level2"/>
+                                    <TextBlock x:Name="PrepareStepBody" Style="{StaticResource BodyTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock x:Name="RemoveStepTitle" Style="{StaticResource BodyStrongTextBlockStyle}"
+                                               TextWrapping="Wrap" AutomationProperties.HeadingLevel="Level2"/>
+                                    <TextBlock x:Name="RemoveStepBody" Style="{StaticResource BodyTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock x:Name="FinishStepTitle" Style="{StaticResource BodyStrongTextBlockStyle}"
+                                               TextWrapping="Wrap" AutomationProperties.HeadingLevel="Level2"/>
+                                    <TextBlock x:Name="FinishStepBody" Style="{StaticResource BodyTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock x:Name="ConsentHint" Style="{StaticResource BodyTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" Visibility="Collapsed"/>
+                            <InfoBar x:Name="Error" IsOpen="False" Severity="Error" IsClosable="True"/>
+                        </StackPanel>
+                    </Border>
+                    <InfoBar x:Name="Safety" IsOpen="False" IsClosable="False" Severity="Warning"
+                             Visibility="Collapsed" AutomationProperties.AutomationId="MigrationSafety"
+                             AutomationProperties.LiveSetting="Polite"/>
+                </StackPanel>
+            </ScrollViewer>
+            <Grid x:Name="Actions" Grid.Row="1" MaxWidth="560" HorizontalAlignment="Stretch"
+                  ColumnSpacing="16" RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Button x:Name="InstalledApps" Grid.ColumnSpan="2" Click="OnInstalledApps"
+                        HorizontalAlignment="Left" MinWidth="100"
+                        ContentTemplate="{StaticResource WrappedAction}"
+                        AutomationProperties.AutomationId="MigrationInstalledApps"/>
+                <Button x:Name="DiscardRecords" Grid.Row="1" Grid.ColumnSpan="2" Click="OnDiscardRecords"
+                        HorizontalAlignment="Left" MinWidth="100"
+                        ContentTemplate="{StaticResource WrappedAction}"
+                        AutomationProperties.AutomationId="MigrationDiscardRecords"/>
+                <Button x:Name="Dismiss" Grid.Row="2" Click="OnDismiss" MinWidth="100"
+                        ContentTemplate="{StaticResource WrappedAction}"
+                        HorizontalAlignment="Left" AutomationProperties.AutomationId="MigrationDismiss"/>
+                <Button x:Name="Primary" Grid.Row="2" Grid.Column="1" Click="OnPrimary" MinWidth="100"
+                        ContentTemplate="{StaticResource WrappedAction}"
+                        HorizontalAlignment="Right"
+                        Style="{StaticResource AccentButtonStyle}"
+                        AutomationProperties.AutomationId="MigrationPrimary"/>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

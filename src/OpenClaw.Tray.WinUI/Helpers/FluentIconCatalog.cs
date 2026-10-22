@@ -14,7 +14,12 @@ namespace OpenClawTray.Helpers;
 /// a semantic match was ambiguous the closest available glyph is used and
 /// noted in a comment.
 /// </summary>
-public static class FluentIconCatalog
+#if OPENCLAW_SETUP_UI
+internal
+#else
+public
+#endif
+static class FluentIconCatalog
 {
     // ── Status / state ─────────────────────────────────────────────
     public const string StatusOk = "\uE73E";       // CheckMark
@@ -27,6 +32,7 @@ public static class FluentIconCatalog
     public const string Devices = "\uE772";        // Devices (two devices — section header)
     public const string Hostname = "\uE977";       // Devices/IT — single hostname/system info pill
     public const string Permissions = "\uEA18";    // Shield
+    public const string SandboxStrict = "\uE72E";  // Lock
 
     // ── Capabilities (per-permission glyphs) ───────────────────────
     public const string Browser = "\uE774";        // Globe
@@ -49,12 +55,15 @@ public static class FluentIconCatalog
     public const string Settings = "\uE713";       // Settings
     public const string Setup = "\uE825";          // Bank — Reconfigure / Setup wizard launcher
     public const string About = "\uE946";          // Info
-    public const string Notifications = "\uE7E7";   // Ringer — title-bar notifications bell
+    public const string Notifications = "\uEA8F";  // Ringer
+    public const string DashboardView = "\uF246";  // ViewDashboard
+    public const string Plugins = "\uEA86";        // Puzzle
     public const string Exit = "\uE711";           // Cancel (X) — used for "Close" menu item
     public const string Add = "\uE710";            // Add — "+ Add gateway" header button
     public const string Back = "\uE72B";           // Back — leading chevron on Back hyperlink
     public const string Sync = "\uE895";           // Sync — Connecting / Disconnecting transient
     public const string Lock = "\uE192";           // Lock — Setup code / pairing waiting
+    public const string Key = "\uE8D7";            // Permissions — API key / token entry
     public const string Plug = "\uE839";           // Plug/PC1 — Direct connection tile (alias of System; same glyph)
     public const string Inference = "\uE839";      // PC1 (alias of System/Plug) — Ollama local inference runs on this PC
     public const string MoreOverflow = "\uE712";   // More — saved-row overflow ⋯ button
@@ -75,7 +84,7 @@ public static class FluentIconCatalog
     public const string ChevronDown = "\uE70D";    // ChevronDown
     public const string Stop = "\uE71A";           // Stop
     public const string ChatSubmit = "\uE74A";     // Up, specific to sending a chat turn
-    public const string ChatAttach = Add;         // Add, opens the existing attachment picker
+    public const string ChatAttach = "\uE723";     // Paperclip, opens the existing attachment picker
     public const string Check = "\uE73E";          // CheckMark
 
     // ── Diagnostics page glyphs ────────────────────────────────────
@@ -106,6 +115,21 @@ public static class FluentIconCatalog
     // See reference/concepts/states/workspace.md.
     public const string Workspace = "\uE8DA";      // OpenLocal (alias of Folder)
     public const string Cron = "\uE787";           // Calendar — Cron / scheduled jobs (matches HubWindow search mapping)
+
+    // ── Workspace session menu ──────────────────────────────────────
+    // Sidebar session context menu (Pin/Unpin, Rename, Mark unread,
+    // Archive, Fork, Copy, Reset, Compact, Export, Delete).
+    public const string Pin = "\uE718";           // Pin
+    public const string Unpin = "\uE77A";         // Unpin
+    public const string Rename = "\uE8AC";       // Rename
+    public const string MarkUnread = "\uE715";    // Mail — mark as unread
+    public const string MarkRead = "\uE8C3";      // Read — mark as read
+    public const string Archive = "\uE7B8";       // Package
+    public const string Unarchive = "\uE777";     // UpdateRestore
+    public const string Fork = "\uE8AB";          // Switch
+    public const string Compact = "\uE74C";       // Reduce — matches SessionsPage compact glyph
+    public const string Export = "\uEDE1";        // Export — matches SessionsPage export glyph
+    public const string Delete = "\uE74D";        // Delete — matches SessionsPage delete glyph
 
     public static FontFamily SymbolThemeFontFamily =>
         (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"];

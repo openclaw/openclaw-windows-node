@@ -148,7 +148,22 @@ public sealed record LocalAiInstallManifest
     /// the model must also verify the pinned content before use.
     /// </summary>
     public const int HubCacheReceiptSchemaVersion = 4;
+    /// <summary>
+    /// Schema-4 plus one or more additional model assets verified in the same
+    /// hub cache. Only recipes with a <c>LocalModelRunRecipe.DraftWeights</c>
+    /// pin use this; every existing single-asset recipe keeps writing schema 4.
+    /// </summary>
+    public const int AdditionalAssetsSchemaVersion = 5;
     public const string SupportedEngine = "llama-server";
+
+    /// <summary>
+    /// True for schema 4 and schema 5, whose active model resolves through the
+    /// standard Hugging Face hub cache rather than the legacy app-owned copy.
+    /// Derived entirely from <see cref="SchemaVersion"/>, so it must never be
+    /// persisted -- an older app build would reject it as an unknown field.
+    /// </summary>
+    [JsonIgnore]
+    public bool UsesHubCache => SchemaVersion is HubCacheReceiptSchemaVersion or AdditionalAssetsSchemaVersion;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public string Engine { get; init; } = SupportedEngine;
@@ -180,6 +195,47 @@ public sealed record LocalAiInstallManifest
     public required string ModelId { get; init; }
     public required string ModelAlias { get; init; }
     public required LocalAiAssetReceipt ModelAsset { get; init; }
+    /// <summary>
+    /// Schema-5 receipts for additional model assets verified in the hub
+    /// cache alongside <see cref="ModelAsset"/> (the draft checkpoint), in
+    /// catalog order. Left at its unset default
+    /// (not <c>.Empty</c>) for schema-3/4 manifests, since
+    /// <c>ImmutableArray&lt;T&gt;.Empty</c> is a distinct, non-default instance
+    /// that <see cref="JsonIgnoreCondition.WhenWritingDefault"/> would not omit
+    /// -- writing it would break older app builds' strict unknown-field
+    /// rejection on an otherwise-unchanged schema-4 receipt.
+    /// <see cref="LocalAiManifestStore.ResolveAndValidate"/> normalizes the
+    /// unset default to <c>.Empty</c> for every in-memory reader.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public ImmutableArray<LocalAiAssetReceipt> AdditionalModelAssets { get; init; }
+    /// <summary>
+    /// Verified hub-cache paths parallel to <see cref="AdditionalModelAssets"/>.
+    /// Same unset-default-not-Empty rule; see that property's remarks.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public ImmutableArray<string> AdditionalModelPaths { get; init; }
+    /// <summary>
+    /// <see cref="AdditionalModelAssets"/> with the unset default collapsed to
+    /// an empty array. Read through this, never the raw property: a schema-3/4
+    /// or hand-edited manifest leaves the raw value at <c>ImmutableArray</c>'s
+    /// default (null-backed) instance, where <c>Length</c>/<c>IsEmpty</c> throw
+    /// NullReferenceException instead of the intended InvalidDataException.
+    /// Normalizing on read rather than rewriting the record keeps the persisted
+    /// JSON byte-identical -- assigning <c>.Empty</c> back onto the manifest
+    /// would make the next save emit the field on an otherwise-untouched
+    /// schema-4 receipt.
+    /// </summary>
+    [JsonIgnore]
+    public ImmutableArray<LocalAiAssetReceipt> AdditionalModelAssetsOrEmpty =>
+        AdditionalModelAssets.IsDefault ? ImmutableArray<LocalAiAssetReceipt>.Empty : AdditionalModelAssets;
+    /// <summary>
+    /// <see cref="AdditionalModelPaths"/> with the unset default collapsed to
+    /// an empty array; see <see cref="AdditionalModelAssetsOrEmpty"/>.
+    /// </summary>
+    [JsonIgnore]
+    public ImmutableArray<string> AdditionalModelPathsOrEmpty =>
+        AdditionalModelPaths.IsDefault ? ImmutableArray<string>.Empty : AdditionalModelPaths;
     /// <summary>
     /// The requested listener port. Zero delegates allocation to llama-server so
     /// the child owns the port continuously from bind through startup.
@@ -512,7 +568,8 @@ public sealed class LocalAiManifestStore
         ArgumentNullException.ThrowIfNull(manifest);
         if (manifest.SchemaVersion is not (
                 LocalAiInstallManifest.CurrentSchemaVersion or
-                LocalAiInstallManifest.HubCacheReceiptSchemaVersion))
+                LocalAiInstallManifest.HubCacheReceiptSchemaVersion or
+                LocalAiInstallManifest.AdditionalAssetsSchemaVersion))
         {
             throw new InvalidDataException($"Unsupported local AI manifest schema version {manifest.SchemaVersion}.");
         }
@@ -566,10 +623,11 @@ public sealed class LocalAiManifestStore
         ValidateHubCacheReceipt(manifest, provenance);
         string legacyModel = _paths.ResolveContainedPath(manifest.ModelPath, nameof(manifest.ModelPath));
         ValidateModelPath(legacyModel, manifest.ModelAsset, "legacy-compatible");
-        string model = manifest.SchemaVersion == LocalAiInstallManifest.HubCacheReceiptSchemaVersion
+        string model = manifest.UsesHubCache
             ? ResolveHubCacheModelPath(manifest)
             : legacyModel;
         ValidateModelPath(model, manifest.ModelAsset, "active");
+        ValidateAdditionalAssets(manifest);
 
         LocalAiPortPolicy.Validate(manifest.RequestedPort);
         LocalAiGatewayModelPolicy.ValidateFallbackModel(manifest.GatewayFallbackModel);
@@ -745,6 +803,99 @@ public sealed class LocalAiManifestStore
 
     private static string ResolveHubCacheModelPath(LocalAiInstallManifest manifest) =>
         WindowsPathSafety.NormalizePath(manifest.CachedModelPath!);
+
+    /// <summary>
+    /// Validates schema-5 additional assets (a DFlash draft checkpoint). Each
+    /// receipt derives its own repository and
+    /// revision from its own <c>SourceUrl</c> -- unlike the primary
+    /// <see cref="LocalAiInstallManifest.ModelAsset"/>, additional assets are
+    /// not required to share the primary model's repository (the DFlash
+    /// draft checkpoint is pinned from a different one).
+    /// </summary>
+    private static void ValidateAdditionalAssets(LocalAiInstallManifest manifest)
+    {
+        if (manifest.SchemaVersion != LocalAiInstallManifest.AdditionalAssetsSchemaVersion)
+        {
+            if (!manifest.AdditionalModelAssets.IsDefaultOrEmpty || !manifest.AdditionalModelPaths.IsDefaultOrEmpty)
+            {
+                throw new InvalidDataException(
+                    "Only schema-5 local AI manifests may record additional model assets.");
+            }
+            return;
+        }
+
+        if (manifest.AdditionalModelAssets.IsDefaultOrEmpty ||
+            manifest.AdditionalModelAssetsOrEmpty.Length != manifest.AdditionalModelPathsOrEmpty.Length)
+        {
+            throw new InvalidDataException(
+                "A schema-5 local AI manifest must record a matching additional-asset receipt and cache path pair.");
+        }
+
+        var seenFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { manifest.ModelAsset.FileName };
+        for (int i = 0; i < manifest.AdditionalModelAssetsOrEmpty.Length; i++)
+        {
+            LocalAiAssetReceipt receipt = manifest.AdditionalModelAssetsOrEmpty[i];
+            ValidateAssetReceipt(receipt, $"{nameof(manifest.AdditionalModelAssets)}[{i}]");
+            if (!seenFileNames.Add(receipt.FileName))
+                throw new InvalidDataException("The local AI manifest additional asset filenames must be unique.");
+
+            HuggingFaceModelProvenance provenance = ParseHuggingFaceProvenance(receipt);
+            if (!HuggingFaceHubCache.TryGetSnapshotPaths(
+                    manifest.ModelCacheRoot!,
+                    provenance.RepositoryId,
+                    provenance.Revision,
+                    provenance.RelativePath,
+                    out string expectedPath,
+                    out _,
+                    out string error) ||
+                !string.Equals(manifest.AdditionalModelPathsOrEmpty[i], expectedPath, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException(
+                    string.IsNullOrWhiteSpace(error)
+                        ? "The local AI manifest additional asset cache receipt is invalid."
+                        : error);
+            }
+        }
+    }
+
+    private static HuggingFaceModelProvenance ParseHuggingFaceProvenance(LocalAiAssetReceipt receipt)
+    {
+        var source = new Uri(receipt.SourceUrl, UriKind.Absolute);
+        if (!string.Equals(source.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(source.Host, "huggingface.co", StringComparison.OrdinalIgnoreCase) ||
+            source.Query is not ("" or "?download=true"))
+        {
+            throw new InvalidDataException("The local AI manifest asset source must be an immutable Hugging Face resolve URL.");
+        }
+
+        string[] pathSegments = Uri.UnescapeDataString(source.AbsolutePath).Split(
+            '/', StringSplitOptions.RemoveEmptyEntries);
+        int resolveIndex = Array.IndexOf(pathSegments, "resolve");
+        if (resolveIndex != 2 || pathSegments.Length < resolveIndex + 3)
+        {
+            throw new InvalidDataException("The local AI manifest asset source must be an immutable Hugging Face resolve URL.");
+        }
+
+        string repositoryId = $"{pathSegments[0]}/{pathSegments[1]}";
+        string revision = pathSegments[resolveIndex + 1];
+        if (revision.Length != 40 ||
+            revision.Any(character => character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+        {
+            throw new InvalidDataException(
+                "The local AI manifest asset revision must be a lowercase 40-character commit digest.");
+        }
+
+        string[] relativeSegments = pathSegments[(resolveIndex + 2)..];
+        string relativePath = string.Join('/', relativeSegments);
+        if (relativeSegments.Any(segment => !WindowsPathSafety.IsSafeSegment(segment)) ||
+            !string.Equals(relativeSegments[^1], receipt.FileName, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The local AI manifest asset source must match its own repository, revision, and filename.");
+        }
+
+        return new HuggingFaceModelProvenance(repositoryId, revision, relativePath);
+    }
 
     internal sealed record HuggingFaceModelProvenance(
         string RepositoryId,

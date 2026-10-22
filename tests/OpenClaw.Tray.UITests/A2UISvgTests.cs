@@ -36,6 +36,49 @@ public sealed class A2UISvgTests
     private static string DataSvgBase64(string svgXml) =>
         "data:image/svg+xml;base64," + Convert.ToBase64String(Encoding.UTF8.GetBytes(svgXml));
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RemoteImage_AfterAsyncFetch_DecodesOnCallingUIThread(bool svg)
+    {
+        await _ui.RunOnUIAsync(async () =>
+        {
+            // Match the synchronization context installed by the production WinUI entry point.
+            var previous = System.Threading.SynchronizationContext.Current;
+            System.Threading.SynchronizationContext.SetSynchronizationContext(
+                new Microsoft.UI.Dispatching.DispatcherQueueSynchronizationContext(_ui.Dispatcher));
+            try
+            {
+                using var handler = new DelayedImageHandler(svg);
+                using var media = new MediaResolver(NullLogger.Instance, handler);
+                media.AllowHost("avatar.example");
+                var image = await media.LoadImageAsync("https://avatar.example/agent");
+                Assert.NotNull(image);
+                Assert.True(image.DispatcherQueue.HasThreadAccess);
+                if (svg) Assert.IsType<SvgImageSource>(image);
+                else Assert.IsType<BitmapImage>(image);
+            }
+            finally
+            {
+                System.Threading.SynchronizationContext.SetSynchronizationContext(previous);
+            }
+        });
+    }
+
+    private sealed class DelayedImageHandler(bool svg) : System.Net.Http.HttpMessageHandler
+    {
+        protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(
+            System.Net.Http.HttpRequestMessage request, System.Threading.CancellationToken cancellationToken)
+        {
+            await Task.Delay(10, cancellationToken).ConfigureAwait(false);
+            var bytes = svg ? Encoding.UTF8.GetBytes(MinSvg) :
+                Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=");
+            var content = new System.Net.Http.ByteArrayContent(bytes);
+            content.Headers.ContentType = new(svg ? "image/svg+xml" : "image/png");
+            return new(System.Net.HttpStatusCode.OK) { Content = content };
+        }
+    }
+
     [Fact]
     public async Task DataSvg_Utf8_RoundTrips_ToSvgImageSource()
     {

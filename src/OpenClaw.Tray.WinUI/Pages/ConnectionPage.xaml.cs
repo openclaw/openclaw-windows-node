@@ -2580,7 +2580,7 @@ public sealed partial class ConnectionPage : Page
                     rec.SharedGatewayToken!,
                     IsBootstrapToken: false,
                     CredentialResolver.SourceSharedGatewayToken);
-                if (!provenanceService.IsStrongCredentialAllowed(rec, candidate))
+                if (CurrentApp.InteractiveEndpointAuthorizer?.IsCredentialAllowed(rec, candidate) != true)
                 {
                     CurrentApp.ShowTransientConnectionError(
                         "Dashboard blocked because the saved gateway address is not owned by the verified managed gateway.");
@@ -2843,15 +2843,37 @@ public sealed partial class ConnectionPage : Page
             ? LocalizationHelper.GetString("ConnectionPage_Connecting")
             : LocalizationHelper.GetString("ConnectionPage_StartingSshTunnel");
 
+        var registry = _gatewayRegistry;
+        var editing = _editingGatewayId is null
+            ? null
+            : registry?.GetById(_editingGatewayId);
+        var submittedToken = string.IsNullOrWhiteSpace(token) ? null : token;
+        var sharedTokenUnchanged = registry is not null &&
+            GatewayDirectConnectService.ShouldPreserveUnchangedSharedToken(
+                editing,
+                submittedToken,
+                url,
+                sshConfig,
+                registry);
+
         try
         {
             var result = await _gatewayDirectConnectService.ConnectAsync(
-                new GatewayDirectConnectRequest(
-                    url,
-                    token,
-                    friendly,
-                    sshConfig,
-                    _editingGatewayId));
+                sharedTokenUnchanged
+                    ? new GatewayDirectConnectRequest(
+                        url,
+                        null,
+                        friendly,
+                        sshConfig,
+                        _editingGatewayId,
+                        PreserveExistingSharedTokenWhenMissing: true)
+                    : new GatewayDirectConnectRequest(
+                        url,
+                        submittedToken,
+                        friendly,
+                        sshConfig,
+                        _editingGatewayId,
+                        PreserveExistingSharedTokenWhenMissing: false));
             if (result.Outcome == GatewayDirectConnectOutcome.Failed)
             {
                 AddResultText.Text = $"✗ {result.Error}";
@@ -2897,14 +2919,16 @@ public sealed partial class ConnectionPage : Page
             error = LocalizationHelper.GetString("ConnectionPage_SshServerPortInvalid");
             return false;
         }
-        if (!int.TryParse(AddSshRemotePortBox.Text, out var remotePort) || remotePort is < 1 or > 65535)
+        var forwardPorts = SshForwardPorts.TryParse(
+            AddSshRemotePortBox.Text,
+            AddSshLocalPortBox.Text,
+            out var remotePort,
+            out var localPort);
+        if (forwardPorts != SshForwardPortParseResult.Ok)
         {
-            error = LocalizationHelper.GetString("ConnectionPage_SshRemotePortInvalid");
-            return false;
-        }
-        if (!int.TryParse(AddSshLocalPortBox.Text, out var localPort) || localPort is < 1 or > 65535)
-        {
-            error = LocalizationHelper.GetString("ConnectionPage_SshLocalPortInvalid");
+            error = forwardPorts == SshForwardPortParseResult.RemoteInvalid
+                ? LocalizationHelper.GetString("ConnectionPage_SshRemotePortInvalid")
+                : LocalizationHelper.GetString("ConnectionPage_SshLocalPortInvalid");
             return false;
         }
 

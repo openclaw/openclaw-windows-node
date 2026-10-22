@@ -1,0 +1,68 @@
+OpenClaw onboarding mascot and provider artwork provenance
+
+The Windows OnboardingMascot control, drawing, pose, animator, and particles
+adapt the canonical Mac vector geometry, palettes, expressions, and animation
+curves from openclaw/openclaw commit:
+0fd603a6fece58d60c010e565df9e26c6601db8b
+https://github.com/openclaw/openclaw/tree/0fd603a6fece58d60c010e565df9e26c6601db8b
+
+Sources (SHA256 of the original UTF-8 bytes):
+
+apps/shared/OpenClawKit/Sources/OpenClawChatUI/OpenClawMascotView.swift
+3A6FAF3D2C11E83DBB3C849778BD8456B94D1E729FC7D901BEBE868A04345BF2
+  Includes OpenClawMascotCanvas, the canonical 120x120 favicon geometry,
+  light/dark palettes, eye and mouth drawing, particles, and static poses.
+apps/shared/OpenClawKit/Sources/OpenClawChatUI/OpenClawMascotAnimator.swift
+0759C4CE59AB6F12FEBBE6F69348BC57B39FCBF67C582EB33784FFDF91B91DF2
+apps/shared/OpenClawKit/Sources/OpenClawChatUI/OpenClawMascotCanvas+Accessories.swift
+F36FDF9951F76B9B4464FB51F96F5F995A0E44268E05FAB4AC86778C8325C5DB
+apps/macos/Sources/OpenClaw/OnboardingWidgets.swift
+BC6895C8722C98E663FE96207068CCDD443F346DFC03A3C4CB45B0476B86714B
+  Supplies the onboarding 12 fps budget.
+apps/macos/Sources/OpenClaw/Onboarding.swift
+E9D6B34133EA07C1D494C915DE0CCCBA4461C4481AF64C5FD024E298CA6F5ADC
+  Supplies the canonical 130-point hero artwork size.
+
+Windows adaptation:
+- Native retained WinUI vector shapes, without SwiftUI or raster substitutes.
+- All nine moods, sixteen gesture clips, seeded randomized micro-behaviors,
+  pointer gaze, tap reactions, idle sleep, nightcap and graduation cap are ported.
+- xorshift64* matches the upstream generator; floating-point range conversion
+  and bounded tap selection use C# sampling, not Swift's standard-library mapping.
+- A native CompositionVisualSurface captures the actual retained artwork for
+  the static theme-specific silhouette DropShadow. No duplicate art or raster.
+- Windows animation preferences select static mood poses; hidden and unloaded
+  controls stop their timer. A 24-unit gutter contains the animated 120-unit art.
+  The Windows 182-DIP layout frame scales 168 canvas units to 130 DIPs of art.
+  This reserves overflow rather than using Mac's 145-point frame with overflow.
+- Sleep-effect letters use the Windows native text font rather than Mac typography.
+- Artwork preserves the upstream light/dark brand palette. High contrast uses
+  the user's system colors. No SF Symbols were imported.
+
+ProviderIcons contains nine unmodified SVGs plus upstream ATTRIBUTION.md and
+NOTICE.md from apps/macos/Sources/OpenClaw/Resources/ProviderIcons at commit
+9afae26e080602bf1e330bfd88fcbd39a2bf22c0 (provider assets are independently pinned).
+Those original notices intentionally retain their upstream wording.
+Their licenses and brand ownership notices apply in addition to this notice.
+
+MIT License
+
+Copyright (c) 2026 OpenClaw Foundation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

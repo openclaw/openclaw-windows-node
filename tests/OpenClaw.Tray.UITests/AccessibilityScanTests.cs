@@ -55,7 +55,8 @@ public sealed class AccessibilityScanTests
         yield return ["SkillsPage", "skills", "SkillsPageMarker"];
         yield return ["UsagePage", "usage", "UsagePageMarker"];
         yield return ["VoiceSettingsPage", "voice", "VoiceSettingsPageMarker"];
-        yield return ["WorkspacePage", "workspace", "WorkspacePageMarker"];
+        yield return ["ChatPage", "workspace", "ChatComposerInput"];
+        yield return ["WorkspacePage", "agent:main:workspace", "WorkspacePageMarker"];
     }
 
     [Theory]
@@ -90,7 +91,6 @@ public sealed class AccessibilityScanTests
         {
             "ChatComposerInput",
             "ChatComposerAttach",
-            "ChatComposerSessionPicker",
             "ChatComposerModelPicker",
             "ChatComposerReasoningPicker",
             "ChatComposerVoice",
@@ -102,6 +102,8 @@ public sealed class AccessibilityScanTests
             Assert.True(element.Current.BoundingRectangle.Width > 0);
             Assert.True(element.Current.BoundingRectangle.Height > 0);
         }
+        Assert.Null(hub.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerSessionPicker")));
     }
 
     private static async Task<AutomationElement> WaitForOnscreenLayoutAsync(

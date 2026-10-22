@@ -16,6 +16,13 @@ public sealed class HubPresentationContractTests
         Assert.Contains("public static bool IsGatewayPageTag", registry);
         Assert.Contains("HubPageRegistry.ResolvePageType(tag)", hub);
         Assert.Contains("HubPageRegistry.SearchCommands", hub);
+        Assert.Contains("HubCommandCatalog.Build", hub);
+        var catalog = ReadSource("Services", "HubCommandCatalog.cs");
+        Assert.Contains("HubPageRegistry.BuildCommands", catalog);
+        Assert.DoesNotContain("ActiveHubWindow", catalog);
+        var handlers = ReadSource("", "App.CapabilityHandlers.cs");
+        Assert.Contains("HubCommandCatalog.Build(_appState, _settings", handlers);
+        Assert.DoesNotContain("if (ActiveHubWindow is not OpenClawTray.Windows.HubWindow", handlers);
 
         Assert.DoesNotContain("TagToPageType", hub);
         Assert.DoesNotContain("ResolveAgentPageType", hub);

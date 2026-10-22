@@ -73,6 +73,8 @@ public sealed class NativeSpeechStackRuntimeTests
 
         AssertLoads(Path.Combine(outputDirectory, "onnxruntime.dll"), outputDirectory);
         AssertLoads(Path.Combine(outputDirectory, "sherpa-onnx-c-api.dll"), outputDirectory);
+        AssertLoads(Path.Combine(outputDirectory, "kokoro.dll"), outputDirectory);
+        Assert.True(File.Exists(Path.Combine(outputDirectory, "kokoro-dict", "vocab.txt")), $"kokoro-dict was not copied to {outputDirectory}.");
     }
 
     [Fact]

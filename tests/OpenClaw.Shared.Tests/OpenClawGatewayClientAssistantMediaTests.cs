@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using OpenClaw.TestSupport;
@@ -19,7 +20,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             "test-token",
             identityPath: identity.Path);
         await client.ConnectAsync();
-        CompleteHandshakeForTest(client);
+        MarkHandshakeReady(client);
 
         var resolution = client.ResolveAssistantMediaAsync(
             "main",
@@ -64,6 +65,100 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
         Assert.Equal(new byte[] { 1, 2, 3, 4 }, result.Data);
     }
 
+    [Theory]
+    [InlineData(
+        "/api/chat/media/outgoing/agent%3Amain%3Amain/dbedbff5-b83b-4da5-abaf-c479f4f40bb0/full?mediaTicket=ticket-1",
+        true)]
+    [InlineData("https://other.example/api/chat/media/outgoing/a/b/full?mediaTicket=ticket-1", false)]
+    [InlineData("/api/chat/media/outgoing/a/b/full", false)]
+    public async Task ResolveAssistantFileDownloadUri_ReturnsOnlyGatewayTicketedUrls(
+        string gatewayUrl,
+        bool expected)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("assistant-media-");
+        await server.StartAsync();
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "test-token",
+            identityPath: identity.Path);
+        await client.ConnectAsync();
+        MarkHandshakeReady(client);
+
+        var resolution = client.ResolveAssistantFileDownloadUriAsync(
+            "agent:main:main",
+            new ChatMediaContentInfo
+            {
+                Kind = ChatMediaContentKind.File,
+                Source = ChatMediaContentSource.Structured,
+                ArtifactId = "artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0",
+            });
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        using var requestDocument = JsonDocument.Parse(request);
+        Assert.Equal("artifacts.download", requestDocument.RootElement.GetProperty("method").GetString());
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = requestDocument.RootElement.GetProperty("id").GetString(),
+            ok = true,
+            payload = new
+            {
+                // Live Gateway response shape for a managed zip attachment.
+                artifact = new
+                {
+                    id = "artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0",
+                    type = "file",
+                    title = "agent-images.zip",
+                    mimeType = "application/zip",
+                    sizeBytes = 64690236,
+                    download = new { mode = "url" },
+                },
+                url = gatewayUrl,
+            },
+        }));
+
+        var uri = await resolution.WaitAsync(TimeSpan.FromSeconds(2));
+
+        if (!expected)
+        {
+            Assert.Null(uri);
+            return;
+        }
+        Assert.NotNull(uri);
+        Assert.Equal(new Uri(server.WebSocketUrl).Host, uri.Host);
+        Assert.Equal(new Uri(server.WebSocketUrl).Port, uri.Port);
+        Assert.Equal(Uri.UriSchemeHttp, uri.Scheme);
+        Assert.Contains("mediaTicket=ticket-1", uri.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ResolveAssistantFileDownloadUri_NonFileMedia_ReturnsNullWithoutGatewayCall()
+    {
+        // Connected and handshake-ready, so only the File-kind guard can stop the request.
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("assistant-media-");
+        await server.StartAsync();
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "test-token",
+            identityPath: identity.Path);
+        await client.ConnectAsync();
+        MarkHandshakeReady(client);
+
+        var uri = await client.ResolveAssistantFileDownloadUriAsync(
+            "agent:main:main",
+            new ChatMediaContentInfo
+            {
+                Kind = ChatMediaContentKind.Image,
+                Source = ChatMediaContentSource.Structured,
+                ArtifactId = "artifact_managed_image_dbedbff5-b83b-4da5-abaf-c479f4f40bb0",
+            }).WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Null(uri);
+        await Assert.ThrowsAsync<TimeoutException>(
+            () => server.ReceiveTextAsync().WaitAsync(TimeSpan.FromMilliseconds(300)));
+    }
+
     [Fact]
     public async Task ResolveLegacyMedia_UsesBearerMetadataAndSourceBoundTicket()
     {
@@ -81,7 +176,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             assistantMediaAuthToken: "shared-http-token",
             assistantMediaHandler: handler);
         await client.ConnectAsync();
-        CompleteHandshakeForTest(client);
+        MarkHandshakeReady(client);
 
         var media = new ChatMediaContentInfo
         {
@@ -108,6 +203,59 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
     }
 
     [Fact]
+    public async Task ResolveLegacyMedia_DoesNotSendThisNetworkOrCgnatSource()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("assistant-media-");
+        await server.StartAsync();
+        var handler = new SequentialMediaHandler(
+            JsonResponse("""{"available":false}"""));
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "paired-device-token",
+            identityPath: identity.Path,
+            assistantMediaAuthToken: "shared-http-token",
+            assistantMediaHandler: handler);
+        await client.ConnectAsync();
+        MarkHandshakeReady(client);
+
+        foreach (var source in new[]
+        {
+            "https://0.0.0.0/a.png",
+            "https://100.64.0.1/a.png",
+            "https://[::ffff:0.1.2.3]/a.png",
+        })
+        {
+            var blocked = await client.ResolveAssistantMediaAsync(
+                "main",
+                new ChatMediaContentInfo
+                {
+                    Kind = ChatMediaContentKind.Image,
+                    Source = ChatMediaContentSource.LegacyDirective,
+                    GatewaySource = source,
+                });
+            Assert.Equal(AssistantMediaResolutionStatus.Unavailable, blocked.Status);
+        }
+
+        Assert.Empty(handler.Requests);
+
+        var allowed = await client.ResolveAssistantMediaAsync(
+            "main",
+            new ChatMediaContentInfo
+            {
+                Kind = ChatMediaContentKind.Image,
+                Source = ChatMediaContentSource.LegacyDirective,
+                GatewaySource = "https://example.com/a.png",
+            });
+        Assert.Equal(AssistantMediaResolutionStatus.Unavailable, allowed.Status);
+        var request = Assert.Single(handler.Requests);
+        Assert.Contains("example.com", request.Uri.Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("0.0.0.0", request.Uri.Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("100.64.0.1", request.Uri.Query, StringComparison.Ordinal);
+        Assert.Equal("shared-http-token", request.AuthorizationParameter);
+    }
+
+    [Fact]
     public async Task ResolveLegacyMedia_WithoutExplicitHttpCredential_DoesNotUseWebSocketToken()
     {
         using var server = new LoopbackWebSocketServer();
@@ -123,7 +271,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             identityPath: identity.Path,
             assistantMediaHandler: handler);
         await client.ConnectAsync();
-        CompleteHandshakeForTest(client);
+        MarkHandshakeReady(client);
 
         var result = await client.ResolveAssistantMediaAsync(
             "main",
@@ -158,7 +306,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             assistantMediaAuthToken: "shared-token-1",
             assistantMediaHandler: handler);
         await client.ConnectAsync();
-        CompleteHandshakeForTest(client);
+        MarkHandshakeReady(client);
         var media = new ChatMediaContentInfo
         {
             Kind = ChatMediaContentKind.Image,
@@ -246,11 +394,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
     /// </summary>
     private static void CompleteHandshakeForTest(OpenClawGatewayClient client)
     {
-        var field = typeof(OpenClawGatewayClient).GetField(
-            "_hasHandshakeSnapshot",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        field!.SetValue(client, true);
+        MarkHandshakeReady(client);
     }
 
     private static HttpResponseMessage JsonResponse(string json) =>
@@ -267,6 +411,26 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
         };
         response.Content.Headers.ContentType = new MediaTypeHeaderValue(mimeType);
         return response;
+    }
+
+    private static void MarkHandshakeReady(OpenClawGatewayClient client)
+    {
+        var generationProperty = typeof(WebSocketClientBase).GetProperty(
+            "CurrentConnectionGeneration",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        var generation = (long)generationProperty!.GetValue(client)!;
+        SetPrivateField(client, "_mainSessionKeyIsCanonical", true);
+        SetPrivateField(client, "_mainSessionKey", "agent:main:main");
+        SetPrivateField(client, "_handshakeConnectionGeneration", generation);
+        SetPrivateField(client, "_hasHandshakeSnapshot", true);
+    }
+
+    private static void SetPrivateField(OpenClawGatewayClient client, string fieldName, object? value)
+    {
+        var field = typeof(OpenClawGatewayClient).GetField(
+            fieldName,
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        field!.SetValue(client, value);
     }
 
     private sealed class SequentialMediaHandler(params HttpResponseMessage[] responses)

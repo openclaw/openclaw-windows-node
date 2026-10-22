@@ -11,13 +11,31 @@ public sealed class TrayControllerTests
         Assert.Contains("_trayIcon.Selected += OnTrayIconSelected", controller);
         Assert.Contains("_trayIcon.ContextMenu += OnTrayContextMenu", controller);
         Assert.Contains("menu.MenuItemClicked += OnTrayMenuItemClicked", controller);
-        Assert.Contains("if (_callbacks.IsOperatorConnected())", controller);
         Assert.Contains("_callbacks.ShowChat();", controller);
-        Assert.Contains("_callbacks.ShowConnection();", controller);
+        Assert.DoesNotContain("IsOperatorConnected", controller);
+        Assert.DoesNotContain("ShowConnection", controller);
         Assert.Contains("menu.ClearItems();", controller);
         Assert.Contains("menu.ShowAtCursor();", controller);
         Assert.Contains("() => !_disposed && _trayIcon != null", controller);
         Assert.Contains("_connectionToggleRef = null;", controller);
+    }
+
+    [Fact]
+    public void PrimaryActivation_OpensWorkspaceChatWithoutCredentialGating()
+    {
+        var controller = ReadController();
+        var handler = controller[controller.IndexOf("private void OnTrayIconSelected", StringComparison.Ordinal)..
+            controller.IndexOf("private void OnTrayContextMenu", StringComparison.Ordinal)];
+        Assert.Contains("if (_isClosing || _disposed)", handler);
+        Assert.Equal(1, Count(handler, "_callbacks.ShowChat();"));
+        Assert.DoesNotContain("Connected", handler);
+        var app = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var composition = app[app.IndexOf("private void InitializeTrayIcon()", StringComparison.Ordinal)..
+            app.IndexOf("internal void ApplyThemePreferenceToOpenWindows()", StringComparison.Ordinal)];
+        Assert.Contains("ShowChat: () => ShowHub(\"chat\")", composition);
+        Assert.DoesNotContain("ShowChatWindow", composition);
+        Assert.Contains("case \"connection\": ShowHub(\"connection\"); break;", app);
     }
 
     [Fact]

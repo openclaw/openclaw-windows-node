@@ -83,6 +83,64 @@ public class TestWebSocketClient : WebSocketClientBase
 public class WebSocketClientBaseTests
 {
     private readonly TestLogger _logger = new();
+    private static readonly TimeSpan CloseHandshakeTimeout = TimeSpan.FromSeconds(3);
+
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(true, null)]
+    [InlineData(false, WebSocketMessageType.Text)]
+    [InlineData(true, WebSocketMessageType.Text)]
+    [InlineData(false, WebSocketMessageType.Binary)]
+    [InlineData(true, WebSocketMessageType.Binary)]
+    public async Task LoopbackFixture_ClientInitiatedClose_SendsCloseFrameAndTransportEof(
+        bool useManagedWebSocket,
+        WebSocketMessageType? queuedMessageType)
+    {
+        using var server = new LoopbackWebSocketServer(useManagedWebSocket);
+        await server.StartAsync();
+        using var connection = new TcpClient();
+        NetworkStream? transport = null;
+        using var handler = new SocketsHttpHandler
+        {
+            ConnectCallback = async (context, cancellationToken) =>
+            {
+                await connection.ConnectAsync(
+                    context.DnsEndPoint.Host,
+                    context.DnsEndPoint.Port,
+                    cancellationToken);
+                transport = connection.GetStream();
+                return transport;
+            },
+        };
+        using var invoker = new HttpMessageInvoker(handler);
+        using var client = new ClientWebSocket();
+        using var deadline = new CancellationTokenSource(CloseHandshakeTimeout);
+        await client.ConnectAsync(new Uri(server.WebSocketUrl), invoker, deadline.Token);
+        await server.WaitForAcceptedCountAsync(1, CloseHandshakeTimeout);
+        if (queuedMessageType is { } messageType)
+        {
+            var payload = Encoding.UTF8.GetBytes(new string('x', 512));
+            var fragmentLength = payload.Length / 2;
+            await client.SendAsync(payload.AsMemory(0, fragmentLength), messageType, false, deadline.Token);
+            await client.SendAsync(payload.AsMemory(fragmentLength), messageType, true, deadline.Token);
+        }
+        await client.CloseOutputAsync(
+            WebSocketCloseStatus.NormalClosure,
+            "client close",
+            deadline.Token);
+
+        await server.CompleteClientCloseAsync(0, deadline.Token);
+
+        // Read the transport directly so ClientWebSocket's EOF timeout cannot hide a broken fixture.
+        Assert.NotNull(transport);
+        var buffer = new byte[256];
+        var count = await transport.ReadAsync(buffer, deadline.Token);
+        Assert.True(count > 0);
+        Assert.Equal(0x88, buffer[0]);
+        while (await transport.ReadAsync(buffer, deadline.Token) != 0)
+        {
+        }
+    }
 
     [Fact]
     public void HandshakeChallengeGate_StaleGenerationCannotReplaceCurrentState()
@@ -135,6 +193,65 @@ public class WebSocketClientBaseTests
 
         Assert.Equal(1, authorizationCalls);
         Assert.Equal(0, client.OnConnectedCallCount);
+    }
+
+    [Fact]
+    public async Task SplitUtf8Character_SurvivesTwoFramesAndTheNextMessage()
+    {
+        var emoji = Encoding.UTF8.GetBytes("hi😀");
+        Assert.Equal(6, emoji.Length);
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        using var client = new TestWebSocketClient(server.WebSocketUrl, "strong-token", _logger)
+        {
+            AutoReconnectEnabled = false,
+        };
+        await client.ConnectAsync();
+        await WaitForConditionAsync(
+            () => server.AcceptedCount == 1,
+            TimeSpan.FromSeconds(2));
+
+        await server.SendTextFramesAsync(new[]
+        {
+            emoji[..4],
+            emoji[4..],
+        });
+        await server.SendTextAsync("next");
+        await WaitForConditionAsync(
+            () => client.ProcessedMessages.Count >= 2,
+            TimeSpan.FromSeconds(2));
+
+        Assert.Equal("hi😀", client.ProcessedMessages[0]);
+        Assert.Equal("next", client.ProcessedMessages[1]);
+        Assert.DoesNotContain("\uFFFD", client.ProcessedMessages[0]);
+    }
+
+    [Fact]
+    public async Task ZeroCharFirstFragment_DoesNotCorruptTheNextSplitMessage()
+    {
+        var emoji = Encoding.UTF8.GetBytes("😀");
+        var next = Encoding.UTF8.GetBytes("next");
+        Assert.Equal(4, emoji.Length);
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        using var client = new TestWebSocketClient(server.WebSocketUrl, "strong-token", _logger)
+        {
+            AutoReconnectEnabled = false,
+        };
+        await client.ConnectAsync();
+        await WaitForConditionAsync(
+            () => server.AcceptedCount == 1,
+            TimeSpan.FromSeconds(2));
+
+        await server.SendTextFramesAsync(new[] { emoji[..2], emoji[2..] });
+        await server.SendTextFramesAsync(new[] { next[..2], next[2..] });
+        await WaitForConditionAsync(
+            () => client.ProcessedMessages.Count >= 2,
+            TimeSpan.FromSeconds(2));
+
+        Assert.Equal("😀", client.ProcessedMessages[0]);
+        Assert.Equal("next", client.ProcessedMessages[1]);
+        Assert.DoesNotContain("\uFFFD", string.Join("", client.ProcessedMessages));
     }
 
     [Fact]
@@ -1022,11 +1139,48 @@ internal sealed class LoopbackWebSocketServer : IDisposable
             cancellationToken);
     }
 
+    public async Task SendTextFramesAsync(
+        IReadOnlyList<byte[]> frames,
+        CancellationToken cancellationToken = default)
+    {
+        var socket = await _firstAcceptedSocket.Task.WaitAsync(cancellationToken);
+        for (var index = 0; index < frames.Count; index++)
+        {
+            await socket.SendAsync(
+                frames[index],
+                WebSocketMessageType.Text,
+                endOfMessage: index == frames.Count - 1,
+                cancellationToken);
+        }
+    }
+
     public Task CloseSocketAsync(int index) =>
         CloseSocketAsync(
             index,
             WebSocketCloseStatus.NormalClosure,
             "test close");
+
+    public async Task CompleteClientCloseAsync(int index, CancellationToken cancellationToken)
+    {
+        WebSocket socket;
+        lock (_acceptedSockets)
+        {
+            socket = _acceptedSockets[index];
+        }
+
+        var buffer = new byte[128];
+        WebSocketReceiveResult result;
+        do
+        {
+            result = await socket.ReceiveAsync(buffer, cancellationToken);
+        }
+        while (result.MessageType != WebSocketMessageType.Close);
+
+        await socket.CloseAsync(
+            result.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
+            result.CloseStatusDescription,
+            cancellationToken);
+    }
 
     public async Task CloseSocketAsync(
         int index,

@@ -7,6 +7,15 @@ public sealed class PermissionsPageContractTests
     private static readonly XNamespace XNs = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]
+    public void NodeService_SystemRunPermissionIsReadLiveByRetainedCapabilities()
+    {
+        var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs");
+
+        Assert.Contains("includeRunCommands: () => NodeCapabilityGating.ShouldRegisterSystemRun(_settings)", source);
+        Assert.DoesNotContain("includeRunCommands: NodeCapabilityGating.ShouldRegisterSystemRun(_settings)", source);
+    }
+
+    [Fact]
     public void PermissionsPage_Xaml_PreservesCurrentSectionOrderAndMarkers()
     {
         var xaml = ReadPermissionsXaml();
@@ -42,7 +51,9 @@ public sealed class PermissionsPageContractTests
 
         Assert.Equal(new[] { "deny", "allow", "prompt" }, combos["DefaultActionCombo"]);
         Assert.DoesNotContain("NewRuleAction", combos.Keys);
-        Assert.Contains("Action = \"allow\"", ReadPermissionsCodeBehind());
+        var codeBehind = ReadPermissionsCodeBehind();
+        Assert.Contains("_viewModel.ExecApprovalRulesActive ? \"allow\" : inactiveAction", codeBehind);
+        Assert.Contains("\"PermissionsPage_ExecRuleAction_Inactive\"", codeBehind);
     }
 
     [Fact]

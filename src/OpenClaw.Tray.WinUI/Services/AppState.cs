@@ -108,6 +108,9 @@ internal sealed class AppState : INotifyPropertyChanged
     private PresenceEntry[]? _presence;
     public PresenceEntry[]? Presence { get => _presence; set => SetField(ref _presence, value); }
 
+    private int _selfProfileRevision;
+    public int SelfProfileRevision { get => _selfProfileRevision; set => SetField(ref _selfProfileRevision, value); }
+
     // ── JSON-typed data ─────────────────────────────────────────────────
 
     private JsonElement? _agentsList;

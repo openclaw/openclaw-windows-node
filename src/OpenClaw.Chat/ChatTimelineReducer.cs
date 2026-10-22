@@ -10,6 +10,21 @@ public static class ChatTimelineReducer
     private const int MaxTerminalToolCorrelations = 768;
     private const int MaxRetainedToolTurns = 2;
 
+    public static bool CanApplyRetainedToolOutcome(ChatTimelineState state, ChatEvent? evt)
+    {
+        var (runId, toolCallId) = evt switch
+        {
+            ChatToolOutputEvent output => (output.RunId, output.ToolCallId),
+            ChatToolErrorEvent error => (error.RunId, error.ToolCallId),
+            _ => (null, null),
+        };
+        if (string.IsNullOrWhiteSpace(runId) || string.IsNullOrWhiteSpace(toolCallId))
+            return false;
+        var key = CurrentCorrelationKey(state, runId, toolCallId);
+        return state.TerminalToolCorrelations?.ContainsKey(key) == true &&
+            FindToolEntryIndex(state, key, allowTerminalLegacy: false) >= 0;
+    }
+
     public static ChatTimelineState RebuildActiveToolTracking(ChatTimelineState state)
     {
         var activeToolCallId = default(string);
@@ -55,6 +70,7 @@ public static class ChatTimelineReducer
             ChatReasoningEndEvent => state.ActiveReasoningId is null ? state : state with { ActiveReasoningId = null },
             ChatMessageDeltaEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: false, streaming: true),
             ChatMessageEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: true, streaming: e.IsStreaming, e.ReconcilePrevious),
+            ChatBackgroundFinalEvent e => ApplyBackgroundFinal(state, e.Text),
             ChatTurnEndEvent e => ApplyTurnEnd(state, e.RetainToolCorrelations),
             ChatIntentEvent e => state with { CurrentIntent = e.Intent },
             ChatToolStartEvent e => ApplyToolStart(state, e),
@@ -975,6 +991,20 @@ public static class ChatTimelineReducer
         return merged.Count == 0 ? null : merged;
     }
 
+    static ChatTimelineState ApplyBackgroundFinal(ChatTimelineState state, string text)
+    {
+        var activeIndex = state.Entries.FindIndex(entry => entry.Id == state.ActiveAssistantId);
+        var entry = new ChatTimelineItem($"e{state.NextId}", ChatTimelineItemKind.Assistant,
+            text, IsBackgroundFinal: true);
+        // Keep the current assistant at the frontier so its next delta still
+        // extends the same entry rather than creating a new segment.
+        return state with
+        {
+            Entries = state.Entries.Insert(activeIndex >= 0 ? activeIndex : state.Entries.Count, entry),
+            NextId = state.NextId + 1
+        };
+    }
+
     static ChatTimelineState UpsertAssistant(ChatTimelineState state, string text, bool replace, bool streaming, bool reconcilePrevious = false)
     {
         text ??= string.Empty;
@@ -1048,6 +1078,8 @@ public static class ChatTimelineReducer
             for (var li = state.Entries.Count - 1; li >= 0; li--)
             {
                 var candidate = state.Entries[li];
+                if (candidate.IsBackgroundFinal)
+                    continue;
                 if (candidate.Kind == ChatTimelineItemKind.Assistant)
                 {
                     // ``reconcilePrevious`` only collapses into a still-streaming
@@ -1278,7 +1310,7 @@ public static class ChatTimelineReducer
         {
             if (i == excludeIndex) continue;
             var prior = entries[i];
-            if (prior.Kind != ChatTimelineItemKind.Assistant) continue;
+            if (prior.Kind != ChatTimelineItemKind.Assistant || prior.IsBackgroundFinal) continue;
             if (string.IsNullOrEmpty(prior.Text)) continue;
 
             var lcp = 0;

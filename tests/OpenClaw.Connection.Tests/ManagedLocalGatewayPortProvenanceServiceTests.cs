@@ -15,6 +15,30 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
     };
 
     [Fact]
+    public async Task NativeRecord_NeverUsesWslProvenanceOrCachedCredentialExemption()
+    {
+        var platform = new FakePlatform();
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+        var record = ManagedRecord() with
+        {
+            NativePackageFamilyName = "OpenClaw.Gateway_test",
+            IsLocal = false,
+            SetupManagedDistroName = null,
+            Url = "wss://example.test",
+        };
+
+        var result = await service.InspectAsync(record);
+
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+        Assert.False(service.IsStrongCredentialAllowed(record,
+            new GatewayCredential("shared", false, CredentialResolver.SourceSharedGatewayToken)));
+        Assert.Equal(ManagedLocalPortConflictRepairOutcome.BlockedUnknownOwner,
+            (await service.RepairConflictAsync(record, CancellationToken.None)).Outcome);
+        Assert.Empty(platform.Actions);
+        Assert.Equal(0, platform.ExpectedDistroChecks);
+    }
+
+    [Fact]
     public void EvaluateWslRelayBinary_NonCanonicalPathSkipsSignatureVerification()
     {
         var signatureChecked = false;
@@ -358,6 +382,27 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
     }
 
     [Fact]
+    public void InteractiveCredentialGate_CachedWslRelayReplacedDuringGuestProbe_FailsClosed()
+    {
+        var platform = new FakePlatform();
+        var start = new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc);
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback, 18789, 102, "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe", start));
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+        var gateway = ManagedRecord();
+        var credential = new GatewayCredential(
+            "shared-token", false, CredentialResolver.SourceSharedGatewayToken);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, service.Inspect(gateway).Kind);
+
+        Assert.True(service.IsStrongCredentialAllowed(gateway, credential));
+
+        platform.ReplaceListenerDuringGuestProof = true;
+
+        Assert.False(service.IsStrongCredentialAllowed(gateway, credential));
+    }
+
+    [Fact]
     public void InteractiveCredentialGate_RelaylessProofRevalidatesEmptySnapshotAndGuestOwner()
     {
         var platform = new FakePlatform();
@@ -537,6 +582,7 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         public bool ReplaceProcessIdentityOnEnd { get; set; }
         public bool ReplaceOwnerOnSecondCapture { get; set; }
         public bool IntroduceUnknownListenerDuringGuestProof { get; set; }
+        public bool ReplaceListenerDuringGuestProof { get; set; }
         public bool Ipv4Complete { get; set; } = true;
         public bool Ipv6Complete { get; set; } = true;
         public int TrustedWslRelayChecks { get; private set; }
@@ -624,6 +670,19 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
                     "unknown",
                     @"C:\unknown.exe"));
             }
+
+            if (ReplaceListenerDuringGuestProof && Listeners.Count > 0)
+            {
+                ReplaceListenerDuringGuestProof = false;
+                Listeners[0] = new WindowsTcpListenerInfo(
+                    Listeners[0].Address,
+                    port,
+                    999,
+                    "unknown",
+                    @"C:\unknown.exe",
+                    Listeners[0].ProcessStartTimeUtc?.AddSeconds(1));
+            }
+
             return ExpectedDistroListening;
         }
         public string? ReadScheduledTaskXml(string taskName) => TaskXml;

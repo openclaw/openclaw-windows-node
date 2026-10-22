@@ -114,7 +114,13 @@ public sealed class MsixDevelopmentSigningTests
         Assert.Contains("'vcruntime140.dll',", packagingScript);
         Assert.Contains("'msvcp140.dll',", packagingScript);
         Assert.Contains("The MSIX is missing required content:", packagingScript);
-        Assert.Contains("\"tools/mxc/$Architecture/wxc-exec.exe\"", packagingScript);
+        Assert.Contains("'Microsoft.Mxc.Sdk.dll'", packagingScript);
+        Assert.Contains("'mxc_ffi.dll'", packagingScript);
+        Assert.Contains("'plm.exe'", packagingScript);
+        Assert.Contains("'wxc-wslc-daemon.exe'", packagingScript);
+        Assert.Contains("'tools/local-ai-vc-runtime/msvcp140.dll'", packagingScript);
+        Assert.Contains("'tools/local-ai-vc-runtime/vcruntime140.dll'", packagingScript);
+        Assert.Contains("'tools/local-ai-vc-runtime/vcruntime140_1.dll'", packagingScript);
         Assert.Contains("'OpenClaw.SetupEngine.UI.dll',", packagingScript);
         Assert.Contains("'coreclr.dll',", packagingScript);
 
@@ -170,15 +176,17 @@ public sealed class MsixDevelopmentSigningTests
             root, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
         var directoryTargets = File.ReadAllText(Path.Combine(root, "src", "Directory.Build.targets"));
 
-        Assert.Contains("AddWxcExecToPublishItems", project);
-        Assert.Contains("<ResolvedFileToPublish Include=\"@(_WxcExecPackageFiles)\">", project);
-        Assert.Contains(@"<RelativePath>tools\mxc\$(MxcArch)\%(Filename)%(Extension)</RelativePath>", project);
+        var sharedProject = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Shared", "OpenClaw.Shared.csproj"));
+        Assert.Contains("Microsoft.Mxc.Sdk", sharedProject);
+        Assert.DoesNotContain("AddWxcExecToPublishItems", project);
+        Assert.DoesNotContain("_WxcExecPackageFiles", project);
 
-        // The VC runtime deliberately does NOT use publish items. MSIX resolves the CRT
-        // through its VCLibs framework dependency, so the loose DLLs are only needed by
-        // the unpackaged Inno payload, where the post-publish copy already delivers them.
+        // The app itself resolves the CRT through VCLibs. The downloaded llama-server
+        // runs outside the package graph, so MSIX also carries a private staging copy.
         Assert.Contains("CopyOpenClawVCRuntimeToPublish", directoryTargets);
         Assert.DoesNotContain("AddOpenClawVCRuntimeToPublishItems", directoryTargets);
+        Assert.Contains("AddLocalAiVCRuntimeToPublishItems", project);
+        Assert.Contains(@"tools\local-ai-vc-runtime\%(Filename)%(Extension)", project);
     }
 
     [Fact]

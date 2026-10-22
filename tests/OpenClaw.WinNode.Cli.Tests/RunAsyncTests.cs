@@ -398,6 +398,26 @@ public class RunAsyncTests : IDisposable
     }
 
     [Fact]
+    public void CreateMcpSocketsHandler_disables_proxy_for_loopback()
+    {
+        using var ipv4 = CliRunner.CreateMcpSocketsHandler(new Uri("http://127.0.0.1:8765/mcp"));
+        using var ipv6 = CliRunner.CreateMcpSocketsHandler(new Uri("http://[::1]:8765/mcp"));
+        using var localhost = CliRunner.CreateMcpSocketsHandler(new Uri("http://localhost:8765/mcp"));
+        Assert.False(ipv4.UseProxy);
+        Assert.False(ipv6.UseProxy);
+        Assert.False(localhost.UseProxy);
+        Assert.False(ipv4.AllowAutoRedirect);
+    }
+
+    [Fact]
+    public void CreateMcpSocketsHandler_keeps_proxy_for_remote_url()
+    {
+        using var handler = CliRunner.CreateMcpSocketsHandler(new Uri("http://203.0.113.10/mcp"));
+        Assert.True(handler.UseProxy);
+        Assert.False(handler.AllowAutoRedirect);
+    }
+
+    [Fact]
     public async Task Redirect_3xx_treated_as_error()
     {
         // F-02: HttpClient.AllowAutoRedirect is disabled. Any 3xx surfaces as

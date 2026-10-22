@@ -20,9 +20,13 @@ public static class LocalAiGatewayProviderDefinition
     private const string ApiType = "openai-completions";
     public const string CliRedactedApiKey = "__OPENCLAW_REDACTED__";
     public const string ProviderPath = "models.providers.llamacpp";
+    public const string ProviderModelsPath = ProviderPath + ".models";
     public const string PrimaryModelPath = "agents.defaults.model.primary";
     public const int ProviderTimeoutSeconds = 300;
     public const int MaximumOutputTokens = 8_192;
+
+    public static int GetMaximumOutputTokens(int contextTokens) =>
+        Math.Min(MaximumOutputTokens, contextTokens / 4);
 
     public static string BuildProviderJson(LocalAiResolvedInstall install)
     {
@@ -35,7 +39,7 @@ public static class LocalAiGatewayProviderDefinition
     /// so the API key may be either its written value or the documented
     /// redaction marker; every routing and model field must still match.
     /// </summary>
-    public static bool MatchesProviderJson(string providerJson, LocalAiResolvedInstall install)
+    public static bool MatchesProviderJson(string providerJson, LocalAiResolvedInstall install, string? apiKey = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerJson);
         ArgumentNullException.ThrowIfNull(install);
@@ -43,7 +47,7 @@ public static class LocalAiGatewayProviderDefinition
         try
         {
             using JsonDocument actual = JsonDocument.Parse(providerJson);
-            using JsonDocument expected = JsonDocument.Parse(BuildProviderJson(install));
+            using JsonDocument expected = JsonDocument.Parse(BuildProviderJson(install, apiKey ?? "llama-local"));
             if (JsonEquals(actual.RootElement, expected.RootElement))
                 return true;
 
@@ -94,9 +98,10 @@ public static class LocalAiGatewayProviderDefinition
         return JsonElement.DeepEquals(left, right);
     }
 
-    private static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey)
+    public static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey)
     {
         ArgumentNullException.ThrowIfNull(install);
+        _ = LocalAiApiCredentialStore.RequireApiKey(apiKey);
         LocalModelInfo model = GetQualifiedModel(install);
         Uri endpoint = install.Endpoint
             ?? throw new InvalidOperationException("The verified Local AI endpoint is required.");
@@ -118,7 +123,7 @@ public static class LocalAiGatewayProviderDefinition
                     cost = new { input = 0, output = 0, cacheRead = 0, cacheWrite = 0 },
                     contextWindow = install.Manifest.ContextLength,
                     contextTokens = install.Manifest.ContextLength,
-                    maxTokens = MaximumOutputTokens,
+                    maxTokens = GetMaximumOutputTokens(install.Manifest.ContextLength),
                     compat = new { supportsTools = true, supportsUsageInStreaming = true },
                     api = ApiType,
                 },
@@ -136,7 +141,8 @@ public static class LocalAiGatewayProviderDefinition
 
     private static LocalModelInfo GetQualifiedModel(LocalAiResolvedInstall install)
     {
-        LocalModelInfo model = LocalModelCatalog.FindInstalled(install.Manifest.ModelCatalogId)
+        LocalModelInfo model = LocalModelCatalog.FindInstalled(
+            install.Manifest.ModelCatalogId, install.Manifest.ModelAsset.SourceUrl)
             ?? throw new InvalidDataException("The managed Local AI model is no longer qualified.");
         if (!string.Equals(model.Id, install.Manifest.ModelAlias, StringComparison.Ordinal))
             throw new InvalidDataException("The managed Local AI model alias does not match the qualified catalog.");

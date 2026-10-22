@@ -27,6 +27,8 @@ public enum GatewayEndpointProvenanceFailureReason
 {
     None,
     ListenerSnapshotChanged,
+    ProcessIdentityUnavailable,
+    InspectionUnavailable,
 }
 
 /// <summary>

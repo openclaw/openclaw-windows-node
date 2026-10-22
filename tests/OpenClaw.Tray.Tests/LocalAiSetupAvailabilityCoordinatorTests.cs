@@ -5,6 +5,22 @@ namespace OpenClaw.Tray.Tests;
 public sealed class LocalAiSetupAvailabilityCoordinatorTests
 {
     [Fact]
+    public void DiskShortage_CanBeRecheckedAfterFreeingSpace()
+    {
+        var coordinator = new LocalAiSetupAvailabilityCoordinator();
+        var checking = coordinator.StartProbe();
+        Assert.True(coordinator.TryApplyUnsupported(checking.Generation,
+            "Free disk space is required.", out var shortage, isRecoverable: true));
+        Assert.True(shortage.IsUnsupported);
+        Assert.True(shortage.CanRecheck);
+        Assert.True(coordinator.TryStartRecheck(out var retry));
+        Assert.False(retry.CanRecheck);
+        Assert.True(coordinator.TryApplyAvailable(retry.Generation, out var available));
+        Assert.True(available.IsAvailable);
+        Assert.False(available.CanRecheck);
+    }
+
+    [Fact]
     public void ProbeFailure_BecomesUnknownAndRetryable()
     {
         var coordinator = new LocalAiSetupAvailabilityCoordinator();
@@ -91,6 +107,21 @@ public sealed class LocalAiSetupAvailabilityCoordinatorTests
         Assert.True(unsupported.IsUnsupported);
         Assert.False(unsupported.CanRecheck);
         Assert.Equal("No qualified NVIDIA GPU was detected.", unsupported.Reason);
+    }
+
+    [Fact]
+    public void StartingANewProbeClearsAvailableStateAndRejectsOldSuccess()
+    {
+        var coordinator = new LocalAiSetupAvailabilityCoordinator();
+        var old = coordinator.StartProbe();
+        Assert.True(coordinator.TryApplyAvailable(old.Generation, out _));
+        var current = coordinator.StartProbe();
+        Assert.False(coordinator.Current.IsAvailable);
+        Assert.True(coordinator.Current.IsChecking);
+        Assert.False(coordinator.TryApplyAvailable(old.Generation, out _));
+        Assert.True(coordinator.TryApplyProbeFailure(current.Generation, "Unknown", out var unknown));
+        Assert.True(unknown.IsUnknown);
+        Assert.False(unknown.IsAvailable);
     }
 
     [Fact]

@@ -30,7 +30,7 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
         {
             Id = "gw-1",
             Url = "ws://active:18789",
-            SharedGatewayToken = "shared-token"
+            SharedGatewayToken = "test-auth-token"
         };
         _registry.AddOrUpdate(record);
         _registry.SetActive(record.Id);
@@ -47,7 +47,7 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
         Assert.True(resolved);
         Assert.NotNull(credential);
         Assert.Equal("ws://active:18789", credential!.GatewayUrl);
-        Assert.Equal("shared-token", credential.Token);
+        Assert.Equal("test-auth-token", credential.Token);
         Assert.False(credential.IsBootstrapToken);
         Assert.Equal(CredentialResolver.SourceSharedGatewayToken, credential.Source);
     }
@@ -61,7 +61,7 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
             Url = "ws://localhost:18789",
             IsLocal = true,
             SetupManagedDistroName = "OpenClawGateway",
-            SharedGatewayToken = "shared-token"
+            SharedGatewayToken = "test-auth-token"
         };
         _registry.AddOrUpdate(record);
         _registry.SetActive(record.Id);
@@ -81,6 +81,40 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
     }
 
     [Fact]
+    public void TryResolve_NativeGatewayWithoutAuthorizationDoesNotReturnCredential()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "native", Url = "ws://127.0.0.1:18789",
+            NativePackageFamilyName = "OpenClaw.Gateway_test",
+            SharedGatewayToken = "shared",
+        };
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+
+        Assert.False(InteractiveGatewayCredentialResolver.TryResolve(
+            _registry, _tempDir, _identityReader, record.Url, null, null, out var credential));
+        Assert.Null(credential);
+    }
+
+    [Fact]
+    public void TryResolve_NativeGatewayDoesNotFallBackToUnmarkedLegacyRecord()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "native", Url = "ws://127.0.0.1:18789",
+            NativePackageFamilyName = "OpenClaw.Gateway_test",
+        };
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+
+        Assert.False(InteractiveGatewayCredentialResolver.TryResolve(
+            _registry, _tempDir, _identityReader, record.Url, "legacy", null,
+            (_, _) => true, out var credential));
+        Assert.Null(credential);
+    }
+
+    [Fact]
     public void TryResolve_LegacyLoopbackUnknownOwner_DoesNotReturnTokenBearingCredential()
     {
         var resolved = InteractiveGatewayCredentialResolver.TryResolve(
@@ -88,7 +122,7 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
             settingsDirectory: _tempDir,
             identityReader: _identityReader,
             effectiveGatewayUrl: "ws://localhost:18789",
-            legacyToken: "legacy-shared-token",
+            legacyToken: "gateway-token",
             legacyBootstrapToken: null,
             authorizeCredential: (_, _) => false,
             out var credential);
@@ -104,7 +138,7 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
         {
             Id = "gw-1",
             Url = "ws://active:18789",
-            BootstrapToken = "bootstrap-token"
+            BootstrapToken = "test-token-placeholder"
         };
         _registry.AddOrUpdate(record);
         _registry.SetActive(record.Id);
@@ -120,7 +154,7 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
 
         Assert.True(resolved);
         Assert.NotNull(credential);
-        Assert.Equal("bootstrap-token", credential!.Token);
+        Assert.Equal("test-token-placeholder", credential!.Token);
         Assert.True(credential.IsBootstrapToken);
         Assert.Equal(CredentialResolver.SourceBootstrapToken, credential.Source);
     }
@@ -132,11 +166,11 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
         {
             Id = "gw-1",
             Url = "ws://active:18789",
-            SharedGatewayToken = "shared-token"
+            SharedGatewayToken = "test-auth-token"
         };
         _registry.AddOrUpdate(record);
         _registry.SetActive(record.Id);
-        _identityReader.OperatorToken = "paired-token";
+        _identityReader.OperatorToken = "test-auth-token";
 
         var resolved = InteractiveGatewayCredentialResolver.TryResolve(
             _registry,
@@ -149,7 +183,7 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
 
         Assert.True(resolved);
         Assert.NotNull(credential);
-        Assert.Equal("shared-token", credential!.Token);
+        Assert.Equal("test-auth-token", credential!.Token);
         Assert.False(credential.IsBootstrapToken);
         Assert.Equal(CredentialResolver.SourceSharedGatewayToken, credential.Source);
     }
@@ -162,16 +196,35 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
             _tempDir,
             _identityReader,
             "ws://legacy:18789",
-            "legacy-token",
+            "gateway-token",
             null,
             out var credential);
 
         Assert.True(resolved);
         Assert.NotNull(credential);
         Assert.Equal("ws://legacy:18789", credential!.GatewayUrl);
-        Assert.Equal("legacy-token", credential.Token);
+        Assert.Equal("gateway-token", credential.Token);
         Assert.False(credential.IsBootstrapToken);
         Assert.Equal(CredentialResolver.SourceSharedGatewayToken, credential.Source);
+    }
+
+    [Fact]
+    public void TryResolve_UrlLessLegacyIdentityDoesNotBindToDefaultGateway()
+    {
+        _identityReader.OperatorToken = "test-auth-token";
+
+        var resolved = InteractiveGatewayCredentialResolver.TryResolve(
+            _registry,
+            _tempDir,
+            _identityReader,
+            effectiveGatewayUrl: null,
+            legacyToken: null,
+            legacyBootstrapToken: null,
+            out var credential);
+
+        Assert.False(resolved);
+        Assert.Null(credential);
+        Assert.Null(_identityReader.LastOperatorPath);
     }
 
     private sealed class MockDeviceIdentityReader : IDeviceIdentityReader

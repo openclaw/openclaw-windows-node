@@ -187,9 +187,8 @@ public sealed class PiperVoiceManager
         {
             Directory.CreateDirectory(voiceDir);
             File.WriteAllText(installMarkerPath, string.Empty);
-            using var httpClient = new HttpClient();
-            httpClient.Timeout = TimeSpan.FromMinutes(10);
-            using var response = await httpClient.GetAsync(info.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            using var httpClient = AllowedAssetDownload.CreateClient(TimeSpan.FromMinutes(10));
+            using var response = await AllowedAssetDownload.GetAsync(httpClient, info.DownloadUrl, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
             var totalBytes = response.Content.Headers.ContentLength ?? 0;
@@ -397,7 +396,7 @@ public sealed class PiperVoiceManager
             RedirectStandardError = true,
         };
         cancellationToken.ThrowIfCancellationRequested();
-        using var proc = System.Diagnostics.Process.Start(psi)
+        var proc = System.Diagnostics.Process.Start(psi)
             ?? throw new InvalidOperationException("Could not start tar to extract Piper voice");
 
         BoundedProcessResult result;
