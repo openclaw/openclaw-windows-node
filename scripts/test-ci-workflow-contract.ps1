@@ -738,10 +738,21 @@ $releaseBuilds = [ordered]@{
         Native = "Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime -SkipNativeLoadProbe"
     }
 }
+function Assert-JobDependencies {
+    param([string]$Name, [string[]]$Expected)
+    $job = Get-JobBlock $Name
+    $match = [regex]::Match($job, '(?m)^    needs:\s*\[([^\]]+)\]')
+    if (!$match.Success) { throw "Missing dependency list for $Name." }
+    $actual = @($match.Groups[1].Value.Split(',') | ForEach-Object { $_.Trim() })
+    if (Compare-Object $Expected $actual) {
+        throw "Unexpected dependencies for ${Name}: $($actual -join ', ')."
+    }
+}
+
 foreach ($build in $releaseBuilds.GetEnumerator()) {
     $job = Get-JobBlock $build.Key
+    Assert-JobDependencies -Name $build.Key -Expected @('change-classification', 'metadata', 'sign-cleanup-host')
     foreach ($token in @(
-            "needs: [change-classification, metadata]",
             "fetch-depth: 0",
             "needs.change-classification.outputs.$($build.Value.Output) == 'true'",
             "runs-on: $($build.Value.Runner)",
@@ -759,8 +770,8 @@ foreach ($build in $releaseBuilds.GetEnumerator()) {
 }
 
 $buildMsixJob = Get-JobBlock "build-msix"
+Assert-JobDependencies -Name 'build-msix' -Expected @('change-classification', 'metadata', 'reserve-msix-version', 'sign-cleanup-host')
 foreach ($token in @(
-        "needs: [change-classification, metadata, reserve-msix-version]",
         "needs.metadata.result == 'success'",
         "(needs.reserve-msix-version.result == 'success' || needs.reserve-msix-version.result == 'skipped')",
         "needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true'",
