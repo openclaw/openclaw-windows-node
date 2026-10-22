@@ -95,7 +95,15 @@ public static class ChatTimelineReducer
         // new user entry so a future reconcile-flagged final can't fast-path-
         // overwrite the prior turn's assistant reply.
         state = ClearStreamingAtTurnBoundary(state);
+        return AppendUserEntry(state, text, nonce) with { TurnActive = true };
+    }
 
+    /// <summary>Input consumption within an existing run is not a new response boundary.</summary>
+    public static ChatTimelineState AddConsumedInput(ChatTimelineState state, string text, string nonce) =>
+        AppendUserEntry(state, text, nonce);
+
+    private static ChatTimelineState AppendUserEntry(ChatTimelineState state, string text, string nonce)
+    {
         var id = $"e{state.NextId}";
         var localNonces = state.LocalNonces;
         if (localNonces.Count >= MaxLocalNonces)
@@ -112,7 +120,6 @@ public static class ChatTimelineReducer
             Entries = state.Entries.Add(new(id, ChatTimelineItemKind.User, text)),
             LocalNonces = localNonces.Add(nonce),
             NextId = state.NextId + 1,
-            TurnActive = true
         };
     }
 
@@ -1011,17 +1018,11 @@ public static class ChatTimelineReducer
         if (state.ActiveAssistantId is { } aid)
         {
             var idx = state.Entries.FindIndex(e => e.Id == aid);
-            // Only take the fast-path when the active assistant entry is still
-            // the timeline frontier (the last entry). If a tool call (or any
-            // other entry kind) has been appended after it, the active
-            // assistant belongs to a closed intra-turn segment — merging into
-            // it would silently overwrite the prior segment's bubble when the
-            // model resumes speaking after a tool call (assistant₁ → tool →
-            // assistant₂ within a single turn). Fall through to the scan-back
-            // logic instead; its reconcile/byte-equal guards still collapse
-            // the deltas-then-final case correctly because the streaming
-            // preview remains marked IsStreaming=true.
-            if (idx >= 0 && idx == state.Entries.Count - 1)
+            // Consumed in-run inputs preserve the active assistant. Ordinary
+            // user boundaries clear that reference in ClearStreamingAtTurnBoundary.
+            // Tools or other output still close the segment so a later response
+            // cannot overwrite the pre-tool bubble.
+            if (idx >= 0 && state.Entries.Skip(idx + 1).All(entry => entry.Kind == ChatTimelineItemKind.User))
             {
                 var existing = state.Entries[idx];
                 // Even on the fast-path, if the incoming text is cumulative-

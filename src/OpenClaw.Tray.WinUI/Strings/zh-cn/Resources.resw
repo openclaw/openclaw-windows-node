@@ -1,5 +1,19 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <data name="Chat_Input_SettingUnconfirmed" xml:space="preserve"><value>会话设置尚未确认</value></data>
+  <data name="Chat_Input_SettingUnconfirmedFormat" xml:space="preserve"><value>更新设置失败：{0} 请重新选择，或在重新连接后再发送。</value></data>
+  <data name="Chat_Input_Cancelled" xml:space="preserve"><value>Gateway 已取消待处理输入。未重新发送此输入。</value></data>
+  <data name="Chat_Input_Interrupted" xml:space="preserve"><value>Gateway 报告待处理输入已中断。未重新发送任何输入。</value></data>
+  <data name="Chat_Input_ScopeChanged" xml:space="preserve"><value>原始对话已更改。未发送任何输入。</value></data>
+  <data name="Chat_Input_Unconfirmed" xml:space="preserve"><value>尚未确认送达。再次发送前，请检查保留的输入。</value></data>
+  <data name="Chat_Input_Unavailable" xml:space="preserve"><value>此输入模式需要 Gateway 支持输入托管协议，并授予发送消息的权限。</value></data>
+  <data name="Chat_Input_ReviewRequired" xml:space="preserve"><value>尚未确认此输入已送达。再次发送前，请检查保留的发件箱条目。</value></data>
+  <data name="Chat_Input_NoReceipt" xml:space="preserve"><value>没有权威回执可确认送达状态。请检查或丢弃保留的输入。未重新发送此输入。</value></data>
+  <data name="Chat_Input_CannotSteer" xml:space="preserve"><value>Gateway 已托管或送达状态不确定的输入不能再次用于引导。</value></data>
+  <data name="Chat_Input_ExternalMutationRejected" xml:space="preserve"><value>外部提示不能运行命令或更改对话位置。请使用该对话的输入框。</value></data>
+  <data name="Chat_Input_RecoveryUnavailable" xml:space="preserve"><value>此提供程序不支持输入恢复。</value></data>
+  <data name="Chat_Input_QueueActionRejected" xml:space="preserve"><value>当前状态下无法更改或重试此输入。</value></data>
+  <data name="Chat_Input_AccountChanged" xml:space="preserve"><value>已验证的帐户已更改。发送前需要建立新的对话上下文。</value></data>
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
       <xs:complexType>

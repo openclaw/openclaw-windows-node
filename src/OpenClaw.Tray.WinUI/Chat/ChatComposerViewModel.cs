@@ -116,6 +116,7 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
     public ReactorSlashDisplayState SlashDisplay { get; private set; }
     public ChatComposerInputs? Inputs => _inputs;
     public ChatSessionModelCatalog? SessionModelCatalog => _sessionModelCatalog;
+    public ChatInputSubmissionResult? LastSubmission { get; private set; }
     public ThinkingProfile? ThinkingProfile => _inputs is { } inputs
         ? ChatThinkingProfile.Resolve(
             inputs.CurrentThread,
@@ -166,6 +167,9 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
             return true;
         });
     }
+
+    internal void SetSubmissionResult(ChatInputSubmissionResult result) =>
+        Mutate(() => LastSubmission = result);
 
     public void SetDraft(string value)
     {

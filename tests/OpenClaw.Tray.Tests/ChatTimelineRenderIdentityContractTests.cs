@@ -74,7 +74,10 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.Contains("Chat_Composer_QueuedMessageCancel", timeline);
         Assert.Contains("Chat_Composer_QueuedMessageRemoveFailed", timeline);
         Assert.Contains("Chat_Composer_QueuedMessageFailed", timeline);
-        Assert.Contains("ChatQueuedMessageSendState.Sending", timeline);
+        Assert.Contains("|| !message.CanCancel", timeline);
+        Assert.Contains("public bool CanCancel => CanEdit;", models);
+        Assert.Contains("public bool CanEdit => SendState is ChatQueuedMessageSendState.Queued or ChatQueuedMessageSendState.Failed;", models);
+        Assert.DoesNotContain("message.SendState != ChatQueuedMessageSendState.Sending", timeline);
     }
 
     [Fact]

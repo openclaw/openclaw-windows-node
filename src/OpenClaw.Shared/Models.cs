@@ -2006,6 +2006,11 @@ public sealed class ChatMediaContentInfo
 /// </summary>
 public class ChatHistoryInfo
 {
+    /// <summary>Null means the Gateway did not supply the current input-receipt contract.</summary>
+    public IReadOnlyList<ChatInputReceipt>? InputReceipts { get; set; }
+    public ChatPendingInputPage? PendingInputs { get; set; }
+    public string? InputCustodyError { get; set; }
+
     /// <summary>Immutable session UUID assigned by the gateway.</summary>
     public string? SessionId { get; set; }
 
@@ -2167,6 +2172,8 @@ public sealed class ChatSendResult
     public string? Status { get; init; }
     public string? Error { get; init; }
     public bool Cached { get; init; }
+    public int? MessageSeq { get; init; }
+    public string? StopReason { get; init; }
 
     public bool IsTerminalFailure => IsFailureStatus(Status) || !string.IsNullOrWhiteSpace(Error);
 

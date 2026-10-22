@@ -23,6 +23,23 @@ internal sealed class ChatConversationState
     private ConnectionStatus _status;
     private long _transportEpoch;
     private bool _disposed;
+    private bool _inputAuthorityRetired;
+    private readonly Dictionary<string, int> _receiptQueryOffsets = new(StringComparer.Ordinal);
+    private const int MaxInputReceiptOutcomes = 64;
+    private readonly Dictionary<string, (string ThreadId, ChatInputSubmissionResult Outcome)> _inputReceiptOutcomes = new();
+    private readonly Queue<string> _inputReceiptOutcomeOrder = new();
+
+    internal bool IsInputAuthorityRetired { get { lock (_gate) return _inputAuthorityRetired; } }
+
+    internal ChatDataSnapshot RetireInputAuthority(ChatProjectionContext context)
+    {
+        lock (_gate)
+        {
+            _inputAuthorityRetired = true;
+            _history.AdvanceConnectionGeneration(clearLoaded: true);
+            return BuildSnapshotLocked(context);
+        }
+    }
 
     internal ChatConversationState(
         ConnectionStatus status,
@@ -76,7 +93,7 @@ internal sealed class ChatConversationState
         get
         {
             lock (_gate)
-                return _presentation.CachedLastChatState;
+                return _inputAuthorityRetired ? null : _presentation.CachedLastChatState;
         }
     }
 
@@ -87,9 +104,15 @@ internal sealed class ChatConversationState
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            _presentation.ReplaceSessions(
-                sessions,
-                receivedFromGateway: false);
+            if (_inputAuthorityRetired)
+                return BuildSnapshotLocked(context);
+            if (!_presentation.HasFreshSessionSnapshot)
+            {
+                _presentation.ReplaceSessions(
+                    sessions,
+                    receivedFromGateway: false);
+                _history.SeedSessionIds(_presentation.SessionSnapshot());
+            }
             EnsureTimelinesForSessionsLocked();
             _presentation.RememberLastSessionState(context);
             return BuildSnapshotLocked(context);
@@ -100,7 +123,7 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
-            return _entryMeta.TryGetValue(threadId, out var metadata)
+            return !_inputAuthorityRetired && _entryMeta.TryGetValue(threadId, out var metadata)
                 ? new Dictionary<string, ChatEntryMetadata>(metadata)
                 : new Dictionary<string, ChatEntryMetadata>();
         }
@@ -110,7 +133,7 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
-            if (_disposed)
+            if (_disposed || _inputAuthorityRetired)
                 return null;
             return _presentation.RememberSelectedThread(threadId);
         }
@@ -126,7 +149,7 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
-            return ChatSnapshotProjector.ResolveDefaultThreadId(
+            return _inputAuthorityRetired ? null : ChatSnapshotProjector.ResolveDefaultThreadId(
                 CaptureProjectionInputLocked(context));
         }
     }
@@ -190,7 +213,7 @@ internal sealed class ChatConversationState
                 expectedToken,
                 GetResetVersionLocked(threadId),
                 _status,
-                _disposed,
+                _disposed || _inputAuthorityRetired,
                 out token,
                 out generationActivation);
             model = _presentation.ModelForThread(threadId);
@@ -205,6 +228,24 @@ internal sealed class ChatConversationState
                 token,
                 GetResetVersionLocked(token.ThreadId),
                 _disposed);
+    }
+
+    internal bool CommitInputReceipts(
+        ChatHistoryCommitToken token, ChatInputReceiptQuery query, ChatHistoryInfo history)
+    {
+        lock (_gate)
+        {
+            if (_inputAuthorityRetired || !_history.IsCurrent(token, GetResetVersionLocked(token.ThreadId), _disposed) ||
+                query.ThreadId != token.ThreadId || query.TransportEpoch != _transportEpoch ||
+                query.SessionId is not null && query.SessionId != history.SessionId)
+                return false;
+            foreach (var request in query.Requests)
+            {
+                if (_queue.FindRequest(token.ThreadId, request.Id) == request)
+                    ApplyInputReceiptLocked(request, history);
+            }
+            return true;
+        }
     }
 
     internal bool CanRetryHistory(
@@ -224,7 +265,9 @@ internal sealed class ChatConversationState
         ChatHistoryCommitToken token,
         ChatHistoryRebuildPlan plan,
         DateTimeOffset requestStartedAt,
-        bool authoritative)
+        bool authoritative,
+        ChatHistoryInfo? inputHistory = null,
+        ChatInputReceiptQuery? inputQuery = null)
     {
         lock (_gate)
         {
@@ -251,6 +294,18 @@ internal sealed class ChatConversationState
             _timelines[token.ThreadId] = merged.Timeline;
             _entryMeta[token.ThreadId] = merged.Metadata;
             _history.MarkCommitted(token, plan.SessionId);
+            if (inputHistory is not null && inputQuery is not null &&
+                !_inputAuthorityRetired && inputQuery.TransportEpoch == _transportEpoch &&
+                (inputQuery.SessionId is null || inputHistory.SessionId == inputQuery.SessionId))
+            {
+                foreach (var request in inputQuery.Requests)
+                {
+                    if (_queue.FindRequest(token.ThreadId, request.Id) == request)
+                        ApplyInputReceiptLocked(request, inputHistory);
+                }
+            }
+            if (inputHistory?.InputCustodyError is not null)
+                ApplyEventLocked(token.ThreadId, new ChatStatusEvent(ChatInputMessages.NoReceipt, ChatTone.Warning), null);
             return true;
         }
     }
@@ -307,6 +362,7 @@ internal sealed class ChatConversationState
             string[] interruptedThreads = [];
             if (reconnected)
             {
+                _presentation.RetireSessionOptionPatches();
                 _history.AdvanceConnectionGeneration(clearLoaded: true);
                 _queue.ClearForReconnect();
                 _reset.ClearSubmittedEchoesForReconnect();
@@ -471,6 +527,9 @@ internal sealed class ChatConversationState
             _disposed = true;
             _history.AdvanceConnectionGeneration(clearLoaded: false);
             _queue.ClearForDispose();
+            _receiptQueryOffsets.Clear();
+            _inputReceiptOutcomes.Clear();
+            _inputReceiptOutcomeOrder.Clear();
             _lifecycle.ClearForDispose();
             _reset.ClearSubmittedEchoesForReconnect();
             return new(
@@ -646,17 +705,26 @@ internal sealed class ChatConversationState
         ChatProjectionContext context,
         string? timelineText = null,
         IReadOnlyList<ChatAttachmentPresentation>? attachmentPresentations = null,
-        string attachmentCorrelationSignature = "")
+        string attachmentCorrelationSignature = "",
+        ChatInputAction action = ChatInputAction.Send,
+        bool useInputCustody = false,
+        ChatInputLease? origin = null)
     {
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (origin is not null && !IsInputLeaseCurrentLocked(origin))
+                throw new ChatSendDeliveryException(ChatInputMessages.ScopeChanged, false);
+            if (_queue.HasUnconfirmedPayload(threadId, text, attachments))
+                throw new InvalidOperationException(ChatInputMessages.ReviewRequired);
             var messageId = _queue.NextMessageId();
             if (CanClearAssistantFallbackPromotionLocked(threadId))
                 _queue.ClearAssistantFallbackPromotion(threadId);
 
             _lifecycle.ClearThreadSuppression(threadId);
             _lifecycle.TakePendingAbortCount(threadId);
+            if (useInputCustody && !_lifecycle.HasActiveRun(threadId) && _queue.HasSendingMessages(threadId))
+                action = ChatInputAction.Queue;
             var request = new ChatQueuedSendRequest(
                 messageId,
                 Guid.NewGuid().ToString(),
@@ -667,9 +735,15 @@ internal sealed class ChatConversationState
                 attachments?.ToArray(),
                 TimelineText: timelineText ?? displayText,
                 AttachmentPresentations: attachmentPresentations,
-                AttachmentCorrelationSignature: attachmentCorrelationSignature);
+                AttachmentCorrelationSignature: attachmentCorrelationSignature)
+            {
+                Action = action,
+                UseInputCustody = useInputCustody,
+                Origin = origin,
+                CreatedAt = createdAt,
+            };
 
-            var sendDirectly = CanSendDirectlyLocked(threadId);
+            var sendDirectly = useInputCustody && action != ChatInputAction.Queue || CanSendDirectlyLocked(threadId);
             ChatQueuedSendDispatch? dispatch;
             if (sendDirectly)
             {
@@ -697,6 +771,57 @@ internal sealed class ChatConversationState
                 CurrentRuntimeGenerationLocked(threadId));
         }
     }
+
+    internal ChatInputLease CaptureInputLease(
+        object connectionOwner, string threadId, IChatInputOrigin? externalOrigin = null)
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _lifecycle.TryGetActiveRun(threadId, out var runId);
+            return new(connectionOwner, threadId, _history.ResolveSessionId(threadId),
+                CurrentRuntimeGenerationLocked(threadId), externalOrigin?.RunId ?? runId, externalOrigin);
+        }
+    }
+
+    internal bool IsInputLeaseCurrent(ChatInputLease lease)
+    {
+        lock (_gate)
+            return IsInputLeaseCurrentLocked(lease);
+    }
+
+    internal bool IsInputRunCurrent(ChatInputLease lease)
+    {
+        lock (_gate)
+        {
+            _lifecycle.TryGetActiveRun(lease.ThreadId, out var runId);
+            return lease.RunId == runId;
+        }
+    }
+
+    internal ChatInputLease? ContinueMaterializedInput(
+        ChatInputLease original, ChatPlacementMaterializationReceipt receipt)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _inputAuthorityRetired || original.Generation != CurrentRuntimeGenerationLocked(original.ThreadId) ||
+                !ReferenceEquals(original.ConnectionOwner, receipt.Client) || receipt.SessionKey != original.ThreadId ||
+                receipt.ConnectionEpoch != _transportEpoch ||
+                original.SessionId is { } expectedId && expectedId != receipt.SessionId ||
+                !_history.TryBindMaterializedSession(original.ThreadId, receipt.SessionId))
+                return null;
+            return original with { SessionId = receipt.SessionId };
+        }
+    }
+
+    private bool IsInputLeaseCurrentLocked(ChatInputLease lease) =>
+        !_disposed && !_inputAuthorityRetired &&
+        lease.Generation == CurrentRuntimeGenerationLocked(lease.ThreadId) &&
+        string.Equals(lease.SessionId, _history.ResolveSessionId(lease.ThreadId), StringComparison.Ordinal) &&
+        (lease.ExternalOrigin?.SessionId is not { } externalSession ||
+            string.Equals(externalSession, lease.SessionId, StringComparison.Ordinal)) &&
+        (lease.ExternalOrigin?.RunId is not { } externalRun ||
+            _lifecycle.TryGetActiveRun(lease.ThreadId, out var activeRun) && externalRun == activeRun);
 
     internal ChatDataSnapshot EnqueueCompact(
         string threadId,
@@ -734,6 +859,8 @@ internal sealed class ChatConversationState
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_inputAuthorityRetired)
+                return (false, null);
             var canceled = _queue.CancelMessage(threadId, messageId);
             if (canceled)
             {
@@ -756,7 +883,7 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
-            if (_disposed)
+            if (_disposed || _inputAuthorityRetired)
                 return new(null, null, null);
             var dispatch = TryStartNextQueuedSendLocked(
                 threadId,
@@ -766,6 +893,198 @@ internal sealed class ChatConversationState
                 dispatch,
                 delayedRetry,
                 dispatch is null ? null : BuildSnapshotLocked(context));
+        }
+    }
+
+    internal ChatInputSubmissionResult GetInputSubmissionResult(string threadId, string messageId, bool accepted)
+    {
+        lock (_gate)
+        {
+            if (_inputReceiptOutcomes.TryGetValue(messageId, out var settled) && settled.ThreadId == threadId)
+                return settled.Outcome;
+            var row = _queue.SnapshotMessages().GetValueOrDefault(threadId)?
+                .FirstOrDefault(message => message.Id == messageId);
+            return row?.SendState switch
+            {
+                ChatQueuedMessageSendState.Unconfirmed => new(ChatInputSubmissionState.Unconfirmed, messageId, row.ErrorText),
+                ChatQueuedMessageSendState.Failed => new(ChatInputSubmissionState.Rejected, messageId, row.ErrorText),
+                ChatQueuedMessageSendState.Queued => new(ChatInputSubmissionState.Queued, messageId),
+                ChatQueuedMessageSendState.Accepted => new(ChatInputSubmissionState.Accepted, messageId),
+                _ => new(accepted ? ChatInputSubmissionState.Accepted : ChatInputSubmissionState.Rejected,
+                    messageId, accepted ? null : ChatInputMessages.QueueActionRejected),
+            };
+        }
+    }
+
+    internal ChatInputSubmissionResult? GetInputReceiptOutcome(string threadId, string messageId)
+    {
+        lock (_gate)
+            return _inputReceiptOutcomes.TryGetValue(messageId, out var settled) && settled.ThreadId == threadId
+                ? settled.Outcome : null;
+    }
+
+    internal ChatQueuedSendRequest? GetQueuedInput(string threadId, string messageId)
+    {
+        lock (_gate)
+            return _inputAuthorityRetired ? null : _queue.FindRequest(threadId, messageId);
+    }
+
+    internal ChatDataSnapshot? EditQueuedInput(
+        string threadId, string messageId, string text, ChatProjectionContext context)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _queue.FindRequest(threadId, messageId) is not { LifecycleCommand: null } request ||
+                _queue.FindMessage(threadId, messageId)?.CanEdit != true ||
+                request.Origin is { } origin && !IsInputLeaseCurrentLocked(origin) ||
+                string.IsNullOrWhiteSpace(text) && request.Attachments is not { Count: > 0 })
+                return null;
+            text = text.Trim();
+            var displayText = text;
+            if (request.Attachments is { Count: > 0 })
+            {
+                var chips = ChatMetadataStore.BuildAttachmentMarkerLines(request.Attachments);
+                displayText = text.Length == 0 ? chips : $"{text}\n{chips}";
+            }
+            var edited = request with { Text = text, DisplayText = displayText, TimelineText = text };
+            _queue.AddRequest(edited);
+            var row = _queue.FindMessage(threadId, messageId)!;
+            _queue.AddMessage(threadId, row with { Text = displayText });
+            return BuildSnapshotLocked(context);
+        }
+    }
+
+    internal ChatDataSnapshot? MoveQueuedInput(
+        string threadId, string messageId, int direction, ChatProjectionContext context)
+    {
+        lock (_gate)
+            return !_disposed && _queue.MoveMessage(threadId, messageId, direction) ? BuildSnapshotLocked(context) : null;
+    }
+
+    internal ChatQueueStart RetryQueuedInput(
+        string threadId, string messageId, bool steer, ChatProjectionContext context)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _queue.FindRequest(threadId, messageId) is not { LifecycleCommand: null } request ||
+                _queue.FindMessage(threadId, messageId)?.CanEdit != true ||
+                request.Origin is { } origin && !IsInputLeaseCurrentLocked(origin))
+                return new(null, null, null);
+            if (steer)
+            {
+                request = request with { Action = ChatInputAction.Steer, UseInputCustody = true };
+                _queue.AddRequest(request);
+                var dispatch = StartDirectSendLocked(request);
+                return new(dispatch, null, BuildSnapshotLocked(context));
+            }
+            _queue.SetDelivery(request, ChatQueuedMessageSendState.Queued);
+            var next = TryStartNextQueuedSendLocked(threadId, requireConnected: true, out var delay);
+            return new(next, delay, BuildSnapshotLocked(context));
+        }
+    }
+
+    internal ChatInputReceiptQuery? CaptureInputReceiptQuery(
+        string threadId, object connectionOwner, long transportEpoch)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _inputAuthorityRetired || _transportEpoch != transportEpoch)
+                return null;
+            var current = CurrentRuntimeGenerationLocked(threadId);
+            var sessionId = _history.ResolveSessionId(threadId);
+            var freshSession = _presentation.HasFreshSessionSnapshot && sessionId is not null &&
+                _presentation.SessionSnapshot().Any(session => session.Key == threadId && session.SessionId == sessionId);
+            var candidates = _queue.ReceiptCandidates(threadId).Where(request =>
+                request.Origin is { } origin && ReferenceEquals(origin.ConnectionOwner, connectionOwner) &&
+                origin.Generation.ResetGeneration == current.ResetGeneration &&
+                (origin.Generation == current ||
+                    freshSession && origin.SessionId is not null && origin.SessionId == sessionId)).ToArray();
+            if (candidates.Length == 0)
+            {
+                _receiptQueryOffsets.Remove(threadId);
+                return null;
+            }
+            var offset = _receiptQueryOffsets.GetValueOrDefault(threadId) % candidates.Length;
+            var selected = Enumerable.Range(0, Math.Min(candidates.Length, ChatInputCustody.MaxReceiptRunIds))
+                .Select(index => candidates[(offset + index) % candidates.Length]).ToArray();
+            _receiptQueryOffsets[threadId] = (offset + selected.Length) % candidates.Length;
+            return new(connectionOwner, threadId, sessionId, transportEpoch, selected,
+                selected[0].Origin?.ExternalOrigin?.AgentId);
+        }
+    }
+
+    internal string[] RetainedInputThreads()
+    {
+        lock (_gate)
+            return _inputAuthorityRetired ? [] : _queue.ThreadsWithMessages()
+                .Where(thread => _queue.ReceiptCandidates(thread).Length > 0).ToArray();
+    }
+
+    private void ApplyInputReceiptLocked(ChatQueuedSendRequest request, ChatHistoryInfo history)
+    {
+        var receipts = history.InputReceipts?.Where(receipt => receipt.RunId == request.SendRunId).ToArray() ?? [];
+        var receipt = receipts.Length == 1 ? receipts[0] : null;
+        var pendingMatches = history.PendingInputs?.Items.Where(input => input.RunId == request.SendRunId).ToArray() ?? [];
+        var pending = pendingMatches.Length == 1 ? pendingMatches[0] : null;
+        if (receipt?.State == "consumed" && !string.IsNullOrWhiteSpace(receipt.ConsumedByEventId))
+        {
+            var metadata = GetOrCreateThreadMetaLocked(request.ThreadId);
+            if (!metadata.Values.Any(value => value.GatewayMessageId == receipt.ConsumedByEventId))
+            {
+                var timeline = GetOrCreateTimelineLocked(request.ThreadId);
+                var entryId = $"e{timeline.NextId}";
+                _timelines[request.ThreadId] = ChatTimelineReducer.AddConsumedInput(
+                    timeline, request.EffectiveTimelineText, request.LocalNonce);
+                var canonical = history.Messages.FirstOrDefault(message => message.OpenClawId == receipt.ConsumedByEventId);
+                metadata[entryId] = BuildLiveMetaLocked(request.ThreadId,
+                    gatewayMessageId: receipt.ConsumedByEventId, openClawSeq: canonical?.OpenClawSeq,
+                    localQueuedMessageId: request.Id, attachments: request.AttachmentPresentations)
+                    with { Timestamp = request.CreatedAt };
+            }
+            _queue.RemoveMessage(request.ThreadId, request.Id);
+            RememberInputReceiptOutcome(request, new(ChatInputSubmissionState.Accepted, request.Id));
+        }
+        else if (receipt?.Cancelled == true || pending?.State == "cancelled")
+        {
+            _queue.RemoveMessage(request.ThreadId, request.Id);
+            RememberInputReceiptOutcome(request, new(ChatInputSubmissionState.Rejected, request.Id, ChatInputMessages.Cancelled));
+        }
+        else if (pending?.State == "interrupted")
+        {
+            _queue.RemoveMessage(request.ThreadId, request.Id);
+            RememberInputReceiptOutcome(request, new(ChatInputSubmissionState.Rejected, request.Id, ChatInputMessages.Interrupted));
+            ApplyEventLocked(request.ThreadId, new ChatStatusEvent(ChatInputMessages.Interrupted, ChatTone.Warning), null);
+        }
+        else if (receipt?.State == "pending")
+            _queue.SetDelivery(request, ChatQueuedMessageSendState.Accepted);
+        else
+        {
+            var prior = _queue.FindMessage(request.ThreadId, request.Id)?.SendState;
+            _queue.SetDelivery(request,
+                prior is ChatQueuedMessageSendState.Accepted or ChatQueuedMessageSendState.Sending
+                    ? prior.Value : ChatQueuedMessageSendState.Unconfirmed,
+                ChatInputMessages.NoReceipt);
+        }
+    }
+
+    private void RememberInputReceiptOutcome(ChatQueuedSendRequest request, ChatInputSubmissionResult outcome)
+    {
+        if (_inputReceiptOutcomes.TryAdd(request.Id, (request.ThreadId, outcome)))
+            _inputReceiptOutcomeOrder.Enqueue(request.Id);
+        while (_inputReceiptOutcomeOrder.Count > MaxInputReceiptOutcomes)
+            _inputReceiptOutcomes.Remove(_inputReceiptOutcomeOrder.Dequeue());
+    }
+
+    internal ChatDataSnapshot? DiscardUnconfirmedInput(
+        string threadId, string messageId, ChatProjectionContext context)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _inputAuthorityRetired ||
+                _queue.FindMessage(threadId, messageId)?.SendState != ChatQueuedMessageSendState.Unconfirmed)
+                return null;
+            _queue.RemoveMessage(threadId, messageId);
+            return BuildSnapshotLocked(context);
         }
     }
 
@@ -790,6 +1109,7 @@ internal sealed class ChatConversationState
         lock (_gate)
         {
             if (!IsDispatchGenerationCurrentLocked(dispatch) ||
+                dispatch.Request.Origin is { } origin && !IsInputLeaseCurrentLocked(origin) ||
                 !dispatch.StartedDirectly &&
                 _queue.FindRequest(
                     dispatch.Request.ThreadId,
@@ -848,59 +1168,44 @@ internal sealed class ChatConversationState
             var requeueRequired = false;
             var retryDeferredSend = false;
             var deferredRetryDelay = ChatSendQueuePolicy.DrainDelay;
-            if (ChatSendQueuePolicy.IsDeferredAdmissionStatus(sendResult.Status))
+            if (request.UseInputCustody && _queue.FindRequest(threadId, request.Id) is null)
+                return new(true, BuildSnapshotLocked(context), null, null, false,
+                    false, false, deferredRetryDelay, null, CurrentRuntimeGenerationLocked(threadId));
+            if (request.UseInputCustody && sendResult.Status == "ok" && !request.RequiresInputConsumption)
             {
-                _reset.RemovePendingLocalSubmission(
-                    threadId,
-                    request.Id,
-                    dispatch.ResetVersion);
-                var runAlreadyStarted = !string.IsNullOrEmpty(acceptedRunId)
-                    && _lifecycle.HasRunStartedAfter(
-                        threadId,
-                        acceptedRunId,
-                        dispatch.StartedRunStartSequence);
-                if (runAlreadyStarted)
+                _queue.RemoveMessage(threadId, request.Id);
+                RememberInputReceiptOutcome(request, new(ChatInputSubmissionState.Accepted, request.Id));
+                if (!_lifecycle.HasActiveRun(threadId) && !_queue.HasSendingMessages(threadId))
                 {
-                    bindAcceptedRun = true;
-                    _queue.TrackRun(threadId, acceptedRunId!, request.Id);
-                    AddResetAcceptedRunIdLocked(threadId, acceptedRunId!);
-                    if (PromoteQueuedMessageLocked(threadId, request.Id))
-                        acceptedSnapshot = BuildSnapshotLocked(context);
-                    else
-                        _queue.RemoveRunMappingByMessageId(threadId, request.Id);
+                    _timelines[threadId] = ChatTimelineReducer.Apply(
+                        GetOrCreateTimelineLocked(threadId), new ChatTurnEndEvent());
+                    _queue.ClearLocallyInitiated(threadId);
                 }
-                else if (_queue.RequeueDeferredAdmission(
-                             threadId,
-                             request.Id,
-                             _lifecycle.HasActiveRun(threadId)) is
-                         { Requeued: true } retry)
-                {
-                    deferredRetryDelay = retry.Delay;
-                    if (retry.ShouldEndTurn)
-                    {
-                        _timelines[threadId] = ChatTimelineReducer.Apply(
-                            GetOrCreateTimelineLocked(threadId),
-                            new ChatTurnEndEvent());
-                    }
-                    requeueRequired = true;
-                    if (!string.IsNullOrEmpty(acceptedRunId))
-                    {
-                        _queue.TrackRun(threadId, acceptedRunId, request.Id);
-                        openedLifecycle =
-                            AddResetAcceptedRunIdLocked(
-                                threadId,
-                                acceptedRunId);
-                    }
-                    requeuedSnapshot = BuildSnapshotLocked(context);
-                    retryDeferredSend = true;
-                }
-                else if (dispatch.StartedDirectly)
-                {
-                    throw new InvalidOperationException(
-                        $"Gateway returned chat.send status {sendResult.Status} before admitting the direct send.");
-                }
+                return new(true, BuildSnapshotLocked(context), null, null, false,
+                    false, false, deferredRetryDelay, null, CurrentRuntimeGenerationLocked(threadId));
             }
-            else if (!string.IsNullOrEmpty(acceptedRunId))
+            if (request.UseInputCustody || ChatSendQueuePolicy.IsInFlightAdmissionStatus(sendResult.Status))
+            {
+                _queue.SetDelivery(request, ChatQueuedMessageSendState.Accepted);
+                if (!string.IsNullOrEmpty(acceptedRunId))
+                {
+                    if (!request.UseInputCustody)
+                        _queue.TrackRun(threadId, acceptedRunId, request.Id);
+                    if (request.Action == ChatInputAction.Interrupt || !_lifecycle.HasActiveRun(threadId))
+                    {
+                        bindAcceptedRun = true;
+                        openedLifecycle = AddResetAcceptedRunIdLocked(threadId, acceptedRunId);
+                        if (!_lifecycle.HasActiveRun(threadId))
+                            _lifecycle.StartRun(threadId, acceptedRunId);
+                    }
+                }
+                if (sendResult.MessageSeq is { } messageSeq)
+                    PromoteQueuedMessageLocked(threadId, request.Id,
+                        BuildLiveMetaLocked(threadId) with { OpenClawSeq = messageSeq });
+                return new(true, BuildSnapshotLocked(context), null, null, bindAcceptedRun,
+                    false, false, deferredRetryDelay, openedLifecycle, CurrentRuntimeGenerationLocked(threadId));
+            }
+            if (!string.IsNullOrEmpty(acceptedRunId))
             {
                 bindAcceptedRun = true;
                 _queue.TrackRun(threadId, acceptedRunId, request.Id);
@@ -938,6 +1243,8 @@ internal sealed class ChatConversationState
                 _queue.RemoveRunMappingByRunId(threadId, request.SendRunId);
                 acceptedSnapshot = BuildSnapshotLocked(context);
             }
+            if (dispatch.StartedDirectly)
+                _queue.RemoveRequest(threadId, request.Id);
 
             return new(
                 IsCurrent: true,
@@ -957,7 +1264,8 @@ internal sealed class ChatConversationState
         ChatQueuedSendDispatch dispatch,
         string queueError,
         string timelineError,
-        ChatProjectionContext context)
+        ChatProjectionContext context,
+        bool deliveryUncertain = false)
     {
         var request = dispatch.Request;
         lock (_gate)
@@ -968,23 +1276,50 @@ internal sealed class ChatConversationState
                 dispatch.ResetVersion);
             if (!IsDispatchGenerationCurrentLocked(dispatch))
             {
+                if (deliveryUncertain && !_disposed && !_inputAuthorityRetired &&
+                    GetResetVersionLocked(request.ThreadId) == dispatch.ResetVersion &&
+                    _queue.FindRequest(request.ThreadId, request.Id) == request &&
+                    _queue.FindMessage(request.ThreadId, request.Id) is not null)
+                {
+                    _queue.SetDelivery(request, ChatQueuedMessageSendState.Unconfirmed, queueError);
+                    return new(true, BuildSnapshotLocked(context));
+                }
                 return new(
                     false,
                     CleanupStaleDispatchTurnLocked(dispatch, context));
             }
+            if (request.UseInputCustody &&
+                (_queue.FindRequest(request.ThreadId, request.Id) is null ||
+                 _queue.FindMessage(request.ThreadId, request.Id)?.SendState == ChatQueuedMessageSendState.Accepted))
+                return new(true, BuildSnapshotLocked(context), DeliveryResolved: true);
 
             _queue.RemovePendingLocalEcho(request.ThreadId, request.Id);
-            _queue.MarkFailed(request.ThreadId, request.Id, queueError);
-            _queue.RemoveRequest(request.ThreadId, request.Id);
+            if (deliveryUncertain)
+            {
+                _queue.AddRequest(request);
+                _queue.SetDelivery(request, ChatQueuedMessageSendState.Unconfirmed, queueError);
+            }
+            else if (!dispatch.StartedDirectly)
+            {
+                _queue.MarkFailed(request.ThreadId, request.Id, queueError);
+            }
+            else
+            {
+                _queue.RemoveMessage(request.ThreadId, request.Id);
+                _queue.RemoveRequest(request.ThreadId, request.Id);
+            }
             _queue.RemoveRunMappingByMessageId(request.ThreadId, request.Id);
             if (!_queue.HasSendingMessages(request.ThreadId))
                 _queue.ClearLocallyInitiated(request.ThreadId);
             ApplyEventLocked(
                 request.ThreadId,
                 ChatContentFormatting.TruncateChatEvent(
-                    new ChatErrorEvent(timelineError)),
+                    _lifecycle.HasActiveRun(request.ThreadId)
+                        ? new ChatStatusEvent(timelineError, ChatTone.Error)
+                        : new ChatErrorEvent(timelineError)),
                 metadata: null);
-            ApplyEventLocked(request.ThreadId, new ChatTurnEndEvent(), metadata: null);
+            if (!_lifecycle.HasActiveRun(request.ThreadId))
+                ApplyEventLocked(request.ThreadId, new ChatTurnEndEvent(), metadata: null);
             return new(true, BuildSnapshotLocked(context));
         }
     }
@@ -1036,7 +1371,7 @@ internal sealed class ChatConversationState
 
     private bool IsDispatchGenerationCurrentLocked(
         ChatQueuedSendDispatch dispatch) =>
-        !_disposed &&
+        !_disposed && !_inputAuthorityRetired &&
         _history.ConnectionGeneration == dispatch.ConnectionGeneration &&
         _transportEpoch == dispatch.TransportEpoch &&
         GetResetVersionLocked(dispatch.Request.ThreadId) == dispatch.ResetVersion;
@@ -1079,6 +1414,17 @@ internal sealed class ChatConversationState
         var threadId = request.ThreadId;
         var resetVersion = GetResetVersionLocked(threadId);
         var current = GetOrCreateTimelineLocked(threadId);
+        if (request.UseInputCustody)
+        {
+            _queue.SetDelivery(request, ChatQueuedMessageSendState.Sending);
+            var pending = _queue.StartDirect(request, _history.ResolveSessionId(threadId),
+                _history.ConnectionGeneration, resetVersion, _reset.LifecycleStartSequence,
+                _lifecycle.LifecycleStartSequence) with { TransportEpoch = _transportEpoch };
+            if (!_lifecycle.HasActiveRun(threadId) && !current.TurnActive)
+                _timelines[threadId] = ChatTimelineReducer.BeginLocalUserTurn(current);
+            RegisterResetSubmissionLocked(pending);
+            return pending;
+        }
         var entryId = $"e{current.NextId}";
         _timelines[threadId] = ChatTimelineReducer.AddLocalUser(
             current,
@@ -1172,10 +1518,12 @@ internal sealed class ChatConversationState
 
         var current = GetOrCreateTimelineLocked(threadId);
         var entryId = $"e{current.NextId}";
-        _timelines[threadId] = ChatTimelineReducer.AddLocalUser(
-            current,
-            request?.EffectiveTimelineText ?? queued.Text,
-            queued.LocalNonce);
+        var text = request?.EffectiveTimelineText ?? queued.Text;
+        _timelines[threadId] = request?.UseInputCustody == true
+            ? ChatTimelineReducer.AddConsumedInput(current, text, queued.LocalNonce)
+            : ChatTimelineReducer.AddLocalUser(current, text, queued.LocalNonce);
+        if (request?.UseInputCustody == true)
+            RememberInputReceiptOutcome(request, new(ChatInputSubmissionState.Accepted, request.Id));
         var meta = confirmedMeta is not null && HasGatewayIdentity(confirmedMeta)
             ? confirmedMeta with
             {
@@ -1314,6 +1662,13 @@ internal sealed class ChatConversationState
         }
     }
 
+    internal bool IsAbortRunCurrent(string threadId, string runId, ChatRuntimeGeneration generation)
+    {
+        lock (_gate)
+            return !_disposed && !_inputAuthorityRetired && CurrentRuntimeGenerationLocked(threadId) == generation &&
+                _lifecycle.TryGetActiveRun(threadId, out var activeRun) && activeRun == runId;
+    }
+
     internal void RollbackAbort(string threadId, string runId)
     {
         lock (_gate)
@@ -1446,7 +1801,10 @@ internal sealed class ChatConversationState
                 oldSessionId,
                 generation,
                 threadId,
-                submittedRunIds.ToArray());
+                submittedRunIds.ToArray())
+            {
+                RuntimeGeneration = CurrentRuntimeGenerationLocked(threadId),
+            };
         }
     }
 
@@ -2908,8 +3266,25 @@ internal sealed class ChatConversationState
             _lifecycle.StartRun(threadId, lifecycleStart.RunId);
     }
 
-    private ChatDataSnapshot BuildSnapshotLocked(ChatProjectionContext context) =>
-        ChatSnapshotProjector.Project(CaptureProjectionInputLocked(context));
+    private ChatDataSnapshot BuildSnapshotLocked(ChatProjectionContext context)
+    {
+        var snapshot = ChatSnapshotProjector.Project(CaptureProjectionInputLocked(context));
+        return !_inputAuthorityRetired ? snapshot : snapshot with
+        {
+            Threads = [],
+            Timelines = new Dictionary<string, ChatTimelineState>(),
+            QueuedMessagesByThread = new Dictionary<string, IReadOnlyList<ChatQueuedMessage>>(),
+            AvailableModels = [],
+            ModelChoices = [],
+            AvailableCommands = [],
+            CommandsSupported = false,
+            ComposeTarget = ChatComposeTarget.NotReady,
+            CurrentHistoryThreads = new HashSet<string>(),
+            ConnectionStatus = ChatInputMessages.AccountChanged,
+            DefaultThreadId = null,
+            WelcomeContent = null,
+        };
+    }
 
     private ChatSnapshotProjectionInput CaptureProjectionInputLocked(
         ChatProjectionContext context) =>

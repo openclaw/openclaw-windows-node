@@ -1,5 +1,19 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <data name="Chat_Input_SettingUnconfirmed" xml:space="preserve"><value>Réglage de session non confirmé</value></data>
+  <data name="Chat_Input_SettingUnconfirmedFormat" xml:space="preserve"><value>Échec de la mise à jour du réglage : {0} Sélectionnez-le à nouveau ou reconnectez-vous avant l’envoi.</value></data>
+  <data name="Chat_Input_Cancelled" xml:space="preserve"><value>Le Gateway a annulé le message en attente. Il n’a pas été renvoyé.</value></data>
+  <data name="Chat_Input_Interrupted" xml:space="preserve"><value>Le Gateway indique que le message en attente a été interrompu. Aucun message n’a été renvoyé.</value></data>
+  <data name="Chat_Input_ScopeChanged" xml:space="preserve"><value>La conversation d’origine a changé. Aucun message n’a été envoyé.</value></data>
+  <data name="Chat_Input_Unconfirmed" xml:space="preserve"><value>L’envoi n’est pas confirmé. Vérifiez le message conservé avant de l’envoyer à nouveau.</value></data>
+  <data name="Chat_Input_Unavailable" xml:space="preserve"><value>Ce mode nécessite le contrat de conservation des messages du Gateway et l’autorisation d’envoyer des messages.</value></data>
+  <data name="Chat_Input_ReviewRequired" xml:space="preserve"><value>L’envoi de ce message n’est pas confirmé. Vérifiez son entrée conservée avant de l’envoyer à nouveau.</value></data>
+  <data name="Chat_Input_NoReceipt" xml:space="preserve"><value>Aucun accusé de réception fiable n’a confirmé l’envoi. Vérifiez ou abandonnez le message conservé. Il n’a pas été renvoyé.</value></data>
+  <data name="Chat_Input_CannotSteer" xml:space="preserve"><value>Les messages pris en charge par le Gateway ou dont l’envoi est incertain ne peuvent pas être redirigés à nouveau.</value></data>
+  <data name="Chat_Input_ExternalMutationRejected" xml:space="preserve"><value>Les invites externes ne peuvent pas exécuter de commandes ni déplacer une conversation. Utilisez sa zone de saisie.</value></data>
+  <data name="Chat_Input_RecoveryUnavailable" xml:space="preserve"><value>Ce fournisseur ne prend pas en charge la récupération des messages.</value></data>
+  <data name="Chat_Input_QueueActionRejected" xml:space="preserve"><value>Ce message ne peut pas être modifié ou renvoyé dans son état actuel.</value></data>
+  <data name="Chat_Input_AccountChanged" xml:space="preserve"><value>Le compte authentifié a changé. Un nouveau contexte de conversation est nécessaire pour envoyer un message.</value></data>
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
       <xs:complexType>

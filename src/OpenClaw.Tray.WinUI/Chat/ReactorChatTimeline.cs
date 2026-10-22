@@ -457,7 +457,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     private static Element BuildQueuedMessageAction(ReactorTimelineRow row, string accessibleText)
     {
         if (row.QueuedMessage is not { } message
-            || message.SendState == ChatQueuedMessageSendState.Sending
+            || !message.CanCancel
             || row.Props.Timeline.OnCancelQueuedMessage is not { } cancel)
         {
             return Empty();

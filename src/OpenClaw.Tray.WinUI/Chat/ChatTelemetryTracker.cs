@@ -17,6 +17,7 @@ internal enum ChatTurnTelemetryReason
     LifecycleEnd,
     LifecycleError,
     SendRejected,
+    SendUnconfirmed,
     QueuedCanceled,
     AbortRequested,
     Reset,
@@ -33,6 +34,7 @@ internal enum ChatAdmissionTelemetryStatus
     Rejected,
     Canceled,
     Exception,
+    Unconfirmed,
     Other,
 }
 
@@ -936,6 +938,7 @@ internal sealed class ChatTelemetryTracker
             ChatTurnTelemetryReason.LifecycleEnd => "lifecycle_end",
             ChatTurnTelemetryReason.LifecycleError => "lifecycle_error",
             ChatTurnTelemetryReason.SendRejected => "send_rejected",
+            ChatTurnTelemetryReason.SendUnconfirmed => "send_unconfirmed",
             ChatTurnTelemetryReason.QueuedCanceled => "queued_canceled",
             ChatTurnTelemetryReason.AbortRequested => "abort_requested",
             ChatTurnTelemetryReason.Reset => "reset",
@@ -954,6 +957,7 @@ internal sealed class ChatTelemetryTracker
             ChatAdmissionTelemetryStatus.Rejected => "rejected",
             ChatAdmissionTelemetryStatus.Canceled => "canceled",
             ChatAdmissionTelemetryStatus.Exception => "exception",
+            ChatAdmissionTelemetryStatus.Unconfirmed => "unconfirmed",
             ChatAdmissionTelemetryStatus.Other => "other",
             _ => "other",
         };

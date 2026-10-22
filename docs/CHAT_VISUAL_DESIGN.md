@@ -99,9 +99,132 @@ main session. Late Stop or approval acknowledgements cannot complete a
 replacement run or dismiss a replacement approval. An accepted send reports
 acceptance even after navigation, clears only its unchanged draft revision and
 submitted attachment identities, and preserves edits and added attachments.
-Reset confirmation cannot authorize a conversation the user has since left. These fences do not
-establish delivery after a lost acknowledgement or implement uncertain-send
-reconciliation.
+Reset confirmation cannot authorize a conversation the user has since left.
+
+### Conversation-control transport and custody
+
+The controller and provider expose distinct submission actions. `Queue` is a
+local unsent entry that waits for the current turn. `Steer` writes `chat.send`
+immediately with `queueMode:"steer"`; it never sends a wire mode named `queue`.
+The other supported wire modes are `followup`, `collect`, and `interrupt`.
+`Send` leaves the wire mode unspecified so the Gateway resolves its own default.
+An explicit local Queue retains its choice when edited or reordered.
+
+New wire fields require the advertised `chat-input-custody-v1` capability and
+current write authority. The marker describes transport support, not backend
+injection, a new permission, consumption, or completion. Without it, ordinary
+legacy submission remains available and explicit new modes are rejected without
+a downgrade. Native control labels, alternate-action keyboard binding, and
+Gateway-pending input presentation must be integrated by the chat surface owner;
+the controller API alone is not rendered UI proof.
+
+With input custody, `started` and `in_flight` acknowledgements retain the input
+until a canonical message identity or exact receipt resolves custody.
+`in_flight` is not a request to retry, and a steering input's acknowledgement
+does not replace the active response's run or Stop target. A definite pre-write
+refusal leaves the composer as the payload owner. A possible write without an
+acknowledgement transfers the immutable text, attachment references, original
+target and idempotency key to a retained **unconfirmed** entry. The composer
+releases only its unchanged submitted revision and submitted attachments.
+A command acknowledgement with `status:"ok"` retires a leading-slash command
+that does not require input consumption; ordinary input still needs positive
+consumption or message identity.
+
+Every successful current-epoch history refresh requests retained input IDs when
+the custody contract is available. A reconnect requests reconciliation after a
+fresh session snapshot, only for the same real client and matching known
+session incarnation. This is a receipt read, not permission to replay an input.
+An unknown incarnation or retired account remains blocked.
+Receipt-only recovery does not rebuild the transcript or replace active
+assistant/reasoning entry identities. Positively consumed in-run inputs are
+appended without ending the current response segment; subsequent deltas keep
+the active assistant entry. Ordinary user-turn boundaries retain their existing
+streaming reset behavior.
+
+Recovery reads `chat.history` with exact `inputRunIds`. Pending receipts retain
+Gateway custody; consumed or cancelled receipts retire it. A missing receipt,
+page omission, or consumed-only compatibility projection does not establish that
+an input was never received. Recovery does not blindly replay an unconfirmed
+input or mint a fresh ID. Unresolved input stays available for review and
+explicit discard. Discarding a local unconfirmed entry does not cancel a
+possibly accepted Gateway input. Gateway-owned rows cannot be edited, locally
+cancelled, reordered across pending barriers, or steered again. An exact
+interrupted pending input retires its row with a localized notice. Malformed
+custody metadata is diagnosed independently and does not hide the transcript.
+An older Gateway without receipts retains unresolved input with an explicit
+recovery-unavailable result, never a blind retry. Exact
+server-pending cancellation remains a separate integration stage.
+
+Retained payloads are memory-only. No attachment bytes or outbox payloads are
+written to metadata JSON, and there is no new durable account cache. Reconnect
+does not authorize replay into a new connection or account. An authenticated
+profile-change event retires this provider's admission and presentation for its
+remaining lifetime. A genuinely fresh provider/context is required; merely
+publishing another Connected event cannot adopt the old account's state.
+This conservative retirement is not durable, account-qualified transcript or
+outbox recovery. It observes profile-identity broadcasts, not every possible
+same-socket permission downgrade. Current scopes are checked before a custody
+write and the Gateway remains authoritative; a scope change without a broadcast
+is learned from rejection or the next handshake. Failed model-setting tails
+remain visible until a successful choice or a fresh connection retires that
+old scope. Closing/disposal ends memory-only retention; late failures cannot
+recreate reset or disposed outbox rows.
+Custody sends also do not write attachment fallback metadata into the legacy
+unqualified disk cache. In-memory presentation remains available; durable,
+account-qualified metadata recovery belongs to the cache owner.
+
+A first-turn location preparation can continue an unmaterialized target only
+from a typed receipt produced by that actual client's accepted `sessions.create`
+response. The client, epoch, explicit key, reset generation and returned UUID
+must agree; a different observed UUID is rejected rather than adopted. This
+does not invent a main-session fallback or trust a UI-supplied UUID. The normal
+composer still needs a genuine conversation-only origin producer for complete
+canonical-account/environment binding; a panel-scoped operation lease is not a
+substitute. That integration and durable account-qualified caches remain
+separate from these transport and receipt APIs.
+
+Non-composer prompts use `SendFromOriginAsync` with the actual
+`IChatInputOrigin` lease supplied by the originating panel owner. This new path
+requires the advertised custody contract and write authority rather than
+falling back to a legacy write without the session-incarnation field. The lease
+contains the real client reference, ready epoch and explicit source session;
+its currentness callback owns canonical account, environment, panel/content and
+run validation. The provider independently checks its real bridge client,
+session incarnation and reset generation. The final synchronous admission
+check runs after the socket send semaphore, immediately before writing.
+`ChatConversationState` never performs or blocks on network writes under its
+transaction lock. Origin callbacks must obey the same nonblocking lock
+direction; they cannot issue RPCs or wait for a send.
+The same guarded write path covers model/effort patches, first-turn creation and
+dispatch, and explicit Stop. A late setting acknowledgement from a retired
+origin cannot unblock a send. Stop captures its actual active run and rejects a
+changed origin/run before writing, without targeting a replacement run.
+External prompts do not borrow or clear the composer. Leading-slash command
+input, including commands with arguments or attachments, is rejected rather than
+forwarded as a possible Gateway-wide mutation. First-turn placement changes also
+require the composer. Stale origins are rejected
+instead of targeting the current selection or main session.
+
+### Scoped mutation lock boundary
+
+The socket `_sendLock` owns the outer write boundary. Provider currentness takes
+and releases the conversation `_gate` before invoking the external origin, then
+revalidates conversation state in a separate read transaction. It never holds
+that state lock across an external callback or a network operation.
+Receive-side session mutations release `_sessionsLock` before events, and the
+pending registry releases its gate before completing asynchronously continued
+tasks. Those reverse paths must not acquire or wait for the socket semaphore
+while holding a predicate lock.
+
+The permitted integration order is socket send, provider state, manager snapshot
+read, client session-list read, then profile/revision. Non-nested reads release
+their locks between stages. The current manager snapshot getter is a direct
+immutable record reference, not a claimed snapshot-lock guarantee. A genuine
+conversation-only origin and promoted canonical account owner require their own
+current-source lock audit before Root wiring. Existing panel currentness is not
+an audited substitute. Real-socket contention tests cover the implemented
+conversation and client session-list gates; they do not prove an unwired
+manager/profile producer.
 
 Chat responses are not read aloud by default. Enabling the Text-to-speech
 capability permits playback but does not enable automatic spoken replies.

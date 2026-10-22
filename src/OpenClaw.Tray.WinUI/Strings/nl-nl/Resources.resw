@@ -1,5 +1,19 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <data name="Chat_Input_SettingUnconfirmed" xml:space="preserve"><value>Sessie-instelling niet bevestigd</value></data>
+  <data name="Chat_Input_SettingUnconfirmedFormat" xml:space="preserve"><value>Bijwerken van de instelling mislukt: {0} Kies opnieuw of maak opnieuw verbinding voordat u verzendt.</value></data>
+  <data name="Chat_Input_Cancelled" xml:space="preserve"><value>De Gateway heeft de wachtende invoer geannuleerd. Deze is niet opnieuw verzonden.</value></data>
+  <data name="Chat_Input_Interrupted" xml:space="preserve"><value>De Gateway meldt dat de wachtende invoer is onderbroken. Er is geen invoer opnieuw verzonden.</value></data>
+  <data name="Chat_Input_ScopeChanged" xml:space="preserve"><value>Het oorspronkelijke gesprek is gewijzigd. Er is geen invoer verzonden.</value></data>
+  <data name="Chat_Input_Unconfirmed" xml:space="preserve"><value>De bezorging is niet bevestigd. Controleer de bewaarde invoer voordat u deze opnieuw verzendt.</value></data>
+  <data name="Chat_Input_Unavailable" xml:space="preserve"><value>Deze invoermodus vereist het Gateway-contract voor invoerbewaring en toestemming om berichten te verzenden.</value></data>
+  <data name="Chat_Input_ReviewRequired" xml:space="preserve"><value>De bezorging van deze invoer is niet bevestigd. Controleer de bewaarde invoer voordat u deze opnieuw verzendt.</value></data>
+  <data name="Chat_Input_NoReceipt" xml:space="preserve"><value>Geen gezaghebbend ontvangstbewijs bevestigt de bezorging. Controleer of verwijder de bewaarde invoer. Deze is niet opnieuw verzonden.</value></data>
+  <data name="Chat_Input_CannotSteer" xml:space="preserve"><value>Invoer die de Gateway beheert of waarvan de bezorging onzeker is, kan niet opnieuw worden bijgestuurd.</value></data>
+  <data name="Chat_Input_ExternalMutationRejected" xml:space="preserve"><value>Externe prompts kunnen geen opdrachten uitvoeren of een gesprek verplaatsen. Gebruik het invoerveld van het gesprek.</value></data>
+  <data name="Chat_Input_RecoveryUnavailable" xml:space="preserve"><value>Deze provider ondersteunt geen invoerherstel.</value></data>
+  <data name="Chat_Input_QueueActionRejected" xml:space="preserve"><value>Deze invoer kan in de huidige status niet worden gewijzigd of opnieuw verzonden.</value></data>
+  <data name="Chat_Input_AccountChanged" xml:space="preserve"><value>Het aangemelde account is gewijzigd. Er is een nieuwe gesprekscontext nodig voordat u kunt verzenden.</value></data>
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
       <xs:complexType>

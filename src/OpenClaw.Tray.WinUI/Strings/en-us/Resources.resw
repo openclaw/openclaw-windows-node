@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
+  <data name="Chat_Input_SettingUnconfirmed" xml:space="preserve"><value>Session setting not confirmed</value></data>
+  <data name="Chat_Input_SettingUnconfirmedFormat" xml:space="preserve"><value>Setting update failed: {0} Choose it again or reconnect before sending.</value></data>
+  <data name="Chat_Input_Cancelled" xml:space="preserve"><value>The Gateway cancelled the pending input. It was not resent.</value></data>
+  <data name="Chat_Input_Interrupted" xml:space="preserve"><value>The Gateway reports that the pending input was interrupted. No input was resent.</value></data>
+  <data name="Chat_Input_ScopeChanged" xml:space="preserve"><value>The originating conversation changed. No input was sent.</value></data>
+  <data name="Chat_Input_Unconfirmed" xml:space="preserve"><value>Delivery is unconfirmed. Review the retained input before sending again.</value></data>
+  <data name="Chat_Input_Unavailable" xml:space="preserve"><value>This input mode requires the Gateway input-custody contract and permission to send messages.</value></data>
+  <data name="Chat_Input_ReviewRequired" xml:space="preserve"><value>This input has unconfirmed delivery. Review its retained outbox entry before sending again.</value></data>
+  <data name="Chat_Input_NoReceipt" xml:space="preserve"><value>No authoritative receipt resolved delivery. Review or discard this retained input; it was not resent.</value></data>
+  <data name="Chat_Input_CannotSteer" xml:space="preserve"><value>Gateway-owned or uncertain inputs cannot be steered again.</value></data>
+  <data name="Chat_Input_ExternalMutationRejected" xml:space="preserve"><value>External prompts cannot run commands or change a conversation's location. Use its composer.</value></data>
+  <data name="Chat_Input_RecoveryUnavailable" xml:space="preserve"><value>This provider does not support input recovery.</value></data>
+  <data name="Chat_Input_QueueActionRejected" xml:space="preserve"><value>This input cannot be changed or retried in its current state.</value></data>
+  <data name="Chat_Input_AccountChanged" xml:space="preserve"><value>The authenticated account changed. A fresh chat context is required before sending.</value></data>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
       <xsd:complexType>

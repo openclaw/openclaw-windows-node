@@ -1,5 +1,19 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
+  <data name="Chat_Input_SettingUnconfirmed" xml:space="preserve"><value>Configuração da sessão não confirmada</value></data>
+  <data name="Chat_Input_SettingUnconfirmedFormat" xml:space="preserve"><value>Falha ao atualizar a configuração: {0} Escolha novamente ou reconecte antes de enviar.</value></data>
+  <data name="Chat_Input_Cancelled" xml:space="preserve"><value>O Gateway cancelou a entrada pendente. Ela não foi reenviada.</value></data>
+  <data name="Chat_Input_Interrupted" xml:space="preserve"><value>O Gateway informa que a entrada pendente foi interrompida. Nenhuma entrada foi reenviada.</value></data>
+  <data name="Chat_Input_ScopeChanged" xml:space="preserve"><value>A conversa de origem mudou. Nenhuma entrada foi enviada.</value></data>
+  <data name="Chat_Input_Unconfirmed" xml:space="preserve"><value>A entrega não foi confirmada. Revise a entrada retida antes de enviar novamente.</value></data>
+  <data name="Chat_Input_Unavailable" xml:space="preserve"><value>Este modo exige o contrato de custódia de entradas do Gateway e permissão para enviar mensagens.</value></data>
+  <data name="Chat_Input_ReviewRequired" xml:space="preserve"><value>A entrega desta entrada não foi confirmada. Revise o item retido antes de enviar novamente.</value></data>
+  <data name="Chat_Input_NoReceipt" xml:space="preserve"><value>Nenhum recibo autoritativo confirmou a entrega. Revise ou descarte a entrada retida. Ela não foi reenviada.</value></data>
+  <data name="Chat_Input_CannotSteer" xml:space="preserve"><value>Entradas sob custódia do Gateway ou com entrega incerta não podem ser redirecionadas novamente.</value></data>
+  <data name="Chat_Input_ExternalMutationRejected" xml:space="preserve"><value>Prompts externos não podem executar comandos ou alterar o local de uma conversa. Use o campo de mensagem da conversa.</value></data>
+  <data name="Chat_Input_RecoveryUnavailable" xml:space="preserve"><value>Este provedor não oferece recuperação de entradas.</value></data>
+  <data name="Chat_Input_QueueActionRejected" xml:space="preserve"><value>Esta entrada não pode ser alterada ou reenviada no estado atual.</value></data>
+  <data name="Chat_Input_AccountChanged" xml:space="preserve"><value>A conta autenticada mudou. É necessário um novo contexto de conversa antes de enviar.</value></data>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
       <xsd:complexType>

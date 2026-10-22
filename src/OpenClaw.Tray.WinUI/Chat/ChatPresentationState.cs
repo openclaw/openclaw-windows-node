@@ -18,6 +18,9 @@ internal sealed record ChatUsageSnapshot(
 internal sealed class ChatPresentationState
 {
     private readonly Dictionary<string, Task> _pendingSessionOptionPatches = new();
+    internal bool HasFreshSessionSnapshot => _sessionsListReceived;
+
+    internal void RetireSessionOptionPatches() => _pendingSessionOptionPatches.Clear();
 
     private SessionInfo[] _sessions = [];
     private bool _sessionsListReceived;
@@ -183,9 +186,13 @@ internal sealed class ChatPresentationState
         if (error is null)
             lease.Completion.TrySetResult();
         else
+        {
             lease.Completion.TrySetException(error);
+            _ = lease.Completion.Task.Exception;
+        }
 
-        if (_pendingSessionOptionPatches.TryGetValue(lease.ThreadId, out var current) &&
+        if (error is null &&
+            _pendingSessionOptionPatches.TryGetValue(lease.ThreadId, out var current) &&
             ReferenceEquals(current, lease.Completion.Task))
         {
             _pendingSessionOptionPatches.Remove(lease.ThreadId);

@@ -821,10 +821,22 @@ public abstract class WebSocketClientBase : IDisposable
     /// Sends only when the captured socket generation still owns the transport immediately before
     /// the write. Used for credential-bearing handshake frames.
     /// </summary>
-    protected virtual async Task<bool> SendRawAsync(
+    protected virtual Task<bool> SendRawAsync(
         string message,
         long expectedConnectionGeneration,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        SendRawAsync(message, expectedConnectionGeneration, cancellationToken, null, null);
+
+    /// <summary>
+    /// The beforeWrite callback must be bounded and synchronous. It must not
+    /// send, await, block on a send, or acquire locks in the reverse send order.
+    /// </summary>
+    protected async Task<bool> SendRawAsync(
+        string message,
+        long expectedConnectionGeneration,
+        CancellationToken cancellationToken,
+        Func<bool>? beforeWrite,
+        Action? writeStarting)
     {
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             _cts.Token,
@@ -856,6 +868,9 @@ public abstract class WebSocketClientBase : IDisposable
             try
             {
                 var written = Encoding.UTF8.GetBytes(message, buffer);
+                if (beforeWrite?.Invoke() == false)
+                    return false;
+                writeStarting?.Invoke();
                 await ws.SendAsync(
                         buffer.AsMemory(0, written),
                         WebSocketMessageType.Text,

@@ -91,7 +91,8 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
         return ExecuteLifecycleGate.Task;
     }
 
-    public Task StopResponseAsync(string threadId, CancellationToken cancellationToken)
+    public Task StopResponseAsync(string threadId, CancellationToken cancellationToken,
+        ChatInputLease? origin = null, Func<bool>? isCurrent = null)
     {
         StopCallCount++;
         LastStopThreadId = threadId;
@@ -107,7 +108,8 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
         return Task.CompletedTask;
     }
 
-    public Task SetModelAsync(string threadId, string model, CancellationToken cancellationToken)
+    public Task SetModelAsync(string threadId, string model, CancellationToken cancellationToken,
+        ChatInputLease? origin = null, Func<bool>? isCurrent = null)
     {
         SetModelCallCount++;
         LastSetModelCall = (threadId, model);
@@ -116,7 +118,8 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
         return SetModelGate.Task;
     }
 
-    public Task ClearModelAsync(string threadId, CancellationToken cancellationToken)
+    public Task ClearModelAsync(string threadId, CancellationToken cancellationToken,
+        ChatInputLease? origin = null, Func<bool>? isCurrent = null)
     {
         ClearModelCallCount++;
         LastClearModelThreadId = threadId;
@@ -133,7 +136,8 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
             ?? Task.FromResult<ModelsListInfo?>(null);
     }
 
-    public Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken)
+    public Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken,
+        ChatInputLease? origin = null, Func<bool>? isCurrent = null)
     {
         SetThinkingLevelCallCount++;
         LastSetThinkingLevelCall = (threadId, thinkingLevel);
@@ -141,7 +145,8 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
         return Task.CompletedTask;
     }
 
-    public Task ClearThinkingLevelAsync(string threadId, CancellationToken cancellationToken)
+    public Task ClearThinkingLevelAsync(string threadId, CancellationToken cancellationToken,
+        ChatInputLease? origin = null, Func<bool>? isCurrent = null)
     {
         ClearThinkingLevelCallCount++;
         LastClearThinkingLevelThreadId = threadId;

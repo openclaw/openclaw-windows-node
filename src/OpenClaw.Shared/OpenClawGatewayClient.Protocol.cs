@@ -192,7 +192,10 @@ public partial class OpenClawGatewayClient
         new GatewayChatPlacementClient(
             () => SessionMutationConnectionEpoch,
             (method, parameters, timeoutMs, epoch) =>
-                SendResponseRequestAsync(method, parameters, timeoutMs, epoch));
+                SendResponseRequestAsync(method, parameters, timeoutMs, epoch),
+            this,
+            (method, parameters, timeoutMs, epoch, isCurrent) =>
+                SendResponseRequestAsync(method, parameters, timeoutMs, epoch, isCurrent));
 
     /// <summary>
     /// Creates a distinct gateway session. Unsupported gateways return a typed
@@ -519,6 +522,19 @@ public partial class OpenClawGatewayClient
             throw new ArgumentException("The session patch must contain a change.", nameof(patch));
         var payload = await SendResponseRequestAsync(
             "sessions.patch", patch.ToPayload(key), timeoutMs, connectionEpoch).ConfigureAwait(false);
+        RequireSessionMutationAccepted(payload, key);
+    }
+
+    public async Task PatchSessionConfirmedScopedAsync(
+        string key, SessionPatch patch, long connectionEpoch, Func<bool> isCurrent, int timeoutMs = 15000)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(patch);
+        ArgumentNullException.ThrowIfNull(isCurrent);
+        if (!patch.HasChanges)
+            throw new ArgumentException("The session patch must contain a change.", nameof(patch));
+        var payload = await SendResponseRequestAsync(
+            "sessions.patch", patch.ToPayload(key), timeoutMs, connectionEpoch, isCurrent).ConfigureAwait(false);
         RequireSessionMutationAccepted(payload, key);
     }
 

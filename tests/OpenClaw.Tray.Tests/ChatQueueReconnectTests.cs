@@ -6,7 +6,27 @@ namespace OpenClaw.Tray.Tests;
 public class ChatQueueReconnectTests
 {
     [Fact]
-    public void Reconnect_KeepsQueuedMessagesAsFailedAndDropsSendingMessages()
+    public void Reconnect_RetainsSendingPayloadForUncertainDeliveryReview()
+    {
+        var queue = new ChatQueueState();
+        var attachment = new OpenClaw.Shared.ChatAttachment { FileName = "draft.txt", Content = "aGVsbG8=" };
+        queue.AddMessage("source", new ChatQueuedMessage(
+            "q1", "keep this", DateTimeOffset.UtcNow, "nonce", ChatQueuedMessageSendState.Sending));
+        queue.AddRequest(new ChatQueuedSendRequest(
+            "q1", "original-input", "source", "keep this", "keep this", "nonce", [attachment]));
+
+        queue.ClearForReconnect();
+
+        var row = Assert.Single(queue.SnapshotMessages()["source"]);
+        Assert.Equal("q1", row.Id);
+        var retained = Assert.IsType<ChatQueuedSendRequest>(queue.FindRequest("source", row.Id));
+        Assert.Equal("original-input", retained.SendRunId);
+        Assert.Same(attachment, Assert.Single(retained.Attachments!));
+        Assert.False(queue.HasSendingMessages("source"));
+    }
+
+    [Fact]
+    public void Reconnect_KeepsLocalFailuresAndUnconfirmedSendingPayloadsWithoutAutomaticReplay()
     {
         var queue = new ChatQueueState();
         var created = DateTimeOffset.Parse("2026-10-07T00:00:00Z");
@@ -25,15 +45,15 @@ public class ChatQueueReconnectTests
         queue.ClearForReconnect();
 
         var messages = queue.SnapshotMessages()["main"];
-        Assert.Equal(2, messages.Count);
-        Assert.All(messages, message =>
+        Assert.Equal(3, messages.Count);
+        Assert.All(messages.Where(message => message.Id != "q-sending"), message =>
             Assert.Equal(ChatQueuedMessageSendState.Failed, message.SendState));
-        Assert.DoesNotContain(messages, message => message.Id == "q-sending");
+        Assert.Equal(ChatQueuedMessageSendState.Unconfirmed, messages.Single(message => message.Id == "q-sending").SendState);
         Assert.Equal(
             "The connection dropped before the gateway accepted this message.",
             messages.Single(message => message.Id == "q-queued").ErrorText);
         Assert.Equal("earlier", messages.Single(message => message.Id == "q-failed").ErrorText);
-        Assert.Null(queue.FindRequest("main", "q-sending"));
+        Assert.Equal("run-1", queue.FindRequest("main", "q-sending")!.SendRunId);
         Assert.Null(queue.FindRequest("main", "gone"));
     }
 }

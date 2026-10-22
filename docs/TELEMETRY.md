@@ -193,6 +193,13 @@ it increments `openclaw.chat.remote_turns.dropped` with the finite reason
 `missing_run_id`. A missing-run start for an already-dispatched local turn is not
 misclassified as a dropped remote turn.
 
+Unconfirmed chat delivery uses the finite admission status `unconfirmed` and
+turn reason `send_unconfirmed`, distinct from `send_rejected`. These values
+describe transport uncertainty, not a failed model turn or proof of acceptance.
+The retained input ID, origin/account identity, text and attachment content stay
+inside the process and are not exported. `in_flight` is accepted custody, not a
+deferred retry status.
+
 Terminal lifecycle events are never matched by thread alone. If a terminal event
 has no run ID or conflicts with the active run, it cannot complete a potentially
 newer turn. The provider drops malformed lifecycle and legacy job terminals

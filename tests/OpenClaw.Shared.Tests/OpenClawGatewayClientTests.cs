@@ -10,7 +10,7 @@ using OpenClaw.TestSupport;
 
 namespace OpenClaw.Shared.Tests;
 
-public class OpenClawGatewayClientTests
+public partial class OpenClawGatewayClientTests
 {
     private static readonly TimeSpan CloseHandshakeTimeout = TimeSpan.FromSeconds(3);
 
@@ -660,7 +660,9 @@ public class OpenClawGatewayClientTests
             error = new { message = "permission denied" },
             payload = new { ok = false, reason = "permission denied" }
         }));
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => task);
+        var error = payloadRejection
+            ? await Assert.ThrowsAsync<InvalidOperationException>(() => task)
+            : await Assert.ThrowsAsync<GatewayRequestException>(() => task);
         Assert.Equal("permission denied", error.Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
@@ -821,7 +823,7 @@ public class OpenClawGatewayClientTests
                 error = new { message = "wizard rejected" }
             }));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<GatewayRequestException>(
             async () => await responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
 
         Assert.Equal("wizard rejected", exception.Message);
@@ -3510,8 +3512,9 @@ public class OpenClawGatewayClientTests
         }
         """);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await task);
+        var ex = await Assert.ThrowsAsync<ChatSendRejectedException>(async () => await task);
         Assert.Contains("operator.write", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(ex.Code);
     }
 
     [Fact]

@@ -7,7 +7,7 @@ namespace OpenClaw.Shared;
 /// Exposes data events and request methods needed by UI consumers
 /// without exposing connection lifecycle methods (connect/disconnect/dispose).
 /// </summary>
-public interface IOperatorGatewayClient
+public partial interface IOperatorGatewayClient
 {
     // ─── Data Events ───
     event EventHandler<OpenClawNotification>? NotificationReceived;

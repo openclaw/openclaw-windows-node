@@ -12,6 +12,150 @@ namespace OpenClaw.Tray.Tests;
 [Collection("Chat telemetry")]
 public sealed class InteractiveGatewayChatTests
 {
+    private static readonly TimeSpan ScopeInterleavingDeadline = TimeSpan.FromSeconds(10);
+
+    [Fact]
+    public async Task FirstSend_IdenticalSessionRefreshWhileSocketWaitsKeepsOriginalIncarnation()
+    {
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateInteractive(), token);
+        server.Interactive!.Playback.Pause();
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(ScopeInterleavingDeadline);
+        var heldListing = server.HoldNextSessionList();
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        await provider.LoadAsync();
+        await heldListing.WaitAsync(ScopeInterleavingDeadline);
+        var key = GatewayScenario.EmptySessionKey;
+        var origin = provider.CaptureInputOrigin(key);
+        Assert.Equal(client.GetSessionList().Single(session => session.Key == key).SessionId, origin.SessionId);
+        Assert.NotNull(origin.SessionId);
+        var refreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) =>
+        {
+            if (sessions.Any(session => session.Key == key && session.SessionId == origin.SessionId))
+                refreshed.TrySetResult();
+        };
+        var socketGate = (SemaphoreSlim)typeof(WebSocketClientBase).GetField("_sendLock",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(client)!;
+        await socketGate.WaitAsync();
+        Task<bool> send;
+        try
+        {
+            send = provider.SendMessageReportingAcceptanceAsync(key, "First-send refresh race.");
+            Assert.False(send.IsCompleted);
+            server.ReleaseSessionList();
+            await refreshed.Task.WaitAsync(ScopeInterleavingDeadline);
+            Assert.True(provider.IsInputOriginCurrent(origin));
+        }
+        finally { socketGate.Release(); }
+        Assert.True(await send.WaitAsync(ScopeInterleavingDeadline));
+        Assert.Single(server.Requests, request => request.Method == "chat.send");
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
+    [InlineData("conversation")]
+    [InlineData("sessions")]
+    public async Task ScopedMutation_ActualPredicateReadLockContentionCompletesWithoutInversion(string owner)
+    {
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateInteractive(), token);
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(ScopeInterleavingDeadline);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        await provider.LoadAsync();
+        await provider.LoadHistoryAsync(GatewayScenario.EmptySessionKey, force: true);
+        var origin = provider.CaptureInputOrigin(GatewayScenario.EmptySessionKey);
+        Assert.True(provider.IsInputOriginCurrent(origin));
+        var state = typeof(OpenClawChatDataProvider).GetField("_state",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(provider)!;
+        var gate = owner == "conversation"
+            ? typeof(ChatConversationState).GetField("_gate",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(state)!
+            : typeof(OpenClawGatewayClient).GetField("_sessionsLock",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(client)!;
+        var socketGate = (SemaphoreSlim)typeof(WebSocketClientBase).GetField("_sendLock",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(client)!;
+        using var held = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var finalCheck = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var checks = 0;
+        await socketGate.WaitAsync();
+        var mutation = client.PatchSessionConfirmedScopedAsync(origin.ThreadId, new SessionPatch { Model = "test/model" },
+            bridge.ConnectionEpoch, () =>
+            {
+                if (Interlocked.Increment(ref checks) == 2) finalCheck.TrySetResult();
+                return provider.IsInputOriginCurrent(origin) && client.GetSessionList().Length == 5;
+            });
+        var holder = Task.Run(() =>
+        {
+            lock (gate)
+            {
+                held.Set();
+                Assert.True(release.Wait(ScopeInterleavingDeadline));
+            }
+        });
+        try
+        {
+            Assert.True(held.Wait(ScopeInterleavingDeadline));
+            socketGate.Release();
+            await finalCheck.Task.WaitAsync(ScopeInterleavingDeadline);
+            Assert.False(mutation.IsCompleted);
+        }
+        finally { release.Set(); }
+        await holder.WaitAsync(ScopeInterleavingDeadline);
+        await mutation.WaitAsync(ScopeInterleavingDeadline);
+        Assert.Single(server.Requests, request => request.Method == "sessions.patch");
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
+    public async Task ScopedAbort_RetiredWhileWaitingForSocketNeverWrites()
+    {
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateInteractive(), token);
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(ScopeInterleavingDeadline);
+        using var bridge = new GatewayClientChatBridge(client);
+        var socketGate = (SemaphoreSlim)typeof(WebSocketClientBase).GetField("_sendLock",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(client)!;
+        var current = true;
+        await socketGate.WaitAsync();
+        var abort = bridge.SendChatAbortAtEpochAsync("original-run", GatewayScenario.EmptySessionKey,
+            bridge.ConnectionEpoch, () => current);
+        Assert.False(abort.IsCompleted);
+        current = false;
+        socketGate.Release();
+        var refusal = await Assert.ThrowsAsync<ChatMutationDeliveryException>(() => abort);
+        Assert.False(refusal.MayHaveApplied);
+        await client.RequestChatHistoryAsync(GatewayScenario.EmptySessionKey);
+        Assert.DoesNotContain(server.Requests, request => request.Method == "chat.abort");
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
     [Theory]
     [InlineData("chat.send")]
     [InlineData("chat.abort")]

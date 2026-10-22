@@ -4,6 +4,13 @@ namespace OpenClaw.Shared;
 
 public static class GatewayServerMethodAdvertisement
 {
+    public static bool HasMethods(JsonElement hello) =>
+        hello.ValueKind == JsonValueKind.Object &&
+        hello.TryGetProperty("features", out var features) && features.ValueKind == JsonValueKind.Object &&
+        features.TryGetProperty("methods", out var methods) && methods.ValueKind == JsonValueKind.Array &&
+        methods.EnumerateArray().All(value => value.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(value.GetString()));
+
     public static string[] Parse(JsonElement hello) => ParseFeatureStrings(hello, "methods");
 
     public static string[] ParseCapabilities(JsonElement hello) =>

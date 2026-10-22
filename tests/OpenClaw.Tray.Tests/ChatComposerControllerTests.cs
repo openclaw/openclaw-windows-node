@@ -1423,7 +1423,7 @@ public sealed class ChatComposerControllerTests
     }
 
     [Fact]
-    public async Task SendAsync_DisposedBetweenEntryAndPortInvocation_ReturnsFalseWithoutUnobservedExceptionAndOnlyTheAlreadyAdmittedPortCall()
+    public async Task SendAsync_DisposedBeforePortAdmission_ReturnsFalseWithoutCallingPort()
     {
         // ClawSweeper-found P2 regression proof: controller methods used to read
         // `_lifetimeCts.Token` (the property getter) after their own disposed
@@ -1439,11 +1439,7 @@ public sealed class ChatComposerControllerTests
         // This test uses TestOnlyAfterEntryBeforePortInvocation to deterministically
         // land a concurrent Dispose() exactly in the gap the bug occupied — after
         // SendCoreAsync's entry disposed check, before any port call — then proves
-        // the resulting Task completes with `false` (not canceled/faulted from the
-        // caller's perspective) and no exception is ever thrown, while the send
-        // that had already been admitted still reaches the port exactly once (its
-        // token now safely reflecting cancellation) rather than being silently
-        // dropped or duplicated.
+        // the resulting task completes without an exception or a stale port admission.
         var (vm, controller, port, _) = MakeController();
         vm.SetDraft("hello");
         var resumeAfterDispose = new TaskCompletionSource();
@@ -1467,9 +1463,8 @@ public sealed class ChatComposerControllerTests
 
         Assert.Null(observed);
         Assert.False(accepted);
-        Assert.Equal(1, port.SendMessageCallCount);
-        Assert.NotNull(port.LastSendMessageToken);
-        Assert.True(port.LastSendMessageToken!.Value.IsCancellationRequested);
+        Assert.Equal(0, port.SendMessageCallCount);
+        Assert.Null(port.LastSendMessageToken);
     }
 
     [Fact]
@@ -1500,7 +1495,7 @@ public sealed class ChatComposerControllerTests
 
         Assert.Null(observed);
         Assert.False(accepted);
-        Assert.Equal(1, port.SendMessageCallCount);
+        Assert.Equal(0, port.SendMessageCallCount);
     }
 
     [Fact]

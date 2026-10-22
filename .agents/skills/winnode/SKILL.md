@@ -644,6 +644,10 @@ where each thread has `{ threadId, count, messages }`, and each message has
 `{ id, text, createdAt, sendState, errorText, canCancel }`. Queue message IDs
 are ephemeral UI/provider IDs; read them from the current `app.chat.queue.list`
 or `app.chat.snapshot` response and do not cache them across app lifetimes.
+`Accepted` means Gateway custody, not consumption or response completion.
+`Unconfirmed` means delivery could have occurred and must be reconciled. Neither
+state is locally cancellable. A missing receipt is not permission to resend
+under a new ID.
 
 ### app.chat.queue.cancel
 Cancel/remove one native chat outgoing queue entry before it is sent.
@@ -653,8 +657,10 @@ Cancel/remove one native chat outgoing queue entry before it is sent.
   "threadId": "string"         // required; "sessionKey" alias also accepted
 }
 ```
-Only `Queued` and `Failed` entries can be removed. `Sending` entries may already
-have reached the gateway and are not canceled. Returns
+Only `Queued` and `Failed` entries can be removed. `Sending`, `Accepted`,
+`Unconfirmed`, and unknown states are not locally cancellable. This operation
+does not cancel Gateway-owned pending inputs or discard uncertain delivery.
+Returns
 `{ canceled, threadId, queuedMessageId, remainingCount, error? }`.
 
 ## Location (location.*)

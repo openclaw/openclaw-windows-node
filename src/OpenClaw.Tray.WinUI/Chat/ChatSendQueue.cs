@@ -11,13 +11,16 @@ internal sealed record ChatQueuedSendRequest(
     string DisplayText,
     string LocalNonce,
     IReadOnlyList<ChatAttachment>? Attachments,
-    int DeferredAdmissionRetryCount = 0,
-    DateTimeOffset? DeferredAdmissionRetryAfter = null,
     ChatLifecycleCommandKind? LifecycleCommand = null,
     string? TimelineText = null,
     IReadOnlyList<ChatAttachmentPresentation>? AttachmentPresentations = null,
     string AttachmentCorrelationSignature = "")
 {
+    internal ChatInputAction Action { get; init; }
+    internal bool UseInputCustody { get; init; }
+    internal ChatInputLease? Origin { get; init; }
+    internal DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+    internal bool RequiresInputConsumption => !Text.TrimStart().StartsWith('/');
     // The final timeline entry text never carries the cosmetic attachment
     // chip lines that DisplayText uses for the queued-message preview list
     // — structured Attachments render those instead. Falls back to
@@ -55,9 +58,7 @@ internal enum ChatAdmissionOutcome
 
 internal static class ChatSendQueuePolicy
 {
-    internal const int MaxDeferredAdmissionRetries = 8;
     internal static readonly TimeSpan DrainDelay = TimeSpan.FromMilliseconds(100);
-    internal static readonly TimeSpan MaxDeferredAdmissionRetryDelay = TimeSpan.FromSeconds(1);
 
     internal static bool CanSendDirectly(
         bool hasActiveRun,
@@ -76,7 +77,7 @@ internal static class ChatSendQueuePolicy
         && !turnActive
         && !hasSendingMessage;
 
-    internal static bool IsDeferredAdmissionStatus(string? status) =>
+    internal static bool IsInFlightAdmissionStatus(string? status) =>
         string.Equals(status, "in_flight", StringComparison.OrdinalIgnoreCase);
 
     internal static bool IsCanceledAdmissionStatus(string? status) =>
@@ -87,8 +88,8 @@ internal static class ChatSendQueuePolicy
     internal static ChatAdmissionOutcome ClassifyAdmission(
         ChatSendResult result)
     {
-        if (IsDeferredAdmissionStatus(result.Status))
-            return ChatAdmissionOutcome.Deferred;
+        if (IsInFlightAdmissionStatus(result.Status))
+            return ChatAdmissionOutcome.Accepted;
         if (result.IsTerminalFailure)
         {
             return IsCanceledAdmissionStatus(result.Status)
@@ -103,11 +104,4 @@ internal static class ChatSendQueuePolicy
         return ChatAdmissionOutcome.Other;
     }
 
-    internal static TimeSpan DeferredAdmissionRetryDelay(int retryCount)
-    {
-        var exponent = Math.Min(Math.Max(retryCount - 1, 0), 5);
-        var delayMs = DrainDelay.TotalMilliseconds * (1 << exponent);
-        return TimeSpan.FromMilliseconds(
-            Math.Min(delayMs, MaxDeferredAdmissionRetryDelay.TotalMilliseconds));
-    }
 }

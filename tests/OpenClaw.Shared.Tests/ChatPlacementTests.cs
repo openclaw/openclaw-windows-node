@@ -4,6 +4,45 @@ namespace OpenClaw.Shared.Tests;
 
 public sealed class ChatPlacementTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MaterializationReceipt_BindsActualClientAndGatewayUuidBeforeFurtherMutation(bool reject)
+    {
+        using var identity = new OpenClaw.TestSupport.TempDirectory();
+        using var owner = new OpenClawGatewayClient("ws://127.0.0.1:1", "test-token", identityPath: identity.Path);
+        var calls = new List<(string, JsonElement)>();
+        var stages = new List<string>();
+        var client = Client(calls, (method, _) => method == "sessions.create"
+            ? JsonSerializer.SerializeToElement(new { ok = true, key = Key, sessionId = "gateway-confirmed-uuid" })
+            : null, owner: owner);
+        var preparation = client.PrepareWithMaterializationAsync(Key, "main", Selection(remote: true), 42, default,
+            _ => { stages.Add("guard"); return Task.CompletedTask; },
+            (receipt, _) =>
+            {
+                Assert.Same(owner, receipt.Client);
+                Assert.Equal(42, receipt.ConnectionEpoch);
+                Assert.Equal(Key, receipt.SessionKey);
+                Assert.Equal("gateway-confirmed-uuid", receipt.SessionId);
+                Assert.DoesNotContain(calls, call => call.Item1 == "sessions.dispatch");
+                stages.Add("materialized");
+                if (reject) throw new OperationCanceledException();
+                return Task.CompletedTask;
+            });
+        if (reject)
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => preparation);
+            Assert.DoesNotContain(calls, call => call.Item1 == "sessions.dispatch");
+            Assert.Equal(new[] { "guard", "materialized" }, stages);
+        }
+        else
+        {
+            await preparation;
+            Assert.Contains(calls, call => call.Item1 == "sessions.dispatch");
+            Assert.Equal(new[] { "guard", "materialized", "guard" }, stages);
+        }
+    }
+
     private const string Key = "agent:main:chat:exact-key";
     private static readonly ChatWorkspace Folder = new("folder:raw", "Project", @"C:\Gateway work\Repo");
     private static readonly JsonElement Agents = JsonSerializer.SerializeToElement(new
@@ -387,7 +426,7 @@ public sealed class ChatPlacementTests
 
     private static GatewayChatPlacementClient Client(List<(string, JsonElement)> calls,
         Func<string, JsonElement, JsonElement?>? response = null, Func<long?>? epoch = null,
-        Func<string, Task>? wait = null) =>
+        Func<string, Task>? wait = null, IOperatorGatewayClient? owner = null) =>
         new(epoch ?? (() => 42), async (method, parameters, _, expectedEpoch) =>
         {
             Assert.Equal(42, expectedEpoch);
@@ -409,5 +448,5 @@ public sealed class ChatPlacementTests
                 }),
                 _ => throw new InvalidOperationException("Unexpected method " + method)
             };
-        });
+        }, owner);
 }

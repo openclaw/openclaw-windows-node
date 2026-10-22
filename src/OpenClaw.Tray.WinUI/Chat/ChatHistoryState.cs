@@ -29,6 +29,16 @@ internal sealed class ChatHistoryState
             ? sessionId
             : null;
 
+    internal bool TryBindMaterializedSession(string threadId, string sessionId)
+    {
+        if (ResolveSessionId(threadId) is { } current && current != sessionId ||
+            _resetClearedSessionIds.TryGetValue(threadId, out var cleared) && cleared == sessionId)
+            return false;
+        _sessionIds[threadId] = sessionId;
+        _resetClearedSessionIds.Remove(threadId);
+        return true;
+    }
+
     internal IReadOnlyDictionary<string, long> SnapshotRevisions() =>
         new Dictionary<string, long>(_revisions);
 

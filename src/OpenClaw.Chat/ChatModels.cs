@@ -217,7 +217,9 @@ public enum ChatQueuedMessageSendState
 {
     Queued,
     Sending,
-    Failed
+    Failed,
+    Accepted,
+    Unconfirmed,
 }
 
 public record ChatQueuedMessage(
@@ -226,7 +228,12 @@ public record ChatQueuedMessage(
     DateTimeOffset CreatedAt,
     string LocalNonce,
     ChatQueuedMessageSendState SendState = ChatQueuedMessageSendState.Queued,
-    string? ErrorText = null);
+    string? ErrorText = null)
+{
+    public bool CanEdit => SendState is ChatQueuedMessageSendState.Queued or ChatQueuedMessageSendState.Failed;
+    public bool CanCancel => CanEdit;
+    public bool RequiresReconciliation => SendState is ChatQueuedMessageSendState.Accepted or ChatQueuedMessageSendState.Unconfirmed;
+}
 
 public record ChatHistoryPage(ChatEvent[] Events, int NextSince, int PrevBefore, bool HasMore);
 

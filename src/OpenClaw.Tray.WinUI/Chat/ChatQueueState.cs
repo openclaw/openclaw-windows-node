@@ -13,11 +13,6 @@ internal readonly record struct ChatLocalSentText(
     string QueuedMessageId,
     string AttachmentCorrelationSignature = "");
 
-internal sealed record ChatQueueRetryResult(
-    bool Requeued,
-    TimeSpan Delay,
-    bool ShouldEndTurn);
-
 /// <summary>
 /// Owns queued-message/request collections, local echo correlation, run
 /// mappings, drain scheduling, and queue retry mechanics. The root owns the
@@ -59,8 +54,11 @@ internal sealed class ChatQueueState
             messages = [];
             _messages[threadId] = messages;
         }
-        messages.RemoveAll(existing => existing.Id == message.Id);
-        messages.Add(message);
+        var index = messages.FindIndex(existing => existing.Id == message.Id);
+        if (index >= 0)
+            messages[index] = message;
+        else
+            messages.Add(message);
     }
 
     internal void AddRequest(ChatQueuedSendRequest request)
@@ -81,6 +79,33 @@ internal sealed class ChatQueueState
             ? requests.FirstOrDefault(request =>
                 string.Equals(request.Id, messageId, StringComparison.Ordinal))
             : null;
+
+    internal ChatQueuedMessage? FindMessage(string threadId, string messageId) =>
+        _messages.GetValueOrDefault(threadId)?.FirstOrDefault(message => message.Id == messageId);
+
+    internal ChatQueuedSendRequest[] ReceiptCandidates(string threadId) =>
+        (_messages.GetValueOrDefault(threadId) ?? [])
+            .Where(message => message.RequiresReconciliation ||
+                message.SendState == ChatQueuedMessageSendState.Sending &&
+                FindRequest(threadId, message.Id)?.UseInputCustody == true)
+            .Select(message => FindRequest(threadId, message.Id))
+            .OfType<ChatQueuedSendRequest>()
+            .ToArray();
+
+    internal bool MoveMessage(string threadId, string messageId, int direction)
+    {
+        if (direction is not (-1 or 1) || !_messages.TryGetValue(threadId, out var messages))
+            return false;
+        var index = messages.FindIndex(message => message.Id == messageId);
+        var next = index + direction;
+        if (index < 0 || next < 0 || next >= messages.Count ||
+            !messages[index].CanEdit || !messages[next].CanEdit ||
+            FindRequest(threadId, messageId)?.LifecycleCommand is not null ||
+            FindRequest(threadId, messages[next].Id)?.LifecycleCommand is not null)
+            return false;
+        (messages[index], messages[next]) = (messages[next], messages[index]);
+        return true;
+    }
 
     internal void RemoveRequest(string threadId, string messageId)
     {
@@ -116,11 +141,13 @@ internal sealed class ChatQueueState
         long resetLifecycleSequence,
         long lifecycleStartSequence)
     {
-        EnqueueLocalEcho(
-            request.ThreadId,
-            request.EffectiveTimelineText,
-            request.AttachmentCorrelationSignature,
-            request.Id);
+        AddRequest(request);
+        if (!request.UseInputCustody)
+            EnqueueLocalEcho(
+                request.ThreadId,
+                request.EffectiveTimelineText,
+                request.AttachmentCorrelationSignature,
+                request.Id);
         _locallyInitiatedThreads.Add(request.ThreadId);
         _assistantFallbackPromotedThreads.Add(request.ThreadId);
         return new ChatQueuedSendDispatch(
@@ -160,23 +187,13 @@ internal sealed class ChatQueueState
 
         for (var index = 0; index < messages.Count; index++)
         {
+            if (messages[index].RequiresReconciliation)
+                return null;
             if (messages[index].SendState != ChatQueuedMessageSendState.Queued)
                 continue;
             var request = FindRequest(threadId, messages[index].Id);
             if (request is null)
                 continue;
-
-            var now = DateTimeOffset.UtcNow;
-            if (request.DeferredAdmissionRetryAfter is { } retryAfter)
-            {
-                if (retryAfter > now)
-                {
-                    delayedRetry = retryAfter - now;
-                    return null;
-                }
-                request = request with { DeferredAdmissionRetryAfter = null };
-                AddRequest(request);
-            }
 
             _assistantFallbackPromotedThreads.Remove(threadId);
             messages[index] = messages[index] with
@@ -186,11 +203,12 @@ internal sealed class ChatQueueState
             };
             if (request.LifecycleCommand is null)
             {
-                EnqueueLocalEcho(
-                    threadId,
-                    request.EffectiveTimelineText,
-                    request.AttachmentCorrelationSignature,
-                    request.Id);
+                if (!request.UseInputCustody)
+                    EnqueueLocalEcho(
+                        threadId,
+                        request.EffectiveTimelineText,
+                        request.AttachmentCorrelationSignature,
+                        request.Id);
                 _locallyInitiatedThreads.Add(threadId);
             }
 
@@ -302,8 +320,7 @@ internal sealed class ChatQueueState
         if (!_messages.TryGetValue(threadId, out var messages))
             return false;
         var index = messages.FindIndex(message => message.Id == messageId);
-        if (index < 0 ||
-            messages[index].SendState == ChatQueuedMessageSendState.Sending)
+        if (index < 0 || !messages[index].CanCancel)
         {
             return false;
         }
@@ -350,41 +367,31 @@ internal sealed class ChatQueueState
         }
     }
 
-    internal ChatQueueRetryResult RequeueDeferredAdmission(
-        string threadId,
-        string messageId,
-        bool hasActiveRun)
+    internal void SetDelivery(
+        ChatQueuedSendRequest request,
+        ChatQueuedMessageSendState state,
+        string? error = null)
     {
-        if (!_messages.TryGetValue(threadId, out var messages))
-            return new(false, ChatSendQueuePolicy.DrainDelay, false);
-        var index = messages.FindIndex(message =>
-            message.Id == messageId &&
-            message.SendState == ChatQueuedMessageSendState.Sending);
-        if (index < 0)
-            return new(false, ChatSendQueuePolicy.DrainDelay, false);
-
-        var retryCount = IncrementDeferredAdmissionRetryCount(
-            threadId,
-            messageId);
-        if (retryCount > ChatSendQueuePolicy.MaxDeferredAdmissionRetries)
+        if (!_messages.TryGetValue(request.ThreadId, out var messages) ||
+            messages.All(message => message.Id != request.Id))
         {
-            throw new InvalidOperationException(
-                $"Gateway kept chat.send status in_flight after {ChatSendQueuePolicy.MaxDeferredAdmissionRetries} retries.");
+            AddMessage(request.ThreadId, new ChatQueuedMessage(
+                request.Id, request.DisplayText, request.CreatedAt, request.LocalNonce, state, error));
+            return;
         }
-
-        messages[index] = messages[index] with
-        {
-            SendState = ChatQueuedMessageSendState.Queued,
-            ErrorText = null,
-        };
-        var delay = ChatSendQueuePolicy.DeferredAdmissionRetryDelay(retryCount);
-        SetDeferredAdmissionRetryAfter(
-            threadId,
-            messageId,
-            DateTimeOffset.UtcNow + delay);
-        _assistantFallbackPromotedThreads.Remove(threadId);
-        return new(true, delay, ShouldEndTurn: !hasActiveRun);
+        var index = messages.FindIndex(message => message.Id == request.Id);
+        messages[index] = messages[index] with { SendState = state, ErrorText = error };
     }
+
+    internal bool HasUnconfirmedPayload(string threadId, string text, IReadOnlyList<ChatAttachment>? attachments) =>
+        _messages.TryGetValue(threadId, out var messages) &&
+        messages.Any(message => message.SendState == ChatQueuedMessageSendState.Unconfirmed &&
+            FindRequest(threadId, message.Id) is { } request && request.Text == text &&
+            (request.Attachments ?? []).Select(AttachmentIdentity)
+                .SequenceEqual((attachments ?? []).Select(AttachmentIdentity)));
+
+    private static (string, string, string, string) AttachmentIdentity(ChatAttachment attachment) =>
+        (attachment.Type, attachment.MimeType, attachment.FileName, attachment.Content);
 
     internal bool HasSendingMessages(string threadId) =>
         _messages.TryGetValue(threadId, out var messages) &&
@@ -395,7 +402,7 @@ internal sealed class ChatQueueState
         _messages.TryGetValue(threadId, out var messages) &&
         messages.Any(message =>
             message.SendState is ChatQueuedMessageSendState.Queued or
-                ChatQueuedMessageSendState.Sending);
+                ChatQueuedMessageSendState.Sending or ChatQueuedMessageSendState.Accepted or ChatQueuedMessageSendState.Unconfirmed);
 
     internal bool TryGetSingleSendingMessage(
         string threadId,
@@ -408,7 +415,7 @@ internal sealed class ChatQueueState
         foreach (var candidate in messages)
         {
             if (candidate.SendState != ChatQueuedMessageSendState.Sending ||
-                FindRequest(threadId, candidate.Id)?.LifecycleCommand is not null)
+                FindRequest(threadId, candidate.Id) is { UseInputCustody: true } or { LifecycleCommand: not null })
             {
                 continue;
             }
@@ -572,7 +579,15 @@ internal sealed class ChatQueueState
             var kept = new List<ChatQueuedMessage>(messages.Count);
             foreach (var message in messages)
             {
-                if (message.SendState == ChatQueuedMessageSendState.Failed)
+                if (message.SendState is ChatQueuedMessageSendState.Sending or ChatQueuedMessageSendState.Unconfirmed)
+                {
+                    kept.Add(message with
+                    {
+                        SendState = ChatQueuedMessageSendState.Unconfirmed,
+                        ErrorText = ChatInputMessages.Unconfirmed,
+                    });
+                }
+                else if (message.SendState is ChatQueuedMessageSendState.Failed or ChatQueuedMessageSendState.Accepted)
                 {
                     kept.Add(message);
                 }
@@ -609,14 +624,6 @@ internal sealed class ChatQueueState
             }
 
             requests.RemoveAll(request => !keptIds.Contains(request.Id));
-            for (var index = 0; index < requests.Count; index++)
-            {
-                requests[index] = requests[index] with
-                {
-                    DeferredAdmissionRetryCount = 0,
-                    DeferredAdmissionRetryAfter = null,
-                };
-            }
             if (requests.Count == 0)
                 _requests.Remove(threadId);
         }
@@ -690,37 +697,4 @@ internal sealed class ChatQueueState
             _localSentTexts[threadId] = queue;
     }
 
-    private void SetDeferredAdmissionRetryAfter(
-        string threadId,
-        string messageId,
-        DateTimeOffset retryAfter)
-    {
-        if (!_requests.TryGetValue(threadId, out var requests))
-            return;
-        var index = requests.FindIndex(request => request.Id == messageId);
-        if (index >= 0)
-        {
-            requests[index] = requests[index] with
-            {
-                DeferredAdmissionRetryAfter = retryAfter,
-            };
-        }
-    }
-
-    private int IncrementDeferredAdmissionRetryCount(
-        string threadId,
-        string messageId)
-    {
-        if (!_requests.TryGetValue(threadId, out var requests))
-            return ChatSendQueuePolicy.MaxDeferredAdmissionRetries + 1;
-        var index = requests.FindIndex(request => request.Id == messageId);
-        if (index < 0)
-            return ChatSendQueuePolicy.MaxDeferredAdmissionRetries + 1;
-        var count = requests[index].DeferredAdmissionRetryCount + 1;
-        requests[index] = requests[index] with
-        {
-            DeferredAdmissionRetryCount = count,
-        };
-        return count;
-    }
 }

@@ -236,6 +236,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         Volatile.Write(ref _handshakeConnectionGeneration, 0);
         Volatile.Write(ref _hasHandshakeSnapshot, false);
         Volatile.Write(ref _advertisedServerMethods, Array.Empty<string>());
+        Volatile.Write(ref _hasServerMethodAdvertisement, false);
         Volatile.Write(ref _advertisedServerCapabilities, Array.Empty<string>());
         Interlocked.Increment(ref _serverHandshakeGeneration);
         _pendingRequests.Drain(
@@ -356,6 +357,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public long? SessionMutationConnectionEpoch =>
         TryGetReadyConnectionGeneration(out var generation) ? generation : null;
     private string[] _advertisedServerMethods = [];
+    private bool _hasServerMethodAdvertisement;
+    public bool HasServerMethodAdvertisement => IsConnectedToGateway &&
+        Volatile.Read(ref _hasServerMethodAdvertisement);
     private string[] _advertisedServerCapabilities = [];
     private long _serverHandshakeGeneration;
     public IReadOnlyList<string> AdvertisedServerMethods => Array.AsReadOnly(Volatile.Read(ref _advertisedServerMethods));
@@ -507,7 +511,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         string? sessionId = null,
         IReadOnlyList<ChatAttachment>? attachments = null,
         string? idempotencyKey = null,
-        long? expectedConnectionEpoch = null)
+        long? expectedConnectionEpoch = null,
+        ChatSendOptions? options = null)
     {
         if (!IsConnected)
             throw new InvalidOperationException("Gateway connection is not open");
@@ -527,16 +532,34 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         var effectiveSessionKey = ResolveEffectiveSessionKey(
             sessionKey, Volatile.Read(ref _mainSessionKey), "chat.send");
         var effectiveIdempotencyKey = idempotencyKey?.Trim() ?? Guid.NewGuid().ToString();
+        bool CurrentOrigin()
+        {
+            try
+            {
+                return TryGetReadyConnectionGeneration(out var current) && current == connectionGeneration &&
+                    (options?.Origin is not { } origin ||
+                        ReferenceEquals(origin.Client, this) && origin.ConnectionEpoch == current &&
+                        origin.SessionKey == effectiveSessionKey && !origin.CancellationToken.IsCancellationRequested &&
+                        (origin.SessionId is null || origin.SessionId == sessionId) &&
+                        (origin.AgentId is null || origin.AgentId == options.AgentId) && origin.IsCurrent) &&
+                    (options?.IsCurrent?.Invoke() ?? true);
+            }
+            catch (Exception ex) when (ex is not ChatSendDeliveryException)
+            {
+                throw new ChatSendDeliveryException(
+                    "The input was not written because its originating context could not be verified.", false, ex);
+            }
+        }
+        bool HasCustodyAuthority() =>
+            AdvertisedServerCapabilities.Contains(ChatInputCustody.Capability) &&
+            GrantedOperatorScopes.Any(scope => scope is "operator.write" or "operator.admin");
+        if (!CurrentOrigin())
+            throw new ChatSendDeliveryException("The originating conversation changed. No input was sent.", false);
+        if (options?.QueueMode is { } queueMode &&
+            (!ChatInputCustody.IsQueueMode(queueMode) || !options.UseInputCustody || !HasCustodyAuthority()))
+            throw new ChatSendRejectedException("The Gateway does not currently support this input mode or permit sending messages.", "UNSUPPORTED");
 
         var requestId = Guid.NewGuid().ToString();
-        var pending = _pendingRequests.RegisterChatSend(requestId, "chat.send");
-
-        // The gateway's `chat.send` validates strictly on (sessionKey, message,
-        // idempotencyKey). The spec document mentioned `sessionId` and `text`
-        // as Control-UI variants, but the live operator endpoint rejects them
-        // ("unexpected property"). The `sessionId` parameter is therefore only
-        // tracked client-side (used for display correlation) and not forwarded.
-        _ = sessionId; // reserved for future protocol versions
 
         var chatParams = new Dictionary<string, object?>
         {
@@ -547,6 +570,18 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         if (hasAttachments)
             chatParams["attachments"] = attachments;
+        if (options?.UseInputCustody == true)
+        {
+            if (!HasCustodyAuthority())
+                throw new ChatSendRejectedException("The Gateway input-custody contract or write permission is unavailable.", "UNSUPPORTED");
+            chatParams["deliver"] = false;
+            if (!string.IsNullOrEmpty(sessionId))
+                chatParams["sessionId"] = sessionId;
+            if (!string.IsNullOrEmpty(options.AgentId))
+                chatParams["agentId"] = options.AgentId;
+            if (options.QueueMode is not null)
+                chatParams["queueMode"] = options.QueueMode;
+        }
 
         var req = new
         {
@@ -556,15 +591,34 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             @params = chatParams
         };
 
+        var pending = _pendingRequests.RegisterChatSend(requestId, "chat.send");
+        var writeStarted = false;
         try
         {
-            var sent = await SendRawAsync(
-                    JsonSerializer.Serialize(req),
-                    connectionGeneration,
-                    CancellationToken)
-                .ConfigureAwait(false);
+            bool sent;
+            if (options is null)
+            {
+                // Legacy callers keep the established virtual transport seam.
+                sent = await SendRawAsync(JsonSerializer.Serialize(req), connectionGeneration, CancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                sent = await SendRawAsync(
+                        JsonSerializer.Serialize(req), connectionGeneration, CancellationToken,
+                        () => CurrentOrigin() && (!options.UseInputCustody || HasCustodyAuthority()),
+                        () => writeStarted = true)
+                    .ConfigureAwait(false);
+            }
             if (!sent)
-                throw new InvalidOperationException("Gateway connection changed before chat.send could be sent.");
+            {
+                if (options is null)
+                    throw new InvalidOperationException("Gateway connection changed before chat.send could be sent.");
+                throw new ChatSendDeliveryException(
+                    writeStarted ? "Delivery is unconfirmed. Review the retained input before sending again."
+                        : "The originating conversation changed before chat.send could be written.",
+                    writeStarted);
+            }
             var result = await WaitForGatewayResponseAsync(
                 pending.Task,
                 TimeSpan.FromSeconds(30),
@@ -572,6 +626,20 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 "Timed out waiting for chat.send response from gateway");
             _logger.Info($"Sent chat message ({message.Length} chars{(hasAttachments ? $", {attachments!.Count} attachment(s)" : "")})");
             return result;
+        }
+        catch (ChatSendRejectedException ex) when (options is null)
+        {
+            throw new InvalidOperationException(ex.Message, ex);
+        }
+        catch (Exception ex) when (writeStarted && ex is not (ChatSendRejectedException or ChatSendDeliveryException))
+        {
+            throw new ChatSendDeliveryException(
+                "Delivery is unconfirmed. Review the retained input before sending again.", true, ex);
+        }
+        catch (Exception ex) when (options is not null && !writeStarted && ex is not (ChatSendRejectedException or ChatSendDeliveryException))
+        {
+            throw new ChatSendDeliveryException(
+                "The input was not written because its originating context could not be verified.", false, ex);
         }
         finally
         {
@@ -603,6 +671,31 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         return ParseChatHistory(payload, effectiveSessionKey);
     }
 
+    public async Task<ChatHistoryInfo> RequestChatInputHistoryAsync(
+        string sessionKey, string? sessionId, IReadOnlyList<string> inputRunIds, long expectedConnectionEpoch,
+        string? agentId = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
+        if (!AdvertisedServerCapabilities.Contains(ChatInputCustody.Capability))
+            throw new NotSupportedException("The Gateway does not advertise input receipts.");
+        if (inputRunIds.Count is < 1 or > ChatInputCustody.MaxReceiptRunIds ||
+            inputRunIds.Any(id => string.IsNullOrWhiteSpace(id) || id.Length > ChatInputCustody.MaxRunIdCharacters) ||
+            inputRunIds.Distinct(StringComparer.Ordinal).Count() != inputRunIds.Count)
+            throw new ArgumentException("One to 50 unique input IDs of at most 256 characters are required.", nameof(inputRunIds));
+        var parameters = new Dictionary<string, object?>
+        {
+            ["sessionKey"] = sessionKey,
+            ["inputRunIds"] = inputRunIds.ToArray(),
+        };
+        if (!string.IsNullOrEmpty(sessionId))
+            parameters["sessionId"] = sessionId;
+        if (!string.IsNullOrEmpty(agentId))
+            parameters["agentId"] = agentId;
+        var payload = await SendResponseRequestAsync("chat.history", parameters, 15000, expectedConnectionEpoch)
+            .ConfigureAwait(false);
+        return ParseChatHistory(payload, sessionKey);
+    }
+
     /// <summary>
     /// Aborts an in-flight agent run. Per spec, partial assistant output may
     /// still be visible after the abort and is persisted into the transcript
@@ -619,6 +712,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             sessionKey, Volatile.Read(ref _mainSessionKey), "chat.abort");
         await SendResponseRequestAsync("chat.abort", new { runId, sessionKey = effectiveSessionKey }, timeoutMs,
             expectedConnectionEpoch);
+    }
+
+    public Task SendChatAbortScopedAsync(
+        string runId, string sessionKey, long expectedConnectionEpoch, Func<bool> isCurrent, int timeoutMs = 5000)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(runId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
+        ArgumentNullException.ThrowIfNull(isCurrent);
+        return SendResponseRequestAsync("chat.abort", new { runId, sessionKey }, timeoutMs,
+            expectedConnectionEpoch, isCurrent);
     }
 
     /// <summary>
@@ -762,6 +865,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     {
         var info = new ChatHistoryInfo { SessionKey = sessionKey };
         if (payload.ValueKind != JsonValueKind.Object) return info;
+        ChatInputCustody.ReadHistory(payload, info);
 
         if (payload.TryGetProperty("sessionId", out var sidProp) && sidProp.ValueKind == JsonValueKind.String)
             info.SessionId = sidProp.GetString();
@@ -1375,12 +1479,47 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000) =>
         SendResponseRequestAsync(method, parameters, timeoutMs);
 
-    private async Task<JsonElement> SendResponseRequestAsync(
+    private Task<JsonElement> SendResponseRequestAsync(
         string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null)
+        => SendResponseRequestCoreAsync(method, parameters, timeoutMs, expectedConnectionEpoch, null);
+
+    private Task<JsonElement> SendResponseRequestAsync(
+        string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch, Func<bool> isCurrent)
     {
-        var connectionGeneration = GetReadyConnectionGeneration(method);
+        ArgumentNullException.ThrowIfNull(isCurrent);
+        return SendResponseRequestCoreAsync(method, parameters, timeoutMs, expectedConnectionEpoch, isCurrent);
+    }
+
+    private async Task<JsonElement> SendResponseRequestCoreAsync(
+        string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch, Func<bool>? isCurrent)
+    {
+        long connectionGeneration;
+        try { connectionGeneration = GetReadyConnectionGeneration(method); }
+        catch (Exception ex) when (isCurrent is not null)
+        {
+            throw new ChatMutationDeliveryException($"The Gateway context is not ready for {method}. No request was written.", false, ex);
+        }
         if (expectedConnectionEpoch.HasValue && connectionGeneration != expectedConnectionEpoch.Value)
+        {
+            if (isCurrent is not null)
+                throw new ChatMutationDeliveryException($"The Gateway connection changed before {method}. No request was written.", false);
             throw new InvalidOperationException("The Gateway connection changed before the request could be sent.");
+        }
+        bool ScopeAllowsWrite()
+        {
+            try
+            {
+                return TryGetReadyConnectionGeneration(out var current) && current == connectionGeneration &&
+                    isCurrent!.Invoke();
+            }
+            catch (Exception ex)
+            {
+                throw new ChatMutationDeliveryException(
+                    $"The originating context could not be verified for {method}. No request was written.", false, ex);
+            }
+        }
+        if (isCurrent is not null && !ScopeAllowsWrite())
+            throw new ChatMutationDeliveryException($"The originating context changed before {method}. No request was written.", false);
 
         // #1418: wizard requests are application RPCs (models.list,
         // device.pair.list, pairing approvals, update.status, chat.abort,
@@ -1395,19 +1534,35 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _logger.Info($"[GatewayClient] Sending frame: {method}");
         var requestId = Guid.NewGuid().ToString();
         var pending = _pendingRequests.RegisterWizard(requestId, method);
+        var writeStarted = false;
 
         try
         {
-            var sent = await SendRawAsync(
-                    SerializeRequest(requestId, method, parameters),
-                    connectionGeneration,
-                    CancellationToken)
-                .ConfigureAwait(false);
+            var serialized = SerializeRequest(requestId, method, parameters);
+            var sent = isCurrent is null
+                ? await SendRawAsync(serialized, connectionGeneration, CancellationToken).ConfigureAwait(false)
+                : await SendRawAsync(serialized, connectionGeneration, CancellationToken, ScopeAllowsWrite,
+                    () => writeStarted = true).ConfigureAwait(false);
             if (!sent)
+            {
+                if (isCurrent is not null)
+                    throw new ChatMutationDeliveryException(
+                        writeStarted ? $"The outcome of {method} is unconfirmed after a possible write."
+                            : $"The originating context changed before {method}. No request was written.",
+                        writeStarted);
                 throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");
+            }
             return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
         }
-        catch (TimeoutException ex)
+        catch (Exception ex) when (isCurrent is not null &&
+            ex is not (GatewayRequestException or ChatMutationDeliveryException))
+        {
+            throw new ChatMutationDeliveryException(
+                writeStarted ? $"The outcome of {method} is unconfirmed after a possible write."
+                    : $"No request was written for {method}.",
+                writeStarted, ex);
+        }
+        catch (TimeoutException ex) when (isCurrent is null)
         {
             throw new TimeoutException($"Timed out waiting for {method} response", ex);
         }
@@ -2485,7 +2640,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 {
                     var message = TryGetErrorMessage(root) ?? "request failed";
                     _logger.Warn($"chat.send failed: {message}");
-                    pendingChatSend.TryFault(new InvalidOperationException(message));
+                    var code = root.TryGetProperty("error", out var error) &&
+                        error.ValueKind == JsonValueKind.Object &&
+                        error.TryGetProperty("code", out var codeValue) && codeValue.ValueKind == JsonValueKind.String
+                            ? codeValue.GetString() : null;
+                    pendingChatSend.TryFault(new ChatSendRejectedException(message, code));
                     return;
                 }
 
@@ -2500,7 +2659,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     okWiz.ValueKind == JsonValueKind.False)
                 {
                     var message = TryGetErrorMessage(root) ?? "wizard request failed";
-                    wizardCompletion.TryFault(new InvalidOperationException(message));
+                    wizardCompletion.TryFault(GatewayRequestException.FromResponse(root, message));
                 }
                 else if (root.TryGetProperty("payload", out var wizPayload))
                 {
@@ -2604,6 +2763,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             _operatorDeviceId = TryGetHandshakeDeviceId(payload);
             _grantedOperatorScopes = TryGetHandshakeScopes(payload);
             Volatile.Write(ref _advertisedServerMethods, GatewayServerMethodAdvertisement.Parse(payload));
+            Volatile.Write(ref _hasServerMethodAdvertisement, GatewayServerMethodAdvertisement.HasMethods(payload));
             Volatile.Write(
                 ref _advertisedServerCapabilities,
                 GatewayServerMethodAdvertisement.ParseCapabilities(payload));
@@ -2878,7 +3038,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             SessionKey = sessionKey,
             Status = status,
             Error = error,
-            Cached = cached
+            Cached = cached,
+            MessageSeq = payload.ValueKind == JsonValueKind.Object &&
+                payload.TryGetProperty("messageSeq", out var messageSeq) && messageSeq.ValueKind == JsonValueKind.Number &&
+                messageSeq.TryGetInt32(out var sequence)
+                    ? sequence : null,
+            StopReason = payload.ValueKind == JsonValueKind.Object &&
+                payload.TryGetProperty("stopReason", out var stopReason) && stopReason.ValueKind == JsonValueKind.String
+                    ? stopReason.GetString() : null,
         };
     }
 

@@ -1,8 +1,27 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 using System.Text.Json.Nodes;
+#if !OPENCLAW_TRAY_TESTS
+using OpenClawTray.Helpers;
+#endif
 
 namespace OpenClawTray.Chat;
+
+internal static class ChatInputMessages
+{
+    internal static string ScopeChanged => LocalizationHelper.GetString("Chat_Input_ScopeChanged");
+    internal static string Unconfirmed => LocalizationHelper.GetString("Chat_Input_Unconfirmed");
+    internal static string Unavailable => LocalizationHelper.GetString("Chat_Input_Unavailable");
+    internal static string ReviewRequired => LocalizationHelper.GetString("Chat_Input_ReviewRequired");
+    internal static string NoReceipt => LocalizationHelper.GetString("Chat_Input_NoReceipt");
+    internal static string CannotSteer => LocalizationHelper.GetString("Chat_Input_CannotSteer");
+    internal static string ExternalMutationRejected => LocalizationHelper.GetString("Chat_Input_ExternalMutationRejected");
+    internal static string RecoveryUnavailable => LocalizationHelper.GetString("Chat_Input_RecoveryUnavailable");
+    internal static string QueueActionRejected => LocalizationHelper.GetString("Chat_Input_QueueActionRejected");
+    internal static string AccountChanged => LocalizationHelper.GetString("Chat_Input_AccountChanged");
+    internal static string Interrupted => LocalizationHelper.GetString("Chat_Input_Interrupted");
+    internal static string Cancelled => LocalizationHelper.GetString("Chat_Input_Cancelled");
+}
 
 internal sealed record ChatProjectionContext(
     string? MainSessionKey,
@@ -13,6 +32,22 @@ internal readonly record struct ChatRuntimeGeneration(
     long ConnectionGeneration,
     long ResetGeneration,
     long TransportEpoch = 0);
+
+internal sealed record ChatInputLease(
+    object ConnectionOwner,
+    string ThreadId,
+    string? SessionId,
+    ChatRuntimeGeneration Generation,
+    string? RunId,
+    IChatInputOrigin? ExternalOrigin = null);
+
+internal sealed record ChatInputReceiptQuery(
+    object ConnectionOwner,
+    string ThreadId,
+    string? SessionId,
+    long TransportEpoch,
+    IReadOnlyList<ChatQueuedSendRequest> Requests,
+    string? AgentId);
 
 internal sealed record ChatStatusTransition(
     ChatDataSnapshot Snapshot,
@@ -30,7 +65,10 @@ internal sealed record ChatResetTransition(
     string? OldSessionId,
     long ResetGeneration,
     string ThreadId,
-    string[] SubmittedRunIds);
+    string[] SubmittedRunIds)
+{
+    internal ChatRuntimeGeneration RuntimeGeneration { get; init; }
+}
 
 internal sealed record ChatAbortStart(
     string? RunId,
@@ -135,7 +173,8 @@ internal sealed record ChatSendCommit(
 
 internal sealed record ChatSendFailure(
     bool IsCurrent,
-    ChatDataSnapshot? Snapshot);
+    ChatDataSnapshot? Snapshot,
+    bool DeliveryResolved = false);
 
 internal sealed record ChatSendPreparation(
     bool IsCurrent,

@@ -899,7 +899,7 @@ public partial class App
     }
 
     private static bool CanCancelQueuedMessage(ChatQueuedMessage message) =>
-        message.SendState != ChatQueuedMessageSendState.Sending;
+        message.CanCancel;
 
     private static object ToMcpQueuedMessage(ChatQueuedMessage message) => new
     {
