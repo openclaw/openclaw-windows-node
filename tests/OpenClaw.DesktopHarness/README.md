@@ -1,5 +1,44 @@
 # Private-desktop MXC regression
 
+## Fresh-guest observer diagnostics
+
+`Observation` owns the passive quiet-lane proof observer, promoted from the
+incident capture artifact. It is not started by the harness executable.
+Its hook process/thread filters remain 0/0, with OUTOFCONTEXT flags and
+unchanged dialog/SHOW coverage. Incomplete classification still fails.
+
+Run the native-free diagnostic regressions on the controller:
+
+```powershell
+pwsh -NoProfile -File .\tests\OpenClaw.DesktopHarness\Test-ObserverEvidence.ps1
+pwsh -NoProfile -File .\tests\OpenClaw.DesktopHarness\Build-ObserverEvidence.ps1 `
+  -OutputDirectory '.\artifacts\observer-evidence'
+```
+
+Use a fresh PowerShell process for each command so previously loaded types
+cannot shadow newly compiled source. The build only compiles a DLL. It never creates an observer or queries local
+windows/tokens. Preserve each output directory. On an explicitly authorized
+fresh guest, the existing proof controller can load this DLL with
+`Add-Type -Path`: bind the fresh manifest's `observerSource` to the staged DLL
+and `observerSha256` to its actual hash. Do not reuse or relax the older
+capture manifest's source pins. The original controller and all managed,
+SDK-four-controls, ownership-timeout-tree, and cleanup gates remain required.
+
+The observer records the original fallback's own OpenThread, owner, timing
+and close results independently of the later diagnostic retry. Limited-query
+access remains 0x0800. Successful handles are retained through owner/lifetime
+queries and then closed. Startup and incomplete-classification records
+capture process and effective thread-token identity, integrity and elevation
+without changing privileges. These account identifiers are guest evidence,
+not credentials; review them before publication. A failed token capture or
+thread lookup is evidence of uncertainty, never permission to skip coverage.
+
+Raw callbacks retain HWND/object/child/thread/event-time operands and
+same-handle SHOW/DESTROY/tombstone correlation. Current thread identity and
+numeric HWND correlation do not establish event-time ownership. The pure
+tests prove diagnostic error preservation, not real native observation or a
+fix for the unresolved thread-824 incident. Native guest proof is mandatory.
+
 This opt-in real-runtime lane tests the security fidelity of
 [`Invoke-PrivateDesktop.ps1`](../../scripts/Invoke-PrivateDesktop.ps1).
 It requires an interactive Windows user session, .NET 10, installed MSVC/Windows
