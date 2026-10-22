@@ -67,6 +67,7 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     public int ReconnectCount { get; private set; }
     public int ShowOnboardingCount { get; private set; }
     public int ShowLocalAiSetupCount { get; private set; }
+    public int ShowLocalAiModelSetupCount { get; private set; }
     public int OpenLocalAiLogsCount { get; private set; }
 
     public void ClearOperationLog() => _operationLog.Clear();
@@ -79,6 +80,7 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     public void CheckForUpdates() { }
     public void ShowOnboarding() => ShowOnboardingCount++;
     public void ShowLocalAiSetup() => ShowLocalAiSetupCount++;
+    public void ShowLocalAiModelSetup() => ShowLocalAiModelSetupCount++;
     public void ShowGatewayWizard() => ShowGatewayWizardCount++;
     public void OpenLocalAiLogs() => OpenLocalAiLogsCount++;
     public void ShowConnectionStatus() { }
@@ -148,6 +150,7 @@ internal sealed class SelfWritingAppCommands : IAppCommands
     public void CheckForUpdates() { }
     public void ShowOnboarding() { }
     public void ShowLocalAiSetup() { }
+    public void ShowLocalAiModelSetup() { }
     public void ShowGatewayWizard() { }
     public void ShowConnectionStatus() { }
     public void NotifySettingsSaved() { }

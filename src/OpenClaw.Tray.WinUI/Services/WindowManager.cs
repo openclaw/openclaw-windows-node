@@ -564,13 +564,19 @@ internal sealed class WindowManager : IWindowManager
             localAiRecoveryTarget: null);
     }
 
-    public Task ShowLocalAiModelSetupAsync() =>
-        _callbacks.GetGatewayRegistry()?.GetActive() is
-            { NativePackageFamilyName: not null,
-              NativeRuntimeContract: OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract }
-                ? ShowLocalAiSetupAsync() : ShowOnboardingAsync();
+    public async Task ShowLocalAiSetupAsync() =>
+        await ShowLocalAiSetupAsync(
+            pinInstalledModelSelection: true,
+            allowProvisioningFallback: true);
 
-    public async Task ShowLocalAiSetupAsync()
+    public Task ShowLocalAiModelSetupAsync() =>
+        ShowLocalAiSetupAsync(
+            pinInstalledModelSelection: false,
+            allowProvisioningFallback: false);
+
+    private async Task ShowLocalAiSetupAsync(
+        bool pinInstalledModelSelection,
+        bool allowProvisioningFallback)
     {
         if (_callbacks.GetGatewayRegistry()?.GetActive() is
             { NativePackageFamilyName: not null,
@@ -599,8 +605,9 @@ internal sealed class WindowManager : IWindowManager
             ShowHub("local-ai");
             return;
         }
-        var resolution = await ResolveLocalAiSetupRouteAsync();
-        if (resolution.Route == LocalAiSetupRoute.Provision)
+
+        var resolution = await ResolveLocalAiSetupRouteAsync(pinInstalledModelSelection);
+        if (resolution.Route == LocalAiSetupRoute.Provision && allowProvisioningFallback)
         {
             Logger.Info("Local AI recovery requires an existing app-managed gateway; opening full setup");
             await ShowOnboardingAsync();
@@ -627,13 +634,15 @@ internal sealed class WindowManager : IWindowManager
         await ShowLocalAiSetupRecoveryAsync(resolution.RecoveryTarget);
     }
 
-    private async Task<LocalAiSetupResolution> ResolveLocalAiSetupRouteAsync()
+    private async Task<LocalAiSetupResolution> ResolveLocalAiSetupRouteAsync(
+        bool pinInstalledModelSelection = true)
     {
         try
         {
             return await new LocalAiSetupRouteResolver(_callbacks.GetGatewayRegistry,
                 AppIdentity.ResolveRoamingDataDirectory(), AppIdentity.ResolveSetupLocalDataDirectory(),
-                AppIdentity.SetupDistroName).ResolveAsync();
+                AppIdentity.SetupDistroName).ResolveAsync(
+                    pinInstalledModelSelection: pinInstalledModelSelection);
         }
         catch (Exception ex)
         {
@@ -643,7 +652,7 @@ internal sealed class WindowManager : IWindowManager
     }
 
     private ISetupLocalAiHost CreateLocalAiSetupHost() => new SetupLocalAiHost(
-        ResolveLocalAiSetupRouteAsync, _callbacks.GetGatewayRegistry, _callbacks.GetLocalAiRuntime,
+        () => ResolveLocalAiSetupRouteAsync(), _callbacks.GetGatewayRegistry, _callbacks.GetLocalAiRuntime,
         ct => new LocalAiManifestStore(new(AppIdentity.ResolveSetupLocalDataDirectory())).LoadAsync(ct),
         LocalAiInstallationObservation.InspectAsync,
         ct => Task.Run(() => new OpenClaw.Shared.Inference.CudaHostHardwareProbe().Probe(), ct).WaitAsync(ct),
@@ -799,6 +808,7 @@ internal sealed class WindowManager : IWindowManager
                 localAiRecoveryGatewayPort: localAiRecoveryTarget?.GatewayPort,
                 localAiRecoveryModelId: localAiRecoveryTarget?.ModelCatalogId,
                 localAiRecoveryRequestedPort: localAiRecoveryTarget?.RequestedLocalAiPort,
+                pinLocalAiRecoveryModel: localAiRecoveryTarget?.PinModelSelection ?? false,
                 localAiHost: CreateLocalAiSetupHost(),
                 connectionManager: _callbacks.GetConnectionManager(),
                 publishNativeCompletion: _callbacks.PublishNativeCompletion,

@@ -706,7 +706,7 @@ public sealed class LocalAiPageViewModelTests
     [Theory]
     [InlineData(LocalAiModelAvailabilityState.Verified)]
     [InlineData(LocalAiModelAvailabilityState.Loaded)]
-    public void InstalledModel_OffersChangeModelThroughExistingSetupRoute(
+    public void InstalledModel_ChangeModelOpensScopedLocalAiSetupNotOnboarding(
         LocalAiModelAvailabilityState modelState)
     {
         using var harness = new LocalAiHarness(modelState);
@@ -717,8 +717,10 @@ public sealed class LocalAiPageViewModelTests
 
         Assert.True(harness.ViewModel.ChangeModel());
 
+        Assert.Equal(1, harness.Commands.ShowLocalAiModelSetupCount);
+        Assert.Equal(0, harness.Commands.ShowLocalAiSetupCount);
+        Assert.Equal(0, harness.Commands.ShowOnboardingCount);
         Assert.Equal(0, harness.Commands.ShowGatewayWizardCount);
-        Assert.Equal(1, harness.Commands.ShowOnboardingCount);
     }
 
     [Theory]
@@ -754,6 +756,7 @@ public sealed class LocalAiPageViewModelTests
         Assert.True(harness.ViewModel.HasInstalledModel);
         Assert.False(harness.ViewModel.CanChangeModel);
         Assert.False(harness.ViewModel.ChangeModel());
+        Assert.Equal(0, harness.Commands.ShowLocalAiSetupCount);
         Assert.Equal(0, harness.Commands.ShowOnboardingCount);
 
         harness.Runtime.CompleteStart();
