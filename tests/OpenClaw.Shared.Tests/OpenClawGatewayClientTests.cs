@@ -1580,9 +1580,11 @@ public class OpenClawGatewayClientTests
         File.Copy(Path.Combine(replacementPath, "device-key-ed25519.json"),
             Path.Combine(identityPath, "device-key-ed25519.json"), true);
         Assert.Equal(signedId, client.AuthenticatedSigningDeviceId);
+        await client.CheckHealthAsync();
+        using var closeDeadline = new CancellationTokenSource(CloseHandshakeTimeout);
         var disconnect = client.DisconnectAsync();
-        await server.CloseSocketAsync(0).WaitAsync(CloseHandshakeTimeout);
-        await disconnect.WaitAsync(CloseHandshakeTimeout);
+        await server.CompleteClientCloseAsync(0, closeDeadline.Token);
+        await disconnect.WaitAsync(closeDeadline.Token);
         Assert.Null(client.AuthenticatedSigningDeviceId);
     }
 
