@@ -275,7 +275,8 @@ try {
     if ($null -ne $deliveryOptions) {
         $packageRollout = Get-RequiredProperty $deliveryOptions 'PackageRollout'
         if ($null -ne $packageRollout) {
-            $packageRollout.IsPackageRollout = $true
+            # Even a 100% gradual rollout needs manual finalization before the next submission.
+            $packageRollout.IsPackageRollout = $rollout -lt 100
             $packageRollout.PackageRolloutPercentage = $rollout
         }
     }

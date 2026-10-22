@@ -221,7 +221,13 @@ try {
     } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $testRoot 'policy.json') -Encoding utf8
 
     Reset-Fixture
+    $global:OpenClawStoreTest_published.PackageDeliveryOptions.PackageRollout.IsPackageRollout = $true
+    $global:OpenClawStoreTest_published.PackageDeliveryOptions.PackageRollout.PackageRolloutPercentage = 25
     Invoke-Submission
+    $delivery = $global:OpenClawStoreTest_draft.PackageDeliveryOptions.PackageRollout
+    if ($delivery.IsPackageRollout -ne $false -or $delivery.PackageRolloutPercentage -ne 100) {
+        throw 'Full distribution must disable gradual rollout so another submission can follow without manual finalization.'
+    }
     if ($null -ne $global:OpenClawStoreTest_pendingId -or $global:OpenClawStoreTest_uploadedEntries.Count -ne 1 -or
         $global:OpenClawStoreTest_uploadedEntries[0] -cne 'OpenClaw.msixbundle') {
         throw 'Successful publication did not upload exactly one bundle and commit its owned draft.'
@@ -236,6 +242,17 @@ try {
         [string]$evidence.publishedMetadataSha256 -cne [string]$evidence.draftMetadataSha256 -or
         [string]$evidence.preparedMutationSha256 -cne [string]$evidence.verifiedMutationSha256) {
         throw 'Store evidence did not bind the verified and committed draft.'
+    }
+
+    Reset-Fixture
+    $partialPolicy = Get-Content -LiteralPath (Join-Path $testRoot 'policy.json') -Raw | ConvertFrom-Json
+    $partialPolicy.packageRolloutPercentage = 25
+    $partialPolicyPath = Join-Path $testRoot 'partial-policy.json'
+    [IO.File]::WriteAllText($partialPolicyPath, ($partialPolicy | ConvertTo-Json))
+    Invoke-Submission -PolicyPath $partialPolicyPath
+    $delivery = $global:OpenClawStoreTest_draft.PackageDeliveryOptions.PackageRollout
+    if ($delivery.IsPackageRollout -ne $true -or $delivery.PackageRolloutPercentage -ne 25) {
+        throw 'Partial distribution must retain the requested gradual rollout.'
     }
 
     Reset-Fixture
