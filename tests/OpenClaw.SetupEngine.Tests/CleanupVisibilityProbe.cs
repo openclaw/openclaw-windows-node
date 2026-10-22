@@ -89,7 +89,7 @@ public sealed class CleanupVisibilityProbe : IDisposable
 
     public sealed class Result
     {
-        public int ExitCode;
+        public int? ExitCode;
         public int WindowSamples;
         public int TaskbarSamples;
         public int TaskbarsFound;
@@ -175,6 +175,9 @@ public sealed class CleanupVisibilityProbe : IDisposable
     private readonly ConcurrentQueue<Observation> events = new ConcurrentQueue<Observation>();
     private readonly ConcurrentQueue<string> errors = new ConcurrentQueue<string>();
     private readonly Stopwatch clock = Stopwatch.StartNew();
+    private double maximumWindowGap;
+    private readonly CleanupVisibilityRunState runState = new CleanupVisibilityRunState();
+    private readonly List<Process> externalProcesses = new List<Process>();
     private readonly TimeSpan initialCpu = Process.GetCurrentProcess().TotalProcessorTime;
     private readonly ManualResetEvent stop = new ManualResetEvent(false);
     private readonly ManualResetEvent eventReady = new ManualResetEvent(false);
@@ -216,8 +219,10 @@ public sealed class CleanupVisibilityProbe : IDisposable
     public Result Snapshot()
     {
         return new Result {
+            ExitCode = runState.RootExitCode,
             WindowSamples = windowSamples, TaskbarSamples = taskbarSamples, TaskbarsFound = taskbarsFound,
             MaximumTaskbarElements = maximumTaskbarElements,
+            MaximumWindowSampleGapMs = maximumWindowGap,
             ElapsedMs = clock.Elapsed.TotalMilliseconds,
             ObserverCpuMs = (Process.GetCurrentProcess().TotalProcessorTime - initialCpu).TotalMilliseconds,
             MaximumTaskbarSampleGapMs = maximumTaskbarGap, Errors = errors.ToArray(),
@@ -236,7 +241,9 @@ public sealed class CleanupVisibilityProbe : IDisposable
 
     private bool IsOwnedWindow(Observation observation)
     {
-        return owned.ContainsKey(observation.Pid) || ownedWindows.ContainsKey(observation.Handle);
+        return (owned.ContainsKey(observation.Pid) &&
+            runState.CanAttributeObservation(observation.Pid, observation.ElapsedMs)) ||
+            ownedWindows.ContainsKey(observation.Handle);
     }
 
     private readonly DateTime startedAtUtc = DateTime.UtcNow;
@@ -277,12 +284,14 @@ public sealed class CleanupVisibilityProbe : IDisposable
     {
         uint pid;
         GetWindowThreadProcessId(hwnd, out pid);
-        bool isOwned = owned.ContainsKey((int)pid) || ownedWindows.ContainsKey(hwnd.ToInt64());
-        if (source == "WindowSample" && !isOwned && !consoleWindows.ContainsKey(hwnd.ToInt64())) return;
+        bool isOwned = owned.ContainsKey((int)pid) || runState.IsExternalProcess((int)pid) ||
+            ownedWindows.ContainsKey(hwnd.ToInt64());
+        if (source == "WindowSample" && !isOwned && !runState.CaptureUnownedStartupSamples &&
+            !consoleWindows.ContainsKey(hwnd.ToInt64())) return;
         string className = ClassName(hwnd);
         bool isConsole = className == "ConsoleWindowClass" || className == "CASCADIA_HOSTING_WINDOW_CLASS";
         if (isConsole) consoleWindows.TryAdd(hwnd.ToInt64(), true);
-        if (source == "WindowSample" && !isOwned && !isConsole) return;
+        if (source == "WindowSample" && !isOwned && !isConsole && !runState.CaptureUnownedStartupSamples) return;
         var title = new StringBuilder(1024);
         if (isOwned || isConsole)
         {
@@ -296,7 +305,7 @@ public sealed class CleanupVisibilityProbe : IDisposable
                 isOwned = true;
             }
         }
-        if (source == "WindowSample" && !isOwned) return;
+        if (source == "WindowSample" && !isOwned && !runState.CaptureUnownedStartupSamples) return;
         // A SHOW event can be delivered after a fast hide. Preserve the event
         // instead of losing exactly the transient startup flash being tested.
         if (showEvent && GetAncestor(hwnd, 2) != hwnd) return;
@@ -451,6 +460,62 @@ public sealed class CleanupVisibilityProbe : IDisposable
     public Result Run(string executable, string arguments, string directory, string readyName, string releaseName,
         bool positiveControl, int timeoutSeconds, string externalPidFile, bool noWindowStarter)
     {
+        return Run(executable, arguments, directory, readyName, releaseName, positiveControl,
+            timeoutSeconds, externalPidFile, noWindowStarter, null);
+    }
+
+    private static int ParentPid(int pid)
+    {
+        var snapshot = CreateToolhelp32Snapshot(2, 0);
+        if (snapshot == new IntPtr(-1)) throw new System.ComponentModel.Win32Exception();
+        try
+        {
+            var entry = new ProcessEntry { size = (uint)Marshal.SizeOf(typeof(ProcessEntry)) };
+            if (!Process32First(snapshot, ref entry)) throw new System.ComponentModel.Win32Exception();
+            do { if (entry.pid == (uint)pid) return checked((int)entry.parent); }
+            while (Process32Next(snapshot, ref entry));
+            throw new InvalidOperationException("External worker process identity disappeared.");
+        }
+        finally { CloseHandle(snapshot); }
+    }
+
+    private void RegisterExternalWorker(int workerPid, string expectedHostPath)
+    {
+        var worker = Process.GetProcessById(workerPid);
+        Process host = null;
+        try
+        {
+            if (!worker.ProcessName.Equals("powershell", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("External proof worker is not Windows PowerShell.");
+            var workerHandle = worker.Handle;
+            if (!string.IsNullOrEmpty(expectedHostPath))
+            {
+                host = Process.GetProcessById(ParentPid(workerPid));
+                var hostHandle = host.Handle;
+                runState.RegisterExternalWorker(workerPid, host.Id, host.MainModule.FileName,
+                    (host.StartTime.ToUniversalTime() - startedAtUtc).TotalMilliseconds,
+                    (worker.StartTime.ToUniversalTime() - startedAtUtc).TotalMilliseconds);
+                owned.TryAdd(host.Id, true);
+                externalProcesses.Add(host);
+                host = null;
+            }
+            else runState.MarkWorkerReady();
+            owned.TryAdd(workerPid, true);
+            externalProcesses.Add(worker);
+            worker = null;
+        }
+        finally
+        {
+            if (worker != null) worker.Dispose();
+            if (host != null) host.Dispose();
+        }
+    }
+
+    public Result Run(string executable, string arguments, string directory, string readyName, string releaseName,
+        bool positiveControl, int timeoutSeconds, string externalPidFile, bool noWindowStarter,
+        string expectedExternalHostPath)
+    {
+        runState.ConfigureExternalHost(expectedExternalHostPath);
         var startup = new Startup {
             cb = Marshal.SizeOf(typeof(Startup)), flags = positiveControl ? 1 : 0, show = 1, title = token
         };
@@ -484,20 +549,19 @@ public sealed class CleanupVisibilityProbe : IDisposable
                     windowSamples = samples;
                     double now = clock.Elapsed.TotalMilliseconds;
                     maximumGap = Math.Max(maximumGap, now - previous);
+                    maximumWindowGap = maximumGap;
                     previous = now;
                     if (!workerReady && ready.WaitOne(0))
                     {
-                        workerReady = true;
                         readyTaskbarSamples = taskbarSamples;
                         if (!string.IsNullOrEmpty(externalPidFile))
                         {
                             int workerPid = int.Parse(System.IO.File.ReadAllText(externalPidFile),
                                 System.Globalization.CultureInfo.InvariantCulture);
-                            using (var worker = Process.GetProcessById(workerPid))
-                                if (!worker.ProcessName.Equals("powershell", StringComparison.OrdinalIgnoreCase))
-                                    throw new InvalidOperationException("External proof worker is not Windows PowerShell.");
-                            owned.TryAdd(workerPid, true);
+                            RegisterExternalWorker(workerPid, expectedExternalHostPath);
                         }
+                        else runState.MarkWorkerReady();
+                        workerReady = true;
                     }
                     if (workerReady)
                     {
@@ -506,11 +570,12 @@ public sealed class CleanupVisibilityProbe : IDisposable
                         bool eventSeen = Array.Exists(recorded, e => e.Source == "WinEvent" && e.OnScreen && IsOwnedWindow(e));
                         bool sampleSeen = Array.Exists(recorded, e => e.Source == "WindowSample" && e.OnScreen && IsOwnedWindow(e));
                         bool buttonSeen = Array.Exists(recorded, e => e.Source == "TaskbarUIA" && e.OnScreen);
-                        if (!released && afterReady >= 20 && taskbarSamples >= readyTaskbarSamples + 2 &&
-                            (!positiveControl || (eventSeen && sampleSeen && buttonSeen)))
+                        if (!released && runState.CanRelease(afterReady, taskbarSamples - readyTaskbarSamples,
+                            positiveControl, eventSeen, sampleSeen, buttonSeen))
                         {
                             release.Set();
                             released = true;
+                            runState.MarkReleased();
                         }
                     }
                     if (clock.Elapsed > TimeSpan.FromSeconds(timeoutSeconds))
@@ -518,10 +583,11 @@ public sealed class CleanupVisibilityProbe : IDisposable
                     stop.WaitOne(WindowSampleIntervalMs);
                 }
                 process.WaitForExit();
-                if (!workerReady) throw new InvalidOperationException("Worker did not signal ready.");
                 uint exitCode;
                 if (!GetExitCodeProcess(info.process, out exitCode))
                     throw new System.ComponentModel.Win32Exception();
+                runState.RecordRootExit(unchecked((int)exitCode));
+                runState.RequireCompleteHandshake();
                 var result = new Result {
                     ExitCode = unchecked((int)exitCode), WindowSamples = samples, TaskbarSamples = taskbarSamples,
                     TaskbarsFound = taskbarsFound, MaximumWindowSampleGapMs = maximumGap,
@@ -561,6 +627,7 @@ public sealed class CleanupVisibilityProbe : IDisposable
         PostThreadMessage(eventThreadId, 0x12, IntPtr.Zero, IntPtr.Zero);
         if (!eventThread.Join(10000) || !taskbarThread.Join(10000))
             throw new TimeoutException("A visibility observer did not stop.");
+        foreach (var process in externalProcesses) process.Dispose();
         stop.Dispose();
         eventReady.Dispose();
         taskbarReady.Dispose();
