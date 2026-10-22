@@ -85,8 +85,6 @@ public sealed partial class NotificationsPage : Page
         if (AppNotificationActionRoutes.TryGetChatSessionKey(item.ActionRoute, out var sessionKey))
         {
             CurrentApp.PendingChatSessionKey = sessionKey;
-            if (CurrentApp.ActiveHubWindow is OpenClawTray.Windows.HubWindow hub)
-                hub.PendingChatSessionKey = sessionKey;
             ((IAppCommands)CurrentApp).Navigate("chat");
             _notificationService?.Dismiss(item.Id);
             return;

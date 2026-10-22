@@ -7,7 +7,8 @@
 param(
     [Parameter(Mandatory)][ValidateSet("setup-connect", "revocation-recovery", "network-recovery")]
     [string]$Name,
-    [Parameter(Mandatory)][string]$Filter
+    [Parameter(Mandatory)][string]$Filter,
+    [ValidateRange(1, 3600)][int]$HangTimeoutSeconds = 600
 )
 
 Set-StrictMode -Version Latest
@@ -15,6 +16,8 @@ $ErrorActionPreference = "Stop"
 
 $resultsDirectory = "TestResults\E2E"
 $trxPath = Join-Path $resultsDirectory "OpenClaw.E2ETests.$Name.trx"
+# Fixture setup can stall before the first case completes. Keep the interrupted
+# sequence for diagnosis without collecting potentially secret-bearing memory dumps.
 dotnet test tests/OpenClaw.E2ETests `
     --no-build `
     -c Debug `
@@ -23,6 +26,9 @@ dotnet test tests/OpenClaw.E2ETests `
     --results-directory $resultsDirectory `
     --logger "trx;LogFileName=OpenClaw.E2ETests.$Name.trx" `
     --logger "console;verbosity=detailed" `
+    --blame-hang `
+    --blame-hang-timeout "${HangTimeoutSeconds}s" `
+    --blame-hang-dump-type none `
     --filter $Filter
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE

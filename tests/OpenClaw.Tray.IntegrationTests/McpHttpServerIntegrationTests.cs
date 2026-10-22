@@ -80,7 +80,7 @@ public class McpHttpServerIntegrationTests : IClassFixture<TrayAppFixture>
         Assert.True(payload.RootElement.GetProperty("sent").GetBoolean());
     }
 
-    [IntegrationFact]
+    [MxcIntegrationFact]
     public async Task SystemRun_Where_ReturnsExpectedOutput()
     {
         var expectedPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
@@ -90,8 +90,20 @@ public class McpHttpServerIntegrationTests : IClassFixture<TrayAppFixture>
             timeoutMs = 10_000,
         });
         var stdout = payload.RootElement.GetProperty("stdout").GetString() ?? "";
-        Assert.Equal(expectedPath, stdout, ignoreCase: true);
+        Assert.Equal(expectedPath, stdout.TrimEnd('\r', '\n'), ignoreCase: true);
         Assert.Equal(0, payload.RootElement.GetProperty("exitCode").GetInt32());
+    }
+
+    public sealed class MxcIntegrationFactAttribute : Xunit.FactAttribute
+    {
+        public MxcIntegrationFactAttribute()
+        {
+            if (Environment.GetEnvironmentVariable("OPENCLAW_RUN_INTEGRATION") != "1" ||
+                Environment.GetEnvironmentVariable("OPENCLAW_RUN_MXC_NATIVE_PROOF") != "1")
+                Skip = "Native system.run proof requires both integration and isolated MXC proof opt-ins.";
+            else if (!OpenClaw.Shared.Mxc.MxcAvailability.Probe().CanRunSystemRunSandbox)
+                Skip = "MXC BaseContainer with protected-path denial is unavailable. No host bypass is permitted.";
+        }
     }
 
     [IntegrationFact]

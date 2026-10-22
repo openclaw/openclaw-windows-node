@@ -12,6 +12,8 @@ namespace OpenClaw.Shared.Tests;
 
 public class OpenClawGatewayClientTests
 {
+    private static readonly TimeSpan CloseHandshakeTimeout = TimeSpan.FromSeconds(3);
+
     // Test helper to access private methods through reflection
     private class GatewayClientTestHelper
     {
@@ -1529,11 +1531,15 @@ public class OpenClawGatewayClientTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task AuthenticatedSigningIdentity_ComesFromConnectNotOptionalHelloEcho(bool spoofEcho)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task AuthenticatedSigningIdentity_ComesFromConnectNotOptionalHelloEcho(
+        bool spoofEcho,
+        bool useManagedWebSocket)
     {
-        using var server = new LoopbackWebSocketServer();
+        using var server = new LoopbackWebSocketServer(useManagedWebSocket);
         await server.StartAsync();
         var identityPath = CreateTempIdentityPath();
         using var client = new OpenClawGatewayClient(server.WebSocketUrl, "synthetic",
@@ -1574,7 +1580,11 @@ public class OpenClawGatewayClientTests
         File.Copy(Path.Combine(replacementPath, "device-key-ed25519.json"),
             Path.Combine(identityPath, "device-key-ed25519.json"), true);
         Assert.Equal(signedId, client.AuthenticatedSigningDeviceId);
-        await client.DisconnectAsync();
+        await client.CheckHealthAsync();
+        using var closeDeadline = new CancellationTokenSource(CloseHandshakeTimeout);
+        var disconnect = client.DisconnectAsync();
+        await server.CompleteClientCloseAsync(0, closeDeadline.Token);
+        await disconnect.WaitAsync(closeDeadline.Token);
         Assert.Null(client.AuthenticatedSigningDeviceId);
     }
 
@@ -1976,6 +1986,116 @@ public class OpenClawGatewayClientTests
         Assert.Equal("testing from whatsapp", received.Text);
         Assert.Equal("final", received.State);
         Assert.Equal(1781631273567, received.Ts);
+    }
+
+    [Theory]
+    [InlineData("chat", false)]
+    [InlineData("chat", true)]
+    [InlineData("session.message", false)]
+    [InlineData("session.message", true)]
+    public void ProcessRawMessage_ChatRunId_PreservesPayloadIdentity(string eventName, bool legacy)
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        ChatMessageInfo? received = null;
+        client.ChatMessageReceived += (_, message) => received = message;
+        var content = legacy
+            ? """
+              "role":"assistant","text":"answer","__openclaw":{"id":"message-id"}
+              """
+            : """
+              "message":{"role":"assistant","content":[{"type":"text","text":"answer"}],"runId":"not-the-envelope-run","__openclaw":{"id":"message-id"}}
+              """;
+
+        helper.ProcessRawMessage($$$"""
+        {"type":"event","event":"{{{eventName}}}","payload":{
+          "sessionKey":"main","runId":"wire-run","state":"final",{{{content}}}
+        }}
+        """);
+
+        Assert.NotNull(received);
+        Assert.Equal("wire-run", received.RunId);
+        Assert.Equal("message-id", received.OpenClawId);
+        Assert.True(received.IsFinal);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("\"runId\":null,")]
+    [InlineData("\"runId\":123,")]
+    public void ProcessRawMessage_ChatRunId_DoesNotGuessMissingIdentity(string runProperty)
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        ChatMessageInfo? received = null;
+        client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage($$$"""
+        {"type":"event","event":"chat","payload":{
+          {{{runProperty}}}"sessionKey":"main","state":"final",
+          "message":{"role":"assistant","content":"answer","runId":"not-an-envelope-run","__openclaw":{"id":"message-id"}}
+        }}
+        """);
+
+        Assert.NotNull(received);
+        Assert.Null(received.RunId);
+        Assert.Equal("message-id", received.OpenClawId);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ProcessRawMessage_ChatNotificationHonorsSynchronousSuppression(bool legacy, bool suppress)
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        var delivered = new List<ChatMessageInfo>();
+        var notifications = new List<OpenClawNotification>();
+        client.ChatMessageReceived += (_, message) =>
+        {
+            if (suppress)
+                message.SuppressNotification();
+        };
+        client.ChatMessageReceived += (_, message) => delivered.Add(message);
+        client.NotificationReceived += (_, notification) => notifications.Add(notification);
+        var content = legacy
+            ? """
+              "role":"assistant","text":"final answer"
+              """
+            : """
+              "message":{"role":"assistant","content":"final answer"}
+              """;
+        helper.ProcessRawMessage($$$"""
+        {"type":"event","event":"chat","payload":{"sessionKey":"main","runId":"run","state":"final",{{{content}}}}}
+        """);
+        Assert.Equal(suppress, Assert.Single(delivered).IsNotificationSuppressed);
+        Assert.Equal(suppress ? 0 : 1, notifications.Count);
+        Assert.DoesNotContain("IsNotificationSuppressed", JsonSerializer.Serialize(delivered[0]), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ProcessRawMessage_FailedChatConsumerKeepsNotificationUnlessItVetoed(bool vetoBeforeThrow)
+    {
+        var logger = new TestLogger();
+        var helper = new GatewayClientTestHelper(logger);
+        using var client = helper.Client;
+        var notifications = new List<OpenClawNotification>();
+        client.ChatMessageReceived += (_, message) =>
+        {
+            if (vetoBeforeThrow)
+                message.SuppressNotification();
+            throw new InvalidOperationException("consumer failed");
+        };
+        client.NotificationReceived += (_, notification) => notifications.Add(notification);
+        helper.ProcessRawMessage("""
+        {"type":"event","event":"chat","payload":{"sessionKey":"main","runId":"run","state":"final","role":"assistant","text":"answer"}}
+        """);
+        Assert.Equal(vetoBeforeThrow ? 0 : 1, notifications.Count);
+        Assert.Contains(logger.Logs, log => log.Contains("ChatMessageReceived handler threw", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2467,6 +2587,85 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseChatHistoryPayload_GatewayAttachmentBlock_ReadsNestedDocumentFields()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        // Shape the Gateway projects from openclawDisplayContent for a managed zip.
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                { "type": "text", "text": "Zip's ready." },
+                {
+                  "type": "attachment",
+                  "attachment": {
+                    "artifactId": "artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0",
+                    "url": "/api/chat/media/outgoing/agent%3Amain%3Amain/dbedbff5-b83b-4da5-abaf-c479f4f40bb0/full",
+                    "kind": "document",
+                    "label": "agent-images-2026-10-02.zip",
+                    "mimeType": "application/zip",
+                    "sizeBytes": 64690236
+                  }
+                }
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal("Zip's ready.", message.Text);
+        var media = Assert.Single(
+            message.ContentParts,
+            part => part.Kind == ChatMessageContentPartKind.Media).Media;
+        Assert.NotNull(media);
+        Assert.Equal(ChatMediaContentKind.File, media.Kind);
+        Assert.Equal(ChatMediaContentSource.Structured, media.Source);
+        Assert.Equal("attachment", media.Type);
+        Assert.Equal("application/zip", media.MimeType);
+        Assert.Equal("agent-images-2026-10-02.zip", media.FileName);
+        Assert.Equal("artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0", media.ArtifactId);
+        Assert.Equal(64690236, media.SizeBytes);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_GatewayAttachmentWithoutArtifactId_DerivesManagedMediaId()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "attachment",
+                  "attachment": {
+                    "url": "/api/chat/media/outgoing/agent%3Amain%3Amain/dbedbff5-b83b-4da5-abaf-c479f4f40bb0/full",
+                    "kind": "document",
+                    "label": "report.pdf",
+                    "mimeType": "application/pdf"
+                  }
+                }
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var media = Assert.Single(Assert.Single(history.Messages).ContentParts).Media;
+        Assert.NotNull(media);
+        Assert.Equal(ChatMediaContentKind.File, media.Kind);
+        Assert.Equal("artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0", media.ArtifactId);
+    }
+
+    [Fact]
     public void ParseChatHistoryPayload_LegacyMediaOnly_PreservesMessageAndRedactsPath()
     {
         var helper = new GatewayClientTestHelper();
@@ -2605,6 +2804,141 @@ public class OpenClawGatewayClientTests
         var message = Assert.Single(history.Messages);
         Assert.Equal("msg-history-a", message.OpenClawId);
         Assert.Equal(7, message.OpenClawSeq);
+    }
+
+    [Theory]
+    [InlineData("1791257718360", 1791257718360L)]
+    [InlineData("1791257718360.176", 1791257718360L)]
+    [InlineData("-1.75", -1L)]
+    [InlineData("9223372036854775807", long.MaxValue)]
+    [InlineData("-9223372036854775808", long.MinValue)]
+    [InlineData("9223372036854775808", 42L)]
+    [InlineData("1e400", 42L)]
+    [InlineData("-1e400", 42L)]
+    [InlineData("-9223372036854777856", 42L)]
+    [InlineData("\"invalid\"", 42L)]
+    [InlineData("null", 42L)]
+    public void ParseChatHistoryPayload_TimestampPreservesIntegersAndFallsBackWhenInvalid(
+        string timestamp, long expected)
+    {
+        var helper = new GatewayClientTestHelper();
+        var history = helper.ParseChatHistoryPayload($$"""
+        {"messages":[{"role":"user","content":"Preserved","timestamp":{{timestamp}},"ts":42}]}
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal(expected, message.Ts);
+        Assert.Equal("Preserved", message.Text);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_InvalidTimestampsPreserveMessageWithZeroTimestamp()
+    {
+        var helper = new GatewayClientTestHelper();
+        var history = helper.ParseChatHistoryPayload("""
+        {"messages":[{"role":"user","content":"Preserved","timestamp":1e400,"ts":-1e400}]}
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal(0, message.Ts);
+        Assert.Equal("Preserved", message.Text);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_RealtimeVoiceFractionalTimestamp_PreservesMessage()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "user",
+              "api": "realtime",
+              "model": "realtime-voice",
+              "content": [{ "type": "text", "text": "Can you hear me?" }],
+              "timestamp": 1791257718360.176,
+              "provenance": {
+                "kind": "realtime_voice",
+                "sourceChannel": "talk"
+              },
+              "__openclaw": {
+                "id": "voice:abc:1",
+                "seq": 1
+              }
+            },
+            {
+              "role": "assistant",
+              "api": "realtime",
+              "model": "realtime-voice",
+              "content": "Yes, I can hear you.",
+              "ts": 1791257719361.992,
+              "provenance": {
+                "kind": "realtime_voice",
+                "sourceChannel": "talk"
+              },
+              "__openclaw": {
+                "id": "voice:abc:2",
+                "seq": 2
+              }
+            }
+          ]
+        }
+        """);
+
+        Assert.Collection(
+            history.Messages,
+            user =>
+            {
+                Assert.Equal("user", user.Role);
+                Assert.Equal("Can you hear me?", user.Text);
+                Assert.Equal(1791257718360, user.Ts);
+                Assert.Equal("voice:abc:1", user.OpenClawId);
+            },
+            assistant =>
+            {
+                Assert.Equal("assistant", assistant.Role);
+                Assert.Equal("Yes, I can hear you.", assistant.Text);
+                Assert.Equal(1791257719361, assistant.Ts);
+                Assert.Equal("voice:abc:2", assistant.OpenClawId);
+            });
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_OpenClawMedia_PreservesUserImageBesideCaption()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "user",
+              "content": "see this\rphoto",
+              "timestamp": 1,
+              "__openclaw": {
+                "id": "msg-photo",
+                "seq": 5,
+                "media": [
+                  {
+                    "url": "media://inbound/ocwn-1634---aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.png",
+                    "contentType": "image/png",
+                    "kind": "image",
+                    "fileName": "ocwn-1634.png"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal("see this\rphoto", message.Text);
+        var media = Assert.Single(message.ContentParts, part => part.Kind == ChatMessageContentPartKind.Media);
+        Assert.Equal(ChatMediaContentKind.Image, media.Media?.Kind);
+        Assert.Equal("image/png", media.Media?.MimeType);
+        Assert.Equal("ocwn-1634.png", media.Media?.FileName);
     }
 
     [Fact]
@@ -2829,6 +3163,36 @@ public class OpenClawGatewayClientTests
         Assert.DoesNotContain(logger.Logs, log => log.Contains("super-secret", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData("config.changed")]
+    [InlineData("chat.metadata.changed")]
+    public void ProcessRawMessage_ModelMetadataEventsInvalidateCatalog(string eventName)
+    {
+        var helper = new GatewayClientTestHelper();
+        var invalidations = 0;
+        helper.Client.ModelCatalogInvalidated += (_, _) => invalidations++;
+
+        helper.ProcessRawMessage($$"""
+        { "type": "event", "event": "{{eventName}}", "payload": {} }
+        """);
+
+        Assert.Equal(1, invalidations);
+    }
+
+    [Fact]
+    public void ProcessRawMessage_SessionCatalogChangeInvalidatesCatalog()
+    {
+        var helper = new GatewayClientTestHelper();
+        var invalidations = 0;
+        helper.Client.ModelCatalogInvalidated += (_, _) => invalidations++;
+
+        helper.ProcessRawMessage("""
+        { "type": "event", "event": "sessions.changed", "payload": { "catalogChanged": true } }
+        """);
+
+        Assert.Equal(1, invalidations);
+    }
+
     [Fact]
     public void ParseModelsList_PreservesConfiguredFlagPresence()
     {
@@ -2837,7 +3201,7 @@ public class OpenClawGatewayClientTests
         var models = helper.ParseModelsListPayload("""
         {
           "models": [
-            { "id": "gpt-5.4", "configured": true },
+            { "id": "gpt-5.4", "configured": true, "manualSelectionAllowed": false },
             { "id": "gpt-5.5", "configured": false },
             { "id": "legacy-gateway-model" }
           ]
@@ -2851,18 +3215,21 @@ public class OpenClawGatewayClientTests
                 Assert.Equal("gpt-5.4", model.Id);
                 Assert.True(model.HasConfiguredFlag);
                 Assert.True(model.IsConfigured);
+                Assert.False(model.ManualSelectionAllowed);
             },
             model =>
             {
                 Assert.Equal("gpt-5.5", model.Id);
                 Assert.True(model.HasConfiguredFlag);
                 Assert.False(model.IsConfigured);
+                Assert.Null(model.ManualSelectionAllowed);
             },
             model =>
             {
                 Assert.Equal("legacy-gateway-model", model.Id);
                 Assert.False(model.HasConfiguredFlag);
                 Assert.False(model.IsConfigured);
+                Assert.Null(model.ManualSelectionAllowed);
             });
     }
 
@@ -3681,6 +4048,32 @@ public class OpenClawGatewayClientTests
         var session = Assert.Single(helper.GetSessionList());
         Assert.Equal("off", session.ThinkingLevel);
         Assert.Equal("working", session.CurrentActivity);
+    }
+
+    [Fact]
+    public void SessionUsageSnapshotUpdated_ExcludesTrackedActivityRepublishes()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        var sessionUpdates = 0;
+        var usageSnapshots = 0;
+        client.SessionsUpdated += (_, _) => sessionUpdates++;
+        client.SessionUsageSnapshotUpdated += (_, usage) =>
+        {
+            usageSnapshots++;
+            Assert.Equal(1714600005000, usage.Timestamp);
+        };
+
+        helper.ParseSessionsPayload(
+            """{"ts":1714600005000,"sessions":[{"key":"agent:main:main","totalTokens":1000}]}""");
+        var update = typeof(OpenClawGatewayClient).GetMethod(
+            "UpdateTrackedSession",
+            System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Instance)!;
+        update.Invoke(client, ["agent:main:main", true, "working"]);
+
+        Assert.Equal(2, sessionUpdates);
+        Assert.Equal(1, usageSnapshots);
     }
 
     [Fact]

@@ -1,6 +1,6 @@
 # Native chat visual system
 
-The shared ChatPage and ChatWindow use native Reactor/WinUI controls. This
+Workspace's ChatPage uses native Reactor/WinUI controls. This
 presentation follows the reading rhythm of the published 2026.9.4 web chat
 (source `3a9d69db306cd7f081e06254cb89c4bcc14a7107`) without
 replacing Windows chrome, native input, or gateway contracts.
@@ -41,7 +41,7 @@ Additional shared glyph aliases live in `FluentIconCatalog`: `ChevronDown`
 (E70D) and `Stop` (E71A).
 Glyphs do not scale with text. Text containers keep native scaling enabled.
 Chat uses dedicated `ChatSubmit` (Up, E74A) and `ChatAttach` (Add, E710)
-aliases. Global Send and Quick Send metaphors are unchanged.
+aliases. Other Send glyph aliases are unchanged.
 
 ## Theme resources
 
@@ -67,13 +67,12 @@ aliases. Global Send and Quick Send metaphors are unchanged.
 HC maps surfaces, strokes and text to system window/button/highlight colors.
 An HC resource simulation is not evidence that Windows HC mode was enabled.
 
-Window layering follows WinUI Gallery: the Hub title bar and expanded navigation
+Window layering follows WinUI Gallery: the Workspace title bar and expanded navigation
 pane reveal Mica, while `NavigationViewContentBackground` supplies one content
 layer (`LayerFillColorDefaultBrush` in Light/Dark, system window in HC).
 The embedded chat canvas is transparent so it neither hides nor doubles that
-layer. The standalone chat window also uses Mica and paints the same navigation
-content resource once below its header, including disconnected/loading states.
-The composer and code cards use the card fill above that content layer.
+layer, including disconnected/loading states. The composer and code cards
+use the card fill above that content layer.
 
 ## Controls and states
 
@@ -88,8 +87,8 @@ available even when the visual footer is hidden.
 Text remains selectable and attachment chips remain visible.
 Cancel stays available until dispatch; failures keep their error and removal
 action visible without hovering. Provider promotion replaces the pending row with the normal sent message,
-without adding queue-only rows to history. This applies to both ChatPage and
-ChatWindow. See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
+without adding queue-only rows to history. This applies to Workspace's ChatPage.
+See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
 
 Chat responses are not read aloud by default. Enabling the Text-to-speech
 capability permits playback but does not enable automatic spoken replies.
@@ -104,13 +103,124 @@ Gateway dashboard management lives in a Connection settings card rather than
 occupying a row above the chat surface. Settings' Chat rail action opens Workspace
 without changing the selected Settings page or discarding the chat draft.
 
-The footer has a leading Attach/session group, model/reasoning selectors, and
+An authoritative empty conversation shows **Recent chats** instead of quick-start
+suggestions when the active agent has eligible conversations. The list includes
+active or token-bearing conversations, excludes the current session, background, archived and channel
+sessions, and shows at most five chats by last update (session key breaks ties).
+`ChatWelcomePresentation` owns this pure projection. Rows retain native button
+focus/hover states and open the original session through the composer controller's
+selection handoff, preserving the draft and notifying the host. No message is sent
+by opening a recent chat. When none qualify, the upstream welcome suggestions appear.
+Recent titles align left and truncate before a trailing last-used timestamp, matching
+the web dashboard's row hierarchy. Relative ages use the existing localized time-ago resources;
+the tooltip and accessible help expose the full local timestamp. Unknown times stay
+empty rather than inventing activity.
+A ready compose-only session can show this welcome state even when other sessions
+exist; materialized sessions still wait for loaded, settled empty history.
+
+The new-chat block is vertically centered within the content viewport: selected
+agent name, new-session guidance, placement controls and composer, then recent
+chats or starter prompts. It shares the 768-pixel reading width and responsive
+gutters. A native ScrollViewer makes the entire block reachable at short heights
+and large text scales. Existing transcripts keep the composer at the bottom.
+The composer's parent and input control survive the transition to a transcript.
+The selected Gateway agent's `identity.name`, then `name`, then ID supplies the
+heading through the placement catalog; a session title is never used as an agent name.
+The agent avatar, name and guidance are horizontally centered. The avatar uses the
+same `AgentIdentityBadge` image loader, emoji and initials fallback as the Workspace
+agent picker, without its adjacent labels. It is 96 pixels, or 64 pixels at viewport
+widths of 768 pixels and below. The existing `agents.list` response supplies the
+selected agent's image and emoji, with no new request or copied identity.
+
+Welcome copy comes from the connected Gateway's advertised, authenticated
+`controlUi.welcome.get` RPC, with `{ locale }` set to the app's UI language.
+Version 1 returns `requestedLocale`, `resolvedLocale`, `hint`,
+`recentChatsLabel`, and ordered `suggestions` containing `id`, `displayText`,
+and `sendText`. The Gateway derives this catalog from the same welcome key list
+and i18n sources as the web UI during its normal build. The native app does not
+bundle a second prompt list, pin a copy revision, fetch GitHub sources, or execute
+web assets. Unknown suggestion IDs and their supplied order work without a
+Companion update; clicking sends the exact advertised `sendText`.
+
+Content is fetched once per connection and discarded on disconnect. Reconnection
+loads the current Gateway's content, and epoch checks reject late responses and
+queued UI deliveries from the previous connection. The language is fixed for the
+provider lifetime, matching the app's startup-only language override. Missing
+method advertisement or an unknown-method response shows an explicit
+unavailable message, not stale copied prompts. Invalid catalogs and failed
+requests show a separate error with reconnect guidance. In either case the
+composer and recent-chat navigation remain usable; the native localized recent
+chat caption is used when a Gateway caption is unavailable. These compatibility
+messages are the only welcome copy maintained in native resources.
+
+The shared RPC requires the companion upstream Gateway change. Released Gateways
+without it, including the previously tested 2026.9.9 preview, use the explicit
+unavailable state until upgraded to a build containing that contract.
+
+An authoritative empty chat also shows **Environment** and **Workspace** pickers
+above the writing surface. They use the same native toolbar chrome and searchable,
+single-selection flyouts as the model picker. Labels shrink at narrow widths;
+native selection, disabled reasons, keyboard focus, and system theme resources
+remain intact, with computer and folder glyphs on the environment/workspace triggers and their
+native menu rows. These decorative glyphs use `FluentIconCatalog` and do not replace
+the controls' accessible names. The workspace picker offers the agent's default workspace,
+registered projects, explicit Git URLs, and Gateway-side folder browsing. It never
+interprets a Gateway path as a folder on the Companion machine.
+
+An existing session's current location is not inferred from the agent's default
+workspace. Until there is explicit local selection intent, its picker labels show
+**Not verified**, with no selected flyout row. Sending without changing a picker
+preserves the existing session location. Explicitly choosing even the displayed
+default creates placement intent and runs preparation before sending. Genuinely
+new compose-only targets may show the agent defaults.
+
+`ChatPlacementController` owns each mounted host's local selection and cancellation
+scope. Discovery and selection are read-only. On first send, `GatewayChatPlacementClient`
+rechecks device availability, applies the workspace to the exact empty session key,
+and, for remote hosts, creates a session-owned worktree and requires an active
+dispatch acknowledgment before the existing chat send path runs. Preparation
+errors remain visible and preserve draft/attachments. Navigation, disconnect,
+or disposal fences late results; reconnect preserves explicit selection intent.
+Unconfirmed remote placement is not retried or redirected locally. Review that
+session in the Gateway before another placement attempt.
+Losing empty-session eligibility cancels pending preparation before subsequent RPCs;
+already admitted Gateway mutations are drained, not rolled back. Interrupted
+preparation shows an explicit uncertainty notice. Each mounted host retains explicit
+location intent and in-flight preparation by session across navigation, so returning
+cannot silently display Local/default or skip placement preflight after an interruption.
+Placement also requires history committed in the current connection generation;
+cached transcripts remain visible after reconnect but cannot authorize preparation.
+While history is unknown, explicit location intent and the draft are retained.
+When an admitted preparation publishes its own new session, that same-key
+materialization waits for fresh history rather than cancelling itself. The
+existing operation rechecks authority before each subsequent mutation and before
+sending. Nonempty history, changed session/connection, or disposal still stop it;
+waiting never replays an admitted mutation. Obsolete history-wait notices clear
+when current history arrives so location discovery can resume.
+If history never becomes current, the wait expires after 120 seconds
+(`OPENCLAW_CHAT_MATERIALIZATION_HISTORY_TIMEOUT_MS` overrides that bound),
+releases the send operation, and retains the draft and uncertainty warning.
+Timeouts and other non-cancellation failures after handing a mutation to the Gateway
+preserve the same uncertainty notice as interruption. This is conservative when the
+transport cannot distinguish a rejection from a lost response; it does not assert
+rollback or duplicate allocation. Read-only discovery failures remain separate and
+are no longer displayed once the empty-chat pickers disappear. Native resources
+own recovery messages in every supported locale; raw exception details stay in
+diagnostics rather than being rendered as untranslated guidance.
+Folder selection uses the current successful directory result independently of
+an earlier preparation warning. A new browse invalidates the previous directory,
+so a failed request cannot leave a stale folder selectable.
+A completed `/new` request cannot override a newer session or page navigation;
+the successful session remains discoverable without pulling the user back into chat.
+
+Workspace's sidebar owns session selection; the composer has no session picker.
+The footer has a leading Attach action, model/reasoning selectors, and
 quiet secondary actions beside the primary Send/Stop action. Every control stays
 in one bottom row: model text shrinks rather than moving the selectors above
 the actions. At viewport widths of 560 pixels or less, effort uses a gauge and
 chevron with a 44-pixel target, retaining the full textual automation name and
-tooltip. Below 400 pixels the session trigger uses its existing Sessions icon,
-so Attach, session, model, effort, voice and Send all remain reachable.
+tooltip. Attach, model, effort, voice and Send remain reachable in narrow
+layouts through actual-width observation rather than a compact-window mode.
 The compact effort trigger has a transparent idle background and the same
 4-pixel interaction corners as the other toolbar controls. Its gauge and
 chevron are vertically centered within the 44-pixel target. The shared toolbar
@@ -120,6 +230,15 @@ capture preserves existing target mount callbacks.
 There is no composer overflow menu. Voice preferences remain available in
 Settings > Voice, where "Read responses aloud" controls the same shared
 speaker mute state. Native focus, hover and disabled states remain.
+
+The context-usage footer shows the latest assistant request measurement, not
+the sum of overlapping requests. Newer session snapshots may lower that value,
+including after compaction, but require an explicit positive total. A missing
+total does not make input/output billing counters authoritative because they
+may omit cached context. Cached seeding retains its existing fallback behavior.
+Undated duplicates preserve the known measurement timestamp only when their
+effective usage fields are unchanged, so matching older history cannot rewind
+the footer. Changed undated usage does not inherit a measurement timestamp.
 
 The compact effort gauge is an explicitly requested exception to the font-icon
 convention: `ChatEffortGauge` renders the published web SVG geometry with native
@@ -159,6 +278,13 @@ replace their navigation algorithm.
 Pending attachments use a bounded horizontal rail with 56-pixel chips, 32-pixel
 removal targets and room for focus visuals instead of growing the composer for
 every file. Video-specific previews are not invented by the native file rail.
+
+On history reload, message-wide structured user attachments appear on the first
+nonempty text part only, not again on later text parts from that same message.
+A textual media envelope retains precedence and prevents a later structured
+fallback from repeating its chips. Matching cached captions preserve internal
+line breaks and restore local filenames; already-flattened legacy captions
+fall back to Gateway filenames. Reloaded descriptors do not restore image bytes.
 
 The model flyout searches and groups only the existing catalog. Provider,
 context and availability descriptions use `ChatModelLabels`. Provider headings

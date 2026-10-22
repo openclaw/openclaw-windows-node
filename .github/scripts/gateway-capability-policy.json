@@ -6,6 +6,7 @@
       "methods": ["question.list", "question.get", "question.resolve"],
       "events": ["question.requested", "question.resolved"],
       "scope": "operator.questions",
+      "definitionPrefixes": ["Question"],
       "obligations": [
         "Production event routing, not agent stream=approval",
         "Question, session and run ID correlation",

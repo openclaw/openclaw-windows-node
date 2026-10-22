@@ -219,7 +219,7 @@ public sealed class LocalAiOnboardingOwnershipTests
             Assert.False(string.IsNullOrWhiteSpace(text));
             Assert.DoesNotContain("—", text);
         }
-        Assert.Contains("Choose a model or connect an AI provider.",
+        Assert.Contains("Connect an AI provider or model.",
             Read(@"src\OpenClaw.Tray.WinUI\Strings\en-us\Resources.resw"));
         Assert.DoesNotContain("Nothing is tested or changed until you continue.",
             Read(@"src\OpenClaw.Tray.WinUI\Strings\en-us\Resources.resw"));

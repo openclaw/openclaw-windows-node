@@ -31,7 +31,7 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
-    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -42,9 +42,9 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
         }
         catch (Exception ex)
         {
-            return Task.FromResult(StepResult.Terminal(
+            return StepResult.Terminal(
                 "Local AI hardware detection failed. No setup changes were made.",
-                ex));
+                ex);
         }
 
         string? selectedModelId = ctx.Config.LocalAi.SelectedModelId;
@@ -56,26 +56,50 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
                 StringComparison.OrdinalIgnoreCase)
                 ? LocalInferenceEligibility.EvaluateInstalled(hardware, selectedModelId)
                 : LocalInferenceEligibility.Evaluate(hardware, selectedModelId);
+        // Headless --config setup cannot carry the UI-only receipt hint. The
+        // stored receipt owns an installed Bolt recipe and its exact context.
+        if (string.Equals(selectedModelId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var installed = await new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir)).LoadAsync(ct);
+                if (installed is not null)
+                {
+                    if (!string.Equals(installed.Manifest.ModelCatalogId, selectedModelId, StringComparison.OrdinalIgnoreCase))
+                        return StepResult.Terminal("The installed Local AI model does not match the selected model.");
+                    eligibility = LocalInferenceEligibility.EvaluateRecordedProfile(hardware,
+                        LlamaServerRouterConfiguration.ResolveInstalledPlan(installed));
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                return StepResult.Terminal("The installed Local AI receipt could not be qualified.", ex);
+            }
+        }
         ctx.LocalAiHardware = hardware;
         ctx.LocalAiEligibility = eligibility;
-        ctx.Config.LocalAi.SelectedProfileId = eligibility.Plan?.Profile.Id;
+        if (!string.Equals(selectedModelId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase))
+            ctx.Config.LocalAi.SelectedProfileId = eligibility.Plan?.Profile.Id;
 
-        if (eligibility.Status == LocalInferenceEligibilityStatus.Unsupported)
+        if (!eligibility.CanOffer)
         {
-            return Task.FromResult(StepResult.Terminal(
+            if (eligibility.Status == LocalInferenceEligibilityStatus.EligibleButBusy)
+                return StepResult.Terminal("The selected Local AI profile no longer fits available memory. Free memory and recheck before continuing.");
+            return StepResult.Terminal(
                 $"This system does not meet the Local AI requirements " +
-                $"({eligibility.FailureCode}, {eligibility.SelectionFailureCode})."));
+                $"({eligibility.FailureCode}, {eligibility.SelectionFailureCode}).");
         }
 
         if (eligibility.Plan is null || eligibility.SelectedGpu is null)
         {
-            return Task.FromResult(StepResult.Terminal(
-                "Local AI compatibility was inconclusive. No setup changes were made."));
+            return StepResult.Terminal(
+                "Local AI compatibility was inconclusive. No setup changes were made.");
         }
 
         if (!LocalAiPortPolicy.TryValidate(ctx.Config.LocalAi.Port, out string? portError))
-            return Task.FromResult(StepResult.Terminal(portError ?? "Local inference port selection failed."));
+            return StepResult.Terminal(portError ?? "Local inference port selection failed.");
 
+        ctx.Config.LocalAi.SelectedProfileId = eligibility.Plan.Profile.Id;
         ctx.LocalAiPort = ctx.Config.LocalAi.Port;
         ctx.Logger.Info(
             "Selected qualified Local AI plan",
@@ -88,8 +112,8 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
                 requestedPort = ctx.Config.LocalAi.Port,
             });
 
-        return Task.FromResult(StepResult.Ok(
-            $"Selected {eligibility.Plan.Model.DisplayName} for {eligibility.SelectedGpu.Name}."));
+        return StepResult.Ok(
+            $"Selected {eligibility.Plan.Model.DisplayName} for {eligibility.SelectedGpu.Name}.");
     }
 }
 

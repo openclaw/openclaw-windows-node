@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -355,6 +355,12 @@
   </data>
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>Impossible de vérifier les mises à jour</value>
+  </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
   </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>Une erreur s'est produite lors de la vérification des mises à jour.
@@ -755,9 +761,6 @@ Utilisez l'une de ces options :
   </data>
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>L'autorisation sera disponible dans un instant</value>
-  </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>Faites défiler jusqu'à la fin de la commande avant d'autoriser</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>Cette commande mélange des jeux de caractères et peut ne pas être ce qu'elle paraît. Vérifiez-la attentivement.</value>
@@ -2217,12 +2220,6 @@ Utilisez l'une de ces options :
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>Actualiser</value>
   </data>
-  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
-    <value>Discussion</value>
-  </data>
-  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
-    <value>Connectez-vous à la passerelle pour commencer la discussion</value>
-  </data>
   <data name="TitleText.Text" xml:space="preserve">
     <value>OpenClaw Windows Companion</value>
   </data>
@@ -2436,9 +2433,6 @@ Utilisez l'une de ces options :
   <data name="FallbackInfoBar.Title" xml:space="preserve">
     <value>Fichiers de l’espace de travail</value>
   </data>
-  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw Chat</value>
-  </data>
   <data name="SearchBox.PlaceholderText" xml:space="preserve">
     <value>Tapez une commande...</value>
   </data>
@@ -2465,12 +2459,6 @@ Utilisez l'une de ces options :
   </data>
   <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
     <value>Utilisation et coût</value>
-  </data>
-  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
-    <value>Ouvrir dans le navigateur</value>
-  </data>
-  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
-    <value>Fermer</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Ouvrir dans le navigateur</value>
@@ -2595,6 +2583,75 @@ Utilisez l'une de ces options :
   <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve">
     <value>MiniMax (cloud, clé API requise)</value>
   </data>
+  <data name="VoiceSettingsPage_TtsKokoro.Content" xml:space="preserve">
+    <value>Kokoro (voix neuronales locales)</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroVoiceCombo.Header" xml:space="preserve">
+    <value>Voix</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadButtonText.Text" xml:space="preserve">
+    <value>Télécharger le pack vocal</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloadPack" xml:space="preserve">
+    <value>Télécharger le pack vocal</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloaded" xml:space="preserve">
+    <value>Téléchargé</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloading" xml:space="preserve">
+    <value>Téléchargement…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonRetry" xml:space="preserve">
+    <value>Réessayer le téléchargement</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteButton.Content" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreview.Text" xml:space="preserve">
+    <value>Aperçu</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewButtonContent" xml:space="preserve">
+    <value>Aperçu</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroInfoText.Text" xml:space="preserve">
+    <value>Les packs vocaux sont téléchargés depuis les versions GitHub (environ 380 Mo pour l’anglais et le chinois, environ 310 Mo pour l’espagnol). Ils s’exécutent entièrement sur ce PC ; aucun son ne quitte votre appareil.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackReady" xml:space="preserve">
+    <value>Pack vocal prêt sur ce PC ({0} Mo).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackNotDownloaded" xml:space="preserve">
+    <value>Pack vocal pas encore téléchargé. Cliquez sur Télécharger pour le récupérer (environ {0} Mo).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroConnecting" xml:space="preserve">
+    <value>Connexion aux versions GitHub…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroProgressBytes" xml:space="preserve">
+    <value>Téléchargement… {0} / {1} Mo</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadCanceled" xml:space="preserve">
+    <value>Téléchargement annulé.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailed" xml:space="preserve">
+    <value>Échec du téléchargement (voir le journal Debug).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedDiskFull" xml:space="preserve">
+    <value>Espace disque insuffisant. Libérez au moins {0} Mo et réessayez.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedNetwork" xml:space="preserve">
+    <value>Échec du téléchargement. Vérifiez votre connexion Internet et réessayez.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedIntegrity" xml:space="preserve">
+    <value>Le pack vocal téléchargé n'a pas passé la vérification et a été supprimé. Réessayez plus tard.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleted" xml:space="preserve">
+    <value>Pack vocal supprimé.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteFailed" xml:space="preserve">
+    <value>Échec de la suppression (voir le journal Debug).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewFailed" xml:space="preserve">
+    <value>Échec de l’aperçu (voir le journal Debug).</value>
+  </data>
   <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
     <value>Voix</value>
   </data>
@@ -2653,7 +2710,7 @@ Utilisez l'une de ces options :
     <value>Chine</value>
   </data>
   <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
-    <value>Piper, Windows et la reconnaissance vocale s'exécutent sur cet appareil. Les fournisseurs TTS cloud envoient le texte des réponses à leurs services pour la synthèse ; le son du microphone ne leur est pas envoyé.</value>
+    <value>Kokoro, Piper, Windows et la reconnaissance vocale s’exécutent sur cet appareil. Les fournisseurs TTS cloud envoient le texte des réponses à leurs services pour la synthèse ; le son du microphone ne leur est pas envoyé.</value>
   </data>
   <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
     <value>✅ Modèle prêt</value>
@@ -2871,29 +2928,87 @@ Utilisez l'une de ces options :
   <data name="DebugPage_TextBlock_OverridesCaption.Text" xml:space="preserve">
     <value>Substituer le paramètre global « Utiliser l'interface de discussion standard de la passerelle » pour chaque conteneur de discussion. Réinitialisé au redémarrage de l'application.</value>
   </data>
-  <data name="DebugPage_TextBlock_HubChatLabel.Text" xml:space="preserve">
-    <value>Onglet Discussion du hub :</value>
+  <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>Discussions récentes</value></data>
+  <data name="Chat_Placement_Environment" xml:space="preserve">
+    <value>Environnement</value>
   </data>
-  <data name="DebugPage_TextBlock_TrayChatLabel.Text" xml:space="preserve">
-    <value>Pop-up Discussion de la barre d'état :</value>
+  <data name="Chat_Placement_Workspace" xml:space="preserve">
+    <value>Espace de travail</value>
   </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Hub.Content" xml:space="preserve">
-    <value>Aucune substitution</value>
+  <data name="Chat_Placement_Devices" xml:space="preserve">
+    <value>Vos appareils</value>
   </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Hub.Content" xml:space="preserve">
-    <value>Forcer l'interface de discussion de la passerelle</value>
+  <data name="Chat_Placement_Projects" xml:space="preserve">
+    <value>Projets</value>
   </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Hub.Content" xml:space="preserve">
-    <value>Forcer l'interface de discussion du compagnon</value>
+  <data name="Chat_Placement_Folders" xml:space="preserve">
+    <value>Dossiers de la passerelle</value>
   </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Tray.Content" xml:space="preserve">
-    <value>Aucune substitution</value>
+  <data name="Chat_Placement_SearchDevices" xml:space="preserve">
+    <value>Rechercher des environnements</value>
   </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Tray.Content" xml:space="preserve">
-    <value>Forcer l'interface de discussion de la passerelle</value>
+  <data name="Chat_Placement_SearchProjects" xml:space="preserve">
+    <value>Rechercher des projets ou coller une URL Git</value>
   </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
-    <value>Forcer l'interface de discussion du compagnon</value>
+  <data name="Chat_Placement_Path" xml:space="preserve">
+    <value>Saisir un chemin de dossier</value>
+  </data>
+  <data name="Chat_Placement_DefaultWorkspace" xml:space="preserve">
+    <value>Espace de travail par défaut</value>
+  </data>
+  <data name="Chat_Placement_Browse" xml:space="preserve">
+    <value>Parcourir les dossiers</value>
+  </data>
+  <data name="Chat_Placement_Up" xml:space="preserve">
+    <value>Dossier parent</value>
+  </data>
+  <data name="Chat_Placement_UseFolder" xml:space="preserve">
+    <value>Utiliser ce dossier</value>
+  </data>
+  <data name="Chat_Placement_Back" xml:space="preserve">
+    <value>Retour aux projets</value>
+  </data>
+  <data name="Chat_Placement_Clone" xml:space="preserve">
+    <value>Cloner le dépôt lors de l'envoi</value>
+  </data>
+  <data name="Chat_Placement_Retry" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
+  <data name="Chat_Placement_Loading" xml:space="preserve">
+    <value>Chargement des emplacements...</value>
+  </data>
+  <data name="Chat_Placement_Preparing" xml:space="preserve">
+    <value>Préparation de l'emplacement de la conversation...</value>
+  </data>
+  <data name="Chat_Placement_NoMatches" xml:space="preserve">
+    <value>Aucun emplacement correspondant</value>
+  </data>
+  <data name="Chat_Placement_Offline" xml:space="preserve">
+    <value>Hors ligne</value>
+  </data>
+  <data name="Chat_Placement_HostingDisabled" xml:space="preserve">
+    <value>L'hébergement de sessions n'est pas activé</value>
+  </data>
+  <data name="Chat_Placement_CapacityUnknown" xml:space="preserve">
+    <value>La capacité de sessions n'est pas annoncée</value>
+  </data>
+  <data name="Chat_Placement_NoCapacity" xml:space="preserve">
+    <value>Aucune place disponible pour une session</value>
+  </data>
+  <data name="Chat_Placement_CommandUnavailable" xml:space="preserve">
+    <value>La commande requise n'est pas approuvée</value>
+  </data>
+  <data name="Chat_Placement_UpdateRequired" xml:space="preserve">
+    <value>Mise à jour de l'hôte requise</value>
+  </data>
+  <data name="Chat_Placement_RuntimeUnsupported" xml:space="preserve">
+    <value>Ce moteur d'agent ne prend pas en charge les sessions sur appareil</value>
+  </data>
+  <data name="Chat_Placement_Gateway" xml:space="preserve">
+    <value>Hôte de la passerelle</value>
+  </data>
+  <data name="Chat_Placement_Remote" xml:space="preserve">
+    <value>Hôte de session distant</value>
   </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>Bienvenue dans OpenClaw</value>
@@ -2988,14 +3103,17 @@ Utilisez l'une de ces options :
   <data name="Chat_Composer_Reasoning_Maximum" xml:space="preserve">
     <value>Maximal</value>
   </data>
-  <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
-    <value>Conversation</value>
-  </data>
   <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
     <value>Conversation actuelle</value>
   </data>
   <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
     <value>Modèle</value>
+  </data>
+  <data name="Chat_Composer_Model_Loading" xml:space="preserve">
+    <value>Chargement des modèles…</value>
+  </data>
+  <data name="Chat_Composer_Model_Unavailable" xml:space="preserve">
+    <value>Modèles indisponibles</value>
   </data>
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Raisonnement</value>
@@ -3168,27 +3286,13 @@ Utilisez l'une de ces options :
   <data name="AppNotification_ChannelNeedsAttention_StatusMessageFormat" xml:space="preserve">
     <value>La passerelle signale {0} comme {1}.</value>
   </data>
-  <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>Le Sandbox du nœud est désactivé: les commandes s'exécutent sans confinement</value>
-  </data>
-  <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
-    <value>Les commandes Windows lancées par l'agent s'exécuteront sans confinement jusqu'à ce que le Sandbox du nœud soit réactivé.</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox indisponible: repli sur l'hôte</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
-    <value>{0}
-
-Les commandes s'exécuteront sur l'hôte sans protection de sandbox tant que le sandboxing est indisponible.</value>
-  </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
     <value>Sandbox indisponible: commandes bloquées</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-Les commandes sont bloquées tant que le sandboxing est indisponible, car le blocage strict du repli est activé.</value>
+MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'installation ou réessayez. Seul un Windows confirmé incompatible autorise l'exécution sans isolation.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>Les primitives de sandboxing MXC ne sont pas disponibles sur cette machine.</value>
@@ -3333,6 +3437,9 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>Échec de l’envoi : {0}</value>
+  </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>La connexion a été interrompue avant que la passerelle accepte ce message.</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Échec de l'abandon</value>
@@ -4022,13 +4129,10 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Chat surface overrides</value>
   </data>
   <data name="DiagnosticsPage_Expander_ChatOverrides.Description" xml:space="preserve">
-    <value>Per-surface override of the chat UI. Resets when OpenClaw restarts.</value>
+    <value>Override the Workspace chat UI. Resets when OpenClaw restarts.</value>
   </data>
-  <data name="DiagnosticsPage_Card_HubChat.Header" xml:space="preserve">
-    <value>Hub chat tab</value>
-  </data>
-  <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
-    <value>Tray chat popup</value>
+  <data name="DiagnosticsPage_Card_WorkspaceChat.Header" xml:space="preserve">
+    <value>Workspace chat</value>
   </data>
   <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
@@ -4480,15 +4584,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="DebugPage_ForceCompanionChatUI.Content" xml:space="preserve">
     <value>Forcer l'interface de chat du compagnon</value>
   </data>
-  <data name="DebugPage_NoOverride2.Content" xml:space="preserve">
-    <value>Aucun remplacement</value>
-  </data>
-  <data name="DebugPage_ForceGatewayChatUI2.Content" xml:space="preserve">
-    <value>Forcer l'interface de chat de la passerelle</value>
-  </data>
-  <data name="DebugPage_ForceCompanionChatUI2.Content" xml:space="preserve">
-    <value>Forcer l'interface de chat du compagnon</value>
-  </data>
   <data name="DebugPage_Refresh.Text" xml:space="preserve">
     <value>Actualiser</value>
   </data>
@@ -4585,9 +4680,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="SandboxPage_SecurityLevel.Text" xml:space="preserve">
     <value>Niveau de sécurité</value>
   </data>
-  <data name="SandboxPage_OneClickToSet.Text" xml:space="preserve">
-    <value>Un clic pour définir tous les contrôles ci-dessous. Les dossiers personnalisés restent tels que vous les avez définis.</value>
-  </data>
   <data name="SandboxPage_LockedDown.Text" xml:space="preserve">
     <value>🔒 Verrouillé</value>
   </data>
@@ -4610,16 +4702,16 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Les attributions de dossier personnalisé sont toujours actives</value>
   </data>
   <data name="SandboxPage_Files.Text" xml:space="preserve">
-    <value>📁 Fichiers</value>
+    <value>Accès aux fichiers</value>
   </data>
   <data name="SandboxPage_ByDefaultTheAgent.Text" xml:space="preserve">
-    <value>Par défaut, l'agent ne dispose que d'un dossier de travail temporaire qu'il peut lire et écrire. Accordez l'accès aux dossiers utilisateur ci-dessous. Les clés SSH, les profils de navigateur et les paramètres d'OpenClaw lui-même sont toujours bloqués.</value>
+    <value>La portée sélectionnée contrôle l'accès aux fichiers. Ces lignes ajoutent des autorisations ; Utiliser la portée conserve celles déjà accordées au dossier. Choisissez Dossiers sélectionnés pour limiter l'accès aux autorisations explicites. Les dossiers protégés restent bloqués.</value>
   </data>
   <data name="SandboxPage_Documents.Text" xml:space="preserve">
     <value>Mes documents</value>
   </data>
   <data name="SandboxPage_Blocked.Content" xml:space="preserve">
-    <value>Bloqué</value>
+    <value>Utiliser la portée</value>
   </data>
   <data name="SandboxPage_ReadOnly.Content" xml:space="preserve">
     <value>Lecture seule</value>
@@ -4631,7 +4723,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Téléchargements</value>
   </data>
   <data name="SandboxPage_Blocked2.Content" xml:space="preserve">
-    <value>Bloqué</value>
+    <value>Utiliser la portée</value>
   </data>
   <data name="SandboxPage_ReadOnly2.Content" xml:space="preserve">
     <value>Lecture seule</value>
@@ -4643,7 +4735,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Bureau</value>
   </data>
   <data name="SandboxPage_Blocked3.Content" xml:space="preserve">
-    <value>Bloqué</value>
+    <value>Utiliser la portée</value>
   </data>
   <data name="SandboxPage_ReadOnly3.Content" xml:space="preserve">
     <value>Lecture seule</value>
@@ -4652,16 +4744,16 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Lecture &amp; écriture</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Les répertoires d'outils de votre PATH bénéficient également d'un accès en lecture seule dans le bac à sable, afin que les outils en ligne de commande comme git, node, python et dotnet soient utilisables. Les racines de lecteur ne sont jamais accordées.</value>
+    <value>Les dossiers d'exécution Windows et l'espace de travail privé restent accessibles. La présence dans PATH n'accorde aucun accès. Réappliquez un préréglage pour réinitialiser les choix des dossiers.</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
-    <value>Dossiers personnalisés</value>
+    <value>Dossiers supplémentaires</value>
   </data>
   <data name="SandboxPage_CustomGrantsAreAdded.Text" xml:space="preserve">
-    <value>Les autorisations personnalisées sont ajoutées en plus des règles ci-dessus. L'ajout d'un dossier dans Documents/Téléchargements/Bureau avec un accès plus large remplacera le paramètre au niveau de la ligne pour ce chemin.</value>
+    <value>Ces autorisations s'ajoutent à l'accès ci-dessus. Lecture seule ou Supprimer l'autorisation ne restreint pas l'accès déjà accordé par le préréglage ou un autre dossier. Les dossiers protégés restent bloqués.</value>
   </data>
   <data name="SandboxPage_Blocked4.Content" xml:space="preserve">
-    <value>Bloqué</value>
+    <value>Supprimer l'autorisation</value>
   </data>
   <data name="SandboxPage_ReadOnly4.Content" xml:space="preserve">
     <value>Lecture seule</value>
@@ -4670,7 +4762,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Lecture &amp; écriture</value>
   </data>
   <data name="SandboxPage_NoCustomFoldersAdded.Text" xml:space="preserve">
-    <value>Aucun dossier personnalisé ajouté.</value>
+    <value>Aucun dossier personnel partagé. Ajoutez un dossier pour commencer.</value>
   </data>
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>Ajouter un dossier</value>
@@ -4704,42 +4796,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>Les périphériques et partages réseau locaux ne sont pas encore inclus.</value>
-  </data>
-  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
-    <value>🪟 Compatibilité des commandes</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
-    <value>Autoriser les API d’interface Windows</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
-    <value>Désactivé : bloque les appels système Win32k</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
-    <value>Activé : PowerShell et les outils similaires peuvent démarrer</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Autoriser les API d’interface Windows pour les commandes en bac à sable</value>
-  </data>
-  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
-    <value>PowerShell (toutes les versions) et certains outils de console utilisent les API d’interface Windows au démarrage. Ce paramètre ne fournit pas d’inventaire pris en charge de tous les processus hôtes.</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
-    <value>Limite Win32k désactivée</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
-    <value>Les contrôles des fichiers, du réseau, du presse-papiers, du délai d’expiration et de l’approbation des commandes restent actifs. Les appels système Win32k sont autorisés ; la stratégie du presse-papiers et l’interdiction de l’injection d’entrée restent appliquées.</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
-    <value>Autoriser les API d’interface Windows ?</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
-    <value>Cette option permet aux commandes en bac à sable d’utiliser les appels système de l’interface Windows. PowerShell (toutes les versions) et certains outils de console en ont besoin pour démarrer avec les versions actuelles de MXC. Ce paramètre n’accorde pas d’inventaire pris en charge de tous les processus hôtes : l’énumération CIM/WMI de l’hôte n’est pas prise en charge et a été observée en échec, tasklist peut échouer ou expirer et la sortie de Get-Process ne doit pas être considérée comme un inventaire complet ni comme une limite de confidentialité des métadonnées de processus.&#xA;&#xA;Les contrôles des fichiers, du réseau, du presse-papiers, du délai d’expiration et de l’approbation des commandes restent actifs, mais le blocage des appels système Win32k sera désactivé. La stratégie du presse-papiers et l’interdiction de l’injection d’entrée restent appliquées. Activez cette option uniquement si vous avez besoin d’une compatibilité de commande plus large.</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
-    <value>Autoriser les API d’interface</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
-    <value>Annuler</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ Limites</value>
@@ -4986,10 +5042,10 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Ouvrir l'intégration</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
-    <value>Installation MSIX détectée</value>
+    <value>Nettoyage de la passerelle</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>La suppression d'OpenClaw via Paramètres Windows → Applications ne nettoiera PAS la passerelle locale (distribution WSL, image disque). Utilisez d'abord Supprimer la passerelle locale ci-dessous, puis désinstallez OpenClaw.</value>
+    <value>La désinstallation d’OpenClaw dans les paramètres Windows supprime automatiquement les passerelles gérées. Utilisez Supprimer la passerelle locale ci-dessous pour supprimer une passerelle tout en conservant l’application.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Supprime la distribution WSL (OpenClawGateway), son image disque, l'entrée de démarrage automatique et efface les identifiants de la passerelle. Votre jeton MCP est conservé. L'intégration sera réinitialisée.</value>
@@ -5044,12 +5100,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="WorkspacePage_LoadingWorkspaceFiles.Text" xml:space="preserve">
     <value>Chargement des fichiers de l'espace de travail…</value>
-  </data>
-  <data name="ChatWindow_WebChatUnavailable.Text" xml:space="preserve">
-    <value>Chat Web indisponible</value>
-  </data>
-  <data name="ChatWindow_Retry.Content" xml:space="preserve">
-    <value>Réessayer</value>
   </data>
   <data name="ConnectionStatusWindow_ConnectionStatus.Text" xml:space="preserve">
     <value>État de la connexion</value>
@@ -6243,12 +6293,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Command_GoToWorkspace_Title" xml:space="preserve">
     <value>Go to Workspace ({0})</value>
   </data>
-  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
-    <value>Open standalone chat</value>
-  </data>
-  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
-    <value>Open Chat Window</value>
-  </data>
   <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
     <value>Open web dashboard</value>
   </data>
@@ -6556,7 +6600,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Sandbox du nœud indisponible: commandes bloquées</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>Le confinement n'est pas disponible sur ce PC et le blocage strict du repli est activé ; les commandes lancées par l'agent sont donc bloquées.</value>
+    <value>MXC n'a pas pu être vérifié. Réparez l'installation ou réessayez. Les erreurs du SDK ou de stratégie ne déclenchent jamais d'exécution sans isolation.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>Le Sandbox du nœud est désactivé: exécution sur l'hôte</value>
@@ -6591,11 +6635,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Impossible de vérifier la disponibilité du sandbox</value>
   </data>
-  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}
-
-{1} La vérification des capacités du sandbox ne s'est pas terminée. C'est généralement transitoire (vérification lente ou bloquée): réessayez, et si le problème persiste, vérifiez si un logiciel de sécurité bloque wxc-exec.</value>
-  </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>Réessayer</value>
   </data>
@@ -6612,11 +6651,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="SandboxPage_ComponentsMissingTitle" xml:space="preserve">
     <value>Des composants de sandboxing sont manquants</value>
-  </data>
-  <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}
-
-Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, compilez l'application Tray pour copier wxc-exec.exe dans le dossier de sortie. Sinon, réinstallez le compagnon pour restaurer le sandboxing.</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>Afficher les instructions d'installation</value>
@@ -6659,15 +6693,6 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   </data>
   <data name="CronPage_NextWakeFormat" xml:space="preserve">
     <value>· Prochain réveil : {0}</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatCredentials" xml:space="preserve">
-    <value>Impossible de charger le chat. L'URL ou le jeton de la passerelle n'est pas disponible.</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatRetryFormat" xml:space="preserve">
-    <value>Impossible de charger le chat. Réessayez. ({0})</value>
-  </data>
-  <data name="ChatWindow_WebViewFailedFormat" xml:space="preserve">
-    <value>Échec de WebView2 : {0}</value>
   </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>Échec de l'initialisation de WebView2 : {0}</value>
@@ -6973,13 +6998,13 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
     <value>Action du bac à sable</value>
   </data>
   <data name="SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Préréglage verrouillé : aucun accès Internet, aucun presse-papiers, aucun dossier utilisateur standard</value>
+    <value>Préréglage strict : aucun fichier personnel ni Internet</value>
   </data>
   <data name="SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Préréglage recommandé : accès Internet activé, lecture seule pour Documents, Téléchargements et Bureau</value>
+    <value>Préréglage équilibré : dossiers utilisateur en lecture seule, Internet activé</value>
   </data>
   <data name="SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Préréglage non protégé : accès Internet activé, lecture et écriture pour Documents, Téléchargements et Bureau</value>
+    <value>Préréglage ouvert : lecture et écriture des dossiers utilisateur, Internet activé</value>
   </data>
   <data name="SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Niveau d’accès aux Documents</value>
@@ -7050,6 +7075,8 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>Pièce jointe multimédia</value></data>
   <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>Ouvrir l’image {0}</value></data>
   <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>Fermer</value></data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>Télécharger</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>Impossible de lancer le téléchargement</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>IA locale</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>IA locale</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Exécutez le llama-server natif vérifié en privé sur cet ordinateur. Les modèles ne sont chargés qu'à la demande.</value></data>
@@ -7064,6 +7091,7 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>Point de terminaison</value></data>
   <data name="LocalAiPage_ProcessLabel.Text" xml:space="preserve"><value>Processus</value></data>
   <data name="LocalAiPage_StartButton.Content" xml:space="preserve"><value>Démarrer le routeur</value></data>
+  <data name="LocalAiPage_NativeSelectionRequired" xml:space="preserve"><value>Avant de démarrer ou de redémarrer Local AI, choisissez Utiliser Local AI dans la configuration de la passerelle native sélectionnée, ou sélectionnez la passerelle WSL propriétaire dans Connexion.</value></data>
   <data name="LocalAiPage_StopButton.Content" xml:space="preserve"><value>Arrêter</value></data>
   <data name="LocalAiPage_RestartButton.Content" xml:space="preserve"><value>Redémarrer</value></data>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Ouvrir les journaux</value></data>
@@ -7151,7 +7179,7 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Canaux, intégrations et paramètres de la passerelle</value></data>
   <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw est votre assistant IA pour accomplir vos tâches sur votre PC.</value></data>
-  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Connectez votre IA</value></data>
+  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Configurez votre IA</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Découvrir les conversations existantes des fournisseurs (facultatif)</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>Démarrage de la configuration du fournisseur…</value></data>
   <data name="Onboarding_AiSetup_WorkingProvider" xml:space="preserve"><value>En attente du fournisseur…</value></data>
@@ -7197,7 +7225,7 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Onboarding_AiSetup_LocalProgress_Verifying" xml:space="preserve"><value>Test d'une réponse réelle du modèle sélectionné via votre Gateway...</value></data>
   <data name="Onboarding_AiSetup_LocalProgress_Detecting" xml:space="preserve"><value>Recherche des modèles configurés et des fournisseurs d'IA...</value></data>
   <data name="Onboarding_AiSetup_LocalProgress_Console" xml:space="preserve"><value>Ouverture de la console de diagnostic du Gateway isolé...</value></data>
-  <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>Choisissez un modèle ou connectez un fournisseur d’IA.</value></data>
+  <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>Connectez un fournisseur ou un modèle d’IA.</value></data>
   <data name="Onboarding_AiSetup_Running" xml:space="preserve"><value>Suivez les étapes de votre fournisseur.</value></data>
   <data name="Onboarding_AiSetup_Verifying" xml:space="preserve"><value>Modèle enregistré. Vérification de la connexion actuelle au Gateway.</value></data>
   <data name="Onboarding_AiSetup_Verified" xml:space="preserve"><value>Votre IA est prête. Ouverture de Chat...</value></data>
@@ -7389,14 +7417,19 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Onboarding_V3_ProfileCustomTitle.Text" xml:space="preserve"><value>Personnalisé</value></data>
   <data name="Onboarding_V3_ProfileCustomDescription.Text" xml:space="preserve"><value>Partez de vos choix actuels et ajustez-les ci-dessous.</value></data>
   <data name="Onboarding_AiSetup_OnThisPc" xml:space="preserve"><value>Sur ce PC</value></data>
-  <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>IA locale sur ce PC</value></data>
+  <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>IA locale</value></data>
+  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>Configurez un modèle sur ce PC ou connectez-vous à LM Studio ou Ollama.</value></data>
+  <data name="Onboarding_AiSetup_LocalSetUpDescription" xml:space="preserve"><value>S’exécute sur ce PC sans frais d’utilisation du fournisseur. Nous vous aidons à configurer un modèle adapté à votre matériel.</value></data>
+  <data name="Onboarding_AiSetup_CloudDetail" xml:space="preserve"><value>Connectez-vous à un service d’IA en ligne.</value></data>
+  <data name="Onboarding_AiSetup_LmStudioDetail" xml:space="preserve"><value>Connectez un modèle que vous utilisez déjà dans LM Studio.</value></data>
+  <data name="Onboarding_AiSetup_OllamaDetail" xml:space="preserve"><value>Connectez-vous à Ollama sur ce PC ou un autre hôte pour utiliser des modèles locaux ou dans le cloud.</value></data>
   <data name="Onboarding_AiSetup_LocalExplanation" xml:space="preserve"><value>Le llama-server Windows géré utilise le GPU de ce PC. Il est distinct de l’API hébergée de NVIDIA.</value></data>
   <data name="Onboarding_AiSetup_GatewayModels" xml:space="preserve"><value>Disponible sur votre Gateway</value></data>
-  <data name="Onboarding_AiSetup_ConnectProvider" xml:space="preserve"><value>Connecter un fournisseur d’IA</value></data>
+  <data name="Onboarding_AiSetup_ConnectProvider" xml:space="preserve"><value>IA dans le cloud</value></data>
   <data name="Onboarding_AiSetup_OtherLocal" xml:space="preserve"><value>Configurer un modèle local</value></data>
   <data name="Onboarding_AiSetup_OtherLocalDetail" xml:space="preserve"><value>Configurez et utilisez un modèle via votre Gateway. Vérifiez toute demande de téléchargement ou d’autorisation avant de continuer.</value></data>
   <data name="Onboarding_AiSetup_UtilityNotice" xml:space="preserve"><value>Votre Gateway propose aussi des modèles de configuration ou utilitaires. Cette page connecte uniquement l’assistant principal ; les choix uniquement utilitaires sont masqués.</value></data>
-  <data name="Onboarding_AiSetup_LocalSetUp" xml:space="preserve"><value>Configurer l’IA locale</value></data>
+  <data name="Onboarding_AiSetup_LocalSetUp" xml:space="preserve"><value>Configurer</value></data>
   <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>Démarrer et utiliser</value></data>
   <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>Utiliser ce modèle</value></data>
   <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>Réparer l’IA locale</value></data>
@@ -7713,7 +7746,17 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Installer un Gateway WSL local</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Vérification de la prise en charge du Gateway natif...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>Le Gateway natif est pris en charge sur cet appareil.</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Le Gateway natif n'est pas pris en charge. Installez la build Windows Insider {0} ou une build plus récente prise en charge via Windows Update, puis rouvrez cette page. La disponibilité de cette fonctionnalité peut varier selon l'appareil.</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Pour utiliser le Gateway natif, mettez votre appareil à jour vers une version de Windows compatible.
+
+La prise en charge du Gateway natif sera bientôt disponible sur tous les appareils. En attendant sa disponibilité générale, rejoignez le programme Windows Insider, sélectionnez le canal Bêta ou Expérimental, puis choisissez Windows 11 version 26H1 dans les Options avancées lors de l'inscription. Le retour à Windows 11 version 25H2/26H2 nécessite une réinstallation complète.
+
+Après votre inscription, revenez dans Paramètres &gt; Windows Update et recherchez les mises à jour. L'affichage de la mise à jour peut prendre quelques minutes. La disponibilité de cette fonctionnalité peut varier selon l'appareil. Après la mise à jour, rouvrez cette page pour vérifier à nouveau la prise en charge.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Pour utiliser le Gateway natif, mettez votre appareil à jour vers une version de Windows compatible.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>sera bientôt disponible sur tous les appareils.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>programme Windows Insider</value></data>
+  <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Bêta ou Expérimental</value></data>
+  <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11 version 26H1</value></data>
+  <data name="Onboarding_Native_SupportUnavailableWindowsUpdate" xml:space="preserve"><value>Paramètres &gt; Windows Update</value></data>
   <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>Impossible de vérifier la prise en charge du Gateway natif. Rouvrez cette page pour réessayer. Si la vérification échoue à nouveau, mettez à jour ou réparez Companion.</value></data>
   <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>La configuration du Gateway natif nécessite une version cliente de Windows prise en charge. Windows Server n'est pas pris en charge.</value></data>
   <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>Ouvrir Windows Update</value></data>
@@ -7735,7 +7778,6 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Démarrer et vérifier le Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Réessayer la configuration</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Aperçu uniquement. Aucun package ne sera installé et aucun Gateway ne sera démarré.</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>En sélectionnant Configurer le Gateway, vous autorisez WinGet à installer le package Gateway manquant depuis Microsoft Store et acceptez les accords du package et de la source Store. Si WinGet n'est pas prêt, la configuration peut réparer le programme d'installation d'applications avant de réessayer. Companion vérifie ensuite le package, prépare un profil dédié et ouvre la configuration du Gateway. La connexion au fournisseur reste interactive. Cette méthode n'installe ni WSL, ni l'IA locale, ni Tailscale.</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Ces fonctionnalités Windows deviennent utilisables une fois le mode nœud connecté et associé au Gateway. Les autorisations Windows et les approbations de commandes restent applicables.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Gateway natif configuré</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. Vous pouvez modifier ces choix dans les paramètres de Companion.</value></data>
@@ -7898,7 +7940,7 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="WorkspaceShell_OpenDashboard" xml:space="preserve"><value>Open gateway dashboard</value></data>
   <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help</value></data>
   <data name="WorkspaceShell_Documentation" xml:space="preserve"><value>Documentation</value></data>
-  <data name="WorkspaceShell_Support" xml:space="preserve"><value>Get help</value></data>
+  <data name="WorkspaceShell_Support" xml:space="preserve"><value>Obtenir de l’assistance</value></data>
   <data name="WorkspaceShell_Community" xml:space="preserve"><value>Community</value></data>
   <data name="WorkspaceShell_ReleaseNotes" xml:space="preserve"><value>Release notes</value></data>
   <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
@@ -7934,6 +7976,7 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="AgentCreation_Description" xml:space="preserve"><value>Créez un agent et son espace de travail sur la passerelle connectée. Cela ne crée pas de conversation et ne modifie pas la conversation actuelle.</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>Connectez-vous à une passerelle avec l’autorisation operator.admin pour créer un agent.</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>La création de l’agent n’a pas pu être confirmée. Fermez cette boîte de dialogue et actualisez les agents avant de réessayer.</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>Ouvrez les paramètres Local AI, reconnectez la passerelle d’origine et arrêtez Local AI avant de réparer ses fichiers. Si une récupération du routage est en attente, effectuez-la d’abord. Conservez le reçu de propriété et les modèles téléchargés.</value></data>
   <data name="Onboarding_AiSetup_LocalState_ManagementBlocked" xml:space="preserve"><value>La gestion par Companion est indisponible.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipMissing" xml:space="preserve"><value>Ce profil ne possède pas de preuve de propriété du fournisseur d’IA locale existant. Si Companion l’a créé lors d’une tentative précédente, rouvrez le profil Companion d’origine et choisissez Récupérer et utiliser l’IA locale. Rien n’a été modifié. Utiliser un modèle détecté ne rétablit pas la gestion par Companion.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>La propriété enregistrée de l’IA locale, le modèle ou la configuration de la passerelle ne correspond plus. Dans le profil Companion d’origine, vérifiez la passerelle d’origine et ses paramètres de modèle, y compris les entrées modifiées de la liste des modèles autorisés. Conservez la preuve de propriété ; ne copiez pas les identifiants et ne remplacez pas le fournisseur.</value></data>
@@ -7951,4 +7994,87 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Vérifier à nouveau</value>
   </data>
+  <data name="SandboxPage_PresetHelp.Text" xml:space="preserve"><value>Les préréglages remplacent les autorisations de fichiers et l'accès Internet. Le presse-papiers, les limites et les approbations restent indépendants.</value></data>
+  <data name="SandboxPage_CustomPreset.Text" xml:space="preserve"><value>Autorisations personnalisées</value></data>
+  <data name="SandboxPage_ApplyPreset" xml:space="preserve"><value>Appliquer le préréglage</value></data>
+  <data name="SandboxPage_PresetStrict.Text" xml:space="preserve"><value>Strict</value></data>
+  <data name="SandboxPage_PresetBalanced.Text" xml:space="preserve"><value>Équilibré</value></data>
+  <data name="SandboxPage_Title.Text" xml:space="preserve"><value>Node Sandbox</value></data>
+  <data name="SandboxPage_ResolvedFolders.Header" xml:space="preserve"><value>Dossiers inclus</value></data>
+  <data name="SandboxPage_FileAccessReadOnly" xml:space="preserve"><value>Votre profil utilisateur et vos dossiers personnels, y compris les dossiers redirigés, sont lisibles. Les autorisations supplémentaires ci-dessous peuvent aussi permettre des modifications. Les dossiers protégés restent bloqués.</value></data>
+  <data name="SandboxPage_FileAccessReadWrite" xml:space="preserve"><value>Les programmes peuvent lire et modifier les fichiers de votre profil utilisateur et de vos dossiers personnels, y compris les dossiers redirigés. Les dossiers protégés restent bloqués.</value></data>
+  <data name="SandboxPage_FileAccessSelected" xml:space="preserve"><value>L'accès aux fichiers personnels dépend uniquement des autorisations supplémentaires ci-dessous. Les dossiers d'exécution Windows et l'espace de travail privé restent accessibles. Les dossiers protégés restent bloqués.</value></data>
+  <data name="SandboxPage_SavedFolderFormat" xml:space="preserve"><value>{0} (autorisation enregistrée) : {1}</value></data>
+  <data name="SandboxPage_FolderUnavailable" xml:space="preserve"><value>Emplacement du dossier indisponible</value></data>
+  <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>Accès pour {0}</value></data>
+  <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>Supprimer l'autorisation pour {0}</value></data>
+  <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>Dossiers</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Choisissez ce que l'agent peut faire dans chaque dossier. Aucun accès bloque ce dossier, mais les sous-dossiers explicitement listés conservent leur propre accès. Les dossiers protégés restent bloqués.</value></data>
+  <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>Aucun accès</value></data>
+  <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>Profil utilisateur</value></data>
+  <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
+  <data name="SandboxPage_FolderAccess.PlaceholderText" xml:space="preserve"><value>Choisir l'accès</value></data>
+  <data name="SandboxPage_ResetFolder" xml:space="preserve"><value>Réinitialiser</value></data>
+  <data name="SandboxPage_RemoveFolder" xml:space="preserve"><value>Supprimer</value></data>
+  <data name="SandboxPage_ResetFolderFormat" xml:space="preserve"><value>Rétablir l'accès du préréglage pour {0}</value></data>
+  <data name="SandboxPage_LegacyFolderReview" xml:space="preserve"><value>L'autorisation bloquée enregistrée doit être vérifiée. Elle ne refuse pas l'accès accordé par un préréglage ou un dossier parent.</value></data>
+  <data name="SandboxPage_RuntimeFolder" xml:space="preserve"><value>L'accès aux dossiers d'exécution Windows reste en lecture seule.</value></data>
+  <data name="SandboxPage_LegacyFolderAccess.Content" xml:space="preserve"><value>Ancien blocage (à vérifier)</value></data>
+  <data name="SandboxPage_PresetOpen.Text" xml:space="preserve"><value>Ouvert</value></data>
+  <data name="SandboxPage_PresetStrictText.Text" xml:space="preserve"><value>Gardez l'agent sous contrôle étroit.</value></data>
+  <data name="SandboxPage_PresetBalancedText.Text" xml:space="preserve"><value>Une aide au quotidien, avec moins de risques.</value></data>
+  <data name="SandboxPage_PresetOpenText.Text" xml:space="preserve"><value>Donnez à l'agent plus de liberté pour avancer.</value></data>
+  <data name="SandboxPage_PresetStrictDetails" xml:space="preserve"><value>Aucun fichier personnel ni Internet. Accès d'exécution et dossier temporaire privé uniquement.</value></data>
+  <data name="SandboxPage_PresetBalancedDetails" xml:space="preserve"><value>Lecture du profil et des dossiers personnels redirigés résolus. Aucune écriture personnelle. Internet activé. Dossiers protégés exclus.</value></data>
+  <data name="SandboxPage_PresetOpenDetails" xml:space="preserve"><value>Lecture et écriture du profil et des dossiers personnels redirigés résolus. Internet activé. Dossiers protégés exclus.</value></data>
+  <data name="SandboxPage_FileScope.Header" xml:space="preserve"><value>Portée de l'accès aux fichiers</value></data>
+  <data name="SandboxPage_SelectedFolders.Content" xml:space="preserve"><value>Dossiers sélectionnés</value></data>
+  <data name="SandboxPage_UserFilesReadOnly.Content" xml:space="preserve"><value>Dossiers utilisateur : lecture seule</value></data>
+  <data name="SandboxPage_UserFilesReadWrite.Content" xml:space="preserve"><value>Dossiers utilisateur : lecture et écriture</value></data>
+  <data name="SandboxPage_CheckingTitle" xml:space="preserve"><value>Vérification de la disponibilité de MXC</value></data>
+  <data name="SandboxPage_CheckingText" xml:space="preserve"><value>Vérification du confinement des commandes. Cette vérification ne modifie pas les autorisations.</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedTitle" xml:space="preserve"><value>Résolution des dossiers utilisateur incomplète</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedText" xml:space="preserve"><value>Un dossier personnel requis est introuvable ou inaccessible. Les commandes utilisant ces dossiers sont bloquées. Consultez la liste des dossiers, restaurez l'emplacement Windows du dossier, puis réessayez. Les dossiers protégés et les approbations de commandes restent obligatoires.</value></data>
+  <data name="SandboxPage_TimeoutFormat" xml:space="preserve"><value>Délai de commande : {0} s</value></data>
+  <data name="SandboxPage_LegacyBlockedTitle" xml:space="preserve"><value>Autorisations de dossiers héritées à vérifier</value></data>
+  <data name="SandboxPage_LegacyBlockedText" xml:space="preserve"><value>Les autorisations précédemment filtrées ou conflictuelles restent bloquées pour ne pas élargir l'accès silencieusement. Vérifiez les lignes bloquées et choisissez explicitement un accès pris en charge ou un autre dossier. Les racines protégées restent exclues.</value></data>
+  <data name="SandboxPage_IncludedUserFolders" xml:space="preserve"><value>Racines utilisateur résolues par Windows (descendants protégés exclus) :</value></data>
+  <data name="SandboxPage_CheckingUserFolders" xml:space="preserve"><value>Résolution des emplacements utilisateur...</value></data>
+  <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>Aucune racine OneDrive configurée disponible n'a été résolue. Aucun emplacement OneDrive supplémentaire n'est inclus.</value></data>
+  <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Isolation Windows indisponible : commandes sans isolation</value></data>
+  <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>Cette version de Windows ne fournit pas l'isolation MXC requise. Les commandes approuvées s'exécutent directement sur cet ordinateur. Les restrictions de fichiers, de réseau, de presse-papiers et d'interface Windows ne sont pas appliquées. Les autorisations enregistrées sont conservées et les approbations de commandes restent actives. Mettez Windows à jour pour activer l'isolation. La version minimale de Windows requise par Companion reste applicable.</value></data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Le profil préféré {0} ne convient pas à ce matériel. La configuration peut utiliser {1} avec {2:N0} jetons de contexte. Vérifiez ce profil dans la configuration avant de l’installer.</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Ce profil nécessite au moins {0} de mémoire vive système.</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Ce profil nécessite au moins {0} libres sur les volumes du cache des modèles et du moteur.</value></data>
+  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Chargement du contenu d'accueil depuis votre Gateway...</value></data>
+  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>Ce Gateway ne fournit pas de contenu d'accueil partagé. Vous pouvez quand même démarrer une discussion ci-dessous.</value></data>
+  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>Impossible de charger le contenu d'accueil. Reconnectez-vous pour réessayer ou démarrez une discussion ci-dessous.</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>Non vérifié</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>Impossible de charger les emplacements de conversation. Réessayez dans le sélecteur d'emplacement.</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>Impossible de charger les dossiers du Gateway. Réessayez de les parcourir.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>Impossible de préparer l'emplacement de la conversation. Vérifiez-le dans le Gateway avant de réessayer.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>La préparation de l'emplacement est toujours en cours. Patientez avant d'envoyer à nouveau.</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>L'emplacement sélectionné n'est pas prêt. Actualisez les choix avant d'envoyer.</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>En attente de l'historique actuel avant de préparer l'emplacement. Réessayez d'envoyer une fois le chargement terminé.</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>La préparation a été interrompue et a peut-être modifié l'emplacement de cette session. Vérifiez-le dans le Gateway avant d'envoyer à nouveau.</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>Cette session n'est plus vide, donc le choix d'emplacement en attente a été annulé. Vérifiez la session et envoyez à nouveau pour continuer à son emplacement actuel.</value>
+  </data>
+  <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>Obtenir de l’assistance</value></data>
 </root>

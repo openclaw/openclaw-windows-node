@@ -27,6 +27,10 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
+        // Updater dependency recovery is seeded in English across every locale.
+        // Translate the explanation and manual-release action together after review.
+        "Update_Message_Unavailable",
+        "Update_ManualDownload",
         // Canonical setup product/transport names, not untranslated prose.
         "Onboarding_V2_NodeMode.Header",
         "Onboarding_V2_NodeModeToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
@@ -40,7 +44,6 @@ public class LocalizationValidationTests
         "Onboarding_V2_DetailTailscale",
         "CanvasWindow_TextBlock_31.Text",
         "CanvasWindow_winexWindowEx_2.Title",
-        "ChatWindow_winexWindowEx_2.Title",
         "HubWindow_winexWindowEx_2.Title",
         "TitleText.Text",
         "TokenPromptBox.Header",
@@ -51,7 +54,7 @@ public class LocalizationValidationTests
         "WindowTitle_TrayMenu",
         "WindowTitle_Update",
         // VoiceOverlayWindow window-title key — matches the convention
-        // for ChatWindow / HubWindow / CanvasWindow / TrayMenuWindow.
+        // for HubWindow / CanvasWindow / TrayMenuWindow.
         "VoiceOverlayWindow_winexWindowEx_2.Title",
         // Brand name — identical across all locales.
         "ConnectionPage_TopologyTailscale",
@@ -235,6 +238,9 @@ public class LocalizationValidationTests
         "SandboxPage_1MiB.Content",
         "SandboxPage_64MiB.Content",
         "SandboxPage_SystemRun.Text",
+        // Canonical product surface name, unchanged across locales.
+        "SandboxPage_Title.Text",
+        "SandboxPage_OneDrive.Text",
         // SessionsPage runtime accessibility strings — seeded English-only across
         // all 5 locales using the deferred-translation pattern. These are
         // tooltip / AutomationProperties.Name overrides on the OpenChat button.
@@ -298,8 +304,6 @@ public class LocalizationValidationTests
         "Command_GoToSettings_Subtitle",
         "Command_GoToDiagnostics_Title",
         "Command_GoToDiagnostics_Subtitle",
-        "Command_OpenChatWindow_Title",
-        "Command_OpenChatWindow_Subtitle",
         "Command_OpenDashboard_Title",
         "Command_OpenDashboard_Subtitle",
         "Command_ToggleNodeMode_Title",
@@ -377,10 +381,6 @@ public class LocalizationValidationTests
         "SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SandboxPage_DownloadsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SandboxPage_DesktopAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SettingsPage_NotificationSoundComboBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "VoiceSettingsPage_LanguageCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
@@ -1110,8 +1110,8 @@ public class LocalizationValidationTests
                 string[] naturalLoanwordLocales = key switch
                 {
                     "Onboarding_V2_LocalAiModel.Header" => ["nl-nl"],
-                    "Onboarding_V2_ProfileReadOnlyTitle.Text" => ["fr-fr"],
-                    "Onboarding_V2_ProfileFullTitle.Text" => ["nl-nl"],
+                    "Onboarding_V2_ProfileReadOnlyTitle.Text" or "SandboxPage_PresetStrict.Text" => ["fr-fr"],
+                    "Onboarding_V2_ProfileFullTitle.Text" or "SandboxPage_PresetOpen.Text" => ["nl-nl"],
                     "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
                     _ => [],

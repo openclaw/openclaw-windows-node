@@ -473,6 +473,7 @@ public sealed class WorkspaceNavigationTests
             Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)toggle.Attribute("Style"));
             Assert.Equal("40", (string?)toggle.Attribute("Width"));
             Assert.Equal("40", (string?)toggle.Attribute("Height"));
+            Assert.Equal("0", (string?)toggle.Attribute("Padding"));
             var icon = Assert.Single(toggle.Descendants(), element => element.Name.LocalName == "FontIcon");
             Assert.Equal("16", (string?)icon.Attribute("FontSize"));
         }
@@ -506,7 +507,9 @@ public sealed class WorkspaceNavigationTests
         Assert.DoesNotContain("NavigateInternal", invoked);
         Assert.Contains("SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(_workspaceWindow))", code);
         var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
-        Assert.Contains("Initialize(Window? ownerWindow)", chat);
+        Assert.Contains("Initialize(Window ownerWindow)", chat);
+        Assert.Contains("ArgumentNullException.ThrowIfNull(ownerWindow);", chat);
+        Assert.DoesNotContain("public void Initialize()", chat);
         Assert.Contains("GetWindowHandle(_ownerWindow)", chat);
         Assert.DoesNotContain("CurrentApp.ActiveHubWindow!.MountReactorChat", chat);
     }
@@ -523,11 +526,40 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("if (!_navigation.Navigate(destination)", workspace);
         var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
         var legacy = chat[chat.IndexOf("private void ShowWebViewSurface", StringComparison.Ordinal)..];
-        Assert.Contains("var pendingSessionKey = _pendingSessionKey ?? _hub?.PendingChatSessionKey", legacy);
+        Assert.Contains("var pendingSessionKey = _pendingSessionKey ?? (App.Current as App)?.PendingChatSessionKey", legacy);
+        Assert.DoesNotContain("_hub", chat);
         Assert.Contains("_pendingSessionKey = threadIdToMount", chat);
         Assert.Contains("_pendingVoice.Request(nativeSurface: !_webViewMode)", chat);
         Assert.Contains("_pendingVoice.Cancel()", chat);
         Assert.DoesNotContain("RetryTriggerVoice", chat);
+    }
+
+    [Fact]
+    public void ComposerSelection_SynchronizesWorkspaceDestinationAndHistory()
+    {
+        var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
+        var selected = chat[chat.IndexOf("internal void OnComposerSessionSelected", StringComparison.Ordinal)..
+            chat.IndexOf("private void OnWorkspaceOpenConnection", StringComparison.Ordinal)];
+        Assert.Contains("_mountedThreadId = sessionKey;", selected);
+        Assert.Contains("SessionSelected?.Invoke(sessionKey, previousSessionKey)", selected);
+        var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("_chat.SessionSelected += OnChatSessionSelected;", workspace);
+        Assert.Contains("_navigation.SelectChatSession(sessionKey, previousSessionKey)", workspace);
+    }
+
+    [Fact]
+    public void NavigationInvalidatesDelayedComposerSelectionBeforeDeferredRendering()
+    {
+        var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var render = workspace[workspace.IndexOf("private void RenderDestination()", StringComparison.Ordinal)..
+            workspace.IndexOf("private void QueueChatApply()", StringComparison.Ordinal)];
+        Assert.True(render.IndexOf("_chat.InvalidatePendingSessionNavigation()", StringComparison.Ordinal) <
+            render.IndexOf("_chat.QueueSession", StringComparison.Ordinal));
+        var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
+        var unload = chat[chat.IndexOf("private void OnUnloaded", StringComparison.Ordinal)..
+            chat.IndexOf("internal void Initialize(Window ownerWindow)", StringComparison.Ordinal)];
+        Assert.Contains("InvalidatePendingSessionNavigation();", unload);
+        Assert.Contains("_reactorHost?.InvalidatePendingSessionNavigation()", chat);
     }
 
     [Fact]
@@ -709,8 +741,7 @@ public sealed class WorkspaceNavigationTests
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("item.Content = agent", code);
         Assert.DoesNotContain("Content = new AgentIdentityBadge", code);
-        Assert.Contains("showSessionPicker: _ownerWindow is not WorkspaceWindow", File.ReadAllText(Source("Pages", "ChatPage.xaml.cs")));
-        Assert.Contains("props.ShowSessionPicker ? Grid(", File.ReadAllText(Source("Chat", "ReactorChatComposer.cs")));
+        Assert.DoesNotContain("ChatComposerSessionPicker", File.ReadAllText(Source("Chat", "ReactorChatComposer.cs")));
     }
 
     [Fact]

@@ -92,8 +92,10 @@ public class GatewayTerminalLaunchCommandBuilderTests
 
         // Keep-open must NOT contain ';': Windows Terminal splits its command line
         // on ';' even inside quotes. We use '|| true && exec bash' instead.
-        var script = $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw doctor || true && exec bash";
+        var script = GatewayTerminalLaunchCommandBuilder.BuildDoctorShellScript();
         Assert.DoesNotContain(";", script);
+        Assert.Contains(@"\$PATH", script);
+        Assert.DoesNotContain(@":$PATH""", script);
         Assert.Equal(@"C:\Users\me\AppData\Local\Microsoft\WindowsApps\wt.exe", command.FileName);
         Assert.True(command.UsesWindowsTerminal);
         Assert.Equal([
@@ -122,7 +124,8 @@ public class GatewayTerminalLaunchCommandBuilderTests
 
         var command = GatewayTerminalLaunchCommandBuilder.BuildGatewayDoctor(access, windowsTerminalPath: null);
 
-        var script = $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw doctor || true && exec bash";
+        var script = GatewayTerminalLaunchCommandBuilder.BuildDoctorShellScript();
+        Assert.Contains(@"\$PATH", script);
         Assert.Equal("wsl.exe", command.FileName);
         Assert.False(command.UsesWindowsTerminal);
         Assert.Equal(["-d", "OpenClawGateway", "--", "bash", "-lc", script], command.Arguments);

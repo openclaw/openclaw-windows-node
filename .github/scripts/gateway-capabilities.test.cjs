@@ -104,15 +104,6 @@ test("reviewed source/test evidence resolves a surface, and any evidence change 
   assert.equal(assess({ supportPolicy }).assessments.find((item) => item.name === "question.resolve").status, "pending");
 });
 
-test("closing a still-pending finding reopens the same issue without bypassing active backpressure", () => {
-  const fingerprint = "d".repeat(64);
-  const closed = { number: 1, state: "closed", body: publisher.marker(fingerprint) + "\nreview" };
-  assert.equal(publisher.decide([closed], fingerprint, true).action, "reopen");
-  assert.equal(publisher.decide([closed], fingerprint, false).action, "reviewed");
-  const active = { number: 2, state: "open", body: publisher.marker("e".repeat(64)) + "\nreview" };
-  assert.equal(publisher.decide([closed, active], fingerprint, true).action, "defer");
-});
-
 test("publication payload rejects moving tags, unsafe versions, unknown fields, repositories and digests", () => {
   assert.deepEqual(monitor.validatePublication(publication), publication);
   for (const invalid of [
@@ -170,19 +161,26 @@ test("exact publication separates publisher provenance from declared source exis
     { ...metadata, name: "@openclaw/gateway-protocol" }, undefined, load), /subject/);
 });
 
-test("local content and exact publication participate in dedup, but unrelated local head changes do not", () => {
-  const report = { main: { files: {} }, released: { files: {} }, protocol: { schema }, publication };
-  report.capabilities = monitor.assessLocal(report, local);
-  const initial = monitor.fingerprint(report);
-  assert.equal(monitor.fingerprint(structuredClone(report)), initial);
-  const next = structuredClone(report);
-  next.capabilities = monitor.assessLocal(next, { ...local, head: "c".repeat(40) });
-  assert.equal(monitor.fingerprint(next), initial);
-  next.capabilities = monitor.assessLocal(next, { ...local, files: { ...local.files, "src/Client.cs": "changed" } });
-  assert.notEqual(monitor.fingerprint(next), initial);
-  const event = structuredClone(report);
-  event.publication.package_version = "2026.9.10";
-  assert.notEqual(monitor.fingerprint(event), initial);
+test("family identity follows relevant contract and references, not daily observation churn", () => {
+  const doc = structuredClone(schema);
+  doc.definitions.QuestionResolvedEvent = { properties: { answer: { $ref: "#/definitions/Answer" } } };
+  doc.definitions.Answer = { type: "string" };
+  const initial = assess({ schema: doc }).families[0].candidateHash;
+  assert.equal(assess({ schema: doc, upstreamHash: "c".repeat(64),
+    local: { ...local, head: "d".repeat(40), files: { ...local.files, "src/Unrelated.cs": "changed" } } }).families[0].candidateHash, initial);
+  doc.definitions.UnrelatedEvent = { type: "object" };
+  doc.definitions.Answer.description = "changed annotation";
+  assert.equal(assess({ schema: doc }).families[0].candidateHash, initial);
+  doc.definitions.Answer.enum = ["yes", "no"];
+  assert.notEqual(assess({ schema: doc }).families[0].candidateHash, initial);
+  delete doc.definitions.Answer.enum;
+  doc.definitions.QuestionResolvedEvent.properties.description = { type: "string" };
+  assert.notEqual(assess({ schema: doc }).families[0].candidateHash, initial, "a property named description is not an annotation");
+  delete doc.definitions.Answer;
+  assert.throws(() => assess({ schema: doc }), /Missing referenced/);
+  const policy = structuredClone(capability.policy);
+  policy.families[0].obligations.push("New reviewed scope");
+  assert.notEqual(assess({ supportPolicy: policy }).families[0].candidateHash, assess().families[0].candidateHash);
 });
 
 test("publication and report-only paths preserve read/write separation and no payload shell interpolation", () => {
@@ -193,5 +191,8 @@ test("publication and report-only paths preserve read/write separation and no pa
   assert.doesNotMatch(observe, /secrets\.|: write/);
   assert.equal((workflow.match(/!inputs.report_only/g) ?? []).length, 2);
   const collector = fs.readFileSync(path.join(__dirname, "upstream-gateway-protocol.cjs"), "utf8");
-  assert.doesNotMatch(collector, /github\.request|COPILOT_GITHUB_TOKEN/);
+  assert.doesNotMatch(collector, /COPILOT_GITHUB_TOKEN/);
+  const requests = [...collector.matchAll(/github[.]request[(]"([^"]+)"/g)].map((match) => match[1]);
+  assert.ok(requests.length > 0);
+  assert.ok(requests.every((route) => route.startsWith("GET ")), "collector GitHub requests must be read-only");
 });

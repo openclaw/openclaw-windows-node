@@ -23,7 +23,7 @@ footer independently of pointer position.
 
 ## Appears in
 
-Both ChatPage and ChatWindow through their shared Reactor timeline.
+Workspace's ChatPage through its Reactor timeline.
 See [Native chat visual system](../../../../CHAT_VISUAL_DESIGN.md).
 
 ## Code anchors and invariants

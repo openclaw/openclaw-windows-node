@@ -10,6 +10,71 @@ namespace OpenClaw.Tray.Tests.Presentation;
 
 public sealed class LocalAiPageViewModelTests
 {
+    [Theory]
+    [InlineData(LocalAiRuntimeState.Stopped)]
+    [InlineData(LocalAiRuntimeState.Healthy)]
+    public async Task NativeSelectionBlocksStartAndRestartButPreservesRecoveryActions(LocalAiRuntimeState state)
+    {
+        var snapshot = CreateInstalledSnapshot(state) with
+        {
+            Ownership = state == LocalAiRuntimeState.Healthy
+                ? LocalAiOwnership.CompanionManaged : LocalAiOwnership.None,
+            GatewayRouteRequiresResolution = false,
+        };
+        var runtime = new FakeLocalAiRuntime(snapshot);
+        using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        using var viewModel = new LocalAiPageViewModel(runtime, gatewaySource, new FakeAppCommands(),
+            new RecordingUiDispatcher(), new FixedHardwareProbe(HostHardwareInfo.Unknown));
+        await ActivateAndWaitForAvailabilityAsync(viewModel);
+        int changes = 0;
+        viewModel.PropertyChanged += (_, _) => changes++;
+
+        runtime.SetNativeSelectionRequired(true);
+
+        Assert.Equal(1, changes);
+        Assert.True(viewModel.RequiresNativeSelection);
+        Assert.False(viewModel.CanStart);
+        Assert.False(viewModel.CanRestart);
+        Assert.Equal(state == LocalAiRuntimeState.Healthy, viewModel.CanStop);
+        Assert.True(viewModel.CanOpenLogs);
+        Assert.False(await viewModel.StartAsync());
+        Assert.False(await viewModel.RestartAsync());
+        Assert.Equal(0, runtime.StartCount);
+        Assert.Equal(0, runtime.RestartCount);
+
+        runtime.SetNativeSelectionRequired(false);
+
+        Assert.Equal(2, changes);
+        Assert.False(viewModel.RequiresNativeSelection);
+        Assert.Equal(state == LocalAiRuntimeState.Stopped, viewModel.CanStart);
+        Assert.Equal(state == LocalAiRuntimeState.Healthy, viewModel.CanRestart);
+        viewModel.Deactivate();
+        runtime.SetNativeSelectionRequired(true);
+        Assert.Equal(2, changes);
+    }
+
+    [Fact]
+    public async Task UnresolvedStoppedNativeOwnerKeepsExplicitStopAvailableBeforeReceiptHydration()
+    {
+        var initial = LocalAiRuntimeSnapshot.Initial(new Uri("http://127.0.0.1:18803/v1"), DateTimeOffset.UtcNow);
+        var runtime = new FakeLocalAiRuntime(initial)
+        {
+            HasReleasableOwnership = true,
+            StopResult = initial with { GatewayRouteRequiresResolution = false },
+        };
+        using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        using var viewModel = new LocalAiPageViewModel(runtime, gatewaySource, new FakeAppCommands(),
+            new RecordingUiDispatcher(), new FixedHardwareProbe(HostHardwareInfo.Unknown));
+        Assert.False(viewModel.CanStart);
+        Assert.True(viewModel.CanStop);
+        Assert.False(viewModel.CanReleaseOwnership);
+        Assert.True(await viewModel.StopAsync());
+        Assert.True(viewModel.CanReleaseOwnership);
+        Assert.True(await viewModel.ReleaseOwnershipAsync());
+        Assert.Equal(1, runtime.StopCount);
+        Assert.Equal(1, runtime.ReleaseCount);
+    }
+
     [Fact]
     public async Task ExplicitReleaseIsDistinctFromStopAndRequiresStoppedCleanRuntime()
     {
@@ -81,7 +146,7 @@ public sealed class LocalAiPageViewModelTests
         Assert.Equal(1, commands.OpenLocalAiLogsCount);
         Assert.Equal(0, commands.ShowOnboardingCount);
         Assert.Equal(1, commands.ReconnectCount);
-        Assert.Equal(0, commands.ShowChatCount);
+        Assert.Empty(commands.Navigations);
         Assert.Equal(1, runtime.StopCount);
         Assert.Equal(1, runtime.RestartCount);
     }
@@ -111,7 +176,7 @@ public sealed class LocalAiPageViewModelTests
         Assert.False(viewModel.IsLocalAiAvailable);
         Assert.True(viewModel.CanOpenChat);
         Assert.True(viewModel.OpenChat());
-        Assert.Equal(1, commands.ShowChatCount);
+        Assert.Equal(["chat"], commands.Navigations);
     }
 
     [Fact]
@@ -493,7 +558,7 @@ public sealed class LocalAiPageViewModelTests
         Assert.True(viewModel.OpenLogs());
         Assert.True(viewModel.OpenChat());
         Assert.Equal(1, commands.OpenLocalAiLogsCount);
-        Assert.Equal(1, commands.ShowChatCount);
+        Assert.Equal(["chat"], commands.Navigations);
     }
 
     [Fact]
@@ -939,6 +1004,70 @@ public sealed class LocalAiPageViewModelTests
         }
     }
 
+    [Fact]
+    public async Task EightGiBHardware_OffersSmallerProfileAndKeepsSetupAvailable()
+    {
+        const long gib = 1024L * 1024 * 1024;
+        HostHardwareInfo hardware = new(Architecture.X64, 32 * gib, 24 * gib,
+            [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX 4060", 8 * gib, 8 * gib,
+                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060")], false, new(20 * gib, 20 * gib, true));
+        using var viewModel = CreateViewModel(
+            LocalAiRuntimeSnapshot.Initial(new Uri("http://127.0.0.1:18080"), DateTimeOffset.UtcNow),
+            hardware, out _, out PermissionsPageRuntimeSource source);
+        using (source)
+        {
+            await ActivateAndWaitForAvailabilityAsync(viewModel);
+            Assert.True(viewModel.IsLocalAiAvailable);
+            Assert.True(viewModel.CanRetrySetup);
+            Assert.Null(viewModel.LocalAiUnavailableReason);
+            Assert.Contains("Bonsai 2", viewModel.ProfileRecommendation!.SelectedModelName);
+            Assert.Equal(8192, viewModel.ProfileRecommendation.ContextTokens);
+            Assert.False(viewModel.ShowAvailabilityInfoBar);
+        }
+    }
+
+    [Fact]
+    public async Task OversizedInstalledModel_KeepsReplacementSetupReachableWithoutSwitchingReceipt()
+    {
+        const long gib = 1024L * 1024 * 1024;
+        var hardware = new HostHardwareInfo(Architecture.X64, 32 * gib, 24 * gib,
+            [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX 4060", 8 * gib, 8 * gib,
+                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060")], false, new(20 * gib, 20 * gib, true));
+        var installed = CreateInstalledSnapshot(LocalAiRuntimeState.Failed) with
+        { ModelId = LocalModelCatalog.Default.Id };
+        using var viewModel = CreateViewModel(installed, hardware, out _, out PermissionsPageRuntimeSource source);
+        using (source)
+        {
+            await ActivateAndWaitForAvailabilityAsync(viewModel);
+            Assert.True(viewModel.CanChangeModel);
+            Assert.Equal(LocalModelCatalog.Default.DisplayName, viewModel.ModelName);
+            Assert.Contains("Bonsai 2", viewModel.ProfileRecommendation!.SelectedModelName);
+        }
+    }
+
+    [Fact]
+    public async Task DiskShortage_RecheckRefreshesFactsAndEnablesSetup()
+    {
+        const long gib = 1024L * 1024 * 1024;
+        var hardware = new HostHardwareInfo(Architecture.X64, 32 * gib, 24 * gib,
+            [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX 4060", 8 * gib, 8 * gib,
+                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060")], false, new(4 * gib, 4 * gib, true));
+        var runtime = new FakeLocalAiRuntime(LocalAiRuntimeSnapshot.Initial(
+            new Uri("http://127.0.0.1:18080"), DateTimeOffset.UtcNow));
+        using var source = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        using var viewModel = new LocalAiPageViewModel(runtime, source, new FakeAppCommands(),
+            new RecordingUiDispatcher(), new SequencedHardwareProbe(() => hardware,
+                () => hardware with { LocalAiDiskSpace = new(16 * gib, 16 * gib, true) }));
+        await ActivateAndWaitForAvailabilityAsync(viewModel);
+        Assert.Equal(LocalInferenceUnavailableReasonKind.InsufficientDiskSpace, viewModel.LocalAiUnavailableReason?.Kind);
+        Assert.False(viewModel.CanRetrySetup);
+        Assert.True(viewModel.CanRecheckAvailability);
+        Assert.True(viewModel.RecheckAvailability());
+        await WaitForAsync(viewModel, () => viewModel.IsLocalAiAvailable);
+        Assert.True(viewModel.CanRetrySetup);
+        Assert.False(viewModel.CanRecheckAvailability);
+    }
+
     private static HostHardwareInfo CreateQualifiedHardware() =>
         new(
             Architecture.X64,
@@ -1117,6 +1246,13 @@ public sealed class LocalAiPageViewModelTests
 
     private sealed class FakeLocalAiRuntime(LocalAiRuntimeSnapshot snapshot) : ILocalAiRuntime
     {
+        public bool RequiresNativeSelection { get; private set; }
+        public event EventHandler? SelectionChanged;
+        public void SetNativeSelectionRequired(bool required)
+        {
+            RequiresNativeSelection = required;
+            SelectionChanged?.Invoke(this, EventArgs.Empty);
+        }
         public bool HasReleasableOwnership { get; set; }
         public int ReleaseCount { get; private set; }
         public Task<LocalAiRuntimeSnapshot> ReleaseOwnershipAsync(CancellationToken cancellationToken = default)

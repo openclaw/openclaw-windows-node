@@ -7,19 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 const zlib = require("node:zlib");
 const monitor = require("./upstream-gateway-protocol.cjs");
-const guardedPublisher = require("./upstream-gateway-publish.cjs");
-// Keep partial-failure/backpressure state-machine coverage while production entry
-// points are deliberately blocked pending independent package-source receipts.
-const publisherPath = path.join(__dirname, "upstream-gateway-publish.cjs");
-const publisher = { ...guardedPublisher };
-const internalModule = { exports: {} };
-require("node:vm").runInThisContext(
-  `(function(require,module){${fs.readFileSync(publisherPath, "utf8")}\n`
-  + "module.exports = { reconcilePublication, reconcileHandoff };})",
-  { filename: publisherPath },
-)(require, internalModule);
-publisher.publish = internalModule.exports.reconcilePublication;
-publisher.handoff = internalModule.exports.reconcileHandoff;
+const publisher = require("./upstream-gateway-publish.cjs");
 const local = require("./gateway-capabilities.cjs").readLocal(path.resolve(__dirname, "../.."));
 let cachedCapabilities;
 
@@ -29,6 +17,7 @@ const integrity = `sha512-${Buffer.alloc(64).toString("base64")}`;
 const core = { info() {} };
 const context = {
   repo: { owner: "openclaw", repo: "openclaw-windows-node" }, runId: 123,
+  eventName: "schedule", ref: "refs/heads/main",
   payload: { repository: { default_branch: "main" } },
 };
 const paths = [
@@ -62,8 +51,8 @@ function report() {
       attestationHash: "0".repeat(64),
     },
     protocol: {
-      name: "@openclaw/gateway-protocol", version: "2026.9.9", integrity, schema: doc,
-      schemaHash: monitor.hash(doc), tarballHash: "1".repeat(64),
+      name: "@openclaw/gateway-protocol", version: "2026.9.9", integrity: tarball(doc).integrity, schema: doc,
+      schemaHash: monitor.hash(doc), tarballHash: monitor.hash(tarball(doc).compressed),
     },
   };
   cachedCapabilities ??= monitor.assessLocal(value, local);
@@ -267,6 +256,18 @@ test("schema annotation-only changes do not claim compatibility breakage", () =>
   assert.equal(monitor.schemaChanges(null, schema())[0].kind, "baseline-review");
 });
 
+test("schema annotation-named wire fields remain classified", () => {
+  const before = { type: "object", description: "old prose", properties: {
+    description: { type: "string" }, title: { type: "string" },
+  } };
+  const after = structuredClone(before);
+  after.description = "new prose";
+  after.properties.description.type = "number";
+  delete after.properties.title;
+  assert.deepEqual(monitor.schemaChanges(before, after).map((item) => item.path),
+    ["/properties/description/type", "/properties/title"]);
+});
+
 test("package tar is digest verified and read in memory; links, missing schema and corruption fail", () => {
   const good = tarball(schema());
   assert.deepEqual(monitor.readSchemaTarball(good.compressed, good.integrity), schema());
@@ -324,149 +325,6 @@ test("publication validates artifact and emits no upstream schema prose into iss
   assert.throws(() => monitor.validateReport(value), /track/);
 });
 
-test("durable issue state deduplicates closed findings, resumes partial handoffs and bounds work to one issue", () => {
-  const fingerprint = report().fingerprint;
-  assert.equal(publisher.decide([], fingerprint).action, "create");
-  assert.equal(publisher.decide([issue()], fingerprint).action, "resume");
-  assert.equal(publisher.decide([issue({ state: "closed" })], fingerprint).action, "reviewed");
-  assert.equal(publisher.decide([issue()], "f".repeat(64)).action, "defer");
-  assert.equal(publisher.decide([issue({ state: "closed" })], "f".repeat(64)).action, "create");
-  assert.equal(publisher.decide([issue({ pull_request: {} })], fingerprint).action, "create");
-});
-
-test("publisher creates a linked review issue once, with fixed implementation instructions, no PR scaffold", async () => {
-  const github = mock({
-    "GET /repos/{owner}/{repo}/issues": [],
-    "GET /repos/{owner}/{repo}/labels/{name}": {},
-    "POST /repos/{owner}/{repo}/issues": (args) => {
-      assert.ok(args.body.includes("actions/runs/123"));
-      assert.ok(args.body.includes("DRAFT implementation PR"));
-      assert.ok(args.body.includes("mock-Gateway"));
-      assert.ok(args.body.startsWith(publisher.marker(report().fingerprint)));
-      return issue();
-    },
-  });
-  assert.equal((await publisher.publish({ github, context, core, report: report() })).issueNumber, 42);
-  const resumed = mock({ "GET /repos/{owner}/{repo}/issues": [issue()] });
-  assert.equal((await publisher.publish({ github: resumed, context, core, report: report() })).action, "resume");
-  assert.equal(resumed.calls.length, 1);
-});
-
-test("GitHub read failures cannot become duplicate creates", async () => {
-  const github = mock({ "GET /repos/{owner}/{repo}/issues": () => { throw new Error("rate limited"); } });
-  await assert.rejects(publisher.publish({ github, context, core, report: report() }), /rate limited/);
-  assert.equal(github.calls.length, 1);
-});
-
-test("handoff uses documented issue assignment with actual default branch and verifies assignee", async () => {
-  const github = mock({
-    "GET /repos/{owner}/{repo}/issues/{issue_number}": issue(),
-    "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline": [],
-    "GET /repos/{owner}/{repo}": { default_branch: "trunk" },
-    "POST /repos/{owner}/{repo}/issues/{issue_number}/assignees": (args) => {
-      assert.equal(args.agent_assignment.base_branch, "trunk");
-      assert.equal(args.agent_assignment.target_repo, "openclaw/openclaw-windows-node");
-      assert.ok(args.agent_assignment.custom_instructions.includes("never merge"));
-      return { assignees: [{ login: "copilot-swe-agent[bot]" }] };
-    },
-  });
-  assert.equal((await publisher.handoff({ github, context, core, issueNumber: 42 })).state, "assigned-awaiting-pr");
-  assert.ok(!github.calls.some((call) => call.route === "GET /repos/{owner}/{repo}/assignees/{assignee}"));
-});
-
-test("unavailable or silently rejected Copilot assignment fails visibly", async () => {
-  for (const rejected of [true, false]) {
-    const github = mock({
-      "GET /repos/{owner}/{repo}/issues/{issue_number}": issue(),
-      "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline": [],
-      "GET /repos/{owner}/{repo}": { default_branch: "main" },
-      "POST /repos/{owner}/{repo}/issues/{issue_number}/assignees": () => {
-        if (rejected) throw new Error("404");
-        return { assignees: [] };
-      },
-    });
-    await assert.rejects(publisher.handoff({ github, context, core, issueNumber: 42 }), /404|did not confirm/);
-  }
-});
-
-test("assigned issue is not dispatched again and missing PR becomes actionable failure after 24h", async () => {
-  const existing = issue({ assignees: [{ login: "copilot-swe-agent[bot]" }] });
-  const github = mock({
-    "GET /repos/{owner}/{repo}/issues/{issue_number}": existing,
-    "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline": [{
-      event: "assigned", assignee: { login: "copilot-swe-agent[bot]" }, created_at: existing.created_at,
-    }],
-  });
-  assert.equal((await publisher.handoff({ github, context, core, issueNumber: 42 })).state, "assigned-awaiting-pr");
-  await assert.rejects(publisher.handoff({
-    github, context, core, issueNumber: 42, now: Date.parse(existing.created_at) + 25 * 3600000,
-  }), /no linked PR/);
-  assert.ok(github.calls.every((call) => call.route.startsWith("GET ")));
-});
-
-test("old issue with fresh assignment does not report a false stall", async () => {
-  const github = mock({
-    "GET /repos/{owner}/{repo}/issues/{issue_number}": issue({
-      created_at: "2020-01-01T00:00:00Z", assignees: [{ login: "copilot-swe-agent[bot]" }],
-    }),
-    "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline": [{
-      event: "assigned", assignee: { login: "copilot-swe-agent[bot]" }, created_at: new Date().toISOString(),
-    }],
-  });
-  assert.equal((await publisher.handoff({ github, context, core, issueNumber: 42 })).state, "assigned-awaiting-pr");
-});
-
-function pullReference(number = 100) {
-  return {
-    event: "cross-referenced",
-    source: { issue: {
-      number, pull_request: {}, repository_url: "https://api.github.com/repos/openclaw/openclaw-windows-node",
-    } },
-  };
-}
-
-test("verified closing draft PR suppresses reassignment even after assignee removal", async () => {
-  const github = mock({
-    "GET /repos/{owner}/{repo}/issues/{issue_number}": issue(),
-    "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline": [pullReference()],
-    "GET /repos/{owner}/{repo}/pulls/{pull_number}": {
-      state: "open", draft: true, body: "Closes #42", html_url: "https://github.com/openclaw/openclaw-windows-node/pull/100",
-    },
-  });
-  assert.equal((await publisher.handoff({ github, context, core, issueNumber: 42 })).state, "draft-pr-observed");
-  assert.ok(github.calls.every((call) => call.route.startsWith("GET ")));
-});
-
-test("closed implementation PR cannot silently block later observations", async () => {
-  const github = mock({
-    "GET /repos/{owner}/{repo}/issues/{issue_number}": issue(),
-    "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline": [pullReference()],
-    "GET /repos/{owner}/{repo}/pulls/{pull_number}": { state: "closed", body: "Fixes #42" },
-  });
-  await assert.rejects(publisher.handoff({ github, context, core, issueNumber: 42 }), /PR is closed/);
-});
-
-test("unrelated reference or closing a different issue is not implementation evidence", async () => {
-  for (const body of ["Related: #42", "Closes #420", "Fixes another/repo#42"]) {
-    const github = mock({
-      "GET /repos/{owner}/{repo}/issues/{issue_number}": issue({
-        assignees: [{ login: "copilot-swe-agent[bot]" }],
-      }),
-      "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline": [
-        pullReference(), { event: "assigned", assignee: { login: "copilot-swe-agent[bot]" }, created_at: "2020-01-01T00:00:00Z" },
-      ],
-      "GET /repos/{owner}/{repo}/pulls/{pull_number}": { state: "open", draft: true, body },
-    });
-    await assert.rejects(publisher.handoff({ github, context, core, issueNumber: 42 }), /no linked PR/);
-  }
-});
-
-test("closed monitor issue does not launch new work", async () => {
-  const github = mock({ "GET /repos/{owner}/{repo}/issues/{issue_number}": issue({ state: "closed" }) });
-  assert.equal((await publisher.handoff({ github, context, core, issueNumber: 42 })).state, "closed");
-  assert.equal(github.calls.length, 1);
-});
-
 test("baseline comes from last reviewed issue even if its agent job failed; no per-night delta loss", async () => {
   const reviewed = issue({ state: "closed" });
   reviewed.body += "\n[Current observation and full report artifact](https://github.com/openclaw/openclaw-windows-node/actions/runs/12)";
@@ -513,93 +371,12 @@ test("closing pending Windows gaps cannot advance the reviewed upstream baseline
   assert.equal(github.calls.length, 1);
 });
 
-test("rendered unassessed-only reports allow reviewed baseline advancement and stay closed", async () => {
-  const value = report();
-  delete value.protocol.schema.methods["question.list"];
-  value.protocol.schemaHash = monitor.hash(value.protocol.schema);
-  value.capabilities = monitor.assessLocal(value, local);
-  value.fingerprint = monitor.fingerprint(value);
-  const body = `${publisher.marker(value.fingerprint)}\n${monitor.render(value)}\n`
-    + "[Current observation and full report artifact](https://github.com/openclaw/openclaw-windows-node/actions/runs/12)";
-  assert.doesNotMatch(body, /<!-- windows-capability-pending -->/);
-  const reviewed = issue({ state: "closed", body });
-  const github = mock({
-    "GET /repos/{owner}/{repo}/issues": [reviewed],
-    "GET /repos/{owner}/{repo}/actions/runs/{run_id}": {
-      path: ".github/workflows/upstream-gateway-protocol.yml", head_branch: "main", event: "repository_dispatch",
-    },
-    "GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts": {
-      artifacts: [{ name: "upstream-gateway-protocol-report", expired: false }],
-    },
-  });
-  assert.equal((await publisher.findBaseline({ github, context })).fingerprint, value.fingerprint);
-  assert.equal((await publisher.publish({ github, context, core, report: value })).action, "reviewed");
-});
-
-test("history pagination fails closed instead of creating duplicates after a truncated list", async () => {
-  const github = mock({ "GET /repos/{owner}/{repo}/issues": Array.from({ length: 100 }, () => issue()) });
-  await assert.rejects(publisher.publish({ github, context, core, report: report() }), /exceeds 2000/);
-  assert.equal(github.calls.length, 20);
-  assert.ok(github.calls.every((call) => call.route.startsWith("GET ")));
-});
-
-test("health failure creates one issue and reopens it without erasing maintainer notes", async () => {
-  let body;
-  const github = mock({
-    "GET /repos/{owner}/{repo}/issues": [],
-    "GET /repos/{owner}/{repo}/labels/{name}": {},
-    "POST /repos/{owner}/{repo}/issues": (args) => { body = args.body; return { number: 51 }; },
-  });
-  assert.equal(await publisher.publishFailure({ github, context }), 51);
-  const resumed = mock({
-    "GET /repos/{owner}/{repo}/issues": [{ number: 51, state: "closed", body: `${body}\nMaintainer notes` }],
-    "PATCH /repos/{owner}/{repo}/issues/{issue_number}": (args) => {
-      assert.equal(args.state, "open");
-      assert.ok(args.body.endsWith("Maintainer notes"));
-      assert.ok(args.body.includes("/runs/456"));
-      return {};
-    },
-  });
-  assert.equal(await publisher.publishFailure({ github: resumed, context: { ...context, runId: 456 } }), 51);
-});
-
 test("changed or malformed agent-facing deltas cannot pass artifact validation", () => {
   const value = report();
   value.changes.main.push({ path: "bad", kind: "supported" });
   assert.throws(() => monitor.validateReport(value), /evidence mismatch/);
   value.evidenceHash = monitor.hash({ baseline: value.baseline, changes: value.changes });
   assert.throws(() => monitor.validateReport(value), /source delta/);
-});
-
-test("workflow stays off CI/PR triggers, separates credentials and offers report-only proof", () => {
-  const workflow = fs.readFileSync(path.join(__dirname, "..", "workflows", "upstream-gateway-protocol.yml"), "utf8");
-  assert.ok(workflow.startsWith("name: Upstream Gateway Protocol check"));
-  assert.match(workflow, /schedule:[\s\S]*cron: "41 5 \* \* \*"/);
-  assert.match(workflow, /workflow_dispatch:/);
-  assert.doesNotMatch(workflow, /^\s+(pull_request|push|workflow_run|pull_request_target):/m);
-  assert.match(workflow, /permissions: \{\}/);
-  assert.match(workflow, /cancel-in-progress: false/);
-  assert.match(workflow, /github.ref_name == github.event.repository.default_branch/);
-  const [observe, health, publish, implement] = workflow.split(/\n  (?:observation-failure|publish|implement):/);
-  assert.doesNotMatch(observe, /secrets\.|issues: write/);
-  assert.doesNotMatch(publish, /secrets\./);
-  assert.doesNotMatch(health, /secrets\./);
-  assert.equal((implement.match(/secrets\.COPILOT_GITHUB_TOKEN/g) ?? []).length, 2);
-  assert.match(implement, /github-token: \$\{\{ secrets\.COPILOT_GITHUB_TOKEN \}\}/);
-  assert.doesNotMatch(workflow, /contents: write|pull-requests: write|npm (?:install|ci)|pnpm/);
-});
-
-test("publisher reopens a closed issue with unchanged pending Windows evidence", async () => {
-  const github = mock({
-    "GET /repos/{owner}/{repo}/issues": [issue({ state: "closed" })],
-    "PATCH /repos/{owner}/{repo}/issues/{issue_number}": (args) => {
-      assert.equal(args.issue_number, 42);
-      assert.equal(args.state, "open");
-      return {};
-    },
-  });
-  assert.equal((await publisher.publish({ github, context, core, report: report() })).action, "reopen");
-  assert.equal(github.calls.length, 2);
 });
 
 test("publisher refuses stale or forged local support and legacy upstream-only artifacts", async () => {
@@ -614,36 +391,6 @@ test("publisher refuses stale or forged local support and legacy upstream-only a
   await assert.rejects(publisher.publish({ github: mock({}), context, core, report: value }), /current Windows/);
 });
 
-test("existing question or interactive fixture work is linked before creating duplicate agent work", async () => {
-  let comment;
-  const routes = {
-    "GET /repos/{owner}/{repo}/issues/{issue_number}": issue(),
-    "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline": [],
-    "GET /repos/{owner}/{repo}/pulls": [{ number: 100, title: "feat: interactive Gateway fixture" }],
-    "GET /repos/{owner}/{repo}/issues/{issue_number}/comments": () => comment ? [{ body: comment }] : [],
-    "POST /repos/{owner}/{repo}/issues/{issue_number}/comments": (args) => { comment = args.body; return {}; },
-  };
-  const github = mock(routes);
-  await assert.rejects(publisher.handoff({ github, context, core, issueNumber: 42 }), /related-work-needs-review/);
-  assert.match(comment, /\/pull\/100/);
-  assert.match(comment, /not evidence of complete production support/);
-  await assert.rejects(publisher.handoff({ github, context, core, issueNumber: 42 }), /related-work-needs-review/);
-  assert.equal(github.calls.filter((call) => call.route.startsWith("POST ")).length, 1);
-  assert.ok(!github.calls.some((call) => call.route.endsWith("/assignees")));
-});
-
-test("related PRs cannot mask an already-assigned stalled implementation", async () => {
-  const github = mock({
-    "GET /repos/{owner}/{repo}/issues/{issue_number}": issue({ assignees: [{ login: "copilot-swe-agent[bot]" }] }),
-    "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline": [{
-      event: "assigned", assignee: { login: "copilot-swe-agent[bot]" }, created_at: "2020-01-01T00:00:00Z",
-    }],
-    "GET /repos/{owner}/{repo}/pulls": [{ number: 100, title: "feat: question-answer" }],
-  });
-  await assert.rejects(publisher.handoff({ github, context, core, issueNumber: 42 }), /no linked PR after 24h/);
-  assert.ok(!github.calls.some((call) => call.route.endsWith("/pulls")));
-});
-
 test("capability evidence must bind the observed upstream tracks", () => {
   const value = report();
   value.capabilities.upstreamHash = "a".repeat(64);
@@ -651,17 +398,6 @@ test("capability evidence must bind the observed upstream tracks", () => {
   value.capabilities.assessmentHash = monitor.hash({ ...assessment, localHead: null, dirty: null });
   value.fingerprint = monitor.fingerprint(value);
   assert.throws(() => monitor.validateReport(value), /Capability upstream evidence mismatch/);
-});
-
-test("unverified package source blocks public implementation entry points before all API calls", async () => {
-  const github = mock({});
-  await assert.rejects(guardedPublisher.publish({ github, context, core, report: report() }), /Package-source binding is unverified/);
-  await assert.rejects(guardedPublisher.handoff({ github, context, core, report: report(), issueNumber: 42 }),
-    /Package-source binding is unverified/);
-  assert.equal(github.calls.length, 0);
-  assert.equal(guardedPublisher.reconcilePublication, undefined);
-  assert.equal(guardedPublisher.reconcileHandoff, undefined);
-  await assert.rejects(guardedPublisher.handoff({ github, context, core, issueNumber: 42 }), /Package-source binding/);
 });
 
 test("released source is unverified and omitted, never a tooling inventory or zero-delta success", () => {
@@ -695,14 +431,6 @@ test("legacy tooling-as-release observations cannot supply a reviewed source bas
   });
   assert.equal(await publisher.findBaseline({ github, context }), null);
   assert.equal(github.calls.length, 1);
-});
-
-test("publication failure surfaces a health issue and report-only never writes", () => {
-  const workflow = fs.readFileSync(path.join(__dirname, "../workflows/upstream-gateway-protocol.yml"), "utf8");
-  assert.match(workflow, /needs: \[observe, publish\]/);
-  assert.match(workflow, /needs\.publish\.result == 'failure'/);
-  assert.match(workflow, /handoff\(\{ github, context, core, report,/);
-  assert.equal((workflow.match(/!inputs.report_only/g) ?? []).length, 2);
 });
 
 test("live-shaped tooling/source discrepancy collects partial evidence without requesting a tooling tree", async () => {
@@ -758,9 +486,7 @@ test("live-shaped tooling/source discrepancy collects partial evidence without r
     assert.equal(result.changes.released, null);
     assert.ok(result.capabilities.assessments.length > 0);
     assert.equal(calls.filter((url) => url.includes("/git/trees/")).length, 1);
-    const github = mock({});
-    await assert.rejects(guardedPublisher.publish({ github, context, core, report: result }), /Package-source binding/);
-    assert.equal(github.calls.length, 0);
+    assert.match(monitor.render(result), /Investigation only/);
     const malformed = structuredClone(result);
     malformed.publicationProvenance.declaredSourceCommit = sha;
     assert.throws(() => monitor.validateReport(malformed), /publication provenance mismatch/);
@@ -777,34 +503,272 @@ test("live-shaped tooling/source discrepancy collects partial evidence without r
   }
 });
 
-test("source-binding activation and transient observation failures have independent durable health issues", async () => {
-  const github = mock({
-    "GET /repos/{owner}/{repo}/issues": (args) => {
-      assert.equal(args.labels, "upstream-gateway-source-binding-health");
-      return [{ number: 51, body: "<!-- upstream-gateway-protocol:observation-health -->\nold observation" }];
-    },
-    "GET /repos/{owner}/{repo}/labels/{name}": {},
-    "POST /repos/{owner}/{repo}/issues": (args) => {
-      assert.deepEqual(args.labels, ["upstream-gateway-source-binding-health"]);
-      assert.match(args.body, /source-binding-health/);
-      assert.match(args.body, /Read-only observation may still be healthy/);
-      return { number: 52 };
-    },
+
+// Exercise the real public publisher and handoff, including immutable main and
+// exact npm tarball validation. Only external transports are replaced.
+function boundary(t, value = report()) {
+  const artifact = tarball(value.protocol.schema);
+  const state = { issues: [], pulls: [], tasks: [], timeline: [], calls: [], override: null };
+  t.mock.method(global, "fetch", async (url) => {
+    const key = String(url);
+    if (key.endsWith(".tgz")) return new Response(artifact.compressed);
+    assert.ok(key.startsWith("https://registry.npmjs.org/%40openclaw%2Fgateway-protocol/"));
+    const version = key.split("/").at(-1);
+    return new Response(JSON.stringify({ name: "@openclaw/gateway-protocol", version,
+      dist: { integrity: artifact.integrity,
+        tarball: "https://registry.npmjs.org/@openclaw/gateway-protocol/-/gateway-protocol-" + version + ".tgz" } }));
   });
-  assert.equal(await guardedPublisher.publishFailure({ github, context, cause: "source-binding" }), 52);
+  const github = { async request(route, args) {
+    state.calls.push({ route, args: structuredClone(args) });
+    if (state.override) { const result = await state.override(route, args); if (result) return result; }
+    let data;
+    let status = 200;
+    switch (route) {
+      case "GET /repos/{owner}/{repo}/compare/{basehead}":
+        assert.equal(args.repo, "openclaw");
+        data = { status: "ahead", base_commit: { sha: value.main.commit } }; break;
+      case "GET /repos/{owner}/{repo}/git/trees/{tree_sha}":
+        data = { truncated: false, tree: Object.entries(value.main.files).map(([path, entry]) => ({ path, sha: entry.sha, type: "blob" })) }; break;
+      case "GET /repos/{owner}/{repo}/issues":
+        data = state.issues.filter((item) => (args.state === "all" || item.state === args.state)
+          && (!args.labels || item.labels.some((label) => label.name === args.labels))); break;
+      case "GET /repos/{owner}/{repo}/pulls": data = state.pulls.filter((item) => item.state === "open"); break;
+      case "GET /repos/{owner}/{repo}/issues/{issue_number}": data = state.issues.find((item) => item.number === args.issue_number); break;
+      case "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline": data = state.timeline; break;
+      case "GET /repos/{owner}/{repo}/pulls/{pull_number}": data = state.pulls.find((item) => item.number === args.pull_number); break;
+      case "GET /repos/{owner}/{repo}/labels/{name}": data = {}; break;
+      case "POST /repos/{owner}/{repo}/issues":
+        data = { number: state.issues.length + 1, title: args.title, body: args.body,
+          state: "open", labels: args.labels.map((name) => ({ name })), assignees: [] };
+        state.issues.push(data); status = 201; break;
+      case "PATCH /repos/{owner}/{repo}/issues/{issue_number}":
+        assert.equal(args.headers?.authorization, undefined, "issue writes must use the workflow token");
+        data = state.issues.find((item) => item.number === args.issue_number);
+        if (args.body !== undefined) data.body = args.body;
+        if (args.state !== undefined) data.state = args.state;
+        break;
+      case "GET /repos/{owner}/{repo}": data = { default_branch: "main" }; break;
+      case "GET /agents/repos/{owner}/{repo}/tasks":
+        assert.equal(args.headers["X-GitHub-Api-Version"], "2026-03-10");
+        data = { tasks: state.tasks.filter((task) => args.state.split(",").includes(task.state)) }; break;
+      case "GET /agents/repos/{owner}/{repo}/tasks/{task_id}": data = state.tasks.find((task) => task.id === args.task_id); break;
+      case "POST /agents/repos/{owner}/{repo}/tasks":
+        assert.equal(args.create_pull_request, false);
+        assert.equal(args.base_ref, "main");
+        assert.equal(args.headers.authorization, "Bearer fixture-token");
+        assert.match(args.prompt, /independently|Independently/);
+        assert.match(args.prompt, /Do not create any PR for supported/);
+        data = { id: "d7832e67-83d9-4b96-93c0-59f0392494dc", state: "queued", created_at: "2026-10-22T00:00:00.123456789Z",
+          artifacts: [{ provider: "github", type: "pull", data: { id: 4751512507, global_id: "" } }] };
+        state.tasks.push(data); status = 201; break;
+      default: assert.fail("Unexpected API request: " + route);
+    }
+    return { data: structuredClone(data), status };
+  } };
+  return { state, github,
+    publish: (reportValue = value, extra = {}) => publisher.publish({ github, context, core, report: reportValue, ...extra }),
+    handoff: (issueNumber = 1, extra = {}) => publisher.handoff({ github, context, core, report: value, issueNumber,
+      copilotToken: "fixture-token", now: Date.parse("2026-10-22T01:00:00Z"), ...extra }),
+  };
+}
+const writes = (state) => state.calls.filter((call) => !call.route.startsWith("GET "));
+
+test("public workflow path creates one tracker and no-PR task; repeated publication metadata is quiet", async (t) => {
+  const value = report();
+  const h = boundary(t, value);
+  const first = await h.publish();
+  assert.equal(first.issueNumber, 1);
+  assert.equal(first.trackerNumber, 2);
+  assert.equal((await h.handoff()).state, "queued");
+  await h.publish(value, { createWork: false });
+  const count = writes(h.state).length;
+  const next = structuredClone(value);
+  next.protocol.version = "2026.10.10";
+  next.released.package.version = "2026.10.11";
+  next.publication = { schema_version: 1, package_name: "openclaw", package_version: "2026.10.11",
+    package_integrity: integrity, source_repository: "openclaw/openclaw", source_commit: otherSha };
+  next.publicationProvenance = { workflowSha: sha, declaredSourceCommit: otherSha, sourceCoverage: "unverified" };
+  next.released.declaredSourceCommit = otherSha;
+  next.observedAt = "2026-10-23T05:41:00Z";
+  next.fingerprint = monitor.fingerprint(next);
+  await h.publish(next, { context: { ...context, runId: 456 } });
+  await h.handoff();
+  assert.equal(writes(h.state).length, count);
+  assert.equal(h.state.tasks.length, 1);
+  assert.equal(h.state.issues.length, 2);
+  assert.ok(!h.state.calls.some((call) => call.route.includes("/assignees") || call.route.endsWith("/comments")));
+  assert.ok(!h.state.calls.some((call) => call.args.pull_number === 4751512507), "task artifact database ID is not a PR number");
 });
 
-test("legacy health issues acquire explicit source-coverage blocker without losing notes", async () => {
-  const github = mock({
-    "GET /repos/{owner}/{repo}/issues": [{ number: 51, body:
-      "<!-- upstream-gateway-protocol:observation-health -->\n"
-      + "[Latest failed observation](https://github.com/openclaw/openclaw-windows-node/actions/runs/12)\nMaintainer notes" }],
-    "PATCH /repos/{owner}/{repo}/issues/{issue_number}": (args) => {
-      assert.match(args.body, /Maintainer notes/);
-      assert.match(args.body, /source-binding-blocker:v2/);
-      assert.match(args.body, /Implementation[\s\S]*blocked/);
-      return {};
-    },
-  });
-  assert.equal(await guardedPublisher.publishFailure({ github, context }), 51);
+test("human prose survives meaningful tracker updates and closed exact candidates never reopen", async (t) => {
+  const h = boundary(t);
+  await h.publish();
+  const [candidate, tracker] = h.state.issues;
+  tracker.body = "Human introduction\n" + tracker.body + "\nHuman conclusion";
+  candidate.state = "closed";
+  await h.publish();
+  assert.match(tracker.body, /^Human introduction/);
+  assert.match(tracker.body, /Human conclusion$/);
+  assert.match(tracker.body, /reviewed/);
+  const count = writes(h.state).length;
+  assert.equal((await h.publish()).issueNumber, undefined);
+  assert.equal(writes(h.state).length, count);
+  assert.equal(candidate.state, "closed");
+  assert.equal(h.state.issues.length, 2);
+});
+
+test("existing generic monitor work, assignments and body-only overlap precede candidate creation", async (t) => {
+  const h = boundary(t);
+  for (const item of [
+    { labels: [{ name: publisher.LABEL }] },
+    { assignees: [{ login: "copilot-swe-agent[bot]" }] },
+    { body: "Tracks question.resolve production parity", title: "Another feature" },
+  ]) {
+    h.state.issues = [{ number: 80, state: "open", body: "", labels: [], assignees: [], ...item }];
+    await h.publish();
+    assert.equal(h.state.issues.filter((issue) => issue.body.includes("upstream-gateway-candidate:v1:")).length, 0);
+    assert.match(h.state.issues.at(-1).body, /deferred-existing-work/);
+  }
+  h.state.issues = [];
+  h.state.pulls = [{ number: 100, state: "open", title: "Unrelated refactor", body: "interactive Gateway fixture", assignees: [] }];
+  await h.publish();
+  assert.equal(h.state.issues.length, 1, "overlap creates tracker only");
+  h.state.pulls[0].state = "closed";
+  await h.publish();
+  assert.equal(h.state.issues.length, 2, "resolved overlap is not a permanent suppressor");
+});
+
+test("changed contract waits behind active candidate or PR rather than duplicating work", async (t) => {
+  const value = report();
+  const h = boundary(t, value);
+  await h.publish();
+  h.state.issues[0].body = h.state.issues[0].body.replace(value.capabilities.families[0].candidateHash, "f".repeat(64));
+  await h.publish();
+  assert.equal(h.state.issues.length, 2);
+  assert.match(h.state.issues[1].body, /deferred-existing-work/);
+  h.state.issues[0].state = "closed";
+  h.state.pulls = [{ number: 100, state: "open", body: "Closes #1", draft: true }];
+  await h.publish();
+  assert.equal(h.state.issues.length, 2);
+});
+
+test("active agent task defers, unknown state or lookup failure performs no handoff writes", async (t) => {
+  const h = boundary(t);
+  await h.publish();
+  h.state.calls = [];
+  h.state.tasks = [{ id: "other-task", state: "in_progress", created_at: "2026-10-22T00:00:00Z" }];
+  assert.equal((await h.handoff()).state, "deferred-active-task");
+  assert.match(h.state.issues[0].body, /deferred-active-task/);
+  h.state.calls = [];
+  h.state.override = (route) => route === "GET /agents/repos/{owner}/{repo}/tasks"
+    ? { data: { tasks: [{ id: "other-task", state: "new-unknown-state", created_at: "2026-10-22T00:00:00Z" }] } } : null;
+  await assert.rejects(h.handoff(), /Unknown or invalid/);
+  h.state.override = (route) => { if (route === "GET /agents/repos/{owner}/{repo}/tasks") throw new Error("query failed"); };
+  await assert.rejects(h.handoff(), /query failed/);
+  assert.equal(writes(h.state).length, 0);
+});
+
+test("uncertain task POST reserves once and never replays", async (t) => {
+  const h = boundary(t);
+  await h.publish();
+  h.state.override = (route) => { if (route === "POST /agents/repos/{owner}/{repo}/tasks") throw new Error("response lost"); };
+  await assert.rejects(h.handoff(), /response lost/);
+  assert.match(h.state.issues[0].body, /"state":"reserved"/);
+  await assert.rejects(h.handoff(), /no automatic replay/);
+  assert.equal(h.state.calls.filter((call) => call.route === "POST /agents/repos/{owner}/{repo}/tasks").length, 1);
+});
+
+test("stalled or completed-without-disposition task remains visible, never resubmitted", async (t) => {
+  const h = boundary(t);
+  await h.publish(); await h.handoff();
+  await assert.rejects(h.handoff(1, { now: Date.parse("2026-10-24T01:00:00Z") }), /stalled/);
+  assert.match(h.state.issues[0].body, /"attention":"stalled"/);
+  h.state.tasks[0].state = "completed";
+  await assert.rejects(h.handoff(), /without candidate disposition/);
+  h.state.issues[0].state = "closed";
+  assert.equal((await h.handoff()).state, "completed");
+  assert.equal(h.state.tasks.length, 1);
+});
+
+test("linked draft is reused and closing different issues is not implementation evidence", async (t) => {
+  const h = boundary(t);
+  await h.publish();
+  h.state.pulls = [{ number: 100, state: "open", draft: true, body: "Closes #1" }];
+  h.state.timeline = [{ event: "cross-referenced", source: { issue: { number: 100, pull_request: {},
+    repository_url: "https://api.github.com/repos/openclaw/openclaw-windows-node" } } }];
+  assert.equal((await h.handoff()).state, "draft-pr-observed");
+  assert.equal(h.state.tasks.length, 0);
+  h.state.pulls[0].body = "Closes #10";
+  assert.equal((await h.handoff()).state, "queued");
+});
+
+test("missing token and revoked queued authority never create a task", async (t) => {
+  for (const revoke of [
+    (issue) => { issue.state = "closed"; },
+    (issue) => { issue.labels = []; },
+    (issue) => { issue.body = issue.body.replace('"taskId":null', '"taskId":"already-started"'); },
+  ]) {
+    const h = boundary(t);
+    await h.publish();
+    await assert.rejects(h.handoff(1, { copilotToken: "" }), /no new agent task started/);
+    let lists = 0;
+    h.state.override = (route) => {
+      if (route === "GET /agents/repos/{owner}/{repo}/tasks" && ++lists === 2) revoke(h.state.issues[0]);
+    };
+    await assert.rejects(h.handoff(), /authority changed before task/);
+    assert.equal(h.state.tasks.length, 0);
+    assert.equal(h.state.issues.length, 2);
+  }
+});
+
+test("non-default or read-only dispatch cannot authorize a task", async (t) => {
+  const h = boundary(t);
+  await h.publish(); h.state.calls = [];
+  for (const changed of [
+    { ref: "refs/heads/feature" }, { eventName: "pull_request" },
+    { eventName: "workflow_dispatch", payload: { ...context.payload, inputs: { report_only: "true" } } },
+  ]) await assert.rejects(h.handoff(1, { context: { ...context, ...changed } }), /Dispatch context/);
+  assert.equal(h.state.calls.length, 0);
+});
+
+test("invalid evidence and incomplete work queries fail closed before publication writes", async (t) => {
+  const h = boundary(t);
+  const bad = report(); bad.main.commit = "not-a-commit";
+  await assert.rejects(h.publish(bad), /track/);
+  h.state.override = (route) => route.includes("/compare/") ? { data: { status: "diverged", base_commit: { sha } } } : null;
+  await assert.rejects(h.publish(), /main ancestry/);
+  h.state.override = (route) => { if (route === "GET /repos/{owner}/{repo}/pulls") throw new Error("query failed"); };
+  await assert.rejects(h.publish(), /query failed/);
+  h.state.override = (route) => route === "GET /repos/{owner}/{repo}/issues" ? { data: Array(100).fill(issue()) } : null;
+  await assert.rejects(h.publish(), /exceeds 2000/);
+  assert.equal(writes(h.state).length, 0);
+});
+
+test("health issue stays separate and preserves human notes on recovery failure", async (t) => {
+  const h = boundary(t);
+  const number = await publisher.publishFailure({ github: h.github, context });
+  h.state.issues[0].state = "closed"; h.state.issues[0].body += "\nMaintainer notes";
+  await publisher.publishFailure({ github: h.github, context: { ...context, runId: 456 } });
+  assert.equal(number, 1); assert.equal(h.state.issues.length, 1);
+  assert.match(h.state.issues[0].body, /Maintainer notes$/);
+  assert.match(h.state.issues[0].body, /runs\/456/);
+  assert.equal(h.state.issues[0].state, "open");
+});
+
+test("workflow runs public paths with separate tokens and read-only report mode", () => {
+  const workflow = fs.readFileSync(path.join(__dirname, "../workflows/upstream-gateway-protocol.yml"), "utf8");
+  assert.doesNotMatch(workflow, /^\s+(push|pull_request|pull_request_target|workflow_run):/m);
+  assert.match(workflow, /cancel-in-progress: false/);
+  assert.match(workflow, /github.ref_name == github.event.repository.default_branch/);
+  const [observe, health, publish, implement] = workflow.split(/\n  (?:observation-failure|publish|implement):/);
+  assert.doesNotMatch(observe, /secrets\.|: write/);
+  assert.doesNotMatch(health + publish, /COPILOT_GITHUB_TOKEN/);
+  assert.match(implement, /issues: write/);
+  assert.doesNotMatch(implement, /github-token:.*COPILOT/);
+  assert.match(implement, /copilotToken: process.env.COPILOT_GITHUB_TOKEN/);
+  assert.match(implement, /createWork: false/);
+  assert.equal((workflow.match(/!inputs.report_only/g) ?? []).length, 2);
+  assert.equal((workflow.match(/vars.UPSTREAM_GATEWAY_MONITOR_ENABLED == 'true'/g) ?? []).length, 2);
+  assert.match(implement, /retries: 0/);
+  assert.match(workflow, /await publish\(\{ github, context, core, report/);
 });

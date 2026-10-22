@@ -64,7 +64,7 @@ public sealed class MountedReactorChatDisposalProofTests
             var dispatcher = new WinUIDispatcher(_ui.Dispatcher);
             var factory = new ChatComposerFactory(dispatcher);
             var provider = new NoopChatDataProvider();
-            var hostActions = new ChatComposerHostActions(null, null, null, null, null);
+            var hostActions = new ChatComposerHostActions(null, null, null, null);
             var session = factory.Create(provider, hostActions, initialSpeakerMuted: false);
 
             var target = new Border();
@@ -112,7 +112,7 @@ public sealed class MountedReactorChatDisposalProofTests
             CancellationToken captureToken = default;
             var session = new ChatComposerFactory(new WinUIDispatcher(_ui.Dispatcher)).Create(
                 new NoopChatDataProvider(),
-                new(null, null, (ct, _) => { captureToken = ct; return capture.Task; }, null, null), false);
+                new(null, null, (ct, _) => { captureToken = ct; return capture.Task; }, null), false);
             var reactor = new ReactorHostControl();
             reactor.Mount(_ => Empty());
             target.Child = reactor;

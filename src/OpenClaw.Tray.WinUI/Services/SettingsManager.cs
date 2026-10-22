@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Audio;
 using OpenClaw.Shared.Capabilities;
 
 namespace OpenClawTray.Services;
@@ -22,7 +23,8 @@ public class SettingsManager
     private readonly string _settingsFilePath;
     private string? _persistedJson;
     private const string ProtectedSecretPrefix = "dpapi:";
-    private const int CurrentSettingsSchemaVersion = 1;
+    // v2: TTS provider migration (see MigrateTtsProvider).
+    private const int CurrentSettingsSchemaVersion = 2;
     private static readonly byte[] ProtectedSecretEntropy = Encoding.UTF8.GetBytes("OpenClawTray.Settings.v1");
     public const string AppThemeSystem = "System";
     public const string AppThemeLight = "Light";
@@ -41,9 +43,20 @@ public class SettingsManager
 
     private readonly object _saveLock = new();
     private SettingsData _data = CreateDefaultData();
+    private volatile bool _persistedSystemRunEnabled;
+    private string? _preservedElevenLabsCipher;
+    private string? _preservedMiniMaxCipher;
 
     // Connection
-    public string GatewayUrl { get => _data.GatewayUrl ?? AppIdentity.SetupGatewayUrl; set => _data = _data with { GatewayUrl = value }; }
+    public string GatewayUrl
+    {
+        get => _data.GatewayUrl ?? AppIdentity.SetupGatewayUrl;
+        set
+        {
+            _data = _data with { GatewayUrl = value };
+            HasPersistedGatewayUrl = !string.IsNullOrWhiteSpace(value);
+        }
+    }
     public bool UseSshTunnel { get => _data.UseSshTunnel; set => _data = _data with { UseSshTunnel = value }; }
     public string SshTunnelUser { get => _data.SshTunnelUser ?? ""; set => _data = _data with { SshTunnelUser = value }; }
     public string SshTunnelHost { get => _data.SshTunnelHost ?? ""; set => _data = _data with { SshTunnelHost = value }; }
@@ -54,6 +67,22 @@ public class SettingsManager
     public int? BrowserControlPort { get => _data.BrowserControlPort; set => _data = _data with { BrowserControlPort = value }; }
     public string? LegacyToken { get; private set; }
     public string? LegacyBootstrapToken { get; private set; }
+    /// <summary>
+    /// True when settings.json stored a non-empty GatewayUrl. The in-memory
+    /// default URL is not a saved gateway and must not receive legacy secrets.
+    /// </summary>
+    public bool HasPersistedGatewayUrl { get; private set; }
+
+    /// <summary>
+    /// Gateway URL last saved by the user, or null when none was saved.
+    /// <see cref="GatewayUrl"/> fills in the setup default, so rollback must
+    /// copy this value instead of the getter.
+    /// </summary>
+    internal string? PersistedGatewayUrl =>
+        HasPersistedGatewayUrl && !string.IsNullOrWhiteSpace(_data.GatewayUrl)
+            ? _data.GatewayUrl
+            : null;
+
     public bool HasLegacyGatewayCredentials =>
         !string.IsNullOrWhiteSpace(LegacyToken) ||
         !string.IsNullOrWhiteSpace(LegacyBootstrapToken);
@@ -93,7 +122,7 @@ public class SettingsManager
     // User interface
     /// <summary>
     /// When true, host the legacy WebView2 gateway chat UI instead of the
-    /// native chat surface in both the Hub Chat tab and tray Chat popup.
+    /// native Workspace chat surface.
     /// Default false (native).
     /// </summary>
     public bool UseLegacyWebChat { get => _data.UseLegacyWebChat; set => _data = _data with { UseLegacyWebChat = value }; }
@@ -125,6 +154,9 @@ public class SettingsManager
     /// entirely. Default <c>true</c> (backward compatible).
     /// </summary>
     public bool NodeSystemRunEnabled { get => _data.NodeSystemRunEnabled; set => _data = _data with { NodeSystemRunEnabled = value }; }
+    // Revocations apply immediately; provisional grants cannot authorize a spawn before persistence.
+    internal bool IsSystemRunPermissionGranted =>
+        _persistedSystemRunEnabled && System.Threading.Volatile.Read(ref _data).NodeSystemRunEnabled;
     public bool NodeSttEnabled { get => _data.NodeSttEnabled; set => _data = _data with { NodeSttEnabled = value }; }
     /// <summary>STT language: "auto" for Whisper auto-detect, or a BCP-47 tag like "en-US".</summary>
     public string SttLanguage { get => string.IsNullOrWhiteSpace(_data.SttLanguage) ? "auto" : _data.SttLanguage; set => _data = _data with { SttLanguage = value }; }
@@ -146,11 +178,19 @@ public class SettingsManager
     /// from, and does not change, the app-managed Local AI gateway provider.
     /// </summary>
     public bool NodeOllamaInferenceEnabled { get => _data.NodeOllamaInferenceEnabled; set => _data = _data with { NodeOllamaInferenceEnabled = value }; }
-    public string TtsProvider { get => string.IsNullOrWhiteSpace(_data.TtsProvider) ? TtsCapability.PiperProvider : _data.TtsProvider; set => _data = _data with { TtsProvider = value }; }
-    public string TtsElevenLabsApiKey { get => _data.TtsElevenLabsApiKey ?? ""; set => _data = _data with { TtsElevenLabsApiKey = value }; }
+    public string TtsProvider { get => string.IsNullOrWhiteSpace(_data.TtsProvider) ? TtsCapability.KokoroProvider : _data.TtsProvider; set => _data = _data with { TtsProvider = value }; }
+    public string TtsElevenLabsApiKey
+    {
+        get => _data.TtsElevenLabsApiKey ?? "";
+        set => SetProtectedApiKey(value, cipher => _preservedElevenLabsCipher = cipher, () => _preservedElevenLabsCipher, stored => _data = _data with { TtsElevenLabsApiKey = stored });
+    }
     public string TtsElevenLabsModel { get => _data.TtsElevenLabsModel ?? ""; set => _data = _data with { TtsElevenLabsModel = value }; }
     public string TtsElevenLabsVoiceId { get => _data.TtsElevenLabsVoiceId ?? ""; set => _data = _data with { TtsElevenLabsVoiceId = value }; }
-    public string TtsMiniMaxApiKey { get => _data.TtsMiniMaxApiKey ?? ""; set => _data = _data with { TtsMiniMaxApiKey = value }; }
+    public string TtsMiniMaxApiKey
+    {
+        get => _data.TtsMiniMaxApiKey ?? "";
+        set => SetProtectedApiKey(value, cipher => _preservedMiniMaxCipher = cipher, () => _preservedMiniMaxCipher, stored => _data = _data with { TtsMiniMaxApiKey = stored });
+    }
     public string TtsMiniMaxModel { get => string.IsNullOrWhiteSpace(_data.TtsMiniMaxModel) ? MiniMaxTextToSpeechClient.DefaultModel : _data.TtsMiniMaxModel; set => _data = _data with { TtsMiniMaxModel = value }; }
     public string TtsMiniMaxVoiceId { get => _data.TtsMiniMaxVoiceId ?? ""; set => _data = _data with { TtsMiniMaxVoiceId = value }; }
     public string TtsMiniMaxRegion { get => string.IsNullOrWhiteSpace(_data.TtsMiniMaxRegion) ? MiniMaxTextToSpeechClient.GlobalRegion : _data.TtsMiniMaxRegion; set => _data = _data with { TtsMiniMaxRegion = value }; }
@@ -159,6 +199,10 @@ public class SettingsManager
     public bool HubNavPaneOpen { get => _data.HubNavPaneOpen; set => _data = _data with { HubNavPaneOpen = value }; }
     /// <summary>Piper voice identifier, e.g. "en_US-amy-low".</summary>
     public string TtsPiperVoiceId { get => string.IsNullOrWhiteSpace(_data.TtsPiperVoiceId) ? "en_US-amy-low" : _data.TtsPiperVoiceId; set => _data = _data with { TtsPiperVoiceId = value }; }
+    /// <summary>Kokoro voice name, e.g. "af_maple".</summary>
+    public string TtsKokoroVoiceId { get => string.IsNullOrWhiteSpace(_data.TtsKokoroVoiceId) ? KokoroModelManager.DefaultVoiceId : _data.TtsKokoroVoiceId; set => _data = _data with { TtsKokoroVoiceId = value }; }
+    /// <summary>Background download of the selected Kokoro voice pack; cleared when the user deletes the pack.</summary>
+    public bool TtsKokoroAutoDownload { get => _data.TtsKokoroAutoDownload; set => _data = _data with { TtsKokoroAutoDownload = value }; }
     // Local MCP HTTP server (independent of EnableNodeMode)
     public bool EnableMcpServer { get => _data.EnableMcpServer; set => _data = _data with { EnableMcpServer = value }; }
     // Automatic self-repair of app-owned setup-managed local WSL gateways (kill switch).
@@ -179,23 +223,26 @@ public class SettingsManager
     public string? PreferredGatewayId { get => _data.PreferredGatewayId; set => _data = _data with { PreferredGatewayId = value }; }
 
     // ── MXC sandbox ─────────────────────────────────────────────────────
-    /// <summary>Master switch for system.run containment. When true (default), system.run uses MXC when available and falls back to host execution when unavailable unless strict fallback blocking is enabled. When false, system.run runs on host like before.</summary>
-    public bool SystemRunSandboxEnabled { get => _data.SystemRunSandboxEnabled; set => _data = _data with { SystemRunSandboxEnabled = value }; }
-    /// <summary>When true, sandbox-enabled system.run blocks instead of using the compatibility host fallback if MXC is unavailable. Default false.</summary>
-    public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get => _data.SystemRunBlockHostFallbackWhenMxcUnavailable; set => _data = _data with { SystemRunBlockHostFallbackWhenMxcUnavailable = value }; }
+    /// <summary>Personal-file scope enforced during MXC execution; null allows first-run preset initialization.</summary>
+    public SystemRunFilesystemScope? SystemRunFilesystemScope { get => _data.SystemRunFilesystemScope; set => _data = _data with { SystemRunFilesystemScope = value }; }
+    public void ApplySystemRunPreset(SystemRunAccessPreset preset) => _data = SystemRunPermissionPresets.Apply(_data, preset);
+    public SettingsData SnapshotSystemRunSettings() => OpenClaw.Shared.Mxc.MxcRequestBuilder.Snapshot(_data);
+    public string SystemRunPolicyFingerprint => OpenClaw.Shared.Mxc.MxcRequestBuilder.Fingerprint(SnapshotSystemRunSettings());
     /// <summary>When sandboxed, allow system.run commands to reach the public internet. Default false.</summary>
     public bool SystemRunAllowOutbound { get => _data.SystemRunAllowOutbound; set => _data = _data with { SystemRunAllowOutbound = value }; }
-    /// <summary>When sandboxed, allow Windows UI system calls required by PowerShell and some console utilities. Default false.</summary>
-    public bool SystemRunAllowWindowsUi { get => _data.SystemRunAllowWindowsUi; set => _data = _data with { SystemRunAllowWindowsUi = value }; }
     // ── MXC sandbox: additional knobs (Sandbox page) ─────────────────
     public SandboxClipboardMode SandboxClipboard { get => _data.SandboxClipboard; set => _data = _data with { SandboxClipboard = value }; }
-    public SandboxFolderAccess? SandboxDocumentsAccess { get => _data.SandboxDocumentsAccess; set => _data = _data with { SandboxDocumentsAccess = value }; }
-    public SandboxFolderAccess? SandboxDownloadsAccess { get => _data.SandboxDownloadsAccess; set => _data = _data with { SandboxDownloadsAccess = value }; }
-    public SandboxFolderAccess? SandboxDesktopAccess { get => _data.SandboxDesktopAccess; set => _data = _data with { SandboxDesktopAccess = value }; }
+    public SandboxFolderAccess? SandboxDocumentsAccess { get => _data.SandboxDocumentsAccess; set => _data = _data with { SandboxDocumentsAccess = value, SystemRunFilesystemScope = _data.SystemRunFilesystemScope ?? OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders }; }
+    public SandboxFolderAccess? SandboxDownloadsAccess { get => _data.SandboxDownloadsAccess; set => _data = _data with { SandboxDownloadsAccess = value, SystemRunFilesystemScope = _data.SystemRunFilesystemScope ?? OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders }; }
+    public SandboxFolderAccess? SandboxDesktopAccess { get => _data.SandboxDesktopAccess; set => _data = _data with { SandboxDesktopAccess = value, SystemRunFilesystemScope = _data.SystemRunFilesystemScope ?? OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders }; }
     public List<SandboxCustomFolder> SandboxCustomFolders
     {
-        get => _data.SandboxCustomFolders ??= new();
-        set => _data = _data with { SandboxCustomFolders = value ?? new() };
+        get => CloneSandboxCustomFolders(_data.SandboxCustomFolders);
+        set => _data = _data with
+        {
+            SandboxCustomFolders = CloneSandboxCustomFolders(value),
+            SystemRunFilesystemScope = _data.SystemRunFilesystemScope ?? OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders,
+        };
     }
     public int SandboxTimeoutMs { get => _data.SandboxTimeoutMs > 0 ? _data.SandboxTimeoutMs : 30_000; set => _data = _data with { SandboxTimeoutMs = value }; }
     public long SandboxMaxOutputBytes { get => _data.SandboxMaxOutputBytes > 0 ? _data.SandboxMaxOutputBytes : 4 * 1024 * 1024; set => _data = _data with { SandboxMaxOutputBytes = value }; }
@@ -229,6 +276,10 @@ public class SettingsManager
         _persistedJson = null;
         LegacyToken = null;
         LegacyBootstrapToken = null;
+        _persistedSystemRunEnabled = false;
+        HasPersistedGatewayUrl = false;
+        _preservedElevenLabsCipher = null;
+        _preservedMiniMaxCipher = null;
         _data = CreateDefaultData();
 
         try
@@ -241,9 +292,10 @@ public class SettingsManager
                 var loaded = SettingsData.FromJson(json);
                 if (loaded != null)
                 {
-                    _data = NormalizeLoadedData(loaded, json);
+                    _data = NormalizeLoadedData(loaded, _settingsDirectory, json);
                 }
             }
+            _persistedSystemRunEnabled = _data.NodeSystemRunEnabled;
             loadSucceeded = true;
         }
         catch (Exception ex)
@@ -251,6 +303,9 @@ public class SettingsManager
             Logger.Warn($"Failed to load settings: {ex.Message}");
             LegacyToken = null;
             LegacyBootstrapToken = null;
+            HasPersistedGatewayUrl = false;
+            _preservedElevenLabsCipher = null;
+            _preservedMiniMaxCipher = null;
         }
         if (loadSucceeded && _hasPersistenceConflict)
         {
@@ -310,7 +365,7 @@ public class SettingsManager
         VoiceAudioFeedback = true,
         NodeTtsEnabled = false,
         NodeOllamaInferenceEnabled = false,
-        TtsProvider = TtsCapability.PiperProvider,
+        TtsProvider = TtsCapability.KokoroProvider,
         TtsElevenLabsApiKey = "",
         TtsElevenLabsModel = "",
         TtsElevenLabsVoiceId = "",
@@ -321,15 +376,15 @@ public class SettingsManager
         TtsWindowsVoiceId = "",
         HubNavPaneOpen = true,
         TtsPiperVoiceId = "en_US-amy-low",
+        TtsKokoroVoiceId = KokoroModelManager.DefaultVoiceId,
+        TtsKokoroAutoDownload = true,
         EnableMcpServer = false,
         A2UIImageHosts = new(),
         HasSeenActivityStreamTip = false,
         SkippedUpdateTag = "",
         PreferredGatewayId = null,
-        SystemRunSandboxEnabled = true,
-        SystemRunBlockHostFallbackWhenMxcUnavailable = false,
+        SystemRunFilesystemScope = null,
         SystemRunAllowOutbound = false,
-        SystemRunAllowWindowsUi = false,
         SandboxClipboard = SandboxClipboardMode.None,
         SandboxDocumentsAccess = null,
         SandboxDownloadsAccess = null,
@@ -339,13 +394,20 @@ public class SettingsManager
         SandboxMaxOutputBytes = 4 * 1024 * 1024
     };
 
-    private static SettingsData NormalizeLoadedData(SettingsData loaded, string? rawJson = null)
+    private SettingsData NormalizeLoadedData(SettingsData loaded, string settingsDirectory, string? rawJson)
     {
+        using var document = rawJson is null ? null : JsonDocument.Parse(rawJson);
+        var legacyScope = document is null ||
+            !document.RootElement.TryGetProperty(nameof(SettingsData.SystemRunFilesystemScope), out _);
         var defaults = CreateDefaultData();
+        var elevenLabs = PreserveFailedSecret(loaded.TtsElevenLabsApiKey);
+        var miniMax = PreserveFailedSecret(loaded.TtsMiniMaxApiKey);
+        _preservedElevenLabsCipher = elevenLabs.Preserved;
+        _preservedMiniMaxCipher = miniMax.Preserved;
         var data = loaded with
         {
             SettingsSchemaVersion = CurrentSettingsSchemaVersion,
-            GatewayUrl = loaded.GatewayUrl ?? defaults.GatewayUrl,
+            GatewayUrl = loaded.GatewayUrl,
             SshTunnelUser = loaded.SshTunnelUser ?? defaults.SshTunnelUser,
             SshTunnelHost = loaded.SshTunnelHost ?? defaults.SshTunnelHost,
             SshTunnelSshPort = IsValidPort(loaded.SshTunnelSshPort) ? loaded.SshTunnelSshPort : defaults.SshTunnelSshPort,
@@ -355,16 +417,17 @@ public class SettingsManager
             SttLanguage = string.IsNullOrWhiteSpace(loaded.SttLanguage) ? defaults.SttLanguage : loaded.SttLanguage,
             SttModelName = string.IsNullOrWhiteSpace(loaded.SttModelName) ? defaults.SttModelName : loaded.SttModelName,
             SttSilenceTimeout = loaded.SttSilenceTimeout > 0 ? loaded.SttSilenceTimeout : defaults.SttSilenceTimeout,
-            TtsProvider = string.IsNullOrWhiteSpace(loaded.TtsProvider) ? defaults.TtsProvider : loaded.TtsProvider,
-            TtsElevenLabsApiKey = UnprotectSettingSecret(loaded.TtsElevenLabsApiKey) ?? defaults.TtsElevenLabsApiKey,
+            TtsProvider = MigrateTtsProvider(loaded, settingsDirectory, defaults.TtsProvider),
+            TtsElevenLabsApiKey = elevenLabs.Plaintext ?? defaults.TtsElevenLabsApiKey,
             TtsElevenLabsModel = loaded.TtsElevenLabsModel ?? defaults.TtsElevenLabsModel,
             TtsElevenLabsVoiceId = loaded.TtsElevenLabsVoiceId ?? defaults.TtsElevenLabsVoiceId,
-            TtsMiniMaxApiKey = UnprotectSettingSecret(loaded.TtsMiniMaxApiKey) ?? defaults.TtsMiniMaxApiKey,
+            TtsMiniMaxApiKey = miniMax.Plaintext ?? defaults.TtsMiniMaxApiKey,
             TtsMiniMaxModel = loaded.TtsMiniMaxModel ?? defaults.TtsMiniMaxModel,
             TtsMiniMaxVoiceId = loaded.TtsMiniMaxVoiceId ?? defaults.TtsMiniMaxVoiceId,
             TtsMiniMaxRegion = loaded.TtsMiniMaxRegion ?? defaults.TtsMiniMaxRegion,
             TtsWindowsVoiceId = loaded.TtsWindowsVoiceId ?? defaults.TtsWindowsVoiceId,
             TtsPiperVoiceId = string.IsNullOrWhiteSpace(loaded.TtsPiperVoiceId) ? defaults.TtsPiperVoiceId : loaded.TtsPiperVoiceId,
+            TtsKokoroVoiceId = string.IsNullOrWhiteSpace(loaded.TtsKokoroVoiceId) ? defaults.TtsKokoroVoiceId : loaded.TtsKokoroVoiceId,
             A2UIImageHosts = loaded.A2UIImageHosts is { Count: > 0 } hosts ? new List<string>(hosts) : new(),
             SkippedUpdateTag = loaded.SkippedUpdateTag ?? defaults.SkippedUpdateTag,
             PreferredGatewayId = loaded.PreferredGatewayId ?? defaults.PreferredGatewayId,
@@ -374,11 +437,38 @@ public class SettingsManager
             OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.Normalize(loaded.OpenTelemetryProtocol),
             UserRules = loaded.UserRules != null ? new List<UserNotificationRule>(loaded.UserRules) : new(),
             SandboxCustomFolders = CloneSandboxCustomFolders(loaded.SandboxCustomFolders),
-            SystemRunBlockHostFallbackWhenMxcUnavailable = loaded.SystemRunBlockHostFallbackWhenMxcUnavailable,
+            SystemRunFilesystemScope = loaded.SystemRunFilesystemScope is { } scope && Enum.IsDefined(scope)
+                ? scope : legacyScope || loaded.SystemRunFilesystemScope is not null
+                    ? OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders : null,
             SandboxTimeoutMs = loaded.SandboxTimeoutMs > 0 ? loaded.SandboxTimeoutMs : defaults.SandboxTimeoutMs,
             SandboxMaxOutputBytes = loaded.SandboxMaxOutputBytes > 0 ? loaded.SandboxMaxOutputBytes : defaults.SandboxMaxOutputBytes,
             McpOnlyMode = null
         };
+
+        if (legacyScope)
+        {
+            foreach (var folder in data.SandboxCustomFolders ?? [])
+                if (folder.Access != SandboxFolderAccess.NoAccess &&
+                    OpenClaw.Shared.Mxc.MxcRequestBuilder.LegacyGrantWasFiltered(folder.Path, _settingsDirectory))
+                    folder.Access = SandboxFolderAccess.Blocked;
+            data.SandboxDocumentsAccess = PreserveLegacyFolder(Environment.SpecialFolder.MyDocuments, data.SandboxDocumentsAccess);
+            data.SandboxDesktopAccess = PreserveLegacyFolder(Environment.SpecialFolder.Desktop, data.SandboxDesktopAccess);
+            if (data.SandboxDownloadsAccess is not null and not SandboxFolderAccess.NoAccess)
+            {
+                try
+                {
+                    if (OpenClaw.Shared.Mxc.MxcRequestBuilder.LegacyGrantWasFiltered(
+                        OpenClaw.Shared.Mxc.MxcRequestBuilder.ResolveDownloadsFolder(), _settingsDirectory))
+                        data.SandboxDownloadsAccess = SandboxFolderAccess.Blocked;
+                }
+                catch (Exception ex) when (ex is NotSupportedException or DllNotFoundException or EntryPointNotFoundException)
+                { data.SandboxDownloadsAccess = SandboxFolderAccess.Blocked; }
+            }
+        }
+
+        SandboxFolderAccess? PreserveLegacyFolder(Environment.SpecialFolder folder, SandboxFolderAccess? access) =>
+            access is not null and not SandboxFolderAccess.NoAccess && OpenClaw.Shared.Mxc.MxcRequestBuilder.LegacyGrantWasFiltered(
+                Environment.GetFolderPath(folder), _settingsDirectory) ? SandboxFolderAccess.Blocked : access;
 
         // Legacy McpOnlyMode migration:
         //   true  -> node off (no gateway), MCP on
@@ -393,6 +483,36 @@ public class SettingsManager
         }
 
         return data;
+    }
+
+    /// <summary>
+    /// Schema v1 files resolved a missing provider to Piper, and setup writes settings.json
+    /// without a provider, so fresh setup installs landed on Piper with no voice and spoke
+    /// through the Windows fallback. On the first v2 load a Piper choice with no downloaded
+    /// voice moves to Kokoro; a working Piper voice is kept, and later choices stick.
+    /// </summary>
+    private static string MigrateTtsProvider(SettingsData loaded, string settingsDirectory, string defaultProvider)
+    {
+        if (string.IsNullOrWhiteSpace(loaded.TtsProvider))
+            return defaultProvider;
+        if (loaded.SettingsSchemaVersion >= 2
+            || !string.Equals(loaded.TtsProvider.Trim(), TtsCapability.PiperProvider, StringComparison.OrdinalIgnoreCase))
+            return loaded.TtsProvider;
+
+        var piperVoiceId = string.IsNullOrWhiteSpace(loaded.TtsPiperVoiceId) ? "en_US-amy-low" : loaded.TtsPiperVoiceId;
+        try
+        {
+            if (new PiperVoiceManager(settingsDirectory, new AppLogger()).IsVoiceDownloaded(piperVoiceId))
+                return loaded.TtsProvider;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Piper voice check during settings migration failed: {ex.Message}");
+            return loaded.TtsProvider;
+        }
+
+        Logger.Info("Settings migration: Piper had no downloaded voice; TTS provider set to Kokoro");
+        return defaultProvider;
     }
 
     private static bool IsValidPort(int port) => port is >= 1 and <= 65535;
@@ -412,10 +532,16 @@ public class SettingsManager
     {
         LegacyToken = null;
         LegacyBootstrapToken = null;
+        HasPersistedGatewayUrl = false;
 
         try
         {
             using var document = JsonDocument.Parse(json);
+            HasPersistedGatewayUrl = !string.IsNullOrWhiteSpace(
+                ReadLegacyString(document.RootElement, "GatewayUrl"));
+            if (!HasPersistedGatewayUrl)
+                return;
+
             LegacyToken = ReadLegacyString(document.RootElement, "Token");
             LegacyBootstrapToken = ReadLegacyString(document.RootElement, "BootstrapToken");
         }
@@ -440,7 +566,7 @@ public class SettingsManager
     /// </summary>
     public SettingsData ToSettingsData() => _data with
     {
-        GatewayUrl = GatewayUrl,
+        GatewayUrl = HasPersistedGatewayUrl ? _data.GatewayUrl : null,
         SshTunnelUser = SshTunnelUser,
         SshTunnelHost = SshTunnelHost,
         SshTunnelRemotePort = SshTunnelRemotePort,
@@ -459,6 +585,8 @@ public class SettingsManager
         TtsMiniMaxRegion = string.IsNullOrWhiteSpace(TtsMiniMaxRegion) ? MiniMaxTextToSpeechClient.GlobalRegion : TtsMiniMaxRegion,
         TtsWindowsVoiceId = string.IsNullOrWhiteSpace(TtsWindowsVoiceId) ? null : TtsWindowsVoiceId,
         TtsPiperVoiceId = TtsPiperVoiceId,
+        TtsKokoroVoiceId = TtsKokoroVoiceId,
+        TtsKokoroAutoDownload = TtsKokoroAutoDownload,
         AppTheme = AppTheme,
         ShowDiagnostics = ShowDiagnosticsOverride,
         OpenTelemetryEndpoint = NormalizeOptionalString(OpenTelemetryEndpoint),
@@ -550,9 +678,11 @@ public class SettingsManager
             OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
 
             var data = ToSettingsData();
-            // Apply DPAPI protection to the API key for on-disk storage only
-            data.TtsElevenLabsApiKey = ProtectSettingSecret(data.TtsElevenLabsApiKey);
-            data.TtsMiniMaxApiKey = ProtectSettingSecret(data.TtsMiniMaxApiKey);
+            // Apply DPAPI protection to the API key for on-disk storage only.
+            // A failed decrypt keeps the original ciphertext so this save cannot
+            // replace it with null.
+            data.TtsElevenLabsApiKey = _preservedElevenLabsCipher ?? ProtectSettingSecret(data.TtsElevenLabsApiKey);
+            data.TtsMiniMaxApiKey = _preservedMiniMaxCipher ?? ProtectSettingSecret(data.TtsMiniMaxApiKey);
 
             var json = data.ToJson();
             if (current is not null)
@@ -568,7 +698,10 @@ public class SettingsManager
                     foreach (var property in existing.RootElement.EnumerateObject())
                         if (!known.Contains(property.Name) &&
                             !property.Name.Equals("Token", StringComparison.OrdinalIgnoreCase) &&
-                            !property.Name.Equals("BootstrapToken", StringComparison.OrdinalIgnoreCase))
+                            !property.Name.Equals("BootstrapToken", StringComparison.OrdinalIgnoreCase) &&
+                            !property.Name.Equals("SystemRunSandboxEnabled", StringComparison.OrdinalIgnoreCase) &&
+                            !property.Name.Equals("SystemRunAllowWindowsUi", StringComparison.OrdinalIgnoreCase) &&
+                            !property.Name.Equals("SystemRunBlockHostFallbackWhenMxcUnavailable", StringComparison.OrdinalIgnoreCase))
                             output[property.Name] = System.Text.Json.Nodes.JsonNode.Parse(property.Value.GetRawText());
                     json = output.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
                 }
@@ -583,6 +716,7 @@ public class SettingsManager
                 File.WriteAllText(temp, json);
                 File.Move(temp, _settingsFilePath, overwrite: true);
                 _persistedJson = json;
+                _persistedSystemRunEnabled = data.NodeSystemRunEnabled;
             }
             finally
             {
@@ -608,9 +742,54 @@ public class SettingsManager
         lock (_saveLock)
         {
             var before = ToSettingsData();
-            try { edit(); SaveOrThrow(); }
-            catch { _data = before; throw; }
+            var hadPersistedGatewayUrl = HasPersistedGatewayUrl;
+            try
+            {
+                edit();
+                SaveOrThrow();
+            }
+            catch
+            {
+                // The GatewayUrl setter stores explicit-target provenance beside
+                // SettingsData. Restoring the record alone leaves that flag set,
+                // and the getter then presents the setup default as a saved gateway.
+                _data = before;
+                HasPersistedGatewayUrl = hadPersistedGatewayUrl &&
+                    !string.IsNullOrWhiteSpace(before.GatewayUrl);
+                throw;
+            }
         }
+    }
+
+    private readonly record struct LoadedSettingSecret(string? Plaintext, string? Preserved);
+
+    private static LoadedSettingSecret PreserveFailedSecret(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored) ||
+            !stored.StartsWith(ProtectedSecretPrefix, StringComparison.Ordinal))
+        {
+            return new(stored, null);
+        }
+
+        var plain = UnprotectSettingSecret(stored);
+        return plain is null ? new(null, stored) : new(plain, null);
+    }
+
+    private static void SetProtectedApiKey(
+        string? value,
+        Action<string?> setPreserved,
+        Func<string?> getPreserved,
+        Action<string?> storePlaintext)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            if (getPreserved() is null)
+                storePlaintext(value);
+            return;
+        }
+
+        setPreserved(null);
+        storePlaintext(value);
     }
 
     internal static string? ProtectSettingSecret(string? value)
@@ -698,4 +877,7 @@ public class SettingsManager
 
         return $"ws://127.0.0.1:{SshTunnelLocalPort}";
     }
+
+    public string? GetLegacyCredentialGatewayUrlOrNull() =>
+        HasPersistedGatewayUrl ? GetEffectiveGatewayUrl() : null;
 }

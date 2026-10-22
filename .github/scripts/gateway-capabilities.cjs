@@ -73,6 +73,42 @@ function readLocal(root) {
   return { head, dirty: git("status", "--porcelain", "--", "src", "tests", ".github/scripts").length > 0, files };
 }
 
+// Follow references, including shared definitions. Broad source inventories and
+// publication metadata remain observation evidence, not new-work identity.
+function familyContract(schema, family) {
+  const definitions = {};
+  const seen = new Set();
+  function contract(value, dictionary = false) {
+    if (Array.isArray(value)) return value.map((item) => contract(item));
+    if (!value || typeof value !== "object") return value;
+    const result = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (!dictionary && ["description", "title", "examples", "$comment"].includes(key)) continue;
+      if (!dictionary && key === "$ref") {
+        check(typeof item === "string" && item.startsWith("#/definitions/"), "Unsupported family schema reference");
+        const name = item.slice("#/definitions/".length).split("/")[0].replace(/~1/g, "/").replace(/~0/g, "~");
+        include(name);
+      }
+      result[key] = !dictionary && ["enum", "const", "default"].includes(key) ? item
+        : contract(item, !dictionary && ["properties", "patternProperties", "definitions", "$defs", "dependentSchemas"].includes(key));
+    }
+    return result;
+  }
+  function include(name) {
+    check(Object.hasOwn(schema.definitions, name), "Missing referenced family definition");
+    if (seen.has(name)) return;
+    seen.add(name);
+    definitions[name] = contract(schema.definitions[name]);
+  }
+  for (const name of Object.keys(schema.definitions).sort()) {
+    if (family.definitionPrefixes.some((prefix) => name.startsWith(prefix))
+      || ["ConnectParams", "RequestFrame", "ResponseFrame", "EventFrame"].includes(name)) include(name);
+  }
+  const methods = Object.fromEntries(family.methods.slice().sort()
+    .map((name) => [name, contract(schema.methods[name] ?? null)]));
+  return { methods, definitions };
+}
+
 function assess({ schema, local, upstreamHash, hash, supportPolicy = policy }) {
   check(supportPolicy.version === 1 && Array.isArray(supportPolicy.decisions)
     && Array.isArray(supportPolicy.families), "Unsupported capability policy");
@@ -125,7 +161,10 @@ function assess({ schema, local, upstreamHash, hash, supportPolicy = policy }) {
       const members = assessments.filter((item) => family.methods.includes(item.name) || family.events.includes(item.name));
       const status = members.every((item) => item.status === "supported") ? "supported"
         : members.every((item) => item.status === "intentionally-unsupported") ? "intentionally-unsupported" : "pending";
-      return { id: family.id, status,
+      const surfaces = members.map((item) => item.id);
+      const contractHash = hash({ contract: familyContract(schema, family), family,
+        decisions: supportPolicy.decisions.filter((item) => surfaces.includes(item.surface)) });
+      return { id: family.id, status, contractHash, candidateHash: hash({ family: family.id, contractHash }),
         surfaces: members.map((item) => item.id), obligations: family.obligations,
         reason: "Production support requires every operator method/event and the full behavioral review. Fixture-only work is not production support." };
     });
@@ -141,7 +180,7 @@ function renderAssessment(value) {
     `Local head: \`${value.localHead}\`; dirty evidence: ${value.dirty}.`,
     `Input evidence: \`${value.inputHash}\`; support policy: \`${value.policyHash}\`.`,
     `Supported: ${counts.supported ?? 0}; intentionally unsupported: ${counts["intentionally-unsupported"] ?? 0}; pending: ${counts.pending ?? 0}.`,
-    `Tracked gap candidates: ${value.pendingGaps.length}. Unassessed surfaces alone do not reopen reviewed issues or prevent baseline advancement.`,
+    `Tracked gap candidates: ${value.pendingGaps.length}. Unassessed surfaces are review backlog, not automatic implementation tasks.`,
     "Pending counts include unassessed relevance and behavior, not confirmed defects. Implement at most one evidenced production capability gap per PR.",
     "", value.limitation, "", "| Capability | Status | Evidence / outstanding obligations |", "| --- | --- | --- |"];
   if (value.pendingGaps.length) lines.splice(1, 0, "<!-- windows-capability-pending -->");
@@ -151,7 +190,7 @@ function renderAssessment(value) {
   // Bound issue size; the complete per-method assessment stays in report.json.
   for (const item of value.assessments.filter((item) => item.status === "intentionally-unsupported"))
     lines.push(`| ${safe(item.id)} | ${item.status} | ${safe(item.reason)} |`);
-  lines.push("", "All method classifications and exact production/test file hashes are in report.json. A closed issue does not resolve pending local support.",
+  lines.push("", "All method classifications and exact production/test file hashes are in report.json. Closing an exact candidate acknowledges that evidence without claiming complete Windows support.",
     "Check existing chat parity and interactive fixture PRs before implementation; link them rather than duplicating work.");
   return lines.join("\n") + "\n";
 }

@@ -135,8 +135,9 @@ public sealed partial class AgentEventsPage : Page
 
     public void AddEvent(AgentEventInfo evt)
     {
-        // Deduplicate by RunId + Seq
-        if (_allEvents.Any(e => e.RunId == evt.RunId && e.Seq == evt.Seq))
+        // A normal row is run id plus sequence. Translated approvals share
+        // an empty run id and sequence 0, so they use approval id and phase.
+        if (_allEvents.Any(e => AgentEventIdentity.IsSame(e, evt)))
             return;
 
         // For assistant events, replace earlier streaming chunks with the latest one

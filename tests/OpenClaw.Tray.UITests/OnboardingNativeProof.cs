@@ -750,7 +750,7 @@ internal static class OnboardingNativeProof
         // ambiguities. Never substitute text or call OCR successful; human pixel review
         // and exact visible HWND-scoped native labels are both still required.
         foreach (var label in missing)
-            Assert.Contains(label, new[] { "Connect your AI", "Local AI on this PC" });
+            Assert.Contains(label, new[] { "Set up your AI", "Set up a local model" });
         return new(original.Text, result.Text, factor, decoder.PixelWidth, decoder.PixelHeight,
             transform.ScaledWidth, transform.ScaledHeight, missing);
     }

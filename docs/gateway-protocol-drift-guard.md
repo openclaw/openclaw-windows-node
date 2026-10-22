@@ -29,9 +29,14 @@ Coverage is also deliberately limited: the fixture's `scopePrefixes` are
 agent event payloads. New question events, for example, cannot fail a test
 whose declared surface contains no question methods or events.
 
+Active and archived `sessions.list` requests set `includeDerivedTitles: true`
+so unlabeled conversations can use the Gateway's generated titles. Direct-peer
+`displayName` values remain subject to the existing privacy rule; when no title
+is available, the client keeps its localized classification fallback.
+
 | Check | Inputs | What a passing result means |
 | --- | --- | --- |
-| Nightly observation | Live upstream main source inventory, npm package identity, published protocol schema | Main/schema collection and comparison succeeded. Released package-source binding is unverified, so its source comparison is omitted and implementation publication/handoff is blocked. |
+| Nightly observation | Live upstream main source inventory, npm package identity, published protocol schema | Main/schema collection and comparison succeeded. Validated immutable evidence can authorize investigation, not released-source compatibility claims. |
 | `GatewayProtocolDriftTests` | Checked-in expectations and Windows client source | The selected local method, field and parser contracts agree. |
 | Behavioral and loopback tests | Selected payloads, fixtures and the real client | The scenarios exercised by those tests behave as asserted. They do not discover upstream changes by themselves. |
 
@@ -60,19 +65,26 @@ also watches method authorization, Gateway implementations, agent/auto-reply
 producers and reference-client sources. This includes chat/questions and
 behavior carried in open `agent.stream`/`data` payloads.
 
-Once independent package-source receipt verification is implemented, changed
-content can create a deduplicated **review-candidate issue**, not an
-automatic declaration of breakage. The implementation handoff uses the existing
-`COPILOT_GITHUB_TOKEN` and requires explicit **supported**, **intentionally
-unsupported**, or **pending** classifications. Confirmed gaps require
-production code and fixture-Gateway changes where needed, with behavioral
-tests in a linked draft implementation PR. Already-covered work must be linked,
-not duplicated. A schema-only or empty PR is not a behavior fix.
-Currently implementation issue publication and handoff fail closed with health
-visibility because package-source coverage is unverified. Read-only reports
-continue. SLSA tooling SHA and sender-declared source SHA are recorded separately;
-neither alone proves source-to-published-artifact binding. Version-1 reports that
-misidentified tooling inventories as released source cannot be used as baselines.
+Validated immutable main evidence and the integrity-checked schema can authorize
+a focused **investigation**, not a declaration of breakage. One permanent
+tracker links separate candidate issues and existing work. Candidate identity
+uses relevant family/schema contracts, not unrelated commits or package versions;
+closed exact candidates remain reviewed. Main-only source changes stay visible
+as early warning rather than automatically creating implementation work.
+
+The handoff uses the existing `COPILOT_GITHUB_TOKEN` with the Agent tasks API
+and `create_pull_request: false`. Copilot must first verify current production
+and fixture behavior, existing work and source limits. Supported, intentionally
+unsupported or already-covered findings get an evidenced disposition without a
+PR. Only confirmed missing behavior can produce a focused, linked **draft**
+implementation PR with appropriate production/fixture changes and behavioral
+tests. No automatic merge or live activation is configured. A reserved or stalled
+task is reconciled, not blindly retried.
+
+SLSA workflow SHA and sender-declared source SHA remain separate, unverified
+package-source facts. Version-1 reports that mislabeled tooling inventories as
+released source cannot become baselines. The monitor does not infer complete
+Windows support from a reviewed candidate or a successful observation.
 
 Reports also assess current Windows source/test evidence independently of
 upstream deltas. On this branch, the first-run report explicitly marks operator
@@ -80,8 +92,8 @@ question-answer production support pending. Producer-only request/waitAnswer
 methods have reviewed role exemptions, not blanket Q&A support. Unknown methods
 and event definitions remain pending. Supported decisions require reviewed
 production dispatch/handler/construction and behavioral-test evidence, and are
-invalidated when that evidence changes. Closing an issue does not erase pending
-local support. See the monitor document for the policy and exact event contract.
+invalidated when that evidence changes. Closing an exact candidate acknowledges that evidence without implying
+complete local support. See the monitor document for the policy and exact event contract.
 
 Exact commits, package versions and hashes are reproducibility evidence, not
 runtime dependency pins. For schedule, watch scope, cumulative review baselines,

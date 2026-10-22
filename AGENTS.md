@@ -1,5 +1,34 @@
 # AGENTS.md
 
+## Working agreement
+
+Read-only requests stay read-only. Permission to implement does not grant
+permission to commit, push, publish, change GitHub metadata, or alter shared
+runtimes. Preserve unrelated work and use the current task-owned worktree.
+
+Start with the reported behavior, its production owner, and the existing tests.
+Use the task routes below rather than reading every background document.
+Delegate independent work only when it benefits from separate context; keep
+one writer per worktree and give each task a bounded objective and evidence
+requirement. A tool's successful exit is not proof that the intended work ran.
+
+| Task | Entry point |
+|---|---|
+| Write, review, or restructure documentation/instructions | [Docs instructions](docs/AGENTS.md) and [technical-documentation](.agents/skills/technical-documentation/SKILL.md) |
+| Write or review a regression test | [Test authoring](docs/TEST_COVERAGE.md#writing-a-regression-test) and [test-audit](.agents/skills/test-audit/SKILL.md) |
+| Select tests and required proof | [Validation plan](docs/TEST_COVERAGE.md#explain-the-validation-plan) and [proof skill](.agents/skills/openclaw-proof-validation/SKILL.md) |
+| Change a WinUI owner or its caller | [WinUI instructions](src/OpenClaw.Tray.WinUI/AGENTS.md) and the affected architecture ledger rows |
+| Debug or drive the app through local MCP | [windows-app-mcp](.agents/skills/windows-app-mcp/SKILL.md); use [winnode](.agents/skills/winnode/SKILL.md) for the shipped command contract |
+| Review code | [Shared autoreview](.agents/skills/autoreview/SKILL.md); use [Hanselman review](.agents/skills/hanselman-code-review/SKILL.md) when adversarial review is requested |
+| Run remote native Windows proof | [Crabbox](.agents/skills/crabbox/SKILL.md), with explicit host/provider authority |
+| Test against a source-built native Gateway | [native-gateway-from-source](.agents/skills/native-gateway-from-source/SKILL.md) |
+| Uninstall or clean for a retest | [uninstall](.agents/skills/uninstall/SKILL.md), with target inventory and destructive confirmation |
+| Audit the whole issue/PR landscape | [global-repo-triage](.agents/skills/global-repo-triage/SKILL.md); do not expand a single-item request into a sweep |
+
+Use [agent readiness and workflow checks](docs/AGENT_WORKFLOWS.md) when changing
+this guidance. These are coding-agent instructions, not the product's
+end-user Gateway workspace `AGENTS.md` templates.
+
 ## Gateway MSIX Packaging
 
 For Gateway MSIX packaging, use [openclaw-windows-packaging](https://github.com/openclaw/openclaw-windows-packaging).
@@ -27,16 +56,20 @@ If a command fails:
 
 Notes:
 
-- If a build/test is blocked by an environmental lock (for example running executable locking output assemblies), stop/close the locking process and rerun.
-- If validation is blocked by missing local Windows prerequisites, run `.\scripts\setup-dev.ps1` to install/verify developer and agent prerequisites, then rerun validation. Use `.\scripts\setup-dev.ps1 -CheckOnly` when you only need diagnostics.
+- If a build/test is blocked by a file lock, stop only a verified task-owned process and rerun. Do not stop another session's app or service; report that lock as a blocker.
+- For missing local Windows prerequisites, start with `.\scripts\setup-dev.ps1 -CheckOnly`. Install with `.\scripts\setup-dev.ps1` only when authorized, then rerun validation. `-AgentReadiness` separately reports optional agent tooling and unverified runtime-proof capabilities without installing or authenticating.
 - **First-run gotcha**: `dotnet test --no-restore` silently no-ops in a fresh worktree where the test `bin/` doesn't exist yet (reports "Build succeeded in 0.5s" then exits 0 with no tests run). For first-run validation, either omit `--no-restore` OR run `dotnet build` on the test project first. Subsequent reruns honor `--no-restore` correctly.
 - In linked git worktrees, set `OPENCLAW_REPO_ROOT` to the worktree path before running tests that discover the repository root, for example:
   - `$env:OPENCLAW_REPO_ROOT='D:\github\openclaw-windows-node.<worktree-name>'`
 - Tray tests must isolate `SettingsManager` from real user settings. Do not use `new SettingsManager()` in tests unless the test intentionally reads `%APPDATA%\OpenClawTray\settings.json`; pass a temp settings directory or set `OPENCLAW_TRAY_DATA_DIR` before the test process starts.
 - Prefer isolated worktrees for PR validation. Use `git-wt` for worktree workflows; `wt.exe` may resolve to WorkTrunk instead of Windows Terminal, so use the full Windows Terminal path when explicitly launching Terminal.
 - Do not claim completion without reporting validation results.
+- For opening a PR, create a feature branch in a personal fork first, then open a PR against main.
 
 ## Active Work Status
+
+Apply these metadata updates only when authorized to update the named issue or
+PR. Local implementation or a read-only review does not itself grant that authority.
 
 - Apply the `status: 🚢 actively landing` label when a maintainer or delegated agent takes active ownership of an issue or pull request through implementation, conflict resolution, validation, or merge.
 - Apply the label only to work that is actively moving. Do not use it for queued, parked, or indefinitely blocked items.
@@ -63,12 +96,24 @@ The script sets `OPENCLAW_RUN_E2E` and `OPENCLAW_RUN_MXC_E2E` itself, then runs 
 - Keep methods focused and reduce nested control flow when it improves readability.
 - Prefer existing repository patterns and simple, idiomatic C# over speculative abstractions.
 - Document non-obvious ownership, invariants, and public usage. Avoid boilerplate comments that only repeat the code.
+- Avoid random literal hardcoded timeouts. Prefer using an explicit constant which can be overriden with an environment variable.
+- Use module level constants for repeated literal values. When they are used across modules, centralize the constant in a constants file.
 
 ## UI, MCP, and PR Proof
 
-Use `.agents/skills/openclaw-proof-validation/SKILL.md` when a change touches tray UX, Settings, onboarding, chat/canvas, Command Center, Windows node capabilities, MCP, gateway connection/pairing, permissions, diagnostics, or agent-facing instructions.
+Use the [proof skill](.agents/skills/openclaw-proof-validation/SKILL.md) when a change touches tray UX, Settings, onboarding, chat/canvas, Command Center, Windows node capabilities, MCP, gateway connection/pairing, permissions, diagnostics, or agent-facing instructions. Match evidence to the changed contract; ordinary documentation changes do not require launching the app.
 
 ## User-Facing Copy
+
+Prefer one maintained source of truth for strings shared with the Gateway or web dashboard:
+
+- Before adding copy, find its existing owner and localization resources. Reuse the authoritative content rather than hard-coding or manually copying a second prompt/label catalog into Companion.
+- For cross-client copy that should track the installed Gateway, prefer an existing supported data contract. When a catalog is justified, generate it from the owner's translation sources at build time, package it with that owner, and serve validated, versioned data through the authenticated connection. Do not generate translations at launch or fetch repository sources at runtime.
+- Load shared catalogs asynchronously and cache them at the appropriate connection/package lifetime. Define locale fallback, unsupported-version behavior, and disconnect/update invalidation explicitly. Render strings as data, never executable UI or code.
+- Keep Windows-specific labels and loading/error/compatibility messages in native `.resw` resources. A minimal localized fallback, such as "Recent chats" when the shared catalog is unavailable, is appropriate; a duplicate starter-prompt list is not. Document any necessary duplication and its owner.
+- Use the simplest approach that fits. This is not a requirement to add an RPC or catalog for every string; existing native resources are the right home for native-only copy. Add focused coverage for source-to-catalog consistency and consumer failure/fallback behavior when introducing a shared contract.
+
+Reference pattern: welcome copy uses the web i18n sources in `openclaw/openclaw`, a build-generated `dist/control-ui-welcome.json`, and `controlUi.welcome.get`. Companion fetches once per connection; Gateway lazily reads and caches the packaged catalog on the first request. See [the native chat visual contract](docs/CHAT_VISUAL_DESIGN.md#controls-and-states). This pattern requires a Gateway build advertising that method; do not assume all released Gateways support it.
 
 Do not use em dashes in user-facing prose, including UI text, error messages, CLI output, notifications, and agent-facing help. Use a period, colon, comma, parentheses, or a simple hyphen instead. A standalone em dash is allowed as an unavailable-value or status placeholder.
 
@@ -104,15 +149,19 @@ Read `docs/TELEMETRY.md` before adding or changing OpenTelemetry configuration, 
 
 ## Architecture Context for New Agents
 
-Start with these docs before changing connection, pairing, node, MCP, or tray UX behavior:
+Read the guide for the behavior and owner being changed, including callers
+outside that owner's directory. Follow relevant references when a contract
+crosses boundaries; unrelated rows are not a mandatory reading list.
 
-- `docs/ARCHITECTURE.md` - **the living architecture ledger**. Required reading before touching any god object it lists. Records which responsibilities have been extracted (`authoritative`) and which must not be re-added to a god object (`closed`). Do not reintroduce a `closed` responsibility.
-- `docs/CONNECTION_ARCHITECTURE.md` - current gateway registry, connection manager, credential precedence, migration, MCP-only, and tray action behavior.
-- `docs/MCP_MODE.md` - local MCP server mode and the `EnableNodeMode` / `EnableMcpServer` matrix.
-- `docs/WINDOWS_NODE_TESTING.md` - Windows node capabilities, manual smokes, and gateway-dependent behavior.
-- `docs/ONBOARDING_WIZARD.md` - first-run setup flow, setup-code/bootstrap pairing, and test isolation.
-- `docs/SETUP_ENGINE_REDESIGN.md` - setup pipeline, rollback/logging, Windows node context injection, and setup CLI contract.
-- `docs/WSL_EXE_ARGV_PITFALL.md` - wsl.exe argv variable-expansion pitfall; required reading before adding any multi-line WSL script through `RunInWslAsync`.
+| When changing | Required context |
+|---|---|
+| Any owner named in the living ledger | [ARCHITECTURE.md](docs/ARCHITECTURE.md): read its rows; preserve `authoritative` owners and never re-add `closed` responsibilities |
+| Connection, credentials, migration, pairing, or reconnect | [CONNECTION_ARCHITECTURE.md](docs/CONNECTION_ARCHITECTURE.md) |
+| MCP hosting or the node/MCP mode matrix | [MCP_MODE.md](docs/MCP_MODE.md) |
+| Windows node capabilities or Gateway invocation | [WINDOWS_NODE_TESTING.md](docs/WINDOWS_NODE_TESTING.md) |
+| First-run/setup-code/bootstrap pairing | [ONBOARDING_WIZARD.md](docs/ONBOARDING_WIZARD.md) |
+| Setup pipeline, rollback, context injection, or setup CLI | [SETUP_ENGINE_REDESIGN.md](docs/SETUP_ENGINE_REDESIGN.md) |
+| Multi-line WSL scripts through `RunInWslAsync` | [WSL_EXE_ARGV_PITFALL.md](docs/WSL_EXE_ARGV_PITFALL.md) |
 
 ## Architecture Guardrails for Large Refactors
 

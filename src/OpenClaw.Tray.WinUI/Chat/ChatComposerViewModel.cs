@@ -1,3 +1,4 @@
+using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClawTray.Presentation;
 using System;
@@ -86,6 +87,7 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
     private int? _dismissedSlashInputRevision;
     private bool _awaitingCatalog;
     private ChatComposerInputs? _inputs;
+    private ChatSessionModelCatalog? _sessionModelCatalog;
     private long _latestInputsRevision;
 
     public ChatComposerViewModel(IUiDispatcher dispatcher, bool initialSpeakerMuted)
@@ -113,6 +115,14 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
     public ReactorSlashMenuState SlashMenuState => _slashMenuState;
     public ReactorSlashDisplayState SlashDisplay { get; private set; }
     public ChatComposerInputs? Inputs => _inputs;
+    public ChatSessionModelCatalog? SessionModelCatalog => _sessionModelCatalog;
+    public ThinkingProfile? ThinkingProfile => _inputs is { } inputs
+        ? ChatThinkingProfile.Resolve(
+            inputs.CurrentThread,
+            inputs.SessionModelCatalogEligible
+                ? _sessionModelCatalog?.Choices ?? []
+                : inputs.ModelChoices)
+        : null;
 
     /// <summary>Exposed for disposal characterization tests.</summary>
     internal bool IsDisposed => _disposed;
@@ -146,6 +156,17 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
         });
     }
 
+    internal void SetSessionModelCatalog(ChatSessionModelCatalog? catalog)
+    {
+        MutateIfChanged(() =>
+        {
+            if (Equals(_sessionModelCatalog, catalog))
+                return false;
+            _sessionModelCatalog = catalog;
+            return true;
+        });
+    }
+
     public void SetDraft(string value)
     {
         Mutate(() =>
@@ -163,16 +184,34 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
 
     public void ClearDraft()
     {
-        Mutate(() =>
+        Mutate(() => ApplyClearDraft());
+    }
+
+    /// <summary>
+    /// Clears the draft only if no edit queued ahead of this call changed it.
+    /// The revision check runs inside the mutation, after those edits apply.
+    /// </summary>
+    public void ClearDraftIfUnchanged(long submittedRevision)
+    {
+        MutateIfChanged(() =>
         {
-            _draftRevision++;
-            _draft = string.Empty;
-            _slashMenuState = ReactorSlashCommandController.ReconcileState(
-                _draft,
-                _inputs?.AvailableCommands,
-                _slashMenuState);
-            RecomputeSlashDisplay();
+            if (!ChatComposerSubmissionPolicy.ShouldClearInput(submittedRevision, _draftRevision))
+                return false;
+
+            ApplyClearDraft();
+            return true;
         });
+    }
+
+    private void ApplyClearDraft()
+    {
+        _draftRevision++;
+        _draft = string.Empty;
+        _slashMenuState = ReactorSlashCommandController.ReconcileState(
+            _draft,
+            _inputs?.AvailableCommands,
+            _slashMenuState);
+        RecomputeSlashDisplay();
     }
 
     public void AppendVoiceTranscript(string transcript)

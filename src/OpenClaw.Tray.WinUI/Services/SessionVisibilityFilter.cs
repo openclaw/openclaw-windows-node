@@ -20,18 +20,6 @@ public static class SessionVisibilityFilter
     public static ChatActivity ToChatThreadActivity(SessionInfo session)
         => SessionRunState.IsWorking(session) ? ChatActivity.Working : ChatActivity.Idle;
 
-    public static IEnumerable<ChatThread> VisibleChatPickerThreads(
-        IEnumerable<ChatThread> threads,
-        string? activeThreadId = null)
-        => threads.Where(thread => IsVisibleInChatPicker(thread, activeThreadId));
-
-    public static bool IsVisibleInChatPicker(ChatThread thread, string? activeThreadId = null)
-        => string.Equals(thread.Id, activeThreadId, StringComparison.Ordinal)
-            || thread.Activity != ChatActivity.Idle
-            || thread.InputTokens > 0
-            || thread.OutputTokens > 0
-            || thread.TotalTokens > 0;
-
     public static string ResolveActiveChannel(string activeChannel, IEnumerable<string> visibleChannels)
     {
         if (!string.Equals(activeChannel, "all", StringComparison.OrdinalIgnoreCase)

@@ -162,12 +162,12 @@ function schemaChanges(before, after) {
   if (!before) return [{ kind: "baseline-review", path: "/", status: "pending" }];
   const changes = [];
   const annotations = new Set(["description", "title", "examples", "$comment"]);
-  function visit(old, next, pointer, required = []) {
+  function visit(old, next, pointer, required = [], dictionary = false) {
     if (hash(old ?? null) === hash(next ?? null)) return;
     if (old && next && typeof old === "object" && typeof next === "object"
       && !Array.isArray(old) && !Array.isArray(next)) {
       for (const key of new Set([...Object.keys(old), ...Object.keys(next)])) {
-        if (annotations.has(key)) continue;
+        if (!dictionary && annotations.has(key)) continue;
         const location = `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`;
         if (!Object.hasOwn(next, key)) changes.push({ kind: "compatibility-review", path: location, status: "pending" });
         else if (!Object.hasOwn(old, key)) {
@@ -176,7 +176,8 @@ function schemaChanges(before, after) {
             kind: optional ? "additive-field" : "feature-review", path: location,
             status: optional ? "informational" : "pending",
           });
-        } else visit(old[key], next[key], location, key === "properties" ? next.required ?? [] : []);
+        } else visit(old[key], next[key], location, key === "properties" ? next.required ?? [] : [],
+          !dictionary && ["properties", "patternProperties", "definitions", "$defs", "dependentSchemas", "methods"].includes(key));
       }
     } else changes.push({ kind: "compatibility-review", path: pointer || "/", status: "pending" });
   }
@@ -195,7 +196,8 @@ function sourceChanges(before, after) {
 }
 
 function fingerprint(report) {
-  // Commits, timestamps and package versions are provenance, not change triggers.
+  // Full observation identity supports baseline replay. Work identity is the
+  // separate family candidateHash, never this broad inventory/publication hash.
   return hash({
     main: report.main.files, released: report.released.files,
     schema: report.protocol.schema, policy: 2, version: report.version,
@@ -370,6 +372,37 @@ function validateReport(report) {
   }
 }
 
+// Self-hashes are not authenticity. Reread immutable upstream evidence and the
+// exact schema package at the write boundary; this grants investigation only.
+async function verifyInvestigation({ github, report }) {
+  validateReport(report);
+  check(report.capabilities, "Investigation requires a current Windows capability assessment");
+  const current = assessLocal(report);
+  check(current.assessmentHash === report.capabilities.assessmentHash,
+    "Local capability evidence changed since observation; rerun before publication");
+  const repo = { owner: "openclaw", repo: "openclaw" };
+  const { data: comparison } = await github.request("GET /repos/{owner}/{repo}/compare/{basehead}", {
+    ...repo, basehead: `${report.main.commit}...main`,
+  });
+  check(["ahead", "identical"].includes(comparison.status)
+    && comparison.base_commit?.sha === report.main.commit, "Investigation evidence is not upstream main ancestry");
+  const { data: tree } = await github.request("GET /repos/{owner}/{repo}/git/trees/{tree_sha}", {
+    ...repo, tree_sha: report.main.commit, recursive: "1",
+  });
+  check(hash(sourceInventory(tree)) === hash(report.main.files), "Immutable main evidence mismatch");
+  const metadata = await json(`https://registry.npmjs.org/${encodeURIComponent(report.protocol.name)}/${report.protocol.version}`);
+  const info = packageInfo(metadata, "@openclaw/gateway-protocol");
+  check(info.version === report.protocol.version && info.integrity === report.protocol.integrity,
+    "Investigation schema registry identity mismatch");
+  const tarballUrl = `https://registry.npmjs.org/@openclaw/gateway-protocol/-/gateway-protocol-${info.version}.tgz`;
+  check(metadata.dist.tarball === tarballUrl, "Unexpected protocol tarball URL");
+  const tarball = await download(tarballUrl);
+  const schema = readSchemaTarball(tarball, info.integrity);
+  check(hash(tarball) === report.protocol.tarballHash && hash(schema) === report.protocol.schemaHash,
+    "Investigation schema artifact mismatch");
+  return current;
+}
+
 function render(report) {
   // Only trusted labels, validated identities and hashes enter write-authorized publication.
   const lines = [
@@ -391,7 +424,7 @@ function render(report) {
     "The schema package version is independent of the wire protocol integer and may differ from the Gateway release.",
     "Registry provenance binds the package digest to a publication workflow identity, not necessarily the package-source checkout. Attestation signatures are not independently verified.",
     "Released source inventory and comparison are omitted (unverified, not zero deltas). Main, integrity-verified schema and local capability evidence remain available.",
-    "**Implementation publication/handoff blocked:** independent package-source-to-exact-artifact evidence is required. There is no configurable bypass.",
+    "**Investigation only:** validated immutable main and integrity-checked schema evidence authorize focused review, not released-source compatibility claims. Confirm current production behavior and existing work before proposing a draft PR.",
     "",
     "| Track | Watched sources | Content fingerprint |",
     "| --- | ---: | --- |",
@@ -414,7 +447,7 @@ function render(report) {
 module.exports = {
   collect, sourceInventory, sourceChanges, schemaChanges, provenanceWorkflowCommit, packageInfo,
   readSchemaTarball, validateReport, render, fingerprint, hash, watchGroup,
-  validatePublication, verifyPublication, metadataUrl, assessLocal,
+  validatePublication, verifyPublication, metadataUrl, assessLocal, verifyInvestigation,
 };
 
 if (require.main === module) {

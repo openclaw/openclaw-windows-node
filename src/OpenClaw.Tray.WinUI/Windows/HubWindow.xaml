@@ -182,7 +182,7 @@
                 AutomationProperties.AutomationId="SettingsTogglePane"
                 AutomationProperties.Name="Toggle navigation pane"
                 ToolTipService.ToolTip="Toggle navigation pane"
-                Width="40" Height="40" Margin="4,0,0,0"
+                Width="40" Height="40" Padding="0" Margin="4,0,0,0"
                 HorizontalAlignment="Left" VerticalAlignment="Top"
                 Style="{StaticResource SubtleButtonStyle}" Click="OnNavPaneToggleButtonClick">
             <FontIcon Glyph="&#xE90C;" FontSize="16"/>

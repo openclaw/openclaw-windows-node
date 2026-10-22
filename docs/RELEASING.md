@@ -18,6 +18,38 @@ packages with their matching public certificates, provenance metadata, and
 installation instructions. Unsigned Store packages stay in Actions for manual
 Partner Center submission.
 
+## Gateway compatibility channels
+
+Keep Companion development and compatibility fixes on one branch. There is no
+separate `release/extended-stable` branch to synchronize. Native development
+defaults to npm `latest`; `-GatewayChannel Packaged` on
+`scripts\Build-NativeGatewayFromSource.ps1` or `run-app-local.ps1` selects the latest
+published `openclaw/openclaw-windows-packaging` release while retaining MSIX isolation.
+Use `-PackagingRelease <tag>` to select a specific native shipping baseline.
+Native Packaged reads the actual Gateway identity from the digest-verified released
+MSIX and reuses its application bytes, with a development launcher rebuilt from
+the exact packaging release commit. Do not infer the payload version from the
+MSIX tag or moving `release-policy.json`: packaging may ship an older Gateway
+under a newer MSIX version. GitHub publication does not establish Store rollout
+availability.
+
+WSL setup already follows npm `latest`, so its CI does not duplicate tests against
+the native packaging baseline. CI resolves npm Latest once per workflow and runs
+each selected setup/connect, revocation and network recovery job once against
+that exact version. Each job's `gateway-release.json` artifact records the npm
+selector, version, integrity and tarball URL. WSL CI does not download a packaging
+MSIX or accept a `packaging_release` input.
+
+Native Latest/Packaged runtime CI is still missing. Unit/helper and upstream
+packaging checks do not prove real isolated-session Gateway startup, pairing or
+recovery. That coverage requires a capability-qualified Windows client host and
+dedicated native runtime jobs, not a second WSL npm version. See the
+[development/CI matrix](../DEVELOPMENT.md#gateway-development-and-ci-matrix).
+
+Store Gateway packaging and release policy remain
+owned by `openclaw/openclaw-windows-packaging`; these development switches neither
+replace the installed Store package nor change WSL setup's npm-latest default.
+
 ## Inno-to-Store migration foundation
 
 Issue #1374 is delivered in two PRs: the preservation/startup foundation, then
@@ -37,8 +69,12 @@ Local AI payload. Its protected intent is stored under
 `%APPDATA%\OpenClawTray\store-migration\intent.dpapi`. Repeating preparation with
 unchanged state reuses the unexpired intent. Intent expires after 30 days; only
 new consent may renew it. Corrupt records require explicit recovery rather than
-silent replacement. Preparation is serialized and writes via a flushed sibling
-temporary file followed by atomic rename.
+silent replacement. The inventory includes saved Gateway identity directories and
+the credential-free `gateways\native-setup-draft.json` recovery descriptor; other
+unexpected files in that directory fail closed. Atomic-write temporary siblings
+for that descriptor are non-state and ignored only when their names contain the
+expected 32-digit lowercase hexadecimal identifier. Preparation is serialized and writes
+via a flushed sibling temporary file followed by atomic rename.
 
 `completed.dpapi` is a separate receipt, written only after exclusive source
 ownership, a fresh strict inventory matching the protected intent, and canonical
@@ -224,10 +260,15 @@ continue to normal startup, because refusing to launch cannot repair either one.
 Still confirm before the tag that the released Inno installer registers
 `DisplayVersion` `2026.9.5` and `DisplayName` `OpenClaw Companion version 2026.9.5`.
 Both are refused, and each produces a different message, so check for the right one.
-A prerelease suffix is a version refusal: that user is told to update the previous app
-to a supported version first. A mismatched name is an unsupported installation: that
-user is told migration is unavailable. Neither is offered migration, so the registered
-values still have to be exact.
+An alpha or other unsupported prerelease suffix is a version refusal: that user is told
+to update the previous app to a supported version first. The repository's numeric
+stable-correction form, such as `2026.9.8-1`, is accepted and ordered after its
+unsuffixed base; its executable file version remains the base numeric version
+(`2026.9.8.0`) while its product version must identify the exact correction.
+Build properties remain numeric, so pin a correction as `X.Y.Z.N` when a correction
+must be the minimum source (for example, `2026.9.8.1` for `2026.9.8-1`). A mismatched
+name is an unsupported installation: that user is told migration is unavailable.
+Refused sources are not offered migration, so the registered values still have to be exact.
 
 ### Developer migration test package
 
@@ -810,6 +851,27 @@ Running **Build and Test** manually on a branch is still build-only. Running
 it on an eligible alpha tag uses the same tagged release path. No new
 unreviewed-branch or MSIX-only version allocator is introduced.
 
+## Retired npm MXC payload upgrade cleanup
+
+The 0.8 npm bridge shipped exactly `wxc-exec.exe` and `wslcsdk.dll` under
+`tools\mxc\x64` and `tools\mxc\arm64`. Inno removes those four known files,
+then removes only empty known directories. It does not remove unknown files,
+user settings, gateways, credentials, approvals or unrelated Node installations.
+The new SDK's app-root `wslcsdk.dll` is required and must remain.
+
+Portable ZIPs are also in-app Updatum payloads. Updatum 1.3.4 copies over the
+destination with robocopy `/E /COPY:DAT` (or xcopy), not a mirror; destination-only
+legacy files survive. The new unpackaged app therefore delegates idempotent
+exact-file cleanup to `LegacyMxcFiles` after primary-instance admission. It
+refuses reparse traversal and logs coarse failures. Packaged app versions are
+OS-managed and are never deleted by this cleanup.
+
+Build/publish targets remove these exact stale artifacts from incremental output,
+and Store/Dev package verification and release signature classification reject
+them if present. Run `.\scripts\test-legacy-mxc-payload.ps1` and
+`.\scripts\test-msix-ci-artifacts.ps1` for synthetic fixtures. These checks do not
+substitute for a real old-to-new installer/in-app update smoke.
+
 ## Binary signing policy
 
 Only OpenClaw-owned binaries should be signed by the OpenClaw release signing
@@ -828,10 +890,19 @@ OpenClaw-owned binaries:
 
 Third-party/runtime executables that must not be OpenClaw-signed:
 
-- `tools\mxc\<arch>\wxc-exec.exe`
+- `plm.exe`
+- `wxc-wslc-daemon.exe`
 - `createdump.exe`
 - `RestartAgent.exe`
 - `SetupEngine\RestartAgent.exe`
+
+The exact `Microsoft.Mxc.Sdk` 1.0.0 NuGet dependency supplies both supported RIDs
+(`win-x64`, `win-arm64`). Published app roots must contain
+`Microsoft.Mxc.Sdk.dll`, `mxc_ffi.dll`, `wslcsdk.dll`, `plm.exe` and
+`wxc-wslc-daemon.exe`. Neither MXC helper may be signed with an OpenClaw
+certificate. Root npm manifests, EXE discovery and `tools\mxc` copy targets are
+retired. Actual MSIX, installer, SAC and ARM64 native proof remain separate
+release gates; an x64 build is not evidence for those gates.
 
 CI enforces this with `scripts\Test-ReleaseExecutableSignatures.ps1`. The
 verifier inspects every shipped `.exe` and `.dll`, fails closed on unknown

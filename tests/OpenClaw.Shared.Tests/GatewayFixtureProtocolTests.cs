@@ -10,9 +10,248 @@ using Xunit;
 namespace OpenClaw.Shared.Tests;
 
 [Collection("WebSocketClientBase")]
-public sealed class GatewayFixtureProtocolTests
+public sealed partial class GatewayFixtureProtocolTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SessionCreation_IsOptInResponseBoundAndPreservesParent(bool allow)
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateBrowse(allowSessionMutations: allow), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        server.HoldSessionMutations();
+        var create = client.CreateSessionAsync(new SessionCreateRequest
+        {
+            ParentSessionKey = GatewayScenario.OtherSessionKey,
+            EmitCommandHooks = true,
+            SucceedsParent = false
+        });
+        await server.WaitForRequestAsync("sessions.create", GatewayScenario.OtherSessionKey);
+        await client.SendWizardRequestAsync("health");
+        Assert.False(create.IsCompleted);
+        server.ReleaseSessionMutations();
+        var result = await create.WaitAsync(Deadline);
+        Assert.Equal(allow, result.Ok);
+        if (!allow)
+        {
+            Assert.Contains("read-only", result.Error);
+            Assert.Equal(5, (await client.SendWizardRequestAsync("sessions.list")).GetProperty("count").GetInt32());
+            return;
+        }
+
+        Assert.Equal("agent:research:fixture-created-1", result.Key);
+        Assert.False(string.IsNullOrWhiteSpace(result.SessionId));
+        var listed = (await client.SendWizardRequestAsync("sessions.list")).GetProperty("sessions");
+        Assert.Equal(6, listed.GetArrayLength());
+        Assert.Contains(listed.EnumerateArray(), row => row.GetProperty("key").GetString() == GatewayScenario.OtherSessionKey);
+        Assert.Contains(listed.EnumerateArray(), row => row.GetProperty("key").GetString() == result.Key);
+        var history = await client.SendWizardRequestAsync("chat.history", new { sessionKey = result.Key });
+        Assert.Empty(history.GetProperty("messages").EnumerateArray());
+        Assert.Equal(result.SessionId, history.GetProperty("sessionId").GetString());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync(
+            "sessions.create", new { parentSessionKey = GatewayScenario.OtherSessionKey, fork = true }));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync(
+            "sessions.create", new { parentSessionKey = "unknown" }));
+        Assert.Equal(6, (await client.SendWizardRequestAsync("sessions.list")).GetProperty("count").GetInt32());
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task RealClient_FractionalVoiceHistoryPreservesAllContentAndIdentities()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateFractionalVoiceHistory(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token, expectedSessionCount: 6);
+        var raw = await connected.Client.SendWizardRequestAsync("chat.history",
+            new { sessionKey = GatewayScenario.VoiceSessionKey });
+        var rows = raw.GetProperty("messages").EnumerateArray().ToArray();
+        Assert.Equal(30, rows.Length);
+        Assert.Equal(18, rows.Count(row => !row.GetProperty("timestamp").TryGetInt64(out _)));
+        var history = await connected.Client.RequestChatHistoryAsync(GatewayScenario.VoiceSessionKey);
+
+        Assert.Equal(30, history.Messages.Count);
+        for (var index = 0; index < rows.Length; index++)
+        {
+            var expectedText = index == 29 ? GatewayScenario.VoiceFinalSentinel : $"Fixture voice history message {index + 1:D2}.";
+            Assert.Equal(expectedText, history.Messages[index].Text);
+            Assert.Equal(rows[index].GetProperty("__openclaw").GetProperty("id").GetString(), history.Messages[index].OpenClawId);
+            Assert.Equal(index + 1, history.Messages[index].OpenClawSeq);
+            Assert.Equal((long)rows[index].GetProperty("timestamp").GetDouble(), history.Messages[index].Ts);
+        }
+        Assert.Equal(30, history.Messages.Select(message => message.OpenClawId).Distinct().Count());
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task NativeSetup_ResponderGuardStillFaultsServerDisposal()
+    {
+        var failure = new InvalidOperationException("Unexpected fixture setup method.");
+        var entered = Signal<bool>();
+        var token = CreateToken();
+        var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup((_, _) =>
+        {
+            entered.TrySetResult(true);
+            throw failure;
+        }), token);
+        try
+        {
+            await using var connected = await ConnectedClient.OpenAsync(server, token);
+            var requestError = await Record.ExceptionAsync(() =>
+                connected.Client.SendWizardRequestAsync("openclaw.setup.detect", timeoutMs: 1000));
+            Assert.NotNull(requestError);
+            await entered.Task.WaitAsync(Deadline);
+        }
+        finally
+        {
+            var disposalError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                server.DisposeAsync().AsTask().WaitAsync(Deadline));
+            Assert.Same(failure, disposalError);
+        }
+    }
+
+    [Fact]
+    public async Task CronEditing_StoresExactSchedulesAndKeepsOtherMutationsDisabled()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateCronEditing();
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        var listed = await client.SendWizardRequestAsync("cron.list", new { includeDisabled = true });
+        Assert.Equal(4, listed.GetProperty("jobs").GetArrayLength());
+
+        foreach (var schedule in new object[]
+        {
+            new { kind = "cron", expr = "0 4 * * *", tz = "Pacific/Auckland" },
+            new { kind = "cron", expr = "0 4 * * *", tz = "UTC" },
+            new { kind = "cron", expr = "0 4 * * *" },
+            new { kind = "every", everyMs = 60_000 }
+        })
+        {
+            var response = await client.SendWizardRequestAsync("cron.update", new
+            {
+                id = "unlisted", patch = new { name = "Fixture cron unlisted", schedule }
+            });
+            var refreshed = await client.SendWizardRequestAsync("cron.list", new { includeDisabled = true });
+            var stored = refreshed.GetProperty("jobs").EnumerateArray().Single(job => job.GetProperty("id").GetString() == "unlisted");
+            Assert.Equal(JsonSerializer.Serialize(schedule), response.GetProperty("schedule").GetRawText());
+            Assert.Equal(response.GetProperty("schedule").GetRawText(), stored.GetProperty("schedule").GetRawText());
+        }
+        var added = await client.SendWizardRequestAsync("cron.add", new
+        {
+            name = "New fixture job", schedule = new { kind = "cron", expr = "0 5 * * *" }
+        });
+        Assert.Equal("created-4", added.GetProperty("id").GetString());
+        Assert.False(added.GetProperty("schedule").TryGetProperty("tz", out _));
+        Assert.Equal(5, scenario.GetCronJobs().Length);
+        var toggled = await client.SendWizardRequestAsync("cron.update", new
+        {
+            id = "listed", patch = new { enabled = false }
+        });
+        Assert.False(toggled.GetProperty("enabled").GetBoolean());
+        Assert.Equal("America/Chicago", toggled.GetProperty("schedule").GetProperty("tz").GetString());
+        var beforeInvalid = JsonSerializer.Serialize(scenario.GetCronJobs());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.update",
+            new { id = "listed", patch = new { schedule = new { kind = "every", everyMs = "invalid" } } }));
+        Assert.Equal(beforeInvalid, JsonSerializer.Serialize(scenario.GetCronJobs()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.update",
+            new { id = "unknown", patch = new { name = "Unknown" } }));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.run", new { id = "listed" }));
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task ContextUsageScenario_RealClientReceivesStrictPromptsReplayHistoryAndIndependentListingSnapshots()
+    {
+        var usage = new ContextUsageFixture();
+        var scenario = GatewayScenario.CreateContextUsage(usage);
+        Assert.Equal(ContextUsageFixture.Name, scenario.Name);
+        Assert.NotEqual(GatewayScenario.CreateBrowse().Sha256, scenario.Sha256);
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        var frames = new System.Collections.Concurrent.ConcurrentQueue<ChatMessageInfo>();
+        var delivered = Signal<bool>();
+        client.ChatMessageReceived += (_, message) =>
+        {
+            frames.Enqueue(message);
+            if (frames.Count == 5) delivered.TrySetResult(true);
+        };
+        using var deadline = new CancellationTokenSource(Deadline);
+        server.HoldHistory(ContextUsageFixture.SessionKey);
+        var history = client.RequestChatHistoryAsync(ContextUsageFixture.SessionKey);
+        await server.WaitForRequestAsync("chat.history", ContextUsageFixture.SessionKey, cancellationToken: deadline.Token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendChatMessageForRunAsync("not a fixture prompt", ContextUsageFixture.SessionKey));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendChatMessageForRunAsync(ContextUsageFixture.FirstPrompt, GatewayScenario.MainSessionKey));
+        await client.SendChatMessageForRunAsync(ContextUsageFixture.FirstPrompt, ContextUsageFixture.SessionKey);
+        await client.SendChatMessageForRunAsync(ContextUsageFixture.SecondPrompt, ContextUsageFixture.SessionKey);
+        await delivered.Task.WaitAsync(deadline.Token);
+        var assistants = frames.Where(frame => frame.Role == "assistant").ToArray();
+        Assert.Equal(3, assistants.Length);
+        Assert.Equal(1_000, assistants[0].ResponseTokens);
+        Assert.All(assistants.Skip(1), frame => Assert.Equal(1_500, frame.ResponseTokens));
+        Assert.Equal(ContextUsageFixture.FirstReply, assistants[0].Text);
+        Assert.Equal(ContextUsageFixture.FinalReply, assistants[1].Text);
+        Assert.Equal(ContextUsageFixture.MeasurementTimestamp, assistants[1].Ts);
+        Assert.Equal(assistants[1].Text, assistants[2].Text);
+        Assert.Equal(0, assistants[2].Ts);
+        Assert.Null(assistants[2].OpenClawId);
+        Assert.Null(assistants[2].OpenClawSeq);
+        Assert.False(history.IsCompleted);
+        server.ReleaseHistory(ContextUsageFixture.SessionKey);
+        var historyMessages = (await history.WaitAsync(deadline.Token)).Messages;
+        Assert.Equal(4, historyMessages.Count());
+        Assert.Equal(ContextUsageFixture.FirstReply, historyMessages[1].Text);
+        var older = historyMessages.Last();
+        Assert.Equal(ContextUsageFixture.FinalReply, older.Text);
+        Assert.Equal(ContextUsageFixture.MeasurementTimestamp - 1, older.Ts);
+        Assert.Equal(1_000, older.ResponseTokens);
+        Assert.Equal(20, older.ContextPercent);
+
+        usage.SelectListing(ContextUsageListing.MissingTotal);
+        var missing = await client.SendWizardRequestAsync("sessions.list");
+        var missingRow = UsageRow(missing);
+        Assert.Equal(12, missingRow.GetProperty("inputTokens").GetInt32());
+        Assert.Equal(480, missingRow.GetProperty("outputTokens").GetInt32());
+        Assert.False(missingRow.TryGetProperty("totalTokens", out _));
+        Assert.False(missingRow.GetProperty("totalTokensFresh").GetBoolean());
+        usage.SelectListing(ContextUsageListing.Lower800);
+        var lower = await client.SendWizardRequestAsync("sessions.list");
+        Assert.True(lower.GetProperty("ts").GetInt64() < missing.GetProperty("ts").GetInt64());
+        Assert.Equal(800, UsageRow(lower).GetProperty("totalTokens").GetInt32());
+        usage.SelectListing(ContextUsageListing.Delayed1200);
+        var captured = server.HoldNextSessionList();
+        var delayed = client.SendWizardRequestAsync("sessions.list");
+        await captured.WaitAsync(deadline.Token);
+        usage.SelectListing(ContextUsageListing.Lower600);
+        var newest = await client.SendWizardRequestAsync("sessions.list");
+        Assert.Equal(600, UsageRow(newest).GetProperty("totalTokens").GetInt32());
+        Assert.False(delayed.IsCompleted);
+        server.ReleaseSessionList();
+        var stale = await delayed.WaitAsync(deadline.Token);
+        Assert.Equal(1_200, UsageRow(stale).GetProperty("totalTokens").GetInt32());
+        Assert.True(stale.GetProperty("ts").GetInt64() < newest.GetProperty("ts").GetInt64());
+        var refreshed = Signal<bool>();
+        client.SessionsUpdated += (_, sessions) =>
+        {
+            if (sessions.Any(session => session.Key == ContextUsageFixture.SessionKey && session.TotalTokens == 600))
+                refreshed.TrySetResult(true);
+        };
+        await server.NotifySessionsChangedAsync(deadline.Token);
+        await refreshed.Task.WaitAsync(deadline.Token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendChatMessageForRunAsync(ContextUsageFixture.SecondPrompt, ContextUsageFixture.SessionKey));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("sessions.reset", new { key = ContextUsageFixture.SessionKey }));
+        Assert.Empty(server.UnexpectedRequests);
+
+        static JsonElement UsageRow(JsonElement listing) => listing.GetProperty("sessions").EnumerateArray()
+            .Single(row => row.GetProperty("key").GetString() == ContextUsageFixture.SessionKey);
+    }
 
     [Theory]
     [InlineData(false)]
@@ -65,6 +304,21 @@ public sealed class GatewayFixtureProtocolTests
         Assert.Throws<ArgumentException>(() => GatewayScenario.LoadBuiltin("not-a-scenario"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RealClient_AdvertisesExecApprovalsOnlyWhenExplicitlyEnabled(bool supportsExecApprovals)
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token, supportsExecApprovals);
+
+        Assert.Equal(
+            supportsExecApprovals,
+            Assert.Single(server.Requests, request => request.Method == "connect").AdvertisesExecApprovals);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
     [Fact]
     public async Task RealClient_ChallengeHandshakeResolvesCanonicalMainAndPopulatesAllSessions()
     {
@@ -76,6 +330,7 @@ public sealed class GatewayFixtureProtocolTests
         Assert.Equal(IPAddress.Loopback.ToString(), server.Endpoint.Host);
         Assert.NotEqual(0, server.Endpoint.Port);
         Assert.True(client.HasHandshakeSnapshot);
+        Assert.False(Assert.Single(server.Requests, request => request.Method == "connect").AdvertisesExecApprovals);
         Assert.Equal(GatewayScenario.MainSessionKey, client.MainSessionKey);
         Assert.Equal(["operator.read"], client.GrantedOperatorScopes);
         await server.HandshakeCompleted.WaitAsync(Deadline);
@@ -212,6 +467,12 @@ public sealed class GatewayFixtureProtocolTests
         Assert.Equal(2, models.Models.Count);
         Assert.All(models.Models, model => Assert.True(model.IsAvailable && model.IsConfigured));
         Assert.Contains(models.Models, model => model.Id == "research" && model.Provider == "fixture");
+        Assert.Contains("session-scoped-model-catalog", client.AdvertisedServerCapabilities);
+        var sessionModels = await client.RequestSessionModelsListAsync(GatewayScenario.OtherSessionKey);
+        Assert.Equal("worker", Assert.Single(sessionModels!.Models).Id);
+        Assert.Contains(
+            server.Requests,
+            request => request.Method == "models.list" && request.SessionKey == GatewayScenario.OtherSessionKey);
         await client.RequestSessionPreviewAsync([GatewayScenario.MainSessionKey], limit: 1);
         var previews = await previewsReceived.Task.WaitAsync(Deadline);
         Assert.Equal(GatewayScenario.MainSentinel, Assert.Single(Assert.Single(previews.Previews).Items).Text);
@@ -245,6 +506,35 @@ public sealed class GatewayFixtureProtocolTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RealClient_ScopedConfiguredCatalogRetainsCurrentModelOutsideManualPolicy(bool publishedModelCatalog)
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateBrowse(publishedModelCatalog: publishedModelCatalog), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+
+        var defaultCatalog = await client.SendWizardRequestAsync(
+            "models.list", new { sessionKey = GatewayScenario.EdgeSessionKey });
+        Assert.Empty(defaultCatalog.GetProperty("models").EnumerateArray());
+
+        var models = await client.RequestSessionModelsListAsync(GatewayScenario.EdgeSessionKey);
+        var current = Assert.Single(Assert.IsType<ModelsListInfo>(models).Models);
+        Assert.Equal("research", current.Id);
+        Assert.Equal("Fixture Retained Research", current.Name);
+        Assert.False(current.ManualSelectionAllowed);
+        Assert.True(current.IsAvailable);
+        Assert.Equal("high", Assert.Single(current.ThinkingContext!.Profile!.Levels!.Value).Id);
+        var request = Assert.Single(server.Requests, request =>
+            request.Method == "models.list" && request.SessionKey == GatewayScenario.EdgeSessionKey
+            && request.ModelCatalogView == "configured");
+        Assert.Equal(publishedModelCatalog ? true : (bool?)null, request.IncludeModelDetails);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Theory]
     [InlineData("chat.history", """{"sessionKey":"not-a-fixture-session"}""", "Unknown fixture session key")]
     [InlineData("chat.history", """{"sessionKey":"agent:main:main","limit":0}""", "positive integer")]
     [InlineData("chat.history", """{"sessionKey":42}""", "nonempty string")]
@@ -272,6 +562,7 @@ public sealed class GatewayFixtureProtocolTests
 
     [Theory]
     [InlineData("chat.send")]
+    [InlineData("chat.abort")]
     [InlineData("sessions.patch")]
     [InlineData("sessions.delete")]
     [InlineData("config.patch")]
@@ -292,6 +583,131 @@ public sealed class GatewayFixtureProtocolTests
         Assert.Equal(before.GetRawText(), after.GetRawText());
         Assert.Contains(server.Requests, r => r.Method == method && r.Outcome == "error:FIXTURE_READ_ONLY");
         Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ChatRun_EventsAndHeldAbortUseIssuedRunAndSession(bool fail)
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateBrowse(allowChatSend: true), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        var sent = await client.SendChatMessageForRunAsync("Synthetic prompt.", GatewayScenario.MainSessionKey);
+        Assert.Equal("fixture-chat-1", sent.RunId);
+        var agent = Signal<AgentEventInfo>();
+        var final = Signal<ChatMessageInfo>();
+        client.AgentEventReceived += (_, value) => agent.TrySetResult(value);
+        client.ChatMessageReceived += (_, value) => final.TrySetResult(value);
+        await server.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, sent.RunId!, "assistant",
+            new { delta = "Synthetic stream." });
+        var received = await agent.Task.WaitAsync(Deadline);
+        Assert.Equal("fixture-chat-1", received.RunId);
+        Assert.Equal(GatewayScenario.MainSessionKey, received.SessionKey);
+        Assert.Equal("assistant", received.Stream);
+        Assert.Equal("Synthetic stream.", received.Data.GetProperty("delta").GetString());
+        await server.PublishChatFinalAsync(GatewayScenario.MainSessionKey, sent.RunId!, "Synthetic final.");
+        var completed = await final.Task.WaitAsync(Deadline);
+        Assert.Equal("fixture-chat-1", completed.RunId);
+        Assert.Equal(GatewayScenario.MainSessionKey, completed.SessionKey);
+        Assert.Equal("Synthetic final.", completed.Text);
+        Assert.Equal("final", completed.State);
+        await Assert.ThrowsAsync<ArgumentException>(() => server.PublishChatFinalAsync(
+            GatewayScenario.OtherSessionKey, sent.RunId!, "Wrong session."));
+        await Assert.ThrowsAsync<ArgumentException>(() => server.PublishChatFinalAsync(
+            GatewayScenario.MainSessionKey, "unissued-run", "Unknown run."));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.SendChatAbortAsync(sent.RunId!, GatewayScenario.OtherSessionKey));
+
+        server.HoldChatAborts();
+        var abort = client.SendChatAbortAsync(sent.RunId!, GatewayScenario.MainSessionKey);
+        using var deadline = new CancellationTokenSource(Deadline);
+        await server.WaitForRequestAsync("chat.abort", GatewayScenario.MainSessionKey, cancellationToken: deadline.Token);
+        await client.SendWizardRequestAsync("health");
+        Assert.False(abort.IsCompleted);
+        server.ReleaseChatAborts(fail);
+        if (fail)
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => abort.WaitAsync(Deadline));
+            Assert.Contains("Fixture abort rejected.", error.Message);
+        }
+        else
+            await abort.WaitAsync(Deadline);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task ChatRun_ContentAndToolFramesPreserveIdentityAndRejectUnissuedRuns()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateBrowse(allowChatSend: true), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        var sent = await client.SendChatMessageForRunAsync("Synthetic prompt.", GatewayScenario.MainSessionKey);
+        var tool = Signal<AgentEventInfo>();
+        client.AgentEventReceived += (_, frame) => tool.TrySetResult(frame);
+        await server.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, sent.RunId!, "tool",
+            new { phase = "result", toolCallId = "shared-tool", result = "Synthetic result." });
+        var outcome = await tool.Task.WaitAsync(Deadline);
+        Assert.Equal(sent.RunId, outcome.RunId);
+        Assert.Equal(GatewayScenario.MainSessionKey, outcome.SessionKey);
+        Assert.Equal("tool", outcome.Stream);
+        Assert.Equal("shared-tool", outcome.Data.GetProperty("toolCallId").GetString());
+        foreach (var isFinal in new[] { false, true })
+        {
+            var message = Signal<ChatMessageInfo>();
+            EventHandler<ChatMessageInfo> handler = (_, frame) => message.TrySetResult(frame);
+            client.ChatMessageReceived += handler;
+            await server.PublishChatContentAsync(GatewayScenario.MainSessionKey, sent.RunId!,
+                [new { type = "text", text = "Synthetic content." },
+                 new { type = "audio", artifactId = "fixture-audio", fileName = "fixture.wav" }], isFinal);
+            var received = await message.Task.WaitAsync(Deadline);
+            client.ChatMessageReceived -= handler;
+            Assert.Equal(sent.RunId, received.RunId);
+            Assert.Equal(GatewayScenario.MainSessionKey, received.SessionKey);
+            Assert.Equal(isFinal, received.IsFinal);
+            Assert.Equal("Synthetic content.", received.Text);
+            Assert.Null(received.OpenClawId);
+            Assert.Null(received.OpenClawSeq);
+            var media = Assert.Single(received.ContentParts, part => part.Media is not null).Media!;
+            Assert.Equal(ChatMediaContentKind.Audio, media.Kind);
+            Assert.Equal("fixture-audio", media.ArtifactId);
+            Assert.Equal("fixture.wav", media.FileName);
+        }
+        await Assert.ThrowsAsync<ArgumentException>(() => server.PublishChatContentAsync(
+            GatewayScenario.OtherSessionKey, sent.RunId!, [new { type = "text", text = "Wrong session." }], true));
+        await Assert.ThrowsAsync<ArgumentException>(() => server.PublishChatContentAsync(
+            GatewayScenario.MainSessionKey, "unissued-run", [new { type = "audio" }], true));
+        await Assert.ThrowsAsync<ArgumentException>(() => server.PublishChatContentAsync(
+            GatewayScenario.MainSessionKey, sent.RunId!, [], true));
+        await Assert.ThrowsAsync<ArgumentException>(() => server.PublishChatRunEventAsync(
+            GatewayScenario.OtherSessionKey, sent.RunId!, "tool", new { phase = "result" }));
+        await Assert.ThrowsAsync<ArgumentException>(() => server.PublishChatRunEventAsync(
+            GatewayScenario.MainSessionKey, "unissued-run", "tool", new { phase = "result" }));
+        await Assert.ThrowsAsync<ArgumentException>(() => server.PublishChatRunEventAsync(
+            GatewayScenario.MainSessionKey, sent.RunId!, "arbitrary", new { phase = "result" }));
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task ChatRun_ShutdownCancelsHeldAbort()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateBrowse(allowChatSend: true), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var sent = await connected.Client.SendChatMessageForRunAsync("Synthetic prompt.", GatewayScenario.MainSessionKey);
+        server.HoldChatAborts();
+        var abort = connected.Client.SendChatAbortAsync(sent.RunId!, GatewayScenario.MainSessionKey);
+        using var deadline = new CancellationTokenSource(Deadline);
+        await server.WaitForRequestAsync("chat.abort", GatewayScenario.MainSessionKey, cancellationToken: deadline.Token);
+        await server.DisposeAsync().AsTask().WaitAsync(Deadline);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => abort.WaitAsync(Deadline));
+        Assert.Equal(0, server.ActiveConnectionCount);
+        Assert.Contains(server.Requests, request => request.Method == "chat.abort" && request.Outcome == "cancelled");
     }
 
     [Fact]
@@ -533,6 +949,20 @@ public sealed class GatewayFixtureProtocolTests
     public Task Upgrade_DisconnectedPeerIsRecordedWithoutPoisoningServerOrShutdown(string headers) =>
         AssertRejectedUpgradeAsync(headers, "error:UPGRADE_DISCONNECTED");
 
+    [Fact]
+    public async Task CloseConnectionsAsync_ToleratesAConnectionHandlerThatDisposedItsSendLock()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var connected = await ConnectedClient.OpenAsync(server, token);
+            var restart = server.CloseConnectionsAsync();
+            await connected.DisposeAsync();
+            await restart.WaitAsync(Deadline);
+        }
+    }
+
     private static async Task AssertRejectedUpgradeAsync(string headers, string outcome)
     {
         var token = CreateToken();
@@ -565,6 +995,20 @@ public sealed class GatewayFixtureProtocolTests
         Assert.DoesNotContain("PRIVATE-UPGRADE-DATA", diagnostic);
     }
 
+    [Fact]
+    public async Task RealNodeClient_FixtureAcceptsTheNodeRole()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        using var data = new TempDirectory(".fixture-node-");
+        using var node = new WindowsNodeClient(server.Endpoint.AbsoluteUri, token, data.Path);
+        var handshake = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        node.HandshakeSucceeded += (_, _) => handshake.TrySetResult();
+        await node.ConnectAsync();
+        await handshake.Task.WaitAsync(Deadline);
+        Assert.Contains(server.Requests, request => request.Method == "connect" && request.Outcome == "ok");
+    }
+
     private static string CreateToken() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private static TaskCompletionSource<T> Signal<T>() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static TempDirectory CreateIdentity() => new(Path.Combine(Directory.GetCurrentDirectory(), ".fixture-identity-"));
@@ -573,20 +1017,24 @@ public sealed class GatewayFixtureProtocolTests
     {
         public OpenClawGatewayClient Client { get; } = client;
 
-        public static async Task<ConnectedClient> OpenAsync(FixtureGatewayServer server, string token)
+        public static async Task<ConnectedClient> OpenAsync(
+            FixtureGatewayServer server, string token, bool supportsExecApprovals = false, int expectedSessionCount = 5)
         {
             var startupOccurrence = server.Requests.Count(r => r.Method == "agents.list") + 1;
             var identity = CreateIdentity();
             var client = new OpenClawGatewayClient(
                 server.Endpoint.AbsoluteUri, token, NullLogger.Instance, identityPath: identity.Path,
-                ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+                ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false)
+            {
+                SupportsExecApprovals = supportsExecApprovals,
+            };
             var owner = new ConnectedClient(client, identity);
             var handshake = Signal<bool>();
             var sessions = Signal<bool>();
             client.HandshakeSucceeded += (_, _) => handshake.TrySetResult(true);
             client.SessionsUpdated += (_, data) =>
             {
-                if (data.Length == 5)
+                if (data.Length == expectedSessionCount)
                     sessions.TrySetResult(true);
             };
             try

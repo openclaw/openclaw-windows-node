@@ -484,8 +484,8 @@
                                  Severity="Warning"
                                  IsOpen="False"
                                  IsClosable="False"
-                                 Title="MSIX installation detected"
-                                 Message="Removing OpenClaw from Windows Settings → Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw."/>
+                                 Title="Gateway cleanup"
+                                 Message="Uninstalling OpenClaw in Windows Settings automatically removes managed Gateways. Use Remove Local Gateway below to remove a Gateway while keeping the app."/>
 
                         <TextBlock x:Uid="SettingsPage_RemovesTheWSLDistro" x:Name="GatewayBodyText"
                                    Text="Removes the app-owned WSL distro, its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset."
@@ -667,6 +667,10 @@
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                    <HyperlinkButton x:Uid="SettingsPage_AppInfoSupport"
+                                                     Content="Get support"
+                                                     Padding="0"
+                                                     Click="OnSupportLink"/>
                                     <HyperlinkButton x:Uid="SettingsPage_AppInfoDocumentation"
                                                      Content="Documentation"
                                                      Padding="0"

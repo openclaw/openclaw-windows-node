@@ -85,9 +85,10 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         RecommendedHeading.Text = S("Recommended");
         RecommendedDetail.Text = S("RecommendedDetail");
         UnavailableHeading.Text = S("Unavailable");
-        PrepareHeading.Text = S("OtherLocal");
-        PrepareDetail.Text = S("OtherLocalDetail");
+        LocalGroupHeading.Text = S("LocalTitle");
+        LocalGroupDescription.Text = S("LocalGroupDescription");
         SignInHeading.Text = S("ConnectProvider");
+        CloudDescription.Text = S("CloudDetail");
         LocalAiTitle.Text = S("LocalTitle");
         LocalAiCard.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Devices, 20);
         AutomationProperties.SetName(LocalAiCard, S("LocalTitle"));
@@ -477,12 +478,12 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             UnavailableCandidates.ItemsSource = _presentation.UnavailableCandidates.Select(candidate =>
                 new ChoiceRow(GatewayAiSetupChoiceKind.Candidate, candidate.Id, candidate.Label, candidate.Detail,
                     _artworkSession, BrandId: candidate.BrandId, Icon: candidate.Icon)).ToArray();
-            CandidatesSection.Visibility = Visible(_presentation.Candidates.Count > 0);
             RecommendedSection.Visibility = Visible(_presentation.RecommendedInstalls.Count > 0);
             UnavailableSection.Visibility = Visible(_presentation.UnavailableCandidates.Count > 0);
             PrepareSection.Visibility = Visible(_presentation.PrepareOptions.Count > 0);
-            SignInSection.Visibility = Visible(_presentation.FeaturedSignIn.Count +
-                _presentation.MoreSignIn.Count > 0);
+            var hasSignIn = _presentation.FeaturedSignIn.Count + _presentation.MoreSignIn.Count > 0;
+            SignInSection.Visibility = Visible(hasSignIn || _presentation.ManualProviders.Count > 0);
+            ProviderGroup.Visibility = Visible(hasSignIn);
             FeaturedSignInChoices.Visibility = Visible(_presentation.FeaturedSignIn.Count > 0);
             ApiKeySection.Visibility = Visible(_presentation.ManualProviders.Count > 0);
             ApiKeyForm.Visibility = Visible(_presentation.ShowApiKeyForm);
@@ -498,10 +499,15 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     }
 
     private ChoiceRow[] ProviderRows(IReadOnlyList<GatewayAiSetupProvider> providers, GatewayAiSetupChoiceKind kind) =>
-        providers.Select(option => new ChoiceRow(kind, option.Id, option.Label,
-            option.Hint ?? "",
-            _artworkSession, BrandId: option.BrandId, Icon: option.Icon, ProviderKind: option.Kind,
-            MetadataActionLabel: option.ActionLabel, Website: option.Website)).ToArray();
+        providers.Select(option =>
+        {
+            var localService = kind == GatewayAiSetupChoiceKind.Prepare &&
+                (option.Id is "lmstudio" or "ollama");
+            return new ChoiceRow(kind, option.Id, option.Label,
+                localService ? S(option.Id == "lmstudio" ? "LmStudioDetail" : "OllamaDetail") : option.Hint ?? "",
+                _artworkSession, BrandId: option.BrandId, Icon: option.Icon, ProviderKind: option.Kind,
+                MetadataActionLabel: localService ? S("ManualConnect") : option.ActionLabel, Website: option.Website);
+        }).ToArray();
 
     private void ApiKeys_Click(object sender, RoutedEventArgs e)
     {
@@ -878,6 +884,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         _request.Dispose();
         _request = new();
         var token = _request.Token;
+        var reportedFailure = false;
         _busy = true;
         _activities.Clear();
         _activityKey = null;
@@ -923,6 +930,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 if (Client?.Phase is not (GatewayAiSetupPhase.Running or GatewayAiSetupPhase.Uncertain or
                     GatewayAiSetupPhase.VerificationRequired or GatewayAiSetupPhase.Prepared))
                     _providerOperationActive = false;
+                reportedFailure = true;
                 ReportFailure(ex);
                 _activityStatus = SetupInstallationStatus.Failed;
             }
@@ -939,7 +947,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 if (Client?.Phase is GatewayAiSetupPhase.Cancelled or GatewayAiSetupPhase.Rejected)
                 {
                     _providerOperationActive = false;
-                    if (Client.Phase == GatewayAiSetupPhase.Rejected)
+                    if (Client.Phase == GatewayAiSetupPhase.Rejected && !reportedFailure)
                         ShowError("Rejected");
                 }
                 Render();
@@ -1015,8 +1023,10 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                         (index == _activities.Count - 1 ? _activityStatus : SetupInstallationStatus.Complete)))).ToArray();
                 ChoicePanel.Visibility = Visible(_localExpectedModel is null && _args?.ExpectedConfiguredModelRef is null &&
                     (phase is GatewayAiSetupPhase.Choosing or GatewayAiSetupPhase.Cancelled or GatewayAiSetupPhase.Rejected));
-                CandidatesHeading.Visibility = Visible(LocalAiSection.Visibility == Visibility.Visible ||
-                    ChoicePanel.Visibility == Visibility.Visible && CandidatesSection.Visibility == Visibility.Visible);
+                CandidatesSection.Visibility = Visible(ChoicePanel.Visibility == Visibility.Visible &&
+                    _presentation.Candidates.Count > 0);
+                LocalGroupHeader.Visibility = Visible(LocalAiSection.Visibility == Visibility.Visible ||
+                    ChoicePanel.Visibility == Visibility.Visible && PrepareSection.Visibility == Visibility.Visible);
                 LegacyButton.Visibility = phase == GatewayAiSetupPhase.ClassicWizardRequired ? Visibility.Visible : Visibility.Collapsed;
             }
             else
@@ -1175,7 +1185,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         LocalAiSection.Visibility = Visible(_args?.ExpectedConfiguredModelRef is null && _localExpectedModel is null &&
             snapshot.ShowLocalChoice);
         var state = snapshot.State;
-        LocalAiDescription.Text = string.Join(" · ", new[]
+        var detail = string.Join(" · ", new[]
         {
             S("LocalState_" + state),
             string.Join(" · ", new[] { snapshot.GpuName, snapshot.ModelName }.Where(value => !string.IsNullOrWhiteSpace(value))),
@@ -1183,6 +1193,10 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 ? LocalAiSetupControl.DescribeLocalAiUnavailable(eligibility) : null,
             state == LocalAiOnboardingState.ManagementBlocked && snapshot.ReasonKey is { } reason ? S(reason) : null,
         }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        LocalAiTitle.Text = state == LocalAiOnboardingState.SetUp ? S("OtherLocal") : S("LocalTitle");
+        AutomationProperties.SetName(LocalAiCard, LocalAiTitle.Text);
+        LocalAiDescription.Text = state == LocalAiOnboardingState.SetUp ? S("LocalSetUpDescription") : detail;
+        LocalAiRecommendedBadge.Visibility = Visible(state == LocalAiOnboardingState.SetUp);
         LocalAiActionText.Text = state switch
         {
             LocalAiOnboardingState.SetUp => S("LocalSetUp"),
@@ -1197,7 +1211,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         LocalAiCard.IsClickEnabled = _localObservation is not null && !_localActionBusy && !providerPending &&
             (snapshot.CanReview && _args?.ReviewLocalAi is not null || snapshot.CanUse || snapshot.CanRefresh);
         LocalAiCard.IsEnabled = !_localActionBusy && !providerPending;
-        AutomationProperties.SetHelpText(LocalAiCard, LocalAiDescription.Text + " " + LocalAiActionText.Text + " " +
+        AutomationProperties.SetHelpText(LocalAiCard, detail + " " + LocalAiActionText.Text + " " +
             S("LocalExplanation"));
     }
 
@@ -1213,12 +1227,21 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private void Preference_Changed(object sender, RoutedEventArgs e) => Render();
     private static string S(string key) => SetupLocalization.GetString("Onboarding_AiSetup_" + key);
     private static Visibility Visible(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
-    private void ShowError(string key)
+    private void ShowError(string key, string? detail = null)
     {
-        if (BackdropLocked) _providerError = S(key);
+        var message = S(key);
+        detail ??= key is "VerificationFailed" or "Rejected"
+            ? Client?.VerificationFailure ?? Client?.Wizard?.Error : null;
+        if (!string.IsNullOrWhiteSpace(detail))
+        {
+            // Rejected is rendered again when the request settles. Retain the exact verification cause.
+            var sanitized = SetupLogger.Sanitize(detail);
+            message += " " + sanitized[..Math.Min(sanitized.Length, 2048)];
+        }
+        if (BackdropLocked) _providerError = message;
         else
         {
-            ErrorBar.Message = S(key);
+            ErrorBar.Message = message;
             ErrorBar.IsOpen = true;
         }
         Render();
@@ -1235,12 +1258,12 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 if (_controller is not null && _localObservation is not null)
                     AsyncEventHandlerGuard.Run(_localObservation.RefreshAsync, onError: ReportFailure);
             }
-            ShowError(error is LocalAiSelectionRejectedException ? "LocalChanged" :
+            ShowError(error is LocalAiRepairRequiresStopException ? "LocalRepairRequiresStop" :
+                error is LocalAiSelectionRejectedException ? "LocalChanged" :
                 error is UnauthorizedAccessException ? "AdminRequired" :
                 Client?.Phase == GatewayAiSetupPhase.Prepared ? "PreparedChanged" :
-                _localExpectedModel is not null || Client?.RequiresReconciliation == true ? "Uncertain" : "Failed");
-            if (error is LocalAiSelectionRejectedException)
-                ErrorBar.Message += " " + error.Message;
+                _localExpectedModel is not null || Client?.RequiresReconciliation == true ? "Uncertain" : "Failed",
+                error.Message);
             Render();
         }
     }

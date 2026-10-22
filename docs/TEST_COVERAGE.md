@@ -1,15 +1,19 @@
 # Test Coverage Summary
 
-**Last audited**: 2026-08-06<br>
+**Historical count snapshot**: 2026-08-06 (source revision not recorded)<br>
 **Framework**: xUnit / .NET 10.0<br>
-**Required validation status**: passing (`.\build.ps1`, Shared tests, Tray tests)
+**Snapshot validation status**: passing (`.\build.ps1`, Shared tests, Tray tests)
+
+These dated totals are not current-head validation. Use fresh result reports
+for completion claims. The maintained sections below describe suite ownership,
+selection, and proof boundaries; they do not imply that every lane ran.
 
 ## Required validation suites
 
 These are the suites every agent must run after code changes, as documented in
 `AGENTS.md`.
 
-| Suite | Latest runtime result |
+| Suite | Historical runtime result |
 |---|---:|
 | `OpenClaw.Shared.Tests` | 3,444 total: 3,412 passed, 32 skipped |
 | `OpenClaw.Tray.Tests` | 2,165 total: 2,165 passed, 0 skipped |
@@ -19,7 +23,7 @@ method counts because some `[Theory]` tests expand into multiple cases.
 
 ## Test project inventory
 
-| Project | Primary scope | Test methods |
+| Project | Primary scope | Test methods at snapshot |
 |---|---|---:|
 | `OpenClaw.Connection.Tests` | Gateway registry, credential resolution, connection manager/state machine, setup codes, pairing, diagnostics | 452 |
 | `OpenClaw.Shared.Tests` | Shared models, gateway client, capabilities, MCP, exec approval, A2UI security, URL handling, notification categorization | 2,373 |
@@ -44,21 +48,31 @@ The [Gateway fixture harness](GATEWAY_FIXTURE_TESTING.md) adds a middle tier:
 the real desktop app and production Gateway/chat stack consume deterministic
 synthetic Gateway responses, with no AI or real WSL Gateway. Protocol tests
 run in Shared; profile/preflight and concurrent-app tests live in Tray
-Integration; native picker/240-message/late-history proofs live in Tray UI.
+Integration; native sidebar/240-message/late-history proofs live in Tray UI.
 Use `.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` for the
 opt-in real-app lane. It rejects skipped or zero-test runs and preserves
 per-run artifacts. Existing MCP-only integration defaults remain unchanged.
 
 ### OpenClaw.Shared.Tests
 
+- **Command output-drain timing** - The unsupported-Windows runner fixture gates launcher release, then requires completion within three seconds of root exit while a descendant retains stdout, stderr, or both. Ten repetitions per case check short output and PID/start-time-bound child cleanup. The nonparallel `MxcOwnership` collection isolates these wall-clock budgets from unrelated tests. Native SDK finalization has separate managed ownership tests and opt-in runtime proof.
+- **Fixture process identity** - MXC pipe-fixture metadata, cleanup ownership checks, and the opt-in native MXC descendant-identity check query the observed full executable image through a retained process handle, not the loader's nullable `MainModule` or a requested launch path. `ProcessImagePathTests` checks a real, never-resumed Windows process with no initialized loader view, a different command-line image name, caller-handle lifetime, and explicit native query failure. This deterministically covers unavailable loader metadata; it does not reproduce the timing of a normally scheduled child or prove native MXC containment.
 - **Model and display formatting** - activity glyphs, app version display, session labels, gateway usage/node display, channel status, and rich text helpers.
-- **Gateway and WebSocket behavior** - gateway client parsing, session keys, WebSocket base handling, URL normalization, local gateway classification, and token sanitization.
+- **Gateway and WebSocket behavior** - gateway client parsing, session keys, WebSocket base handling, URL normalization, local gateway classification, and token sanitization. The signing-identity regression covers native and managed loopback WebSockets with a bounded client-initiated disconnect and a queued health request. The fixture drains application frames already in flight until the client's close frame, replies, and closes its transport under one deadline rather than relying on the client's EOF fallback timer. A separate fixture regression checks the close frame and actual TCP EOF on both transports, including fragmented text and binary data queued before close.
 - **Capabilities and MCP** - app/canvas/screen/camera/system capabilities, MCP auth token reset, MCP HTTP server, MCP tool bridge, MXC availability, MXC policy building, and command runners.
 - **Exec approval** - legacy policy coverage plus V2 evaluator, input validation, normalization, prompt adapter, routing, coordinator, store, environment sanitizing, and shell-wrapper parsing.
 - **A2UI and web bridge** - A2UI capability security, asset hash pinning, web bridge message handling, and channel payload/status tests.
 - **Security and localization-adjacent helpers** - HTTP URL validation/risk evaluation, device identity, identity migration, notification categorization, speech language normalization, and non-fatal action handling.
 
+The CI Shared-test step uses the existing five-minute hang watchdog and a
+15-minute outer step limit. A hang fails the run and preserves the interrupted
+test sequence without collecting a memory dump; it is not retried or skipped.
+
 ### OpenClaw.Tray.Tests
+
+The composer lifetime-disposal lock regression uses dedicated workers so its
+two-second reentrancy assertion measures controller lock ownership rather than
+shared thread-pool scheduling latency.
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
@@ -93,6 +107,7 @@ Unset the opt-in after the run.
 
 - **OpenClaw.Connection.Tests** keeps connection architecture tests separate from tray UI concerns.
 - **OpenClaw.Tray.UITests** covers A2UI/native WinUI rendering behavior that is awkward to validate through pure unit tests.
+  Markdown renderer record-shape tests also belong to `UICollection`: their WinRT-backed types must not initialize concurrently with the shared Windows App SDK bootstrap. A smoke-test contract guards both Markdown test classes' collection membership.
 - Onboarding AI card-action tests wait up to 10 seconds for the target card to be loaded, enabled, click-enabled, and attached to the page's non-null XamlRoot. Readiness timeouts report each condition; regression tests hold each readiness flag false before releasing it and verify that a permanently blocked card never invokes its action. A dispatcher yield alone is not a control-loaded guarantee.
 - **OpenClaw.WinNode.Cli.Tests** covers the standalone Windows node CLI contract.
 - **OpenClaw.SetupEngine.Tests** covers gateway setup and local WSL installation policy.
@@ -113,6 +128,8 @@ required closeout lane for code changes.
 | Fixture-backed app smoke | `.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` | Chat session switching/history/scrolling and populated navigation changes; run both Debug and production-shaped Release for runtime regressions |
 | Proof-pool inventory | `.\scripts\validate-proof-pools.ps1`, `.\scripts\test-proof-pool-validator.ps1`, and `.\scripts\test-validate-docs-proof-pool-flow.ps1` | Every inventory or proof scheduling change; the documentation gate runs core schema and parent-flow checks, while CI runs the full malformed-contract matrix |
 | Agent skills | `.\scripts\validate-agent-skills.ps1` and `.\scripts\test-agent-skills-validator.ps1` | Changes under `.agents\skills`; validates skill metadata, agent-facing prose, and local links |
+| Result and evidence contracts | `.\scripts\test-proof-evidence.ps1` | Changes to report admission, generic proof, CI test wrappers, evidence summaries, or their source/artifact correspondence |
+| Agent readiness | `.\scripts\test-agent-readiness.ps1` | Changes to read-only host and optional agent-tool readiness reporting |
 | GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request and push to `main`; explicit conservative impact outputs select the required test, E2E, and release-publish lanes |
 | Accessibility scan | `.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'winui-accessibility' -RuntimeIdentifier win-x64` | UI changes and CI quality gate; runs real-process Axe.Windows scans; see `docs\ACCESSIBILITY.md` |
 | Local E2E | `OPENCLAW_RUN_E2E=1` with `OpenClaw.E2ETests` | Gateway setup/connect, recovery, or pairing changes that need real WSL Gateway coverage |
@@ -122,6 +139,8 @@ required closeout lane for code changes.
 | Migration preservation source checks | `dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj --filter FullyQualifiedName~InnoMigrationContractTests` | Protects completion/checker-failure exits and deletion authorization, including unsafe source mutations; not a substitute for real installer proof |
 | Migration record and cleanup scripts | `dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj --filter FullyQualifiedName~MigrationRecordTests` | Exercises real Windows PowerShell receipt checks and cleanup lock contention. The subprocess deadline defaults to 30 seconds so a genuine regression fails fast; the cleanup lock-contention theory overrides it to 120 seconds because its failure path writes log and result files that a loaded runner can stall on. Timeout handling attempts process-tree termination before fixture teardown and reports output, script logs, the observed process state, and cleanup failures without replacing the original timeout |
 | Migration startup admission | `dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj --filter "FullyQualifiedName~InnoInstallationDetectorTests\|FullyQualifiedName~StoreMigrationStartupCoordinatorTests\|FullyQualifiedName~MigrationStartupRecordReaderTests\|FullyQualifiedName~MigrationVersionPolicyTests"` | Read-only exact Inno discovery, version/architecture admission, pending-record precedence and preservation; pair with packaged preview guidance proof, not a claim of completed migration |
+| Store migration helper fixtures | `.\scripts\test-store-migration-test-script.ps1` | Actual helper execution with in-memory registry/version adapters, blocked process commands and test-owned files. Covers complete version compatibility before mutation, native draft/atomic-sibling preservation, explicit unknown-file quarantine, exclusive non-tray lock contention, lock/receipt preservation, opt-in reset, path-specific reparse refusal, relabel/revert drift, WhatIf and failure paths. Runs in Windows fast-validation CI; not installer, signature, Store UI or gateway-preservation proof |
+| Disposable Inno to Store migration | `.\scripts\Enable-StoreMigrationTest.ps1` with [`STORE_MIGRATION_TESTING.md`](./STORE_MIGRATION_TESTING.md) | Manual signed-artifact, installer and visible handoff proof on a disposable machine. Select eligible source/target metadata and matching architecture; alpha ProductVersion cannot be fixed by registry relabeling. Helper preflight is not completed migration proof. Record exact artifacts, actual outcomes and preservation evidence, or report the missing artifact/runtime prerequisite as blocked |
 | Local AI model fixture | `dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj --filter "FullyQualifiedName~SparseFixtureFileTests\|FullyQualifiedName~LocalAiPortLifecycleTests"` | Test-only sparse files preserve the catalog-sized logical length and readable zeros without model downloads. Checks cover Windows sparse allocation, independent mutation, overwrite refusal, and cleanup. Windows requires a sparse-capable filesystem and fails explicitly if marking the fixture sparse fails; Unix uses the holes created by `SetLength`. Production receipt, size, and hash checks remain unchanged |
 | Legacy installer runtime ordering | `.\tests\PackagingTests\Test-InnoUninstallOrdering.ps1` | Deprecated. It targets the old `[UninstallRun]` layout, while current cleanup is owned by `[Code]`; do not use it as current installer runtime proof |
 
@@ -130,7 +149,62 @@ Capacity-dependent Windows validation is named in
 they need. A declaration does not claim that the pool ran, and unavailable
 proof must remain reported as blocked.
 
+### Explain the validation plan
+
+Use the existing classifier in read-only planning mode:
+
+```powershell
+.\scripts\Get-CiChangeClassification.ps1 -EventName pull_request `
+  -ChangedPaths 'src\OpenClaw.Cli\Program.cs' -Human
+.\scripts\Get-CiChangeClassification.ps1 -EventName pull_request `
+  -ChangedPaths 'README.md' -Explain
+```
+
+For actual branch comparison, pass known `-BaseSha` and `-HeadSha` values.
+`-ChangedPaths` is an explicit scenario, not discovery of all current edits.
+Include staged, unstaged, and relevant untracked changes when planning an
+uncommitted task. Invalid revisions, empty/unknown inputs, and infrastructure
+changes remain conservative.
+
+The default JSON stays compatible with CI. `-Explain` adds schema-versioned
+path reasons, hosted lanes, mandatory local closeout, and inventory proof
+candidates. `-Human` renders the same decisions for a reader. Code changes
+still require full build, Shared, and Tray even when hosted lanes are narrower.
+The shipped `winnode` reference keeps its CLI/core contract treatment.
+Hosted lanes describe impact-selected CI Gate jobs, including release metadata
+and MSIX jobs where selected. Event/authorization-conditioned reservation and
+publication jobs remain governed by the workflow, not a path-only prediction.
+
+Non-documentation plans list the inventory pools for applicability review.
+They are **not automatically required or scheduled**: use each pool's
+`requiredWhen`, prerequisites, and `doesNotProve` against the behavior change.
+The planner does not run tests, authenticate, launch an app, acquire a host,
+or dispatch CI. The [proof skill](../.agents/skills/openclaw-proof-validation/SKILL.md)
+owns the evidence checklist.
+
 ### CI impact fast paths
+
+The setup/connect, revocation recovery and network recovery E2E jobs each run once
+against npm Latest, matching normal WSL setup.
+`scripts\Resolve-CiGateway.ps1` resolves Latest once in change-classification and
+supplies the exact version to the existing candidate-version setup path, so setup
+and assertions use the same version even if the tag moves during a run. No npm
+resolution failure falls back to the Store or another channel. Each job's artifact
+includes `gateway-release.json` with the npm selector, exact version, integrity and
+tarball URL. Resolution runs only when E2E is selected, without downloading an MSIX
+or consulting native packaging releases. Every selected E2E job contributes to the
+existing CI Gate.
+
+These are real WSL Gateway-to-Windows-node lanes, not native MSIX runtime proof.
+There is no duplicate Packaged WSL lane and no native Latest/Packaged runtime matrix.
+Native unit/helper tests and upstream package build/install checks are not substitutes
+for live isolated-session startup, pairing and recovery on a capable Windows client.
+Native developer builds use the verified npm archive for Latest, or released app
+bytes and the release packaging commit for Packaged. `scripts\test-gateway-npm-release.ps1` covers
+channel selection, source/Store overrides, exact pins, archive integrity and
+provenance without network access or changing installed packages.
+`scripts\test-gateway-packaged-release.ps1` covers release/tag resolution, embedded
+payload identity, asset digest, extraction safety and inventory-verified cache reuse.
 
 The `change-classification` job emits explicit booleans for `core_tests`,
 `tray_tests`, `ui_tests`, `setup_e2e`, `revocation_e2e`, `network_e2e`,
@@ -221,6 +295,13 @@ package test. Running the packaging repository's pinned npm version in WSL does
 not prove Microsoft Store acquisition, package identity, MXC session setup, or
 the packaged Gateway lifecycle.
 
+Both E2E tray fixtures read `gateways.json` through `GatewayRegistryFile`, which
+joins the production `PersistenceFileLease` before opening the file. This keeps
+fixture reads out of an in-flight atomic replacement without retrying IO or
+hiding malformed JSON. The fixture-free `SetupAndConnectTestsRegistryReads`
+regressions cover writer/reader ordering, concurrent saves and error propagation;
+they do not replace the real WSL Gateway setup/connect proofs.
+
 Actual package E2E needs a disposable Windows account/host with a successful
 MXC session capability probe and a verified installable MSIX from
 [`openclaw-windows-packaging`](https://github.com/openclaw/openclaw-windows-packaging).
@@ -304,6 +385,52 @@ the serialized proof matrix from product paths. Estimated full-infrastructure
 runner minutes remain below the 30% rejection threshold, while ordinary code
 latency falls to the longest required lane instead of the sum of every lane and
 release publish.
+
+## Writing a regression test
+
+Use the [test-audit skill](../.agents/skills/test-audit/SKILL.md) when adding or
+reviewing tests. Start with the observable contract, its production owner, a
+credible regression, and the risk not covered by existing tests.
+
+- Assert independent expected values, not values computed by the same helper.
+  A mock should control external input, not supply the result being asserted.
+- For a bug fix, show the test failing for the intended pre-fix defect and
+  passing after repair, or explicitly report unavailable baseline proof.
+  A fixture setup failure is not the negative control.
+- Prefer one faithful owner regression. Add another layer only for a distinct
+  transport, persistence, permission, lifecycle, or rendering risk.
+- Reuse `TempDirectory`, `EnvironmentScope`, `CliHarness`, and the
+  [Gateway fixture](GATEWAY_FIXTURE_TESTING.md) rather than introducing duplicate
+  state or process hosts. Bind test listeners to loopback.
+- Keep legitimate independent static contracts. WinUI source-shape guards
+  protect concrete prohibited patterns and require the
+  [ledger's retirement condition](ARCHITECTURE.md#how-to-use-this-document).
+  The shipped winnode-to-capability registry check is not disposable.
+- A snapshot is not a rendering assertion. The fixture's session/history
+  tests observe the selected mounted controls and visible text; they still
+  do not prove live Gateway pairing, provider behavior, installer state, or MXC.
+- Preserve serial native-input/desktop constraints. Measure cost when making
+  a performance claim; do not hide a race with sleeps, blind retries, weaker
+  assertions, or blanket skips.
+
+### Accepting result reports
+
+`Invoke-CiTest.ps1` and `run-proof-tests.ps1` use invocation-specific result
+directories. Their expected TRX must be fresh, parseable, internally consistent,
+and contain actual executed tests; successful process exit alone is insufficient.
+File modification times and embedded TRX invocation times permit one second
+of clock granularity tolerance. Reports older than that remain stale; each run
+still uses a fresh invocation directory and validates the embedded timestamps.
+Generic custom proof requires every selected result to pass. Ordinary CI may
+report supported skipped cases alongside executed passing tests, but all-skipped
+or zero-execution runs fail. Existing hosted MXC skip policy is not native MXC
+proof.
+Skipped counts come from actual result rows and must match total minus executed.
+VSTest may leave its aggregate `notExecuted` counter at zero even when skipped
+rows are present; a contradictory nonzero aggregate still fails validation.
+
+See [local execution evidence](PROOF_POOLS.md#validate-local-execution-evidence)
+for inventory-bound summaries and their assurance limits.
 
 ## Running tests
 

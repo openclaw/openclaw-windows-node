@@ -118,6 +118,16 @@ Source: "src\OpenClaw.Connection\Migration\MigrationRecordCodec.cs"; DestDir: "{
 Source: "{#vcRedist}"; DestDir: "{tmp}"; DestName: "vc_redist.exe"; Flags: deleteafterinstall; AfterInstall: InstallVCRuntime
 #endif
 
+[InstallDelete]
+; Exact obsolete binaries shipped by the retired npm bridge. Do not remove sibling DLLs or directories.
+Type: files; Name: "{app}\tools\mxc\x64\wxc-exec.exe"; Check: LegacyMxcPathIsOrdinary(ExpandConstant('{app}\tools\mxc\x64\wxc-exec.exe'))
+Type: files; Name: "{app}\tools\mxc\x64\wslcsdk.dll"; Check: LegacyMxcPathIsOrdinary(ExpandConstant('{app}\tools\mxc\x64\wslcsdk.dll'))
+Type: files; Name: "{app}\tools\mxc\arm64\wxc-exec.exe"; Check: LegacyMxcPathIsOrdinary(ExpandConstant('{app}\tools\mxc\arm64\wxc-exec.exe'))
+Type: files; Name: "{app}\tools\mxc\arm64\wslcsdk.dll"; Check: LegacyMxcPathIsOrdinary(ExpandConstant('{app}\tools\mxc\arm64\wslcsdk.dll'))
+Type: dirifempty; Name: "{app}\tools\mxc\x64"; Check: LegacyMxcPathIsOrdinary(ExpandConstant('{app}\tools\mxc\x64'))
+Type: dirifempty; Name: "{app}\tools\mxc\arm64"; Check: LegacyMxcPathIsOrdinary(ExpandConstant('{app}\tools\mxc\arm64'))
+Type: dirifempty; Name: "{app}\tools\mxc"; Check: LegacyMxcPathIsOrdinary(ExpandConstant('{app}\tools\mxc'))
+
 [Registry]
 Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}"; ValueType: string; ValueName: ""; ValueData: "URL:OpenClaw Protocol"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
@@ -209,6 +219,13 @@ begin
     Path := Parent;
   end;
   Result := True;
+end;
+
+function LegacyMxcPathIsOrdinary(Path: String): Boolean;
+begin
+  Result := MigrationPathIsOrdinary(Path);
+  if not Result then
+    Log('Skipping legacy MXC cleanup: path is not ordinary or could not be checked.');
 end;
 
 function InitializeUninstall: Boolean;
