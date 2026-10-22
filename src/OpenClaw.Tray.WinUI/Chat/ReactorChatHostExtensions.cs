@@ -94,7 +94,8 @@ public static class ReactorChatHostExtensions
         Func<string, Task>? onReadAloud = null,
         Action? onStopSpeaking = null,
         Action<string>? onOpenCheckpoints = null,
-        bool initialThreadIsExplicitSelection = true)
+        bool initialThreadIsExplicitSelection = true,
+        ChatConversationPanelState? panels = null)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(target);
@@ -119,12 +120,13 @@ public static class ReactorChatHostExtensions
             onReadAloud,
             onStopSpeaking,
             onOpenCheckpoints,
-            InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection);
+            InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection,
+            Panels: panels);
         var host = new ReactorHostControl();
         host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));
         target.Child = host;
         VisualTestCapture.ScheduleSignalCapture(target);
-        return new MountedReactorChat(target, host, callbacks, composerSession);
+        return new MountedReactorChat(target, host, callbacks, composerSession, panels);
     }
 }
 
@@ -138,7 +140,8 @@ public sealed class MountedReactorChat(
     Border target,
     ReactorHostControl host,
     ReactorChatHostCallbacks callbacks,
-    ChatComposerSession session) : IDisposable
+    ChatComposerSession session,
+    ChatConversationPanelState? panels = null) : IDisposable
 {
     private int _disposed;
 
@@ -147,6 +150,9 @@ public sealed class MountedReactorChat(
     internal void InvalidatePendingSessionNavigation() => session.Controller.InvalidatePendingSessionNavigation();
 
     internal void CancelVoiceRecording() => session.Controller.CancelVoiceRecording();
+    internal void SuspendPanels() => panels?.Suspend();
+    internal void ResumePanels() => panels?.Resume();
+    internal void ExpectPanelSelection(string sessionKey) => panels?.ExpectSelection(sessionKey);
 
     public void AttachFiles(IReadOnlyList<ChatAttachment> attachments) =>
         callbacks.AttachFiles?.Invoke(attachments);
@@ -176,6 +182,7 @@ public sealed class MountedReactorChat(
             return;
 
         session.Dispose();
+        panels?.Dispose();
         callbacks.Clear();
         host.Dispose();
         if (ReferenceEquals(target.Child, host))

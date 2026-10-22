@@ -92,7 +92,7 @@ public sealed class ChatTimelinePresentationTests
             "ReactorItemsViewScrollController.cs"));
 
         Assert.Contains("itemsView.Loaded += OnLoaded", binding);
-        Assert.Contains("itemsView.LayoutUpdated += OnLayoutUpdated", binding);
+        Assert.DoesNotContain("LayoutUpdated", binding);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", binding);
         Assert.Contains("itemsView.StartBringItemIntoView(", binding);
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
@@ -107,12 +107,22 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("TailNavigationPolicy.CanExecute(", binding);
         Assert.Contains("itemsView.Unloaded += OnUnloaded", binding);
         Assert.Contains("itemsView.Loaded -= OnLoaded", binding);
-        Assert.Contains("itemsView.LayoutUpdated -= OnLayoutUpdated", binding);
+        Assert.Contains("scrollView.Loaded -= OnScrollViewLoaded", binding);
         Assert.DoesNotContain("ChangeView", binding);
         Assert.DoesNotContain("UpdateLayout", binding);
         Assert.DoesNotContain("TailSettle", binding);
         Assert.DoesNotContain("ScrollTo(", binding);
-        Assert.DoesNotContain("ScrollCompleted", binding);
+        var completionStart = binding.IndexOf("private void OnScrollCompleted(", StringComparison.Ordinal);
+        var traceStart = binding.IndexOf("private void TraceState(", completionStart, StringComparison.Ordinal);
+        var completion = binding[completionStart..traceStart];
+        Assert.Contains("Logger.Trace(", completion);
+        Assert.DoesNotContain("StartTailRequest", completion);
+        Assert.DoesNotContain("StartBringItemIntoView", completion);
+        Assert.DoesNotContain("TryPositionInitialTail", completion);
+        var extentStart = binding.IndexOf("private void OnExtentChanged(", StringComparison.Ordinal);
+        var traceHandlers = binding[extentStart..traceStart];
+        Assert.DoesNotMatch(@"\b(?:Start\w*|ChangeView|ScrollTo|TryPosition\w*)\s*\(", traceHandlers);
+        Assert.DoesNotMatch(@"args\.Cancel\s*=", traceHandlers);
         Assert.DoesNotContain("DispatcherTimer", binding);
         Assert.DoesNotContain("TextLength != current.TextLength", binding);
         Assert.DoesNotContain("ReactorStreamingTailState", binding);
@@ -124,6 +134,28 @@ public sealed class ChatTimelinePresentationTests
         var viewChanged = binding[viewChangedStart..tailRequestStart];
         Assert.DoesNotContain("VerticalAnchorRatio", viewChanged);
         Assert.DoesNotContain("StartBringItemIntoView", viewChanged);
+    }
+
+    [Fact]
+    public void ReactorTimeline_InitialTailCapturesCurrentIndexInsideLoadedDispatch()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        var start = binding.IndexOf("private void TryPositionInitialTail()", StringComparison.Ordinal);
+        var end = binding.IndexOf("private void OnScrollViewLoaded", start, StringComparison.Ordinal);
+        var initial = binding[start..end];
+        var dispatch = initial.IndexOf("TryEnqueue(() =>", StringComparison.Ordinal);
+        var capture = initial.IndexOf("TailNavigationPolicy.TryCapture(", StringComparison.Ordinal);
+        Assert.True(dispatch >= 0 && capture > dispatch);
+        Assert.Contains("_disposed || !_valid || version != _version", initial[..capture]);
+        Assert.Contains("itemsView.ScrollView is not { IsLoaded: true }", initial[..capture]);
+        Assert.Contains("!_initialTailPending", initial);
+        Assert.Contains("_initialTailPending = false", initial);
+        Assert.Contains("if (_initialDispatchVersion == version)", initial);
+        Assert.Contains("_initialDispatchVersion = null", initial);
+        Assert.DoesNotContain("AwaitLayout", binding);
+        Assert.DoesNotContain("LayoutUpdated", binding);
     }
 
     [Fact]

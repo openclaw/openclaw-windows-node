@@ -3058,6 +3058,12 @@ Utilisez l'une de ces options :
   <data name="Chat_Tool_InputSection" xml:space="preserve">
     <value>Entrée d'outil</value>
   </data>
+  <data name="Chat_Tool_OpenDetails" xml:space="preserve">
+    <value>Ouvrir les détails</value>
+  </data>
+  <data name="Chat_Tool_OpenDetailsPositionFormat" xml:space="preserve">
+    <value>{0}. Outil {1}</value>
+  </data>
   <data name="Chat_Tool_FooterLabel" xml:space="preserve">
     <value>Outil</value>
   </data>
@@ -8077,4 +8083,15 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
     <value>Cette session n'est plus vide, donc le choix d'emplacement en attente a été annulé. Vérifiez la session et envoyez à nouveau pour continuer à son emplacement actuel.</value>
   </data>
   <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>Obtenir de l’assistance</value></data>
+  <data name="Chat_Panel_Close" xml:space="preserve"><value>Fermer le panneau</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Afficher le panneau de conversation</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionner le panneau. Utilisez Gauche et Droite pour ajuster la largeur.</value></data>
+  <data name="Chat_Panel_WidthFormat" xml:space="preserve"><value>Largeur de {0} pixels</value></data>
+  <data name="Chat_Panel_Waiting" xml:space="preserve"><value>En attente de connexion de cette conversation. Votre sélection de panneau est conservée.</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Ce contenu n'est plus disponible dans cette conversation.</value></data>
+  <data name="Chat_Panel_ToolUnavailable" xml:space="preserve"><value>Ces détails ne sont plus à jour. Rouvrez les détails depuis l'outil actuel.</value></data>
+  <data name="Chat_Panel_AccountLoading" xml:space="preserve"><value>Vérification du compte de l'opérateur pour cette conversation.</value></data>
+  <data name="Chat_Panel_AccountUnavailable" xml:space="preserve"><value>Cette Gateway ne peut pas vérifier le compte de l'opérateur. Les panneaux de conversation sont indisponibles.</value></data>
+  <data name="Chat_Panel_AccountFailed" xml:space="preserve"><value>Le compte de l'opérateur n'a pas pu être vérifié. Reconnectez-vous pour réessayer.</value></data>
+  <data name="Chat_Panel_AccountChanged" xml:space="preserve"><value>Le compte de l'opérateur a changé. Reconnectez-vous avant d'ouvrir les panneaux de conversation.</value></data>
 </root>

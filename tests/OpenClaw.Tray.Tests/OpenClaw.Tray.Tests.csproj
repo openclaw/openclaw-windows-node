@@ -25,6 +25,8 @@
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\..\src\OpenClaw.Connection\OpenClaw.Connection.csproj" />
     <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
+    <ProjectReference Include="..\OpenClaw.Tray.ProfileProbe\OpenClaw.Tray.ProfileProbe.csproj"
+                      ReferenceOutputAssembly="false" OutputItemType="ProfileProbeAssembly" />
     <!-- Compile only the model-layer files directly so the tests can remain
          pure net10.0 while the tray app owns the native WinUI surface. -->
     <Compile Include="..\..\src\OpenClaw.Chat\ChatModels.cs" Link="Chat\ChatModels.cs" />
@@ -92,6 +94,10 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerViewModel.cs" Link="Chat\ChatComposerViewModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerController.cs" Link="Chat\ChatComposerController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatPlacementController.cs" Link="Chat\ChatPlacementController.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatConversationPanelState.cs" Link="Chat\ChatConversationPanelState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatConversationPanelBinding.cs" Link="Chat\ChatConversationPanelBinding.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatConversationAccountIdentity.cs" Link="Chat\ChatConversationAccountIdentity.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatConversationToolDetails.cs" Link="Chat\ChatConversationToolDetails.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerSession.cs" Link="Chat\ChatComposerSession.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatComposerFactory.cs" Link="Chat\IChatComposerFactory.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerFactory.cs" Link="Chat\ChatComposerFactory.cs" />
@@ -278,5 +284,9 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceContext.cs" Link="Presentation\AppServiceContext.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceRegistration.cs" Link="Presentation\AppServiceRegistration.cs" />
   </ItemGroup>
+
+  <Target Name="CopyProfileIsolationProbe" AfterTargets="Build">
+    <Copy SourceFiles="@(ProfileProbeAssembly)" DestinationFolder="$(OutDir)" />
+  </Target>
 
 </Project>

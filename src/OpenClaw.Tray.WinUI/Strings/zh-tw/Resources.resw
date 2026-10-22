@@ -3058,6 +3058,12 @@
   <data name="Chat_Tool_InputSection" xml:space="preserve">
     <value>工具輸入</value>
   </data>
+  <data name="Chat_Tool_OpenDetails" xml:space="preserve">
+    <value>開啟詳細資料</value>
+  </data>
+  <data name="Chat_Tool_OpenDetailsPositionFormat" xml:space="preserve">
+    <value>{0}。工具 {1}</value>
+  </data>
   <data name="Chat_Tool_FooterLabel" xml:space="preserve">
     <value>工具</value>
   </data>
@@ -8077,4 +8083,15 @@
     <value>此工作階段已不再為空，因此已取消待定的位置選擇。請檢查工作階段並重新傳送，以在目前位置繼續。</value>
   </data>
   <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>取得支援</value></data>
+  <data name="Chat_Panel_Close" xml:space="preserve"><value>關閉面板</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>顯示對話面板</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>調整面板大小。使用向左鍵和向右鍵調整寬度。</value></data>
+  <data name="Chat_Panel_WidthFormat" xml:space="preserve"><value>寬度為 {0} 像素</value></data>
+  <data name="Chat_Panel_Waiting" xml:space="preserve"><value>正在等待此對話連線。已保留您的面板選擇。</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>此內容在目前的對話中已無法使用。</value></data>
+  <data name="Chat_Panel_ToolUnavailable" xml:space="preserve"><value>這些詳細資訊已不是最新狀態。請從目前的工具重新開啟詳細資訊。</value></data>
+  <data name="Chat_Panel_AccountLoading" xml:space="preserve"><value>正在驗證此對話的操作員帳戶。</value></data>
+  <data name="Chat_Panel_AccountUnavailable" xml:space="preserve"><value>此 Gateway 無法驗證操作員帳戶。對話面板無法使用。</value></data>
+  <data name="Chat_Panel_AccountFailed" xml:space="preserve"><value>無法驗證操作員帳戶。請重新連線以重試。</value></data>
+  <data name="Chat_Panel_AccountChanged" xml:space="preserve"><value>操作員帳戶已變更。請重新連線後再開啟對話面板。</value></data>
 </root>

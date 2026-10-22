@@ -3059,6 +3059,12 @@ Gebruik een van deze opties:
   <data name="Chat_Tool_InputSection" xml:space="preserve">
     <value>Hulpmiddelinvoer</value>
   </data>
+  <data name="Chat_Tool_OpenDetails" xml:space="preserve">
+    <value>Details openen</value>
+  </data>
+  <data name="Chat_Tool_OpenDetailsPositionFormat" xml:space="preserve">
+    <value>{0}. Hulpmiddel {1}</value>
+  </data>
   <data name="Chat_Tool_FooterLabel" xml:space="preserve">
     <value>Hulpmiddel</value>
   </data>
@@ -8078,4 +8084,15 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Deze sessie is niet meer leeg, dus de wachtende locatiekeuze is geannuleerd. Controleer de sessie en verzend opnieuw om op de huidige locatie door te gaan.</value>
   </data>
   <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>Ondersteuning krijgen</value></data>
+  <data name="Chat_Panel_Close" xml:space="preserve"><value>Paneel sluiten</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Gesprekspaneel tonen</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Paneelgrootte wijzigen. Gebruik Links en Rechts om de breedte aan te passen.</value></data>
+  <data name="Chat_Panel_WidthFormat" xml:space="preserve"><value>{0} pixels breed</value></data>
+  <data name="Chat_Panel_Waiting" xml:space="preserve"><value>Wachten tot dit gesprek verbinding maakt. Uw paneelselectie blijft behouden.</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Deze inhoud is niet meer beschikbaar in dit gesprek.</value></data>
+  <data name="Chat_Panel_ToolUnavailable" xml:space="preserve"><value>Deze details zijn niet meer actueel. Open de details opnieuw vanuit de huidige tool.</value></data>
+  <data name="Chat_Panel_AccountLoading" xml:space="preserve"><value>Het operatoraccount voor dit gesprek wordt gecontroleerd.</value></data>
+  <data name="Chat_Panel_AccountUnavailable" xml:space="preserve"><value>Deze Gateway kan het operatoraccount niet verifiëren. Gesprekspanelen zijn niet beschikbaar.</value></data>
+  <data name="Chat_Panel_AccountFailed" xml:space="preserve"><value>Het operatoraccount kon niet worden geverifieerd. Maak opnieuw verbinding om het nogmaals te proberen.</value></data>
+  <data name="Chat_Panel_AccountChanged" xml:space="preserve"><value>Het operatoraccount is gewijzigd. Maak opnieuw verbinding voordat u gesprekspanelen opent.</value></data>
 </root>

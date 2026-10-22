@@ -23,45 +23,39 @@ internal static class ToolCallCardRenderer
 
     private static readonly ConditionalWeakTable<Expander, ActivityExpanderBinding>
         s_activityBindings = new();
+    private static readonly ConditionalWeakTable<ResourceDictionary, CaptionTypography>
+        s_captionTypography = new();
 
     public static Element BuildStandalone(
         ChatTimelinePresentationContext props,
         ChatTimelineItem entry,
-        bool isNested = false)
+        bool isNested = false,
+        int? activityPosition = null)
     {
-        var details = new List<Element>();
-        var displayArgs = entry.ToolArgs is { Count: > 0 }
-            ? FormatToolDisplayArgs(entry.ToolArgs)
-            : string.Empty;
-        if (!string.IsNullOrWhiteSpace(displayArgs))
+        var details = BuildDetailSections(entry);
+        if (!string.IsNullOrWhiteSpace(props.SessionId)
+            && props.OnOpenToolDetails is { } openDetails)
         {
-            details.Add(BuildDetailSection(
-                LocalizedOrDefault("Chat_Tool_InputSection", "Tool input"),
-                displayArgs));
-        }
-        else if (!string.IsNullOrWhiteSpace(entry.Text))
-        {
-            details.Add(BuildDetailSection(
-                LocalizedOrDefault("Chat_Tool_InputSection", "Tool input"),
-                entry.Text));
-        }
-
-        if (!string.IsNullOrWhiteSpace(entry.ToolOutput))
-        {
-            details.Add(BuildDetailSection(
-                LocalizedOrDefault(
-                    entry.ToolResult == ChatToolCallStatus.Error
-                        ? "Chat_Tool_ErrorLabel"
-                        : "Chat_Tool_OutputLabel",
-                    entry.ToolResult == ChatToolCallStatus.Error
-                        ? "Tool error"
-                        : "Tool output"),
-                entry.ToolOutput));
+            var label = LocalizedOrDefault("Chat_Tool_OpenDetails", "Open details");
+            var request = new ChatToolDetailRequest(
+                props.SessionId, props.TimelineGeneration, entry.Id, entry.ToolRunId,
+                props.HistoryRevision, entry.ToolCallId, entry.ToolName);
+            var accessibleName = $"{label}: {DisplayToolName(entry)}. {StatusLabel(entry.ToolResult)}";
+            if (activityPosition is { } position)
+            {
+                accessibleName = string.Format(
+                    LocalizedOrDefault("Chat_Tool_OpenDetailsPositionFormat", "{0}. Tool {1}"),
+                    accessibleName, position);
+            }
+            details.Add(Button(label, () => openDetails(request))
+                .MinHeight(32)
+                .HAlign(HorizontalAlignment.Left)
+                .AutomationId($"ChatToolOpenDetails_{SanitizeAutomationId(entry.Id)}")
+                .AutomationName(accessibleName)
+                .WithKey($"tool-details:{entry.Id}"));
         }
 
-        var toolName = string.IsNullOrWhiteSpace(entry.ToolName)
-            ? LocalizedOrDefault("Chat_Tool_FooterLabel", "Tool")
-            : entry.ToolName;
+        var toolName = DisplayToolName(entry);
         var statusLabel = StatusLabel(entry.ToolResult);
         var expander = Expander(
                 $"{toolName} · {statusLabel}",
@@ -103,8 +97,60 @@ internal static class ToolCallCardRenderer
                     : Color.FromArgb(0x40, 0x80, 0x80, 0x80)));
     }
 
+    /// <summary>
+    /// Renders literal details from the host's current snapshot, not a click-time
+    /// copy. The host must validate session/generation, resolve the requested entry
+    /// on every render, and show an explicit unavailable state if it disappears.
+    /// </summary>
+    internal static Element BuildPanelDetails(ChatTimelineItem entry) =>
+        VStack(8, BuildDetailSections(entry).ToArray())
+            .HAlign(HorizontalAlignment.Stretch);
+
+    private static string DisplayToolName(ChatTimelineItem entry) =>
+        string.IsNullOrWhiteSpace(entry.ToolName)
+            ? LocalizedOrDefault("Chat_Tool_FooterLabel", "Tool")
+            : entry.ToolName;
+
+    private static List<Element> BuildDetailSections(ChatTimelineItem entry)
+    {
+        var details = new List<Element>();
+        var displayArgs = entry.ToolArgs is { Count: > 0 }
+            ? FormatToolDisplayArgs(entry.ToolArgs)
+            : string.Empty;
+        if (!string.IsNullOrWhiteSpace(displayArgs))
+        {
+            details.Add(BuildDetailSection(
+                LocalizedOrDefault("Chat_Tool_InputSection", "Tool input"),
+                displayArgs).WithKey("input"));
+        }
+        else if (!string.IsNullOrWhiteSpace(entry.Text))
+        {
+            details.Add(BuildDetailSection(
+                LocalizedOrDefault("Chat_Tool_InputSection", "Tool input"),
+                entry.Text).WithKey("input"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.ToolOutput))
+        {
+            details.Add(BuildDetailSection(
+                LocalizedOrDefault(
+                    entry.ToolResult == ChatToolCallStatus.Error
+                        ? "Chat_Tool_ErrorLabel"
+                        : "Chat_Tool_OutputLabel",
+                    entry.ToolResult == ChatToolCallStatus.Error
+                        ? "Tool error"
+                        : "Tool output"),
+                entry.ToolOutput).WithKey("output"));
+        }
+
+        return details;
+    }
+
     private static Element BuildDetailSection(string label, string content)
     {
+        var caption = s_captionTypography.GetValue(Application.Current.Resources, static resources =>
+            ReadCaptionTypography(key => resources.TryGetValue(key, out var value) ? value : null));
+
         var body = RichTextBlock(content)
             .Set(text =>
             {
@@ -118,7 +164,19 @@ internal static class ToolCallCardRenderer
 
         return VStack(
             4,
-            Text(label, 11, FontWeights.SemiBold, "TextFillColorSecondaryBrush"),
+            TextBlock(label)
+                // Theme.Ref owns a generated style, so keep native typography in the element record.
+                .FontSize(caption.Size)
+                .FontWeight(caption.Weight)
+                .FontFamily(caption.Family)
+                .TextWrapping(caption.Wrapping)
+                .TextTrimming(caption.Trimming)
+                .Set(text =>
+                {
+                    text.LineStackingStrategy = caption.LineStacking;
+                    text.TextLineBounds = caption.LineBounds;
+                })
+                .Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
             ScrollViewer(body)
                 .Set(scrollViewer =>
                 {
@@ -127,6 +185,43 @@ internal static class ToolCallCardRenderer
                 })
                 .MaxHeight(240));
     }
+
+    internal static CaptionTypography ReadCaptionTypography(Func<string, object?> lookup)
+    {
+        if (lookup("CaptionTextBlockStyle") is not Style style)
+            throw new InvalidOperationException("The native CaptionTextBlockStyle resource is unavailable.");
+        RequireCaptionSetter(style, Microsoft.UI.Xaml.Controls.TextBlock.FontWeightProperty, "FontWeight");
+        RequireCaptionSetter(style, Microsoft.UI.Xaml.Controls.TextBlock.FontSizeProperty, "FontSize");
+        RequireCaptionSetter(style, Microsoft.UI.Xaml.Controls.TextBlock.FontFamilyProperty, "FontFamily");
+        RequireCaptionSetter(style, Microsoft.UI.Xaml.Controls.TextBlock.TextWrappingProperty, "TextWrapping");
+        RequireCaptionSetter(style, Microsoft.UI.Xaml.Controls.TextBlock.TextTrimmingProperty, "TextTrimming");
+        RequireCaptionSetter(style, Microsoft.UI.Xaml.Controls.TextBlock.LineStackingStrategyProperty, "LineStackingStrategy");
+        RequireCaptionSetter(style, Microsoft.UI.Xaml.Controls.TextBlock.TextLineBoundsProperty, "TextLineBounds");
+
+        var native = new Microsoft.UI.Xaml.Controls.TextBlock { Style = style };
+        return new(
+            native.FontSize, native.FontWeight, native.FontFamily, native.TextWrapping,
+            native.TextTrimming, native.LineStackingStrategy, native.TextLineBounds);
+    }
+
+    private static void RequireCaptionSetter(Style style, DependencyProperty property, string name)
+    {
+        for (Style? current = style; current is not null; current = current.BasedOn)
+        {
+            if (current.Setters.OfType<Setter>().Any(item => item.Property == property))
+                return;
+        }
+        throw new InvalidOperationException($"The native caption style does not define {name}.");
+    }
+
+    internal sealed record CaptionTypography(
+        double Size,
+        global::Windows.UI.Text.FontWeight Weight,
+        FontFamily Family,
+        TextWrapping Wrapping,
+        TextTrimming Trimming,
+        LineStackingStrategy LineStacking,
+        TextLineBounds LineBounds);
 
     private static string FormatToolDisplayArgs(System.Text.Json.Nodes.JsonObject args)
     {
@@ -178,7 +273,8 @@ internal static class ToolCallCardRenderer
             ? VStack(
                 0,
                 activity.Tools
-                    .Select(tool => BuildStandalone(props, tool, isNested: true)
+                    .Select((tool, index) => BuildStandalone(
+                            props, tool, isNested: true, activityPosition: index + 1)
                         .WithKey($"activity-tool:{tool.Id}"))
                     .ToArray())
             : Empty();
@@ -292,17 +388,6 @@ internal static class ToolCallCardRenderer
 
     private static string SanitizeAutomationId(string value) =>
         new(value.Select(character => char.IsLetterOrDigit(character) ? character : '_').ToArray());
-
-    private static TextBlockElement Text(
-        string text,
-        double fontSize,
-        global::Windows.UI.Text.FontWeight weight,
-        string foregroundResource) =>
-        TextBlock(text)
-            .TextWrapping(TextWrapping.Wrap)
-            .FontSize(fontSize)
-            .FontWeight(weight)
-            .Foreground(BrushFor(foregroundResource, Microsoft.UI.Colors.Black));
 
     private static string LocalizedOrDefault(string key, string fallback)
     {

@@ -39,6 +39,21 @@ public sealed record ChatToolActivityRow(
 }
 
 /// <summary>
+/// Identifies a tool entry for the host to resolve against its current authenticated
+/// conversation. The request carries no output, transport URL, or local file path.
+/// Reject stale session/generation requests and resolve the entry from the current
+/// snapshot on every render. An absent entry is unavailable, never cached content.
+/// </summary>
+public sealed record ChatToolDetailRequest(
+    string SessionKey,
+    long TimelineGeneration,
+    string EntryId,
+    string? RunId,
+    long HistoryRevision = 0,
+    string? ToolCallId = null,
+    string? ToolName = null);
+
+/// <summary>
 /// WinUI-free chronological projection and summary policy for production chat tool activity.
 /// </summary>
 public static class ChatToolActivityPresentation
@@ -47,6 +62,60 @@ public static class ChatToolActivityPresentation
     [
         "path", "file_path", "filePath", "filepath", "filename", "file", "notebook_path", "paths", "files",
     ];
+
+    /// <summary>
+    /// Resolves only an unambiguous tool in the current conversation. Local eN
+    /// identifiers and synthetic tool-call identifiers can be reassigned during
+    /// history replay. Without source provenance, no request crosses a revision.
+    /// </summary>
+    public static bool TryResolveDetails(
+        ChatToolDetailRequest request,
+        string? sessionKey,
+        long timelineGeneration,
+        long historyRevision,
+        IReadOnlyList<ChatTimelineItem> entries,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out ChatTimelineItem? entry)
+    {
+        entry = null;
+        if (string.IsNullOrWhiteSpace(request.SessionKey)
+            || !string.Equals(request.SessionKey, sessionKey, StringComparison.Ordinal)
+            || request.TimelineGeneration != timelineGeneration
+            || request.HistoryRevision != historyRevision)
+        {
+            return false;
+        }
+
+        var hasToolCallId = !string.IsNullOrWhiteSpace(request.ToolCallId);
+        foreach (var candidate in entries)
+        {
+            if (candidate.Kind != ChatTimelineItemKind.ToolCall
+                || !(hasToolCallId
+                    ? string.Equals(candidate.ToolCallId, request.ToolCallId, StringComparison.Ordinal)
+                    : string.Equals(candidate.Id, request.EntryId, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+            if (entry is not null)
+            {
+                entry = null;
+                return false;
+            }
+            entry = candidate;
+        }
+
+        if (entry is null)
+            return false;
+        // Some same-revision history rows lack a run ID; never infer one from the local entry ID.
+        if ((hasToolCallId || request.ToolName is not null)
+                && !string.Equals(entry.ToolName, request.ToolName, StringComparison.Ordinal)
+            || request.RunId is not null && entry.ToolRunId is not null
+                && !string.Equals(entry.ToolRunId, request.RunId, StringComparison.Ordinal))
+        {
+            entry = null;
+            return false;
+        }
+        return true;
+    }
 
     public static IReadOnlyList<ChatToolActivityRow> Project(
         IReadOnlyList<ChatTimelineItem> entries,

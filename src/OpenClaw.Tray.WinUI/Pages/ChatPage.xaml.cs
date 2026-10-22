@@ -34,6 +34,7 @@ public sealed partial class ChatPage : Page
     private string? _pendingSessionKey;
     private readonly PendingVoiceActivation _pendingVoice = new();
     private MountedReactorChat? _reactorHost;
+    private readonly ChatConversationPanelLayouts _conversationPanelLayouts = new();
     private IChatDataProvider? _mountedProvider;
     private IChatDataProvider? _accessibilityTestProvider;
     private string? _mountedThreadId;
@@ -148,6 +149,7 @@ public sealed partial class ChatPage : Page
         ReconcileNativeSetupObserver();
         _pendingVoice.Cancel();
         _reactorHost?.CancelVoiceRecording();
+        _reactorHost?.SuspendPanels();
 
         // Don't tear down the native chat host — preserve it across page
         // navigations so that scroll position, selected session, and loaded
@@ -226,6 +228,7 @@ public sealed partial class ChatPage : Page
     {
         OnUnloaded(this, new RoutedEventArgs());
         DisposeReactorHost();
+        _conversationPanelLayouts.Clear();
         _ownerWindow = null;
     }
 
@@ -262,6 +265,7 @@ public sealed partial class ChatPage : Page
 
     internal void QueueSession(string? sessionKey)
     {
+        if (sessionKey is not null) _reactorHost?.ExpectPanelSelection(sessionKey);
         if (!string.IsNullOrEmpty(sessionKey) && _nativeSetupBinding.Request is { } request &&
             sessionKey != request.Completion.Target.SessionKey)
             InvalidateNativeSetupForNavigation();
@@ -473,6 +477,7 @@ public sealed partial class ChatPage : Page
             && ReferenceEquals(_mountedProvider, provider)
             && !forceRemount)
         {
+            _reactorHost.ResumePanels();
             PlaceholderPanel.Visibility = Visibility.Collapsed;
             ChatHost.Visibility = Visibility.Visible;
             // Check for pending auto-start voice even when already mounted
@@ -499,6 +504,10 @@ public sealed partial class ChatPage : Page
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ChatHost.Visibility = Visibility.Visible;
         MountedReactorChat? mountedHost = null;
+        var panelClient = app?.GatewayClient as OpenClawGatewayClient;
+        var panels = panelClient is not null && app?.ConnectionManager is { } panelManager
+            ? ChatConversationPanelBinding.Create(panelManager, panelClient, panelClient.GetSessionList, _conversationPanelLayouts)
+            : new ChatConversationPanelState(_ => null);
         var composerSession = ReactorChatHostExtensions.CreateComposerSession(
             ChatHost,
             composerFactory,
@@ -527,12 +536,14 @@ public sealed partial class ChatPage : Page
                 onReadAloud: readAloud,
                 onStopSpeaking: () => app?.StopChatSpeaking(),
                 onOpenCheckpoints: OpenSessionCheckpoints,
-                initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey));
+                initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey),
+                panels: panels);
             _reactorHost = mountedHost;
         }
         catch (InvalidOperationException)
         {
             composerSession.Dispose();
+            panels.Dispose();
             throw;
         }
         _mountedProvider = provider;

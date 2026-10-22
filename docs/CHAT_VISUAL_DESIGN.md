@@ -76,6 +76,91 @@ use the card fill above that content layer.
 
 ## Controls and states
 
+Conversation side panels share one native host beside the existing timeline and
+composer. `ChatConversationPanelState` retains only panel selection and width
+for the exact Gateway record, canonical operator profile, accepted signing
+device and session key/id/agent.
+Changing connection epoch revokes pending work without treating the retained
+layout as authorization. A session id changing from unknown to known is an
+identity change, not a wildcard match.
+The retained ChatPage owns the layout store across provider/client remounts;
+each new mount gets a fresh operation lifetime. Closing the Workspace clears
+that window's layout store. Content and edit buffers are not stored by this host.
+
+The canonical operator profile is `users.self.profile.id`, never a signing
+device, channel account, name or email. `ChatConversationAccountIdentity` reads
+the already advertised, authenticated `users.self` method with the existing
+self-read scopes, and accepts a result only for its original client, ready
+connection epoch and self-profile revision. `SelfProfileChanged` revokes the
+fact before starting a fresh read, including on the same socket. The
+display-only `WorkspaceIdentitySource` is not an authorization source.
+An unresolved account never supplies a retained-state key. Loading, explicit
+profileless/unsupported and failed reads have distinct localized states; the
+composer remains usable. An older Gateway without `users.self` cannot open or
+restore conversation panels. There is no device-only compatibility fallback.
+If a different known profile is observed on the same socket, panels require a
+reconnect. Existing provider timelines and session catalogs do not carry account
+provenance, so they cannot be adopted by the new profile. Ordinary chat is not
+disabled by the panel compatibility check; its broader input/history scoping is
+separate work. Returning to a previously known profile restores its layout only
+after a fresh connection and current canonical profile response; old leases and
+detail requests do not revive. Native tool details additionally wait for history
+committed in the current connection rather than authorizing cached transcripts.
+This is presentation scoping, not new permission or an auth API. Server-side
+authorization and epoch-bound mutation admission remain mandatory.
+
+The conversation remains mounted while panels open, close or resize. At widths
+below 652 pixels, the panel fills the conversation area and the retained
+conversation is collapsed, not reparented. Close or Escape from inside the panel
+returns focus to its opener; wide layouts support F6 between panes. Narrow F6
+switches presentation without closing the panel; **Show conversation panel**
+returns to it. Escape in the composer does not close a hidden panel. The resize
+grip supports pointer drag, Left/Right and Home/End. Panel transitions add no
+custom animation. Content owners supply their own scrolling and loading/error
+states; the host shows a connection-wait message instead of stale content.
+
+Expanded native tool cards expose **Open details**. The conversation panel
+reuses the tool renderer's selectable literal input/output, including its
+existing size limits. It retains only the request identity, not a copy of tool
+content. Live output updates use the current snapshot. An authoritative history
+commit can reassign synthetic tool identities, so it leaves the panel open with
+explicit unavailable/reopen guidance. Reopening the current card establishes a
+new request. This conservative boundary does not claim continuity across history
+rebuilds or render arbitrary tool HTML.
+
+This foundation does not turn the agent Workspace page into conversation Files,
+resolve a filesystem root from chat labels, or reuse the global node Canvas.
+Files requires the selected session's Gateway-provided source and conflict-safe
+save contract. Hosted Canvas content requires its separate isolated content
+boundary; a native panel alone does not establish Canvas parity.
+
+Initial timeline positioning waits for the native ItemsView and ScrollView to
+load, not for a later `LayoutUpdated` event. The queued callback captures the
+current tail after checking its request generation. Reloading an already
+positioned view does not issue another initial-tail request for the same key.
+Early reader input and reader anchoring across history replacement remain
+separate contracts, not guarantees of this initial-load correction.
+
+Tool input/output captions project the native `CaptionTextBlockFontSize`
+resource and `CaptionTextBlockStyle` setters, including its inherited family,
+wrapping, trimming and line layout, into Reactor element
+properties (12-pixel regular text instead of the former 11-pixel semibold
+helper). A `TextFillColorSecondaryBrush` theme reference follows the caption's
+containing surface without capturing the application's default-theme brush.
+Reactor's theme binding installs its own style, so typography stays in the
+element record rather than a separately assigned style that reconciliation
+could replace. Inline disclosures and the tool-details panel share this
+renderer; local theme changes and output updates retain the same captions.
+WinUI resolves the validated native style on one unattached, temporary
+TextBlock. Its effective typography is copied into the snapshot; the temporary
+control is never parented or retained. This avoids assumptions about raw
+setter boxing or scalar-converter support. The production lookup follows
+native application/framework resource resolution, including ambient defaults.
+The theme-independent typography snapshot is cached on the
+UI thread for each application resource-dictionary instance; replacing that
+dictionary invalidates it. Styles and typography keys are stable within that
+instance. Colors remain live element theme references, not cached values.
+
 Queued submissions leave the textbox and remain after the current turn as normal
 right-aligned user bubbles. A transparent `ChatPendingUserBrush`, subtle `ChatStrokeBrush`
 outline, and slightly faded `ChatSecondaryTextBrush` distinguish them from sent messages without

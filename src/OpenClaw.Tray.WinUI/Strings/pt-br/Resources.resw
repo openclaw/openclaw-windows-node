@@ -3077,6 +3077,12 @@ Use uma destas opções:
   <data name="Chat_Tool_InputSection" xml:space="preserve">
     <value>Entrada da ferramenta</value>
   </data>
+  <data name="Chat_Tool_OpenDetails" xml:space="preserve">
+    <value>Abrir detalhes</value>
+  </data>
+  <data name="Chat_Tool_OpenDetailsPositionFormat" xml:space="preserve">
+    <value>{0}. Ferramenta {1}</value>
+  </data>
   <data name="Chat_Tool_FooterLabel" xml:space="preserve">
     <value>Ferramenta</value>
   </data>
@@ -8129,4 +8135,15 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
     <value>Esta sessão não está mais vazia, então a seleção de local pendente foi cancelada. Verifique a sessão e envie novamente para continuar no local atual.</value>
   </data>
   <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>Obter suporte</value></data>
+  <data name="Chat_Panel_Close" xml:space="preserve"><value>Fechar painel</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Mostrar painel da conversa</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionar painel. Use Esquerda e Direita para ajustar a largura.</value></data>
+  <data name="Chat_Panel_WidthFormat" xml:space="preserve"><value>{0} pixels de largura</value></data>
+  <data name="Chat_Panel_Waiting" xml:space="preserve"><value>Aguardando a conexão desta conversa. Sua seleção de painel foi mantida.</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Este conteúdo não está mais disponível nesta conversa.</value></data>
+  <data name="Chat_Panel_ToolUnavailable" xml:space="preserve"><value>Estes detalhes não estão mais atualizados. Reabra os detalhes na ferramenta atual.</value></data>
+  <data name="Chat_Panel_AccountLoading" xml:space="preserve"><value>Verificando a conta do operador para esta conversa.</value></data>
+  <data name="Chat_Panel_AccountUnavailable" xml:space="preserve"><value>Este Gateway não pode verificar a conta do operador. Os painéis da conversa estão indisponíveis.</value></data>
+  <data name="Chat_Panel_AccountFailed" xml:space="preserve"><value>Não foi possível verificar a conta do operador. Reconecte-se para tentar novamente.</value></data>
+  <data name="Chat_Panel_AccountChanged" xml:space="preserve"><value>A conta do operador mudou. Reconecte-se antes de abrir os painéis da conversa.</value></data>
 </root>

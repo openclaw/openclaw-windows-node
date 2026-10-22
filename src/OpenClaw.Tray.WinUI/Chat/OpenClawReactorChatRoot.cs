@@ -29,7 +29,8 @@ public sealed record OpenClawReactorChatRootProps(
     Action? OnStopSpeaking = null,
     Action<string>? OnOpenCheckpoints = null,
     Func<string, bool>? TryCopyText = null,
-    bool InitialThreadIsExplicitSelection = true);
+    bool InitialThreadIsExplicitSelection = true,
+    ChatConversationPanelState? Panels = null);
 
 /// <summary>
 /// Production Reactor root for the native chat surface. It owns the provider
@@ -76,6 +77,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var (toolCallsCollapseVersion, setToolCallsCollapseVersion) =
             UseState(s_toolCallsCollapseVersion, threadSafe: true);
         var (firstSendInFlight, setFirstSendInFlight) = UseState(false, threadSafe: true);
+        var toolDetails = UseRef(new ChatConversationToolDetails());
 
         UseEffect((Func<Action>)(() =>
         {
@@ -127,6 +129,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var selectedMaterializedThread = selectedId is null
             ? null
             : snapshot.Threads.FirstOrDefault(thread => string.Equals(thread.Id, selectedId, StringComparison.Ordinal));
+        var panelSelectionCommitted = false;
         if (selectedMaterializedThread is null
             && selectedId is not null
             && snapshot.DefaultThreadId is { } fallbackId
@@ -137,13 +140,23 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         {
             selectedIdRef.Current = fallbackId;
             setSelectedId(fallbackId);
+            panelSelectionCommitted = true;
             selectedMaterializedThread = snapshot.Threads.FirstOrDefault(thread =>
                 string.Equals(thread.Id, fallbackId, StringComparison.Ordinal));
         }
 
         var effectiveThread = selectedMaterializedThread ?? CreateComposeOnlyThread(props.Provider, snapshot);
         if (selectedMaterializedThread is { } selected && string.Equals(_pendingSelectedThreadId, selected.Id, StringComparison.Ordinal))
+        {
             _pendingSelectedThreadId = null;
+            panelSelectionCommitted = true;
+        }
+        UseEffect((Func<Action>)(() =>
+        {
+            if (panelSelectionCommitted) props.Panels?.CommitSelection(effectiveThread?.Id);
+            else props.Panels?.Bind(effectiveThread?.Id);
+            return static () => { };
+        }), props.Panels ?? (object)props.Provider, effectiveThread?.Id ?? string.Empty, snapshot, panelSelectionCommitted);
 
         var connectionState = ToConnectionState(snapshot.ConnectionStatus);
         var isGatewayConnected = string.Equals(connectionState, "connected", StringComparison.Ordinal);
@@ -253,6 +266,15 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             mediaResolver = dataProvider is null ? null : dataProvider.ResolveAssistantMediaAsync;
         Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>>?
             fileDownloader = dataProvider is null ? null : dataProvider.DownloadAssistantFileAsync;
+        var renderedPanelContext = effectiveThread is not null &&
+            ChatConversationToolDetails.HasCurrentHistory(nativeProvider is not null,
+                effectiveThread.Id, snapshot.CurrentHistoryThreads)
+            ? props.Panels?.Resolve(effectiveThread.Id) : null;
+        Action<ChatToolDetailRequest>? openToolDetails = props.Panels is { } detailPanels &&
+            renderedPanelContext is { } detailContext
+            ? request => toolDetails.Current.Open(detailPanels, detailContext, request,
+                effectiveThread?.Id, timelineGeneration, historyRevision, entries)
+            : null;
 
         var timelineProps = new ChatTimelinePresentationContext(
             effectiveThread?.Id,
@@ -279,10 +301,13 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             mediaResolver,
             queuedMessages,
             props.ComposerSession.Controller.CancelQueuedMessage,
-            fileDownloader);
+            fileDownloader,
+            OnOpenToolDetails: openToolDetails,
+            HistoryRevision: historyRevision);
 
         void SelectThread(string threadId)
         {
+            props.Panels?.ExpectSelection(threadId);
             _pendingSelectedThreadId = threadId;
             selectedIdRef.Current = threadId;
             setSelectedId(threadId);
@@ -386,7 +411,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             })
             .AutomationId("ChatComposerArea")
             .WithKey("chat-composer-area");
-        return Grid(
+        var conversation = Grid(
             [GridSize.Star()],
             [showWelcome ? GridSize.Auto : GridSize.Star(), showWelcome ? GridSize.Star() : GridSize.Auto],
             showWelcome ? Empty().Grid(row: 0) : timelineElement.Grid(row: 0),
@@ -396,6 +421,24 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             .VAlign(VerticalAlignment.Stretch)
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
             .OnUnmount(ChatVisuals.StopObserving);
+        return props.Panels is not { } panels
+            ? conversation
+            : Component<ReactorConversationPanelHost, ReactorConversationPanelHostProps>(new(
+                conversation, panels, effectiveThread?.Id,
+                panelId => panelId == ChatConversationToolDetails.PanelId &&
+                    toolDetails.Current.TryResolve(panels, effectiveThread?.Id,
+                        timelineGeneration, historyRevision, entries, out var toolEntry)
+                    ? ScrollViewer(ToolCallCardRenderer.BuildPanelDetails(toolEntry))
+                        .Set(scroll =>
+                        {
+                            scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+                            scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                        })
+                        .Padding(12)
+                    : TextBlock(LocalizationHelper.GetString(panelId == ChatConversationToolDetails.PanelId
+                            ? "Chat_Panel_ToolUnavailable" : "Chat_Panel_Unavailable"))
+                        .TextWrapping(TextWrapping.Wrap).Margin(16),
+                _ => LocalizationHelper.GetString("Chat_Tool_CallLabel")));
     }
 
     private static Element RenderLoading() =>
