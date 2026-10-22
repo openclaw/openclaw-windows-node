@@ -2,12 +2,9 @@
 
 Repository-owned copy of the
 [Hanselman adversarial review skill](https://github.com/shanselman/hanselman-code-review-skill).
-The preferred pairing, when selectable under the host's policy, is
-**GPT-6 Astra** (`gpt-6-astra`) and **Claude Opus 5.5** (`claude-opus-5.5`),
-with high reasoning effort and Astra's supported `long_context` tier.
-These are preferences, not guaranteed runtime settings. Follow the host's
-selection policy and record the actual models and observable configuration;
-unknown values remain unknown. Do not assume a numeric context-window size.
+It runs independent app-native reviews with **GPT-6 Astra** (`gpt-6-astra`)
+and **Claude Opus 5.5** (`claude-opus-5.5`), both at high reasoning effort.
+Astra uses the supported `long_context` tier without assuming a numeric size.
 
 ## Usage
 

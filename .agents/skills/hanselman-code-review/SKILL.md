@@ -51,18 +51,35 @@ gates.
 
 ### Step 2: Launch Two Parallel Reviews
 
-Inspect the current host's advertised tool schemas and roles before choosing a
-launcher. Tool names, agent roles and model access vary by host.
+Launch two `rubber-duck` agents via the app-native `task` tool in **background**
+mode with different models. No standalone model CLI is required.
 
-| Host observation | Route |
-|---|---|
-| `task` advertises `rubber-duck` | Launch two bounded read-only reviews using that role, in parallel with different supported models. Use background mode when independent work remains. No standalone model CLI is required. |
-| No `rubber-duck`, but an independent review role/tool is advertised | Use that actual supported role if it can review the same scope independently. Label the route as a fallback and record its tool, role, model and limitations. Do not claim a rubber-duck role ran. |
-| No independent review tool, or two distinct models cannot be selected under host policy | Report the dual-model review blocked. Direct self-review or a single-model fallback may be useful, but is not a completed Hanselman review. |
+**Agent 1: Claude Opus 5.5**
 
-Honor the host's model-selection policy. Do not force model/effort/context
-overrides from a copied example when the tool requires explicit user selection.
-Confirm the two actual model identities before calling the result dual-model.
+```javascript
+task({
+  name: "opus-review",
+  agent_type: "rubber-duck",
+  mode: "background",
+  model: "claude-opus-5.5",
+  reasoning_effort: "high",
+  prompt: "<full context + code + review instructions>"
+})
+```
+
+**Agent 2: GPT-6 Astra**
+
+```javascript
+task({
+  name: "astra-review",
+  agent_type: "rubber-duck",
+  mode: "background",
+  model: "gpt-6-astra",
+  context_tier: "long_context",
+  reasoning_effort: "high",
+  prompt: "<same context + code + review instructions>"
+})
+```
 
 Both agents receive the **exact same prompt** so findings are comparable.
 Include the full file contents or diff, project context, exact revisions,
@@ -70,11 +87,9 @@ constraints, and the severity definitions below.
 
 ### Step 3: Wait for Both to Complete
 
-When using this host's background `task` route, use the interval for independent
-work. Wait for completion notifications, then read each known ID with
-`read_agent`; do not poll. For another supported host, use its documented
-completion mechanism. Reconcile both completed reviews before reporting a
-consensus. Neither review grants GitHub publication authority.
+Use the background interval for independent work. Wait for each completion
+notification, then read its result with `read_agent`; do not poll. Reconcile
+both completed reviews before publishing a consensus.
 
 ### Step 4: Cross-Reference and Build the Consensus Table
 
@@ -84,19 +99,17 @@ Create a SQL table to track findings:
 CREATE TABLE IF NOT EXISTS review_findings (
     id TEXT PRIMARY KEY,
     issue TEXT NOT NULL,
-    reviewer_a_severity TEXT,
-    reviewer_b_severity TEXT,
+    opus_severity TEXT,
+    astra_severity TEXT,
     consensus TEXT NOT NULL,
     fix_confidence INTEGER NOT NULL
 );
 ```
 
-Use SQL only if the host exposes a session database; otherwise keep the same
-fields in a local review artifact. If the session already has a findings table,
-inspect and reuse or migrate its schema without discarding earlier findings.
-Record the actual tool, role, model ID, context tier and source scope for each
-reviewer alongside the findings; do not relabel earlier findings as results
-from a different model.
+If the session already has a findings table, inspect and reuse or migrate its
+schema without discarding earlier findings. Record the actual model ID that
+produced each review; do not relabel earlier findings as results from a
+different model.
 
 For each finding:
 
@@ -114,13 +127,13 @@ For each finding:
 
 **Both Models Agree: HIGH consensus**
 
-| Issue | Reviewer A (actual model ID) | Reviewer B (actual model ID) | Fix Confidence |
+| Issue | Opus 5.5 | GPT-6 Astra | Fix Confidence |
 |-------|----------|-------------|----------------|
 | Description of issue | SEVERITY | SEVERITY | XX% |
 
 **Only One Model Flagged: LOW consensus**
 
-| Issue | Reviewer A (actual model ID) | Reviewer B (actual model ID) | Fix Confidence |
+| Issue | Opus 5.5 | GPT-6 Astra | Fix Confidence |
 |-------|----------|-------------|----------------|
 | Description of issue | SEVERITY or not flagged | SEVERITY or not flagged | XX% |
 
@@ -168,16 +181,14 @@ For each issue, include:
 
 ## Model Selection
 
-The preferred pairing, when selectable under the host's policy, is
-**Claude Opus 5.5** (`claude-opus-5.5`) and
+The default pairing is **Claude Opus 5.5** (`claude-opus-5.5`) and
 **GPT-6 Astra** (`gpt-6-astra`, `context_tier: "long_context"`), both with
 `reasoning_effort: "high"`. Different model families provide independent
 perspectives on the same evidence.
 
-When explicit overrides are permitted and requested, use the tool's supported
-`long_context` value, not an invented model name or suffix. Do not assume a
-numeric context-window size. Otherwise retain host-resolved defaults and record
-what actually ran, including unknown context/effort where not reported.
+Use the tool's supported `long_context` value, not an invented model name or
+model-name suffix. Do not assume a numeric context-window size. Preserve the
+high reasoning default unless the user requests a different effort.
 
 If a preferred model or context tier is unavailable, report the limitation and
 use an available alternative only with the user's approval. Record the actual
