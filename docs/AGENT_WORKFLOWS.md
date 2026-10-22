@@ -35,25 +35,19 @@ only with explicit authorization.
 
 ## Run a scoped shared review
 
-This is an operator recipe for the canonical shared helper, not a Windows review
-wrapper, result validator, or publication command. Use it only when review is
-requested or required by the owning workflow. Review permission does not authorize
-installation, commits, uploads, hosted bot requests, or runtime changes.
-
-Read the complete selected shared installation's `SKILL.md` and its required
-references first. Windows requires Python 3.10+ for the Python helper; honor an
-operator-selected installation instead of assuming the default path exists.
-Readiness detection alone does not exercise the helper, CLI isolation, credentials,
-or provider access. A missing installation is a named blocker, not permission to
-install it. Record the helper identity and actual host/engine/model when observable;
-`python $helper --version` identifies only the helper bytes, not the whole skill
-or a trusted execution receipt.
+Use this Windows recipe when review is requested or required by the owning
+workflow. The [shared skill][autoreview] owns helper behavior; read the complete
+selected installation's `SKILL.md` and required references first. A missing
+installation is a blocker; the [repository entrypoint](../.agents/skills/autoreview/SKILL.md)
+covers separately authorized installation. Review permission does not authorize
+installation, commits, publication, hosted bot requests, or runtime changes.
 
 ### Select the candidate and context
 
-Use an observed comparison target, not an assumed `origin/main`. Inspect the
-actual PR target or task's agreed base and the available local refs. The helper
-never fetches; stale or missing refs limit what can be claimed.
+Always pass `--max-priority P3`; the helper defaults to P0 only. Select the actual
+PR target or agreed base explicitly, not an assumed `origin/main` or `auto`
+(which selects HEAD-based local work when dirty). The helper never fetches:
+check available refs and disclose stale or missing context.
 
 | Intended scope | Explicit arguments | What is covered |
 | --- | --- | --- |
@@ -62,40 +56,26 @@ never fetches; stale or missing refs limit what can be claimed.
 | Committed branch | `--mode branch --base <observed-target-ref> --max-priority P3` | Merge-base to HEAD; excludes dirty and untracked work |
 | One non-merge commit | `--mode commit --commit <commit-sha> --max-priority P3` | Raw parent to commit, or empty tree for a root; merge commits are rejected; not the whole branch |
 
-Do not rely on `auto`: it selects local when dirty and otherwise chooses a branch
-comparison. The shared default severity is P0 only. Windows requires explicit
-P0-P3, including for a narrative fallback. Local review includes staged and unstaged
-transitions; an index defect remains actionable even if fixed in the worktree
-(`INDEX-only`). Keep the captured source unchanged during review.
-
-The reviewer starts with an empty sandbox, not access to the entire checkout.
-Supply task requirements with `--prompt`, in-repository instruction files with
-`--prompt-file`, and supported repository-relative evidence files with `--dataset`.
-These are file inputs, not arbitrary external directories; sensitive-path,
-symlink, file-type, and mutation checks apply. They are not secret-content scanning.
-Do not transmit credentials or unrelated private material.
-
-For unchanged production owners in branch/commit mode, repeat
-`--source-context <repo-relative-path>` or use `--source-context-file` when the
-whole file must remain intact every pass. These read frozen regular-file blobs
-from the reviewed commit, never substitute working-copy content, and are unsupported
-in local mode. Context does not expand finding scope or authorize instructions
-embedded in reviewed content. If required local context cannot be supplied safely,
-report the coverage blocker; do not silently omit it or change modes and claim
-the dirty candidate was covered.
+Keep captured source unchanged. Local review includes index-only defects even
+when fixed in the worktree. The reviewer starts with an empty sandbox: supply
+requirements through `--prompt`, in-repo instructions through `--prompt-file`,
+and supported repo-relative evidence through `--dataset`. For unchanged owners
+in branch/commit mode, use `--source-context` or `--source-context-file` under the
+[committed-context rules][review-context]; neither supports local mode.
+Missing required context means incomplete coverage. Do not send secrets, bypass
+input/isolation checks, or treat context as permission to expand scope.
+Keep external captures in separately authorized [UI proof](../.agents/skills/openclaw-proof-validation/SKILL.md),
+not in tracked source to bypass input limits.
 
 ### Run once with fresh external outputs
 
-Run from the reviewed repository root. Replace both placeholders below with the
-observed target ref and the actual task requirements. Select the installed helper
-path explicitly if it differs. This example selects Codex and reviews committed
-plus dirty work; honor an explicitly requested engine and its requirements.
-For another scope, use the corresponding mode/base above.
-
-This example requires PowerShell 7.3+ with `Windows` or `Standard` native argument
-passing so embedded quotes in requirements reach Python unchanged. Windows
-PowerShell 5.1 and `Legacy` argument passing are unsupported for this example.
-Resolve Python to a native `.exe`, not a `.bat`/`.cmd` shim that reparses arguments.
+Run from the reviewed repository root with Python 3.10+. This example requires
+PowerShell 7.3+, `Windows` or `Standard` argument passing, and native `python.exe`
+to preserve quoted requirements; PowerShell 5.1, `Legacy`, and batch shims are
+unsupported. Select your installed helper, replace both placeholders, and add
+required context arguments before launch. This uses Codex for committed plus
+dirty work; honor explicit engine choices and use the table for another scope.
+Use a fresh output directory outside the repository, including resolved paths.
 See [PowerShell native argument handling](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing#passing-arguments-that-contain-quote-characters).
 
 ```powershell
@@ -117,7 +97,7 @@ $base = git merge-base HEAD $comparisonRef
 if ($LASTEXITCODE -ne 0 -or -not $base) {
     throw 'Cannot resolve the observed comparison merge base.'
 }
-$runDir = Join-Path $HOME ('.copilot\review-runs\' + [guid]::NewGuid().ToString('N'))
+$runDir = Join-Path $HOME ('openclaw-review-runs\' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $runDir -ErrorAction Stop | Out-Null
 $textPath = Join-Path $runDir 'review.txt'
 $jsonPath = Join-Path $runDir 'review.json'
@@ -131,121 +111,53 @@ Get-Content -LiteralPath $statusPath -Raw -ErrorAction Stop
 Get-Content -LiteralPath $jsonPath -Raw -ErrorAction Stop
 ```
 
-Expected output is a final native JSON report and status for this invocation, not
-necessarily a clean verdict. File reads deliberately fail if either is missing;
-inspect the process diagnostics instead of borrowing an earlier result.
-Add the necessary supported context arguments before launch.
-
-Ensure the new directory is outside the reviewed repository, including resolved
-parents and referents. All destinations must differ, including symlink/hardlink,
-case-only, and Unicode-normalization aliases. Do not reuse another run's directory.
-The helper checks output paths and probes existing report parents for create/write/
-atomic-replace readiness before review; it does not create missing parents.
-That probe cannot guarantee a later write will succeed.
-
-An optional `--dry-run` checks input preparation and local CLI startup/isolation
-probes without contacting a review provider. It is not a review or authentication
-proof and publishes no fresh report/status. Use separate scratch paths and do not
-combine it with preflight export. Never interpret existing files as its verdict.
-
 ### Read the final outcome, not just the exit
 
-Wait for the process to finish, then inspect the fresh output set and diagnostics.
-JSON, human output, and status are written separately, not as one atomic
-transaction. Unique paths and custody help establish correspondence; they are
-not a cryptographic binding or a new machine-admission schema.
+Before reporting clean, check all three:
 
-For a completed report, compare status `status` with JSON `review_status`, process
-exit with status `exit_code`, and require `report_produced: true`. Read
-`overall_correctness`, `findings`, `priority_filtered_findings`,
-`scope_rejected_findings`, `attribution_rejected_findings`, and
-`missing_required_findings` when present. Check actual target/base, requested P0-P3,
-unchanged context, and coverage against the invocation record, not an inferred
-report field. A contradictory or unexplained pair is unresolved, never clean.
+1. The process finished and the final JSON report and status are fresh outputs
+   from this invocation. They are written separately; missing or contradictory
+   outputs, source mutation, interruptions, or a failed later pass are blockers,
+   not reasons to reuse an earlier clean result.
+2. Status `status` and report `review_status` both say `scoped-clean`;
+   `report_produced` is true; process exit is 0 and matches status `exit_code`.
+   Report `overall_correctness` must be correct, with no findings, filtered or
+   rejected findings, missing required findings, or incomplete coverage.
+3. The invocation actually covered the intended candidate, base, P0-P3 severity,
+   and required context. Record mode, base, HEAD, index/worktree identity, helper
+   identity, route/host/model (or unverified), output paths, findings, and limitations.
+   Later edits or commits do not inherit the earlier candidate's review.
 
-| Final observation | Interpretation and action |
-| --- | --- |
-| `scoped-clean`, correct verdict, no findings or incomplete coverage, matching fresh outputs | Clean only for the selected target and P0-P3 scope; not tests, runtime proof, approval, or whole-PR coverage beyond that target |
-| `findings` or `incorrect` | Assessment produced defects or an incorrect verdict; verify findings against source and task before acting |
-| `filtered`, even with exit 0 | Lower-priority findings were filtered; not clean and not evidence of complete Windows P0-P3 review |
-| `incomplete`, rejected scope/attribution, missing required findings, or unfinished pass | Keep validated observations but resolve missing coverage before claiming completion |
-| `reviewer_unavailable` / `report_produced: false` | Launched reviewer failed or output was invalid; do not pair this with an older clean report |
-| Missing status/report, interrupted run, source mutation, or output-write failure | No established final outcome; investigate the specific failure, never infer clean from exit or leftover files |
+Otherwise report the findings or specific blocker and verify findings before
+acting. `filtered` is not clean even with exit 0; `incomplete` normally exits 2.
+A clean review covers only the selected scope, not tests, runtime proof, or merge
+approval. Use the [results contract][review-results] for fields, other outcomes,
+path aliases, dry runs, and failure recovery.
+Follow the owning workflow after fixes; do not rerun just for a cleaner verdict.
 
-Ordinary exits are 0 for scoped-clean or a correct filtered verdict, 1 for findings,
-incorrectness, or reviewer failure, and 2 for incomplete assessment. Preparation
-failures can also terminate without a status. `--expect-findings` changes exit
-semantics for harness use; do not add it to this review recipe.
-`report_produced: true` establishes a validated report, not cleanliness.
-The last terminal engine event is authoritative: an invalid final event or failed
-later pass cannot be replaced with an earlier valid assessment.
+### Fallback and detailed reference
 
-Record mode, resolved base, HEAD, dirty/index identity, severity, helper identity,
-actual route, output paths, verdict/findings, and limitations in the task handoff.
-A later edit or commit changes candidate identity even if some bytes are unchanged.
-Do not restamp dirty-worktree review as published-head proof. Follow the owning
-workflow after fixes; do not repeat reviews merely to obtain a nicer verdict.
+If Codex CLI is unavailable, follow the shared skill's
+[Copilot subagent route][review-fallback] with the same full scope, context, and
+P0-P3 requirement. Report a narrative assessment and actual host/model or
+unverified identity, not helper status, isolation, or frozen-input guarantees.
+Missing context or unfinished assessment is incomplete. Never switch routes
+after launch to bypass failures or unfavorable findings.
 
-### Platform, input, and fallback limits
+Consult upstream for [engine/platform requirements][review-engines],
+[image constraints][review-images], and [optional preflight export][review-preflight].
+Preflight is advisory, not approval; missing optional export alone does not
+justify rerunning the review. These references were checked at
+`1444c91f6b455227993bc780d0933f78ae54f5b4`; compare your selected installation
+before use. Source checks do not prove installed-copy parity or helper execution.
 
-Engine support is not uniform. At the source revision below, Amp rejects native
-Windows because it needs POSIX permission checks; the OpenClaw engine's parser
-also requires POSIX. Their availability through WSL is not authorization to
-switch hosts. Keep helper-owned isolation enabled, follow the selected engine's
-requirements, and report unsupported startup explicitly.
-
-Codex branch mode supports added single-frame PNG/JPEG/WebP only with Pillow and
-a vision-capable CLI/model. Modified images, local/commit image additions, other
-binaries, and images with other engines are unsupported and fail closed; binary
-deletions are metadata-only. Read shared `references/images.md` for size/decoder
-limits. External native captures are not a generic dataset directory: inspect
-them through a separately authorized observer and disclose that boundary. Do not
-copy generated captures into tracked source or drop unsupported files to force
-a successful review.
-
-When Codex CLI is unavailable, the shared skill permits a separate Copilot reviewer
-subagent, preferably an accessible Codex model or otherwise a comparable available
-model, honoring explicit choices. Select and explain that route before launch.
-Provide the complete selected diff, index/worktree transitions, required unchanged
-context, task requirements, and P0-P3 scope. Require file/line evidence, impact,
-coverage, and limitations. Report the actual host/model, or identity unverified.
-Its output is a narrative independent assessment, not native helper JSON/status:
-no helper-enforced isolation, frozen-input checks, or structured result validation
-may be claimed. Missing/truncated inputs or unfinished assessment remain incomplete.
-If those native guarantees are required, report unavailable instead.
-
-Never use fallback to bypass safety/isolation failures, hide findings, or replace
-a failed launched review. Do not switch hosts after launch to evade slowness or
-rate limits. Model access in Copilot does not require installing Codex CLI.
-
-### Optional genuine preflight
-
-For an already clean, nonempty committed branch, add
-`--preflight-output <fresh-external-path> --preflight-repo openclaw/openclaw-windows-node`
-to the real `--mode branch --base <observed-target-ref> --max-priority P3` invocation.
-Name the intended target repository explicitly, including for a fork. Keep this
-destination distinct from all other outputs.
-
-Only the shared helper generates the `openclaw-preflight:v1` block. Do not construct
-one from narrative fallback, dirty local review, commit mode, dry run, or an empty
-range; do not commit merely to obtain it. The captured merge-base/head identify
-the committed range. Preflight `completion: complete` can include findings or
-incorrectness; `partial` means incomplete. Neither is approval or runtime proof.
-
-Check that a fresh export exists before sharing. Export failure after native
-publication warns but preserves the valid native report, status, and exit.
-Record the missing optional annotation without rerunning the model solely for
-metadata. The helper does not upload or attach it, and self-reported preflight
-does not exempt hosted review or replace visible validation/behavior evidence.
-
-This recipe was source-checked against shared agent-skills
-[`1444c91f6b455227993bc780d0933f78ae54f5b4`](https://github.com/openclaw/agent-skills/tree/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview):
-the [helper](https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/scripts/autoreview),
-[results contract](https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/diagnostics-and-results.md),
-[context rules](https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/git-and-context.md),
-and [image limits](https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/images.md).
-Source inspection is not an exercised helper/model run or proof that a local
-copy matches this revision. Recheck the selected installation for drift before use.
+[autoreview]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/SKILL.md
+[review-context]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/git-and-context.md#committed-source-context
+[review-results]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/diagnostics-and-results.md
+[review-fallback]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/SKILL.md#copilot-subagent-review
+[review-engines]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/engines.md
+[review-images]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/images.md
+[review-preflight]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/diagnostics-and-results.md#preflight-summary
 
 ## Start with deterministic contracts
 

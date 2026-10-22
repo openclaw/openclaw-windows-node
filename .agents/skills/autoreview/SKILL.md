@@ -18,28 +18,16 @@ reuse or clone `https://github.com/openclaw/agent-skills` and run
 Prefer the shared `scripts/autoreview` helper with Python from the repository being
 reviewed, preserving its working directory. Follow the
 [Windows invocation and result-reading recipe](../../../docs/AGENT_WORKFLOWS.md#run-a-scoped-shared-review)
-before launch: explicitly select mode/base, use `--max-priority P3`, supply the
-needed unchanged-owner context through supported inputs, and allocate distinct,
-fresh output paths outside the repository. Default local mode does not include
-earlier branch commits; branch mode excludes dirty work.
-
-Read the final JSON and status together with the process outcome and coverage.
-Exit zero, `report_produced: true`, `filtered`, or an old clean report is not a
-complete P0-P3 clean assessment. Missing or inconsistent final outputs, incomplete
-coverage, or a failed later pass must not inherit an earlier clean result.
-Optional committed-branch preflight is advisory, not approval or runtime proof;
-missing export alone does not require another model run.
+before launch. Always use `--max-priority P3`, select mode/base explicitly, and
+supply required context. Check fresh final report/status, process outcome, and
+coverage together; exit zero alone is not a clean P0-P3 assessment.
 
 If Codex CLI is unavailable, follow the canonical skill's independent Copilot
-subagent fallback: prefer an accessible Codex model, or use a comparable available
-model, honoring explicit choices. Model access through Copilot does not require
-a separate Codex CLI installation. Supply the full selected scope, required
-context, and P0-P3 severity; report actual host/model (or identity unverified),
-coverage, and limitations as a narrative assessment. Never fabricate native
-helper JSON/status, isolation, or frozen-input guarantees from fallback prose.
-Missing context or unfinished assessment is incomplete. Do not switch routes
-after launch to bypass failures, safety/isolation checks, or unfavorable findings.
-Follow all other canonical and repository review requirements.
+subagent fallback with the same scope, context, and P0-P3 severity. Report its
+actual host/model (or unverified identity), coverage, and limitations as a
+narrative assessment, not helper status or isolation guarantees. Never use
+fallback to bypass failures or findings. Follow all canonical and repository
+review requirements.
 
 Keep shared fixes and instructions upstream in `openclaw/agent-skills`. Update
 the shared checkout once for all symlinked consumers; reinstall copy-mode skills
