@@ -139,8 +139,8 @@ public sealed class InnoInstallationDetector : IInnoInstallationDetector
             if (architecture is null)
                 return Unsupported("The installed executable has an unsupported PE architecture.",
                     sourcePayloadPresent: sourcePayloadPresent);
-            if (!MigrationVersionPolicy.TryParseReleaseVersion(binary.Version, out var binaryVersion) ||
-                binaryVersion != version)
+            if (!MigrationVersionPolicy.IsExecutableVersionCompatible(
+                registration.DisplayVersion!, binary.Version, binary.ProductVersion))
                 return Unsupported("The executable file version does not match the registered release version.",
                     sourcePayloadPresent: sourcePayloadPresent);
 
@@ -229,7 +229,10 @@ internal sealed record InnoInstallationRegistration(
     string? InstallLocation, string? DisplayVersion, string? Publisher,
     string? DisplayName, string? UninstallString);
 
-internal sealed record InnoInstallationExecutable(Machine Machine, string? Version);
+internal sealed record InnoInstallationExecutable(
+    Machine Machine,
+    string? Version,
+    string? ProductVersion);
 
 internal interface IInnoInstallationReadSource
 {
@@ -314,7 +317,8 @@ internal sealed class InnoInstallationReadSource : IInnoInstallationReadSource
         if (headers.CoffHeader.Machine is Machine.Amd64 or Machine.Arm64 &&
             headers.PEHeader.Magic != PEMagic.PE32Plus)
             throw new InvalidDataException("The installed executable PE headers are inconsistent.");
-        return new(headers.CoffHeader.Machine, FileVersionInfo.GetVersionInfo(path).FileVersion);
+        var version = FileVersionInfo.GetVersionInfo(path);
+        return new(headers.CoffHeader.Machine, version.FileVersion, version.ProductVersion);
     }
 
     private static RegistryKey? OpenRegistration(RegistryHive hive, RegistryView view)

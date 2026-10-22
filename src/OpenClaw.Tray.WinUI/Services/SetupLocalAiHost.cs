@@ -174,7 +174,7 @@ internal sealed class SetupLocalAiHost(
                 "Stop Local AI and release its native Gateway ownership before repairing it for WSL.");
         if (current.Target!.IsNative && getRuntime()?.Snapshot is
             { Ownership: LocalAiOwnership.CompanionManaged } or { GatewayRouteRequiresResolution: true })
-            throw new InvalidOperationException("Stop the owned Local AI runtime and resolve its Gateway route before repairing its files.");
+            throw new LocalAiRepairRequiresStopException();
         return current.Target!;
     }
 
@@ -235,6 +235,7 @@ internal sealed class SetupLocalAiHost(
             if (!admitted.Success)
                 throw new LocalAiSelectionRejectedException(admitted.Detail ?? "Local AI route publication was not admitted.");
         }
+        LocalAiResolvedInstall admittedInstall = install;
         LocalAiRuntimeSnapshot started;
         try
         {
@@ -252,7 +253,7 @@ internal sealed class SetupLocalAiHost(
             started.Ownership == LocalAiOwnership.None && !started.GatewayRouteRequiresResolution)
             throw new LocalAiStartFailedException(started.Detail ?? "The managed Local AI model could not start.");
         install = await loadInstall(ct) ?? throw new InvalidOperationException("The Local AI receipt is unavailable.");
-        if (Identity(install) != selected.ReceiptIdentity || started.State != LocalAiRuntimeState.Healthy ||
+        if (!IsExpectedStartedInstall(admittedInstall, install) || started.State != LocalAiRuntimeState.Healthy ||
             started.Ownership != LocalAiOwnership.CompanionManaged ||
             started.ModelId != install.Manifest.ModelCatalogId || started.Endpoint != install.Endpoint ||
             LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) != selected.ModelRef ||
@@ -316,6 +317,26 @@ internal sealed class SetupLocalAiHost(
 
     private static SetupLocalAiTarget ToTarget(LocalAiRecoveryTarget target) =>
         new(target.GatewayId, target.DistroName, target.GatewayPort, target.ModelCatalogId, target.RequestedLocalAiPort);
+
+    private static bool IsExpectedStartedInstall(LocalAiResolvedInstall admitted, LocalAiResolvedInstall started)
+    {
+        var history = admitted.Manifest.PreviousEndpoints;
+        if (admitted.Manifest.ReplacedManifest is not null &&
+            admitted.Manifest.Endpoint is { } previousEndpoint &&
+            !string.Equals(previousEndpoint, started.Manifest.Endpoint, StringComparison.Ordinal))
+        {
+            var values = history ?? [];
+            if (!values.Contains(previousEndpoint, StringComparer.Ordinal))
+                history = values.Add(previousEndpoint);
+        }
+
+        // Permit only the history entry produced by binding this start's new endpoint.
+        // All existing history, replacement provenance and artifact pins remain fenced.
+        return Identity(started) == Identity(admitted with
+        {
+            Manifest = admitted.Manifest with { PreviousEndpoints = history },
+        });
+    }
 
     private static string? Identity(LocalAiResolvedInstall? install) => install is null ? null :
         Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(install.Manifest with { Endpoint = null })));

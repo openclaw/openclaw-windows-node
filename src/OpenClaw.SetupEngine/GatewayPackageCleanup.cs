@@ -56,7 +56,7 @@ public static class GatewayPackageCleanup
         if (result == 15700) return null; // Unpackaged installations retain their existing uninstaller.
         if (result != 0) throw new InvalidOperationException("Companion package identity could not be read.");
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".openclaw-companion", "cleanup", family.ToString());
+            OpenClawAppIdentity.CompanionHomeDirectoryName, "cleanup", family.ToString());
         if (!register && !preserve && !File.Exists(Path.Combine(directory, "owned.json"))) return directory;
         Directory.CreateDirectory(directory);
         var scriptPath = Path.Combine(directory, "cleanup.ps1");

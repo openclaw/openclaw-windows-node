@@ -118,18 +118,26 @@ internal sealed partial class WindowsLocalAiGpuEvidenceProbe : ILocalAiGpuEviden
     internal static LocalAiGpuLogEvidence ParseGpuLoadEvidence(string log)
     {
         ArgumentNullException.ThrowIfNull(log);
-        MatchCollection matches = FullOffloadPattern().Matches(log);
-        foreach (Match match in matches.Cast<Match>().Reverse())
+
+        // A separate speculative drafter loads after the target. Keep the target's
+        // layer count and buffer together, scoped to its latest load attempt.
+        Match? targetLoad = TargetModelLoadPattern().Matches(log).Cast<Match>().LastOrDefault();
+        if (targetLoad is not null)
+            log = log[targetLoad.Index..];
+        Match draftLoad = DraftModelLoadPattern().Match(log);
+        if (draftLoad.Success)
+            log = log[..draftLoad.Index];
+
+        Match? match = FullOffloadPattern().Matches(log).Cast<Match>().LastOrDefault();
+        if (match is not null &&
+            int.TryParse(match.Groups[1].Value, out int offloaded) &&
+            int.TryParse(match.Groups[2].Value, out int total) &&
+            offloaded > 0 && offloaded == total)
         {
-            if (int.TryParse(match.Groups[1].Value, out int offloaded) &&
-                int.TryParse(match.Groups[2].Value, out int total) &&
-                offloaded > 0 && offloaded == total)
-            {
-                return new LocalAiGpuLogEvidence(
-                    offloaded,
-                    total,
-                    ParseCudaModelBufferBytes(log));
-            }
+            return new LocalAiGpuLogEvidence(
+                offloaded,
+                total,
+                ParseCudaModelBufferBytes(log[(match.Index + match.Length)..]));
         }
         throw new InvalidDataException("llama-server did not report full GPU layer offload.");
     }
@@ -188,6 +196,12 @@ internal sealed partial class WindowsLocalAiGpuEvidenceProbe : ILocalAiGpuEviden
 
     [GeneratedRegex(@"offloaded\s+(\d+)\s*/\s*(\d+)\s+layers\s+to\s+GPU", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex FullOffloadPattern();
+
+    [GeneratedRegex(@"\bload_model:\s+loading model\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex TargetModelLoadPattern();
+
+    [GeneratedRegex(@"\bloading draft model\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex DraftModelLoadPattern();
 
     [GeneratedRegex(@"CUDA\d+\s+model buffer size\s*=\s*([0-9]+(?:\.[0-9]+)?)\s+MiB", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CudaModelBufferPattern();

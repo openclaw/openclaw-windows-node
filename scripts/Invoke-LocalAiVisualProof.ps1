@@ -54,7 +54,8 @@ function Invoke-Capture([string]$Source, [string]$Stage, [bool]$Baseline) {
         $env:OPENCLAW_UI_PROOF_DIR = Join-Path $results $Stage
         $env:OPENCLAW_UI_PROOF_FREEZE_DIR = $freeze
         $env:OPENCLAW_UI_PROOF_MANIFEST_SHA256 = (Get-FileHash $manifest -Algorithm SHA256).Hash
-        dotnet test $project --no-build -c Debug -r win-x64 --filter FullyQualifiedName~LocalAiHardwareProfileTests `
+        dotnet test $project --no-build -c Debug -r win-x64 `
+            --filter 'FullyQualifiedName~LocalAiHardwareProfileTests.LocalAiPage_RendersHardwareFallbackOrUnavailable|FullyQualifiedName~LocalAiHardwareProfileTests.Onboarding_OffersOnlyFittingProfiles' `
             --results-directory (Join-Path $results $Stage) --logger "trx;LogFileName=$Stage.trx" `
             --blame-hang --blame-hang-timeout 120s --blame-hang-dump-type none
         if ($LASTEXITCODE -ne 0) { throw "$Stage native proof failed." }

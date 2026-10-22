@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Services;
@@ -257,6 +259,8 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
         Assert.Equal(previous.Url, restored.Url);
         Assert.Equal(previous.Id, _registry.ActiveGatewayId);
         Assert.Equal(previous.Url, _settings.GatewayUrl);
+        Assert.True(_settings.HasPersistedGatewayUrl);
+        Assert.Equal(previous.Url, _settings.GetLegacyCredentialGatewayUrlOrNull());
         Assert.Equal(
             "operator-old",
             DeviceIdentity.TryReadStoredDeviceTokenForRole(
@@ -268,6 +272,88 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
                 _registry.GetIdentityDirectory(previous.Id),
                 "node"));
         Assert.Equal(2, _tunnelReconcileCount);
+    }
+
+    [Fact]
+    public async Task Connect_FailureFromUrlLessProfile_DoesNotPersistSetupGateway()
+    {
+        Assert.False(_settings.HasPersistedGatewayUrl);
+        Assert.Null(_settings.GetLegacyCredentialGatewayUrlOrNull());
+        var setupPort = OpenClawTray.AppIdentity.SetupGatewayPort;
+        var before = CountOwnTcpConnectionsToPort(setupPort);
+        var identity = new DeviceIdentity(_tempDir);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("operator", "operator-role-token");
+        _manager.NextSnapshot = Failed("candidate", "rejected");
+
+        var result = await CreateService().ConnectAsync(new GatewayDirectConnectRequest(
+            "wss://candidate.example",
+            SharedToken: null,
+            FriendlyName: "Candidate",
+            SshTunnel: null));
+
+        Assert.Equal(GatewayDirectConnectOutcome.Failed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.False(result.RollbackIncomplete);
+        Assert.Empty(_registry.GetAll());
+        Assert.False(_settings.HasPersistedGatewayUrl);
+        Assert.Null(_settings.PersistedGatewayUrl);
+        Assert.Null(_settings.GetLegacyCredentialGatewayUrlOrNull());
+        Assert.NotEqual("wss://candidate.example", _settings.GatewayUrl);
+        var savedPath = Path.Combine(_tempDir, "settings.json");
+        Assert.True(File.Exists(savedPath));
+        using var saved = JsonDocument.Parse(File.ReadAllText(savedPath));
+        var savedUrl = saved.RootElement.TryGetProperty("GatewayUrl", out var gatewayUrl) &&
+            gatewayUrl.ValueKind == JsonValueKind.String
+                ? gatewayUrl.GetString()
+                : null;
+        Assert.True(string.IsNullOrWhiteSpace(savedUrl));
+        Assert.False(InteractiveGatewayCredentialResolver.TryResolve(
+            registry: null,
+            _tempDir,
+            DeviceIdentityFileReader.Instance,
+            _settings.GetLegacyCredentialGatewayUrlOrNull(),
+            legacyToken: null,
+            legacyBootstrapToken: null,
+            out var credential));
+        Assert.Null(credential);
+        var after = CountOwnTcpConnectionsToPort(setupPort);
+        Assert.Equal(before, after);
+        Console.WriteLine(
+            $"DIRECT_CONNECT_ROLLBACK setup_port={setupPort} own_tcp_before={before} own_tcp_after={after}");
+    }
+
+    private static int CountOwnTcpConnectionsToPort(int port)
+    {
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = "netstat",
+            Arguments = "-ano -p tcp",
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        });
+        if (process is null)
+            return -1;
+        var text = process.StandardOutput.ReadToEnd();
+        process.WaitForExit(5000);
+        var suffix = ":" + port;
+        var pid = Environment.ProcessId.ToString();
+        var count = 0;
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (!line.StartsWith("TCP", StringComparison.OrdinalIgnoreCase))
+                continue;
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 5 || parts[^1] != pid)
+                continue;
+            if (parts[1].EndsWith(suffix, StringComparison.Ordinal) ||
+                parts[2].EndsWith(suffix, StringComparison.Ordinal))
+                count++;
+        }
+
+        return count;
     }
 
     [Fact]

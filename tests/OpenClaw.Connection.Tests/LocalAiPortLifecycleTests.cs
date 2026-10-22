@@ -14,6 +14,105 @@ namespace OpenClaw.Connection.Tests;
 
 public sealed partial class LocalAiPortLifecycleTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReceiptlessStop_RefreshRecognizesRepairedInstallWithoutStartingIt(bool releaseOwnership)
+    {
+        using var temp = new TempDirectory("local-ai-repaired-");
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_766);
+        var lifecycle = new FakeLifecycle(events)
+        {
+            HasReleasableOwnership = true,
+            ConfirmWithdrawnHandler = _ => Task.CompletedTask,
+        };
+        await using var runtime = CreateRuntime(new LocalAiPaths(temp.Path),
+            host, platform, new FakeClient(events), lifecycle);
+        await runtime.StopAsync();
+        Assert.Null(runtime.Snapshot.ModelId);
+        if (releaseOwnership)
+            lifecycle.HasReleasableOwnership = false;
+        await PrepareInstallAsync(temp);
+        var refreshed = await runtime.RefreshAsync();
+        Assert.Equal(LocalAiRuntimeState.Stopped, refreshed.State);
+        Assert.Equal(ValidManifest().ModelCatalogId, refreshed.ModelId);
+        Assert.False(refreshed.GatewayRouteRequiresResolution);
+        Assert.Null(refreshed.ProcessId);
+        Assert.Null(host.LastSpec);
+        Assert.False(lifecycle.AutomaticRecoveryEnabled);
+        Assert.Equal(!releaseOwnership, runtime.HasReleasableOwnership);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReceiptlessStop_PreservesReleaseAcrossRefreshCancellationAndReopen(bool reopen)
+    {
+        using var temp = new TempDirectory("local-ai-receiptless-");
+        using var cancellation = new CancellationTokenSource();
+        var lifecycle = new FakeLifecycle(new SynchronizedEventLog())
+        {
+            HasReleasableOwnership = true,
+            ConfirmWithdrawnHandler = ct =>
+            {
+                cancellation.Cancel();
+                return Task.FromCanceled(ct);
+            },
+        };
+        var options = new LlamaServerRuntimeOptions
+        { Paths = new LocalAiPaths(temp.Path), EndpointLifecycle = lifecycle };
+        await using var initial = new LlamaServerRuntimeService(options, NullLogger.Instance);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => initial.StopAsync(cancellation.Token));
+        Assert.True((await initial.RefreshAsync()).GatewayRouteRequiresResolution);
+        Assert.False(lifecycle.AutomaticRecoveryEnabled);
+        Assert.True(initial.HasReleasableOwnership);
+        int confirmations = 0;
+        lifecycle.ConfirmWithdrawnHandler = ct =>
+        {
+            ct.ThrowIfCancellationRequested();
+            confirmations++;
+            return Task.CompletedTask;
+        };
+        Assert.Equal(LocalAiRuntimeState.Stopped, (await initial.StopAsync()).State);
+        Assert.Equal(LocalAiRuntimeState.Stopped, (await initial.RefreshAsync()).State);
+        await using var reopened = new LlamaServerRuntimeService(options, NullLogger.Instance);
+        var runtime = reopen ? reopened : initial;
+        if (reopen)
+        {
+            Assert.True(runtime.Snapshot.GatewayRouteRequiresResolution);
+            await runtime.ReconcileStoppedAsync();
+        }
+        Assert.Equal(reopen ? 2 : 1, confirmations);
+        Assert.Equal(LocalAiRuntimeState.Stopped, (await runtime.RefreshAsync()).State);
+        using var releaseCancellation = new CancellationTokenSource();
+        int releases = 0;
+        lifecycle.ReleaseHandler = ct =>
+        {
+            releases++;
+            releaseCancellation.Cancel();
+            return Task.FromCanceled(ct);
+        };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => runtime.ReleaseOwnershipAsync(releaseCancellation.Token));
+        Assert.True(runtime.HasReleasableOwnership);
+        Assert.Equal(LocalAiRuntimeState.Stopped, (await runtime.RefreshAsync()).State);
+        lifecycle.ReleaseHandler = _ => throw new InvalidOperationException("Gateway withdrawal changed.");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.ReleaseOwnershipAsync());
+        Assert.True(runtime.HasReleasableOwnership);
+        lifecycle.ReleaseHandler = _ =>
+        {
+            releases++;
+            lifecycle.HasReleasableOwnership = false;
+            return Task.CompletedTask;
+        };
+        await runtime.ReleaseOwnershipAsync();
+        Assert.Equal(2, releases);
+        Assert.False(runtime.HasReleasableOwnership);
+        Assert.False(runtime.Snapshot.GatewayRouteRequiresResolution);
+        Assert.Equal(LocalAiRuntimeState.NotInstalled, (await runtime.RefreshAsync()).State);
+    }
+
     [Fact]
     public async Task ChildProcessPathResolver_ResolvesExistingFileAndDirectoryPaths()
     {
@@ -174,14 +273,9 @@ public sealed partial class LocalAiPortLifecycleTests
             PreviousEndpoints = null,
         });
 
-        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(() =>
-            store.UpdateVerifiedEndpointAsync(
-                pending,
-                new Uri("http://127.0.0.1:28767/v1")));
-
-        Assert.Contains("finalized", error.Message, StringComparison.Ordinal);
+        await store.UpdateVerifiedEndpointAsync(pending, new Uri("http://127.0.0.1:28767/v1"));
         LocalAiResolvedInstall updated = (await store.LoadAsync())!;
-        Assert.Equal("http://127.0.0.1:28766/v1", updated.Manifest.Endpoint);
+        Assert.Equal("http://127.0.0.1:28767/v1", updated.Manifest.Endpoint);
         Assert.Null(updated.Manifest.ReplacedManifest);
         Assert.Null(updated.Manifest.PreviousEndpoints);
         string json = await File.ReadAllTextAsync(paths.ManifestPath);
@@ -190,7 +284,7 @@ public sealed partial class LocalAiPortLifecycleTests
     }
 
     [Fact]
-    public async Task Manifest_FinalizationRejectsConcurrentlyUpdatedEndpoint()
+    public async Task Manifest_FinalizationAcceptsOptionalEndpointAndFallbackDrift()
     {
         using var temp = new TempDirectory("local-ai-manifest-");
         var paths = new LocalAiPaths(temp.Path);
@@ -212,41 +306,13 @@ public sealed partial class LocalAiPortLifecycleTests
             pending,
             new Uri("http://127.0.0.1:28767/v1"));
 
-        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(() =>
-            store.FinalizeReplacementAsync(pending));
-
-        Assert.Contains("changed", error.Message, StringComparison.Ordinal);
+        await store.UpdateGatewayFallbackAsync(pending, "openai/gpt-5", CancellationToken.None);
+        await store.FinalizeReplacementAsync(pending);
         LocalAiResolvedInstall retained = (await store.LoadAsync())!;
         Assert.Equal("http://127.0.0.1:28767/v1", retained.Manifest.Endpoint);
-        Assert.NotNull(retained.Manifest.ReplacedManifest);
-        Assert.NotNull(retained.Manifest.PreviousEndpoints);
-    }
-
-    [Fact]
-    public async Task Manifest_RejectsNullPreviousEndpoint()
-    {
-        using var temp = new TempDirectory("local-ai-manifest-");
-        var paths = new LocalAiPaths(temp.Path);
-        var store = new LocalAiManifestStore(paths);
-        LocalAiInstallManifest original = ValidManifest() with
-        {
-            Endpoint = "http://127.0.0.1:28765/v1",
-        };
-        await store.SaveAsync(original with
-        {
-            ModelCatalogId = "replacement-model",
-            ModelAlias = "replacement-model",
-            Endpoint = "http://127.0.0.1:28766/v1",
-            ReplacedManifest = original,
-            PreviousEndpoints = [original.Endpoint!],
-        });
-        JsonObject json = (JsonNode.Parse(await File.ReadAllTextAsync(paths.ManifestPath)) as JsonObject)!;
-        json["previousEndpoints"] = new JsonArray { null };
-        await File.WriteAllTextAsync(paths.ManifestPath, json.ToJsonString());
-
-        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(() => store.LoadAsync());
-
-        Assert.Contains("non-empty endpoint", error.Message, StringComparison.Ordinal);
+        Assert.Equal("openai/gpt-5", retained.Manifest.GatewayFallbackModel);
+        Assert.Null(retained.Manifest.ReplacedManifest);
+        Assert.Null(retained.Manifest.PreviousEndpoints);
     }
 
     [Fact]
@@ -2681,8 +2747,10 @@ public sealed partial class LocalAiPortLifecycleTests
         Assert.Equal([false, true, false, false, true], lifecycle.RecoveryIntents);
     }
 
-    [Fact]
-    public async Task AcknowledgeSetupGatewayRouteAsync_ClearsResolutionWithoutLifecycleIo()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AcknowledgeSetupGatewayRouteAsync_ClearsResolutionDespiteOptionalDrift(bool optionalDrift)
     {
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
@@ -2701,7 +2769,20 @@ public sealed partial class LocalAiPortLifecycleTests
         Assert.True(started.GatewayRouteRequiresResolution);
         events.Clear();
 
+        var store = new LocalAiManifestStore(paths);
+        if (optionalDrift)
+        {
+            LocalAiInstallManifest changed = (await store.LoadAsync())!.Manifest with
+            {
+                Endpoint = "http://127.0.0.1:28770/v1",
+                GatewayFallbackModel = "openai/new-fallback",
+            };
+            await store.SaveAsync(changed);
+        }
         LocalAiRuntimeSnapshot acknowledged = await runtime.AcknowledgeSetupGatewayRouteAsync();
+        Assert.Equal(started.Endpoint, (await store.LoadAsync())!.Endpoint);
+        if (optionalDrift)
+            Assert.Equal("openai/new-fallback", (await store.LoadAsync())!.Manifest.GatewayFallbackModel);
 
         Assert.False(acknowledged.GatewayRouteRequiresResolution);
         Assert.Empty(events);
@@ -3985,6 +4066,13 @@ public sealed partial class LocalAiPortLifecycleTests
 
     private sealed class FakeLifecycle(SynchronizedEventLog events) : ILocalAiEndpointLifecycle
     {
+        public bool HasReleasableOwnership { get; set; }
+        public Func<CancellationToken, Task>? ConfirmWithdrawnHandler { get; set; }
+        public Task ConfirmWithdrawnWithoutInstallAsync(CancellationToken ct) =>
+            ConfirmWithdrawnHandler?.Invoke(ct) ?? throw new InvalidOperationException("Withdrawal not configured.");
+        public Func<CancellationToken, Task>? ReleaseHandler { get; set; }
+        public Task ReleaseOwnershipAsync(CancellationToken ct) =>
+            ReleaseHandler?.Invoke(ct) ?? throw new InvalidOperationException("Release not configured.");
         public LocalAiNativeBindingStore? BindingStore { get; init; }
         public Func<CancellationToken, Task>? PrepareStartHandler { get; set; }
         public Task PrepareStartAsync(LocalAiResolvedInstall install, CancellationToken ct) =>

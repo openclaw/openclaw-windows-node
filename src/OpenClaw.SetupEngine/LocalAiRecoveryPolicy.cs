@@ -208,13 +208,12 @@ public sealed class ValidateLocalAiRecoveryGatewayCompatibilityStep : SetupStep
         {
             return StepResult.Ok("Gateway supports safe automatic-port recovery.");
         }
-        if (result.ExitCode == 42 &&
-            result.Stdout.Contains(UnsupportedMarker, StringComparison.Ordinal))
-        {
-            return StepResult.Terminal(
-                "This Gateway version cannot safely recover Local AI with an automatic port. Update the Gateway, then retry recovery.");
-        }
-        return StepResult.Fail("OpenClaw could not verify Gateway support for safe automatic-port recovery.");
+        // Conditional writes are only needed if rollback has to move an old route.
+        // Forward setup still uses the supported batch path after exact ownership checks.
+        ctx.Logger.Warn(
+            "Gateway conditional route updates are unavailable. Recovery will proceed; " +
+            "if rollback needs a different endpoint, its files and recovery hints will be retained.");
+        return StepResult.Ok("Continuing Local AI recovery with legacy Gateway compatibility.");
     }
 
     private static Task<CommandResult> ProbeConditionalSetSupportAsync(
@@ -301,24 +300,20 @@ public sealed class PreserveLocalAiRecoveryGatewayStep : SetupStep
                 try
                 {
                     var store = new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir));
-                    if (ctx.LocalAiResolvedInstall!.Manifest.ReplacedManifest is not null)
+                    // Keep the possibly published replacement as a disposable hint until
+                    // the runtime and Gateway have both been observed after compensation.
+                    // A failed restart must not erase its provenance or permit file cleanup.
+                    LocalAiInstallManifest pending = ctx.LocalAiResolvedInstall!.Manifest;
+                    LocalAiInstallManifest recoveryManifest = originalInstall.Manifest with
                     {
-                        ctx.LocalAiResolvedInstall = await store
-                            .RestoreRecoveryManifestAsync(
-                                ctx.LocalAiResolvedInstall.Manifest,
-                                originalInstall.Manifest,
-                                ct)
-                            .ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        ctx.LocalAiResolvedInstall = await store
-                            .RestoreManifestIfUnchangedAsync(
-                                ctx.LocalAiResolvedInstall.Manifest,
-                                originalInstall.Manifest,
-                                ct)
-                            .ConfigureAwait(false);
-                    }
+                        RecoveryRoutes = originalInstall.Manifest.RecoveryRoutes
+                            .AddRange(pending.RecoveryRoutes)
+                            .AddRange((pending.PreviousEndpoints ?? []).Select(endpoint =>
+                                LocalAiManifestStore.WithoutRecoveryHints(pending) with { Endpoint = endpoint }))
+                            .Add(LocalAiManifestStore.WithoutRecoveryHints(pending)),
+                    };
+                    ctx.LocalAiResolvedInstall = await store.RestoreRecoveryManifestAsync(
+                        ctx.LocalAiResolvedInstall.Manifest, recoveryManifest, ct).ConfigureAwait(false);
                     bool runtimeOwnsGatewayRoute = ctx.LocalAiGatewayPriorState is null;
                     LocalAiRuntimeSnapshot restored = runtimeOwnsGatewayRoute
                         ? await borrowedRuntime.RestartForSetupRollbackAsync(ct).ConfigureAwait(false)
@@ -338,6 +333,9 @@ public sealed class PreserveLocalAiRecoveryGatewayStep : SetupStep
                     }
                     ctx.LocalAiResolvedInstall = restoredInstall;
                     AcquireLocalAiRuntimeStep.TransferCleanupOwnershipToRestoredRuntime(
+                        ctx,
+                        restoredInstall);
+                    AcquireLocalAiModelStep.TransferCleanupOwnershipToRestoredRuntime(
                         ctx,
                         restoredInstall);
                     if (ctx.LocalAiGatewayPriorState is { } prior &&

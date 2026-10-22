@@ -15,6 +15,7 @@
 // </summary>
 using System.Collections.Immutable;
 using System.Text;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenClaw.Shared.Inference.Catalog;
@@ -253,14 +254,17 @@ public sealed record LocalAiInstallManifest
     /// </summary>
     public string? GatewayFallbackModel { get; init; }
     /// <summary>
-    /// The last committed receipt while a recovery flow replaces its model.
-    /// Cleared only after the Gateway has restarted on the replacement route.
+    /// Optional recovery provenance. Persisted outside state.json so older strict
+    /// readers can still load the canonical installation during replacement.
     /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonIgnore]
     public LocalAiInstallManifest? ReplacedManifest { get; init; }
     /// <summary>Earlier verified replacement endpoints that may still be published to the Gateway.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonIgnore]
     public ImmutableArray<string>? PreviousEndpoints { get; init; }
+    /// <summary>Earlier pending models whose exact routes may still be published.</summary>
+    [JsonIgnore]
+    public ImmutableArray<LocalAiInstallManifest> RecoveryRoutes { get; init; } = [];
     public required int ContextLength { get; init; }
     public KvCachePrecision KeyCachePrecision { get; init; } = KvCachePrecision.F16;
     public KvCachePrecision ValueCachePrecision { get; init; } = KvCachePrecision.F16;
@@ -393,7 +397,9 @@ public sealed class LocalAiManifestStore
         byte[] originalManifest = await File
             .ReadAllBytesAsync(_paths.ManifestPath, cancellationToken)
             .ConfigureAwait(false);
-        LocalAiInstallManifest manifest = DeserializeManifest(originalManifest);
+        LocalAiInstallManifest manifest = await ReadRecoveryHintsAsync(
+                DeserializeManifest(originalManifest), originalManifest, cancellationToken)
+            .ConfigureAwait(false);
         LocalAiResolvedInstall resolved = ResolveAndValidate(manifest);
         if (manifest.SchemaVersion != LocalAiInstallManifest.CurrentSchemaVersion)
             return resolved;
@@ -425,12 +431,22 @@ public sealed class LocalAiManifestStore
             throw new InvalidDataException(
                 "The local AI installation manifest changed while its cache migration was in progress.");
         }
-        if (!originalManifest.AsSpan().SequenceEqual(currentManifest))
+        LocalAiInstallManifest current = await ReadRecoveryHintsAsync(
+            DeserializeManifest(currentManifest), currentManifest, cancellationToken).ConfigureAwait(false);
+        if (!HasSameRuntimeAndModel(current, manifest))
         {
             throw new InvalidDataException(
                 "The local AI installation manifest changed while its cache migration was in progress.");
         }
 
+        migrated = migrated with
+        {
+            Endpoint = current.Endpoint,
+            GatewayFallbackModel = current.GatewayFallbackModel,
+            ReplacedManifest = current.ReplacedManifest,
+            PreviousEndpoints = current.PreviousEndpoints,
+            RecoveryRoutes = current.RecoveryRoutes,
+        };
         await SaveWithoutLockAsync(migrated, cancellationToken).ConfigureAwait(false);
         return ResolveAndValidate(migrated);
     }
@@ -438,30 +454,10 @@ public sealed class LocalAiManifestStore
     private async Task<LocalAiInstallManifest> ReadManifestAsync(
         CancellationToken cancellationToken)
     {
-        LocalAiInstallManifest? manifest;
-        try
-        {
-            await using var stream = new FileStream(
-                _paths.ManifestPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                16 * 1024,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-            manifest = await JsonSerializer.DeserializeAsync<LocalAiInstallManifest>(
-                    stream,
-                    JsonOptions,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (JsonException ex)
-        {
-            throw new InvalidDataException("The local AI installation manifest is invalid JSON or uses an unsupported format.", ex);
-        }
-
-        if (manifest is null)
-            throw new InvalidDataException("The local AI installation manifest is empty.");
-        return manifest;
+        byte[] content = await File.ReadAllBytesAsync(_paths.ManifestPath, cancellationToken)
+            .ConfigureAwait(false);
+        LocalAiInstallManifest manifest = DeserializeManifest(content);
+        return await ReadRecoveryHintsAsync(manifest, content, cancellationToken).ConfigureAwait(false);
     }
 
     private static LocalAiInstallManifest DeserializeManifest(byte[] content)
@@ -487,7 +483,7 @@ public sealed class LocalAiManifestStore
     public async Task SaveAsync(LocalAiInstallManifest manifest, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(manifest);
-        _ = ResolveAndValidate(manifest);
+        manifest = ResolveAndValidate(manifest).Manifest;
         await using FileStream writeLock = await AcquireManifestWriteLockAsync(cancellationToken)
             .ConfigureAwait(false);
         await SaveWithoutLockAsync(manifest, cancellationToken).ConfigureAwait(false);
@@ -508,14 +504,9 @@ public sealed class LocalAiManifestStore
             throw new InvalidDataException(
                 "The Local AI installation changed before its verified endpoint could be recorded.");
         }
-        if (expectedManifest.ReplacedManifest is not null && current.ReplacedManifest is null)
-        {
-            throw new InvalidDataException(
-                "The Local AI model replacement was finalized before its verified endpoint could be recorded.");
-        }
-
+        current = ResolveAndValidate(current).Manifest;
         ImmutableArray<string>? history = current.PreviousEndpoints;
-        if (current.ReplacedManifest is null)
+        if (current.ReplacedManifest is null && current.RecoveryRoutes.IsDefaultOrEmpty)
         {
             history = null;
         }
@@ -550,67 +541,33 @@ public sealed class LocalAiManifestStore
             throw new InvalidDataException(
                 "The Local AI installation changed before its model replacement could be finalized.");
         }
-        if (expectedManifest.ReplacedManifest is null || current.ReplacedManifest is null ||
-            !string.Equals(current.Endpoint, expectedManifest.Endpoint, StringComparison.Ordinal))
-        {
-            throw new InvalidDataException(
-                "The Local AI model replacement changed before it could be finalized.");
-        }
-
         LocalAiInstallManifest finalized = current with
         {
             ReplacedManifest = null,
             PreviousEndpoints = null,
+            RecoveryRoutes = [],
         };
         LocalAiResolvedInstall resolved = ResolveAndValidate(finalized);
         await SaveWithoutLockAsync(finalized, cancellationToken).ConfigureAwait(false);
         return resolved;
     }
 
-    internal async Task<LocalAiResolvedInstall> RestoreRecoveryManifestAsync(
+    internal Task<LocalAiResolvedInstall> RestoreRecoveryManifestAsync(
         LocalAiInstallManifest expectedManifest,
         LocalAiInstallManifest recoveryManifest,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        RestoreManifestIfUnchangedAsync(expectedManifest, recoveryManifest, cancellationToken);
+
+    internal async Task<LocalAiResolvedInstall> UpdateGatewayFallbackAsync(
+        LocalAiInstallManifest expectedManifest, string? fallback, CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(expectedManifest);
-        ArgumentNullException.ThrowIfNull(recoveryManifest);
-        await using FileStream writeLock = await AcquireManifestWriteLockAsync(cancellationToken)
-            .ConfigureAwait(false);
-        LocalAiInstallManifest current = await ReadManifestAsync(cancellationToken).ConfigureAwait(false);
-        if (!JsonElement.DeepEquals(
-                JsonSerializer.SerializeToElement(current),
-                JsonSerializer.SerializeToElement(expectedManifest)) ||
-            current.ReplacedManifest is null)
-        {
-            throw new InvalidDataException(
-                "The Local AI model replacement changed before its recovery receipt could be restored.");
-        }
-
-        bool restoresOriginal = JsonElement.DeepEquals(
-            JsonSerializer.SerializeToElement(current.ReplacedManifest),
-            JsonSerializer.SerializeToElement(recoveryManifest));
-        bool endpointWasPublished = recoveryManifest.Endpoint is { } recoveryEndpoint &&
-            (string.Equals(current.Endpoint, recoveryEndpoint, StringComparison.Ordinal) ||
-                (current.PreviousEndpoints?.Contains(recoveryEndpoint, StringComparer.Ordinal) ?? false));
-        bool restoresPendingRoute = endpointWasPublished && JsonElement.DeepEquals(
-            JsonSerializer.SerializeToElement(current),
-            JsonSerializer.SerializeToElement(recoveryManifest with
-            {
-                Endpoint = current.Endpoint,
-                PreviousEndpoints = current.PreviousEndpoints,
-            }));
-        if (!restoresOriginal && !restoresPendingRoute)
-        {
-            throw new InvalidDataException(
-                "The requested Local AI recovery receipt is not an authorized replacement route.");
-        }
-
-        LocalAiInstallManifest restored = restoresPendingRoute
-            ? current with { Endpoint = recoveryManifest.Endpoint }
-            : recoveryManifest;
-        LocalAiResolvedInstall resolved = ResolveAndValidate(restored);
-        await SaveWithoutLockAsync(restored, cancellationToken).ConfigureAwait(false);
-        return resolved;
+        await using FileStream writeLock = await AcquireManifestWriteLockAsync(ct).ConfigureAwait(false);
+        LocalAiInstallManifest current = await ReadManifestAsync(ct).ConfigureAwait(false);
+        if (!HasSameRuntimeAndModel(current, expectedManifest))
+            throw new InvalidDataException("The Local AI installation changed before its fallback could be recorded.");
+        LocalAiResolvedInstall updated = ResolveAndValidate(current with { GatewayFallbackModel = fallback });
+        await SaveWithoutLockAsync(updated.Manifest, ct).ConfigureAwait(false);
+        return updated;
     }
 
     internal async Task<LocalAiResolvedInstall> RestoreManifestIfUnchangedAsync(
@@ -623,9 +580,7 @@ public sealed class LocalAiManifestStore
         await using FileStream writeLock = await AcquireManifestWriteLockAsync(cancellationToken)
             .ConfigureAwait(false);
         LocalAiInstallManifest current = await ReadManifestAsync(cancellationToken).ConfigureAwait(false);
-        if (!JsonElement.DeepEquals(
-                JsonSerializer.SerializeToElement(current),
-                JsonSerializer.SerializeToElement(expectedManifest)))
+        if (!HasSameRuntimeAndModel(current, expectedManifest))
         {
             throw new InvalidDataException(
                 "The Local AI installation changed before its recovery receipt could be restored.");
@@ -636,19 +591,94 @@ public sealed class LocalAiManifestStore
         return resolved;
     }
 
-    private static bool HasSameRuntimeAndModel(
+    // Compare every installation/artifact field, not just catalog IDs and paths.
+    // Endpoint and fallback are bookkeeping; recovery hints are JsonIgnored.
+    internal static bool HasSameRuntimeAndModel(
         LocalAiInstallManifest current,
         LocalAiInstallManifest expected) =>
-        string.Equals(current.RuntimeId, expected.RuntimeId, StringComparison.Ordinal) &&
-        string.Equals(current.SelectedGpuId, expected.SelectedGpuId, StringComparison.Ordinal) &&
-        string.Equals(current.ModelCatalogId, expected.ModelCatalogId, StringComparison.Ordinal) &&
-        string.Equals(current.ModelPath, expected.ModelPath, StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(current.CachedModelPath, expected.CachedModelPath, StringComparison.OrdinalIgnoreCase);
+        JsonElement.DeepEquals(
+            JsonSerializer.SerializeToElement(current with { Endpoint = null, GatewayFallbackModel = null }),
+            JsonSerializer.SerializeToElement(expected with { Endpoint = null, GatewayFallbackModel = null }));
+
+    private string RecoveryHintsPath => _paths.ResolveContainedPath("recovery-hints.json", "recovery hints");
+
+    // This is a disposable cache of route provenance, not a second transaction receipt.
+    // Exact bytes plus write time invalidate it when an older writer replaces state.json,
+    // including an otherwise byte-identical save. Missing or torn hints lose recovery
+    // convenience, never installation validity or permission to touch unrelated routes.
+    private sealed record RecoveryHints(
+        string ManifestSha256,
+        long ManifestWriteTimeUtcTicks,
+        LocalAiInstallManifest? ReplacedManifest,
+        ImmutableArray<string>? PreviousEndpoints,
+        ImmutableArray<LocalAiInstallManifest> RecoveryRoutes);
+
+    private async Task<LocalAiInstallManifest> ReadRecoveryHintsAsync(
+        LocalAiInstallManifest manifest, byte[] content, CancellationToken ct)
+    {
+        try
+        {
+            string path = RecoveryHintsPath;
+            if (!File.Exists(path) || new FileInfo(path).Length > 1024 * 1024)
+                return manifest;
+            RecoveryHints? hints = JsonSerializer.Deserialize<RecoveryHints>(
+                await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false), JsonOptions);
+            if (hints is null ||
+                hints.ManifestWriteTimeUtcTicks != File.GetLastWriteTimeUtc(_paths.ManifestPath).Ticks ||
+                hints.ManifestSha256 != Convert.ToHexString(SHA256.HashData(content)))
+                return manifest;
+            return manifest with
+            {
+                ReplacedManifest = hints.ReplacedManifest,
+                PreviousEndpoints = hints.PreviousEndpoints,
+                RecoveryRoutes = hints.RecoveryRoutes.IsDefault ? [] : hints.RecoveryRoutes,
+            };
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
+        {
+            return manifest;
+        }
+    }
+
+    private async Task SaveRecoveryHintsAsync(LocalAiInstallManifest manifest, byte[] content)
+    {
+        string? temporaryPath = null;
+        try
+        {
+            string path = RecoveryHintsPath;
+            if (manifest.ReplacedManifest is null && manifest.RecoveryRoutes.IsDefaultOrEmpty)
+            {
+                File.Delete(path);
+                return;
+            }
+            var hints = new RecoveryHints(
+                Convert.ToHexString(SHA256.HashData(content)),
+                File.GetLastWriteTimeUtc(_paths.ManifestPath).Ticks,
+                manifest.ReplacedManifest,
+                manifest.PreviousEndpoints,
+                manifest.RecoveryRoutes);
+            temporaryPath = path + $".{Guid.NewGuid():N}.tmp";
+            await File.WriteAllBytesAsync(temporaryPath, JsonSerializer.SerializeToUtf8Bytes(hints, JsonOptions))
+                .ConfigureAwait(false);
+            File.Move(temporaryPath, path, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            // Canonical persistence succeeded. Never turn optional bookkeeping into failure.
+        }
+        finally
+        {
+            try { if (temporaryPath is not null) File.Delete(temporaryPath); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { }
+        }
+    }
 
     private async Task SaveWithoutLockAsync(
         LocalAiInstallManifest manifest,
         CancellationToken cancellationToken)
     {
+        manifest = ResolveAndValidate(manifest).Manifest;
+        byte[] content = JsonSerializer.SerializeToUtf8Bytes(manifest, JsonOptions);
         Directory.CreateDirectory(_paths.RootDirectory);
         _ = _paths.ResolveContainedPath(Path.GetFileName(_paths.ManifestPath), nameof(_paths.ManifestPath));
 
@@ -665,14 +695,14 @@ public sealed class LocalAiManifestStore
                 16 * 1024,
                 FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
-                await JsonSerializer.SerializeAsync(stream, manifest, JsonOptions, cancellationToken)
-                    .ConfigureAwait(false);
+                await stream.WriteAsync(content, cancellationToken).ConfigureAwait(false);
                 await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
                 stream.Flush(flushToDisk: true);
             }
 
             _ = _paths.ResolveContainedPath(Path.GetFileName(temporaryPath), nameof(temporaryPath));
             File.Move(temporaryPath, _paths.ManifestPath, overwrite: true);
+            await SaveRecoveryHintsAsync(manifest, content).ConfigureAwait(false);
         }
         finally
         {
@@ -793,45 +823,55 @@ public sealed class LocalAiManifestStore
         LocalAiPortPolicy.Validate(manifest.RequestedPort);
         LocalAiGatewayModelPolicy.ValidateFallbackModel(manifest.GatewayFallbackModel);
 
-        if (manifest.ReplacedManifest is { } replaced)
-        {
-            if (replaced.ReplacedManifest is not null ||
-                string.Equals(replaced.ModelCatalogId, manifest.ModelCatalogId, StringComparison.Ordinal) ||
-                !string.Equals(replaced.Engine, manifest.Engine, StringComparison.Ordinal) ||
-                !string.Equals(replaced.EngineVersion, manifest.EngineVersion, StringComparison.Ordinal) ||
-                !string.Equals(replaced.Architecture, manifest.Architecture, StringComparison.Ordinal) ||
-                !string.Equals(replaced.RuntimeId, manifest.RuntimeId, StringComparison.Ordinal) ||
-                !string.Equals(replaced.ExecutablePath, manifest.ExecutablePath, StringComparison.Ordinal) ||
-                !replaced.RuntimeAssets.SequenceEqual(manifest.RuntimeAssets) ||
-                replaced.RequestedPort != manifest.RequestedPort)
-            {
-                throw new InvalidDataException("The local AI model replacement receipt is invalid.");
-            }
-            _ = ResolveAndValidate(replaced);
-        }
-        else if (manifest.PreviousEndpoints is not null)
-        {
-            throw new InvalidDataException("Previous Local AI endpoints require a pending model replacement.");
-        }
-
         Uri? endpoint = ValidateEndpoint(manifest.Endpoint, manifest.RequestedPort);
-        ImmutableArray<string> endpointHistory = manifest.PreviousEndpoints.GetValueOrDefault();
-        if (endpointHistory.IsDefault)
-            endpointHistory = [];
-        HashSet<string> previousEndpoints = endpointHistory.ToHashSet(StringComparer.Ordinal);
-        if (previousEndpoints.Count != endpointHistory.Length)
-        {
-            throw new InvalidDataException("Previous Local AI endpoints must be unique.");
-        }
-        foreach (string previousEndpoint in previousEndpoints)
-        {
-            if (string.IsNullOrWhiteSpace(previousEndpoint))
-                throw new InvalidDataException("Previous Local AI endpoints must be non-empty endpoint strings.");
-            _ = ValidateEndpoint(previousEndpoint, manifest.RequestedPort);
-        }
+        manifest = ValidateRecoveryHints(manifest);
 
         return new LocalAiResolvedInstall(manifest, executable, model, endpoint);
     }
+
+    private LocalAiInstallManifest ValidateRecoveryHints(LocalAiInstallManifest manifest)
+    {
+        try
+        {
+            IEnumerable<LocalAiInstallManifest> routes = manifest.RecoveryRoutes.IsDefault
+                ? [] : manifest.RecoveryRoutes;
+            if (manifest.ReplacedManifest is { } replaced)
+                routes = routes.Prepend(replaced);
+            foreach (LocalAiInstallManifest route in routes)
+            {
+                // Hints never authorize another installation, runtime or GPU. Full path,
+                // receipt and hash-shape validation still applies to every historical model.
+                if (route is null || route.ReplacedManifest is not null ||
+                    !route.RecoveryRoutes.IsDefaultOrEmpty ||
+                    route.Engine != manifest.Engine || route.EngineVersion != manifest.EngineVersion ||
+                    route.Architecture != manifest.Architecture || route.RuntimeId != manifest.RuntimeId ||
+                    route.SelectedGpuId != manifest.SelectedGpuId ||
+                    route.ExecutablePath != manifest.ExecutablePath ||
+                    route.RuntimeAssets.IsDefault ||
+                    !route.RuntimeAssets.SequenceEqual(manifest.RuntimeAssets) ||
+                    route.RequestedPort != manifest.RequestedPort)
+                    return WithoutRecoveryHints(manifest);
+                LocalAiResolvedInstall resolvedRoute = ResolveAndValidate(route);
+                // Optional history must also be usable by Gateway route matching. An
+                // unknown catalog model or mismatched alias cannot block the current model.
+                _ = LocalAiGatewayProviderDefinition.BuildPrimaryModel(resolvedRoute);
+            }
+            foreach (string previousEndpoint in manifest.PreviousEndpoints ?? [])
+            {
+                if (string.IsNullOrWhiteSpace(previousEndpoint))
+                    return WithoutRecoveryHints(manifest);
+                _ = ValidateEndpoint(previousEndpoint, manifest.RequestedPort);
+            }
+            return manifest;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        {
+            return WithoutRecoveryHints(manifest);
+        }
+    }
+
+    internal static LocalAiInstallManifest WithoutRecoveryHints(LocalAiInstallManifest manifest) =>
+        manifest with { ReplacedManifest = null, PreviousEndpoints = null, RecoveryRoutes = [] };
 
     private static Uri? ValidateEndpoint(string? value, int requestedPort)
     {

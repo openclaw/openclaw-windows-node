@@ -121,10 +121,12 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         bool retainedRecoveryPrimary = !retainedManagedPrimary &&
             !prior.ProviderExisted &&
             prior.PrimaryModelExisted &&
-            recoveryInstall is not null &&
-            JsonEquals(
+            ((recoveryInstall is not null && JsonEquals(
                 prior.PrimaryModelJson!,
-                JsonSerializer.Serialize(LocalAiGatewayProviderDefinition.BuildPrimaryModel(recoveryInstall)));
+                JsonSerializer.Serialize(LocalAiGatewayProviderDefinition.BuildPrimaryModel(recoveryInstall)))) ||
+             install.Manifest.RecoveryRoutes.Any(route => JsonEquals(
+                 prior.PrimaryModelJson!,
+                 JsonSerializer.Serialize(LocalAiGatewayProviderDefinition.BuildPrimaryModel(install with { Manifest = route })))));
         string? fallbackModel;
         bool recoveryProviderTransition = false;
         if (prior.ProviderExisted)
@@ -132,11 +134,13 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             bool matchesCurrentInstall = install.Endpoint is not null &&
                 LocalAiGatewayProviderDefinition.MatchesProviderJson(prior.ProviderJson!, install);
             LocalAiResolvedInstall? pendingRoute = MatchPendingRoute(
-                ctx.LocalAiRecoveryPendingInstall,
-                prior.ProviderJson!);
+                ctx.LocalAiRecoveryPendingInstall ?? install,
+                prior.ProviderJson!,
+                new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir)));
             bool matchesPendingInstall = !matchesCurrentInstall &&
                 pendingRoute is not null && prior.PrimaryModelExisted &&
-                JsonEquals(prior.PrimaryModelJson!, expectedPrimary);
+                JsonEquals(prior.PrimaryModelJson!, JsonSerializer.Serialize(
+                    LocalAiGatewayProviderDefinition.BuildPrimaryModel(pendingRoute!)));
             bool matchesRecoveryInstall = false;
             if (!matchesCurrentInstall && !matchesPendingInstall &&
                 ctx.LocalAiRecoveryOriginalInstall is { Endpoint: not null } originalInstall)
@@ -176,9 +180,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         }
         else if (retainedManagedPrimary || retainedRecoveryPrimary)
         {
-            fallbackModel = retainedRecoveryPrimary
-                ? recoveryInstall!.Manifest.GatewayFallbackModel
-                : install.Manifest.GatewayFallbackModel;
+            fallbackModel = install.Manifest.GatewayFallbackModel;
         }
         else if (prior.PrimaryModelExisted)
         {
@@ -219,12 +221,8 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             try
             {
                 var store = new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir));
-                LocalAiInstallManifest updatedManifest = install.Manifest with
-                {
-                    GatewayFallbackModel = fallbackModel,
-                };
-                await store.SaveAsync(updatedManifest, ct).ConfigureAwait(false);
-                ctx.LocalAiResolvedInstall = store.ResolveAndValidate(updatedManifest);
+                ctx.LocalAiResolvedInstall = await store.UpdateGatewayFallbackAsync(
+                    install.Manifest, fallbackModel, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
             {
@@ -421,7 +419,9 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         {
             return false;
         }
-        if (ProviderRoutesToEndpoint(current.ProviderJson!, restoredInstall.Endpoint!))
+        if (!current.ProviderExisted || current.ProviderJson is null)
+            return false;
+        if (ProviderRoutesToEndpoint(current.ProviderJson, restoredInstall.Endpoint!))
             return true;
         if (!LocalAiGatewayProviderDefinition.MatchesProviderJson(
                 prior.ProviderJson!,
@@ -452,6 +452,9 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             // Older protocol-v4 Gateways predate atomic conditional config writes. A separate
             // read then write can overwrite a concurrent owner, so leave route resolution
             // pending instead of attempting a lossy compatibility update.
+            ctx.Logger.Warn(
+                "This Gateway cannot conditionally move the restored Local AI route. " +
+                "Keeping potentially active files and recovery hints; route restoration is not confirmed.");
             return false;
         }
         if (restore.ExitCode != 0 || restore.TimedOut ||
@@ -641,6 +644,9 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             return;
 
         var store = new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir));
+        string? committedFallback = install.Manifest.GatewayFallbackModel;
+        if (current.ProviderExisted && MatchPendingRoute(install, current.ProviderJson!, store) is { } ownedRoute)
+            install = store.ResolveAndValidate(ownedRoute.Manifest);
         foreach (string previousEndpoint in install.Manifest.PreviousEndpoints ?? [])
         {
             LocalAiResolvedInstall previous = store.ResolveAndValidate(install.Manifest with
@@ -685,7 +691,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
 
         string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
         string expectedPrimary = JsonSerializer.Serialize(managedPrimary);
-        string? fallbackModel = install.Manifest.GatewayFallbackModel;
+        string? fallbackModel = committedFallback;
         string? currentPrimary = null;
         bool currentPrimaryIsManaged = current.PrimaryModelExisted &&
             JsonEquals(current.PrimaryModelJson!, expectedPrimary);
@@ -864,7 +870,8 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
 
     private static LocalAiResolvedInstall? MatchPendingRoute(
         LocalAiResolvedInstall? pending,
-        string providerJson)
+        string providerJson,
+        LocalAiManifestStore store)
     {
         if (pending?.Endpoint is not null &&
             LocalAiGatewayProviderDefinition.MatchesProviderJson(providerJson, pending))
@@ -876,6 +883,14 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
                 Manifest = pending.Manifest with { Endpoint = endpoint },
                 Endpoint = new Uri(endpoint),
             };
+            if (LocalAiGatewayProviderDefinition.MatchesProviderJson(providerJson, previous))
+                return previous;
+        }
+        foreach (LocalAiInstallManifest route in pending?.Manifest.RecoveryRoutes ?? [])
+        {
+            if (route.Endpoint is null)
+                continue;
+            LocalAiResolvedInstall previous = store.ResolveAndValidate(route);
             if (LocalAiGatewayProviderDefinition.MatchesProviderJson(providerJson, previous))
                 return previous;
         }

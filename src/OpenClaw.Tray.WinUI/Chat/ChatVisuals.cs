@@ -24,10 +24,10 @@ internal static class ChatVisuals
     internal const double HeadingTopInset = 8;
     internal const double FooterBreakpoint = 640;
     internal const double CompactEffortBreakpoint = 560;
-    internal const double CompactSessionBreakpoint = 400;
     internal const double AvatarBreakpoint = 960;
     internal const double AvatarSlot = 44;
 
+    internal static double WelcomeAvatarSize(double width) => width <= 768 ? 64 : 96;
     internal static double Gutter(double width) => width < FooterBreakpoint ? 12 : 40;
     internal static double RailWidth(double width) => width < FooterBreakpoint ? 24 : 32;
     internal static double ProseWidth(double width) =>

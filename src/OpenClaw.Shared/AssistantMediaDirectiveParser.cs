@@ -318,6 +318,20 @@ internal static class AssistantMediaDirectiveParser
             && !HasTraversalOrUnsupportedHomePrefix(candidate);
     }
 
+    internal static bool IsSendableLegacySource(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            return false;
+
+        if (!Uri.TryCreate(source, UriKind.Absolute, out var uri)
+            || !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.IsNullOrEmpty(uri.UserInfo) && IsAllowedRemoteHost(uri.Host);
+    }
+
     private static bool IsAllowedRemoteHost(string host)
     {
         var normalized = host.Trim().Trim('[', ']').TrimEnd('.').ToLowerInvariant();
@@ -330,6 +344,12 @@ internal static class AssistantMediaDirectiveParser
         {
             return false;
         }
+
+        // 0.0.0.0/8, CGNAT, and non-canonical spellings of those ranges.
+        // Canvas loads already use this check. A name that is not an address
+        // stays on the suffix rules above.
+        if (CanvasUrlSafety.IsPrivateOrLoopbackHost(normalized))
+            return false;
 
         if (!IPAddress.TryParse(normalized, out var address))
             return true;

@@ -25,7 +25,6 @@ internal sealed record ChatComposerInputs(
     string ConnectionState,
     bool TurnActive,
     ChatThread CurrentThread,
-    IReadOnlyList<ChatThread> AvailableChannels,
     string[] AvailableModels,
     IReadOnlyList<ChatModelChoice>? ModelChoices,
     bool MessageOptionsDisabled,
@@ -34,6 +33,10 @@ internal sealed record ChatComposerInputs(
     bool CommandsSupported)
 {
     internal long Revision { get; init; }
+    internal bool ShowPlacementPickers { get; init; }
+    internal bool PlacementTargetIsEmpty { get; init; }
+    internal bool PlacementHistoryReady { get; init; }
+    internal bool PlacementTargetIsNew { get; init; }
     internal bool CanChangeSessionOptions => ConnectionState == "connected" && !MessageOptionsDisabled;
     internal ThinkingProfile? ThinkingProfile => ChatThinkingProfile.Resolve(CurrentThread, ModelChoices);
     internal bool CanChangeThinking => CanChangeSessionOptions
@@ -43,13 +46,16 @@ internal sealed record ChatComposerInputs(
         string.Equals(ConnectionState, other.ConnectionState, StringComparison.Ordinal)
         && TurnActive == other.TurnActive
         && Equals(CurrentThread, other.CurrentThread)
-        && AvailableChannels.SequenceEqual(other.AvailableChannels)
         && AvailableModels.SequenceEqual(other.AvailableModels, StringComparer.Ordinal)
         && SequenceEqual(ModelChoices, other.ModelChoices)
         && MessageOptionsDisabled == other.MessageOptionsDisabled
         && QueuedMessages.SequenceEqual(other.QueuedMessages)
         && SequenceEqual(AvailableCommands, other.AvailableCommands)
-        && CommandsSupported == other.CommandsSupported;
+        && CommandsSupported == other.CommandsSupported
+        && ShowPlacementPickers == other.ShowPlacementPickers
+        && PlacementTargetIsEmpty == other.PlacementTargetIsEmpty
+        && PlacementHistoryReady == other.PlacementHistoryReady
+        && PlacementTargetIsNew == other.PlacementTargetIsNew;
 
     private static bool SequenceEqual<T>(IReadOnlyList<T>? left, IReadOnlyList<T>? right)
     {

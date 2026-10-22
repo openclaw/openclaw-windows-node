@@ -1,11 +1,126 @@
 using System.Text.Json;
 using OpenClaw.Shared;
+using OpenClaw.TestSupport;
 using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
 
 public class SettingsRoundTripTests
 {
+    [Theory]
+    [InlineData("SystemRunAllowWindowsUi", false)]
+    [InlineData("SystemRunAllowWindowsUi", true)]
+    [InlineData("systemrunallowwindowsui", false)]
+    [InlineData("SYSTEMRUNALLOWWINDOWSUI", true)]
+    public void RetiredWindowsUiSetting_IsIgnoredAndNotRewrittenWhileOtherDataSurvives(string name, bool value)
+    {
+        using var temp = new OpenClaw.TestSupport.TempDirectory();
+        var path = temp.Combine("settings.json");
+        var expected = new SettingsData
+        {
+            SystemRunFilesystemScope = SystemRunFilesystemScope.SelectedFolders,
+            SystemRunAllowOutbound = true,
+            SandboxClipboard = SandboxClipboardMode.Write,
+            SandboxDocumentsAccess = SandboxFolderAccess.NoAccess,
+            SandboxDownloadsAccess = SandboxFolderAccess.ReadOnly,
+            SandboxDesktopAccess = SandboxFolderAccess.ReadWrite,
+            SandboxCustomFolders = [new() { Path = temp.Combine("grant"), Access = SandboxFolderAccess.ReadOnly }],
+            SandboxTimeoutMs = 95_000,
+            SandboxMaxOutputBytes = 16 * 1024 * 1024,
+            NodeSystemRunEnabled = false,
+            EnableMcpServer = false,
+        };
+        var input = System.Text.Json.Nodes.JsonNode.Parse(expected.ToJson())!.AsObject();
+        input[name] = value;
+        input["FutureSetting"] = System.Text.Json.Nodes.JsonNode.Parse("""{"enabled":true,"values":[1,"keep",null]}""");
+        var originalJson = input.ToJsonString();
+        File.WriteAllText(path, originalJson);
+
+        var settings = new SettingsManager(temp.Path);
+        Assert.Equal(originalJson, File.ReadAllText(path)); // Loading does not rewrite the profile.
+        Assert.Null(typeof(SettingsData).GetProperty("SystemRunAllowWindowsUi"));
+        Assert.Null(typeof(SettingsManager).GetProperty("SystemRunAllowWindowsUi"));
+        Assert.Equal(OpenClaw.Shared.Mxc.MxcRequestBuilder.Fingerprint(expected), settings.SystemRunPolicyFingerprint);
+        Assert.False(settings.NodeSystemRunEnabled);
+        Assert.False(settings.EnableMcpServer);
+        Assert.DoesNotContain("SystemRunAllowWindowsUi", settings.ToSettingsData().ToJson(), StringComparison.OrdinalIgnoreCase);
+        settings.ShowNotifications = false;
+        settings.SaveOrThrow();
+
+        using var saved = JsonDocument.Parse(File.ReadAllText(path));
+        Assert.DoesNotContain(saved.RootElement.EnumerateObject(),
+            property => property.Name.Equals("SystemRunAllowWindowsUi", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(input["FutureSetting"]!.ToJsonString(),
+            System.Text.Json.Nodes.JsonNode.Parse(saved.RootElement.GetProperty("FutureSetting").GetRawText())!.ToJsonString());
+        var reloaded = new SettingsManager(temp.Path);
+        Assert.Equal(OpenClaw.Shared.Mxc.MxcRequestBuilder.Fingerprint(expected), reloaded.SystemRunPolicyFingerprint);
+        Assert.False(reloaded.NodeSystemRunEnabled);
+        Assert.False(reloaded.EnableMcpServer);
+        Assert.False(reloaded.ShowNotifications);
+        reloaded.SaveOrThrow();
+        Assert.DoesNotContain("SystemRunAllowWindowsUi", File.ReadAllText(path), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("wss://gateway.example.test")]
+    public void NoAccessAndLegacyBlockedRemainDistinctAcrossSettingsManagerReload(string? persistedGatewayUrl)
+    {
+        using var temp = new OpenClaw.TestSupport.TempDirectory();
+        var settings = new SettingsManager(temp.Path)
+        {
+            SandboxDocumentsAccess = SandboxFolderAccess.NoAccess,
+            SandboxDownloadsAccess = SandboxFolderAccess.NoAccess,
+            SandboxDesktopAccess = SandboxFolderAccess.Blocked,
+            SandboxCustomFolders =
+            [
+                new() { Path = Path.Combine(temp.Path, "private"), Access = SandboxFolderAccess.NoAccess },
+                new() { Path = Path.Combine(temp.Path, "legacy"), Access = SandboxFolderAccess.Blocked },
+            ],
+        };
+        if (persistedGatewayUrl is not null)
+            settings.GatewayUrl = persistedGatewayUrl;
+        var before = settings.SnapshotSystemRunSettings();
+        Assert.Equal(persistedGatewayUrl ?? OpenClawTray.AppIdentity.SetupGatewayUrl, before.GatewayUrl);
+        settings.SaveOrThrow();
+        using var saved = JsonDocument.Parse(File.ReadAllText(temp.Combine("settings.json")));
+        Assert.Equal(persistedGatewayUrl is not null,
+            saved.RootElement.TryGetProperty("GatewayUrl", out var savedGatewayUrl));
+        if (persistedGatewayUrl is not null)
+            Assert.Equal(persistedGatewayUrl, savedGatewayUrl.GetString());
+        var reloaded = new SettingsManager(temp.Path);
+        Assert.Equal(persistedGatewayUrl is not null, reloaded.HasPersistedGatewayUrl);
+        Assert.Equal(persistedGatewayUrl, reloaded.PersistedGatewayUrl);
+        Assert.Equal(SandboxFolderAccess.NoAccess, reloaded.SandboxDocumentsAccess);
+        Assert.Equal(SandboxFolderAccess.NoAccess, reloaded.SandboxDownloadsAccess);
+        Assert.Equal(SandboxFolderAccess.Blocked, reloaded.SandboxDesktopAccess);
+        Assert.Equal(SandboxFolderAccess.NoAccess, reloaded.SandboxCustomFolders[0].Access);
+        Assert.Equal(SandboxFolderAccess.Blocked, reloaded.SandboxCustomFolders[1].Access);
+        Assert.Equal((before with { GatewayUrl = persistedGatewayUrl }).ToJson(),
+            reloaded.SnapshotSystemRunSettings().ToJson());
+    }
+
+    [Fact]
+    public void MissingScopeMigrationDoesNotTurnExplicitNoAccessIntoLegacyQuarantine()
+    {
+        using var temp = new OpenClaw.TestSupport.TempDirectory();
+        File.WriteAllText(Path.Combine(temp.Path, "settings.json"), JsonSerializer.Serialize(new
+        {
+            SandboxDocumentsAccess = SandboxFolderAccess.NoAccess,
+            SandboxDownloadsAccess = SandboxFolderAccess.NoAccess,
+            SandboxDesktopAccess = SandboxFolderAccess.NoAccess,
+            SandboxCustomFolders = new[]
+            {
+                new SandboxCustomFolder { Path = temp.Path, Access = SandboxFolderAccess.NoAccess },
+            },
+        }));
+        var settings = new SettingsManager(temp.Path);
+        Assert.Equal(SandboxFolderAccess.NoAccess, settings.SandboxDocumentsAccess);
+        Assert.Equal(SandboxFolderAccess.NoAccess, settings.SandboxDownloadsAccess);
+        Assert.Equal(SandboxFolderAccess.NoAccess, settings.SandboxDesktopAccess);
+        Assert.Equal(SandboxFolderAccess.NoAccess, Assert.Single(settings.SandboxCustomFolders).Access);
+    }
+
     [Fact]
     public void RoundTrip_AllFields_Preserved()
     {
@@ -58,6 +173,7 @@ public class SettingsRoundTripTests
             TtsWindowsVoiceId = "Microsoft Zira Desktop",
             HubNavPaneOpen = false,
             TtsPiperVoiceId = "fr_FR-siwis-low",
+            TtsKokoroVoiceId = "ef_dora",
             HasSeenActivityStreamTip = true,
             SkippedUpdateTag = "v1.2.3",
             NotifyChatResponses = false,
@@ -67,10 +183,8 @@ public class SettingsRoundTripTests
             OpenTelemetryEndpoint = "http://localhost:4317",
             OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.HttpProtobuf,
             ShowCompletedSessions = true,
-            SystemRunSandboxEnabled = true,
-            SystemRunBlockHostFallbackWhenMxcUnavailable = true,
+            SystemRunFilesystemScope = SystemRunFilesystemScope.UserFilesReadOnly,
             SystemRunAllowOutbound = true,
-            SystemRunAllowWindowsUi = true,
             UserRules = new List<UserNotificationRule>
             {
                 new() { Pattern = "build.*fail", IsRegex = true, Category = "urgent", Enabled = true }
@@ -129,6 +243,7 @@ public class SettingsRoundTripTests
         Assert.Equal(original.TtsWindowsVoiceId, restored.TtsWindowsVoiceId);
         Assert.Equal(original.HubNavPaneOpen, restored.HubNavPaneOpen);
         Assert.Equal(original.TtsPiperVoiceId, restored.TtsPiperVoiceId);
+        Assert.Equal(original.TtsKokoroVoiceId, restored.TtsKokoroVoiceId);
         Assert.Equal(original.HasSeenActivityStreamTip, restored.HasSeenActivityStreamTip);
         Assert.Equal(original.SkippedUpdateTag, restored.SkippedUpdateTag);
         Assert.Equal(original.NotifyChatResponses, restored.NotifyChatResponses);
@@ -138,10 +253,8 @@ public class SettingsRoundTripTests
         Assert.Equal(original.OpenTelemetryEndpoint, restored.OpenTelemetryEndpoint);
         Assert.Equal(original.OpenTelemetryProtocol, restored.OpenTelemetryProtocol);
         Assert.Equal(original.ShowCompletedSessions, restored.ShowCompletedSessions);
-        Assert.Equal(original.SystemRunSandboxEnabled, restored.SystemRunSandboxEnabled);
-        Assert.Equal(original.SystemRunBlockHostFallbackWhenMxcUnavailable, restored.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        Assert.Equal(original.SystemRunFilesystemScope, restored.SystemRunFilesystemScope);
         Assert.Equal(original.SystemRunAllowOutbound, restored.SystemRunAllowOutbound);
-        Assert.Equal(original.SystemRunAllowWindowsUi, restored.SystemRunAllowWindowsUi);
         Assert.NotNull(restored.UserRules);
         Assert.Single(restored.UserRules);
         Assert.Equal("build.*fail", restored.UserRules[0].Pattern);
@@ -202,7 +315,8 @@ public class SettingsRoundTripTests
         Assert.Equal("auto", settings.SttLanguage);
         Assert.False(settings.VoiceTtsEnabled);
         Assert.False(settings.NodeTtsEnabled);
-        Assert.Equal("piper", settings.TtsProvider);
+        Assert.Equal("kokoro", settings.TtsProvider);
+        Assert.True(settings.TtsKokoroAutoDownload);
         Assert.Null(settings.TtsElevenLabsApiKey);
         Assert.Null(settings.TtsElevenLabsModel);
         Assert.Null(settings.TtsElevenLabsVoiceId);
@@ -219,14 +333,79 @@ public class SettingsRoundTripTests
         Assert.Null(settings.OpenTelemetryEndpoint);
         Assert.Equal(OpenTelemetryEndpointProtocol.Grpc, settings.OpenTelemetryProtocol);
         Assert.False(settings.ShowCompletedSessions);
-        Assert.True(settings.SystemRunSandboxEnabled);
-        Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        Assert.Null(settings.SystemRunFilesystemScope);
         Assert.False(settings.SystemRunAllowOutbound);
-        Assert.False(settings.SystemRunAllowWindowsUi);
         // HubNavPaneOpen defaults to true (NavView starts expanded for new
         // installs and for any settings file that predates the field).
         Assert.True(settings.HubNavPaneOpen);
         Assert.Null(settings.UserRules);
+    }
+
+    [Fact]
+    public void SettingsManager_FreshInstall_DefaultsTtsProviderToKokoro()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var settings = new SettingsManager(dir);
+            Assert.Equal("kokoro", settings.TtsProvider);
+
+            settings.Save();
+            Assert.Equal("kokoro", new SettingsManager(dir).TtsProvider);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Theory]
+    // Shape setup's TraySettingsConfig writes before the tray first saves: no provider, no schema.
+    [InlineData("""{ "EnableNodeMode": true, "NodeTtsEnabled": true, "NodeSttEnabled": true, "AutoStart": false }""", "kokoro")]
+    [InlineData("""{ "TtsProvider": "" }""", "kokoro")]
+    [InlineData("""{ "TtsProvider": "   " }""", "kokoro")]
+    [InlineData("""{ "TtsProvider": "piper" }""", "kokoro")] // v1 Piper with no voice downloaded
+    [InlineData("""{ "SettingsSchemaVersion": 1, "TtsProvider": "piper" }""", "kokoro")]
+    [InlineData("""{ "SettingsSchemaVersion": 2, "TtsProvider": "piper" }""", "piper")] // chosen after migration
+    [InlineData("""{ "TtsProvider": "windows" }""", "windows")]
+    [InlineData("""{ "TtsProvider": "kokoro" }""", "kokoro")]
+    public void SettingsManager_ExistingSettingsFile_ResolvesTtsProvider(string json, string expected)
+    {
+        using var dir = new TempDirectory("tts-provider-");
+        File.WriteAllText(Path.Combine(dir.Path, "settings.json"), json);
+
+        var settings = new SettingsManager(dir.Path);
+        Assert.Equal(expected, settings.TtsProvider);
+
+        settings.Save();
+        Assert.Equal(expected, new SettingsManager(dir.Path).TtsProvider);
+    }
+
+    [Fact]
+    public void SettingsManager_SchemaV1PiperWithDownloadedVoice_KeepsPiper()
+    {
+        using var dir = new TempDirectory("tts-provider-");
+        var voiceDir = Path.Combine(dir.Path, "models", "piper", "en_GB-alan-low");
+        Directory.CreateDirectory(Path.Combine(voiceDir, "espeak-ng-data"));
+        File.WriteAllText(Path.Combine(voiceDir, "en_GB-alan-low.onnx"), "");
+        File.WriteAllText(Path.Combine(voiceDir, "tokens.txt"), "");
+        File.WriteAllText(Path.Combine(dir.Path, "settings.json"),
+            """{ "TtsProvider": "piper", "TtsPiperVoiceId": "en_GB-alan-low" }""");
+
+        Assert.Equal("piper", new SettingsManager(dir.Path).TtsProvider);
+    }
+
+    [Fact]
+    public void SettingsManager_TtsKokoroAutoDownload_RoundTripsOptOut()
+    {
+        using var dir = new TempDirectory("tts-provider-");
+        var settings = new SettingsManager(dir.Path) { TtsKokoroAutoDownload = false };
+        settings.Save();
+
+        Assert.False(new SettingsManager(dir.Path).TtsKokoroAutoDownload);
     }
 
     [Fact]
@@ -317,7 +496,7 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
-    public void SettingsManager_PreservesLegacySandboxFallbackDefault()
+    public void SettingsManager_RetiresLegacyFallbackFieldsWithoutBroadeningPermissions()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
 
@@ -326,21 +505,22 @@ public class SettingsRoundTripTests
             Directory.CreateDirectory(dir);
             File.WriteAllText(Path.Combine(dir, "settings.json"), """
             {
-                "SystemRunSandboxEnabled": true,
+                "SystemRunSandboxEnabled": false,
                 "SystemRunBlockHostFallbackWhenMxcUnavailable": false
             }
             """);
 
             var settings = new SettingsManager(dir);
 
-            Assert.True(settings.SystemRunSandboxEnabled);
-            Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+            Assert.Equal(SystemRunFilesystemScope.SelectedFolders, settings.SystemRunFilesystemScope);
+            Assert.False(settings.SystemRunAllowOutbound);
 
             settings.Save();
 
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "settings.json")));
-            Assert.Equal(1, saved.RootElement.GetProperty(nameof(SettingsData.SettingsSchemaVersion)).GetInt32());
-            Assert.False(saved.RootElement.GetProperty(nameof(SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable)).GetBoolean());
+            Assert.Equal(2, saved.RootElement.GetProperty(nameof(SettingsData.SettingsSchemaVersion)).GetInt32());
+            Assert.False(saved.RootElement.TryGetProperty("SystemRunSandboxEnabled", out _));
+            Assert.False(saved.RootElement.TryGetProperty("SystemRunBlockHostFallbackWhenMxcUnavailable", out _));
         }
         finally
         {
@@ -350,7 +530,44 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
-    public void SettingsManager_PreservesVersionedSandboxFallbackCompatibility()
+    public void FreshSettings_NullScopeMarkerSurvivesRestartBeforeOnboarding()
+    {
+        using var temp = new OpenClaw.TestSupport.TempDirectory();
+        var settings = new SettingsManager(temp.Path);
+        settings.SaveOrThrow();
+        using var json = JsonDocument.Parse(File.ReadAllText(Path.Combine(temp.Path, "settings.json")));
+        Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("SystemRunFilesystemScope").ValueKind);
+        Assert.Null(new SettingsManager(temp.Path).SystemRunFilesystemScope);
+    }
+
+    [Fact]
+    public void LegacyFilteredParentGrant_RemainsBlockedUntilExplicitlyReapplied()
+    {
+        using var temp = new OpenClaw.TestSupport.TempDirectory();
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var safe = Path.Combine(profile, "Documents", "mxc-safe-test");
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(new
+        {
+            SystemRunSandboxEnabled = false,
+            SandboxCustomFolders = new[]
+            {
+                new SandboxCustomFolder { Path = profile, Access = SandboxFolderAccess.ReadOnly },
+                new SandboxCustomFolder { Path = safe, Access = SandboxFolderAccess.ReadWrite },
+            },
+        }));
+        var settings = new SettingsManager(temp.Path);
+        Assert.Equal(SandboxFolderAccess.Blocked, settings.SandboxCustomFolders[0].Access);
+        Assert.Equal(SandboxFolderAccess.ReadWrite, settings.SandboxCustomFolders[1].Access);
+        settings.SaveOrThrow();
+        Assert.Equal(SandboxFolderAccess.Blocked, new SettingsManager(temp.Path).SandboxCustomFolders[0].Access);
+        settings.SandboxCustomFolders = [new() { Path = profile, Access = SandboxFolderAccess.ReadOnly }];
+        settings.SaveOrThrow();
+        Assert.Equal(SandboxFolderAccess.ReadOnly, new SettingsManager(temp.Path).SandboxCustomFolders[0].Access);
+    }
+
+    [Fact]
+    public void SettingsManager_VersionedLegacyFallbackCannotSelectBroadAccess()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
 
@@ -367,8 +584,8 @@ public class SettingsRoundTripTests
 
             var settings = new SettingsManager(dir);
 
-            Assert.True(settings.SystemRunSandboxEnabled);
-            Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+            Assert.Equal(SystemRunFilesystemScope.SelectedFolders, settings.SystemRunFilesystemScope);
+            Assert.Empty(settings.SandboxCustomFolders);
         }
         finally
         {
@@ -378,7 +595,7 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
-    public void SettingsManager_PreservesVersionedStrictFallbackBlockingOptIn()
+    public void SettingsManager_VersionedStrictFallbackFieldIsIgnored()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
 
@@ -395,8 +612,8 @@ public class SettingsRoundTripTests
 
             var settings = new SettingsManager(dir);
 
-            Assert.True(settings.SystemRunSandboxEnabled);
-            Assert.True(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+            Assert.Equal(SystemRunFilesystemScope.SelectedFolders, settings.SystemRunFilesystemScope);
+            Assert.False(settings.SystemRunAllowOutbound);
         }
         finally
         {
@@ -452,7 +669,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.NodeSttEnabled);
         Assert.Equal("auto", settings.SttLanguage);
         Assert.False(settings.NodeTtsEnabled);
-        Assert.Equal("piper", settings.TtsProvider);
+        Assert.Equal("kokoro", settings.TtsProvider);
         Assert.Null(settings.TtsElevenLabsApiKey);
         Assert.Null(settings.TtsElevenLabsModel);
         Assert.Null(settings.TtsElevenLabsVoiceId);
@@ -575,6 +792,83 @@ public class SettingsRoundTripTests
         Assert.Null(SettingsManager.UnprotectSettingSecret("dpapi:not-base64"));
     }
 
+    [Fact]
+    public void SettingsManager_SaveKeepsUnreadableProtectedSecrets()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        var settingsPath = Path.Combine(dir, "settings.json");
+        const string blob = "dpapi:not-base64";
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(settingsPath, $$"""
+            {
+              "TtsElevenLabsApiKey": "{{blob}}",
+              "TtsMiniMaxApiKey": "{{blob}}"
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+            Assert.Equal("", settings.TtsElevenLabsApiKey);
+            Assert.Equal("", settings.TtsMiniMaxApiKey);
+
+            settings.NotificationSound = "chime";
+            settings.TtsElevenLabsApiKey = "";
+            settings.TtsMiniMaxApiKey = "";
+            settings.Save();
+
+            using var saved = JsonDocument.Parse(File.ReadAllText(settingsPath));
+            Assert.Equal(blob, saved.RootElement.GetProperty(nameof(SettingsData.TtsElevenLabsApiKey)).GetString());
+            Assert.Equal(blob, saved.RootElement.GetProperty(nameof(SettingsData.TtsMiniMaxApiKey)).GetString());
+            Assert.Equal("chime", saved.RootElement.GetProperty(nameof(SettingsData.NotificationSound)).GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [WindowsFact]
+    public void SettingsManager_ReplacesUnreadableProtectedSecretWhenANewKeyIsSet()
+    {
+        if (!SettingsManager.CanProtectSettingSecretsForCurrentUser())
+            return;
+
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        var settingsPath = Path.Combine(dir, "settings.json");
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(settingsPath, """
+            {
+              "TtsElevenLabsApiKey": "dpapi:not-base64"
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+            settings.TtsElevenLabsApiKey = "replacement-key";
+            settings.Save();
+
+            using var saved = JsonDocument.Parse(File.ReadAllText(settingsPath));
+            var stored = saved.RootElement.GetProperty(nameof(SettingsData.TtsElevenLabsApiKey)).GetString();
+            Assert.NotNull(stored);
+            Assert.StartsWith("dpapi:", stored);
+            Assert.NotEqual("dpapi:not-base64", stored);
+            Assert.DoesNotContain("replacement-key", stored);
+
+            var reloaded = new SettingsManager(dir);
+            Assert.Equal("replacement-key", reloaded.TtsElevenLabsApiKey);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
     [WindowsFact]
     public void SettingsManager_SaveProtectsSecretsWithoutMutatingInMemoryData()
     {
@@ -630,11 +924,11 @@ public class SettingsRoundTripTests
         {
             var settings = new SettingsManager(dir);
             settings.A2UIImageHosts.Add("images.example.test");
-            settings.SandboxCustomFolders.Add(new SandboxCustomFolder
+            settings.SandboxCustomFolders = [new SandboxCustomFolder
             {
                 Path = "C:\\Temp\\OpenClaw",
                 Access = SandboxFolderAccess.ReadOnly
-            });
+            }];
 
             var snapshot = settings.ToSettingsData();
             snapshot.A2UIImageHosts!.Add("mutated.example.test");
@@ -642,6 +936,9 @@ public class SettingsRoundTripTests
 
             Assert.Equal(["images.example.test"], settings.A2UIImageHosts);
             Assert.Equal("C:\\Temp\\OpenClaw", settings.SandboxCustomFolders[0].Path);
+            var detachedGrant = settings.SandboxCustomFolders[0];
+            detachedGrant.Access = SandboxFolderAccess.ReadWrite;
+            Assert.Equal(SandboxFolderAccess.ReadOnly, settings.SnapshotSystemRunSettings().SandboxCustomFolders![0].Access);
         }
         finally
         {

@@ -11,7 +11,7 @@ public sealed class NativeGatewaySetupEligibilityTests
     public void Eligibility_UsesReportedSessionCapability(bool? capability, NativeGatewayEligibility expected)
     {
         // The legacy backend property and process tier must not override the actual session verdict.
-        var availability = new MxcAvailability(true, capability != true, true, "wxc-exec.exe", [],
+        var availability = new MxcAvailability(true, capability != true, true, [],
             isolationTier: "appcontainer-dacl", needsDaclAugmentation: true,
             isolationSessionCapability: capability);
         Assert.Equal(expected, NativeGatewaySetupEligibility.Evaluate(availability));
@@ -25,7 +25,7 @@ public sealed class NativeGatewaySetupEligibilityTests
     public void ProbeFailuresAndUnsupportedSku_DoNotBecomeWindowsUpdateAdvice(
         bool errored, bool resolvable, bool suppressed, NativeGatewayEligibility expected)
     {
-        var availability = new MxcAvailability(false, false, resolvable, null, [],
+        var availability = new MxcAvailability(false, false, resolvable, [],
             probeErrored: errored, probeSuppressedBySkuGate: suppressed,
             isolationSessionCapability: true);
         Assert.Equal(expected, NativeGatewaySetupEligibility.Evaluate(availability));

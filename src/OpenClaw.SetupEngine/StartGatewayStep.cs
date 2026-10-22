@@ -186,29 +186,93 @@ public sealed class StartGatewayStep : SetupStep
         return $": {(detail.Length <= 240 ? detail : detail[..240] + "...")}";
     }
 
+    internal enum GatewayStartupProbeState { Started, Starting, Unsupported, Unreachable }
+
+    internal readonly record struct GatewayStartupProbe(GatewayStartupProbeState State, string Detail);
+
+    // /startupz turns 200 exactly when the gateway admits operator WebSocket connects
+    // (dispatch ready and startup sidecars settled); the root path only proves dispatch.
+    internal static string BuildStartupProbeCommand(int port) =>
+        $"curl -s -w '\\n%{{http_code}} %{{content_type}}' http://127.0.0.1:{port}/startupz --max-time 3";
+
+    internal static GatewayStartupProbe ClassifyStartupProbe(CommandResult result)
+    {
+        if (result.ExitCode != 0)
+            return new(GatewayStartupProbeState.Unreachable, $"curl exit={result.ExitCode}");
+
+        var text = result.Stdout.TrimEnd();
+        var split = text.LastIndexOf('\n');
+        var body = split < 0 ? "" : text[..split].Trim();
+        var trailer = (split < 0 ? text : text[(split + 1)..]).Trim();
+        var space = trailer.IndexOf(' ');
+        var code = space < 0 ? trailer : trailer[..space];
+        var contentType = space < 0 ? "" : trailer[(space + 1)..].Trim();
+        var isJson = contentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase);
+
+        if (code == "200" && isJson)
+            return new(GatewayStartupProbeState.Started, "HTTP 200");
+        if (code == "503" && isJson)
+            return new(GatewayStartupProbeState.Starting, $"HTTP 503 {BoundedProbeBody(body)}");
+        return new(GatewayStartupProbeState.Unsupported, $"HTTP {code} {contentType}".Trim());
+    }
+
+    internal static string BoundedProbeBody(string body)
+    {
+        var sanitized = SetupLogger.Sanitize(body).ReplaceLineEndings(" ").Trim();
+        return sanitized.Length <= 512 ? sanitized : sanitized[..512] + "...[truncated]";
+    }
+
     internal static async Task<StepResult> WaitForHealthAsync(
         SetupContext ctx,
         CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        ctx.Logger.Info("Waiting for gateway health endpoint...");
+        var port = ctx.Config.GatewayPort;
+        ctx.Logger.Info("Waiting for gateway startup probe (/startupz)...");
         var healthDeadline = DateTimeOffset.UtcNow.Add(TimeSpan.FromSeconds(ctx.Config.Gateway.HealthTimeoutSeconds));
+        string? lastObservation = null;
 
         while (DateTimeOffset.UtcNow < healthDeadline)
         {
             ct.ThrowIfCancellationRequested();
 
-            var status = await ctx.Commands.RunInWslAsync(
-                distro, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:" + ctx.Config.GatewayPort + "/ --max-time 3",
-                TimeSpan.FromSeconds(10), ct: ct);
+            // The -w format contains \n, which wsl.exe argv rewriting can mangle.
+            var probe = ClassifyStartupProbe(await ctx.Commands.RunInWslAsync(
+                distro, BuildStartupProbeCommand(port),
+                TimeSpan.FromSeconds(10), ct: ct, inputViaStdin: true));
 
-            if (status.ExitCode == 0 && status.Stdout.Trim() is "200" or "401" or "403")
+            switch (probe.State)
             {
-                ctx.Logger.Info($"Gateway is accepting connections (HTTP {status.Stdout.Trim()})");
-                return StepResult.Ok("Gateway running");
-            }
+                case GatewayStartupProbeState.Started:
+                    ctx.Logger.Info("Gateway startup probe reports started (/startupz HTTP 200)");
+                    return StepResult.Ok("Gateway running");
+                case GatewayStartupProbeState.Starting:
+                    ctx.Logger.Debug($"Gateway still starting (/startupz {probe.Detail})");
+                    lastObservation = $"/startupz {probe.Detail}";
+                    break;
+                case GatewayStartupProbeState.Unreachable:
+                    ctx.Logger.Debug($"Gateway not yet accepting connections ({probe.Detail})");
+                    lastObservation = probe.Detail;
+                    break;
+                default:
+                    // Gateways before 2026.8.1 do not serve /startupz; keep their reachability check.
+                    // Re-probe /startupz every poll so an early non-probe reply never pins the legacy path.
+                    var legacy = await ctx.Commands.RunInWslAsync(
+                        distro, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:" + port + "/ --max-time 3",
+                        TimeSpan.FromSeconds(10), ct: ct);
+                    var legacyCode = legacy.Stdout.Trim();
+                    if (legacy.ExitCode == 0 && legacyCode is "200" or "401" or "403")
+                    {
+                        ctx.Logger.Info(
+                            $"Gateway is accepting connections (HTTP {legacyCode}); " +
+                            $"/startupz is not served by this gateway version ({probe.Detail})");
+                        return StepResult.Ok("Gateway running");
+                    }
 
-            ctx.Logger.Debug($"Gateway not yet accepting connections (curl exit={status.ExitCode}, response={status.Stdout.Trim()})");
+                    lastObservation = $"/startupz {probe.Detail}; / curl exit={legacy.ExitCode}, response={legacyCode}";
+                    ctx.Logger.Debug($"Gateway not yet accepting connections ({lastObservation})");
+                    break;
+            }
 
             await Task.Delay(2000, ct);
         }
@@ -231,7 +295,9 @@ public sealed class StartGatewayStep : SetupStep
 
         ctx.Logger.Error($"Gateway health timeout.\nService status:\n{redactedStatus}\nJournal:\n{redactedJournal}");
 
-        return StepResult.Fail($"Gateway did not become healthy within {ctx.Config.Gateway.HealthTimeoutSeconds}s");
+        return StepResult.Fail(
+            $"Gateway did not become healthy within {ctx.Config.Gateway.HealthTimeoutSeconds}s" +
+            (lastObservation is null ? "" : $" (last observation: {lastObservation})"));
     }
 
     internal static string RedactTokens(string text)

@@ -525,6 +525,16 @@ public static partial class LocalModelCatalog
             : s_legacyModels.SingleOrDefault(model =>
                 string.Equals(model.Id, id, StringComparison.OrdinalIgnoreCase)));
 
+    /// <summary>
+    /// Retains known earlier artifact pins under the same catalog id when the
+    /// receipt names their source URL. Full receipt validation is still required.
+    /// </summary>
+    public static LocalModelInfo? FindInstalled(string? id, string? modelSourceUrl) =>
+        string.Equals(id, NemotronBoltModelId, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(modelSourceUrl, s_prereleaseNemotronBolt.Weights.DownloadUri.AbsoluteUri, StringComparison.Ordinal)
+            ? s_prereleaseNemotronBolt
+            : FindInstalled(id);
+
     /// <summary>True when the id resolves only to a retired catalog entry.</summary>
     public static bool IsLegacy(string? id) => Find(id) is null && FindInstalled(id) is not null;
 

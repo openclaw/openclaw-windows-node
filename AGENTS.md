@@ -64,6 +64,7 @@ Notes:
 - Tray tests must isolate `SettingsManager` from real user settings. Do not use `new SettingsManager()` in tests unless the test intentionally reads `%APPDATA%\OpenClawTray\settings.json`; pass a temp settings directory or set `OPENCLAW_TRAY_DATA_DIR` before the test process starts.
 - Prefer isolated worktrees for PR validation. Use `git-wt` for worktree workflows; `wt.exe` may resolve to WorkTrunk instead of Windows Terminal, so use the full Windows Terminal path when explicitly launching Terminal.
 - Do not claim completion without reporting validation results.
+- For opening a PR, create a feature branch in a personal fork first, then open a PR against main.
 
 ## Active Work Status
 
@@ -95,12 +96,24 @@ The script sets `OPENCLAW_RUN_E2E` and `OPENCLAW_RUN_MXC_E2E` itself, then runs 
 - Keep methods focused and reduce nested control flow when it improves readability.
 - Prefer existing repository patterns and simple, idiomatic C# over speculative abstractions.
 - Document non-obvious ownership, invariants, and public usage. Avoid boilerplate comments that only repeat the code.
+- Avoid random literal hardcoded timeouts. Prefer using an explicit constant which can be overriden with an environment variable.
+- Use module level constants for repeated literal values. When they are used across modules, centralize the constant in a constants file.
 
 ## UI, MCP, and PR Proof
 
 Use the [proof skill](.agents/skills/openclaw-proof-validation/SKILL.md) when a change touches tray UX, Settings, onboarding, chat/canvas, Command Center, Windows node capabilities, MCP, gateway connection/pairing, permissions, diagnostics, or agent-facing instructions. Match evidence to the changed contract; ordinary documentation changes do not require launching the app.
 
 ## User-Facing Copy
+
+Prefer one maintained source of truth for strings shared with the Gateway or web dashboard:
+
+- Before adding copy, find its existing owner and localization resources. Reuse the authoritative content rather than hard-coding or manually copying a second prompt/label catalog into Companion.
+- For cross-client copy that should track the installed Gateway, prefer an existing supported data contract. When a catalog is justified, generate it from the owner's translation sources at build time, package it with that owner, and serve validated, versioned data through the authenticated connection. Do not generate translations at launch or fetch repository sources at runtime.
+- Load shared catalogs asynchronously and cache them at the appropriate connection/package lifetime. Define locale fallback, unsupported-version behavior, and disconnect/update invalidation explicitly. Render strings as data, never executable UI or code.
+- Keep Windows-specific labels and loading/error/compatibility messages in native `.resw` resources. A minimal localized fallback, such as "Recent chats" when the shared catalog is unavailable, is appropriate; a duplicate starter-prompt list is not. Document any necessary duplication and its owner.
+- Use the simplest approach that fits. This is not a requirement to add an RPC or catalog for every string; existing native resources are the right home for native-only copy. Add focused coverage for source-to-catalog consistency and consumer failure/fallback behavior when introducing a shared contract.
+
+Reference pattern: welcome copy uses the web i18n sources in `openclaw/openclaw`, a build-generated `dist/control-ui-welcome.json`, and `controlUi.welcome.get`. Companion fetches once per connection; Gateway lazily reads and caches the packaged catalog on the first request. See [the native chat visual contract](docs/CHAT_VISUAL_DESIGN.md#controls-and-states). This pattern requires a Gateway build advertising that method; do not assume all released Gateways support it.
 
 Do not use em dashes in user-facing prose, including UI text, error messages, CLI output, notifications, and agent-facing help. Use a period, colon, comma, parentheses, or a simple hyphen instead. A standalone em dash is allowed as an unavailable-value or status placeholder.
 

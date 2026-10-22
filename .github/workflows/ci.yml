@@ -56,6 +56,8 @@ jobs:
       arm64_release: ${{ steps.classify.outputs.arm64_release }}
       full: ${{ steps.classify.outputs.full }}
       promotion_record: ${{ steps.promotion.outputs.record }}
+      gateway_version: ${{ steps.gateway.outputs.version }}
+      gateway_release: ${{ steps.gateway.outputs.release }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -119,6 +121,12 @@ jobs:
         }
         "CI change classification: $($impact.classification)" >> $env:GITHUB_STEP_SUMMARY
 
+    - name: Snapshot latest WSL Gateway baseline
+      id: gateway
+      if: ${{ steps.classify.outputs.setup_e2e == 'true' || steps.classify.outputs.revocation_e2e == 'true' || steps.classify.outputs.network_e2e == 'true' }}
+      shell: pwsh
+      run: ./scripts/Resolve-CiGateway.ps1
+
   fast-validation:
     runs-on: windows-latest
     steps:
@@ -163,6 +171,14 @@ jobs:
       shell: pwsh
       run: ./scripts/test-native-gateway-source-build.ps1
 
+    - name: Test Gateway npm release selection
+      shell: pwsh
+      run: ./scripts/test-gateway-npm-release.ps1
+
+    - name: Test packaged Gateway provenance
+      shell: pwsh
+      run: ./scripts/test-gateway-packaged-release.ps1
+
     - name: Validate CI change classifier
       shell: pwsh
       run: ./scripts/test-ci-change-classifier.ps1
@@ -182,6 +198,10 @@ jobs:
     - name: Validate developer migration test package
       shell: pwsh
       run: ./scripts/test-migration-test-msix.ps1
+
+    - name: Validate Store migration helper fixtures
+      shell: pwsh
+      run: .\scripts\test-store-migration-test-script.ps1
 
     # installer.iss is only compiled for real in the tag-only release job, so a
     # Pascal Script error would otherwise be found at release time. The runner image
@@ -209,6 +229,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-dev-msix-release.ps1
 
+    - name: Validate daily alpha release-line selection
+      shell: pwsh
+      run: ./scripts/test-daily-alpha-version.ps1
+
     - name: Validate stable correction release ordering regressions
       shell: pwsh
       run: ./scripts/test-stable-correction-release-validator.ps1
@@ -223,6 +247,10 @@ jobs:
         dotnet tool restore
         if ($LASTEXITCODE -ne 0) { throw 'GitVersion restore failed.' }
         ./scripts/test-alpha-promotion-versioning.ps1
+
+    - name: Validate release branch GitVersion behavior
+      shell: pwsh
+      run: ./scripts/test-release-branch-versioning.ps1
 
   proof-pool-contracts:
     name: Proof-pool contracts
@@ -474,6 +502,7 @@ jobs:
         dotnet build tests/OpenClaw.WinNode.Cli.Tests -c Debug --no-restore
 
     - name: Run Shared Tests
+      timeout-minutes: 15
       env:
         OPENCLAW_RUN_INTEGRATION: 1
       run: >
@@ -481,6 +510,7 @@ jobs:
         -Project tests/OpenClaw.Shared.Tests
         -ResultsDirectory TestResults\Shared
         -TrxFileName OpenClaw.Shared.Tests.trx
+        -HangTimeoutSeconds 300
 
     - name: Run Connection Tests
       run: >
@@ -750,13 +780,14 @@ jobs:
         if-no-files-found: warn
 
   setup-e2e:
-    name: Setup and connect E2E
+    name: Setup and connect E2E (WSL Latest)
     needs: [change-classification, fast-validation]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.setup_e2e == 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -765,6 +796,22 @@ jobs:
         persist-credentials: false
 
     - *promotion-version-tag
+
+    - name: Record exact Gateway baseline
+      shell: pwsh
+      env:
+        GATEWAY_RELEASE_JSON: ${{ needs.change-classification.outputs.gateway_release }}
+      run: |
+        if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_VERSION) -or
+            [string]::IsNullOrWhiteSpace($env:GATEWAY_RELEASE_JSON)) {
+          throw 'The exact WSL Gateway baseline is missing.'
+        }
+        $release = $env:GATEWAY_RELEASE_JSON | ConvertFrom-Json
+        if ($release.version -cne $env:OPENCLAW_E2E_GATEWAY_VERSION) {
+          throw 'The WSL Gateway version does not match its baseline metadata.'
+        }
+        New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
+        $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -790,6 +837,7 @@ jobs:
         dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
 
     - name: Run setup and connect E2E tests
+      timeout-minutes: 20
       env:
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
@@ -808,13 +856,14 @@ jobs:
         if-no-files-found: warn
 
   revocation-e2e:
-    name: Revocation recovery E2E
+    name: Revocation recovery E2E (WSL Latest)
     needs: [change-classification, fast-validation]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.revocation_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -823,6 +872,22 @@ jobs:
         persist-credentials: false
 
     - *promotion-version-tag
+
+    - name: Record exact Gateway baseline
+      shell: pwsh
+      env:
+        GATEWAY_RELEASE_JSON: ${{ needs.change-classification.outputs.gateway_release }}
+      run: |
+        if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_VERSION) -or
+            [string]::IsNullOrWhiteSpace($env:GATEWAY_RELEASE_JSON)) {
+          throw 'The exact WSL Gateway baseline is missing.'
+        }
+        $release = $env:GATEWAY_RELEASE_JSON | ConvertFrom-Json
+        if ($release.version -cne $env:OPENCLAW_E2E_GATEWAY_VERSION) {
+          throw 'The WSL Gateway version does not match its baseline metadata.'
+        }
+        New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
+        $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -848,6 +913,7 @@ jobs:
         dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
 
     - name: Run revocation recovery E2E tests
+      timeout-minutes: 20
       env:
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
@@ -866,13 +932,14 @@ jobs:
         if-no-files-found: warn
 
   network-e2e:
-    name: Network recovery E2E
+    name: Network recovery E2E (WSL Latest)
     needs: [change-classification, fast-validation]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.network_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -881,6 +948,22 @@ jobs:
         persist-credentials: false
 
     - *promotion-version-tag
+
+    - name: Record exact Gateway baseline
+      shell: pwsh
+      env:
+        GATEWAY_RELEASE_JSON: ${{ needs.change-classification.outputs.gateway_release }}
+      run: |
+        if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_VERSION) -or
+            [string]::IsNullOrWhiteSpace($env:GATEWAY_RELEASE_JSON)) {
+          throw 'The exact WSL Gateway baseline is missing.'
+        }
+        $release = $env:GATEWAY_RELEASE_JSON | ConvertFrom-Json
+        if ($release.version -cne $env:OPENCLAW_E2E_GATEWAY_VERSION) {
+          throw 'The WSL Gateway version does not match its baseline metadata.'
+        }
+        New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
+        $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -906,6 +989,7 @@ jobs:
         dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
 
     - name: Run network recovery E2E tests
+      timeout-minutes: 20
       env:
         OPENCLAW_RUN_E2E: 1
       shell: pwsh

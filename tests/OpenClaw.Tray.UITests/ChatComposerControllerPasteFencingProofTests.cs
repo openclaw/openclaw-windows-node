@@ -58,7 +58,7 @@ public sealed class ChatComposerControllerPasteFencingProofTests
         var dispatcher = new WinUIDispatcher(ui.Dispatcher);
         var factory = new ChatComposerFactory(dispatcher);
         var provider = new NoopChatDataProvider();
-        var hostActions = new ChatComposerHostActions(null, null, null, null, null);
+        var hostActions = new ChatComposerHostActions(null, null, null, null);
         var session = factory.Create(provider, hostActions, initialSpeakerMuted: false);
         return (new ChatComposerViewModelHandle(session), session.Controller);
     }

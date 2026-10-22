@@ -14,7 +14,7 @@ public class NemotronBoltRuntimeTests
 
         Assert.Equal(LlamaRuntimeCatalog.NemotronBoltArm64RuntimeId, runtime.Id);
         Assert.Equal(RuntimeArchitecture.Arm64, runtime.Architecture);
-        Assert.Contains(runtime.RequiredFiles, file => file.FileName == "vcomp140.dll");
+        Assert.Contains(runtime.RequiredFiles, file => file.FileName == "libomp.dll");
         Assert.NotNull(LlamaRuntimeCatalog.FindInstalled(runtime.Id));
         Assert.DoesNotContain(runtime, LlamaRuntimeCatalog.Variants);
     }

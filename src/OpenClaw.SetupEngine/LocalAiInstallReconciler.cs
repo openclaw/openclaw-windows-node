@@ -166,16 +166,18 @@ internal sealed class LocalAiInstallReconciler
         LocalAiResolvedInstall originalInstall = install.Manifest.ReplacedManifest is { } replacedManifest
             ? manifestStore.ResolveAndValidate(replacedManifest)
             : install;
-        LocalAiResolvedInstall? pendingReplacement = install.Manifest.ReplacedManifest is null ? null : install;
+        // Unconfirmed compensation can restore the original model while retaining only
+        // route hints. Carry those through the next selection just like a pending receipt.
+        LocalAiResolvedInstall? pendingReplacement =
+            install.Manifest.ReplacedManifest is not null ||
+            !install.Manifest.RecoveryRoutes.IsDefaultOrEmpty ||
+            install.Manifest.PreviousEndpoints is { IsDefaultOrEmpty: false }
+                ? install
+                : null;
         bool replacingModel = !string.Equals(
             install.Manifest.ModelCatalogId,
             plan.Model.Id,
             StringComparison.Ordinal);
-        if (install.Manifest.ReplacedManifest is not null && replacingModel)
-        {
-            throw new InvalidDataException(
-                "Complete the pending Local AI model replacement before selecting another model.");
-        }
         if (replacingModel)
         {
             if (!allowIncompleteInstallation)
@@ -394,7 +396,8 @@ internal sealed class LocalAiInstallReconciler
     /// <summary>Read-only inspection for onboarding; unlike reconciliation, never migrates or saves receipts.</summary>
     public async Task<bool> InspectAsync(LocalAiResolvedInstall install, CancellationToken ct)
     {
-        var model = LocalModelCatalog.FindInstalled(install.Manifest.ModelCatalogId);
+        var model = LocalModelCatalog.FindInstalled(
+            install.Manifest.ModelCatalogId, install.Manifest.ModelAsset.SourceUrl);
         var installedRuntime = LlamaRuntimeCatalog.FindInstalled(install.Manifest.RuntimeId);
         if (model is null || installedRuntime is null)
             return false;

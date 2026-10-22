@@ -4,13 +4,12 @@ namespace OpenClaw.Shared.Inference.Catalog;
 
 public static partial class LlamaRuntimeCatalog
 {
-    // Bolt needs LiLiCorr decoding from support-lilicorr plus per-layer expert loading.
-    // Pin the tested source and payload here while other models keep the stable runtime.
-    // Base: https://github.com/frozenblade1224/llama.cpp/tree/a972392d7db3678954c66f06744e535519314009
+    // Bolt uses upstream LiLiCorr support for the public drafter tensor names.
+    // Keep its runtime pin independent from the stable runtime used by other models.
     public const string NemotronBoltRuntimeFamily = "nemotron-bolt-lilicorr";
-    public const string NemotronBoltSourceCommitSha = "b3e4f6ce7f22adb7f1b1eaa012db8367d45a574a";
-    public const string NemotronBoltReleaseTag = "bolt-lilicorr-b3e4f6c";
-    public const string NemotronBoltArm64RuntimeId = "bolt-lilicorr-b3e4f6c-cuda13-arm64";
+    public const string NemotronBoltSourceCommitSha = "23f7aabc16c72f6f707dba227251c35d7bd1ed96";
+    public const string NemotronBoltReleaseTag = "b11700";
+    public const string NemotronBoltArm64RuntimeId = "bolt-lilicorr-b11700-cuda13-arm64";
 
     private static readonly LlamaRuntimeVariant s_nemotronBoltArm64 = new(
         NemotronBoltArm64RuntimeId,
@@ -19,12 +18,12 @@ public static partial class LlamaRuntimeCatalog
         Array.AsReadOnly(new[]
         {
             new PinnedArtifact(
-                "llama-bolt-lilicorr-b3e4f6c-cuda13-arm64",
+                "llama-bolt-lilicorr-b11700-cuda13-arm64",
                 ArtifactRole.RuntimeBinary,
-                new GitHubReleaseSource("joelagnel/llama.cpp", NemotronBoltReleaseTag, NemotronBoltSourceCommitSha),
-                "llama-bolt-lilicorr-b3e4f6c-bin-win-cuda-13.4-arm64.zip",
-                46_836_189,
-                new Sha256Digest("f2adf45fda36a336d2a539e418c6e26f51d50d6f7bb3c086c79771ea348a9ee5")),
+                new GitHubReleaseSource("ggml-org/llama.cpp", NemotronBoltReleaseTag, NemotronBoltSourceCommitSha),
+                "llama-b11700-bin-win-cuda-13.4-arm64.zip",
+                146_943_791,
+                new Sha256Digest("8474f9edb24e917e5bf0c3824dd79bda5659483ee6adfcbf27197d05defb2783")),
             new PinnedArtifact(
                 "cudart-b11320-cuda13-arm64",
                 ArtifactRole.RuntimeDependency,
@@ -41,15 +40,16 @@ public static partial class LlamaRuntimeCatalog
             RuntimeFile("cublas64_13.dll", 24_207_984, "49e8fa23d88ac0cbae27e200fc092b894dd55b4de5cb4293993986e29fb9b65a"),
             RuntimeFile("cublasLt64_13.dll", 193_128_560, "daf579ae36bb3c85e2340c57a1994f634e07c6f55ef70dd4cdc26695de21c752"),
             RuntimeFile("cudart64_13.dll", 606_832, "bd927ddf03823eeead7c8b261a8669d96764b89109311f4ab6accde8b7d97ec2"),
-            RuntimeFile("ggml-base.dll", 606_720, "a8e7cfb6f5ad7b866d08b5c012cf9469a9b61456f62d76137db00f25031ce4f4"),
-            RuntimeFile("ggml-cpu.dll", 667_136, "5e1fa7cd5d38f218714dd243e3f7079a01e11e7dd02c62490ab33eb5396b9b7a"),
-            RuntimeFile("ggml-cuda.dll", 54_052_864, "edf5fe4a86c17b0b64e16f2d634686f929133cfce8802dc7ab726d710afae0a4"),
-            RuntimeFile("ggml.dll", 49_664, "b2b8d88e1c1b9a95581a5690ddd5b1691099c2e6d5b7e1794185bac615a12c6d"),
-            RuntimeFile("llama-common.dll", 8_754_688, "c3f9a2d9756a222f359b14b21c0464d1fb2ba19ae5d77ee3333515086e454a83"),
-            RuntimeFile("llama-server-impl.dll", 3_414_016, "a2e42c8e93194fe67b463b708d7ec0e9f4c10fa2b4707b60126f50a07c463558"),
-            RuntimeFile("llama-server.exe", 10_240, "33eea374c24f120b9eaf2303d646f67af41d2db4b37e589276f86340e6efb4ca"),
-            RuntimeFile("llama.dll", 2_708_992, "a85d7984020e23437a0ea91adce0142b6b774925f3301c80dedd8b8961188bcd"),
-            RuntimeFile("mtmd.dll", 2_408_448, "1d12a069d7cb94bcca9e1d4647108a9bee8d3cd45bdc87623884c23888094f5b"),
-            RuntimeFile("vcomp140.dll", 367_160, "1a455c526e42d80d3aa3189e082500b6eb7837fcf8be0e9fbd1f26c92acdab71"),
+            RuntimeFile("ggml-base.dll", 667_136, "ad891be29b12d53c5e7f5b681b7ba9ebedb5101f04314d0cbd83795bcb460896"),
+            RuntimeFile("ggml-cpu.dll", 835_072, "e49583ceb5ad0c076f2b9905bac66eb1dd49d34fda14f0a4f4fd368fa2b9fef8"),
+            RuntimeFile("ggml-cuda.dll", 146_929_152, "e3c7a7b5a79cc71cb667957ad2e5b28644ea843344c217a31fde13ed22e1e8ae"),
+            RuntimeFile("ggml-rpc.dll", 215_040, "e7617fb63ae34218fbc15d4644057c4f44a3590afc21f8bfb4cabe6030996fc5"),
+            RuntimeFile("ggml.dll", 69_120, "cca7613b2124c1b2cd9e53663269cd64fbcb1b480a465872915130b967c50fec"),
+            RuntimeFile("llama-common.dll", 7_157_760, "b88408489b7445b4bba94cccf18d54b6f07618fae7a8a643c5db3d768f7fb5d6"),
+            RuntimeFile("llama-server-impl.dll", 8_471_040, "43ff8798b8bf397c6fd39cb47a0366a9a5fa0a72c17185e51261747451542349"),
+            RuntimeFile("llama-server.exe", 9_728, "acaea7451d287ee8812bc2f8175594cbb43008313450ecc22e6e2f4b69b6220d"),
+            RuntimeFile("llama.dll", 3_121_152, "bf1083da93ce656214a74cae8fdad3580ee96e0bd4e8b27e65c8b6b65c5d3005"),
+            RuntimeFile("mtmd.dll", 1_576_960, "4b34d7a35913a85a013b1050c143480c87c18aeb7f1421c0574447c2203270e4"),
+            RuntimeFile("libomp.dll", 764_928, "26caae17f29aaf2238f664375b663cd306d596bc9e36e780fa88356c51fe876a"),
         }));
 }

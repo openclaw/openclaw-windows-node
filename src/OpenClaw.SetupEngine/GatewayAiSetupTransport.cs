@@ -30,7 +30,9 @@ public sealed class GatewayAiSetupTransport(
         }
         using var ready = CancellationTokenSource.CreateLinkedTokenSource(ct);
         ready.CancelAfter(readyTimeout ?? TimeSpan.FromSeconds(20));
-        while (manager.OperatorClient is not { IsConnectedToGateway: true, HasHandshakeSnapshot: true })
+        // hello-ok is visible before the connection owner finishes authenticating it.
+        while (manager.CurrentSnapshot.OperatorState != RoleConnectionState.Connected ||
+               manager.OperatorClient is not { IsConnectedToGateway: true, HasHandshakeSnapshot: true })
         {
             RequireOwner();
             if (manager.CurrentSnapshot.OperatorState is RoleConnectionState.Error or RoleConnectionState.PairingRequired)

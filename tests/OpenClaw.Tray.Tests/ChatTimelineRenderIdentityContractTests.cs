@@ -90,7 +90,6 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.Contains("inputs.CanChangeThinking", composer);
         Assert.Contains("CanChangeThinking => CanChangeSessionOptions",
             Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatComposerInputs.cs"));
-        Assert.Contains("!inputs.MessageOptionsDisabled && inputs.AvailableChannels.Count > 1", composer);
     }
 
     [Fact]

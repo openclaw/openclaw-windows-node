@@ -19,6 +19,31 @@ internal sealed record ChatHistoryLoadResult(
 /// </summary>
 internal sealed class ChatHistoryLoader : IDisposable
 {
+    private static IReadOnlyList<ChatAttachmentPresentation> HistoryMediaPresentations(
+        ChatMessageInfo message)
+    {
+        var presentations = new List<ChatAttachmentPresentation>();
+        foreach (var part in message.ContentParts)
+        {
+            if (part.Kind != ChatMessageContentPartKind.Media || part.Media is not { } media)
+                continue;
+
+            var mimeType = GatewayMediaMessageProjection.NormalizeMimeType(media.MimeType);
+            var isImage = media.Kind == ChatMediaContentKind.Image ||
+                mimeType.StartsWith("image/", StringComparison.Ordinal);
+            var name = GatewayMediaMessageProjection.NormalizeDisplayFileName(media.FileName);
+            if (name.Length == 0)
+                name = isImage ? "image" : "attachment";
+            presentations.Add(new ChatAttachmentPresentation(
+                ChatAttachmentOrigin.GatewayReference,
+                name,
+                mimeType,
+                isImage));
+        }
+
+        return presentations;
+    }
+
     private readonly record struct PendingReload(
         ChatHistoryCommitToken Token,
         bool Replacement);
@@ -579,8 +604,11 @@ internal sealed class ChatHistoryLoader : IDisposable
             return lookup.Match;
         }
 
+        var hasProjectedUserAttachments = false;
         foreach (var replayPart in replayParts)
         {
+            if (replayPart.IsFirstPart)
+                hasProjectedUserAttachments = false;
             var message = replayPart.Message;
             if (suppressedAbortedAssistant is not null)
             {
@@ -594,6 +622,19 @@ internal sealed class ChatHistoryLoader : IDisposable
             var userProjection = role == "user"
                 ? GatewayMediaMessageProjection.Project(rawText)
                 : null;
+            if (userProjection is { Attachments.Count: 0 } &&
+                !hasProjectedUserAttachments &&
+                !string.IsNullOrEmpty(rawText))
+            {
+                var historyMedia = HistoryMediaPresentations(message);
+                if (historyMedia.Count > 0)
+                {
+                    userProjection = userProjection with { Attachments = historyMedia };
+                }
+            }
+            // Message-wide media must not repeat on later replay text parts.
+            if (userProjection is { Attachments.Count: > 0 })
+                hasProjectedUserAttachments = true;
             var entryMetadata = new ChatEntryMetadata(
                 message.Ts > 0
                     ? DateTimeOffset.FromUnixTimeMilliseconds(message.Ts).ToLocalTime()
@@ -611,7 +652,15 @@ internal sealed class ChatHistoryLoader : IDisposable
                 AssistantContent: role == "assistant"
                     ? ChatAssistantContentProjector.Project(
                         replayPart.AssistantContentParts)
-                    : null);
+                    : null)
+            {
+                UsageSnapshotTimestamp = role == "assistant" && message.Ts > 0
+                    ? message.Ts
+                    : null,
+                UsageMeasurementTimestamp = role == "assistant" && message.Ts > 0 &&
+                    (message.ResponseTokens is > 0 || message.InputTokens is > 0 || message.OutputTokens is > 0)
+                    ? message.Ts : null,
+            };
             var text = ChatContentFormatting.TruncateForChatEntry(
                 ChatMetadataStore.EscapeUntrustedAttachmentMarkerLines(
                     userProjection?.HasMediaEnvelope == true

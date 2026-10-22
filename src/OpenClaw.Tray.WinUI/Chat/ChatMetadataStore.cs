@@ -34,7 +34,9 @@ internal sealed class AttachmentMetaMatcher
                 continue;
 
             var entry = _entries[i];
-            if (!string.Equals(entry.Text, text, StringComparison.Ordinal))
+            var expected = GatewayMediaMessageProjection.NormalizeEchoCorrelationText(text);
+            var cached = GatewayMediaMessageProjection.NormalizeEchoCorrelationText(entry.Text);
+            if (!string.Equals(cached, expected, StringComparison.Ordinal))
                 continue;
             if (!string.Equals(
                     GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(
@@ -347,9 +349,7 @@ internal sealed class ChatMetadataStore : IDisposable
             list.Add(new CachedAttachmentMeta
             {
                 Ts = tsMs,
-                Text = NormalizeCachedDisplayText(
-                    ChatContentFormatting.TruncateForChatEntry(
-                        EscapeUntrustedAttachmentMarkerLines(text))),
+                Text = GatewayMediaMessageProjection.NormalizeEchoCorrelationText(text),
                 Attachments = items,
                 ThreadId = threadId,
                 ResetGeneration = resetGeneration,
@@ -876,7 +876,7 @@ internal sealed class ChatMetadataStore : IDisposable
     private static CachedAttachmentMeta Clone(CachedAttachmentMeta entry) => new()
     {
         Ts = entry.Ts,
-        Text = NormalizeCachedDisplayText(entry.Text),
+        Text = GatewayMediaMessageProjection.NormalizeEchoCorrelationText(entry.Text),
         ThreadId = entry.ThreadId,
         ResetGeneration = entry.ResetGeneration,
         Attachments = entry.Attachments.Select(attachment => new CachedAttachmentItem
@@ -921,7 +921,7 @@ internal sealed class ChatMetadataStore : IDisposable
             var cache = JsonSerializer.Deserialize<Dictionary<string, List<CachedAttachmentMeta>>>(json) ?? [];
             foreach (var entry in cache.Values.SelectMany(entries => entries))
             {
-                entry.Text = NormalizeCachedDisplayText(entry.Text);
+                entry.Text = GatewayMediaMessageProjection.NormalizeEchoCorrelationText(entry.Text);
                 foreach (var attachment in entry.Attachments)
                 {
                     attachment.FileName = NormalizeCachedDisplayText(attachment.FileName);

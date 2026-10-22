@@ -245,14 +245,21 @@ public class SetupPipelineTests
         Assert.Contains("run full setup", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public async Task ValidateRecoveryGatewayCompatibility_AutomaticPortRejectsLegacyGateway()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ValidateRecoveryGatewayCompatibility_LegacyGatewayAllowsSameModelAndReplacement(bool replacement)
     {
         using var temp = new TempDirectory("local-ai-compatibility-");
         SetupConfig config = LocalAiRecoveryConfig();
         config.LocalAi.Port = 18801;
         var context = CreateContext(config, localDataDir: temp.Path);
         context.LocalAiRecoveryOriginalInstall = CreateLocalAiResolvedInstall(temp.Path, 18801);
+        if (replacement)
+            context.LocalAiRecoveryPendingInstall = context.LocalAiRecoveryOriginalInstall with
+            {
+                Manifest = context.LocalAiRecoveryOriginalInstall.Manifest with { ModelCatalogId = "replacement" },
+            };
         var step = new ValidateLocalAiRecoveryGatewayCompatibilityStep((_, _) =>
             Task.FromResult(new CommandResult(
                 42,
@@ -263,8 +270,8 @@ public class SetupPipelineTests
 
         StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
 
-        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
-        Assert.Contains("Update the Gateway", result.Message, StringComparison.Ordinal);
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Contains("legacy Gateway compatibility", result.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -354,7 +361,7 @@ public class SetupPipelineTests
 
         StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
 
-        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(StepOutcome.Success, result.Outcome);
         Assert.Equal(1, probeCalls);
     }
 
@@ -764,6 +771,93 @@ public class SetupPipelineTests
         Assert.Equal(StepOutcome.Success, result.Outcome);
         Assert.Equal(1, runtime.RestartForSetupCalls);
         Assert.True(context.LocalAiBorrowedRuntimeRestartedThisRun);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StartLocalAiRuntimeStep_IgnoresOptionalDriftButFencesArtifactDrift(bool artifactDrift)
+    {
+        using var temp = new TempDirectory("local-ai-start-drift-");
+        var context = CreateContext(LocalAiRecoveryConfig(), localDataDir: temp.Path);
+        LocalAiResolvedInstall original = CreateLocalAiResolvedInstall(temp.Path, 18801);
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(original.Manifest);
+        context.LocalAiResolvedInstall = original;
+        context.LocalAiRuntimeBorrowed = true;
+        LocalAiInstallManifest changed = original.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:18804/v1",
+            GatewayFallbackModel = "openai/new-fallback",
+            RecoveryRoutes = [original.Manifest],
+            ModelAsset = artifactDrift
+                ? original.Manifest.ModelAsset with { Sha256 = new string('c', 64) }
+                : original.Manifest.ModelAsset,
+        };
+        var runtime = new DisposeTrackingRuntime(HealthySnapshot(original))
+        {
+            RestartForSetupHandler = async ct =>
+            {
+                await store.SaveAsync(changed, ct);
+                return HealthySnapshot(original);
+            },
+        };
+        context.LocalAiRuntime = runtime;
+
+        StepResult result = await new StartLocalAiRuntimeStep().ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(!artifactDrift, result.IsSuccess);
+        Assert.Equal("openai/new-fallback", (await store.LoadAsync())!.Manifest.GatewayFallbackModel);
+        if (!artifactDrift)
+        {
+            Assert.Equal("openai/new-fallback", context.LocalAiResolvedInstall.Manifest.GatewayFallbackModel);
+            Assert.Equal(original.Endpoint, (await store.LoadAsync())!.Endpoint);
+        }
+    }
+
+    [Fact]
+    public async Task RecoveryGuard_UnconfirmedBorrowedCompensationRetainsPendingHintsAndFiles()
+    {
+        using var temp = new TempDirectory("local-ai-uncertain-hints-");
+        var context = CreateContext(LocalAiRecoveryConfig(), localDataDir: temp.Path);
+        LocalAiResolvedInstall original = CreateLocalAiResolvedInstall(temp.Path, 18801);
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        LocalAiInstallManifest pending = original.Manifest with
+        {
+            ModelCatalogId = LocalModelCatalog.Qwen27BModelId, ModelAlias = LocalModelCatalog.Qwen27BModelId,
+            Endpoint = "http://127.0.0.1:18802/v1", ReplacedManifest = original.Manifest,
+        };
+        await store.SaveAsync(pending);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(pending);
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        context.LocalAiRecoveryProviderTransition = true;
+        context.LocalAiRecoveryGatewayConfigurationStartedThisRun = true;
+        context.LocalAiGatewayPriorState = new LocalAiGatewayPriorState(true, "{}", true, "null");
+        context.LocalAiRuntimeBorrowed = true;
+        context.LocalAiRuntime = new DisposeTrackingRuntime(HealthySnapshot(context.LocalAiResolvedInstall))
+        {
+            RestartForSetupHandler = async ct => HealthySnapshot((await store.LoadAsync(ct))!),
+        };
+        Directory.CreateDirectory(Path.GetDirectoryName(original.ModelPath)!);
+        await File.WriteAllTextAsync(original.ModelPath, "potentially active model");
+        context.LocalAiModelInstall = new(original.ModelPath, null,
+            HuggingFaceModelInstallDisposition.Downloaded, CreatedThisRun: true,
+            original.ModelPath, LegacyCreatedThisRun: true);
+        var guard = new PreserveLocalAiRecoveryGatewayStep(
+            (_, _) => Task.FromResult(StepResult.Ok("restarted")),
+            (_, _) => Task.FromResult(true),
+            (_, _, _, _, _) => Task.FromResult(false));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => guard.RollbackAsync(context, CancellationToken.None));
+        using var http = new HttpClient();
+        await new AcquireLocalAiModelStep(new HuggingFaceModelInstaller(http)).RollbackAsync(context, CancellationToken.None);
+
+        LocalAiInstallManifest retained = (await store.LoadAsync())!.Manifest;
+        Assert.Contains(retained.RecoveryRoutes, route => route.ModelCatalogId == LocalModelCatalog.Qwen27BModelId && route.Endpoint == pending.Endpoint);
+        Assert.True(File.Exists(original.ModelPath));
+        Assert.True(context.LocalAiRecoveryRollbackUncertain);
+        Assert.False(context.LocalAiRecoveryCleanupAllowed);
     }
 
     [Fact]
@@ -1190,8 +1284,10 @@ public class SetupPipelineTests
         Assert.False(context.LocalAiRecoveryRollbackUncertain);
     }
 
-    [Fact]
-    public async Task RestoredBorrowedRuntimeTransfersExactAcquisitionCleanupOwnership()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RestoredBorrowedRuntimeTransfersExactAcquisitionCleanupOwnership(bool acquiredModelIsActive)
     {
         using var temp = new TempDirectory("local-ai-restored-runtime-cleanup-ownership-");
         SetupConfig config = LocalAiRecoveryConfig();
@@ -1230,10 +1326,25 @@ public class SetupPipelineTests
         context.LocalAiRuntime = runtime;
         context.LocalAiRuntimeBorrowed = true;
         var acquirer = new TrackingRuntimeAcquirer();
+        Directory.CreateDirectory(Path.GetDirectoryName(original.ModelPath)!);
+        await File.WriteAllTextAsync(original.ModelPath, "active model");
+        string acquiredModel = acquiredModelIsActive
+            ? original.ModelPath
+            : Path.Combine(Path.GetDirectoryName(original.ModelPath)!, "other.gguf");
+        await File.WriteAllTextAsync(acquiredModel, "acquired model");
+        context.LocalAiModelInstall = new(acquiredModel, null,
+            HuggingFaceModelInstallDisposition.Downloaded, CreatedThisRun: true,
+            acquiredModel, LegacyCreatedThisRun: true);
+        using var client = new HttpClient();
+        var modelAcquirer = new HuggingFaceModelInstaller(client);
 
         await new PersistLocalAiManifestStep().RollbackAsync(context, CancellationToken.None);
+        await new AcquireLocalAiModelStep(modelAcquirer).RollbackAsync(context, CancellationToken.None);
         await new AcquireLocalAiRuntimeStep(acquirer).RollbackAsync(context, CancellationToken.None);
 
+        Assert.True(File.Exists(original.ModelPath));
+        Assert.Equal(acquiredModelIsActive, File.Exists(acquiredModel));
+        Assert.Null(context.LocalAiModelInstall);
         Assert.Equal(original.Manifest.ModelCatalogId, (await store.LoadAsync())!.Manifest.ModelCatalogId);
         Assert.Null(context.LocalAiRuntimeInstall);
         Assert.Equal(0, acquirer.RemoveCalls);
