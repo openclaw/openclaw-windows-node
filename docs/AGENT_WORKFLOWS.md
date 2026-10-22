@@ -218,6 +218,7 @@ The repository owns this reusable checklist, not personal workflow history.
 
 - [Repository instructions](../AGENTS.md)
 - [Documentation workflow](../.agents/skills/technical-documentation/SKILL.md)
+- [Local PR preparation](../.agents/skills/windows-pr-prepare/SKILL.md)
 - [Test authoring](../.agents/skills/test-audit/SKILL.md)
 - [Real proof requirements](../.agents/skills/openclaw-proof-validation/SKILL.md)
 

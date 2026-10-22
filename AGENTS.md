@@ -17,6 +17,7 @@ requirement. A tool's successful exit is not proof that the intended work ran.
 | Write, review, or restructure documentation/instructions | [Docs instructions](docs/AGENTS.md) and [technical-documentation](.agents/skills/technical-documentation/SKILL.md) |
 | Write or review a regression test | [Test authoring](docs/TEST_COVERAGE.md#writing-a-regression-test) and [test-audit](.agents/skills/test-audit/SKILL.md) |
 | Select tests and required proof | [Validation plan](docs/TEST_COVERAGE.md#explain-the-validation-plan) and [proof skill](.agents/skills/openclaw-proof-validation/SKILL.md) |
+| Prepare a local PR body and readiness handoff | [Windows PR preparation](.agents/skills/windows-pr-prepare/SKILL.md); publication needs separate authority |
 | Change a WinUI owner or its caller | [WinUI instructions](src/OpenClaw.Tray.WinUI/AGENTS.md) and the affected architecture ledger rows |
 | Debug or drive the app through local MCP | [windows-app-mcp](.agents/skills/windows-app-mcp/SKILL.md); use [winnode](.agents/skills/winnode/SKILL.md) for the shipped command contract |
 | Review code | [Shared autoreview](.agents/skills/autoreview/SKILL.md); use [Hanselman review](.agents/skills/hanselman-code-review/SKILL.md) when adversarial review is requested |
