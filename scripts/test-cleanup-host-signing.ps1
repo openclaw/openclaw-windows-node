@@ -13,6 +13,8 @@ $project = Join-Path $root 'src\OpenClaw.SetupEngine\OpenClaw.SetupEngine.csproj
 $verify = Join-Path $PSScriptRoot 'Test-CleanupHostSignature.ps1'
 $temporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) ("openclaw-cleanup-build-test-" + [Guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $temporaryDirectory
+$originalSigningRequirement = $env:RequireSignedCleanupHost
+Remove-Item Env:RequireSignedCleanupHost -ErrorAction SilentlyContinue
 
 function Invoke-TestBuild {
     param([string]$Name, [string[]]$Properties, [string]$ExpectedError)
@@ -45,7 +47,7 @@ try {
     Write-Host 'PASS: unsigned development build embeds a helper.'
 
     Invoke-TestBuild -Name missing-signing-input -Properties @(
-        '-p:RequireSignedCleanupHost=true', '-p:OpenClawSignedCleanupHostPath=') `
+        '-p:OpenClawSignedCleanupHostPath=') `
         -ExpectedError 'Signed releases require OpenClawSignedCleanupHostPath'
 
     # The deployed development image is the actual unsigned production helper.
@@ -78,6 +80,10 @@ try {
     if ($LASTEXITCODE -eq 0) { throw 'Verifier accepted a stale/different embedded helper.' }
     Write-Host 'PASS: mismatched embedded helper rejected.'
 }
-finally { [IO.Directory]::Delete($temporaryDirectory, $true) }
+finally {
+    [IO.Directory]::Delete($temporaryDirectory, $true)
+    if ($null -eq $originalSigningRequirement) { Remove-Item Env:RequireSignedCleanupHost -ErrorAction SilentlyContinue }
+    else { $env:RequireSignedCleanupHost = $originalSigningRequirement }
+}
 Write-Host 'Cleanup signing regression: 5 cases passed.'
 exit 0

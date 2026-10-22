@@ -929,10 +929,13 @@ AnyCPU .NET Framework cleanup executable and signs it through the existing
 protected `release-signing` environment. The x64, ARM64 and Store/Dev MSIX build
 jobs download that same signed artifact before compiling SetupEngine.
 `OpenClawSignedCleanupHostPath` selects those bytes instead of rebuilding the
-helper through its project reference. `RequireSignedCleanupHost=true` rejects a
-missing signing input; any supplied signing input must have a valid Authenticode
-signature. Ordinary unsigned PR and local development builds keep the project
-reference path.
+helper through its project reference. Non-dev Release builds default to
+`RequireSignedCleanupHost=true` and reject a missing signing input; any supplied
+signing input must have a valid Authenticode signature. Debug and Dev builds
+retain the unsigned project-reference path. Non-published PR release smoke and
+MSIX fixture builds explicitly set `RequireSignedCleanupHost=false`; the same
+override is available for intentional unsigned local Release testing, not
+release publication.
 
 SetupEngine verifies the input before embedding and checks the actual compiled
 resource afterward for a matching hash and valid signature. The release payload

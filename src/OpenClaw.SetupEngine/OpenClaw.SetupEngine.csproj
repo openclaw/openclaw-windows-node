@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>OpenClaw.SetupEngine</RootNamespace>
+    <RequireSignedCleanupHost Condition="'$(RequireSignedCleanupHost)' == '' and '$(Configuration)' == 'Release' and '$(DevBuild)' != 'true'">true</RequireSignedCleanupHost>
   </PropertyGroup>
 
   <ItemGroup>
