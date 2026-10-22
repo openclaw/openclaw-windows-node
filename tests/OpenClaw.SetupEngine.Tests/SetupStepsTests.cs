@@ -1999,7 +1999,7 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("--output \"$installer\"", command);
         Assert.Contains("'https://openclaw.ai/install-cli.sh'", command);
         Assert.Contains("if ! test -s \"$installer\"", command);
-        Assert.Contains("bash -s -- --version '2026.5.22' --node-version '24.19.0' < \"$installer\"", command);
+        Assert.Contains("bash -s -- --version '2026.5.22' --node-version '24.22.1' < \"$installer\"", command);
         Assert.DoesNotContain("--retry", command);
         Assert.DoesNotContain("| bash", command);
     }
@@ -2113,6 +2113,31 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("Could not resolve host: openclaw.ai", result.Message);
         Assert.True(commands.WslCalls[0].InputViaStdin);
         AssertCleanupRan(commands);
+    }
+
+    [Fact]
+    public async Task InstallCli_OfficialInstallerUsesSqliteCapableNodeAndVerifiesInstalledRuntime()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+                command.Contains("tools/node/bin/node --version", StringComparison.Ordinal)
+                    ? Ok("v24.22.1")
+                    : command.EndsWith("openclaw --version", StringComparison.Ordinal)
+                        ? Ok("OpenClaw 2026.10.5")
+                        : Ok());
+        var config = new SetupConfig();
+        GatewayInstallPolicy.ValidateAndApply(config);
+
+        var result = await new InstallCliStep().ExecuteAsync(
+            CreateContext(config, commands), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        var install = Assert.Single(commands.WslCalls,
+            call => call.Command.Contains("curl -fsSL", StringComparison.Ordinal));
+        Assert.Contains("--node-version '24.22.1'", install.Command);
+        Assert.Contains(commands.WslCalls,
+            call => call.Command.Contains("tools/node/bin/node --version", StringComparison.Ordinal));
     }
 
     [Fact]

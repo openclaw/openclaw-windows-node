@@ -442,6 +442,13 @@ Executed sequentially. Each step is a small class (30–120 lines) in its own fi
 | 23 | `WindowsNodeBootstrapContextStep` | Inject Windows-node context into the WSL workspace `AGENTS.md` |
 | 24 | `StartKeepaliveStep` | Background WSL keepalive to prevent VM shutdown |
 
+Managed WSL setup passes the Node version pinned by `GatewayInstallPolicy` to
+the official installer, then verifies the installed runtime against that same
+version. The pin is Node 24.22.1, matching the installer's Node 24 minimum for
+the `node:sqlite` embedded-NUL round-trip fix. Preinstalling a newer Node does
+not override the installer's explicit `--node-version` argument. This runtime
+prerequisite does not change the wizard's 15-second reload-restoration deadline.
+
 The Windows port preflight requires a free port before installation. Installing
 the gateway service can start it immediately, so the subsequent WSL port check
 accepts listeners only when every reported owner PID matches the installed
