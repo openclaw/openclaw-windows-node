@@ -1151,20 +1151,20 @@ try {
 param([string]$Runner, [string]$Root, [int]$Timeout, [int]$TestExit, [string]$Name, [switch]$Override)
 $ErrorActionPreference = 'Stop'
 Set-Location $Root
-function global:dotnet {
+function Invoke-FakeCiProcess {
+    param($FilePath, $ArgumentList, $IdleTimeoutSeconds, $OutputPath)
     Set-Content -LiteralPath 'dotnet-called.txt' -Value 'called'
-    $values = @($args)
-    foreach ($flag in @('--blame-hang', '--blame-hang-timeout', '--blame-hang-dump-type')) {
-        if ($flag -notin $values) { throw "Missing E2E hang protection: $flag" }
+    $values = @($ArgumentList)
+    if ($FilePath -cne 'dotnet' -or $IdleTimeoutSeconds -ne $Timeout -or
+        $OutputPath -notlike '*.console.log') {
+        throw 'E2E invocation lost its idle deadline or retained console evidence.'
     }
-    foreach ($pair in @(
-        @('--blame-hang-timeout', "${Timeout}s"),
-        @('--blame-hang-dump-type', 'none'),
-        @('--filter', 'Sentinel.Filter'))) {
-        $index = [Array]::IndexOf($values, $pair[0])
-        if ($index -lt 0 -or $values[$index + 1] -cne $pair[1]) {
-            throw "Unexpected E2E argument: $($pair[0])"
-        }
+    if ('--blame' -notin $values -or '--blame-hang' -in $values -or '--blame-crash' -in $values) {
+        throw 'E2E diagnostics must preserve sequence evidence without a fixture wall timer or memory dumps.'
+    }
+    $index = [Array]::IndexOf($values, '--filter')
+    if ($index -lt 0 -or $values[$index + 1] -cne 'Sentinel.Filter') {
+        throw 'Unexpected E2E filter.'
     }
     if ($TestExit -eq 0) {
         $directory = $values[[Array]::IndexOf($values, '--results-directory') + 1]
@@ -1175,9 +1175,11 @@ function global:dotnet {
     }
     $global:LASTEXITCODE = $TestExit
 }
+Copy-Item -LiteralPath $Runner -Destination (Join-Path $Root 'Invoke-CiE2e.ps1')
+[IO.File]::WriteAllText((Join-Path $Root 'Invoke-CiProcess.ps1'), ${function:Invoke-FakeCiProcess}.ToString())
 $parameters = @{ Name = $Name; Filter = 'Sentinel.Filter' }
 if ($Override) { $parameters.HangTimeoutSeconds = $Timeout }
-& $Runner @parameters
+& (Join-Path $Root 'Invoke-CiE2e.ps1') @parameters
 exit $LASTEXITCODE
 '@
     $shell = (Get-Process -Id $PID).Path
@@ -1211,6 +1213,7 @@ exit $LASTEXITCODE
         }
     }
     Write-Host "E2E runner hang-guard contracts passed: $($e2eRunnerCases.Count) cases."
+    & (Join-Path $PSScriptRoot 'Test-CiProcess.Tests.ps1')
     # Expected child failures must not become the GitHub Actions step exit code.
     $global:LASTEXITCODE = 0
 
