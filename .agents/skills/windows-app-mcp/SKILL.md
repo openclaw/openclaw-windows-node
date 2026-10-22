@@ -36,20 +36,13 @@ node capabilities cannot prove arbitrary node commands or real Gateway behavior.
 
 Before fixture discovery or invocation, bind the client to both the printed
 fixture profile and MCP endpoint. The fixture sets these only for its app
-process, not your client shell. In a persistent interactive client PowerShell
-session, replace the placeholders with values from the same active fixture run:
+process, not your client shell. These blocks work in both persistent PowerShell
+sessions and fresh-process agent shells. Replace the placeholders with values
+from the same active fixture run and run each block in full. Agent shell tools
+may start a fresh process per call, so variables and environment edits may not
+carry over, even when reusing a tool session ID.
 
-```powershell
-$env:OPENCLAW_TRAY_DATA_DIR = '<printed-fixture-profile>'
-Remove-Item Env:\OPENCLAW_MCP_TOKEN -ErrorAction SilentlyContinue
-$fixtureMcpUrl = '<printed-fixture-loopback-MCP-url>'
-winnode --mcp-url $fixtureMcpUrl --list-tools
-winnode --mcp-url $fixtureMcpUrl --command app.status --params '{}'
-```
-
-Agent shell tools may start a fresh process for every tool call. Their variables
-and environment edits do not carry over, even when reusing a tool session ID.
-For those tools, submit the entire discovery block below as one invocation:
+Discover tools first:
 
 ```powershell
 $env:OPENCLAW_TRAY_DATA_DIR = '<printed-fixture-profile>'
@@ -58,8 +51,7 @@ $fixtureMcpUrl = '<printed-fixture-loopback-MCP-url>'
 winnode --mcp-url $fixtureMcpUrl --list-tools
 ```
 
-After successful discovery, submit this entire invocation block in the next
-tool call, again using the same active fixture run's printed values:
+Only after discovery succeeds, run the invocation block in full:
 
 ```powershell
 $env:OPENCLAW_TRAY_DATA_DIR = '<printed-fixture-profile>'
