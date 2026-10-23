@@ -207,7 +207,8 @@ public sealed class LocalAiOnboardingTests
                 DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-spark")], false);
         var host = new SetupLocalAiHost(
             () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
-                new("gateway", "Managed", 18789, install.Manifest.ModelCatalogId, install.Manifest.RequestedPort))),
+                new("gateway", "Managed", 18789, install.Manifest.ModelCatalogId, install.Manifest.RequestedPort,
+                    PinModelSelection: false))),
             () => registry, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(install),
             (_, _) => Task.FromResult(true), _ => Task.FromResult(hardware),
             () => throw new InvalidOperationException("Observation must not mutate the Gateway."));
@@ -275,7 +276,8 @@ public sealed class LocalAiOnboardingTests
         var inspections = 0;
         var host = new SetupLocalAiHost(
             () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
-                new("gateway", "Managed", 18789, model.Id, manifest.RequestedPort))),
+                new("gateway", "Managed", 18789, model.Id, manifest.RequestedPort,
+                    PinModelSelection: false))),
             () => registry, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(install),
             (_, _) => { inspections++; return Task.FromResult(false); }, _ => Task.FromResult(hardware),
             () => throw new InvalidOperationException("Observation must not mutate the Gateway."));
@@ -800,10 +802,109 @@ public sealed class LocalAiOnboardingTests
         }
     }
 
-    private static SetupLocalAiHost Host(GatewayRegistry registry, FakeRuntime runtime,
+    [Theory]
+    [InlineData("append")]
+    [InlineData("already-recorded")]
+    [InlineData("same-endpoint")]
+    [InlineData("extra-history")]
+    [InlineData("removed-history")]
+    [InlineData("provenance")]
+    [InlineData("fallback")]
+    [InlineData("installation")]
+    [InlineData("model")]
+    [InlineData("path")]
+    [InlineData("hash")]
+    public async Task Host_PendingStartIgnoresOptionalHintsButFencesInstallationChanges(string change)
+    {
+        using var directory = new TempDirectory();
+        var paths = new LocalAiPaths(directory.Path);
+        var store = new LocalAiManifestStore(paths);
+        var initial = await LocalAiSetupRuntimeFixture.PrepareInstallAsync(paths);
+        const string previous = "http://127.0.0.1:28768/v1";
+        const string older = "http://127.0.0.1:28767/v1";
+        var pending = initial.Manifest with
+        {
+            Endpoint = previous,
+            ReplacedManifest = initial.Manifest with { Endpoint = older },
+            PreviousEndpoints = change == "already-recorded" ? [older, previous] : [older],
+        };
+        await store.SaveAsync(pending);
+        var install = (await store.LoadAsync())!;
+        var commands = new ReadOnlyGateway(install, false);
+        var fixture = new LocalAiSetupRuntimeFixture
+        {
+            Port = change == "same-endpoint" ? 28768 : 28769,
+            OnPublish = async published =>
+            {
+                // The real runtime has just persisted the new endpoint and history.
+                commands.Install = published;
+                var changed = change switch
+                {
+                    "extra-history" => published.Manifest with
+                    { PreviousEndpoints = published.Manifest.PreviousEndpoints!.Value.Add("http://127.0.0.1:28770/v1") },
+                    "removed-history" => published.Manifest with { PreviousEndpoints = [previous] },
+                    "provenance" => published.Manifest with
+                    { ReplacedManifest = published.Manifest.ReplacedManifest! with { GatewayFallbackModel = "other/cloud" } },
+                    "fallback" => published.Manifest with { GatewayFallbackModel = "other/cloud" },
+                    "installation" => published.Manifest with
+                    { InstalledAtUtc = published.Manifest.InstalledAtUtc.AddDays(1) },
+                    "model" => published.Manifest with
+                    { ModelCatalogId = LocalModelCatalog.Qwen27BModelId, ModelAlias = LocalModelCatalog.Qwen27BModelId },
+                    "path" => published.Manifest with
+                    { ModelPath = Path.Combine("models", "different", published.Manifest.ModelAsset.FileName) },
+                    "hash" => published.Manifest with
+                    { ModelAsset = published.Manifest.ModelAsset with { Sha256 = new string('b', 64) } },
+                    _ => published.Manifest,
+                };
+                await store.SaveAsync(changed);
+                install = (await store.LoadAsync())!;
+            },
+        };
+        await using var runtime = fixture.CreateRuntime(paths);
+        var registry = Registry(directory.Path);
+        var host = Host(registry, runtime, () => install,
+            () => new(commands, new LocalAiGatewayDistroResolver(registry), NullLogger.Instance));
+        var selected = await host.ObserveAsync(default);
+        Assert.Equal(LocalAiOnboardingState.StartAndUse, selected.State);
+        var use = new LocalAiOnboardingUse(host);
+        if (change is "installation" or "model" or "path" or "hash")
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => use.UseAsync(selected, default));
+            Assert.Equal(new SetupLocalAiUseResult("gateway", selected.ModelRef!), use.Expected);
+            Assert.Equal(2, commands.Reads); // No provider publication after critical receipt drift.
+        }
+        else
+        {
+            await use.UseAsync(selected, default);
+            Assert.Equal(new SetupLocalAiUseResult("gateway", selected.ModelRef!), use.Expected);
+            string[] expectedHistory = change switch
+            {
+                "same-endpoint" => [older],
+                "extra-history" => [older, previous, "http://127.0.0.1:28770/v1"],
+                "removed-history" => [previous],
+                _ => [older, previous],
+            };
+            Assert.Equal(expectedHistory, install.Manifest.PreviousEndpoints!.Value);
+            Assert.Equal(change == "provenance" ? "other/cloud" : null,
+                install.Manifest.ReplacedManifest!.GatewayFallbackModel);
+            Assert.Equal(change == "fallback" ? "other/cloud" : initial.Manifest.GatewayFallbackModel,
+                install.Manifest.GatewayFallbackModel);
+            Assert.Equal(initial.ModelPath, install.ModelPath);
+            Assert.Equal(initial.Manifest.ModelAsset, install.Manifest.ModelAsset);
+            Assert.Equal(selected.ModelRef, LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+            Assert.Equal(install.Endpoint, commands.Install.Endpoint);
+            Assert.Equal(4, commands.Reads); // Admission and post-start provider verification both ran.
+        }
+        Assert.Equal(LocalAiRuntimeState.Healthy, runtime.Snapshot.State);
+        Assert.Single(fixture.Published);
+        Assert.Equal(fixture.Port, install.Endpoint!.Port);
+    }
+
+    private static SetupLocalAiHost Host(GatewayRegistry registry, ILocalAiRuntime runtime,
         Func<LocalAiResolvedInstall?> install, Func<LocalAiGatewayProviderCoordinator>? provider = null) =>
         new(() => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
-                new("gateway", "Managed", 18789, install()?.Manifest.ModelCatalogId, install()?.Manifest.RequestedPort))),
+                new("gateway", "Managed", 18789, install()?.Manifest.ModelCatalogId,
+                    install()?.Manifest.RequestedPort, PinModelSelection: false))),
             () => registry, () => runtime, _ => Task.FromResult(install()), (_, _) => Task.FromResult(true),
             _ => Task.FromResult(Hardware), provider ?? (() => throw new InvalidOperationException("No route mutation expected.")));
 
@@ -841,7 +942,13 @@ public sealed class LocalAiOnboardingTests
                 new LocalAiGatewayDistroResolver(registry), NullLogger.Instance), NullLogger.Instance);
         var host = new SetupLocalAiHost(
             () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
-                new("gateway", "Managed", 18789, install.Manifest.ModelCatalogId, install.Manifest.RequestedPort))),
+                new(
+                    "gateway",
+                    "Managed",
+                    18789,
+                    install.Manifest.ModelCatalogId,
+                    install.Manifest.RequestedPort,
+                    PinModelSelection: false))),
             () => registry, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(install),
             (_, _) => Task.FromResult(true), _ => Task.FromResult(Hardware),
             () => throw new InvalidOperationException("WSL admission must not run."),
@@ -857,6 +964,7 @@ public sealed class LocalAiOnboardingTests
     private sealed class ReadOnlyGateway(LocalAiResolvedInstall install, bool drifted) : IWslCommandRunner
     {
         public int Reads { get; private set; }
+        public LocalAiResolvedInstall Install { get; set; } = install;
         public Func<int, Task>? AfterRead { get; init; }
         public async Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command,
             CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null,
@@ -869,9 +977,9 @@ public sealed class LocalAiOnboardingTests
             if (AfterRead is not null) await AfterRead(Reads);
             return new WslCommandResult(0,
                 command.Contains(LocalAiGatewayProviderDefinition.ProviderPath)
-                    ? LocalAiGatewayProviderDefinition.BuildProviderJson(install)
+                    ? LocalAiGatewayProviderDefinition.BuildProviderJson(Install)
                     : System.Text.Json.JsonSerializer.Serialize(drifted
-                        ? "other/model" : LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)), "");
+                        ? "other/model" : LocalAiGatewayProviderDefinition.BuildPrimaryModel(Install)), "");
         }
         public Task<WslCommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken = default,
             IReadOnlyDictionary<string, string>? environment = null) => throw new InvalidOperationException();

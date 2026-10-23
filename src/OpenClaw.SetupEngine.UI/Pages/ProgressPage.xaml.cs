@@ -149,6 +149,13 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             var steps = BuildSteps(config, _localAiRecoveryOnly);
             var setupOwner = _window;
             ctx.ExpectedGatewayRegistry = config.NativeLocalAiAcquisition ? null : setupOwner?.BeginGatewaySetup();
+            ctx.LocalAiRuntime = setupOwner?.BorrowManagedLocalAiRuntime();
+            ctx.LocalAiRuntimeBorrowed = ctx.LocalAiRuntime is not null;
+            if (ctx.LocalAiRuntimeBorrowed && !config.RollbackOnFailure)
+            {
+                throw new InvalidOperationException(
+                    "Local AI recovery requires transactional rollback when borrowing the tray runtime.");
+            }
             ctx.PersistTraySettings = _window is { } settingsOwner ? settingsOwner.PersistPipelineSettings : null;
             _pipeline = new SetupPipeline(steps);
             _pipeline.StepProgress += OnStepProgress;
@@ -156,9 +163,24 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             var pipeline = _pipeline;
             var result = await SetupPipeline.RunWithSettlementAsync(
                 () => Task.Run(() => pipeline.RunAsync(ctx), cts.Token),
-                outcome => config.NativeLocalAiAcquisition ? Task.CompletedTask : setupOwner?.SettleGatewaySetupAsync(ctx.ExpectedGatewayRegistry,
-                    outcome?.Outcome == PipelineOutcome.Success ? config.LocalAiRecoveryGatewayId ?? ctx.GatewayRecordId : null)
-                    ?? Task.CompletedTask);
+                async outcome =>
+                {
+                    try
+                    {
+                        await SetupPipeline.ReleaseBorrowedLocalAiRuntimeAfterFailureAsync(ctx, outcome);
+                    }
+                    finally
+                    {
+                        if (!config.NativeLocalAiAcquisition && setupOwner is not null)
+                        {
+                            await setupOwner.SettleGatewaySetupAsync(
+                                ctx.ExpectedGatewayRegistry,
+                                outcome?.Outcome == PipelineOutcome.Success
+                                    ? config.LocalAiRecoveryGatewayId ?? ctx.GatewayRecordId
+                                    : null);
+                        }
+                    }
+                });
             sw.Stop();
             _pipelineFinished = true;
             if (_closed || _window?.IsClosed == true)

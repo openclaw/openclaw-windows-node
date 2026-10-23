@@ -166,10 +166,91 @@ public sealed class ValidateLocalAiRecoveryGatewayStep : SetupStep
     }
 }
 
+public sealed class ValidateLocalAiRecoveryGatewayCompatibilityStep : SetupStep
+{
+    internal const string SupportedMarker = "LOCAL_AI_CONDITIONAL_SET_SUPPORTED";
+    internal const string UnsupportedMarker = "LOCAL_AI_CONDITIONAL_SET_UNSUPPORTED";
+
+    private readonly Func<SetupContext, CancellationToken, Task<CommandResult>> _probe;
+
+    public ValidateLocalAiRecoveryGatewayCompatibilityStep()
+        : this(ProbeConditionalSetSupportAsync)
+    {
+    }
+
+    internal ValidateLocalAiRecoveryGatewayCompatibilityStep(
+        Func<SetupContext, CancellationToken, Task<CommandResult>> probe) =>
+        _probe = probe ?? throw new ArgumentNullException(nameof(probe));
+
+    public override string Id => "validate-local-ai-recovery-gateway-compatibility";
+    public override string DisplayName => "Check gateway recovery compatibility";
+    public override bool CanRetry => false;
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        LocalAiResolvedInstall?[] recoveryInstalls =
+        [
+            ctx.LocalAiRecoveryPendingInstall,
+            ctx.LocalAiRecoveryOriginalInstall,
+            ctx.LocalAiResolvedInstall,
+        ];
+        if (recoveryInstalls.All(install => install is null))
+        {
+            return StepResult.Skip(
+                "No prior Local AI route requires conditional recovery support.");
+        }
+        if (recoveryInstalls.All(install => install is null || install.Manifest.RequestedPort != 0))
+            return StepResult.Skip("Fixed-port Local AI recovery does not require conditional route updates.");
+
+        CommandResult result = await _probe(ctx, ct).ConfigureAwait(false);
+        if (result.ExitCode == 0 &&
+            result.Stdout.Contains(SupportedMarker, StringComparison.Ordinal))
+        {
+            return StepResult.Ok("Gateway supports safe automatic-port recovery.");
+        }
+        // Conditional writes are only needed if rollback has to move an old route.
+        // Forward setup still uses the supported batch path after exact ownership checks.
+        ctx.Logger.Warn(
+            "Gateway conditional route updates are unavailable. Recovery will proceed; " +
+            "if rollback needs a different endpoint, its files and recovery hints will be retained.");
+        return StepResult.Ok("Continuing Local AI recovery with legacy Gateway compatibility.");
+    }
+
+    private static Task<CommandResult> ProbeConditionalSetSupportAsync(
+        SetupContext ctx,
+        CancellationToken ct)
+    {
+        string script = $$"""
+            set -eu
+            {{ctx.WslPathPrefix}}
+            if openclaw config set --help | grep -Fq -- '--expect-current-json'; then
+              echo {{SupportedMarker}}
+              exit 0
+            fi
+            echo {{UnsupportedMarker}}
+            exit 42
+            """;
+        return ctx.Commands.RunInWslAsync(
+            ctx.DistroName!,
+            script,
+            TimeSpan.FromMinutes(1),
+            ct: ct,
+            user: ctx.Config.Wsl.User,
+            inputViaStdin: true);
+    }
+}
+
 public sealed class PreserveLocalAiRecoveryGatewayStep : SetupStep
 {
     private readonly Func<SetupContext, CancellationToken, Task<StepResult>> _restart;
     private readonly Func<LocalAiResolvedInstall, CancellationToken, Task<bool>> _probeOriginalEndpoint;
+    private readonly Func<
+        SetupContext,
+        LocalAiGatewayPriorState,
+        LocalAiResolvedInstall,
+        LocalAiResolvedInstall,
+        CancellationToken,
+        Task<bool>> _restoreRecoveryRoute;
 
     public PreserveLocalAiRecoveryGatewayStep()
         : this(StartGatewayStep.RestartAndWaitForHealthAsync, ProbeOriginalEndpointAsync)
@@ -178,10 +259,18 @@ public sealed class PreserveLocalAiRecoveryGatewayStep : SetupStep
 
     internal PreserveLocalAiRecoveryGatewayStep(
         Func<SetupContext, CancellationToken, Task<StepResult>> restart,
-        Func<LocalAiResolvedInstall, CancellationToken, Task<bool>>? probeOriginalEndpoint = null)
+        Func<LocalAiResolvedInstall, CancellationToken, Task<bool>>? probeOriginalEndpoint = null,
+        Func<
+            SetupContext,
+            LocalAiGatewayPriorState,
+            LocalAiResolvedInstall,
+            LocalAiResolvedInstall,
+            CancellationToken,
+            Task<bool>>? restoreRecoveryRoute = null)
     {
         _restart = restart ?? throw new ArgumentNullException(nameof(restart));
         _probeOriginalEndpoint = probeOriginalEndpoint ?? ProbeOriginalEndpointAsync;
+        _restoreRecoveryRoute = restoreRecoveryRoute ?? ConfigureLocalAiGatewayStep.RestoreRecoveryRouteAsync;
     }
 
     public override string Id => "preserve-local-ai-recovery-gateway";
@@ -206,30 +295,117 @@ public sealed class PreserveLocalAiRecoveryGatewayStep : SetupStep
                 ctx.Logger.Warn(
                     "The previous Local AI endpoint receipt was not restored because gateway provider rollback did not complete.");
             }
+            else if (ctx.LocalAiRuntimeBorrowed && ctx.LocalAiRuntime is { } borrowedRuntime)
+            {
+                try
+                {
+                    var store = new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir));
+                    // Keep the possibly published replacement as a disposable hint until
+                    // the runtime and Gateway have both been observed after compensation.
+                    // A failed restart must not erase its provenance or permit file cleanup.
+                    LocalAiInstallManifest pending = ctx.LocalAiResolvedInstall!.Manifest;
+                    LocalAiInstallManifest recoveryManifest = originalInstall.Manifest with
+                    {
+                        RecoveryRoutes = originalInstall.Manifest.RecoveryRoutes
+                            .AddRange(pending.RecoveryRoutes)
+                            .AddRange((pending.PreviousEndpoints ?? []).Select(endpoint =>
+                                LocalAiManifestStore.WithoutRecoveryHints(pending) with { Endpoint = endpoint }))
+                            .Add(LocalAiManifestStore.WithoutRecoveryHints(pending)),
+                    };
+                    ctx.LocalAiResolvedInstall = await store.RestoreRecoveryManifestAsync(
+                        ctx.LocalAiResolvedInstall.Manifest, recoveryManifest, ct).ConfigureAwait(false);
+                    bool runtimeOwnsGatewayRoute = ctx.LocalAiGatewayPriorState is null;
+                    LocalAiRuntimeSnapshot restored = runtimeOwnsGatewayRoute
+                        ? await borrowedRuntime.RestartForSetupRollbackAsync(ct).ConfigureAwait(false)
+                        : await borrowedRuntime.RestartForSetupAsync(ct).ConfigureAwait(false);
+                    LocalAiResolvedInstall restoredInstall = await store.LoadAsync(ct).ConfigureAwait(false)
+                        ?? throw new InvalidDataException(
+                            "The previous Local AI receipt was unavailable after restarting its runtime.");
+                    if (restored.State != LocalAiRuntimeState.Healthy ||
+                        restored.Ownership != LocalAiOwnership.CompanionManaged ||
+                        restored.ModelId != restoredInstall.Manifest.ModelCatalogId ||
+                        restored.Endpoint != restoredInstall.Endpoint ||
+                        restored.ModelEvidence.State is not
+                            (LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded))
+                    {
+                        throw new InvalidDataException(
+                            restored.Detail ?? "The previous Local AI runtime could not be restored.");
+                    }
+                    ctx.LocalAiResolvedInstall = restoredInstall;
+                    AcquireLocalAiRuntimeStep.TransferCleanupOwnershipToRestoredRuntime(
+                        ctx,
+                        restoredInstall);
+                    AcquireLocalAiModelStep.TransferCleanupOwnershipToRestoredRuntime(
+                        ctx,
+                        restoredInstall);
+                    if (ctx.LocalAiGatewayPriorState is { } prior &&
+                        !await _restoreRecoveryRoute(
+                                ctx,
+                                prior,
+                                originalInstall,
+                                restoredInstall,
+                                ct)
+                            .ConfigureAwait(false))
+                    {
+                        throw new InvalidDataException(
+                            "The previous Local AI gateway route could not be updated to its restored endpoint.");
+                    }
+                    if (!await _probeOriginalEndpoint(restoredInstall, ct).ConfigureAwait(false))
+                    {
+                        throw new InvalidDataException(
+                            "The previous Local AI endpoint was not healthy after its runtime was restored.");
+                    }
+                    if (!runtimeOwnsGatewayRoute &&
+                        !await ConfigureLocalAiGatewayStep
+                            .AcknowledgeBorrowedRuntimeRouteAsync(ctx, ct)
+                            .ConfigureAwait(false))
+                    {
+                        throw new InvalidDataException(
+                            "The restored Local AI route could not be acknowledged by its runtime owner.");
+                    }
+                    ctx.LocalAiBorrowedRuntimeRestored = true;
+                    CompleteReceiptRollback(ctx);
+                }
+                catch (Exception ex) when (
+                    ex is IOException or UnauthorizedAccessException or InvalidDataException)
+                {
+                    receiptError = ex;
+                    ctx.LocalAiRecoveryRollbackUncertain = true;
+                    ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+                    ctx.Logger.Warn(
+                        $"Restoring the previous Local AI runtime failed ({ex.GetType().Name}).");
+                }
+            }
             else if (!await _probeOriginalEndpoint(originalInstall, ct).ConfigureAwait(false))
             {
                 ctx.Logger.Warn(
                     "The previous Local AI endpoint could not be verified as healthy; preserving the replacement " +
                     "receipt instead of restoring a receipt for an endpoint that is not confirmed reachable.");
+                ctx.LocalAiRecoveryRollbackUncertain = true;
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
             }
             else
             {
                 try
                 {
                     var store = new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir));
-                    await store.SaveAsync(originalInstall.Manifest, ct).ConfigureAwait(false);
-                    ctx.LocalAiResolvedInstall = store.ResolveAndValidate(originalInstall.Manifest);
+                    ctx.LocalAiResolvedInstall = await store
+                        .RestoreRecoveryManifestAsync(
+                            ctx.LocalAiResolvedInstall!.Manifest,
+                            originalInstall.Manifest,
+                            ct)
+                        .ConfigureAwait(false);
+                    CompleteReceiptRollback(ctx);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
                 {
                     receiptError = ex;
+                    ctx.LocalAiRecoveryRollbackUncertain = true;
+                    ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
                     ctx.Logger.Warn(
                         $"Restoring the previous Local AI endpoint receipt failed ({ex.GetType().Name}).");
                 }
             }
-            ctx.LocalAiRecoveryProviderTransition = false;
-            ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
-            ctx.LocalAiGatewayPriorState = null;
         }
 
         if (ctx.LocalAiRecoveryStoppedWsl)
@@ -247,6 +423,19 @@ public sealed class PreserveLocalAiRecoveryGatewayStep : SetupStep
                 "The previous Local AI endpoint receipt could not be restored.",
                 receiptError);
         }
+    }
+
+    private static void CompleteReceiptRollback(SetupContext ctx)
+    {
+        // The recovery guard now owns the settled receipt. Retire the earlier upgrade and
+        // recovery baselines so later reverse rollback steps cannot restore them again.
+        ctx.LocalAiUpgradeOriginalInstall = null;
+        ctx.LocalAiRecoveryOriginalInstall = null;
+        ctx.LocalAiRecoveryProviderTransition = false;
+        ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+        ctx.LocalAiRecoveryRollbackUncertain = false;
+        ctx.LocalAiGatewayPriorState = null;
+        ctx.LocalAiRecoveryGatewayConfigurationStartedThisRun = false;
     }
 
     /// <summary>

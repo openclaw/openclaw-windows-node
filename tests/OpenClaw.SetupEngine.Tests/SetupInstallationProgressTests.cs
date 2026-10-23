@@ -107,9 +107,9 @@ public sealed class SetupInstallationProgressTests
     }
 
     [Fact]
-    public void Recovery_PreparesExistingGatewayThenLocalAiWithoutGatewayInstallClaim()
+    public void Recovery_GroupsGatewayPreservationWithLocalAiInstallation()
     {
-        Assert.Equal(SetupInstallationPhase.Prepare, SetupInstallationProgress.PhaseFor("preserve-local-ai-recovery-gateway", true));
+        Assert.Equal(SetupInstallationPhase.Install, SetupInstallationProgress.PhaseFor("preserve-local-ai-recovery-gateway", true));
         Assert.Equal(SetupInstallationPhase.Install, SetupInstallationProgress.PhaseFor("acquire-local-ai-model", true));
         Assert.Equal(SetupInstallationPhase.Connect, SetupInstallationProgress.PhaseFor("restart-gateway", true));
     }
