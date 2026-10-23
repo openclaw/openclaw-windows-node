@@ -322,6 +322,9 @@ Before recording:
    Recorder operations build complete named-instance process argument vectors.
    Status retains the qualified text and exit-code checks while normalizing
    native CRLF to LF.
+   The recorder and watchdog finish their bound preparation before the measured
+   observer interval begins. A second, bound observer qualification is required
+   before either adapter admits scenarios or the recording adapter starts WPR.
 5. Run the complete wrapper with tracing disabled:
 
    ```powershell

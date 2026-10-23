@@ -16,12 +16,17 @@ if ($c.leaseId -cne $LeaseId -or $c.computer -cne $env:COMPUTERNAME -or
 }
 $trace = [StartupTraceAdapter]::new([StartupTraceMode]$Mode, {
     param($ctx,$mode)
-    if ($ctx.state.observer.ExecutionBlocked) { throw 'Observer qualification blocked before recorder readiness.' }
-    # Publish only after medium file/hash/env and actual observer startup all qualified.
+    # Load the recorder and watchdog before starting the measured observer interval.
     $callerPath = Join-Path $ctx.output 'caller-ready.json'
     $ctx.caller | Select-Object * -ExcludeProperty actualProcess |
         ConvertTo-Json -Depth 8 | Set-Content "$callerPath.writing" -Encoding utf8NoBOM
     Move-Item "$callerPath.writing" $callerPath
+    Wait-StartupReceipt (Join-Path (Split-Path $ctx.output) 'control\recorder-prepared.json') 60
+}, {
+    param($ctx,$mode)
+    if ($ctx.state.observer.ExecutionBlocked) { throw 'Observer qualification blocked before recorder readiness.' }
+    @{ ready = $true; bindingHash = $ctx.bindingHash; leaseId = $ctx.config.leaseId } |
+        ConvertTo-Json | Set-Content (Join-Path $ctx.output 'observer-qualified.json')
     $receipt = Wait-StartupReceipt (Join-Path (Split-Path $ctx.output) 'control\trace-ready.json') 60
     if ($receipt.bindingHash -cne $ctx.bindingHash -or $receipt.leaseId -cne $ctx.config.leaseId) {
         throw 'Recorder source/caller binding mismatch.'

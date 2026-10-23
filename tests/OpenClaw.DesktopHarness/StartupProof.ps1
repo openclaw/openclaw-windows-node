@@ -48,14 +48,17 @@ function Test-StartupRecorderStatusAbsent {
 
 class StartupTraceAdapter {
     [StartupTraceMode] $Mode
+    [scriptblock] $PrepareOperation
     [scriptblock] $StartOperation
     [scriptblock] $StopOperation
-    StartupTraceAdapter([StartupTraceMode] $mode, [scriptblock] $start, [scriptblock] $stop) {
-        if (!$start -or !$stop) { throw 'Both trace lifecycle operations are required.' }
+    StartupTraceAdapter([StartupTraceMode] $mode, [scriptblock] $prepare, [scriptblock] $start, [scriptblock] $stop) {
+        if (!$prepare -or !$start -or !$stop) { throw 'All trace lifecycle operations are required.' }
         $this.Mode = $mode
+        $this.PrepareOperation = $prepare
         $this.StartOperation = $start
         $this.StopOperation = $stop
     }
+    [object] Prepare([object] $context) { return (& $this.PrepareOperation $context $this.Mode) }
     [object] Start([object] $context) { return (& $this.StartOperation $context $this.Mode) }
     [object] Stop([object] $context) { return (& $this.StopOperation $context $this.Mode) }
 }
@@ -234,6 +237,11 @@ function Invoke-StartupProofRun {
         if ($Trace.Mode -eq [StartupTraceMode]::Record) {
             Assert-StartupDryRun $DryRunReceipt $binding.digest $TraceStartsCounter
         } elseif ($TraceStartsCounter -ne 0) { throw 'Dry-run cannot follow a trace attempt.' }
+        $prepared = $Trace.Prepare($context)
+        if (!$prepared -or $prepared.prepared -isnot [bool] -or !$prepared.prepared -or
+            $prepared.bindingHash -cne $binding.digest -or $prepared.leaseId -cne $Config.leaseId) {
+            throw 'Recorder/watchdog preparation did not qualify before observation.'
+        }
         & $Operations.Enter $context
         $entered = $true
         $ready = $Trace.Start($context)

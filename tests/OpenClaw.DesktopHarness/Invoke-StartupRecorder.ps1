@@ -120,6 +120,13 @@ try {
     $watchdog = [Diagnostics.Process]::Start($psi)
     try {
         $null = Wait-StartupReceipt (Join-Path $control 'watchdog-ready.json') 10
+        @{ prepared = $true; bindingHash = $binding.digest; leaseId = $LeaseId } |
+            ConvertTo-Json | Set-Content (Join-Path $control 'recorder-prepared.json')
+        $observed = Wait-StartupReceipt (Join-Path $RunRoot 'scenario\observer-qualified.json') 60
+        if ($observed.ready -isnot [bool] -or !$observed.ready -or
+            $observed.bindingHash -cne $binding.digest -or $observed.leaseId -cne $LeaseId) {
+            throw 'Actual observer did not qualify for the prepared recorder.'
+        }
         @{ entered = $true; mode = $Mode } | ConvertTo-Json | Set-Content $intentPath
         if ($Mode -ceq 'Record') {
             $attempt = [IO.File]::Open($c.traceStartsFile,[IO.FileMode]::CreateNew)

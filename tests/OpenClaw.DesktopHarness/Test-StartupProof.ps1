@@ -36,6 +36,7 @@ $script:caller = [pscustomobject]@{
 }
 $script:calls = [Collections.Generic.List[string]]::new()
 $script:rawFailed = $false; $script:cleanupOk = $true; $script:badStage = ''
+$script:badPreparation = $false
 $ops = @{
     Preflight = { param($ctx) $script:calls.Add('preflight'); $script:caller }
     Enter = { param($ctx) $script:calls.Add('enter') }
@@ -54,6 +55,10 @@ $ops = @{
 }
 function New-FixtureTrace([StartupTraceMode] $Mode) {
     [StartupTraceAdapter]::new($Mode, {
+        param($ctx,$mode)
+        $script:calls.Add("prepare:$mode")
+        @{ prepared = !$script:badPreparation; bindingHash = $ctx.bindingHash; leaseId = $ctx.config.leaseId }
+    }, {
         param($ctx,$mode)
         $script:calls.Add("start:$mode")
         @{ ready = $true; traceStartsCounter = [int]($mode -eq [StartupTraceMode]::Record) }
@@ -113,7 +118,7 @@ try {
     Assert-Proof ((Wait-StartupReceipt $existingReceipt 1).completed -ceq $true) 'Receipt reader must return the actual parsed final receipt'
     $dry = Invoke-Fixture 'dry'
     Assert-Proof ($dry.completed -and $dry.functionalContractsPassed -and $dry.traceStartsCounter -eq 0) "Full disabled adapter must execute all actual wrapper stages, without recording: $($dry.errors -join '; ')"
-    Assert-Proof (($script:calls -join ',') -ceq 'preflight,enter,start:Disabled,managed,sdk-four-controls,ownership-timeout-tree,cleanup,stop:Disabled') 'Dry-run must qualify the observer before recorder admission, execute all three functional owners and finalize the real receipts'
+    Assert-Proof (($script:calls -join ',') -ceq 'preflight,prepare:Disabled,enter,start:Disabled,managed,sdk-four-controls,ownership-timeout-tree,cleanup,stop:Disabled') 'Both recorder processes must prepare before measured observation; actual observer admission still precedes all functional owners'
     Assert-Proof ($null -eq $dry.runUrl -and $dry.stages.Count -eq 3 -and $dry.noDialogVerified) 'Missing optional runUrl must survive the real final JSON formatter'
     $firstBinding = Get-StartupBinding $config $script:caller
     $config | Add-Member -NotePropertyName runUrl -NotePropertyValue $null
@@ -164,7 +169,7 @@ try {
     Assert-Proof (!$malformed.completed -and !$script:calls.Contains('start:Record')) 'String false cannot qualify a supposedly completed dry-run'
     $record = Invoke-Fixture 'record' 'Record' $dry
     Assert-Proof ($record.completed -and $record.functionalContractsPassed -and $record.traceStartsCounter -eq 1) 'Passed full receipt admits exactly the same wrapper through the recording adapter'
-    Assert-Proof (($script:calls -join ',') -ceq 'preflight,enter,start:Record,managed,sdk-four-controls,ownership-timeout-tree,cleanup,stop:Record') 'Recording and dry-run must execute identical qualification, functional, cleanup and final-receipt paths'
+    Assert-Proof (($script:calls -join ',') -ceq 'preflight,prepare:Record,enter,start:Record,managed,sdk-four-controls,ownership-timeout-tree,cleanup,stop:Record') 'Recording and dry-run must execute identical qualification, functional, cleanup and final-receipt paths'
     $script:caller.path += ';C:\Changed'
     $changedEnv = Invoke-Fixture 'changed-environment' 'Record' $dry
     Assert-Proof (!$changedEnv.completed -and !$script:calls.Contains('start:Record')) 'Changing even a valid environment invalidates passed dry-run binding'
@@ -337,6 +342,9 @@ switch($Verb) {
     $script:calls.Clear()
     $rollback = [StartupTraceAdapter]::new('Record', {
         param($ctx,$mode)
+        @{prepared=$true;bindingHash=$ctx.bindingHash;leaseId=$ctx.config.leaseId}
+    }, {
+        param($ctx,$mode)
         @{ready=$true;traceStartsCounter=1}
     }, {
         param($ctx,$mode)
@@ -346,5 +354,11 @@ switch($Verb) {
         -RunDirectory (Join-Path $root 'counter-rollback') -DryRunReceipt $frozen
     Assert-Proof (!$badStop.completed -and $badStop.traceStartsCounter -eq 1 -and
         !$badStop.traceInstanceAbsent) 'Malformed recorder finalization cannot erase an actual attempt or permit a second trace'
+    $script:badPreparation = $true
+    $unprepared = Invoke-Fixture 'unprepared-recorder'
+    Assert-Proof (!$unprepared.completed -and $unprepared.traceStartsCounter -eq 0 -and
+        $unprepared.stages.Count -eq 0 -and !$script:calls.Contains('enter') -and
+        !$script:calls.Contains('start:Disabled')) 'Failed real recorder preparation must refuse observation, functional execution and trace admission'
+    $script:badPreparation = $false
     "PASS: $checks native-free startup-wrapper regressions."
 } finally { Remove-Item -LiteralPath $root -Recurse -Force }
