@@ -1,5 +1,23 @@
 # Connection Architecture
 
+## Complete configuration edits
+
+The native Config editor sends its complete edited document through
+`config.apply { raw, baseHash }`, not `config.patch`. Gateway patches merge
+ID-keyed arrays and are not full replacements. Channel and Local AI partial
+updates retain their existing patch owners. Applying the full document requires
+`operator.admin`, an advertised `config.apply`, a valid object snapshot and a
+non-empty revision. The editor binds its draft to the original operator client
+and authenticated connection epoch. A replaced or reconnected client cannot
+apply that old draft. Discard the draft and refresh before editing on the new
+connection.
+
+The existing Save flow waits for acknowledgement before clearing changes and
+refreshing the Config form after apply/reconnect. Rejections keep edits visible.
+A timeout, disconnect or restart-related error is not evidence of no write:
+reload and inspect the Gateway configuration before deciding what to retry.
+There is no automatic mutation replay or fallback to a local config file.
+
 ## Native Local AI ownership and configuration
 
 Native Local AI configuration uses authenticated Gateway RPC, not CLI batch

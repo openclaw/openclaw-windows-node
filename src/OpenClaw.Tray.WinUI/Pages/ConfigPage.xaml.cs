@@ -144,7 +144,7 @@ public sealed partial class ConfigPage : Page
                 }
 
                 _lastConfig = configSnapshot;
-                _serverSnapshot = ConfigEditorModel.CaptureSnapshot(configSnapshot);
+                _serverSnapshot = ConfigEditorModel.CaptureSnapshot(configSnapshot, CurrentApp.GatewayClient);
                 if (_pendingChanges.Count == 0)
                     _editSnapshot = _serverSnapshot;
 
@@ -518,7 +518,7 @@ public sealed partial class ConfigPage : Page
             return;
         }
 
-        if (!OperatorScopeHelper.CanWriteConfig(client.GrantedOperatorScopes))
+        if (!OperatorScopeHelper.HasAdminScope(client.GrantedOperatorScopes))
         {
             ShowStatus(
                 L("ConfigPage_ConfigIsReadOnly"),
@@ -530,7 +530,8 @@ public sealed partial class ConfigPage : Page
         }
 
         var saveBase = _editSnapshot.HasRoot ? _editSnapshot : _serverSnapshot;
-        if (!saveBase.HasRoot)
+        if (!saveBase.CanReplace ||
+            !saveBase.MatchesConnection(client))
         {
             ShowStatus(
                 L("ConfigPage_StatusConfigNotLoadedTitle"),
@@ -550,7 +551,16 @@ public sealed partial class ConfigPage : Page
         try
         {
             var updated = ConfigEditorModel.ApplyChanges(saveBase.Root, _pendingChanges);
-            var result = await client.PatchConfigDetailedAsync(updated, saveBase.BaseHash);
+            // This is the complete edited document, not an ID-merging partial patch.
+            var result = await client.ApplyConfigDetailedAsync(updated, saveBase.BaseHash!, saveBase.ConnectionEpoch!.Value);
+            if (!saveBase.MatchesConnection(CurrentApp.GatewayClient))
+            {
+                ShowStatus(
+                    L("ConfigPage_StatusConfigNotLoadedTitle"),
+                    L("ConfigPage_StatusConfigNotLoadedMessage"),
+                    InfoBarSeverity.Warning);
+                return;
+            }
             if (!result.Ok)
             {
                 if (result.LooksLikeStaleBaseHash)
@@ -1168,7 +1178,7 @@ public sealed partial class ConfigPage : Page
         if (!OperatorScopeHelper.CanReadConfig(scopes))
             return ConfigPermissionState.NoRead;
 
-        return OperatorScopeHelper.CanWriteConfig(scopes)
+        return OperatorScopeHelper.HasAdminScope(scopes)
             ? ConfigPermissionState.ReadWrite
             : ConfigPermissionState.ReadOnly;
     }

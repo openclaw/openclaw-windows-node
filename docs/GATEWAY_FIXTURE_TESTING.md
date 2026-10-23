@@ -65,6 +65,17 @@ pending selection: returning Home retains the original conversation, while the
 created session remains available for explicit sidebar selection. No provider, transcript file, or real
 Gateway is involved; other mutations and unsupported creation parameters still fail.
 
+The opt-in `config-editing` scenario accepts `config.apply { raw, baseHash }`
+against a synthetic in-memory document. Full replacement preserves the exact
+submitted array contents instead of ID-merging removed rows. The real-client
+tests cover stale revisions, invalid configuration, administrator-only dispatch,
+lost replies and reconnect epochs. The native Config editor test edits an array,
+waits for acknowledgement, and checks the refreshed visible form. Reply gates
+can model persistence before a lost acknowledgement; no write is automatically
+replayed. This fixture models the pinned upstream contract, not a running
+Gateway: it does not resolve secrets, write files, or perform an actual restart.
+Normal browse runs still reject configuration mutations.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using OpenClaw.Shared;
 
 namespace OpenClawTray.Services;
 
@@ -13,20 +14,28 @@ internal readonly record struct BindingRoute(
     string? Peer,
     int? Priority);
 
-internal sealed record ConfigEditorSnapshot(JsonElement Root, string? BaseHash)
+internal sealed record ConfigEditorSnapshot(
+    JsonElement Root, string? BaseHash, IOperatorGatewayClient? Client = null, long? ConnectionEpoch = null,
+    bool IsValid = true)
 {
     public static ConfigEditorSnapshot Empty { get; } = new(default, null);
 
     public bool HasRoot => Root.ValueKind is not JsonValueKind.Undefined and not JsonValueKind.Null;
+    public bool CanReplace => IsValid && Root.ValueKind == JsonValueKind.Object && !string.IsNullOrWhiteSpace(BaseHash);
+
+    public bool MatchesConnection(IOperatorGatewayClient? client) =>
+        Client is not null && ReferenceEquals(Client, client) &&
+        ConnectionEpoch is { } epoch && client.SessionMutationConnectionEpoch == epoch;
 }
 
 internal static class ConfigEditorModel
 {
-    public static ConfigEditorSnapshot CaptureSnapshot(JsonElement configResponse)
+    public static ConfigEditorSnapshot CaptureSnapshot(JsonElement configResponse, IOperatorGatewayClient? client = null)
     {
         var root = ExtractConfigRoot(configResponse);
         var baseHash = ExtractBaseHash(configResponse);
-        return new ConfigEditorSnapshot(root.Clone(), baseHash);
+        var valid = !configResponse.TryGetProperty("valid", out var validity) || validity.ValueKind == JsonValueKind.True;
+        return new ConfigEditorSnapshot(root.Clone(), baseHash, client, client?.SessionMutationConnectionEpoch, valid);
     }
 
     public static JsonElement ExtractConfigRoot(JsonElement configResponse)

@@ -112,7 +112,7 @@ public sealed partial class GatewayFixtureUiTests
             ScrollCronControlIntoView(run, title);
             if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
                 OwnedWindowCapture.Save(run, CronWindow(run), $"cron-target-{id}.png", title);
-            ClickOwnedCronTitle(run, CronWindow(run), title);
+            ClickOwnedFixtureControl(run, CronWindow(run), title);
             await WaitUiAsync(run, () => FindCronControl(run, editId) is not null, $"expanded cron card {id}");
         }
         Invoke(CronControl(run, editId));
@@ -200,13 +200,13 @@ public sealed partial class GatewayFixtureUiTests
         Assert.False(element.Current.IsOffscreen, "Target must be visible before native cron input.");
     }
 
-    private static void ClickOwnedCronTitle(GatewayFixtureRun run, AutomationElement window, AutomationElement title)
+    private static void ClickOwnedFixtureControl(GatewayFixtureRun run, AutomationElement window, AutomationElement title)
     {
         run.EnsureRunning();
         Assert.Equal(run.AppProcessId, window.Current.ProcessId);
         Assert.Equal(run.AppProcessId, title.Current.ProcessId);
         var handle = new IntPtr(window.Current.NativeWindowHandle);
-        Assert.True(SetForegroundWindow(handle), "Cannot foreground owned cron window.");
+        Assert.True(SetForegroundWindow(handle), "Cannot foreground owned fixture window.");
         var previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
         Assert.NotEqual(IntPtr.Zero, previous);
         try
@@ -220,9 +220,12 @@ public sealed partial class GatewayFixtureUiTests
             // WinUI can return its content bridge instead of the text peer for point queries.
             var bridgeContainsTitle = hit.Current.ClassName == "Microsoft.UI.Content.DesktopChildSiteBridge"
                 && hit.Current.ProcessId == run.AppProcessId
-                && hit.FindFirst(TreeScope.Descendants, new PropertyCondition(
-                    AutomationElement.AutomationIdProperty, title.Current.AutomationId)) is not null;
-            Assert.True(title.Current.AutomationId == hit.Current.AutomationId || bridgeContainsTitle,
+                && hit.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>()
+                    .Any(element => Automation.Compare(element, title));
+            var targetContainsHit = Automation.Compare(title, hit) ||
+                title.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>()
+                    .Any(element => Automation.Compare(element, hit));
+            Assert.True(targetContainsHit || bridgeContainsTitle,
                 $"Title {title.Current.AutomationId} at {bounds}, point {point.X},{point.Y}; hit " +
                 $"{hit.Current.AutomationId}/{hit.Current.Name}/{hit.Current.ClassName}/{hit.Current.ControlType.ProgrammaticName} at {hit.Current.BoundingRectangle}");
             Assert.True(SetCursorPos(point.X, point.Y));

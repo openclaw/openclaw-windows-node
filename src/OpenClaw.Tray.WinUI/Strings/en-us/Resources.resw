@@ -6421,13 +6421,13 @@ Make sure the gateway is running.</value>
     <value>Connect to a gateway before saving config.</value>
   </data>
   <data name="ConfigPage_StatusReadOnlyMessage" xml:space="preserve">
-    <value>This operator token does not have operator.write permission, so config changes cannot be saved.</value>
+    <value>This operator token does not have operator.admin permission, so config changes cannot be saved.</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedTitle" xml:space="preserve">
     <value>Config not loaded</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedMessage" xml:space="preserve">
-    <value>Refresh the gateway config before saving.</value>
+    <value>Discard the draft and refresh a valid gateway config before saving. Reconnects and gateway changes require a fresh edit.</value>
   </data>
   <data name="ConfigPage_StatusSavingConfigTitle" xml:space="preserve">
     <value>Saving config…</value>
@@ -6502,7 +6502,7 @@ Make sure the gateway is running.</value>
     <value>This operator token lacks operator.read permission, so the gateway config cannot be loaded here.</value>
   </data>
   <data name="ConfigPage_ConfigIsReadOnlyMessage" xml:space="preserve">
-    <value>This operator token can read config but lacks operator.write permission. You can inspect and validate drafts, but Save is disabled.</value>
+    <value>This operator token can read config but lacks operator.admin permission. You can inspect and validate drafts, but Save is disabled.</value>
   </data>
   <data name="ConfigPage_MetaNoUnsavedChanges" xml:space="preserve">
     <value>No unsaved changes.</value>
@@ -6529,7 +6529,7 @@ Make sure the gateway is running.</value>
     <value>Config unavailable: missing operator.read</value>
   </data>
   <data name="ConfigPage_SaveStatusReadOnlyMissingWrite" xml:space="preserve">
-    <value>Read-only: missing operator.write</value>
+    <value>Read-only: missing operator.admin</value>
   </data>
   <data name="ConfigPage_SaveStatusFixValidationBeforeSaving" xml:space="preserve">
     <value>Fix validation errors before saving</value>

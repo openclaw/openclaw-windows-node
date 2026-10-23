@@ -57,13 +57,14 @@ public sealed partial class GatewayScenario
     private readonly bool _allowChatSend;
     public bool IsInteractive { get; }
     private readonly ContextUsageFixture? _contextUsage;
+    private readonly ConfigEditingFixture? _configEditing;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Session> _createdSessions = new(StringComparer.Ordinal);
     private readonly List<object> _createdAgents = [];
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _configEditing is not null ? "config-editing" : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -76,7 +77,8 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        ConfigEditingFixture? configEditing = null)
     {
         _sessions = sessions;
         _reads = reads;
@@ -88,6 +90,7 @@ public sealed partial class GatewayScenario
         _allowChatSend = allowChatSend;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         _contextUsage = contextUsage;
+        _configEditing = configEditing;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
@@ -97,11 +100,13 @@ public sealed partial class GatewayScenario
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
+            .Concat(configEditing is null ? [] : ["config.apply"])
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
             Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog,
-            sessions = sessions.Select(s => new { s.Row, s.Messages }), reads, cronJobs
+            sessions = sessions.Select(s => new { s.Row, s.Messages }), reads, cronJobs,
+            configEditing = configEditing?.Snapshot()
         });
         Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant();
     }
@@ -124,6 +129,13 @@ public sealed partial class GatewayScenario
         ArgumentNullException.ThrowIfNull(contextUsage);
         var browse = CreateBrowse();
         return new(browse._sessions, browse._reads, contextUsage: contextUsage);
+    }
+
+    public static GatewayScenario CreateConfigEditing(ConfigEditingFixture configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, configEditing: configuration);
     }
 
     /// <summary>Explicit synthetic setup replies only. The host never executes provider or package operations.</summary>
@@ -332,7 +344,7 @@ public sealed partial class GatewayScenario
                     : IsInteractive
                         ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
                         : _contextUsage is not null ? new[] { "operator.read", "operator.write" }
-                        : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null
+                        : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null || _configEditing is not null
                             ? new[] { "operator.admin", "operator.read" }
                             : new[] { _setup is null ? "operator.read" : "operator.admin" }
             },
@@ -355,6 +367,8 @@ public sealed partial class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters, Func<string, bool>? containsModelSession = null)
     {
+        if (_configEditing is not null && method is "config.get" or "config.apply")
+            return _configEditing.Respond(method, parameters);
         if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
             return RespondCron(method, parameters);
         if (_contextUsage is not null && method == "chat.send")
