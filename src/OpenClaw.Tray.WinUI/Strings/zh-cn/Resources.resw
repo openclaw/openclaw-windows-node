@@ -8091,4 +8091,23 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>总结我最近的会话</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>帮我配置一个频道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>检查系统健康状况</value></data>
+  <data name="ChannelPairing_Title" xml:space="preserve"><value>待处理的私信访问请求</value></data>
+  <data name="ChannelPairing_Description" xml:space="preserve"><value>查看请求向频道账号发送私信的发送者。批准将授予访问权限。忽略仅移除此请求，不会永久阻止发送者。</value></data>
+  <data name="ChannelPairing_Refresh" xml:space="preserve"><value>刷新请求</value></data>
+  <data name="ChannelPairing_Approve" xml:space="preserve"><value>批准访问</value></data>
+  <data name="ChannelPairing_Dismiss" xml:space="preserve"><value>忽略请求</value></data>
+  <data name="ChannelPairing_Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="ChannelPairing_ApproveConfirm" xml:space="preserve"><value>允许此发送者向此频道账号发送私信？此操作不会授予命令所有者权限，也不会发送通知。</value></data>
+  <data name="ChannelPairing_DismissConfirm" xml:space="preserve"><value>移除此待处理请求？此操作不会永久阻止发送者。</value></data>
+  <data name="ChannelPairing_Identity" xml:space="preserve"><value>{0}（{1}）
+频道：{2}（{3}）
+账号：{4}（{5}）
+请求：{6}
+到期时间：{7}</value></data>
+  <data name="ChannelPairing_Empty" xml:space="preserve"><value>没有待处理的私信访问请求。</value></data>
+  <data name="ChannelPairing_Changed" xml:space="preserve"><value>请连接到目标网关，然后刷新请求。连接更改后，需要重新查看并确认。</value></data>
+  <data name="ChannelPairing_Unsupported" xml:space="preserve"><value>此网关未声明支持所请求的私信访问操作。</value></data>
+  <data name="ChannelPairing_Denied" xml:space="preserve"><value>此连接没有管理私信访问请求的权限。</value></data>
+  <data name="ChannelPairing_Failed" xml:space="preserve"><value>网关未确认此操作。已提交的更改可能已经完成。请先刷新请求，再执行其他操作。系统不会自动重试。</value></data>
+  <data name="ChannelPairing_Completed" xml:space="preserve"><value>网关已确认更改。待处理列表已更新。</value></data>
 </root>

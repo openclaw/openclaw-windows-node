@@ -135,6 +135,15 @@ internal sealed class PendingRequestRegistry
         }
     }
 
+    internal bool AwaitsChannelPairingTerminal(string? requestId)
+    {
+        lock (_gate)
+        {
+            return requestId is not null && _entries.TryGetValue(requestId, out var entry) &&
+                entry.Method is "channels.pairing.approve" or "channels.pairing.dismiss";
+        }
+    }
+
     internal bool TryTake(string? requestId, out PendingRequestResolution? resolution)
     {
         if (string.IsNullOrWhiteSpace(requestId))
@@ -232,7 +241,7 @@ internal sealed class PendingRequestRegistry
         }
 
         internal string RequestId { get; }
-        protected string Method { get; }
+        internal string Method { get; }
         protected PendingRequestCategory Category { get; }
 
         internal abstract PendingRequestResolution CreateResolution();

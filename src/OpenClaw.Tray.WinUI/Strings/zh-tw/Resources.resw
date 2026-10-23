@@ -8091,4 +8091,23 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>摘要我的近期工作階段</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>協助我設定頻道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>檢查系統健康狀態</value></data>
+  <data name="ChannelPairing_Title" xml:space="preserve"><value>待處理的私訊存取要求</value></data>
+  <data name="ChannelPairing_Description" xml:space="preserve"><value>檢視要求向頻道帳號傳送私訊的寄件者。核准將授予存取權限。關閉僅移除此要求，不會永久封鎖寄件者。</value></data>
+  <data name="ChannelPairing_Refresh" xml:space="preserve"><value>重新整理要求</value></data>
+  <data name="ChannelPairing_Approve" xml:space="preserve"><value>核准存取</value></data>
+  <data name="ChannelPairing_Dismiss" xml:space="preserve"><value>關閉要求</value></data>
+  <data name="ChannelPairing_Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="ChannelPairing_ApproveConfirm" xml:space="preserve"><value>允許此寄件者向此頻道帳號傳送私訊？此操作不會授予命令擁有者權限，也不會傳送通知。</value></data>
+  <data name="ChannelPairing_DismissConfirm" xml:space="preserve"><value>移除此待處理要求？此操作不會永久封鎖寄件者。</value></data>
+  <data name="ChannelPairing_Identity" xml:space="preserve"><value>{0}（{1}）
+頻道：{2}（{3}）
+帳號：{4}（{5}）
+要求：{6}
+到期時間：{7}</value></data>
+  <data name="ChannelPairing_Empty" xml:space="preserve"><value>沒有待處理的私訊存取要求。</value></data>
+  <data name="ChannelPairing_Changed" xml:space="preserve"><value>請連線至目標閘道，然後重新整理要求。連線變更後，需要重新檢視並確認。</value></data>
+  <data name="ChannelPairing_Unsupported" xml:space="preserve"><value>此閘道未宣告支援所要求的私訊存取操作。</value></data>
+  <data name="ChannelPairing_Denied" xml:space="preserve"><value>此連線沒有管理私訊存取要求的權限。</value></data>
+  <data name="ChannelPairing_Failed" xml:space="preserve"><value>閘道未確認此操作。已提交的變更可能已完成。請先重新整理要求，再執行其他操作。系統不會自動重試。</value></data>
+  <data name="ChannelPairing_Completed" xml:space="preserve"><value>閘道已確認變更。待處理清單已更新。</value></data>
 </root>

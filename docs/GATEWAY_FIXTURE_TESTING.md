@@ -65,6 +65,25 @@ pending selection: returning Home retains the original conversation, while the
 created session remains available for explicit sidebar selection. No provider, transcript file, or real
 Gateway is involved; other mutations and unsupported creation parameters still fail.
 
+The opt-in `channel-pairing` scenario exposes two synthetic Telegram sender
+requests for one explicit account. Only that scenario grants `operator.pairing`
+and accepts account-scoped `channels.pairing.approve` and
+`channels.pairing.dismiss` into memory. It rejects unknown accounts and extra
+parameters; it never contacts a channel provider, stores pairing codes, grants
+real access, promotes a command owner or sends a notification. Browse remains
+read-only. `ChannelPairing_ReviewCancelApproveAndDismissUseNativeConfirmedAccountContext`
+uses the real Channels page, native confirmations and visible pending/empty
+states, with owned-window captures. Run it on an authorized desktop using
+`OPENCLAW_GATEWAY_FIXTURE_APP` pointing to the current build:
+
+```powershell
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj `
+  --filter FullyQualifiedName~ChannelPairing_ReviewCancelApproveAndDismissUseNativeConfirmedAccountContext
+```
+
+Authored scenarios and passing socket tests do not establish that this native
+case ran. Keep unavailable desktop proof explicitly blocked.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request

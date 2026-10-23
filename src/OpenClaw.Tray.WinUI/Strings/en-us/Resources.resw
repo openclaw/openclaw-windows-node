@@ -8158,4 +8158,23 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Summarize my recent sessions</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me configure a channel</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Check system health</value></data>
+  <data name="ChannelPairing_Title" xml:space="preserve"><value>Pending DM access requests</value></data>
+  <data name="ChannelPairing_Description" xml:space="preserve"><value>Review senders requesting direct-message access to a channel account. Approval grants access. Dismissal removes this request without permanently blocking the sender.</value></data>
+  <data name="ChannelPairing_Refresh" xml:space="preserve"><value>Refresh requests</value></data>
+  <data name="ChannelPairing_Approve" xml:space="preserve"><value>Approve access</value></data>
+  <data name="ChannelPairing_Dismiss" xml:space="preserve"><value>Dismiss request</value></data>
+  <data name="ChannelPairing_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="ChannelPairing_ApproveConfirm" xml:space="preserve"><value>Allow this sender to send direct messages to this channel account? This does not grant command-owner privileges or send a notification.</value></data>
+  <data name="ChannelPairing_DismissConfirm" xml:space="preserve"><value>Remove this pending request? This does not permanently block the sender.</value></data>
+  <data name="ChannelPairing_Identity" xml:space="preserve"><value>{0} ({1})
+Channel: {2} ({3})
+Account: {4} ({5})
+Request: {6}
+Expires: {7}</value></data>
+  <data name="ChannelPairing_Empty" xml:space="preserve"><value>No pending DM access requests.</value></data>
+  <data name="ChannelPairing_Changed" xml:space="preserve"><value>Connect to the intended Gateway, then refresh requests. A changed connection requires a fresh review and confirmation.</value></data>
+  <data name="ChannelPairing_Unsupported" xml:space="preserve"><value>This Gateway does not advertise the requested DM access operation.</value></data>
+  <data name="ChannelPairing_Denied" xml:space="preserve"><value>This connection does not have permission to manage DM access requests.</value></data>
+  <data name="ChannelPairing_Failed" xml:space="preserve"><value>The Gateway did not confirm the operation. A submitted change may have completed. Refresh requests before taking another action. Nothing will be retried automatically.</value></data>
+  <data name="ChannelPairing_Completed" xml:space="preserve"><value>The Gateway confirmed the change. The pending list is up to date.</value></data>
 </root>

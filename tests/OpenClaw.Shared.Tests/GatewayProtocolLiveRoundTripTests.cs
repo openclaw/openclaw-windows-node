@@ -30,7 +30,7 @@ namespace OpenClaw.Shared.Tests;
 /// receive → response → parse → typed-DTO stack end-to-end. The captured frames
 /// are written to test output so they can serve as redacted behavior proof.
 /// </summary>
-public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
+public sealed partial class GatewayProtocolLiveRoundTripTests : IDisposable
 {
     private readonly ITestOutputHelper _output;
     private readonly string _identityDir;

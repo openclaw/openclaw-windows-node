@@ -3,7 +3,8 @@
     x:Class="OpenClawTray.Pages.ChannelsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:helpers="using:OpenClawTray.Helpers">
+    xmlns:helpers="using:OpenClawTray.Helpers"
+    xmlns:pages="using:OpenClawTray.Pages">
 
     <!--
         ╔════════════════════════════════════════════════════════════════════╗
@@ -109,6 +110,8 @@
                          IsOpen="False"
                          IsClosable="True"
                          Visibility="Collapsed"/>
+
+                <pages:ChannelPairingPanel x:Name="PairingPanel"/>
 
                 <!-- ═════════════════════════════════════════════════════════
                      CONFIGURED GROUP — channels with active state

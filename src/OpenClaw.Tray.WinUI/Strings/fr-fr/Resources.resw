@@ -8091,4 +8091,23 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Résumer mes sessions récentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>M’aider à configurer un canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Vérifier l’état du système</value></data>
+  <data name="ChannelPairing_Title" xml:space="preserve"><value>Demandes d’accès aux messages privés</value></data>
+  <data name="ChannelPairing_Description" xml:space="preserve"><value>Examinez les expéditeurs demandant l’accès aux messages privés d’un compte de canal. L’approbation accorde l’accès. Le rejet supprime la demande sans bloquer définitivement l’expéditeur.</value></data>
+  <data name="ChannelPairing_Refresh" xml:space="preserve"><value>Actualiser les demandes</value></data>
+  <data name="ChannelPairing_Approve" xml:space="preserve"><value>Autoriser l’accès</value></data>
+  <data name="ChannelPairing_Dismiss" xml:space="preserve"><value>Rejeter la demande</value></data>
+  <data name="ChannelPairing_Cancel" xml:space="preserve"><value>Annuler</value></data>
+  <data name="ChannelPairing_ApproveConfirm" xml:space="preserve"><value>Autoriser cet expéditeur à envoyer des messages privés à ce compte de canal ? Cela n’accorde pas les privilèges de propriétaire des commandes et n’envoie pas de notification.</value></data>
+  <data name="ChannelPairing_DismissConfirm" xml:space="preserve"><value>Supprimer cette demande en attente ? Cela ne bloque pas définitivement l’expéditeur.</value></data>
+  <data name="ChannelPairing_Identity" xml:space="preserve"><value>{0} ({1})
+Canal : {2} ({3})
+Compte : {4} ({5})
+Demande : {6}
+Expiration : {7}</value></data>
+  <data name="ChannelPairing_Empty" xml:space="preserve"><value>Aucune demande d’accès aux messages privés en attente.</value></data>
+  <data name="ChannelPairing_Changed" xml:space="preserve"><value>Connectez-vous à la passerelle souhaitée, puis actualisez les demandes. Tout changement de connexion nécessite un nouvel examen et une nouvelle confirmation.</value></data>
+  <data name="ChannelPairing_Unsupported" xml:space="preserve"><value>Cette passerelle n’annonce pas l’opération d’accès aux messages privés demandée.</value></data>
+  <data name="ChannelPairing_Denied" xml:space="preserve"><value>Cette connexion n’a pas l’autorisation de gérer les demandes d’accès aux messages privés.</value></data>
+  <data name="ChannelPairing_Failed" xml:space="preserve"><value>La passerelle n’a pas confirmé l’opération. Une modification envoyée peut avoir abouti. Actualisez les demandes avant toute autre action. Aucune nouvelle tentative ne sera automatique.</value></data>
+  <data name="ChannelPairing_Completed" xml:space="preserve"><value>La passerelle a confirmé la modification. La liste des demandes est à jour.</value></data>
 </root>

@@ -2460,6 +2460,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             requestId = idProp.GetString();
         }
 
+        // An admission acknowledgement is not the final result of a privileged mutation.
+        if (root.TryGetProperty("ok", out var acceptedOk) && acceptedOk.ValueKind == JsonValueKind.True &&
+            root.TryGetProperty("payload", out var acceptedPayload) && acceptedPayload.ValueKind == JsonValueKind.Object &&
+            acceptedPayload.TryGetProperty("status", out var acceptedStatus) &&
+            acceptedStatus.ValueKind == JsonValueKind.String && acceptedStatus.GetString() == "accepted" &&
+            _pendingRequests.AwaitsChannelPairingTerminal(requestId))
+            return;
+
         _pendingRequests.TryTake(requestId, out var pending);
         var requestMethod = pending?.Method;
 
