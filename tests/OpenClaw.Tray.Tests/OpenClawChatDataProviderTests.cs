@@ -11996,15 +11996,18 @@ public class OpenClawChatDataProviderTests
             bridge.SentMessages);
     }
 
-    [Fact]
-    public async Task ComposerPort_StaleFailureAfterReconnect_IsNotAccepted()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ComposerPort_StaleFailureAfterReconnect_IsNotAccepted(bool withAttachment)
     {
         var sendStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseSend = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var sendCount = 0;
-        var (bridge, provider, _, notifications) = CreateProvider(new[] { MainSession() });
+        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        await using var providerLifetime = provider;
         bridge.SendBehavior = async (_, _, _) =>
         {
             if (Interlocked.Increment(ref sendCount) != 1)
@@ -12013,28 +12016,53 @@ public class OpenClawChatDataProviderTests
             await releaseSend.Task;
             throw new InvalidOperationException("stale failure");
         };
-        await provider.LoadAsync();
-        var port = new ChatComposerRuntimePort(provider);
+        var initialSnapshot = await provider.LoadAsync();
+        var factory = new ChatComposerFactory(new Presentation.RecordingUiDispatcher());
+        using var staleComposer = factory.Create(
+            provider, new ChatComposerHostActions(null, null, null, null, null), initialSpeakerMuted: false);
+        using var freshComposer = factory.Create(
+            provider, new ChatComposerHostActions(null, null, null, null, null), initialSpeakerMuted: false);
+        var inputs = new ChatComposerInputs(
+            "connected", false, initialSnapshot.Threads.Single(thread => thread.Id == "main"),
+            [], [], false, [], null, false);
+        staleComposer.ApplyInputs(inputs);
+        staleComposer.ViewModel.SetDraft("failing in flight");
+        var attachment = new ChatAttachment { FileName = "keep.txt", MimeType = "text/plain", Content = "a2VlcA==" };
+        if (withAttachment)
+            staleComposer.ViewModel.AddAttachments([attachment]);
 
-        var staleSend = port.SendMessageAsync(
-            "main",
-            "failing in flight",
-            [],
-            CancellationToken.None);
+        var staleSend = staleComposer.Controller.SendAsync();
         await sendStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         bridge.RaiseStatus(ConnectionStatus.Connected);
-        var freshAccepted = await port.SendMessageAsync(
-            "main",
-            "fresh after stale failure",
-            [],
-            CancellationToken.None);
-        releaseSend.SetResult();
+        freshComposer.ApplyInputs(inputs);
+        freshComposer.ViewModel.SetDraft("fresh after stale failure");
+        freshComposer.ViewModel.AddAttachments([new ChatAttachment { FileName = "queued.txt" }]);
+        try
+        {
+            Assert.True(await freshComposer.Controller.SendAsync());
+            Assert.Empty(freshComposer.ViewModel.Draft);
+            Assert.Empty(freshComposer.ViewModel.PendingAttachments);
+            Assert.Single(bridge.SentMessages);
+            var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+            Assert.StartsWith("fresh after stale failure\n", queued.Text);
+            Assert.Contains("queued.txt", queued.Text);
+        }
+        finally
+        {
+            releaseSend.TrySetResult();
+        }
         var staleAccepted = await staleSend;
 
         Assert.False(staleAccepted);
-        Assert.True(freshAccepted);
+        Assert.Equal("failing in flight", staleComposer.ViewModel.Draft);
+        Assert.False(staleComposer.ViewModel.IsSending);
+        if (withAttachment)
+            Assert.Same(attachment, Assert.Single(staleComposer.ViewModel.PendingAttachments));
+        else
+            Assert.Empty(staleComposer.ViewModel.PendingAttachments);
         Assert.DoesNotContain(notifications, note => note.Message == "stale failure");
         await WaitForConditionAsync(() => bridge.SentMessages.Count == 2);
+        Assert.Equal(["failing in flight", "fresh after stale failure"], bridge.SentMessages);
     }
 
     [Fact]
