@@ -171,6 +171,14 @@ jobs:
       shell: pwsh
       run: ./scripts/test-native-gateway-source-build.ps1
 
+    - name: Test native Gateway proof contracts
+      shell: pwsh
+      run: ./scripts/test-native-gateway-proof.ps1
+
+    - name: Test Azure native Gateway controller contracts
+      shell: pwsh
+      run: ./scripts/test-azure-native-gateway-proof.ps1
+
     - name: Test Gateway npm release selection
       shell: pwsh
       run: ./scripts/test-gateway-npm-release.ps1
