@@ -361,5 +361,13 @@ switch($Verb) {
         $unprepared.stages.Count -eq 0 -and !$script:calls.Contains('enter') -and
         !$script:calls.Contains('start:Disabled')) 'Failed real recorder preparation must refuse observation, functional execution and trace admission'
     $script:badPreparation = $false
+    foreach ($partialReceipt in @('', ' ', 'null', '[]', 'true', '{"ready":')) {
+        $rejectedReceipt = $false
+        try { $null = ConvertFrom-StartupReceiptJson $partialReceipt } catch { $rejectedReceipt = $true }
+        Assert-Proof $rejectedReceipt 'File creation, incomplete writes and non-object JSON must not finalize a receipt'
+    }
+    $readyReceipt = ConvertFrom-StartupReceiptJson '{"ready":true,"traceStartsCounter":0}'
+    Assert-Proof ($readyReceipt.ready -is [bool] -and $readyReceipt.ready -and
+        $readyReceipt.traceStartsCounter -eq 0) 'A complete actual receipt must retain its typed completion and zero-start fields'
     "PASS: $checks native-free startup-wrapper regressions."
 } finally { Remove-Item -LiteralPath $root -Recurse -Force }

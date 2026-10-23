@@ -325,6 +325,9 @@ Before recording:
    The recorder and watchdog finish their bound preparation before the measured
    observer interval begins. A second, bound observer qualification is required
    before either adapter admits scenarios or the recording adapter starts WPR.
+   Receipt creation is not completion. Empty, partial, null, array and scalar
+   JSON remain unqualified until a complete object is readable within the same
+   existing receipt deadline.
 5. Run the complete wrapper with tracing disabled:
 
    ```powershell

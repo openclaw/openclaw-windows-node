@@ -1,3 +1,12 @@
+function ConvertFrom-StartupReceiptJson {
+    param([AllowNull()][AllowEmptyString()][string] $Text)
+    $parsed = $Text | ConvertFrom-Json -NoEnumerate -ErrorAction Stop
+    if ($parsed -isnot [System.Management.Automation.PSCustomObject]) {
+        throw 'Receipt must contain one completed JSON object.'
+    }
+    $parsed
+}
+
 function Wait-StartupReceipt([string] $Path, [int] $Seconds) {
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $directory = [IO.Path]::GetFullPath((Split-Path $Path))
@@ -11,7 +20,7 @@ function Wait-StartupReceipt([string] $Path, [int] $Seconds) {
     try {
         while ($clock.Elapsed.TotalSeconds -lt $Seconds) {
             if (Test-Path -LiteralPath $Path) {
-                try { return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -ErrorAction Stop) }
+                try { return (ConvertFrom-StartupReceiptJson ([IO.File]::ReadAllText($Path))) }
                 catch { }
             }
             $null = $watcher.WaitForChanged([IO.WatcherChangeTypes]::All,100)
