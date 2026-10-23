@@ -39,6 +39,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly HashSet<string> _issuedApprovalIds = new(StringComparer.Ordinal);
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
+    private readonly Dictionary<int, TaskCompletionSource> _usageCostGates = [];
     private TaskCompletionSource? _sessionMutationGate;
     private TaskCompletionSource? _chatSendGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
@@ -207,6 +208,27 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             if (_sessionMutationGate is not null)
                 throw new InvalidOperationException("Session mutations are already held.");
             _sessionMutationGate = NewSignal();
+        }
+    }
+
+    public void HoldUsageCost(int days)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(days);
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (!_usageCostGates.TryAdd(days, NewSignal()))
+                throw new InvalidOperationException("Usage cost is already held for this period.");
+        }
+    }
+
+    public void ReleaseUsageCost(int days)
+    {
+        lock (_sync)
+        {
+            if (!_usageCostGates.Remove(days, out var gate))
+                throw new InvalidOperationException("Usage cost is not held for this period.");
+            gate.TrySetResult();
         }
     }
 
@@ -612,6 +634,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     {
                         gate = method is "sessions.patch" or "sessions.delete" or "sessions.create"
                             ? _sessionMutationGate?.Task
+                            : method == "usage.cost" && parameters.TryGetProperty("days", out var days)
+                                && days.TryGetInt32(out var requestedDays) && _usageCostGates.TryGetValue(requestedDays, out var usageGate)
+                                ? usageGate.Task
                             : method == "chat.send"
                                 ? _chatSendGate?.Task
                             : method == "sessions.list" ? _nextSessionListGate?.Task

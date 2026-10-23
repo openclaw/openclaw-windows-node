@@ -76,6 +76,9 @@ public interface IOperatorGatewayClient
     Task CheckHealthAsync();
     Task RequestSessionsAsync(string? agentId = null);
     Task RequestUsageAsync();
+    /// <summary>One response-bound page refresh, scoped to the requested cost period.</summary>
+    Task<GatewayUsageRefreshResult> RefreshUsageAsync(int days) =>
+        Task.FromException<GatewayUsageRefreshResult>(new NotSupportedException("Response-bound usage refresh is not supported by this client."));
     Task RequestNodesAsync();
     Task RequestUsageStatusAsync();
     Task RequestUsageCostAsync(int days = 30);

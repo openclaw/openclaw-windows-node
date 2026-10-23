@@ -8082,4 +8082,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Résumer mes sessions récentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>M’aider à configurer un canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Vérifier l’état du système</value></data>
+  <data name="UsagePage_LoadFailed.Message" xml:space="preserve">
+    <value>Impossible de charger les données d'utilisation. Essayez de vous reconnecter.</value>
+  </data>
 </root>

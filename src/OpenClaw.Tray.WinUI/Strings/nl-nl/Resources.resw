@@ -8083,4 +8083,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="UsagePage_LoadFailed.Message" xml:space="preserve">
+    <value>De gebruiksgegevens konden niet worden geladen. Probeer opnieuw verbinding te maken.</value>
+  </data>
 </root>

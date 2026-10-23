@@ -46,6 +46,19 @@ multi-PR refactor plan for the reasoning behind each boundary.
 
 ## Single-source owners
 
+The Usage page refreshes provider status and selected-period cost through
+`IOperatorGatewayClient.RefreshUsageAsync`. `OpenClawGatewayClient` owns the
+response-bound RPCs, parsing, unsupported-method memory, read-scope suppression,
+and legacy `usage` fallback. Cost remains independent of provider-status support.
+`UsageCostApplicationPolicy` owns period compatibility and refresh admission;
+the page applies only its current client, connection epoch, selection, and
+refresh revision. Background AppState cost/status polling is not a page result.
+The first correlated response may retain the older Gateway period fallback,
+including inclusive day counts; uncorrelated background responses cannot select
+the page's period. `UsagePageContractTests` prohibits duplicate page dispatch and
+AppState cost/status delivery. Retire that source-shape guard when a behavioral
+mounted-page refresh test protects both boundaries.
+
 These are the canonical homes. Do not reintroduce private copies elsewhere.
 
 The tray icon's primary activation opens or focuses Workspace chat for configured

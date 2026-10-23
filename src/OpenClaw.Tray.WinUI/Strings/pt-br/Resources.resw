@@ -8134,4 +8134,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Resuma minhas sessões recentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Ajude-me a configurar um canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Verifique a integridade do sistema</value></data>
+  <data name="UsagePage_LoadFailed.Message" xml:space="preserve">
+    <value>Não foi possível carregar os dados de uso. Tente se reconectar.</value>
+  </data>
 </root>

@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace OpenClawTray.Pages;
 
@@ -22,10 +23,11 @@ public sealed partial class UsagePage : Page
     private readonly AsyncListLoadingState _providerLoading = new();
     private readonly AsyncListLoadingState _dailyCostLoading = new();
     private DateTime _lastAppliedUsageCostUpdatedAtUtc = DateTime.MinValue;
+    private long _refreshRevision;
 
     private const string DailyEmptyMessage = "No daily usage for this period";
     private const string ProviderEmptyMessage = "No providers configured";
-    private const string DisconnectedListMessage = "Couldn't load. Check your gateway connection.";
+    private static string LoadFailedMessage => LocalizationHelper.GetString("UsagePage_LoadFailed.Message");
 
     public UsagePage()
     {
@@ -53,11 +55,7 @@ public sealed partial class UsagePage : Page
         var client = CurrentApp.GatewayClient;
         AttachClient(client);
 
-        // A non-null client may still be disconnected (e.g. WebSocket reconnecting).
-        // The underlying RequestUsage*/RequestUsageCost*/RequestUsageStatus calls
-        // silently no-op when !IsConnectedToGateway, so without this check the
-        // page would spin its progress rings forever — see user reports of
-        // "page not loading, no values".
+        // A non-null client may still be reconnecting.
         if (client == null || !client.IsConnectedToGateway)
         {
             _providerLoading.Fail();
@@ -71,20 +69,9 @@ public sealed partial class UsagePage : Page
         ConnectionInfoBar.IsOpen = false;
         // Apply cached data immediately, then request fresh.
         if (_appState?.Usage != null) UpdateUsage(_appState.Usage);
-        // Only apply cached cost data when its period matches the current
-        // selection — otherwise the daily list briefly shows e.g. 30-day
-        // data while the selector reads "7 Days".
-        if (_appState?.UsageCost != null && ShouldApplyUsageCost(_appState.UsageCost))
-        {
-            UpdateUsageCost(_appState.UsageCost);
-            _dailyCostLoading.BeginRefresh();
-        }
-        else
-        {
-            _dailyCostLoading.BeginInitialRefresh();
-        }
-        if (_appState?.UsageStatus != null) UpdateUsageStatus(_appState.UsageStatus);
-        else _providerLoading.BeginInitialRefresh();
+        // AppState's usage cache is not scoped to a Gateway or cost request.
+        _dailyCostLoading.BeginInitialRefresh();
+        _providerLoading.BeginInitialRefresh();
         UpdateDailyCostLoadingVisuals();
         UpdateProviderLoadingVisuals();
         RequestRefresh(client);
@@ -94,6 +81,13 @@ public sealed partial class UsagePage : Page
     {
         if (ReferenceEquals(_trackedClient, client)) return;
         DetachClient();
+        _dailyCostLoading.BeginInitialRefresh();
+        _providerLoading.BeginInitialRefresh();
+        DailyListView.ItemsSource = null;
+        ProviderListView.ItemsSource = null;
+        TotalCostText.Text = "—";
+        TokenCountText.Text = "—";
+        ProviderCountText.Text = "—";
         _trackedClient = client;
         if (_trackedClient != null)
         {
@@ -103,6 +97,9 @@ public sealed partial class UsagePage : Page
 
     private void DetachClient()
     {
+        _refreshRevision++;
+        _lastAppliedUsageCostUpdatedAtUtc = DateTime.MinValue;
+        _lastAppliedUsageCostUpdatedAtUtc = DateTime.MinValue;
         if (_trackedClient != null)
         {
             _trackedClient.StatusChanged -= OnClientStatusChanged;
@@ -116,13 +113,21 @@ public sealed partial class UsagePage : Page
         // is open (otherwise the user is stuck on the disconnected info bar
         // with stale cards until they navigate away and back).
         if (sender is not IOperatorGatewayClient client) return;
-        if (!client.IsConnectedToGateway) return;
-
         var dispatcher = DispatcherQueue;
         if (dispatcher == null) return;
         dispatcher.TryEnqueue(() =>
         {
             if (_trackedClient != client) return;
+            if (!client.IsConnectedToGateway)
+            {
+                _refreshRevision++;
+                _providerLoading.Fail();
+                _dailyCostLoading.Fail();
+                ShowDisconnected();
+                UpdateProviderLoadingVisuals();
+                UpdateDailyCostLoadingVisuals();
+                return;
+            }
             RecoverConnectedClient(client);
         });
     }
@@ -163,9 +168,57 @@ public sealed partial class UsagePage : Page
 
     private void RequestRefresh(IOperatorGatewayClient client)
     {
-        _ = client.RequestUsageAsync();
-        _ = client.RequestUsageCostAsync(_currentPeriodDays);
-        _ = client.RequestUsageStatusAsync();
+        _ = RefreshAsync(client);
+    }
+
+    private async Task RefreshAsync(IOperatorGatewayClient client)
+    {
+        var revision = ++_refreshRevision;
+        var epoch = client.SessionMutationConnectionEpoch;
+        var days = _currentPeriodDays;
+        try
+        {
+            var result = await client.RefreshUsageAsync(days);
+            if (!UsageCostApplicationPolicy.IsCurrentRefresh(
+                revision, _refreshRevision, days, _currentPeriodDays,
+                ReferenceEquals(client, _trackedClient), client.IsConnectedToGateway,
+                epoch, client.SessionMutationConnectionEpoch))
+                return;
+
+            if (result.Legacy != null) UpdateUsage(result.Legacy);
+            if (result.Status != null) UpdateUsageStatus(result.Status);
+            else _providerLoading.Fail();
+            var costApplied = result.Cost != null && UpdateUsageCost(result.Cost);
+            if (!costApplied) _dailyCostLoading.Fail();
+            if (result.StatusError != null || result.CostError != null || !costApplied)
+            {
+                ConnectionInfoBar.Title = LocalizationHelper.GetString("UsagePage_TextBlock_10.Text");
+                ConnectionInfoBar.Message = string.Join(Environment.NewLine,
+                    new[] { result.StatusError, result.CostError ?? (!costApplied ? LoadFailedMessage : null) }
+                        .Where(error => error != null));
+                ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
+                ConnectionInfoBar.IsOpen = true;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or
+            OperationCanceledException or System.Net.WebSockets.WebSocketException)
+        {
+            if (revision != _refreshRevision || !ReferenceEquals(client, _trackedClient) ||
+                epoch != client.SessionMutationConnectionEpoch) return;
+            _providerLoading.Fail();
+            _dailyCostLoading.Fail();
+            ShowDisconnected();
+            ConnectionInfoBar.Title = LocalizationHelper.GetString("UsagePage_TextBlock_10.Text");
+            ConnectionInfoBar.Message = ex.Message;
+        }
+        finally
+        {
+            if (revision == _refreshRevision && ReferenceEquals(client, _trackedClient))
+            {
+                UpdateProviderLoadingVisuals();
+                UpdateDailyCostLoadingVisuals();
+            }
+        }
     }
 
     private void OnOpenConnectionClick(object sender, RoutedEventArgs e)
@@ -177,12 +230,6 @@ public sealed partial class UsagePage : Page
         {
             case nameof(AppState.Usage):
                 if (_appState?.Usage != null) UpdateUsage(_appState.Usage);
-                break;
-            case nameof(AppState.UsageCost):
-                if (_appState?.UsageCost != null) UpdateUsageCost(_appState.UsageCost);
-                break;
-            case nameof(AppState.UsageStatus):
-                if (_appState?.UsageStatus != null) UpdateUsageStatus(_appState.UsageStatus);
                 break;
         }
     }
@@ -196,22 +243,15 @@ public sealed partial class UsagePage : Page
         // Hanselman review #1 (HIGH).
     }
 
-    public void UpdateUsageCost(GatewayCostUsageInfo cost)
+    public bool UpdateUsageCost(GatewayCostUsageInfo cost)
     {
-        if (cost.UpdatedAt < _lastAppliedUsageCostUpdatedAtUtc)
-            return;
+        if (!UsageCostApplicationPolicy.CompleteRefresh(
+            cost.Days, _currentPeriodDays, cost.UpdatedAt, _lastAppliedUsageCostUpdatedAtUtc,
+            cost.Daily.Count, _dailyCostLoading))
+            return false;
 
-        if (!ShouldApplyUsageCost(cost))
-            return;
-
-        // The Windows tray fires usage.cost twice per refresh: once via
-        // RequestUsageAsync() (always days=30) and once directly via the
-        // selector (currently 7 or 30). If the gateway ignores the `days`
-        // request param or only replies to one of the two, the page used to
-        // reject the response that didn't match _currentPeriodDays and the
-        // spinner ran forever. Accept whatever days the server returns and,
-        // when the selector is out of sync, silently snap it to that period
-        // so the header isn't lying about what data the user sees.
+        // Only this page's current response reaches here. Preserve compatibility
+        // with older Gateways that default the period or count days inclusively.
         if (cost.Days > 0 && cost.Days != _currentPeriodDays)
         {
             SyncSelectorToServerDays(cost.Days);
@@ -227,16 +267,8 @@ public sealed partial class UsagePage : Page
             Date = d.Date,
             Cost = $"${d.TotalCost:F2}",
         }).ToList();
-        _dailyCostLoading.Complete(cost.Daily.Count);
         UpdateDailyCostLoadingVisuals();
-    }
-
-    private bool ShouldApplyUsageCost(GatewayCostUsageInfo cost)
-    {
-        return UsageCostApplicationPolicy.ShouldApply(
-            cost.Days,
-            _currentPeriodDays,
-            _dailyCostLoading.HasLoaded);
+        return true;
     }
 
     private void SyncSelectorToServerDays(int days)
@@ -290,7 +322,7 @@ public sealed partial class UsagePage : Page
         var client = CurrentApp.GatewayClient;
         if (client != null && client.IsConnectedToGateway)
         {
-            _ = client.RequestUsageCostAsync(days);
+            RequestRefresh(client);
         }
         else
         {
@@ -308,7 +340,7 @@ public sealed partial class UsagePage : Page
         // card visually empty (no spinner, no rows, no message). Surface a
         // message in that case so the page never looks frozen.
         bool failed = !_dailyCostLoading.IsRefreshing && !_dailyCostLoading.HasLoaded;
-        DailyEmptyText.Text = failed ? DisconnectedListMessage : DailyEmptyMessage;
+        DailyEmptyText.Text = failed ? LoadFailedMessage : DailyEmptyMessage;
         DailyEmptyText.Visibility = (_dailyCostLoading.ShouldShowEmpty || failed) ? Visibility.Visible : Visibility.Collapsed;
         PeriodSelector.IsEnabled = _dailyCostLoading.CanEdit;
     }
@@ -318,7 +350,7 @@ public sealed partial class UsagePage : Page
         ProviderLoadingPanel.Visibility = _providerLoading.ShouldShowLoading ? Visibility.Visible : Visibility.Collapsed;
         ProviderListView.Visibility = _providerLoading.ShouldShowContent ? Visibility.Visible : Visibility.Collapsed;
         bool failed = !_providerLoading.IsRefreshing && !_providerLoading.HasLoaded;
-        ProviderEmptyText.Text = failed ? DisconnectedListMessage : ProviderEmptyMessage;
+        ProviderEmptyText.Text = failed ? LoadFailedMessage : ProviderEmptyMessage;
         ProviderEmptyText.Visibility = (_providerLoading.ShouldShowEmpty || failed) ? Visibility.Visible : Visibility.Collapsed;
     }
 
