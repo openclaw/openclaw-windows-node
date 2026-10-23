@@ -63,6 +63,38 @@
                     </Button>
                 </Grid>
 
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <AutoSuggestBox x:Name="TranscriptQuery" x:Uid="SessionsPage_TranscriptQuery"
+                                    QuerySubmitted="OnTranscriptQuerySubmitted"
+                                    TextChanged="OnTranscriptQueryChanged"
+                                    AutomationProperties.AutomationId="SessionsTranscriptQuery"/>
+                    <Button Grid.Column="1" x:Uid="SessionsPage_SearchButton"
+                            Click="OnTranscriptSearchClick"
+                            AutomationProperties.AutomationId="SessionsTranscriptSubmit"/>
+                </Grid>
+                <TextBlock x:Name="TranscriptSearchStatus" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           AutomationProperties.LiveSetting="Polite"
+                           AutomationProperties.AutomationId="SessionsTranscriptSearchStatus"/>
+                <ListView x:Name="TranscriptSearchResults" SelectionMode="None"
+                          Visibility="Collapsed"
+                          AutomationProperties.AutomationId="SessionsTranscriptSearchResults">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Spacing="4" Padding="8">
+                                <Button Content="{Binding DisplayTitle}" Tag="{Binding SessionKey}"
+                                        Click="OnOpenChat"/>
+                                <TextBlock Text="{Binding Snippet}" TextWrapping="Wrap"
+                                           MaxLines="3" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
                 <InfoBar x:Uid="SessionsPage_GatewayDisconnected"
                          x:Name="ConnectionInfoBar"
                          IsOpen="False" IsClosable="False" Severity="Warning"

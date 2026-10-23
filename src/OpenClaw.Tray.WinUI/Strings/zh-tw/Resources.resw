@@ -1,5 +1,14 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <data name="SessionsPage_SearchButton.Content" xml:space="preserve"><value>搜尋</value></data>
+  <data name="SessionsPage_TranscriptQuery.PlaceholderText" xml:space="preserve"><value>搜尋使用中對話的訊息。按 Enter 鍵搜尋。</value></data>
+  <data name="SessionsPage_TranscriptQuery.AutomationProperties.Name" xml:space="preserve"><value>搜尋使用中對話的訊息</value></data>
+  <data name="SessionsPage_SearchLoading" xml:space="preserve"><value>正在搜尋對話訊息...</value></data>
+  <data name="SessionsPage_SearchUnsupported" xml:space="preserve"><value>此閘道不支援訊息記錄搜尋。</value></data>
+  <data name="SessionsPage_SearchFailed" xml:space="preserve"><value>搜尋失敗。請檢查閘道連線並重新搜尋（最多 4096 個字元）。</value></data>
+  <data name="SessionsPage_SearchIndexing" xml:space="preserve"><value>閘道仍在為訊息建立索引。請重新搜尋以更新結果。</value></data>
+  <data name="SessionsPage_SearchPartial" xml:space="preserve"><value>部分相符結果未顯示。請縮小搜尋範圍。已封存的訊息記錄可能被排除。</value></data>
+  <data name="SessionsPage_SearchReady" xml:space="preserve"><value>搜尋完成：找到 {0} 則相符訊息。選取對話即可開啟。</value></data>
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
       <xs:complexType>

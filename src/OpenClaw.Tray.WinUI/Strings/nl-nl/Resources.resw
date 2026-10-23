@@ -1,5 +1,14 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <data name="SessionsPage_SearchButton.Content" xml:space="preserve"><value>Zoeken</value></data>
+  <data name="SessionsPage_TranscriptQuery.PlaceholderText" xml:space="preserve"><value>Zoek in actieve gespreksberichten. Druk op Enter.</value></data>
+  <data name="SessionsPage_TranscriptQuery.AutomationProperties.Name" xml:space="preserve"><value>Zoek in actieve gespreksberichten</value></data>
+  <data name="SessionsPage_SearchLoading" xml:space="preserve"><value>Gespreksberichten doorzoeken...</value></data>
+  <data name="SessionsPage_SearchUnsupported" xml:space="preserve"><value>Deze gateway ondersteunt het doorzoeken van berichten niet.</value></data>
+  <data name="SessionsPage_SearchFailed" xml:space="preserve"><value>Zoeken mislukt. Controleer de gatewayverbinding en zoek opnieuw (maximaal 4096 tekens).</value></data>
+  <data name="SessionsPage_SearchIndexing" xml:space="preserve"><value>De gateway indexeert nog berichten. Zoek opnieuw voor bijgewerkte resultaten.</value></data>
+  <data name="SessionsPage_SearchPartial" xml:space="preserve"><value>Sommige resultaten worden niet getoond. Verfijn de zoekopdracht. Gearchiveerde berichten kunnen zijn uitgesloten.</value></data>
+  <data name="SessionsPage_SearchReady" xml:space="preserve"><value>Zoeken voltooid: {0} overeenkomende berichten. Selecteer een gesprek om het te openen.</value></data>
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
       <xs:complexType>
