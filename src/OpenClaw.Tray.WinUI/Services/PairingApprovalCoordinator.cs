@@ -222,8 +222,8 @@ public sealed class PairingApprovalCoordinator
             var client = _getClient();
             // Re-check connection AND approval scope at decision time — the dialog may have been
             // open while scope was revoked or the operator reconnected with fewer scopes. The
-            // approve/reject frame is "send-acknowledged" (not gateway-acked), so guarding here
-            // avoids attempting an out-of-scope decision the gateway would silently reject.
+            // gateway still enforces authorization, but guarding here avoids dispatching an
+            // out-of-scope decision. Not every legacy node decision waits for its response.
             if (client is not { IsConnectedToGateway: true }
                 || !OperatorScopeHelper.CanApproveDevices(client.GrantedOperatorScopes))
             {
@@ -251,8 +251,8 @@ public sealed class PairingApprovalCoordinator
 
             if (ok)
             {
-                // Send-ack only means the frame left the socket, NOT that the gateway accepted it.
-                // But first re-validate the exact connection: a disconnect/reconnect may have raced
+                // Device decisions await the Gateway response; legacy node rejection only confirms
+                // dispatch. Re-validate the exact connection: a disconnect/reconnect may have raced
                 // the await (and already Reset() the queue). Recording a submission against a new
                 // client would strand a likely-dropped frame and risk a later false confirmation, so
                 // treat it as not completed instead — the request re-surfaces on reconnect for a

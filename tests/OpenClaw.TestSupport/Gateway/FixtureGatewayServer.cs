@@ -40,6 +40,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
     private TaskCompletionSource? _sessionMutationGate;
+    private TaskCompletionSource? _deviceDecisionGate;
     private TaskCompletionSource? _chatSendGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
     private int _chatEventSequence;
@@ -173,6 +174,29 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { connection.Socket.Abort(); }
             catch (WebSocketException) { connection.Socket.Abort(); }
             catch (ObjectDisposedException) { }
+        }
+    }
+
+    /// <summary>Hold decision replies after the in-memory mutation, including error replies.</summary>
+    public void HoldDeviceDecisions()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (_deviceDecisionGate is not null)
+                throw new InvalidOperationException("Device decisions are already held.");
+            _deviceDecisionGate = NewSignal();
+        }
+    }
+
+    public void ReleaseDeviceDecisions()
+    {
+        lock (_sync)
+        {
+            var gate = _deviceDecisionGate ??
+                throw new InvalidOperationException("Device decisions are not held.");
+            _deviceDecisionGate = null;
+            gate.TrySetResult();
         }
     }
 
@@ -610,7 +634,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     Task<bool>? abortOutcome;
                     lock (_sync)
                     {
-                        gate = method is "sessions.patch" or "sessions.delete" or "sessions.create"
+                        gate = method is "device.pair.approve" or "device.pair.reject"
+                            ? _deviceDecisionGate?.Task
+                            : method is "sessions.patch" or "sessions.delete" or "sessions.create"
                             ? _sessionMutationGate?.Task
                             : method == "chat.send"
                                 ? _chatSendGate?.Task

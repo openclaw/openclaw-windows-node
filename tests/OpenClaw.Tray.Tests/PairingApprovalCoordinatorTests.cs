@@ -49,6 +49,49 @@ public sealed class PairingApprovalCoordinatorTests
         Assert.Equal(1, client.DeviceListRequests);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RejectAsync_WaitsForDecisionAndRetainsGatewayDenials(bool accepted)
+    {
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = new FakeOperatorGatewayClient { DeviceRejectResult = gate.Task };
+        var coordinator = NewCoordinator(() => client);
+        coordinator.OnPairListsUpdated(Devices(Device("req-1")), null);
+        var approval = Assert.Single(coordinator.Current);
+
+        var rejecting = coordinator.RejectAsync(approval.Key);
+        Assert.False(rejecting.IsCompleted);
+        Assert.Single(coordinator.Current);
+        Assert.False(await coordinator.RejectAsync(approval.Key));
+        Assert.Equal(1, client.DeviceRejectCalls);
+        gate.SetResult(accepted);
+
+        Assert.Equal(accepted, await rejecting);
+        Assert.Equal(accepted ? 0 : 1, coordinator.Current.Count);
+        Assert.Equal(accepted ? 1 : 0, client.DeviceListRequests);
+    }
+
+    [Fact]
+    public async Task RejectAsync_WhenGatewayChangesBeforeAck_DoesNotSubmitToReplacement()
+    {
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var original = new FakeOperatorGatewayClient { DeviceRejectResult = gate.Task };
+        var replacement = new FakeOperatorGatewayClient();
+        IOperatorGatewayClient? current = original;
+        var coordinator = NewCoordinator(() => current);
+        coordinator.OnPairListsUpdated(Devices(Device("req-1")), null);
+        var approval = Assert.Single(coordinator.Current);
+        var rejecting = coordinator.RejectAsync(approval.Key);
+        current = replacement;
+        gate.SetResult(true);
+
+        Assert.False(await rejecting);
+        Assert.Single(coordinator.Current);
+        Assert.Equal(0, replacement.DeviceRejectCalls);
+        Assert.Equal(0, replacement.DeviceListRequests);
+    }
+
     private static PairingApprovalCoordinator NewCoordinator(Func<IOperatorGatewayClient?> getClient) =>
         new(
             getClient,
@@ -72,7 +115,9 @@ public sealed class PairingApprovalCoordinatorTests
     private sealed class FakeOperatorGatewayClient : IOperatorGatewayClient
     {
         public Task<bool> DeviceApproveResult { get; set; } = Task.FromResult(true);
+        public Task<bool> DeviceRejectResult { get; set; } = Task.FromResult(false);
         public int DeviceApproveCalls { get; private set; }
+        public int DeviceRejectCalls { get; private set; }
         public int DeviceListRequests { get; private set; }
         public string? OperatorDeviceId => "operator";
         public IReadOnlyList<string> GrantedOperatorScopes { get; set; } = ["operator.admin"];
@@ -167,7 +212,11 @@ public sealed class PairingApprovalCoordinatorTests
             return DeviceApproveResult;
         }
 
-        public Task<bool> DevicePairRejectAsync(string requestId) => Task.FromResult(false);
+        public Task<bool> DevicePairRejectAsync(string requestId)
+        {
+            DeviceRejectCalls++;
+            return DeviceRejectResult;
+        }
         public Task<bool> StartChannelAsync(string channelName) => Task.FromResult(false);
         public Task<ChannelStartResult?> StartChannelDetailedAsync(string channelName, int timeoutMs = 12000) => Task.FromResult<ChannelStartResult?>(null);
         public Task<bool> StopChannelAsync(string channelName) => Task.FromResult(false);
