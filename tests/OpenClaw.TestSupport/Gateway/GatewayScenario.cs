@@ -57,13 +57,14 @@ public sealed partial class GatewayScenario
     private readonly bool _allowChatSend;
     public bool IsInteractive { get; }
     private readonly ContextUsageFixture? _contextUsage;
+    private readonly HeartbeatFixture? _heartbeat;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Session> _createdSessions = new(StringComparer.Ordinal);
     private readonly List<object> _createdAgents = [];
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _heartbeat is not null ? HeartbeatName : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -76,7 +77,8 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        HeartbeatFixture? heartbeat = null)
     {
         _sessions = sessions;
         _reads = reads;
@@ -88,6 +90,7 @@ public sealed partial class GatewayScenario
         _allowChatSend = allowChatSend;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         _contextUsage = contextUsage;
+        _heartbeat = heartbeat;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
@@ -95,12 +98,13 @@ public sealed partial class GatewayScenario
             "models.list", "usage.cost"
         }.Concat(reads.Keys).Concat(setup is null ? [] : advertiseSetup
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
+            .Concat(heartbeat?.Advertise == true ? ["last-heartbeat"] : [])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
-            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog,
+            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog, heartbeat,
             sessions = sessions.Select(s => new { s.Row, s.Messages }), reads, cronJobs
         });
         Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant();
@@ -110,6 +114,7 @@ public sealed partial class GatewayScenario
     {
         BrowseName => CreateBrowse(),
         InteractiveName => CreateInteractive(),
+        HeartbeatName => CreateHeartbeat(),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
 
@@ -329,6 +334,7 @@ public sealed partial class GatewayScenario
                 role,
                 scopes = role == "node"
                     ? Array.Empty<string>()
+                    : _heartbeat is not null ? _heartbeat.Scopes
                     : IsInteractive
                         ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
                         : _contextUsage is not null ? new[] { "operator.read", "operator.write" }
@@ -355,6 +361,15 @@ public sealed partial class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters, Func<string, bool>? containsModelSession = null)
     {
+        if (method == "last-heartbeat" && _heartbeat is not null)
+        {
+            ValidateProperties(parameters);
+            if (!_heartbeat.Scopes.Any(scope => scope is "operator.read" or "operator.write" or "operator.admin"))
+                throw new FixtureRequestException("INVALID_REQUEST", "missing scope: operator.read");
+            if (_heartbeat.ErrorCode is { } code)
+                throw new FixtureRequestException(code, "Synthetic heartbeat read rejection.");
+            return _heartbeat.Payload;
+        }
         if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
             return RespondCron(method, parameters);
         if (_contextUsage is not null && method == "chat.send")

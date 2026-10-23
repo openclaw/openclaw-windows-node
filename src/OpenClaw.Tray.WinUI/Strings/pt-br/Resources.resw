@@ -8143,4 +8143,21 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Resuma minhas sessões recentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Ajude-me a configurar um canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Verifique a integridade do sistema</value></data>
+  <data name="Heartbeat_Card.Header" xml:space="preserve"><value>Pulso do agente do Gateway</value></data>
+  <data name="Heartbeat_Explanation.Text" xml:space="preserve"><value>Leia o último pulso registrado do agente. Isso não é um ping de conexão e não ativa nem executa pulsos.</value></data>
+  <data name="Heartbeat_Refresh.Content" xml:space="preserve"><value>Atualizar</value></data>
+  <data name="Heartbeat_StateReady" xml:space="preserve"><value>Atualize para ler o último pulso do agente.</value></data>
+  <data name="Heartbeat_StateDisconnected" xml:space="preserve"><value>Conecte-se a um Gateway para ler o pulso do agente.</value></data>
+  <data name="Heartbeat_StateLoading" xml:space="preserve"><value>Lendo o pulso do agente...</value></data>
+  <data name="Heartbeat_StateEmpty" xml:space="preserve"><value>O Gateway não tem nenhum pulso de agente registrado.</value></data>
+  <data name="Heartbeat_StateUnsupported" xml:space="preserve"><value>Este Gateway não anuncia a leitura de pulsos de agente.</value></data>
+  <data name="Heartbeat_StateDenied" xml:space="preserve"><value>A conexão atual não tem permissão para ler pulsos de agente.</value></data>
+  <data name="Heartbeat_StateFailed" xml:space="preserve"><value>Não foi possível ler o pulso do agente. Atualize para tentar novamente.</value></data>
+  <data name="Heartbeat_RecordedFormat" xml:space="preserve"><value>{0} em {1}</value></data>
+  <data name="Heartbeat_OutcomeSent" xml:space="preserve"><value>Enviado</value></data>
+  <data name="Heartbeat_OutcomeEmpty" xml:space="preserve"><value>Concluído sem conteúdo</value></data>
+  <data name="Heartbeat_OutcomeToken" xml:space="preserve"><value>Concluído com um token OK</value></data>
+  <data name="Heartbeat_OutcomeSkipped" xml:space="preserve"><value>Ignorado</value></data>
+  <data name="Heartbeat_OutcomeFailed" xml:space="preserve"><value>Falhou</value></data>
+  <data name="Heartbeat_OutcomeUnknown" xml:space="preserve"><value>Resultado de pulso desconhecido</value></data>
 </root>

@@ -8091,4 +8091,21 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>摘要我的近期工作階段</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>協助我設定頻道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>檢查系統健康狀態</value></data>
+  <data name="Heartbeat_Card.Header" xml:space="preserve"><value>Gateway 智慧體心跳</value></data>
+  <data name="Heartbeat_Explanation.Text" xml:space="preserve"><value>讀取最近記錄的智慧體心跳。這不是連線探測，也不會啟用或執行心跳。</value></data>
+  <data name="Heartbeat_Refresh.Content" xml:space="preserve"><value>重新整理</value></data>
+  <data name="Heartbeat_StateReady" xml:space="preserve"><value>重新整理以讀取最近的智慧體心跳。</value></data>
+  <data name="Heartbeat_StateDisconnected" xml:space="preserve"><value>連線到 Gateway 以讀取其智慧體心跳。</value></data>
+  <data name="Heartbeat_StateLoading" xml:space="preserve"><value>正在讀取智慧體心跳...</value></data>
+  <data name="Heartbeat_StateEmpty" xml:space="preserve"><value>Gateway 尚未記錄任何智慧體心跳。</value></data>
+  <data name="Heartbeat_StateUnsupported" xml:space="preserve"><value>此 Gateway 未宣告支援讀取智慧體心跳。</value></data>
+  <data name="Heartbeat_StateDenied" xml:space="preserve"><value>目前連線沒有讀取智慧體心跳的權限。</value></data>
+  <data name="Heartbeat_StateFailed" xml:space="preserve"><value>無法讀取智慧體心跳。請重新整理以重試。</value></data>
+  <data name="Heartbeat_RecordedFormat" xml:space="preserve"><value>{0}，時間：{1}</value></data>
+  <data name="Heartbeat_OutcomeSent" xml:space="preserve"><value>已傳送</value></data>
+  <data name="Heartbeat_OutcomeEmpty" xml:space="preserve"><value>已完成，無內容</value></data>
+  <data name="Heartbeat_OutcomeToken" xml:space="preserve"><value>已完成，傳回 OK 標記</value></data>
+  <data name="Heartbeat_OutcomeSkipped" xml:space="preserve"><value>已略過</value></data>
+  <data name="Heartbeat_OutcomeFailed" xml:space="preserve"><value>失敗</value></data>
+  <data name="Heartbeat_OutcomeUnknown" xml:space="preserve"><value>未知的心跳結果</value></data>
 </root>

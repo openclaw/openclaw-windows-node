@@ -4,6 +4,30 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class DiagnosticsPageContractTests
 {
+    [Fact]
+    public void HeartbeatCard_UsesPageOwnedReadLifetimeAndDoesNotExposePayloadContent()
+    {
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
+        var page = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        Assert.Contains("AutomationProperties.AutomationId=\"GatewayHeartbeatStatus\"", xaml);
+        Assert.Contains("AutomationProperties.LiveSetting=\"Polite\"", xaml);
+        Assert.Contains("Click=\"OnRefreshHeartbeat\"", xaml);
+        Assert.Matches(@"void OnRefreshHeartbeat\(object sender, RoutedEventArgs e\)\s*=>\s*" +
+            @"AsyncEventHandlerGuard\.Run\(\s*_heartbeat\.RefreshAsync,\s*" +
+            @"new OpenClawTray\.AppLogger\(\),\s*nameof\(OnRefreshHeartbeat\)\)", page);
+        Assert.Contains("_heartbeatConnection.StateChanged += OnHeartbeatConnectionChanged", page);
+        Assert.Contains("_heartbeatConnection.OperatorClientChanged += OnHeartbeatClientChanged", page);
+        Assert.Contains("_heartbeatConnection.StateChanged -= OnHeartbeatConnectionChanged", page);
+        Assert.Contains("_heartbeatConnection.OperatorClientChanged -= OnHeartbeatClientChanged", page);
+        Assert.Contains("OutcomeResourceKey(heartbeat.Status)", page);
+        Assert.DoesNotContain("heartbeat.Preview", page);
+        Assert.DoesNotContain("heartbeat.To", page);
+        Assert.DoesNotContain("set-heartbeats", page);
+        Assert.DoesNotContain("new OpenClawGatewayClient", page);
+        Assert.Matches(@"OnNavigatedFrom\(NavigationEventArgs e\)\s*\{\s*StopHeartbeat\(\)", page);
+        Assert.Matches(@"Unloaded \+= [\s\S]{0,50}StopHeartbeat\(\)", page);
+    }
+
     private static string Read(params string[] parts)
         => File.ReadAllText(Path.Combine(new[] { TestRepositoryPaths.GetRepositoryRoot() }.Concat(parts).ToArray()));
 
