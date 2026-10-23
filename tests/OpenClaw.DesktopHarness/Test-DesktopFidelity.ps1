@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory)][string]$OutputDirectory,
     [ValidateSet('Debug','Release')][string]$Configuration = 'Debug',
     [string]$NativeProbeExecutable,
-    [string]$NativeInitFailureExecutable
+    [string]$NativeInitFailureExecutable,
+    [string]$ExpectedHarnessSha256
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,9 +24,12 @@ if ((Test-Path -LiteralPath $output) -and @(Get-ChildItem -LiteralPath $output -
     throw 'Choose an empty output directory; existing proof artifacts will not be overwritten.'
 }
 New-Item -ItemType Directory -Path "$output\regression" -Force | Out-Null
-dotnet build "$PSScriptRoot\OpenClaw.DesktopHarness.csproj" -c $Configuration -m:1 --disable-build-servers -p:UseSharedCompilation=false --nologo --verbosity quiet *> "$output\managed-probe-build.log"
-if ($LASTEXITCODE -ne 0) { throw "Managed probe build failed. See $output\managed-probe-build.log" }
-$probe = "$PSScriptRoot\bin\$Configuration\net10.0-windows\OpenClaw.DesktopHarness.exe"
+. "$PSScriptRoot\HarnessPreparation.ps1"
+$probe = Resolve-DesktopHarnessExecutable -Executable "$PSScriptRoot\bin\$Configuration\net10.0-windows\OpenClaw.DesktopHarness.exe" `
+    -ExpectedSha256 $ExpectedHarnessSha256 -Build {
+        dotnet build "$PSScriptRoot\OpenClaw.DesktopHarness.csproj" -c $Configuration -m:1 --disable-build-servers -p:UseSharedCompilation=false --nologo --verbosity quiet *> "$output\managed-probe-build.log"
+        if ($LASTEXITCODE -ne 0) { throw "Managed probe build failed. See $output\managed-probe-build.log" }
+    }
 
 if ([string]::IsNullOrWhiteSpace($NativeProbeExecutable)) {
     $installer = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\vswhere.exe'

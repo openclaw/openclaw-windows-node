@@ -384,3 +384,10 @@ against a nonrecording tool fixture, then carry that configuration through the
 same engine, controller finalizer and parsed frozen receipt. Unreaped
 controllers, malformed functional receipts and mismatched-guest entrypoints
 remain failures. They cannot qualify a guest dry-run or trace.
+
+Build the real managed harness before entering startup observation. A bound
+scenario passes `-ExpectedHarnessSha256` to `Test-DesktopFidelity.ps1`, which
+verifies and executes that prepared binary without invoking a compiler.
+Missing or changed frozen binaries fail closed. Ordinary fidelity invocations
+without a frozen digest retain their existing build step. Include the harness
+executable, assemblies and runtime metadata in the frozen artifact set.

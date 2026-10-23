@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . "$PSScriptRoot\StartupProof.ps1"
 . "$PSScriptRoot\StartupProof.Native.ps1"
+. "$PSScriptRoot\HarnessPreparation.ps1"
 $root = [IO.Path]::GetFullPath((Join-Path $OutputDirectory ([Guid]::NewGuid().ToString('N'))))
 $capsule = Join-Path $root 'capsule'
 $null = New-Item -ItemType Directory -Path (Join-Path $capsule 'observer-final')
@@ -369,5 +370,29 @@ switch($Verb) {
     $readyReceipt = ConvertFrom-StartupReceiptJson '{"ready":true,"traceStartsCounter":0}'
     Assert-Proof ($readyReceipt.ready -is [bool] -and $readyReceipt.ready -and
         $readyReceipt.traceStartsCounter -eq 0) 'A complete actual receipt must retain its typed completion and zero-start fields'
+    $preparedExecutable = Join-Path $root 'prepared-harness.exe'
+    [IO.File]::WriteAllText($preparedExecutable, 'frozen artifact', [Text.UTF8Encoding]::new($false))
+    $expectedHarnessHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
+        [Text.Encoding]::UTF8.GetBytes('frozen artifact')))
+    $script:harnessBuildCalls = 0
+    $unexpectedBuild = { $script:harnessBuildCalls++; throw 'Frozen execution must never compile.' }
+    $resolved = Resolve-DesktopHarnessExecutable $preparedExecutable $expectedHarnessHash $unexpectedBuild
+    Assert-Proof ($resolved -ceq $preparedExecutable -and $script:harnessBuildCalls -eq 0) 'Frozen execution must use the prepared artifact without compiling'
+    [IO.File]::WriteAllText($preparedExecutable, 'changed artifact', [Text.UTF8Encoding]::new($false))
+    $rejected = $false
+    try { Resolve-DesktopHarnessExecutable $preparedExecutable $expectedHarnessHash $unexpectedBuild | Out-Null } catch { $rejected = $true }
+    Assert-Proof ($rejected -and $script:harnessBuildCalls -eq 0) 'A changed frozen artifact must fail without rebuilding inside observation'
+    Remove-Item -LiteralPath $preparedExecutable
+    $rejected = $false
+    try { Resolve-DesktopHarnessExecutable $preparedExecutable $expectedHarnessHash $unexpectedBuild | Out-Null } catch { $rejected = $true }
+    Assert-Proof ($rejected -and $script:harnessBuildCalls -eq 0) 'A missing frozen artifact must fail without an implicit compilation fallback'
+    $rejected = $false
+    try { Resolve-DesktopHarnessExecutable $preparedExecutable 'invalid' $unexpectedBuild | Out-Null } catch { $rejected = $true }
+    Assert-Proof ($rejected -and $script:harnessBuildCalls -eq 0) 'An invalid frozen digest must not enter the ordinary build path'
+    $resolved = Resolve-DesktopHarnessExecutable -Executable $preparedExecutable -Build {
+        $script:harnessBuildCalls++
+        [IO.File]::WriteAllText($preparedExecutable, 'ordinary build output', [Text.UTF8Encoding]::new($false))
+    }
+    Assert-Proof ($resolved -ceq $preparedExecutable -and $script:harnessBuildCalls -eq 1) 'Ordinary regression invocation must preserve its explicit build operation'
     "PASS: $checks native-free startup-wrapper regressions."
 } finally { Remove-Item -LiteralPath $root -Recurse -Force }
