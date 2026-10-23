@@ -148,6 +148,9 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var connectionState = ToConnectionState(snapshot.ConnectionStatus);
         var isGatewayConnected = string.Equals(connectionState, "connected", StringComparison.Ordinal);
         var nativeProvider = props.Provider as OpenClawChatDataProvider;
+        if (nativeProvider is not null)
+            snapshot = nativeProvider.ProjectCommandCatalog(
+                snapshot, effectiveThread?.Id, effectiveThread?.AgentId);
         if (isGatewayConnected
             && selectedMaterializedThread is not null
             && nativeProvider is not null)

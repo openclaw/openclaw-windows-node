@@ -213,6 +213,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _persistence.SaveSelectedState(state);
     }
 
+    internal ChatDataSnapshot ProjectCommandCatalog(
+        ChatDataSnapshot snapshot,
+        string? threadId,
+        string? agentId) =>
+        _state.ProjectCommandCatalog(snapshot, threadId, agentId);
+
     internal bool SupportsSessionScopedModelCatalog =>
         _bridge.SupportsSessionScopedModelCatalog;
 
@@ -893,7 +899,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!_state.TryBeginCommandCatalogFetch(out var epoch))
+        if (!_state.TryBeginCommandCatalogFetch(ProjectionContext(), out var epoch, out var query))
             return;
 
         CommandCatalog catalog;
@@ -902,7 +908,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             // Chat composer slash completion can only insert text-invokable
             // commands. Request the protocol's text scope so native-only
             // commands never surface in the composer catalog.
-            catalog = await _bridge.ListCommandsAsync(new CommandCatalogQuery { Scope = "text" }).ConfigureAwait(false)
+            catalog = await _bridge.ListCommandsAsync(query).ConfigureAwait(false)
                       ?? new CommandCatalog { IsSupported = true };
         }
         catch (Exception ex)

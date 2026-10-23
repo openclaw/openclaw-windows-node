@@ -421,10 +421,26 @@ internal sealed class ChatConversationState
             return _presentation.GetPendingSessionOptionPatch(threadId);
     }
 
-    internal bool TryBeginCommandCatalogFetch(out int epoch)
+    internal ChatDataSnapshot ProjectCommandCatalog(
+        ChatDataSnapshot snapshot,
+        string? threadId,
+        string? agentId)
     {
         lock (_gate)
-            return _presentation.TryBeginCommandCatalogFetch(_status, out epoch);
+            return _presentation.ProjectCommandCatalog(snapshot, threadId, agentId);
+    }
+
+    internal bool TryBeginCommandCatalogFetch(
+        ChatProjectionContext context,
+        out int epoch,
+        out CommandCatalogQuery query)
+    {
+        lock (_gate)
+            return _presentation.TryBeginCommandCatalogFetch(
+                _status,
+                ChatSnapshotProjector.ResolveDefaultThreadId(CaptureProjectionInputLocked(context)),
+                out epoch,
+                out query);
     }
 
     internal bool CompleteCommandCatalogFetch(int epoch, CommandCatalog catalog)

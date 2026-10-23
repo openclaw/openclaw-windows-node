@@ -132,7 +132,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             if (vm.ShouldRequestCatalogOnOpen())
                 controller.RequestCommandCatalog();
             return static () => { };
-        }), slashDisplay.ShouldRequestCatalog);
+        }), slashDisplay.ShouldRequestCatalog, inputs.CurrentThread.Id, inputs.CurrentThread.AgentId);
         UseEffect((Func<Action>)(() =>
         {
             vm.ReconcileAfterCatalogRefresh();

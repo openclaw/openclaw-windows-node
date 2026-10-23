@@ -107,6 +107,66 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task CommandsList_TextScope_SelectsTextNamesOnTheWire()
+    {
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod("commands.list", parameters =>
+        {
+            var text = parameters.ValueKind == JsonValueKind.Object
+                && parameters.TryGetProperty("scope", out var scope) && scope.GetString() == "text";
+            return new { commands = new[] { new { name = text ? "review" : "native_review", scope = "both" } } };
+        });
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server);
+        var catalog = await client.ListCommandsAsync(new CommandCatalogQuery { Scope = "text" });
+        Assert.Equal("review", Assert.Single(catalog.Commands).Name);
+        _output.WriteLine(server.FrameFor("commands.list"));
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
+    public async Task CommandsList_AgentContext_ReceivesDistinctCatalogsAndArgumentOptions()
+    {
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod("commands.list", parameters =>
+        {
+            Assert.Equal(3, parameters.EnumerateObject().Count());
+            Assert.Equal("text", parameters.GetProperty("scope").GetString());
+            var agent = parameters.GetProperty("agentId").GetString();
+            var includeArgs = parameters.GetProperty("includeArgs").GetBoolean();
+            return new
+            {
+                commands = new[]
+                {
+                    new
+                    {
+                        name = agent == "research" ? "review" : "summarize",
+                        scope = "text", source = "skill", acceptsArgs = true,
+                        args = includeArgs ? new[] { new { name = "topic", type = "string" } } : Array.Empty<object>(),
+                    }
+                }
+            };
+        });
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server);
+        var main = await client.ListCommandsAsync(new CommandCatalogQuery
+        {
+            AgentId = "main", Scope = "text", IncludeArgs = false,
+        });
+        var research = await client.ListCommandsAsync(new CommandCatalogQuery
+        {
+            AgentId = "research", Scope = "text", IncludeArgs = true,
+        });
+        Assert.Equal("summarize", Assert.Single(main.Commands).Name);
+        Assert.Empty(main.Commands[0].Args);
+        Assert.Equal("review", Assert.Single(research.Commands).Name);
+        Assert.Equal("topic", Assert.Single(research.Commands[0].Args).Name);
+        _output.WriteLine(server.FrameFor("commands.list", occurrence: 0));
+        _output.WriteLine(server.FrameFor("commands.list", occurrence: 1));
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
     public async Task ApplicationRpc_BeforeHelloOk_DoesNotReachWire()
     {
         using var server = new LoopbackGatewayServer(sendHandshakeChallenge: false);

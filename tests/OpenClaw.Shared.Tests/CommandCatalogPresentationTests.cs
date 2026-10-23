@@ -27,13 +27,20 @@ public class CommandCatalogPresentationTests
     // ── GatewayCommandPresentation ──
 
     [Fact]
-    public void DisplayName_PrefersNativeThenAliasThenName()
+    public void DisplayName_PrefersTextAliasThenNativeThenName()
     {
         Assert.Equal("/clear", new GatewayCommand { Name = "clear", NativeName = "/clear" }.DisplayName());
         Assert.Equal("/tldr", new GatewayCommand { Name = "summarize", TextAliases = new[] { "/tldr" } }.DisplayName());
         Assert.Equal("/bare", new GatewayCommand { Name = "bare" }.DisplayName());
         // Already-prefixed names are not double-slashed.
         Assert.Equal("/x", new GatewayCommand { Name = "/x" }.DisplayName());
+        var textCommand = new GatewayCommand
+        {
+            Name = "review", NativeName = "native_review", TextAliases = new[] { "/review" }, AcceptsArgs = true,
+        };
+        Assert.Equal("/review", textCommand.DisplayName());
+        Assert.Equal("/review ", textCommand.BuildInsertionText());
+        Assert.Equal("/review topic", textCommand.BuildArgInsertionText("topic"));
     }
 
     [Theory]

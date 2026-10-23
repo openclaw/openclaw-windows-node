@@ -14,6 +14,7 @@ public sealed partial class GatewayScenario
 {
     public const string BrowseName = "multi-session-browse";
     public const string InteractiveName = "chat-interactive";
+    public const string CommandCatalogName = "command-catalog";
     public const string MainSessionKey = "agent:main:main";
     public const string LongSessionKey = "agent:main:fixture-long";
     public const string OtherSessionKey = "agent:research:fixture-other";
@@ -53,6 +54,7 @@ public sealed partial class GatewayScenario
 
     private readonly bool _allowAgentCreation;
     private readonly bool _publishedModelCatalog;
+    private readonly bool _scopedCommands;
     private readonly bool _allowSessionMutations;
     private readonly bool _allowChatSend;
     public bool IsInteractive { get; }
@@ -63,7 +65,7 @@ public sealed partial class GatewayScenario
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _scopedCommands ? CommandCatalogName : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -76,13 +78,15 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        bool scopedCommands = false)
     {
         _sessions = sessions;
         _reads = reads;
         _setup = setup;
         _allowAgentCreation = allowAgentCreation;
         _publishedModelCatalog = publishedModelCatalog;
+        _scopedCommands = scopedCommands;
         _allowSessionMutations = allowSessionMutations;
         IsInteractive = interactive;
         _allowChatSend = allowChatSend;
@@ -100,7 +104,7 @@ public sealed partial class GatewayScenario
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
-            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog,
+            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog, scopedCommands,
             sessions = sessions.Select(s => new { s.Row, s.Messages }), reads, cronJobs
         });
         Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant();
@@ -110,6 +114,7 @@ public sealed partial class GatewayScenario
     {
         BrowseName => CreateBrowse(),
         InteractiveName => CreateInteractive(),
+        CommandCatalogName => CreateCommandCatalog(),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
 
@@ -117,6 +122,12 @@ public sealed partial class GatewayScenario
     {
         var browse = CreateBrowse();
         return new(browse._sessions, browse._reads, interactive: true);
+    }
+
+    public static GatewayScenario CreateCommandCatalog()
+    {
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, scopedCommands: true);
     }
 
     public static GatewayScenario CreateContextUsage(ContextUsageFixture contextUsage)
@@ -419,9 +430,44 @@ public sealed partial class GatewayScenario
             "sessions.preview" => Preview(parameters),
             "chat.history" => History(parameters),
             "models.list" => Models(parameters, containsModelSession ?? ContainsSession),
+            "commands.list" => Commands(parameters),
             "usage.cost" => Cost(parameters),
             _ when _reads.ContainsKey(method) => Read(method, parameters),
             _ => throw new FixtureRequestException("METHOD_NOT_FOUND", "Unknown fixture Gateway method.", unexpected: true)
+        };
+    }
+
+    private object Commands(JsonElement p)
+    {
+        ValidateProperties(p, "agentId", "scope", "includeArgs", "provider", "sessionKey");
+        var agent = OptionalString(p, "agentId");
+        if (agent is not null && agent is not ("main" or "research"))
+            throw new FixtureRequestException("INVALID_REQUEST", "Unknown fixture agentId.");
+        if (_scopedCommands && agent is null)
+            throw new FixtureRequestException("INVALID_REQUEST", "Select a fixture agent.");
+        var scope = OptionalString(p, "scope") ?? "both";
+        if (scope is not ("text" or "native" or "both"))
+            throw new FixtureRequestException("INVALID_PARAMS", "Unknown command scope.");
+        var includeArgs = OptionalBoolean(p, "includeArgs") ?? true;
+        _ = OptionalString(p, "provider");
+        if (OptionalString(p, "sessionKey") is { } key)
+            _ = FindSession(key);
+        if (!_scopedCommands)
+            return _reads["commands.list"];
+        var textName = agent == "research" ? "research_review" : "main_summarize";
+        return new
+        {
+            commands = new[]
+            {
+                new
+                {
+                    name = scope == "text" ? textName : $"native_{textName}",
+                    nativeName = $"native_{textName}", textAliases = new[] { $"/{textName}" },
+                    description = "Synthetic agent-specific skill.", source = "skill", scope = "both",
+                    acceptsArgs = true,
+                    args = includeArgs ? new[] { new { name = "topic", type = "string" } } : Array.Empty<object>(),
+                }
+            }
         };
     }
 

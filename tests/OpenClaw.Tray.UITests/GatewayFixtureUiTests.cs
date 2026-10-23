@@ -24,6 +24,39 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task CommandCatalog_SwitchingAgentReplacesVisibleSlashCommandsAndPreservesDraft()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await SelectSessionAsync(run, GatewayScenario.MainTitle, GatewayScenario.MainSessionKey);
+            var input = FindById(run, "ChatComposerInput")!;
+            ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue("/");
+            await WaitUiAsync(run, () => FindText(run, "/main_summarize") is { Current.IsOffscreen: false },
+                "visible main agent text command");
+            Assert.Null(FindText(run, "/native_main_summarize"));
+            await CaptureIfRequestedAsync(run, "command-catalog-main.png");
+
+            await SelectSessionAsync(run, GatewayScenario.OtherTitle, GatewayScenario.OtherSessionKey);
+            Assert.Equal("/", ((ValuePattern)FindById(run, "ChatComposerInput")!
+                .GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+            await WaitUiAsync(run, () => FindText(run, "/research_review") is { Current.IsOffscreen: false },
+                "visible research agent text command");
+            Assert.Null(FindText(run, "/main_summarize"));
+            Assert.Null(FindText(run, "/native_research_review"));
+            await CaptureIfRequestedAsync(run, "command-catalog-research.png");
+            var requests = run.Gateway.Requests.Where(request => request.Method == "commands.list").ToArray();
+            Assert.Equal(new[] { "main", "research" }, requests.Select(request => request.CommandAgentId));
+            Assert.All(requests, request =>
+            {
+                Assert.Equal("text", request.CommandScope);
+                Assert.True(request.IncludeCommandArgs);
+            });
+        }, scenario: GatewayScenario.CreateCommandCatalog());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task HistoricalFractionalVoiceConversationRendersWithoutLoadingPlaceholder()
     {
         await WithAppAsync(async run =>

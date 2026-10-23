@@ -11373,6 +11373,170 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task CommandCatalog_SelectedThreadChange_InvalidatesCacheAndFencesPendingFetch()
+    {
+        var other = MainSession();
+        other.Key = "agent:research:other";
+        other.AgentId = "research";
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession(), other });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        var pending = new TaskCompletionSource<CommandCatalog>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.ListCommandsBehavior = _ => pending.Task;
+        var first = provider.EnsureCommandCatalogAsync();
+        await provider.EnsureCommandCatalogAsync();
+        Assert.Equal(1, bridge.ListCommandsCallCount);
+
+        provider.RememberSelectedThread(other.Key);
+        bridge.ListCommandsBehavior = null;
+        bridge.CommandCatalogResult = new CommandCatalog
+        {
+            Commands = new[] { new GatewayCommand { Name = "research-skill" } }
+        };
+        await provider.EnsureCommandCatalogAsync();
+        Assert.Equal("research", bridge.LastListCommandsQuery?.AgentId);
+        Assert.True(bridge.LastListCommandsQuery?.IncludeArgs);
+        pending.SetResult(new CommandCatalog
+        {
+            Commands = new[] { new GatewayCommand { Name = "wrong-agent-skill" } }
+        });
+        await first;
+
+        Assert.Equal(2, bridge.ListCommandsCallCount);
+        Assert.Equal("research-skill", Assert.Single(snapshots[^1].AvailableCommands!).Name);
+        Assert.DoesNotContain(snapshots, snapshot =>
+            snapshot.AvailableCommands?.Any(command => command.Name == "wrong-agent-skill") == true);
+        await provider.EnsureCommandCatalogAsync();
+        Assert.Equal(2, bridge.ListCommandsCallCount);
+
+        provider.RememberSelectedThread(MainSession().Key);
+        await provider.EnsureCommandCatalogAsync();
+        Assert.Equal(3, bridge.ListCommandsCallCount);
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task CommandCatalog_ProjectionFencesOldSnapshotAndUsesUnmaterializedAgent()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.CommandCatalogResult = new CommandCatalog
+        {
+            Commands = new[] { new GatewayCommand { Name = "old-skill" } }
+        };
+        await provider.EnsureCommandCatalogAsync();
+        var oldSnapshot = await provider.LoadAsync();
+        Assert.NotNull(oldSnapshot.AvailableCommands);
+
+        var next = provider.ProjectCommandCatalog(oldSnapshot, "agent:research:not-listed", "main");
+        Assert.Null(next.AvailableCommands);
+        await provider.EnsureCommandCatalogAsync();
+        Assert.Equal("research", bridge.LastListCommandsQuery?.AgentId);
+        Assert.Equal(2, bridge.ListCommandsCallCount);
+
+        // Reapplying the current render does not invalidate the loaded catalog.
+        provider.ProjectCommandCatalog(next, "agent:research:not-listed", "main");
+        await provider.EnsureCommandCatalogAsync();
+        Assert.Equal(2, bridge.ListCommandsCallCount);
+
+        // Same agent, different thread still invalidates like the Mac baseline.
+        provider.ProjectCommandCatalog(next, "agent:research:another", "research");
+        await provider.EnsureCommandCatalogAsync();
+        Assert.Equal(3, bridge.ListCommandsCallCount);
+        await provider.DisposeAsync();
+    }
+
+    [Theory]
+    [InlineData("legacy-thread", "research", "research")]
+    [InlineData("legacy-thread", null, null)]
+    [InlineData("legacy-thread", "", null)]
+    [InlineData("legacy-thread", " ", null)]
+    [InlineData("agent:other:new", "research", "other")]
+    public async Task CommandCatalog_ContextDoesNotInventMainAgent(
+        string key, string? selectedAgent, string? expectedAgent)
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        var snapshot = await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        provider.ProjectCommandCatalog(snapshot, key, selectedAgent);
+        await provider.EnsureCommandCatalogAsync();
+        Assert.Equal(expectedAgent, bridge.LastListCommandsQuery?.AgentId);
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task CommandCatalog_ProductionBridgeWebSocket_SelectsAgentTextCatalog()
+    {
+        const string token = "fixture-command-catalog-token";
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateCommandCatalog(), token);
+        using var directory = new OpenClaw.TestSupport.TempDirectory();
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: directory.Path, ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var handshake = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.HandshakeSucceeded += (_, _) => handshake.TrySetResult();
+        await client.ConnectAsync();
+        await handshake.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null,
+            Path.Combine(directory.Path, "tool-cache.json"),
+            lastChatStateFilePath: Path.Combine(directory.Path, "last-chat.json"));
+        var snapshot = await provider.LoadAsync();
+        provider.ProjectCommandCatalog(snapshot, GatewayScenario.MainSessionKey, "main");
+        await provider.EnsureCommandCatalogAsync();
+        var main = await provider.LoadAsync();
+        Assert.Equal("main_summarize", Assert.Single(main.AvailableCommands!).Name);
+        Assert.Equal("topic", Assert.Single(main.AvailableCommands![0].Args).Name);
+
+        var pending = provider.ProjectCommandCatalog(main, GatewayScenario.OtherSessionKey, "research");
+        Assert.Null(pending.AvailableCommands);
+        await provider.EnsureCommandCatalogAsync();
+        var research = await provider.LoadAsync();
+        Assert.Equal("research_review", Assert.Single(research.AvailableCommands!).Name);
+        Assert.Equal("/research_review ", research.AvailableCommands![0].BuildInsertionText());
+        Assert.DoesNotContain(research.AvailableCommands!, command => command.Name == "main_summarize");
+        await provider.EnsureCommandCatalogAsync();
+
+        var requests = server.Requests.Where(request => request.Method == "commands.list").ToArray();
+        Assert.Equal(new[] { "main", "research" }, requests.Select(request => request.CommandAgentId));
+        Assert.All(requests, request =>
+        {
+            Assert.Equal("text", request.CommandScope);
+            Assert.True(request.IncludeCommandArgs);
+            Assert.Equal("ok", request.Outcome);
+            Assert.Null(request.SessionKey);
+        });
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
+    public async Task CommandCatalog_ContextSwitchBeforeDelivery_DropsOldQueuedCatalog()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.DisposeAsync();
+        var queued = new List<Action>();
+        using var directory = new OpenClaw.TestSupport.TempDirectory();
+        await using var isolated = new OpenClawChatDataProvider(bridge, queued.Add,
+            Path.Combine(directory.Path, "tool-cache.json"),
+            lastChatStateFilePath: Path.Combine(directory.Path, "last-chat.json"));
+        var snapshot = await isolated.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.CommandCatalogResult = new CommandCatalog
+        {
+            Commands = new[] { new GatewayCommand { Name = "old-agent" } }
+        };
+        await isolated.EnsureCommandCatalogAsync();
+        isolated.ProjectCommandCatalog(snapshot, "agent:research:new", "research");
+        var delivered = new List<ChatDataSnapshot>();
+        isolated.Changed += (_, args) => delivered.Add(args.Snapshot);
+        foreach (var action in queued.ToArray())
+            action();
+        Assert.DoesNotContain(delivered, item =>
+            item.AvailableCommands?.Any(command => command.Name == "old-agent") == true);
+    }
+
+    [Fact]
     public async Task EnsureCommandCatalogAsync_PopulatesCatalogInSnapshot()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });

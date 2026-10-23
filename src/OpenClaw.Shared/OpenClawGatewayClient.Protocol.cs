@@ -342,14 +342,16 @@ public partial class OpenClawGatewayClient
 
     /// <summary>
     /// Fetches the gateway command catalog. When <paramref name="query"/> is
-    /// supplied it is applied as a client-side filter over the full catalog.
+    /// supplied its agent, scope and argument options are sent to the Gateway;
+    /// category/source/search filtering is applied locally.
     /// Returns a catalog with <see cref="CommandCatalog.IsSupported"/> = false
     /// when the gateway does not implement <c>commands.list</c>.
     /// Throws if the gateway connection is not open.
     /// </summary>
     public async Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null, int timeoutMs = 15000)
     {
-        var payload = await TryRequestPayloadAsync("commands.list", null, timeoutMs).ConfigureAwait(false);
+        var payload = await TryRequestPayloadAsync(
+            "commands.list", BuildCommandCatalogParameters(query), timeoutMs).ConfigureAwait(false);
         if (payload is null)
             return new CommandCatalog { IsSupported = false };
 
@@ -357,6 +359,18 @@ public partial class OpenClawGatewayClient
         if (query is { HasFilter: true })
             catalog = ApplyCommandQuery(catalog, query);
         return catalog;
+    }
+
+    internal static Dictionary<string, object?> BuildCommandCatalogParameters(CommandCatalogQuery? query)
+    {
+        var parameters = new Dictionary<string, object?>();
+        if (query?.AgentId is { } agentId)
+            parameters["agentId"] = agentId;
+        if (!string.IsNullOrWhiteSpace(query?.Scope))
+            parameters["scope"] = query.Scope.Trim().ToLowerInvariant();
+        if (query?.IncludeArgs is { } includeArgs)
+            parameters["includeArgs"] = includeArgs;
+        return parameters;
     }
 
     internal static CommandCatalog ApplyCommandQuery(CommandCatalog catalog, CommandCatalogQuery query)

@@ -150,6 +150,11 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
             if (_inputs is { } applied && applied.HasSameProjection(inputs))
                 return false;
 
+            if (_inputs?.CurrentThread.Id != inputs.CurrentThread.Id
+                || _inputs?.CurrentThread.AgentId != inputs.CurrentThread.AgentId)
+            {
+                _awaitingCatalog = false;
+            }
             _inputs = inputs;
             RecomputeSlashDisplay();
             return true;
