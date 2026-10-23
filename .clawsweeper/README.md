@@ -1,2 +1,0 @@
-ClawSweeper uses the repository's native [Hanselman skill](../.agents/skills/hanselman-code-review/SKILL.md) alongside normal PR-review duties when its harness workspace is the repository root.
-The [configured pair](review.json) requests high reasoning and native default context, not the skill's long_context; compatible producer deployment, supported operator credentials, exact-pair proof and context approval remain required before enabling.
