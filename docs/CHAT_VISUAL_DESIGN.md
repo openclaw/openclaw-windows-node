@@ -103,6 +103,19 @@ Gateway dashboard management lives in a Connection settings card rather than
 occupying a row above the chat surface. Settings' Chat rail action opens Workspace
 without changing the selected Settings page or discarding the chat draft.
 
+Workspace retains the chosen assistant and existing conversation across a
+reconnect to the same Gateway. Clearing a temporary connection cache is not an
+agent removal and does not select the Gateway default. Assistant selection and
+conversation creation wait for a fresh authoritative roster. A changed Gateway
+cannot reuse the previous Gateway's cached roster or remembered selection.
+When a current roster actually removes the chosen agent, its explicit-selection
+or legacy-default policy applies.
+
+Session summary metadata, such as a health payload's count, path and recent
+entries, does not replace the conversation roster. Only a session collection
+can remove absent rows; a genuine empty array or legacy empty map still clears
+the roster.
+
 An authoritative empty conversation shows **Recent chats** instead of quick-start
 suggestions when the active agent has eligible conversations. The list includes
 active or token-bearing conversations, excludes the current session, background, archived and channel

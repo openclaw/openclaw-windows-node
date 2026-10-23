@@ -40,6 +40,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
     private TaskCompletionSource? _sessionMutationGate;
+    private TaskCompletionSource? _agentsListGate;
+    private JsonElement? _agentsRoster;
+    private bool _agentsListUnsupported;
     private TaskCompletionSource? _chatSendGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
     private int _chatEventSequence;
@@ -316,6 +319,43 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 message = new { role = "assistant", content }
             }
         }, cancellationToken);
+    }
+
+    /// <summary>Replaces only the synthetic agents.list response; authentication remains unchanged.</summary>
+    public void SetAgentsRoster(JsonElement roster)
+    {
+        if (roster.ValueKind != JsonValueKind.Object ||
+            !roster.TryGetProperty("agents", out var agents) || agents.ValueKind != JsonValueKind.Array)
+            throw new ArgumentException("An agents roster object is required.", nameof(roster));
+        lock (_sync)
+            _agentsRoster = roster.Clone();
+    }
+
+    public void RejectAgentsListAsUnsupported()
+    {
+        lock (_sync)
+            _agentsListUnsupported = true;
+    }
+
+    public void HoldAgentsList()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (_agentsListGate is not null)
+                throw new InvalidOperationException("An agents listing is already held.");
+            _agentsListGate = NewSignal();
+        }
+    }
+
+    public void ReleaseAgentsList()
+    {
+        lock (_sync)
+        {
+            var gate = _agentsListGate ?? throw new InvalidOperationException("No agents listing is held.");
+            _agentsListGate = null;
+            gate.TrySetResult();
+        }
     }
 
     /// <summary>Hold one listing snapshot while subsequent requests remain independent.</summary>
@@ -612,6 +652,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     {
                         gate = method is "sessions.patch" or "sessions.delete" or "sessions.create"
                             ? _sessionMutationGate?.Task
+                            : method == "agents.list" ? _agentsListGate?.Task
                             : method == "chat.send"
                                 ? _chatSendGate?.Task
                             : method == "sessions.list" ? _nextSessionListGate?.Task
@@ -677,7 +718,17 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 "Approval ID was not issued by the fixture.");
                     }
                 }
-                payload = Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
+                JsonElement? agentsRoster;
+                bool agentsListUnsupported;
+                lock (_sync)
+                {
+                    agentsRoster = method == "agents.list" ? _agentsRoster : null;
+                    agentsListUnsupported = method == "agents.list" && _agentsListUnsupported;
+                }
+                if (agentsListUnsupported)
+                    throw new FixtureRequestException("INVALID_REQUEST", "unknown method: agents.list");
+                payload = agentsRoster is { } roster ? roster
+                    : Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
                     ? await Interactive.RespondAsync(method, parameters, cancellationToken)
                     : _scenario.Respond(method, parameters,
                         Interactive is null ? null : Interactive.ContainsSession);
