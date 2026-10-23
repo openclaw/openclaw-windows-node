@@ -7,6 +7,8 @@ using OpenClaw.TestSupport.Gateway;
 
 namespace OpenClaw.Tray.IntegrationTests;
 
+// Cleanup checks rebind released ephemeral ports before another fixture can claim them.
+[Collection("Gateway fixture environment")]
 public sealed class GatewayFixtureStartupTests
 {
     [Theory]
