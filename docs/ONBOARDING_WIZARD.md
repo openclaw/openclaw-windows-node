@@ -23,14 +23,34 @@ separate and does not claim or restore Companion management.
 
 After setup restarts Companion, destination handoff waits for native connection
 startup and any already-admitted Local AI recovery before fresh model verification.
-An unused receipt must still be acquired within five minutes. First exclusive
-acquisition persists one execution window for the bounded phases below: 13.5 minutes
-at the default startup budget, longer with `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`.
-Neither restart nor retry renews it. A restart with a different startup override keeps the
-stored window when it falls within the range a supported override can produce (13.5 to
-127.5 minutes). A failed attempt remains available for explicit Retry,
+New preparation receipts start one execution window when issued, 27 minutes at
+the default startup budget and longer with `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`,
+before restarting Companion. This includes old-process Local AI teardown, whose
+guarded WSL Gateway restart may exceed five minutes. First acquisition and retry
+retain that original deadline; neither can renew it. Destination receipts and
+older `preparation-v1` receipts retain five-minute unused admission and start their
+execution window at first exclusive acquisition. Existing 13.5-minute execution
+deadlines from earlier versions also remain unchanged. A restart with a different
+startup override retains the stored deadline within supported bounds: 27 to 141
+minutes for new preparations, and 13.5 to 141 minutes for destination and legacy
+receipts.
+A failed attempt remains available for explicit Retry,
 but automatic reactivation does not show the same failure dialog again. Successful
 runtime checks alone do not prove that a full, potentially longer chat turn has finished.
+
+Readiness is withdrawn when the live Gateway reports configuration changes,
+without replaying setup or model activation. Unrelated chat usage and metadata
+updates do not withdraw readiness. Finishing failures retain
+localized timeout-phase guidance. If safe retry or Back is unavailable, Close
+remains available. Once a restart process has launched, failed shutdown scheduling
+cannot launch another restart through Retry.
+
+WSL Local AI withdrawal confirms a Gateway restart even when the saved provider
+is already absent. A previous Companion process may have removed the saved route
+without confirming that the running Gateway adopted it. An in-memory flag cannot
+prove that uncertainty cleared across Companion restarts. A completed managed
+startup that remains stopped or uninstalled fails
+readiness promptly instead of waiting for the full recovery deadline.
 
 Native installation keeps Back at the left and Cancel setup (or Retry setup) at
 the right, using the same content-sized, 100 px minimum buttons as earlier setup
@@ -490,11 +510,13 @@ Page drain, selection
 verification, runtime startup and published-owner handoff are distinct lifetimes.
 
 `SetupNativeCompletionTiming` defines the published path's enforced phase ceilings:
-210 seconds for the first borrow, 210 seconds to join already-admitted Local AI
+210 seconds for the first borrow, 1,020 seconds to join already-admitted Local AI
 recovery, 210 seconds for a fresh post-recovery borrow, 150 seconds for exact-model
 verification (including the existing 120-second RPC and authorization), and
-30 seconds for navigation. Their 810-second total bounds the exclusive execution
-lease. A phase can fail earlier due to its underlying owner or caller cancellation;
+30 seconds for navigation. Their 1,620-second total bounds the execution window.
+New preparation receipts also charge old-process teardown against this same
+window, so acquisition receives only the remaining time, not a fresh 27 minutes.
+A phase can fail earlier due to its underlying owner or caller cancellation;
 unused phase time is not a guarantee that a different phase may overrun its ceiling.
 Recovery waits never initiate or replay a provider mutation.
 Timeouts retain a typed, finite phase (page drain, connection, Local AI recovery,
@@ -505,9 +527,11 @@ The chooser displays localized phase-specific
 guidance and local diagnostics record only the phase/type, never raw package output,
 model content or credentials.
 
-The five-minute unused-handle admission window is unchanged. The first acquisition
-atomically stores its execution start and deadline under the existing file lock. Retries,
-reacquisition by another process and app restarts use that same absolute deadline.
+Destination and `preparation-v1` receipts retain five-minute unused-handle
+admission. Their first acquisition atomically stores the execution start and
+deadline under the existing file lock. New `preparation-v2` receipts persist both
+at issuance, before old-process teardown. Retries, reacquisition by another process
+and app restarts use that same absolute deadline.
 Expired, malformed, abandoned in-flight and legacy retry records lacking execution
 provenance cannot grant a new window. Legacy unused records retain their original
 five-minute admission deadline. No Gateway credential lifetime changes.
@@ -604,7 +628,8 @@ enabled executable/action, principal, task path and logon trigger. A definite
 rejection with confirmed absence retains the legitimate Run-key fallback.
 
 The trusted profile-local handoff retains exclusive leasing, five-minute unused
-admission and a non-renewable bounded execution deadline,
+admission for destinations and legacy preparations, and a non-renewable bounded
+execution deadline (including teardown for new preparations),
 consumption on successful native presentation and explicit failure retry. New
 `ai-v3:` opaque handles carry a typed native destination and exact verified
 session in the protected record, not in public activation JSON. The experimental

@@ -12,6 +12,8 @@ public enum LocalAiQuiesceReason
     Teardown,
 }
 
+public enum LocalAiRuntimeStartStage { StartingRuntime, CheckingConfiguration, PublishingProvider, VerifyingEndpoint }
+
 /// <summary>
 /// Coordinates consumers of the app-owned endpoint with native process changes.
 /// Implementations must remove managed routing before a listener can disappear,
@@ -35,6 +37,8 @@ public interface ILocalAiEndpointLifecycle
         => throw new InvalidOperationException("Restore the Local AI installation receipt before resolving its Gateway route.");
     Task<LocalAiEndpointLifecycleResult> CompleteStartAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken)
         => Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
+    Task<LocalAiEndpointLifecycleResult> CompleteStartAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken,
+        IProgress<LocalAiRuntimeStartStage>? progress) => CompleteStartAsync(install, cancellationToken);
 
     /// <summary>Durable owners persist explicit running intent; stateless transports need no receipt.</summary>
     Task SetAutomaticRecoveryEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
@@ -48,6 +52,14 @@ public interface ILocalAiEndpointLifecycle
     Task<LocalAiEndpointLifecycleResult> PublishAsync(
         LocalAiResolvedInstall install,
         CancellationToken cancellationToken = default);
+
+    Task<LocalAiEndpointLifecycleResult> PublishAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken,
+        IProgress<LocalAiRuntimeStartStage>? progress)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        progress?.Report(LocalAiRuntimeStartStage.PublishingProvider);
+        return PublishAsync(install, cancellationToken);
+    }
 }
 
 internal sealed class NullLocalAiEndpointLifecycle : ILocalAiEndpointLifecycle

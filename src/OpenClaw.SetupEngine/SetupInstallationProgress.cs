@@ -2,7 +2,8 @@ namespace OpenClaw.SetupEngine;
 
 public enum SetupInstallationPhase { Prepare, Install, Connect }
 public enum SetupInstallationStatus { Pending, Running, Complete, Skipped, Failed, Cancelled }
-public sealed record SetupInstallationPhaseState(SetupInstallationPhase Phase, SetupInstallationStatus Status);
+public sealed record SetupInstallationPhaseState(
+    SetupInstallationPhase Phase, SetupInstallationStatus Status, string? CurrentActivity = null);
 
 /// <summary>
 /// Presentation only: projects the actual ordered pipeline and its events, never schedules work.
@@ -28,13 +29,20 @@ public sealed class SetupInstallationProgress
     public int CompletedSteps => _entries.Count(entry => entry.Status is SetupInstallationStatus.Complete or SetupInstallationStatus.Skipped);
     public bool IsRunning => _entries.Any(entry => entry.Status == SetupInstallationStatus.Running) &&
         !_entries.Any(entry => entry.Status is SetupInstallationStatus.Failed or SetupInstallationStatus.Cancelled);
-    public string? CurrentActivity => _entries.FirstOrDefault(entry => entry.Status == SetupInstallationStatus.Failed)?.DisplayName ??
-        _entries.FirstOrDefault(entry => entry.Status == SetupInstallationStatus.Cancelled)?.DisplayName ??
-        _entries.FirstOrDefault(entry => entry.Status == SetupInstallationStatus.Running)?.DisplayName;
+    public string? CurrentActivity => GetCurrentActivity(_entries);
 
     public IReadOnlyList<SetupInstallationPhaseState> Phases => Enum.GetValues<SetupInstallationPhase>()
-        .Select(phase => new SetupInstallationPhaseState(phase, Aggregate(_entries.Where(entry => entry.Phase == phase))))
+        .Select(phase =>
+        {
+            var entries = _entries.Where(entry => entry.Phase == phase).ToArray();
+            return new SetupInstallationPhaseState(phase, Aggregate(entries), GetCurrentActivity(entries));
+        })
         .ToArray();
+
+    private static string? GetCurrentActivity(IEnumerable<Entry> entries) =>
+        entries.FirstOrDefault(entry => entry.Status == SetupInstallationStatus.Failed)?.DisplayName ??
+        entries.FirstOrDefault(entry => entry.Status == SetupInstallationStatus.Cancelled)?.DisplayName ??
+        entries.FirstOrDefault(entry => entry.Status == SetupInstallationStatus.Running)?.DisplayName;
 
     public void Apply(StepProgressEvent progress)
     {

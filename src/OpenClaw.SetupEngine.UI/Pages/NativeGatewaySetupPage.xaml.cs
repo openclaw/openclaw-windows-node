@@ -126,9 +126,16 @@ public sealed partial class NativeGatewaySetupPage : Page
                     StatusText.Text = SetupLocalization.GetString("Onboarding_Native_Cancelled");
                     RetryButton.Visibility = Visibility.Visible;
                 }
+                catch (OperationCanceledException connectionFailure) when (!cancellationToken.IsCancellationRequested)
+                {
+                    Trace.TraceError($"Native Gateway draft retry lost its operation: {connectionFailure}");
+                    _rows[_currentStep].Apply(SetupInstallationStatus.Failed);
+                    StatusText.Text = SetupLogger.Sanitize(connectionFailure.Message);
+                    RetryButton.Visibility = Visibility.Visible;
+                }
                 catch (Exception discardFailure) when (discardFailure is InvalidOperationException or IOException or
                                                        UnauthorizedAccessException or Win32Exception or COMException or
-                                                       JsonException or TimeoutException or AggregateException)
+                                                       JsonException or InvalidDataException or TimeoutException or AggregateException)
                 {
                     Trace.TraceError($"Native Gateway draft discard: {discardFailure}");
                     LogFailure(log, discardFailure);
@@ -152,8 +159,15 @@ public sealed partial class NativeGatewaySetupPage : Page
             StatusText.Text = SetupLocalization.GetString("Onboarding_Native_Cancelled");
             RetryButton.Visibility = Visibility.Visible;
         }
+        catch (OperationCanceledException connectionFailure) when (!cancellationToken.IsCancellationRequested)
+        {
+            Trace.TraceError($"Native Gateway setup lost its operation: {connectionFailure}");
+            _rows[_currentStep].Apply(SetupInstallationStatus.Failed);
+            StatusText.Text = SetupLogger.Sanitize(connectionFailure.Message);
+            RetryButton.Visibility = Visibility.Visible;
+        }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException
-                                   or Win32Exception or COMException or JsonException or TimeoutException or AggregateException)
+                                   or Win32Exception or COMException or JsonException or InvalidDataException or TimeoutException or AggregateException)
         {
             Trace.TraceError($"Native Gateway setup: {ex}");
             LogFailure(log, ex);
@@ -190,14 +204,16 @@ public sealed partial class NativeGatewaySetupPage : Page
         SetCurrentStep(2);
         var appLogger = new SetupOpenClawLogger(log);
         var registry = new GatewayRegistry(window.DataDir, logger: appLogger);
-        var progressDispatcher = DispatcherQueue;
         void DispatchProgress(Action update)
         {
-            if (!progressDispatcher.TryEnqueue(() =>
+            void Apply()
             {
-                if (IsLoaded && !cancellationToken.IsCancellationRequested)
+                if (IsLoaded && IsBusy && !cancellationToken.IsCancellationRequested &&
+                    _operationCts?.Token == cancellationToken)
                     update();
-            }))
+            }
+            if (DispatcherQueue.HasThreadAccess) Apply();
+            else if (!DispatcherQueue.TryEnqueue(Apply))
                 Trace.TraceWarning("The native setup progress update could not be dispatched.");
         }
         void ReportProgress(string message)
@@ -210,6 +226,7 @@ public sealed partial class NativeGatewaySetupPage : Page
             if (stage is NativeGatewaySetupStage.StartingGateway or NativeGatewaySetupStage.VerifyingEndpoint)
                 SetCurrentStep(3);
         });
+        var progress = new Progress<SetupLoadingStep>(step => ReportProgress(SetupLoadingView.DetailFor(step)));
         var service = _setupService = new NativeGatewaySetupService(
             registry,
             _resolver,
@@ -225,8 +242,42 @@ public sealed partial class NativeGatewaySetupPage : Page
             return;
         }
         SetCurrentStep(3);
+        try
+        {
+            StatusText.Text = SetupLocalization.GetString("Onboarding_AiSetup_Preparing");
+            await using var preparation = await GatewayAiPreparation.PrepareNativeAsync(session, cancellationToken, progress);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (window.IsClosed)
+            {
+                await session.DisposeAsync();
+                return;
+            }
+            await CompleteAiPreparationAsync(preparation, window.LocalAiHost,
+                session.IsIsolated ? session.Record : null, session.AuthorizeAsync, session.LifetimeToken,
+                prepared =>
+                {
+                    if (window.IsClosed) throw new OperationCanceledException(cancellationToken);
+                    window.NavigateToNativeAiSetup(session, prepared);
+                }, cancellationToken);
+        }
+        catch
+        {
+            await session.DisposeAsync();
+            throw;
+        }
+    }
+
+    internal async Task CompleteAiPreparationAsync(
+        GatewayAiPreparation gateway, ISetupLocalAiHost? host, GatewayRecord? isolatedRecord,
+        Func<CancellationToken, Task>? authorize, CancellationToken lifetimeToken,
+        Action<NativeAiPreparation> navigate, CancellationToken cancellationToken)
+    {
+        SetCurrentStep(3);
+        await using var preparation = await NativeAiPreparation.PrepareAsync(
+            gateway, host, isolatedRecord, authorize, lifetimeToken, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         _rows[3].Apply(SetupInstallationStatus.Complete);
-        window.NavigateToNativeAiSetup(session);
+        navigate(preparation);
     }
 
     private async Task<bool> InstallAsync(SetupLogger log, CancellationToken cancellationToken)

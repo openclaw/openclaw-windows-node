@@ -3180,6 +3180,27 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ProcessRawMessage_ConfigurationChangesAreDistinctFromChatMetadataUpdates()
+    {
+        var helper = new GatewayClientTestHelper();
+        var changes = 0;
+        var catalogInvalidations = 0;
+        helper.Client.ConfigurationChanged += (_, _) => changes++;
+        helper.Client.ModelCatalogInvalidated += (_, _) => catalogInvalidations++;
+        helper.ProcessRawMessage("""
+        { "type": "event", "event": "chat.metadata.changed",
+          "payload": { "modelCatalogChanged": false, "authChanged": false } }
+        """);
+        Assert.Equal(0, changes);
+        Assert.Equal(1, catalogInvalidations);
+        helper.ProcessRawMessage("""
+        { "type": "event", "event": "config.changed", "payload": {} }
+        """);
+        Assert.Equal(1, changes);
+        Assert.Equal(2, catalogInvalidations);
+    }
+
+    [Fact]
     public void ProcessRawMessage_SessionCatalogChangeInvalidatesCatalog()
     {
         var helper = new GatewayClientTestHelper();

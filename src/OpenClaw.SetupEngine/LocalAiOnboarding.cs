@@ -17,7 +17,8 @@ public enum NativeLocalAiOwnershipState
 
 public enum LocalAiSetupStage
 {
-    CheckingHardware, CheckingFiles, PreparingGateway, StartingRuntime, PublishingProvider
+    CheckingHardware, CheckingFiles, PreparingGateway, StartingRuntime, PublishingProvider,
+    CheckingConfiguration, VerifyingEndpoint
 }
 
 /// <summary>The exact existing Gateway, not a request to create or replace one.</summary>
@@ -275,11 +276,14 @@ public sealed class LocalAiOnboardingObservation(ISetupLocalAiHost host) : IAsyn
     public Task RefreshAsync() => RefreshAsync(null);
 
     public Task RefreshAsync(IProgress<LocalAiSetupStage>? progress)
+        => RefreshAsync(progress, CancellationToken.None);
+
+    public Task RefreshAsync(IProgress<LocalAiSetupStage>? progress, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_closed, this);
         _request?.Cancel();
         _request?.Dispose();
-        _request = new();
+        _request = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var generation = ++_generation;
         Snapshot = new(LocalAiOnboardingState.Checking);
         Changed?.Invoke();

@@ -176,7 +176,11 @@ public sealed class OnboardingPresentationContractTests
         Assert.DoesNotContain("new ContentDialog", source);
         Assert.DoesNotContain("x:Name=\"LocalAiHeading\"", xaml);
         Assert.DoesNotContain("x:Name=\"LocalAiExplanation\"", xaml);
-        Assert.Contains("snapshot.ShowLocalChoice", source);
+        Assert.Contains("AiSetupReadinessPresentation.ShowLocalChoice(", source);
+        var localVisibility = Read(@"src\OpenClaw.SetupEngine\AiSetupReadinessPresentation.cs");
+        Assert.Contains("snapshot.ShowLocalChoice", localVisibility);
+        Assert.Contains("nativeAdmitted && snapshot.State is LocalAiOnboardingState.Checking or LocalAiOnboardingState.Unknown",
+            localVisibility);
         Assert.Contains("FluentIconCatalog.Key", source);
         Assert.Contains("ApiProviderPicker.SelectedItem is ChoiceRow row && CanConnectManual()", source);
         Assert.Contains("SelectChoice(row);", source);
@@ -268,7 +272,10 @@ public sealed class OnboardingPresentationContractTests
         Assert.Contains("AccessDraft.TryAcceptNativeConnection(route, result)", window);
         Assert.Contains("RootFrame.Content is SetupNativeConnectionPage nativePage", window);
         Assert.Contains("nativePage.DisposeAsync().AsTask()", window);
-        Assert.True(window.IndexOf("await _nativePageCleanupTask", StringComparison.Ordinal) <
+        Assert.Contains("await Task.WhenAll(\n                                " +
+            "_nativePageCleanupTask, _aiPageCleanupTask, _preparationTask,",
+            window.Replace("\r\n", "\n", StringComparison.Ordinal));
+        Assert.True(window.IndexOf("_localAiTransitionTask ?? Task.CompletedTask", StringComparison.Ordinal) <
             window.IndexOf("_setupLock?.Dispose()", StringComparison.Ordinal));
         Assert.Contains("AccessDraft?.ClearNativeConnectionSecrets()", window);
         Assert.DoesNotContain("new GatewayConnectionManager", window);

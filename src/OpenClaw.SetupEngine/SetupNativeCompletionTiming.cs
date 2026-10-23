@@ -30,7 +30,9 @@ public sealed class SetupNativeCompletionTimeoutException : TimeoutException
 public static class SetupNativeCompletionTiming
 {
     private static readonly TimeSpan MinimumConnection = TimeSpan.FromSeconds(210);
-    public static readonly TimeSpan ModelRecovery = TimeSpan.FromSeconds(210);
+    // WSL Local AI startup can withdraw and republish its route with two guarded
+    // 420-second Gateway restarts, plus 90 seconds for the router to become healthy.
+    public static readonly TimeSpan ModelRecovery = TimeSpan.FromSeconds(1020);
     public static readonly TimeSpan ModelVerification = TimeSpan.FromSeconds(150);
     public static readonly TimeSpan Navigation = TimeSpan.FromSeconds(30);
     // The published borrow includes the native start budget (OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT) plus handshake.

@@ -129,6 +129,17 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                 return providerResult;
         }
 
+        LocalAiEndpointLifecycleResult verified = await VerifyQuiescedAsync(expectedPrimary, cancellationToken)
+            .ConfigureAwait(false);
+        if (!verified.Success) return verified;
+
+        // A prior Companion process may have removed the saved route without
+        // confirming its restart. Even when disk lacks the provider, require a confirmed
+        // restart before the runtime releases its owned listener.
+        LocalAiGatewayCommandOutcome restarted = await _configuration!.RunAsync(
+            ["gateway", "restart"], cancellationToken).ConfigureAwait(false);
+        if (!restarted.Routed || !restarted.Result!.Success)
+            return Failed("The managed Local AI route was removed from Gateway configuration, but the Gateway restart was not confirmed. Keep the listener running until its active route is reconciled.");
         return await VerifyQuiescedAsync(expectedPrimary, cancellationToken).ConfigureAwait(false);
     }
 
@@ -203,6 +214,17 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             return PublicationFailed(
                 "The verified Local AI route could not be published to the app-owned gateway.",
                 cleanup);
+        }
+
+        // WSL config writes persist the route before the running Gateway adopts it.
+        // Keep the runtime in Starting until the original Gateway has restarted.
+        var restarted = await _configuration.RunAsync(["gateway", "restart"], cancellationToken).ConfigureAwait(false);
+        if (!restarted.Routed || !restarted.Result!.Success)
+        {
+            _logger.Warn($"Managed Local AI Gateway restart failed (routed={restarted.Routed}, " +
+                $"timedOut={restarted.Result?.TimedOut}, indeterminate={restarted.Result?.OutcomeIndeterminate}, " +
+                $"exitCode={restarted.Result?.ExitCode}).");
+            return Failed("The Local AI route was saved, but the app-owned Gateway did not restart. Check the WSL Gateway before retrying Local AI.");
         }
 
         return await VerifyPublishedAsync(install, cancellationToken).ConfigureAwait(false);
