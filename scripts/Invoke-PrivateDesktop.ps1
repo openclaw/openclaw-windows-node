@@ -13,6 +13,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Add-Type -Path (Join-Path $PSScriptRoot 'PrivateDesktopSecurity.cs')
 Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
@@ -94,6 +95,15 @@ public static class ProofDesktop
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetUserObjectSecurity(IntPtr handle, ref uint information,
         IntPtr descriptor, uint size, out uint needed);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetUserObjectSecurity(IntPtr handle, ref uint information,
+        byte[] descriptor);
+    public static void CompleteNullCreatedDesktop(IntPtr ownedDesktop, byte[] created)
+    {
+        uint information = 0x14;
+        if (!SetUserObjectSecurity(ownedDesktop, ref information, created))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+    }
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool ConvertSecurityDescriptorToStringSecurityDescriptorW(
         IntPtr descriptor, uint revision, uint information, out IntPtr text, out uint length);
@@ -233,6 +243,23 @@ try {
     } | ConvertTo-Json | Set-Content -LiteralPath "$ResultPath.security.json" -Encoding utf8
     if (!$NullSecurityNegativeControl -and !$descriptorMatches) {
         throw 'New desktop DACL/label differs from the read-only Default reference.'
+    }
+    if ($NullSecurityNegativeControl) {
+        # NULL attributes inherit the creator token's read-only package ACEs and
+        # implicit Medium label, not the interactive desktop's Low-label contract.
+        $completedBytes = [PrivateDesktopSecurity]::CompleteNullCreatedDesktop($createdBytes)
+        [ProofDesktop]::CompleteNullCreatedDesktop($desktop, $completedBytes)
+        $appliedBytes = [ProofDesktop]::ReadDaclAndLabel($desktop)
+        if (![ProofDesktop]::SameDaclAndLabel($completedBytes, $appliedBytes)) {
+            throw 'Owned NULL-created desktop access completion did not persist.'
+        }
+        [ordered]@{
+            desktop = $DesktopName
+            original = $createdSecurity
+            applied = [ProofDesktop]::Describe($appliedBytes)
+            packageAdditionalRights = 0x82
+            label = 'Low, no-write-up'
+        } | ConvertTo-Json | Set-Content -LiteralPath "$ResultPath.access-completion.json" -Encoding utf8
     }
     New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
     $env:OPENCLAW_TRAY_DATA_DIR = $DataDirectory

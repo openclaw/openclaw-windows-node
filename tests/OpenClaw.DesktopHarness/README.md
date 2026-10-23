@@ -183,14 +183,40 @@ no-modal observation unverified for the coordinated Home observer.
 Four actual child-process cases must pass, with no skips: native token/USER32 and
 controlled PowerShell on each of the NULL-security and Default-equivalent caller
 desktops. All execute through the authoritative `MxcCommandRunner`. Its current
-request builder selects a container-owned desktop, UI API compatibility, no
+request builder selects container UI isolation, UI API compatibility, no
 clipboard, no input injection and denied ingress/egress. Both caller desktop
 variants must initialize USER32 and return contained exit 0 without a timeout.
 The positive PowerShell cases must emit the exact controlled marker.
 
+NULL describes the attributes passed at creation, not the final admission
+security. `Invoke-PrivateDesktop.ps1` retains that original descriptor receipt,
+then completes only its newly created, exclusively owned desktop with a Low
+no-write-up label and the missing `DESKTOP_CREATEWINDOW | DESKTOP_WRITEOBJECTS`
+bits (`0x82`) for ordinary/restricted application-package groups. It does not
+grant full control, change the station or Default desktop, change tokens, or
+override existing write/create deny ACEs. Explicit-security callers keep their
+existing byte-equality contract with the Default reference. The separate
+`access-completion.json` receipt records the original and applied descriptors.
+
+This fixes a real caller-side admission defect: token-default desktop security
+can grant package groups read-only access and omit the mandatory label (implicit
+Medium), even when the interactive Default reference supports Low-integrity
+USER32. The native probe must prove actual access and initialization; Low and
+AppContainer flags alone are insufficient.
+
+Run the fixture-only descriptor regression without live object/token queries:
+
+```powershell
+pwsh -NoProfile -File .\tests\OpenClaw.DesktopHarness\Test-PrivateDesktopSecurity.ps1
+```
+
 The original MXC 0.8 bridge proof is **HISTORICAL**. Its NULL-security caller
-desktop failure predicate is not a current SDK contract: the SDK now owns the
-execution desktop. No legacy bridge or native executable override is retained.
+desktop failure predicate is not a current SDK contract. Do not infer a separate
+execution desktop from the requested container UI policy. Published SDK 1.0.0
+initializes `STARTUPINFOW.lpDesktop` to NULL; the actual native probe can inherit
+the caller's task desktop. Requested startup binding and successful
+`GetThreadDesktop` identity must establish the real boundary. No legacy bridge
+or native executable override is retained.
 The policy request, result, loaded native library version/digest and SDK assembly
 version/digest are recorded for current-head qualification. Runtime qualification
 must confirm this expected policy behavior before claiming this lane passes.
