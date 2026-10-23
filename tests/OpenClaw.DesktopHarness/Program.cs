@@ -10,6 +10,26 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Mxc;
 using Microsoft.Mxc.Sdk.V1;
 
+if (args.Length == 3 && args[0] == "--caller-preflight")
+{
+    var library = Path.GetFullPath(args[1]);
+    var module = NativeLibrary.Load(library);
+    try
+    {
+        File.WriteAllText(Path.GetFullPath(args[2]), JsonSerializer.Serialize(new
+        {
+            completed = true,
+            sourceVersion = FileVersionInfo.GetVersionInfo(typeof(DesktopContext).Assembly.Location).ProductVersion,
+            nativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(library))),
+            sdkSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(typeof(MxcContainer).Assembly.Location))),
+            inputDesktop = DesktopContext.InputDesktopName(),
+            context = DesktopContext.Capture()
+        }));
+    }
+    finally { NativeLibrary.Free(module); }
+    return;
+}
+
 if (args.Length < 3)
     throw new ArgumentException("Output directory, exact SDK native library and payload kind are required.");
 var output = Path.GetFullPath(args[0]);
@@ -34,7 +54,8 @@ string[] argv = args[2] switch
     "builtin" => [Path.Combine(Environment.SystemDirectory, "cmd.exe"), "/d", "/s", "/c", "exit 0"],
     "native-probe" when args.Length == 4 => [nativeProbe,
         "--current-sddl", JsonSerializer.SerializeToElement(context.currentDesktopSecurity).GetProperty("sddl").GetString()!,
-        "--default-sddl", JsonSerializer.SerializeToElement(context.defaultDesktopSecurity).GetProperty("sddl").GetString()!],
+        "--default-sddl", JsonSerializer.SerializeToElement(context.defaultDesktopSecurity).GetProperty("sddl").GetString()!,
+        "--station-sddl", JsonSerializer.SerializeToElement(context.stationSecurity).GetProperty("sddl").GetString()!],
     _ => throw new ArgumentException("Unknown payload.")
 };
 var logger = new ProbeLogger(output);
@@ -135,6 +156,15 @@ record DesktopContext(int processId, int sessionId, uint threadId, string? userS
     string? startupDesktop, string desktop, string station, uint win32kMitigationFlags,
     object currentDesktopSecurity, object defaultDesktopSecurity, object stationSecurity)
 {
+    internal static string InputDesktopName()
+    {
+        var desktop = Native.OpenInputDesktop(0, false, 1);
+        if (desktop == IntPtr.Zero)
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        try { return Name(desktop); }
+        finally { Native.CloseDesktop(desktop); }
+    }
+
     internal static DesktopContext Capture()
     {
         var current = Native.GetThreadDesktop(Native.GetCurrentThreadId());
@@ -213,6 +243,8 @@ static class Native
     internal static extern bool GetUserObjectHeapInformation(IntPtr handle, int index, out uint value, uint size, out uint needed);
     [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
     internal static extern IntPtr OpenDesktopW(string name, uint flags, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint access);
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern IntPtr OpenInputDesktop(uint flags, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint access);
     [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)]
     internal static extern bool CloseDesktop(IntPtr handle);
     [DllImport("user32.dll", SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)]

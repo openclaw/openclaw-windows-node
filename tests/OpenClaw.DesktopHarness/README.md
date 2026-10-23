@@ -1,5 +1,36 @@
 # Private-desktop MXC regression
 
+## SDK initialization access evidence
+
+On an explicitly authorized guest, the native probe records token owner,
+groups (including deny-only attributes), restricted SIDs, capabilities,
+mandatory policy and default DACL before dynamically loading USER32. Named
+caller-supplied current/default desktop and station descriptors have separate
+per-right `AccessCheck` results. API failure is recorded separately from access
+denial. These DACL checks do not establish mandatory-integrity access or prove
+which object the SDK assigned.
+
+After successful USER32 loading, the probe records the actual assigned station
+and desktop names and security descriptors. A failed load leaves that binding
+explicitly unknown. Do not treat the supplied caller descriptor as the failed
+SDK object's descriptor, or infer permission from Low/AppContainer status alone.
+Capture both unchanged NULL-security and explicit-security variants before
+changing any task-owned creation code. Their original success assertions remain
+required.
+
+The probe's `--test-descriptor-arguments` mode runs five argument-parser checks
+and exits before token, desktop or USER32 queries. Its `--token-only` mode is
+guest-only and exits before USER32 loading, while still collecting live token
+evidence. The executable must not statically import USER32.
+
+The harness's guest-only `--caller-preflight <native-library> <receipt>` mode
+loads and frees the exact supplied native library and records source version,
+SDK/native hashes and caller desktop context. Configure and verify the medium
+caller's actual .NET root, executable and version before this apphost preflight.
+An elevated recorder must validate the still-live original medium caller and
+its creation identity before starting the one authorized startup trace. A
+preflight receipt alone is not startup, SDK success or containment proof.
+
 ## Fresh-guest observer diagnostics
 
 `Observation` owns the passive quiet-lane proof observer, promoted from the
