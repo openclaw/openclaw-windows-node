@@ -535,6 +535,69 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RealClient_ModelCatalogPublishesConfiguredThenFullReadinessWithoutHidingUnavailableRows(
+        bool legacyConfigurationFlags)
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateModelCatalogReadiness(legacyConfigurationFlags), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var snapshots = new System.Collections.Concurrent.ConcurrentQueue<ModelsListInfo>();
+        connected.Client.ModelsListUpdated += (_, models) => snapshots.Enqueue(models);
+
+        await connected.Client.RequestModelsListAsync().WaitAsync(Deadline);
+
+        Assert.Collection(snapshots,
+            configured =>
+            {
+                var current = Assert.Single(configured.Models);
+                Assert.Equal("browse", current.Id);
+                Assert.Equal(legacyConfigurationFlags, current.HasConfiguredFlag);
+                Assert.False(current.IsConfigured);
+                Assert.False(current.IsAvailable);
+                Assert.False(current.ManualSelectionAllowed);
+            },
+            merged =>
+            {
+                Assert.Collection(merged.Models,
+                    current =>
+                    {
+                        Assert.Equal("browse", current.Id);
+                        Assert.Equal(!legacyConfigurationFlags, current.IsConfigured);
+                        Assert.True(current.HasConfiguredFlag);
+                        Assert.False(current.IsAvailable);
+                        Assert.False(current.ManualSelectionAllowed);
+                    },
+                    offline =>
+                    {
+                        Assert.Equal("offline", offline.Id);
+                        Assert.Equal("fixture", offline.Provider);
+                        Assert.Equal(32_000, offline.ContextWindow);
+                        Assert.False(offline.IsConfigured);
+                        Assert.True(offline.HasConfiguredFlag);
+                        Assert.False(offline.IsAvailable);
+                        Assert.False(offline.ManualSelectionAllowed);
+                    });
+            });
+        Assert.Collection(server.Requests.Where(request => request.Method == "models.list"),
+            request =>
+            {
+                Assert.Null(request.SessionKey);
+                Assert.Equal("configured", request.ModelCatalogView);
+                Assert.Equal("ok", request.Outcome);
+            },
+            request =>
+            {
+                Assert.Null(request.SessionKey);
+                Assert.Equal("all", request.ModelCatalogView);
+                Assert.Equal("ok", request.Outcome);
+            });
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Theory]
     [InlineData("chat.history", """{"sessionKey":"not-a-fixture-session"}""", "Unknown fixture session key")]
     [InlineData("chat.history", """{"sessionKey":"agent:main:main","limit":0}""", "positive integer")]
     [InlineData("chat.history", """{"sessionKey":42}""", "nonempty string")]
