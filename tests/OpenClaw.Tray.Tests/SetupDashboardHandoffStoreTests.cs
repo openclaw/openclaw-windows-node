@@ -258,6 +258,7 @@ public sealed class SetupDashboardHandoffStoreTests
 
     [Theory]
     [InlineData("missing")]
+    [InlineData("missing-expiry")]
     [InlineData("shifted")]
     [InlineData("extended")]
     [InlineData("previous-budget")]
@@ -274,12 +275,13 @@ public sealed class SetupDashboardHandoffStoreTests
         var altered = change switch
         {
             "missing" => pending with { ExecutionStartedUtc = null, ExecutionExpiresUtc = null },
+            "missing-expiry" => pending with { ExecutionExpiresUtc = null },
             "shifted" => pending with
             {
                 ExecutionStartedUtc = pending.IssuedUtc.AddSeconds(1),
                 ExecutionExpiresUtc = pending.IssuedUtc.AddSeconds(1621)
             },
-            "extended" => pending with { ExecutionExpiresUtc = pending.IssuedUtc.AddSeconds(1621) },
+            "extended" => pending with { ExecutionExpiresUtc = pending.IssuedUtc.AddSeconds(8461) },
             "previous-budget" => pending with { ExecutionExpiresUtc = pending.IssuedUtc.AddSeconds(810) },
             "ready" => pending with { State = "ready" },
             "legacy-restarting" => pending with { Kind = "preparation-v1" },
@@ -325,6 +327,39 @@ public sealed class SetupDashboardHandoffStoreTests
         var handle = store.IssuePreparation(new(Receipt, Receipt.SessionKey!));
         clock.Now -= TimeSpan.FromSeconds(1);
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+    }
+
+    [Theory]
+    [InlineData(1620)]
+    [InlineData(2460)]
+    [InlineData(8460)]
+    public void PreparationFromAnotherStartupOverrideKeepsItsIssuanceDeadline(int seconds)
+    {
+        using var directory = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(directory.Path, clock);
+        var handle = store.IssuePreparation(new(Receipt, Receipt.SessionKey!));
+        var path = Path.Combine(directory.Path, "setup-dashboard-handoff", "pending.json");
+        var record = JsonSerializer.Deserialize<SetupDashboardHandoffStore.PendingRecord>(File.ReadAllText(path))!;
+        var expiry = record.IssuedUtc.AddSeconds(seconds);
+        File.WriteAllText(path, JsonSerializer.Serialize(record with { ExecutionExpiresUtc = expiry }));
+
+        clock.Advance(TimeSpan.FromMinutes(6));
+        using (var lease = new SetupDashboardHandoffStore(directory.Path, clock).Acquire(handle).Lease)
+        {
+            Assert.NotNull(lease);
+            Assert.Equal(expiry - clock.GetUtcNow(), lease.RemainingLifetime);
+            lease.RetainForExplicitRetry();
+        }
+        clock.Advance(TimeSpan.FromMinutes(1));
+        using (var retry = store.Acquire(handle, explicitRetry: true).Lease)
+        {
+            Assert.NotNull(retry);
+            Assert.Equal(expiry - clock.GetUtcNow(), retry.RemainingLifetime);
+            retry.RetainForExplicitRetry();
+        }
+        clock.Advance(expiry - clock.GetUtcNow());
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
     }
 
     [Fact]
@@ -433,10 +468,10 @@ public sealed class SetupDashboardHandoffStoreTests
     }
 
     [Theory]
-    [InlineData(null)]
-    [InlineData(1)]
-    [InlineData(-1)]
-    public void MissingOrAlteredExecutionDeadlineCannotAcquireNewTime(int? adjustment)
+    [InlineData("missing")]
+    [InlineData("belowMinimum")]
+    [InlineData("aboveMaximum")]
+    public void MissingOrOutOfRangeExecutionWindowCannotAcquireNewTime(string window)
     {
         using var directory = new TempDirectory();
         var clock = new ManualTimeProvider();
@@ -446,12 +481,55 @@ public sealed class SetupDashboardHandoffStoreTests
             lease.RetainForExplicitRetry();
         var path = Path.Combine(directory.Path, "setup-dashboard-handoff", "pending.json");
         var record = JsonSerializer.Deserialize<SetupDashboardHandoffStore.PendingRecord>(File.ReadAllText(path))!;
+        var started = record.ExecutionStartedUtc!.Value;
         record = record with
         {
-            ExecutionExpiresUtc = adjustment is { } seconds ? record.ExecutionExpiresUtc!.Value.AddSeconds(seconds) : null
+            ExecutionExpiresUtc = window switch
+            {
+                "missing" => null,
+                "belowMinimum" => started.AddSeconds(809),
+                _ => started + SetupNativeCompletionTiming.MaximumExecution + TimeSpan.FromSeconds(1)
+            }
         };
         File.WriteAllText(path, JsonSerializer.Serialize(record));
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(180)]
+    [InlineData(600)]
+    [InlineData(3600)]
+    public void PersistedRetryFromAnotherStartupOverrideKeepsItsOriginalDeadline(int startupSeconds)
+    {
+        using var directory = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(directory.Path, clock);
+        var handle = store.Issue(Choice);
+        using (var lease = store.Acquire(handle).Lease!)
+            lease.RetainForExplicitRetry();
+        // Rewrite the window as a process running with that OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT would persist it.
+        var path = Path.Combine(directory.Path, "setup-dashboard-handoff", "pending.json");
+        var record = JsonSerializer.Deserialize<SetupDashboardHandoffStore.PendingRecord>(File.ReadAllText(path))!;
+        var window = SetupNativeCompletionTiming.ExecutionFor(
+            SetupNativeCompletionTiming.ConnectionFor(TimeSpan.FromSeconds(startupSeconds)));
+        File.WriteAllText(path, JsonSerializer.Serialize(
+            record with { ExecutionExpiresUtc = record.ExecutionStartedUtc!.Value + window }));
+
+        clock.Advance(TimeSpan.FromMinutes(6));
+        var restarted = new SetupDashboardHandoffStore(directory.Path, clock);
+        Assert.Equal(SetupHandoffAcquisitionStatus.RetryRequired, restarted.Acquire(handle).Status);
+        var acquisition = restarted.Acquire(handle, explicitRetry: true);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Acquired, acquisition.Status);
+        using (var retry = acquisition.Lease!)
+        {
+            Assert.Equal(window - TimeSpan.FromMinutes(6), retry.RemainingLifetime);
+            retry.RetainForExplicitRetry();
+        }
+
+        clock.Advance(window - TimeSpan.FromMinutes(6));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid,
+            new SetupDashboardHandoffStore(directory.Path, clock).Acquire(handle, explicitRetry: true).Status);
     }
 
     [Theory]

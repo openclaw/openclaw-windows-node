@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.Shared;
 using OpenClaw.Connection;
+using OpenClaw.Connection.LocalAi;
 using OpenClawTray.Helpers;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -88,6 +89,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private LocalAiOnboardingObservation? _localObservation;
     private bool _localActionBusy;
     private LocalAiOnboardingUse? _localUse;
+    private LocalAiFailureDetail? _localAiFailure;
+    private int _localAiFailureVersion;
     private string? _localExpectedModel => _localUse?.Expected?.ModelRef;
     private string? ExpectedGatewayId => _localUse?.Expected?.GatewayId ?? _args?.ExpectedGatewayId;
     private readonly ProviderArtworkSession _artworkSession = new();
@@ -98,6 +101,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         InitializeComponent();
         TitleText.Text = S("Title.Text");
         CloseBlockedSetupButton.Content = SetupLocalization.GetString("Onboarding_Ready_Close");
+        OpenLocalAiLogsButton.Content = S("OpenLocalAiLogs");
         CandidatesHeading.Text = SetupLocalization.GetString("Onboarding_V4_DetectedAi.Text");
         RecommendedHeading.Text = S("Recommended");
         RecommendedDetail.Text = S("RecommendedDetail");
@@ -424,11 +428,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 await _localObservation!.RefreshAsync(CreateLocalProgress(ct));
                 TitleText.Text = S("Title.Text");
                 await DetectAsync(ct);
-                if (ex is LocalAiStartFailedException)
-                {
-                    ErrorBar.Message = S("LocalStartFailed") + " " + ex.Message;
-                    ErrorBar.IsOpen = true;
-                }
+                if (ex is LocalAiStartFailedException startFailed)
+                    ShowLocalAiStartFailure(startFailed);
                 else
                     ShowError("LocalChanged");
                 return;
@@ -497,6 +498,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 _nativeConsoleIssue = issue;
                 var message = SetupLocalization.GetString(issue == GatewayLogTailIssue.Skipped
                     ? "Onboarding_Wizard_GatewayConsoleGap" : "Onboarding_Wizard_GatewayConsoleUnavailable");
+                ClearLocalAiFailure();
                 if (BackdropLocked) _providerError = message;
                 else
                 {
@@ -734,10 +736,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                         if (_closed) return;
                         await _localObservation.RefreshAsync();
                         if (!_closed)
-                        {
-                            ErrorBar.Message = S("LocalStartFailed") + " " + ex.Message;
-                            ErrorBar.IsOpen = true;
-                        }
+                            ShowLocalAiStartFailure(ex);
                         return;
                     }
                     finally { ++_progressScope; }
@@ -982,6 +981,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         _activityStatus = SetupInstallationStatus.Running;
         // Uncertain is also used for recovery. Retain a prompt only for its own answer request.
         _submittingAnswer = submittingAnswer;
+        ClearLocalAiFailure();
         if (BackdropLocked) _providerError = null;
         else ErrorBar.IsOpen = false;
         Render();
@@ -1169,6 +1169,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 LocalAiCard.IsClickEnabled = false;
                 LocalAiCard.IsEnabled = false;
             }
+            LocalAiFailurePanel.Visibility = Visible(!freezeBackdrop && ErrorBar.IsOpen && _localAiFailure is not null);
             var backgroundEnabled = !_busy && !_localActionBusy && !BackdropLocked && !ManagerRecoveryBlocked;
             CandidateChoices.IsEnabled = PrepareChoices.IsEnabled = FeaturedSignInChoices.IsEnabled =
                 MoreSignInChoices.IsEnabled = ApiProviderPicker.IsEnabled = ApiKeyInput.IsEnabled =
@@ -1360,6 +1361,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private static Visibility Visible(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
     private void ShowError(string key, string? detail = null)
     {
+        ClearLocalAiFailure();
         var message = S(key);
         detail ??= key is "VerificationFailed" or "Rejected"
             ? Client?.VerificationFailure ?? Client?.Wizard?.Error : null;
@@ -1375,8 +1377,55 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             ErrorBar.Message = message;
             ErrorBar.IsOpen = true;
         }
+        if (key is "VerificationFailed" or "Rejected" && _localUse?.Expected is not null)
+            CaptureLocalAiFailure();
         Render();
     }
+
+    private void ClearLocalAiFailure()
+    {
+        _localAiFailure = null;
+        ++_localAiFailureVersion;
+    }
+
+    /// <summary>
+    /// llama-server reports model-load causes only in its own logs; the Gateway's verification
+    /// error does not carry them. Reads the bounded log tail off the request path and shows it
+    /// with a link to the folder, mirroring CompletePage.ShowServerDiagnostics.
+    /// </summary>
+    private void CaptureLocalAiFailure()
+    {
+        if (_args is null) return;
+        var version = ++_localAiFailureVersion;
+        var paths = new LocalAiPaths(_args.LocalDataDir);
+        AsyncEventHandlerGuard.Run(async () =>
+        {
+            var diagnostics = await LocalAiLogTail.ReadDiagnosticLinesAsync(paths, CancellationToken.None);
+            if (_closed || version != _localAiFailureVersion) return;
+            var directory = LogFileLauncher.ResolveRealPath(paths.LogsDirectory);
+            var hasDirectory = Directory.Exists(directory);
+            if (diagnostics.Count == 0 && !hasDirectory) return;
+            _localAiFailure = new LocalAiFailureDetail(diagnostics, hasDirectory ? directory : "");
+            LocalAiDiagnosticsText.Text = string.Join(Environment.NewLine,
+                diagnostics.Select(line => $"llama-server: {line}"));
+            LocalAiDiagnosticsText.Visibility = Visible(diagnostics.Count > 0);
+            OpenLocalAiLogsButton.Visibility = Visible(hasDirectory);
+            ToolTipService.SetToolTip(OpenLocalAiLogsButton, hasDirectory ? directory : null);
+            Render();
+        }, onError: ex => Trace.TraceWarning("Local AI diagnostics could not be read ({0}).", ex.GetType().Name));
+    }
+
+    private void ShowLocalAiStartFailure(LocalAiStartFailedException error)
+    {
+        ClearLocalAiFailure();
+        ErrorBar.Message = S("LocalStartFailed") + " " + error.Message;
+        ErrorBar.IsOpen = true;
+        CaptureLocalAiFailure();
+    }
+
+    private void OpenLocalAiLogs_Click(object sender, RoutedEventArgs e) =>
+        LogFileLauncher.RevealInExplorer(_localAiFailure?.LogDirectory);
+
     private void ReportFailure(Exception error)
     {
         Trace.TraceWarning("AI setup request failed ({0}).", error.GetType().Name);

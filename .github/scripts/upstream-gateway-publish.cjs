@@ -1,11 +1,13 @@
 "use strict";
 
 const { verifyInvestigation, hash } = require("./upstream-gateway-protocol.cjs");
+const { readWelcomeContent } = require("./welcome-content.cjs");
 
 const LABEL = "upstream-gateway-protocol";
 const MARKER = "<!-- upstream-gateway-protocol:v1:";
 // GitHub returns the Coding Agent as Copilot, not its request-login spelling.
 const COPILOT_USER_ID = 198982749;
+const GITHUB_ACTIONS_BOT_ID = 41898282;
 const TRACKER_NUMBER = 1829;
 const TRACKER = "<!-- upstream-gateway-tracker:v1 -->";
 const BEGIN = "<!-- upstream-gateway-owned:begin -->";
@@ -350,6 +352,65 @@ async function handoff({ github, copilot, context, report, core, issueNumber, no
   core.info("Investigation task " + task.id + " recorded on #1829; no automatic PR requested.");
   return { state: task.state, taskId: task.id };
 }
+async function notifyWelcomeChange({ github, context, reportOnly = true }) {
+  if (context.repo.owner !== "openclaw" || context.repo.repo !== "openclaw-windows-node"
+    || !["schedule", "workflow_dispatch", "repository_dispatch"].includes(context.eventName)
+    || context.ref !== "refs/heads/" + context.payload.repository.default_branch
+    || (context.eventName === "repository_dispatch" && context.payload.action !== "gateway-protocol-published")
+    || typeof reportOnly !== "boolean") fail("Invalid welcome observation context");
+  reportOnly ||= [true, "true"].includes(context.payload.inputs?.report_only);
+  await getTracker(github, context.repo);
+  const comments = await boundedList(github, "GET /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+    ...context.repo, issue_number: TRACKER_NUMBER,
+  });
+  const prefix = "<!-- upstream-welcome-copy:v1:";
+  const markers = comments.filter((comment) => comment.user?.id === GITHUB_ACTIONS_BOT_ID
+    && comment.body?.startsWith(prefix)).map((comment) => {
+    const match = comment.body.match(/^<!-- upstream-welcome-copy:v1:([a-f0-9]{40}):([a-f0-9]{64}) -->\n/);
+    if (!match) fail("Welcome baseline marker is damaged; restore its bot-owned comment");
+    return { commit: match[1], fingerprint: match[2] };
+  });
+  const previous = markers.at(-1);
+  const { data: head } = await github.request("GET /repos/{owner}/{repo}/commits/main", {
+    owner: "openclaw", repo: "openclaw",
+  });
+  const current = await readWelcomeContent(github, head.sha);
+  const result = { trackerNumber: TRACKER_NUMBER, sourceCommit: current.commit,
+    fingerprint: current.fingerprint, previousCommit: previous?.commit ?? null, changedKeys: [] };
+  if (previous?.fingerprint === current.fingerprint) return { ...result, action: "unchanged" };
+  if (previous) {
+    const before = await readWelcomeContent(github, previous.commit);
+    if (before.fingerprint !== previous.fingerprint) fail("Welcome baseline no longer matches its immutable source");
+    result.changedKeys = [...new Set([...Object.keys(before.values), ...Object.keys(current.values)])].sort()
+      .filter((key) => before.values[key] !== current.values[key]);
+  }
+  if (reportOnly) return { ...result, action: previous ? "would-notify" : "baseline-needed" };
+  const identity = prefix + current.commit + ":" + current.fingerprint + " -->";
+  const body = identity + "\n## " + (previous ? "Bundled welcome copy needs review" : "Welcome-copy monitoring baseline")
+    + "\n\n" + (previous
+      ? "Upstream welcome text changed for these locale/key pairs:\n\n"
+        + result.changedKeys.map((key) => "- `" + key + "`").join("\n")
+        + "\n\n[Immutable upstream comparison](https://github.com/openclaw/openclaw/compare/"
+        + previous.commit + "..." + current.commit + ")\n\n"
+        + "Review `Chat_ZeroState_WelcomeSubtitle`, `Chat_ZeroState_RecentChats`, and `Chat_Welcome_*` in "
+        + "`src/OpenClaw.Tray.WinUI/Strings/*/Resources.resw`. Update all six languages in one focused Windows PR, "
+        + "link existing coverage, or explain why no copy update is needed."
+      : "The first enabled observation records a baseline, not a claim that Windows wording already matches upstream.")
+    + "\n\n[Upstream source](https://github.com/openclaw/openclaw/tree/" + current.commit + "/ui/src/i18n)"
+    + "\n\nThis is upstream-main presentation copy, not released Gateway compatibility evidence. "
+    + "Keep welcome text bundled; do not add a Gateway RPC. This notice does not start an agent or change the app."
+    + "\n\n[Monitor run](https://github.com/openclaw/openclaw-windows-node/actions/runs/" + context.runId + ")";
+  if (body.length > 60000) fail("Welcome notice exceeds the comment size budget");
+  // Workflow concurrency serializes this writer. After an uncertain POST, the
+  // next run reads bot-owned comments before deciding whether another is needed.
+  await getTracker(github, context.repo);
+  await github.request("POST /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+    ...context.repo, issue_number: TRACKER_NUMBER, body,
+  });
+  return { ...result, action: previous ? "notified" : "baseline-recorded" };
+}
+
+
 async function publishFailure({ github, context }) {
   const tracker = await getTracker(github, context.repo), state = readState(tracker);
   state.health = Number(context.runId);
@@ -357,4 +418,4 @@ async function publishFailure({ github, context }) {
   return TRACKER_NUMBER;
 }
 
-module.exports = { publish, handoff, findBaseline, publishFailure, notificationReadiness, marker, LABEL, INSTRUCTIONS };
+module.exports = { publish, handoff, findBaseline, publishFailure, notificationReadiness, notifyWelcomeChange, marker, LABEL, INSTRUCTIONS };

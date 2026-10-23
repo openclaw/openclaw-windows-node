@@ -568,6 +568,32 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void SavedDashboard_InvalidUrl_UsesLocalizedCopy()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs"));
+        var method = ExtractMethod(source, "OnSavedRowOpenDashboardAsync");
+
+        AssertInOrder(method,
+            "GatewayDashboardUrlBuilder.TryBuild(",
+            "out _))",
+            "CurrentApp.ShowTransientConnectionError(",
+            "LocalizationHelper.GetString(\"ConnectionPage_SavedDashboardInvalidAddress\")",
+            "return;",
+            "Launcher.LaunchUriAsync(");
+        Assert.DoesNotContain("urlError", method);
+
+        var resources = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw"));
+        Assert.Contains(
+            "This saved gateway address cannot open the dashboard. Edit the saved gateway and use an http, https, ws, or wss address.",
+            resources,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SshTunnelExit_RecoversActiveRegistryGatewayThroughConnectionManager()
     {
         var source = ReadAppSources();

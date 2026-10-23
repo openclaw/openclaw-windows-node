@@ -5,7 +5,8 @@ namespace OpenClaw.SetupEngine.UI;
 
 internal sealed class NativeGatewaySetupHost(
     Action<string>? progress = null,
-    Action<NativeGatewaySetupStage>? stageProgress = null) : INativeGatewaySetupHost
+    Action<NativeGatewaySetupStage>? stageProgress = null,
+    SetupLogger? log = null) : INativeGatewaySetupHost
 {
     // Includes packaged Node/CLI startup, not just the Gateway RPC timeout.
     private static readonly TimeSpan PairingCommandTimeout = TimeSpan.FromMinutes(2);
@@ -26,6 +27,11 @@ internal sealed class NativeGatewaySetupHost(
                 System.Text.Json.JsonSerializer.Serialize(commandIds), "--strict-json"],
             new Dictionary<string, string>(), TimeSpan.FromMinutes(2),
             "Applying Windows node capabilities inside the isolated Gateway...", cancellationToken);
+
+    /// <summary>Runs the package's redacted <c>clawctl collect-logs</c> for setup recovery.</summary>
+    public Task<NativeGatewayDiagnosticsBundle> CollectDiagnosticsAsync(
+        NativeGatewayPackage package, CancellationToken cancellationToken) =>
+        _packageClient.CollectLogsAsync(package, cancellationToken);
 
     public void ReportProgress(NativeGatewaySetupStage stage)
     {
@@ -140,7 +146,8 @@ internal sealed class NativeGatewaySetupHost(
         TimeSpan timeout, string message, CancellationToken cancellationToken)
     {
         progress?.Invoke(message);
-        using var logger = new SetupLogger(filePath: null);
+        using var owned = log is null ? new SetupLogger(filePath: null) : null;
+        var logger = log ?? owned!;
         var result = await new CommandRunner(logger).RunAsync(
             executable, arguments, timeout, environment,
             workingDirectory: environment.TryGetValue("OPENCLAW_STATE_DIR", out var directory)

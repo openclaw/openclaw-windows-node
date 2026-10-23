@@ -6,8 +6,11 @@ namespace OpenClaw.Connection;
 /// <summary>Native records never use the WSL or remote endpoint credential exemptions.</summary>
 internal static class NativeGatewayEndpointSecurity
 {
-    internal static readonly TimeSpan CredentialHandoffTimeout =
-        IsolatedGatewayRuntime.StartupTimeout + IsolatedGatewayRuntime.StartupConfirmationTimeout + TimeSpan.FromSeconds(20);
+    internal static readonly TimeSpan CredentialHandoffTimeout = CredentialHandoffTimeoutFor(IsolatedGatewayRuntime.StartupTimeout);
+
+    internal static TimeSpan CredentialHandoffTimeoutFor(TimeSpan startupTimeout) =>
+        startupTimeout + IsolatedGatewayRuntime.StartupConfirmationTimeout + TimeSpan.FromSeconds(20);
+
     internal static async Task<EndpointCredentialAuthorization> AuthorizeAsync(
         INativeGatewayRuntime? runtime,
         GatewayRecord record,

@@ -118,14 +118,14 @@ internal sealed class SetupDashboardHandoffStore
             var startsAtIssue = pending.Kind == PreparationKind;
             if ((startsAtIssue &&
                  (executionStarted != pending.IssuedUtc ||
-                  executionExpires - pending.IssuedUtc != SetupNativeCompletionTiming.Execution ||
+                  executionExpires is not { } preparationExpiry ||
+                  !IsAdmissibleExecutionWindow(preparationExpiry - pending.IssuedUtc, preparation: true) ||
                   pending.State == "ready")) ||
                 (pending.State == RestartingState && !startsAtIssue) ||
                 (executionStarted is null) != (executionExpires is null) ||
                 (executionStarted is { } started &&
                 (started < pending.IssuedUtc || started >= pending.ExpiresUtc || now < started ||
-                 executionExpires - started != SetupNativeCompletionTiming.Execution &&
-                 executionExpires - started != PreviousExecution)) ||
+                 !IsAdmissibleExecutionWindow(executionExpires!.Value - started))) ||
                 (pending.State == "ready" && executionStarted is not null) ||
                 (pending.State is "retry" or "inflight" && executionStarted is null))
                 return new(SetupHandoffAcquisitionStatus.Invalid);
@@ -199,6 +199,12 @@ internal sealed class SetupDashboardHandoffStore
             SetupNativePreparation.Matches(pending.Completion, pending.PreparationSession),
         _ => false,
     };
+
+    // Each process persists its own Execution window, which follows its OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT.
+    // Accept any window a supported override can produce so a restart keeps, never renews, the stored deadline.
+    private static bool IsAdmissibleExecutionWindow(TimeSpan window, bool preparation = false) =>
+        window >= (preparation ? SetupNativeCompletionTiming.MinimumExecution : PreviousExecution) &&
+        window <= SetupNativeCompletionTiming.MaximumExecution;
 
     private static bool IsValidCompletion(GatewayAiSetupCompletion? value) =>
         value is { VerifiedGeneration: > 0, ModelTarget: null } &&

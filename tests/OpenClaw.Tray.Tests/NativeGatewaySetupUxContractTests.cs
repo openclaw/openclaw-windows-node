@@ -197,7 +197,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.True(source.IndexOf("GatewayAiPreparation.PrepareNativeAsync", StringComparison.Ordinal) <
             source.IndexOf("NavigateToNativeAiSetup(session, prepared)", StringComparison.Ordinal));
         Assert.DoesNotContain("NavigateToNativeWizard", source);
-        Assert.Contains("new NativeGatewaySetupHost(ReportProgress, ReportStage)", source);
+        Assert.Contains("new NativeGatewaySetupHost(ReportProgress, ReportStage, log)", source);
         Assert.Contains("void ReportProgress(string message)", source);
         Assert.Contains("SetupLoadingView.DetailFor(step)", source);
         Assert.Contains("GatewayAiPreparation.PrepareNativeAsync(session, cancellationToken, progress)", source);

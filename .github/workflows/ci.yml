@@ -147,6 +147,9 @@ jobs:
     - name: Test repository triage automation and dashboard
       run: node --test .github/scripts/repository-triage.test.cjs .github/extensions/openclaw-triage-dashboard/triage-state.test.mjs
 
+    - name: Test upstream welcome copy monitoring
+      run: node --test .github/scripts/welcome-content-notification.test.cjs
+
     - name: Validate documentation
       shell: pwsh
       run: ./scripts/validate-docs.ps1

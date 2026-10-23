@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       report_only:
-        description: Collect live upstream evidence without updating the tracker or starting Copilot tasks
+        description: Collect live upstream evidence without updating the tracker or comments or starting Copilot tasks
         type: boolean
         default: true
 
@@ -91,8 +91,8 @@ jobs:
           retention-days: 90
 
   observation-failure:
-    needs: [observe, publish, implement]
-    if: ${{ always() && vars.UPSTREAM_GATEWAY_MONITOR_ENABLED == 'true' && (needs.observe.result == 'failure' || needs.publish.result == 'failure' || needs.implement.result == 'failure') && (github.event_name == 'schedule' || !inputs.report_only) }}
+    needs: [observe, publish, implement, welcome-copy]
+    if: ${{ always() && vars.UPSTREAM_GATEWAY_MONITOR_ENABLED == 'true' && (needs.observe.result == 'failure' || needs.publish.result == 'failure' || needs.implement.result == 'failure' || needs.welcome-copy.result == 'failure') && (github.event_name == 'schedule' || !inputs.report_only) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -192,3 +192,38 @@ jobs:
             const { publish } = require("./.github/scripts/upstream-gateway-publish.cjs");
             const report = JSON.parse(require("node:fs").readFileSync(process.env.REPORT, "utf8"));
             await publish({ github, context, core, report, createWork: false });
+
+  welcome-copy:
+    if: ${{ github.repository == 'openclaw/openclaw-windows-node' && github.ref_name == github.event.repository.default_branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Test welcome monitoring without network or writes
+        run: node --test .github/scripts/welcome-content-notification.test.cjs
+      - name: Compare welcome content and notify the permanent tracker
+        uses: actions/github-script@v9
+        env:
+          REPORT_ONLY: ${{ vars.UPSTREAM_GATEWAY_MONITOR_ENABLED != 'true' || (github.event_name == 'workflow_dispatch' && inputs.report_only) }}
+          REPORT_DIR: ${{ runner.temp }}/welcome-content
+        with:
+          retries: 0
+          script: |
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const { notifyWelcomeChange } = require("./.github/scripts/upstream-gateway-publish.cjs");
+            const result = await notifyWelcomeChange({ github, context, reportOnly: process.env.REPORT_ONLY !== "false" });
+            fs.mkdirSync(process.env.REPORT_DIR, { recursive: true });
+            fs.writeFileSync(path.join(process.env.REPORT_DIR, "report.json"), JSON.stringify(result, null, 2) + "\n");
+            await core.summary.addRaw(`Welcome copy: ${result.action}. Tracker #${result.trackerNumber}; ${result.changedKeys.length} changed locale/key pairs. No agent task or runtime copy change.`).write();
+      - uses: actions/upload-artifact@v7
+        with:
+          name: upstream-welcome-content-report
+          path: ${{ runner.temp }}/welcome-content
+          if-no-files-found: error
+          retention-days: 90

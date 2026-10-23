@@ -23,13 +23,17 @@ separate and does not claim or restore Companion management.
 
 After setup restarts Companion, destination handoff waits for native connection
 startup and any already-admitted Local AI recovery before fresh model verification.
-New preparation receipts start one 27-minute execution window when issued,
+New preparation receipts start one execution window when issued, 27 minutes at
+the default startup budget and longer with `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`,
 before restarting Companion. This includes old-process Local AI teardown, whose
 guarded WSL Gateway restart may exceed five minutes. First acquisition and retry
 retain that original deadline; neither can renew it. Destination receipts and
 older `preparation-v1` receipts retain five-minute unused admission and start their
 execution window at first exclusive acquisition. Existing 13.5-minute execution
-deadlines from earlier versions also remain unchanged.
+deadlines from earlier versions also remain unchanged. A restart with a different
+startup override retains the stored deadline within supported bounds: 27 to 141
+minutes for new preparations, and 13.5 to 141 minutes for destination and legacy
+receipts.
 A failed attempt remains available for explicit Retry,
 but automatic reactivation does not show the same failure dialog again. Successful
 runtime checks alone do not prove that a full, potentially longer chat turn has finished.
@@ -463,6 +467,23 @@ If a listener appears between a pending status and the host snapshot, one immedi
 status recheck may admit only a fresh `running` attestation. The full selected-port,
 listener and process-sequence checks still run; another pending status or failed
 attribution rejects the start.
+The startup budget defaults to three minutes. Set `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`
+to whole seconds (30 to 3600) before starting Companion to change it; the published
+connection phase and credential handoff budgets grow with a longer value.
+
+When native setup fails after the package is installed, the setup page keeps the
+failed step, shows the typed failure (for a startup timeout: the phase, budget and
+last package status) and offers recovery actions:
+
+- **Collect Gateway diagnostics** runs `clawctl collect-logs --json` and reveals the
+  package's redacted diagnostics ZIP.
+- **Open terminal** opens `clawctl pwsh` inside the isolated Gateway.
+- **View setup log** reveals `Logs\Setup\native-setup-<utc>.jsonl` under the Companion
+  data folder. It records setup steps, sanitized package commands and the runtime's
+  startup timeline, and the Debug page diagnostics bundle includes it.
+
+The timeout guidance names the override variable. **Retry setup** reruns the full flow.
+
 The published native connection borrow gets up to 210 seconds for startup,
 authenticated handshake and authorization before exact-model verification.
 Preflight and final inspection also consume that outer budget; the confirmation

@@ -269,3 +269,35 @@ Restore a missing/closed tracker rather than creating a replacement. For uncerta
 or stalled tasks, inspect the recorded task and reconcile manually; do not delete
 reservations to force retries. Unset the activation variable to stop new writes;
 `report_only: true` suppresses writes even while enabled.
+
+### Welcome copy notifications
+
+The same nightly workflow also compares welcome text for English, French, Dutch,
+Brazilian Portuguese, Simplified Chinese, and Traditional Chinese. It reads
+immutable upstream-main catalogs and translation memories without executing
+upstream code. Only `newSession.hint` and `chat.welcome.*` affect this comparison;
+unrelated UI copy and translation-cache metadata stay quiet. Stale or missing
+translations use English fallback, matching the upstream catalog contract.
+
+With `UPSTREAM_GATEWAY_MONITOR_ENABLED=true`, the first observation records one
+baseline comment on the [permanent tracker](https://github.com/openclaw/openclaw-windows-node/issues/1829).
+Later effective text changes post a comment listing the affected locale/key pairs
+and immutable source comparison. Subscribe to the tracker to receive these
+notifications. The initial baseline does not claim that Windows already matches
+upstream. Manual `report_only: true` and a disabled monitor collect a read-only
+comparison without recording or advancing the notification baseline.
+
+Review `Chat_ZeroState_WelcomeSubtitle`, `Chat_ZeroState_RecentChats`, and
+`Chat_Welcome_*` in `src/OpenClaw.Tray.WinUI/Strings/*/Resources.resw`. Update all
+six languages in one focused Windows PR, link existing coverage, or explain why
+no copy update is needed. Welcome text stays bundled with Companion, independent
+of Gateway version. This path requires no new App, upstream sender, Copilot token,
+agent task, or welcome-copy RPC.
+
+Welcome monitoring runs independently of protocol collection and uses the same
+nightly, publication, and manual triggers. Its source hashes and changed keys are
+retained in the `upstream-welcome-content-report` artifact. Source-layout changes,
+unreadable evidence, or damaged baseline comments fail visibly through the existing
+monitor health section on the permanent tracker. After an uncertain comment write,
+inspect tracker history before recovery; the next observation reconciles bot-owned comments and unchanged
+text does not post again. A change reverted between observations is not reported.
