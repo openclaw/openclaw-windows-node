@@ -35,9 +35,10 @@ public sealed class CleanupProofWorkerTests
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
             };
+            start.Environment["PSExecutionPolicyPreference"] = "Restricted";
             foreach (var argument in new[]
             {
-                "-NoProfile", "-NonInteractive", "-File",
+                "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
                 Path.Combine(AppContext.BaseDirectory, "InvokeCleanupProofWorker.ps1"),
                 "-WorkerPath", worker, "-Family", "Fixture_123", "-ReadyName", token + "-ready",
                 "-ReleaseName", token + "-release", "-FinishName", token + "-finish",

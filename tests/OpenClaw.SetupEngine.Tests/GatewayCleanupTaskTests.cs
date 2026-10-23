@@ -128,8 +128,13 @@ public sealed class GatewayCleanupTaskTests
         using var ready = new EventWaitHandle(false, EventResetMode.ManualReset, @"Local\" + token + "-ready");
         using var release = new EventWaitHandle(false, EventResetMode.ManualReset, @"Local\" + token + "-release");
         var worker = temp.Combine("positive.ps1");
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "CleanupPositiveConsoleIdentity.cs"),
+            temp.Combine("CleanupPositiveConsoleIdentity.cs"));
         await File.WriteAllTextAsync(worker, $$"""
             [Console]::Title = '{{token}}'
+            Add-Type -Path (Join-Path $PSScriptRoot 'CleanupPositiveConsoleIdentity.cs')
+            # Grouped taskbar buttons expose the AppUserModelID, not the console title.
+            [CleanupPositiveConsoleIdentity]::SetTaskbarIdentity('{{token}}')
             $ready = [Threading.EventWaitHandle]::OpenExisting('Local\{{token}}-ready')
             $release = [Threading.EventWaitHandle]::OpenExisting('Local\{{token}}-release')
             try {

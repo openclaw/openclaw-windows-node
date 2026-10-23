@@ -3,6 +3,8 @@
   <ItemGroup>
     <Compile Include="..\OpenClaw.Tray.IntegrationTests\IntegrationFactAttribute.cs" Link="IntegrationFactAttribute.cs" />
     <Compile Remove="CleanupVisibilityProbe.cs" />
+    <Compile Remove="CleanupPositiveConsoleIdentity.cs" />
+    <None Include="CleanupPositiveConsoleIdentity.cs" CopyToOutputDirectory="PreserveNewest" />
     <None Include="CleanupVisibilityProbe.cs" CopyToOutputDirectory="PreserveNewest" />
     <None Include="CleanupVisibilityRunState.cs" CopyToOutputDirectory="PreserveNewest" />
     <Compile Remove="CleanupAppLockerCapture.cs" />
