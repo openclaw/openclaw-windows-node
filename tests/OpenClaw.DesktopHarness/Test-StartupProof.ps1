@@ -223,8 +223,12 @@ $Verb=$args[0]
 $global:LASTEXITCODE=0
 switch($Verb) {
     '-help' {
-        'wpr <command> -instancename <instance name>'
-        'Can be applied to any commands that manipulates the logging session'
+        if ($args.Count -gt 1 -and $args[1] -ceq 'advanced') {
+            'wpr <command> -instancename <instance name>'
+            'Can be applied to any commands that manipulates the logging session'
+        } else {
+            '-help advanced - for advanced trace commands'
+        }
     }
     '-profiledetails' { 'Fixture profile parsed without recording' }
     '-status' { 'Windows Performance Recorder is not recording' }

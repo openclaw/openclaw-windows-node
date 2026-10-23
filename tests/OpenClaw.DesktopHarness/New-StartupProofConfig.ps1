@@ -26,8 +26,8 @@ if ($m.pr -ne 1791 -or $m.sdkVersion -cne '1.0.0' -or $m.leaseId -cne $LeaseId -
     throw 'Exact fresh guest, unrecorded installed profile and immutable new configuration required.'
 }
 $private = New-Item -ItemType Directory (Join-Path $ProofRoot 'qualification')
-$advanced = & $Wpr -help 2>&1
-if ($LASTEXITCODE -ne 0) { throw 'Installed WPR global help failed.' }
+$advanced = & $Wpr -help advanced 2>&1
+if ($LASTEXITCODE -ne 0) { throw 'Installed WPR advanced help failed.' }
 $advanced | Set-Content (Join-Path $private 'wpr-help.txt')
 if (($advanced -join "`n") -notmatch 'wpr <command> -instancename <instance name>' -or
     ($advanced -join "`n") -notmatch 'Can be applied to any commands that manipulates the logging session') {

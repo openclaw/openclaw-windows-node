@@ -316,7 +316,8 @@ Before recording:
    generator. Use `New-StartupProofConfig.ps1` with the actual manifest, actor
    SID/session, original qualified caller PATH, profile/receipt, WPR path,
    harness and fresh proof root. It checks installed global named-instance
-   grammar, verb help, nonrecording `-profiledetails` and exact instance absence.
+   grammar using `wpr -help advanced`, verb help, nonrecording `-profiledetails`
+   and exact instance absence.
    It pins the full capsule, wrappers, actual build outputs and input manifest.
 5. Run the complete wrapper with tracing disabled:
 
