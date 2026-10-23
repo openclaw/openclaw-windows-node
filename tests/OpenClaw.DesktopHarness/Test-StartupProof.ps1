@@ -14,6 +14,7 @@ Set-Content $observer 'fixture observer bytes, never loaded'
 Set-Content $dotnet 'fixture SDK bytes, never executed'
 $config = [pscustomobject]@{
     sdkVersion = '1.0.0'; sourceHead = ('a' * 40)
+    leaseId = 'cbx_0123456789ab'
     actorSid = 'S-1-5-21-1-2-3-1000'; actorSession = 1
     dotnet = $dotnet; dotnetVersion = '10.0.402'
     traceStartsFile = Join-Path $root 'trace-starts.json'
