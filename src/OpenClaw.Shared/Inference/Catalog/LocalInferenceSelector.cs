@@ -161,7 +161,7 @@ public static class LocalInferenceSelector
                 : LocalModelCatalog.Find(requestedModelId);
             if (model is null)
                 return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.UnknownModel);
-            runtime = LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, model.RuntimeFamily);
+            runtime = ResolveRuntime(hardware, model.RuntimeFamily);
             if (runtime is null)
                 return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.RuntimeUnavailable);
             if (sparkPick is { } recommended &&
@@ -177,10 +177,13 @@ public static class LocalInferenceSelector
                 profile = recommended.Profile;
                 boundGpuStableId = sparkGpu!.StableId;
             }
+            else if (SelectFittingRuntimeAndProfile(hardware, model, includeRetiredInstalledModel) is { } fitting)
+            {
+                (runtime, profile) = fitting;
+            }
             else
             {
-                profile = SelectBestFittingProfile(hardware, runtime, model, includeRetiredInstalledModel) ??
-                    LocalModelCatalog.GetProfiles(model)[^1];
+                profile = LocalModelCatalog.GetProfiles(model)[^1];
             }
 
             modelSelectionOrigin = LocalInferenceModelSelectionOrigin.Explicit;
@@ -208,21 +211,53 @@ public static class LocalInferenceSelector
                      .OrderByDescending(model => model.RecommendationPriority)
                      .ThenByDescending(LocalModelCatalog.TotalDownloadSizeBytes))
         {
-            LlamaRuntimeVariant? candidateRuntime = LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, candidate.RuntimeFamily);
-            if (candidateRuntime is null)
-                continue;
-            LocalInferenceRunProfile? profile = SelectBestFittingProfile(hardware, candidateRuntime, candidate);
-            if (profile is not null)
-                return (candidateRuntime, candidate, profile);
+            if (SelectFittingRuntimeAndProfile(hardware, candidate) is { } fitting)
+                return (fitting.Runtime, candidate, fitting.Profile);
         }
 
+        // Prefer a model whose runtime some GPU can execute, so a GPU that only one
+        // runtime family can serve (a Volta reaches llama.cpp through CUDA 12, never the
+        // CUDA-13-only Bonsai build) reports its real limit instead of CudaCapabilityTooLow.
         LocalModelInfo fallback = genericDefaultCandidates
-            .Where(model => LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, model.RuntimeFamily) is not null)
-            .OrderBy(LocalModelCatalog.TotalDownloadSizeBytes)
+            .Where(model => ResolveRuntime(hardware, model.RuntimeFamily) is not null)
+            .OrderByDescending(model => CanExecute(hardware, ResolveRuntime(hardware, model.RuntimeFamily)!))
+            .ThenBy(LocalModelCatalog.TotalDownloadSizeBytes)
             .First();
-        return (LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, fallback.RuntimeFamily)!,
+        return (ResolveRuntime(hardware, fallback.RuntimeFamily)!,
             fallback, LocalModelCatalog.GetProfiles(fallback)[^1]);
     }
+
+    // Newest runtime first; the first runtime with a fitting profile wins.
+    private static (LlamaRuntimeVariant Runtime, LocalInferenceRunProfile Profile)? SelectFittingRuntimeAndProfile(
+        HostHardwareInfo hardware,
+        LocalModelInfo model,
+        bool installed = false)
+    {
+        foreach (LlamaRuntimeVariant runtime in LlamaRuntimeCatalog.FindAll(hardware.CpuArchitecture, model.RuntimeFamily))
+        {
+            if (SelectBestFittingProfile(hardware, runtime, model, installed) is { } profile)
+                return (runtime, profile);
+        }
+
+        return null;
+    }
+
+    // Runtime for a plan with no fitting profile: the newest one some NVIDIA GPU can execute,
+    // else the newest one so eligibility reports why (CudaCapabilityTooLow / HardwareFactsIncomplete).
+    private static LlamaRuntimeVariant? ResolveRuntime(HostHardwareInfo hardware, string family)
+    {
+        IReadOnlyList<LlamaRuntimeVariant> candidates = LlamaRuntimeCatalog.FindAll(hardware.CpuArchitecture, family);
+        foreach (LlamaRuntimeVariant runtime in candidates)
+        {
+            if (CanExecute(hardware, runtime))
+                return runtime;
+        }
+
+        return candidates.Count > 0 ? candidates[0] : null;
+    }
+
+    private static bool CanExecute(HostHardwareInfo hardware, LlamaRuntimeVariant runtime) =>
+        hardware.NvidiaGpus.Any(gpu => LocalInferenceQualificationPolicy.HasRuntimePrerequisites(gpu, runtime));
 
     private static LocalInferenceRunProfile? SelectBestFittingProfile(
         HostHardwareInfo hardware,
@@ -257,14 +292,16 @@ internal static class LocalInferenceQualificationPolicy
     public static bool HasCompleteFacts(GpuInfo gpu) =>
         IsStableGpuId(gpu.StableId) &&
         gpu.GpuVisibleMemoryBytes is > 0 &&
-        gpu.CudaMajorVersion is not null;
+        gpu.CudaMajorVersion is not null &&
+        gpu.ComputeCapability is not null;
 
     public static bool HasRuntimePrerequisites(GpuInfo gpu, LlamaRuntimeVariant runtime)
     {
         ArgumentNullException.ThrowIfNull(gpu);
         ArgumentNullException.ThrowIfNull(runtime);
         return HasCompleteFacts(gpu) &&
-            gpu.CudaMajorVersion >= runtime.CudaVersion.Major;
+            gpu.CudaMajorVersion >= runtime.CudaVersion.Major &&
+            runtime.SupportsComputeCapability(gpu.ComputeCapability!);
     }
 
     public static long GetRequiredMemoryBytes(

@@ -13,7 +13,7 @@ public class LocalAiRecipeCacheTests
         LocalModelInfo model = original with { Recipe = recipe };
 
         string preset = LlamaServerRouterConfiguration.BuildPreset(model,
-            LocalModelCatalog.GetProfiles(original)[0], @"C:\verified\target.gguf", @"C:\verified\draft.gguf");
+            LocalModelCatalog.GetProfiles(original)[0], @"C:\verified\target.gguf", @"C:\verified\draft.gguf", []);
 
         Assert.Contains("cache-ram = 0", preset.Split(Environment.NewLine));
         Assert.Contains("ctx-checkpoints = 2", preset.Split(Environment.NewLine));
@@ -26,7 +26,7 @@ public class LocalAiRecipeCacheTests
         LocalModelInfo model = LocalModelCatalog.Find(LocalModelCatalog.Qwen38_27B_DFlashModelId)!;
 
         string preset = LlamaServerRouterConfiguration.BuildPreset(model,
-            LocalModelCatalog.GetProfiles(model)[0], @"C:\verified\target.gguf", @"C:\verified\draft.gguf");
+            LocalModelCatalog.GetProfiles(model)[0], @"C:\verified\target.gguf", @"C:\verified\draft.gguf", []);
 
         Assert.DoesNotContain("cache-ram =", preset);
         Assert.DoesNotContain("ctx-checkpoints =", preset);

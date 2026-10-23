@@ -86,7 +86,8 @@ public class NemotronBoltCatalogTests
         var hardware = new HostHardwareInfo(RuntimeArchitecture.Arm64, 200L * 1024 * 1024 * 1024,
             200L * 1024 * 1024 * 1024,
             new[] { new GpuInfo(GpuVendor.Nvidia, "NVIDIA arbitrary adapter", gib * 1024 * 1024 * 1024,
-                gib * 1024 * 1024 * 1024, CudaMajorVersion: 13, StableId: "GPU-default") }, false);
+                gib * 1024 * 1024 * 1024, CudaMajorVersion: 13, StableId: "GPU-default",
+                ComputeCapability: new Version(12, 0)) }, false);
         var result = LocalInferenceSelector.Select(hardware);
         Assert.NotNull(result.Plan);
         Assert.NotEqual(LocalModelCatalog.NemotronBoltModelId, result.Plan.Model.Id);

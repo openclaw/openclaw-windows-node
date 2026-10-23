@@ -31,7 +31,7 @@ public sealed class LocalAiOnboardingRecoveryTests
         using var directory = new TempDirectory();
         var hardware = new HostHardwareInfo(Architecture.X64, 128L << 30, 100L << 30,
             [new(GpuVendor.Nvidia, "Test GPU", 96L << 30, 80L << 30, DriverVersion: "615.0",
-                CudaMajorVersion: 13, StableId: "GPU-test")], false);
+                CudaMajorVersion: 13, StableId: "GPU-test", ComputeCapability: new Version(12, 0))], false);
         var eligibility = LocalInferenceEligibility.Evaluate(hardware);
         var reconciler = new LocalAiInstallReconciler(new NoRuntimeInspection(), new NoModelInspection());
         var result = await reconciler.ReconcileAsync(directory.Path, eligibility.Plan!, "GPU-test",

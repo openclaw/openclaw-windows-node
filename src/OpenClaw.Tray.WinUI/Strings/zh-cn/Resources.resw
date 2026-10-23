@@ -7141,7 +7141,7 @@
   <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw 无法读取稳定的 NVIDIA GPU 标识符、内存、驱动或 CUDA 能力。</value></data>
   <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0}需要 {1} 的 GPU 内存用于模型权重、KV 缓存和运行时工作区。OpenClaw 检测到 {2}。</value></data>
   <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>检测到 NVIDIA 驱动 {0}。本地 AI 需要 {1} 或更高版本。</value></data>
-  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>NVIDIA 驱动不支持 CUDA 13。无需单独的 CUDA Toolkit。</value></data>
+  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>本地 AI 无法在此 NVIDIA GPU 和已安装的驱动上运行。请为此 GPU 安装最新的 NVIDIA 驱动。无需单独的 CUDA Toolkit。</value></data>
   <data name="LocalAi_Reason_Generic" xml:space="preserve"><value>OpenClaw 无法验证此系统上的本地 AI 要求。</value></data>
   <data name="LocalAi_Reason_UnknownModelName" xml:space="preserve"><value>所选模型</value></data>
   <data name="LocalAi_Reason_UnknownDriverVersion" xml:space="preserve"><value>未知</value></data>

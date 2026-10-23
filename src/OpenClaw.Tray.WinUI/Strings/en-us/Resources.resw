@@ -7209,7 +7209,7 @@ Make sure the gateway is running.</value>
   <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw could not read all required GPU, system memory, or disk facts. Recheck to try again.</value></data>
   <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} requires {1} of GPU memory for model weights, KV cache, and runtime workspace. OpenClaw detected {2}.</value></data>
   <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>NVIDIA driver {0} was detected. Local AI requires version {1} or newer.</value></data>
-  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>The NVIDIA driver does not provide CUDA 13 support. A separate CUDA Toolkit is not required.</value></data>
+  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>Local AI cannot run on this NVIDIA GPU with the installed driver. Install the latest NVIDIA driver for this GPU. A separate CUDA Toolkit is not required.</value></data>
   <data name="LocalAi_Reason_Generic" xml:space="preserve"><value>OpenClaw could not verify the Local AI requirements on this system.</value></data>
   <data name="LocalAi_Reason_UnknownModelName" xml:space="preserve"><value>The selected model</value></data>
   <data name="LocalAi_Reason_UnknownDriverVersion" xml:space="preserve"><value>unknown</value></data>

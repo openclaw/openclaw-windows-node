@@ -161,7 +161,8 @@ public sealed partial class LocalAiPortLifecycleTests
             Calls++;
             return new(RuntimeArchitecture.Arm64, 48L << 30, 32L << 30,
                 [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX Spark N1X", 48L << 30, 48L << 30,
-                    CudaMajorVersion: 13, StableId: "GPU-01234567-89ab-cdef-0123-456789abcdef")], false)
+                    CudaMajorVersion: 13, StableId: "GPU-01234567-89ab-cdef-0123-456789abcdef",
+                    ComputeCapability: new Version(12, 0))], false)
                 { AvailableCommitMemoryBytes = commit };
         }
     }

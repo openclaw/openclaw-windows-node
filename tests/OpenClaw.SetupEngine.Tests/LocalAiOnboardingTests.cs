@@ -15,7 +15,7 @@ public sealed class LocalAiOnboardingTests
     private static readonly SetupLocalAiTarget Target = new("gateway", "Managed", 18789, null, null);
     private static readonly HostHardwareInfo Hardware = new(Architecture.X64, 128L << 30, 100L << 30,
         [new(GpuVendor.Nvidia, "Test GPU", 96L << 30, 80L << 30, DriverVersion: "615.0",
-            CudaMajorVersion: 13, StableId: "GPU-test")], false);
+            CudaMajorVersion: 13, StableId: "GPU-test", ComputeCapability: new Version(12, 0))], false);
 
     [Theory]
     [InlineData(false, false, false, LocalAiRuntimeState.Stopped, false, LocalAiOnboardingState.SetUp)]
@@ -204,7 +204,8 @@ public sealed class LocalAiOnboardingTests
         var runtime = new FakeRuntime(RuntimeSnapshot(install, runtimeState));
         var hardware = new HostHardwareInfo(Architecture.Arm64, 128L << 30, 80L << 30,
             [new(GpuVendor.Nvidia, "NVIDIA RTX Spark N1X", 45L << 30, 45L << 30,
-                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-spark")], false);
+                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-spark",
+                ComputeCapability: new Version(12, 0))], false);
         var host = new SetupLocalAiHost(
             () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
                 new("gateway", "Managed", 18789, install.Manifest.ModelCatalogId, install.Manifest.RequestedPort))),
@@ -270,7 +271,8 @@ public sealed class LocalAiOnboardingTests
         var runtime = new FakeRuntime(RuntimeSnapshot(install, LocalAiRuntimeState.Stopped));
         var hardware = new HostHardwareInfo(Architecture.Arm64, 48L << 30, 32L << 30,
             [new(GpuVendor.Nvidia, "NVIDIA RTX Spark N1X", 48L << 30, 48L << 30,
-                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-spark")], false)
+                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-spark",
+                ComputeCapability: new Version(12, 0))], false)
             { AvailableCommitMemoryBytes = 48L << 30 };
         var inspections = 0;
         var host = new SetupLocalAiHost(

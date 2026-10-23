@@ -95,7 +95,8 @@ public sealed class LocalAiGpuRestartEndpointTests
                 FreeGpuVisibleMemoryBytes: 40L * 1024 * 1024 * 1024,
                 DriverVersion: "616.00",
                 CudaMajorVersion: 13,
-                StableId: "GPU-SPARK"),
+                StableId: "GPU-SPARK",
+                ComputeCapability: new Version(12, 0)),
         ],
         VulkanAvailable: false);
 

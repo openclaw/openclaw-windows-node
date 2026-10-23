@@ -843,7 +843,8 @@ public sealed class LocalAiPageViewModelTests
                     FreeGpuVisibleMemoryBytes: 30L * 1024 * 1024 * 1024,
                     DriverVersion: "620.0",
                     CudaMajorVersion: 13,
-                    StableId: "GPU-spark32"),
+                    StableId: "GPU-spark32",
+                    ComputeCapability: new Version(12, 0)),
             ],
             VulkanAvailable: false);
 
@@ -1010,7 +1011,8 @@ public sealed class LocalAiPageViewModelTests
         const long gib = 1024L * 1024 * 1024;
         HostHardwareInfo hardware = new(Architecture.X64, 32 * gib, 24 * gib,
             [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX 4060", 8 * gib, 8 * gib,
-                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060")], false, new(20 * gib, 20 * gib, true));
+                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060", ComputeCapability: new Version(12, 0))], false,
+            new(20 * gib, 20 * gib, true));
         using var viewModel = CreateViewModel(
             LocalAiRuntimeSnapshot.Initial(new Uri("http://127.0.0.1:18080"), DateTimeOffset.UtcNow),
             hardware, out _, out PermissionsPageRuntimeSource source);
@@ -1032,7 +1034,8 @@ public sealed class LocalAiPageViewModelTests
         const long gib = 1024L * 1024 * 1024;
         var hardware = new HostHardwareInfo(Architecture.X64, 32 * gib, 24 * gib,
             [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX 4060", 8 * gib, 8 * gib,
-                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060")], false, new(20 * gib, 20 * gib, true));
+                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060", ComputeCapability: new Version(12, 0))], false,
+            new(20 * gib, 20 * gib, true));
         var installed = CreateInstalledSnapshot(LocalAiRuntimeState.Failed) with
         { ModelId = LocalModelCatalog.Default.Id };
         using var viewModel = CreateViewModel(installed, hardware, out _, out PermissionsPageRuntimeSource source);
@@ -1051,7 +1054,8 @@ public sealed class LocalAiPageViewModelTests
         const long gib = 1024L * 1024 * 1024;
         var hardware = new HostHardwareInfo(Architecture.X64, 32 * gib, 24 * gib,
             [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX 4060", 8 * gib, 8 * gib,
-                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060")], false, new(4 * gib, 4 * gib, true));
+                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060", ComputeCapability: new Version(12, 0))], false,
+            new(4 * gib, 4 * gib, true));
         var runtime = new FakeLocalAiRuntime(LocalAiRuntimeSnapshot.Initial(
             new Uri("http://127.0.0.1:18080"), DateTimeOffset.UtcNow));
         using var source = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
@@ -1082,7 +1086,8 @@ public sealed class LocalAiPageViewModelTests
                     FreeGpuVisibleMemoryBytes: 128_000_000_000,
                     DriverVersion: "620.0",
                     CudaMajorVersion: 13,
-                    StableId: "GPU-test"),
+                    StableId: "GPU-test",
+                    ComputeCapability: new Version(12, 0)),
             ],
             VulkanAvailable: false);
 

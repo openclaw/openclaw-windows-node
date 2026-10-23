@@ -7142,7 +7142,7 @@ Controleer of de gateway actief is.</value>
   <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw kon geen stabiele NVIDIA-GPU-id, geheugen, stuurprogramma of CUDA-mogelijkheid lezen.</value></data>
   <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} vereist {1} GPU-geheugen voor modelgewichten, KV-cache en runtime-werkruimte. OpenClaw detecteerde {2}.</value></data>
   <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>NVIDIA-stuurprogramma {0} is gedetecteerd. Lokale AI vereist versie {1} of nieuwer.</value></data>
-  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>Het NVIDIA-stuurprogramma biedt geen ondersteuning voor CUDA 13. Een aparte CUDA Toolkit is niet vereist.</value></data>
+  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>Lokale AI kan niet worden uitgevoerd op deze NVIDIA-GPU met het geïnstalleerde stuurprogramma. Installeer het nieuwste NVIDIA-stuurprogramma voor deze GPU. Een aparte CUDA Toolkit is niet vereist.</value></data>
   <data name="LocalAi_Reason_Generic" xml:space="preserve"><value>OpenClaw kon de vereisten voor lokale AI op dit systeem niet verifiëren.</value></data>
   <data name="LocalAi_Reason_UnknownModelName" xml:space="preserve"><value>Het geselecteerde model</value></data>
   <data name="LocalAi_Reason_UnknownDriverVersion" xml:space="preserve"><value>onbekend</value></data>

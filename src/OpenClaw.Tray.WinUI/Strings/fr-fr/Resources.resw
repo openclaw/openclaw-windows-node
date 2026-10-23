@@ -7141,7 +7141,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw n'a pas pu lire un identifiant GPU NVIDIA stable, la mémoire, le pilote ou la capacité CUDA.</value></data>
   <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} nécessite {1} de mémoire GPU pour les poids du modèle, le cache KV et l'espace de travail d'exécution. OpenClaw a détecté {2}.</value></data>
   <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>Le pilote NVIDIA {0} a été détecté. L'IA locale nécessite la version {1} ou ultérieure.</value></data>
-  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>Le pilote NVIDIA ne prend pas en charge CUDA 13. Un CUDA Toolkit séparé n'est pas requis.</value></data>
+  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>L'IA locale ne peut pas s'exécuter sur ce GPU NVIDIA avec le pilote installé. Installez le dernier pilote NVIDIA pour ce GPU. Un CUDA Toolkit séparé n'est pas requis.</value></data>
   <data name="LocalAi_Reason_Generic" xml:space="preserve"><value>OpenClaw n'a pas pu vérifier les exigences de l'IA locale sur ce système.</value></data>
   <data name="LocalAi_Reason_UnknownModelName" xml:space="preserve"><value>Le modèle sélectionné</value></data>
   <data name="LocalAi_Reason_UnknownDriverVersion" xml:space="preserve"><value>inconnu</value></data>

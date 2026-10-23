@@ -3284,9 +3284,9 @@ public sealed partial class LocalAiPortLifecycleTests
         "The managed model is ready.");
 
     /// <summary>
-    /// A managed Qwen3.5 9B install predates the profile-aware catalog and is no
-    /// longer offered for new installs. Upgrading must not strand it: its own
-    /// pinned receipt has to keep resolving and launching unchanged.
+    /// A managed Qwen3.5 9B install predates the profile-aware catalog. A
+    /// process that opts out of the low-memory models must not strand it: its
+    /// own pinned receipt keeps resolving and launching unchanged.
     /// </summary>
     [Fact]
     public async Task Router_LaunchesRetiredQwen9BInstallAfterUpgrade()
@@ -3303,6 +3303,9 @@ public sealed partial class LocalAiPortLifecycleTests
         await File.WriteAllTextAsync(paths.ManifestPath, legacyJson.ToJsonString());
 
         LocalAiResolvedInstall saved = (await store.LoadAsync())!;
+        using var env = new EnvironmentScope(
+            LocalModelCatalog.DevelopmentLowMemoryModelsEnvironmentVariable, "0");
+
         LlamaServerRouterLaunchPlan launch = LlamaServerRouterConfiguration.Build(paths, saved);
 
         Assert.Equal(LocalModelCatalog.Qwen9BModelId, launch.ModelAlias);
@@ -3315,12 +3318,16 @@ public sealed partial class LocalAiPortLifecycleTests
     }
 
     /// <summary>
-    /// The retired entry is a compatibility shim only. It must never be offered,
-    /// recommended, or selectable for a new install.
+    /// The 9B entry is a default-offered low-memory model. The "0" opt-out
+    /// must hide it from new installs while FindInstalled still resolves an
+    /// existing receipt's pinned model.
     /// </summary>
     [Fact]
-    public void Catalog_DoesNotOfferRetiredQwen9BForNewInstalls()
+    public void Catalog_OptOutHidesQwen9BForNewInstalls()
     {
+        using var env = new EnvironmentScope(
+            LocalModelCatalog.DevelopmentLowMemoryModelsEnvironmentVariable, "0");
+
         Assert.DoesNotContain(
             LocalModelCatalog.Models,
             model => string.Equals(model.Id, LocalModelCatalog.Qwen9BModelId, StringComparison.OrdinalIgnoreCase));
@@ -3334,9 +3341,9 @@ public sealed partial class LocalAiPortLifecycleTests
     }
 
     /// <summary>
-    /// Compatibility must not become silent remapping: a retired model receipt
-    /// that claims a context or KV profile it could never have been installed
-    /// with still has to fail receipt validation.
+    /// Compatibility must not become silent remapping: a 9B receipt that claims
+    /// a context or KV profile it could never have been installed with still has
+    /// to fail receipt validation, with or without the opt-out.
     /// </summary>
     [Fact]
     public async Task Router_RejectsRetiredQwen9BReceiptWithUnsupportedProfile()
@@ -3359,7 +3366,7 @@ public sealed partial class LocalAiPortLifecycleTests
         Assert.Contains("qualified catalog profile", error.Message, StringComparison.Ordinal);
     }
 
-    private static LocalAiInstallManifest LegacyQwen9BManifest()
+    internal static LocalAiInstallManifest LegacyQwen9BManifest()
     {
         LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.Find(
             System.Runtime.InteropServices.Architecture.Arm64)!;
@@ -3560,7 +3567,7 @@ public sealed partial class LocalAiPortLifecycleTests
         Assert.Contains("runtime family", error.Message);
     }
 
-    private static LocalAiInstallManifest ValidManifest()
+    internal static LocalAiInstallManifest ValidManifest()
     {
         LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.Find(
             System.Runtime.InteropServices.Architecture.Arm64)!;

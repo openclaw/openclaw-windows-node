@@ -138,7 +138,8 @@ internal static class OnboardingSetupGalleryData
         _ => new(Architecture.X64, 128L << 30, 96L << 30,
             [new(GpuVendor.Nvidia, "Synthetic NVIDIA GPU", 48L << 30,
                 state == "busy" ? 1L << 30 : 44L << 30,
-                DriverVersion: "999.0", CudaMajorVersion: 13, StableId: "synthetic-gallery-gpu")], false),
+                DriverVersion: "999.0", CudaMajorVersion: 13, StableId: "synthetic-gallery-gpu",
+                ComputeCapability: new Version(12, 0))], false),
     };
 
     internal sealed class LocalHost(LocalAiOnboardingState state, bool freshUnsupported = false) : ISetupLocalAiHost

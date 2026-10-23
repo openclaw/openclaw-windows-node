@@ -24,7 +24,7 @@ public class NemotronBoltSetupAdmissionTests
             new CommandRunner(logger), CancellationToken.None, temp.Path, temp.Path);
         var hardware = new HostHardwareInfo(RuntimeArchitecture.Arm64, 48L << 30, 32L << 30,
             [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX Spark N1X", 48L << 30, 48L << 30,
-                CudaMajorVersion: 13, StableId: "GPU-spark")], false)
+                CudaMajorVersion: 13, StableId: "GPU-spark", ComputeCapability: new Version(12, 0))], false)
             { AvailableCommitMemoryBytes = commit };
 
         var result = await new PreflightLocalAiHardwareStep(new FixedProbe(hardware)).ExecuteAsync(context, CancellationToken.None);
@@ -107,7 +107,7 @@ public class NemotronBoltSetupAdmissionTests
         var fitting = LocalModelCatalog.GetProfiles(model).Single(p => p.ContextTokens == fittingContext);
         var hardware = new HostHardwareInfo(RuntimeArchitecture.Arm64, 48L << 30, 32L << 30,
             [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX Spark N1X", 48L << 30, 48L << 30,
-                CudaMajorVersion: 13, StableId: "GPU-spark")], false)
+                CudaMajorVersion: 13, StableId: "GPU-spark", ComputeCapability: new Version(12, 0))], false)
             { AvailableCommitMemoryBytes = LocalInferenceEligibility.GetRequiredMemoryBytes(model, fitting) };
 
         var result = await new PreflightLocalAiHardwareStep(new FixedProbe(hardware)).ExecuteAsync(context, CancellationToken.None);

@@ -183,16 +183,24 @@ internal sealed class LlamaRuntimeInstaller : ILlamaRuntimeAcquirer
         }
     }
 
-    internal static LocalAiComponentIdentity Component(LlamaRuntimeVariant runtime) =>
-        new(
+    // Both x64 builds share release tag b11320, so a non-CUDA-13 build gets its own
+    // directory. CUDA 13 keeps the bare RID so every existing receipt's ExecutablePath
+    // stays valid.
+    internal static LocalAiComponentIdentity Component(LlamaRuntimeVariant runtime)
+    {
+        string runtimeIdentifier = runtime.Architecture switch
+        {
+            Architecture.X64 => "win-x64",
+            Architecture.Arm64 => "win-arm64",
+            _ => throw new InvalidOperationException("The llama-server runtime architecture is unsupported."),
+        };
+        return new(
             "llama-server",
             runtime.ReleaseTag,
-            runtime.Architecture switch
-            {
-                Architecture.X64 => "win-x64",
-                Architecture.Arm64 => "win-arm64",
-                _ => throw new InvalidOperationException("The llama-server runtime architecture is unsupported."),
-            });
+            runtime.CudaVersion.Major == 13
+                ? runtimeIdentifier
+                : $"{runtimeIdentifier}-cuda{runtime.CudaVersion.Major}");
+    }
 
     public void RemoveInstalledRuntime(string localDataDirectory, LlamaRuntimeInstallResult install)
     {

@@ -14,6 +14,54 @@ Existing installed receipts do not require download space again. Explicit model
 requests and installed receipts are not silently switched to another model.
 RTX Spark keeps its existing per-adapter SKU recommendations.
 
+## CUDA runtime routing
+
+The stock llama.cpp family pins two Windows x64 builds from ggml-org release
+`b11320`: CUDA 13.4 (`b11320-cuda13-x64`) and CUDA 12.4 (`b11320-cuda12-x64`).
+The hardware probe reads each GPU's compute capability through
+`cuDeviceGetAttribute`. Selection prefers CUDA 13 and uses CUDA 12 only when no
+NVIDIA GPU can run the CUDA 13 build:
+
+- CUDA 13 needs compute capability 7.5 or newer (Turing and later) and a driver
+  that exposes CUDA 13.
+- CUDA 12 covers compute capability 5.0 through 9.x (Maxwell through Hopper) on a
+  CUDA 12 or newer driver, for example a TITAN V (7.0) on an R580 driver.
+  Blackwell is not routed to it.
+
+A missing compute capability is reported as retryable incomplete facts. The CUDA
+12 build installs under `engines\llama-server\b11320\win-x64-cuda12`; CUDA 13
+keeps `win-x64`. ARM64, Bonsai, and Nemotron Bolt stay CUDA 13 only. A receipt
+whose runtime no longer matches the host is re-acquired by the existing runtime
+upgrade path.
+
+## Low-memory models
+
+Two low-VRAM recipes are part of the catalog by default: **Qwen3.5 9B (Q4_K_M)**
+and **DeepSeek-R1-Distill-Qwen-14B (Q3_K_M)**, ranked below every production
+model. `OPENCLAW_LOCAL_AI_DEV_LOW_MEMORY_MODELS=0` is the explicit opt-out:
+with it, neither is offered and both resolve only through installed receipts
+with the native-context F16 profile a pre-profile install could have recorded,
+and a receipt recorded under a reduced profile then fails launch validation.
+Set the opt-out at user level (`setx`) so the tray, setup UI, and setup engine
+all see it. The legacy value "1" is still accepted and keeps the models on.
+
+The 9B uses the shared profile ladder (262,144 down to 65,536 tokens). The 14B
+is a dense Qwen2-architecture distill: 48 full-attention layers, 8 KV heads,
+head dimension 128, so 196,608 bytes/token of F16 KV, roughly six times the 9B.
+It gets its own ladder of 65,536, 32,768, and 8,192 tokens in F16 and Q8_0.
+At 8,192 tokens Q8_0 it needs about 11.6 GiB, so a 12 GiB card such as the
+TITAN V qualifies; 16 GiB cards reach 32,768 tokens. It has no MTP head, so no
+speculative decoding; llama-server keeps its `reasoning-format deepseek`
+handling for the distilled R1 chain-of-thought format.
+
+Weights are pinned to
+[bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF](https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF)
+revision `9f5d77d401799416e0702290a691038b44012e0c`, file
+`DeepSeek-R1-Distill-Qwen-14B-Q3_K_M.gguf`, SHA-256
+`faf2e6f4d4462619a9352419b751f140be67ca9a4cb343b6796e37adafd8a050`
+(7,339,204,000 bytes). The upstream model is MIT-licensed
+([deepseek-ai](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B)).
+
 ## Experimental Bonsai 2 profile
 
 The Windows x64 profile uses **Bonsai 2 27B PTQ1_0**, derived from Qwen3.8, with

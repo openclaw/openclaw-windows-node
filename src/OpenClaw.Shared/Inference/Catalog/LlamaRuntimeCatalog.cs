@@ -9,6 +9,10 @@ public sealed record LlamaRuntimeFile(string FileName, long SizeBytes, Sha256Dig
 /// <summary>A native Windows llama.cpp runtime and every archive required to execute it.</summary>
 public sealed record LlamaRuntimeVariant
 {
+    private static readonly Version s_cuda13MinimumComputeCapability = new(7, 5);
+    private static readonly Version s_cuda12MinimumComputeCapability = new(5, 0);
+    private static readonly Version s_cuda12ComputeCapabilityLimit = new(10, 0);
+
     public LlamaRuntimeVariant(
         string id,
         Architecture architecture,
@@ -23,8 +27,8 @@ public sealed record LlamaRuntimeVariant
         ArgumentNullException.ThrowIfNull(artifacts);
         if (architecture is not (Architecture.X64 or Architecture.Arm64))
             throw new ArgumentOutOfRangeException(nameof(architecture), "Only native Windows x64 and ARM64 runtimes are cataloged.");
-        if (cudaVersion.Major != 13)
-            throw new ArgumentOutOfRangeException(nameof(cudaVersion), "The qualified runtime requires CUDA 13.");
+        if (cudaVersion.Major is not (12 or 13))
+            throw new ArgumentOutOfRangeException(nameof(cudaVersion), "The qualified runtime requires CUDA 12 or CUDA 13.");
         if (artifacts.Count != 2 ||
             artifacts.Count(artifact => artifact.Role == ArtifactRole.RuntimeBinary) != 1 ||
             artifacts.Count(artifact => artifact.Role == ArtifactRole.RuntimeDependency) != 1)
@@ -57,11 +61,26 @@ public sealed record LlamaRuntimeVariant
     /// </summary>
     public string ReleaseTag { get; }
     public long TotalDownloadSizeBytes => Artifacts.Sum(artifact => artifact.SizeBytes);
+
+    /// <summary>
+    /// Whether this build carries code for a device of the given compute capability.
+    /// CUDA 13 builds start at Turing (7.5). The ggml-org CUDA 12.4 build embeds PTX from
+    /// Maxwell (5.0) through Hopper (9.0) and no Blackwell code, so Blackwell stays on CUDA 13.
+    /// </summary>
+    public bool SupportsComputeCapability(Version computeCapability)
+    {
+        ArgumentNullException.ThrowIfNull(computeCapability);
+        return CudaVersion.Major >= 13
+            ? computeCapability >= s_cuda13MinimumComputeCapability
+            : computeCapability >= s_cuda12MinimumComputeCapability &&
+              computeCapability < s_cuda12ComputeCapabilityLimit;
+    }
 }
 
 /// <summary>
 /// Integrity-pinned native Windows llama.cpp builds routed by Windows CPU
-/// architecture. Unsupported hardware does not receive a CPU or Vulkan fallback.
+/// architecture, then by the newest CUDA major the NVIDIA GPU and driver can
+/// execute. Unsupported hardware does not receive a CPU or Vulkan fallback.
 /// </summary>
 public static partial class LlamaRuntimeCatalog
 {
@@ -71,6 +90,7 @@ public static partial class LlamaRuntimeCatalog
     public const string ServerImplementationLibraryName = "llama-server-impl.dll";
     public const string X64RuntimeId = "b11320-cuda13-x64";
     public const string Arm64RuntimeId = "b11320-cuda13-arm64";
+    public const string X64Cuda12RuntimeId = "b11320-cuda12-x64";
 
     public static GitHubReleaseSource Source { get; } = new(
         "ggml-org/llama.cpp",
@@ -122,7 +142,46 @@ public static partial class LlamaRuntimeCatalog
                             "642dcde8805b3e3165ca710a5443b3b4044b27d96bd3ee3132473988c9bcb774"),
                     }),
                 requiredFiles: Arm64RuntimeFiles()),
+            // Fallback for GPUs the CUDA 13 build cannot execute: Maxwell, Pascal and
+            // Volta (CUDA 13 starts at compute capability 7.5), or a driver that only
+            // exposes CUDA 12. Not adapted from NVIDIA CAIR, so it carries no provenance.
+            new LlamaRuntimeVariant(
+                X64Cuda12RuntimeId,
+                Architecture.X64,
+                new Version(12, 4),
+                Array.AsReadOnly(
+                    new[]
+                    {
+                        new PinnedArtifact(
+                            "llama-b11320-cuda12-x64",
+                            ArtifactRole.RuntimeBinary,
+                            Source,
+                            "llama-b11320-bin-win-cuda-12.4-x64.zip",
+                            263_401_101,
+                            new Sha256Digest("f6c0cbfe03763136ed7744d1b4d12fe085534153b3d2f0fabd2edc0dddcf4977")),
+                        new PinnedArtifact(
+                            "cudart-b11320-cuda12-x64",
+                            ArtifactRole.RuntimeDependency,
+                            Source,
+                            "cudart-llama-bin-win-cuda-12.4-x64.zip",
+                            391_443_627,
+                            new Sha256Digest("8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6")),
+                    }),
+                requiredFiles: X64Cuda12RuntimeFiles()),
         });
+
+    // Preferred (newest CUDA) first. Declared after s_variants so it initializes after it.
+    private static readonly ReadOnlyCollection<LlamaRuntimeVariant> s_x64Variants = Array.AsReadOnly(
+        s_variants.Where(variant => variant.Architecture == Architecture.X64)
+            .OrderByDescending(variant => variant.CudaVersion)
+            .ToArray());
+
+    private static readonly ReadOnlyCollection<LlamaRuntimeVariant> s_arm64Variants = Array.AsReadOnly(
+        s_variants.Where(variant => variant.Architecture == Architecture.Arm64)
+            .OrderByDescending(variant => variant.CudaVersion)
+            .ToArray());
+
+    private static readonly LlamaRuntimeVariant[] s_bonsaiX64Candidates = [BonsaiRuntimeCatalog.X64];
 
     // Retired from new installs and never offered or selected. These exist only so a
     // managed installation recorded before the runtime bump keeps resolving its own
@@ -240,14 +299,31 @@ public static partial class LlamaRuntimeCatalog
     public static IReadOnlyList<LlamaRuntimeVariant> Variants => s_variants;
 
     public static LlamaRuntimeVariant? Find(Architecture architecture) =>
-        s_variants.SingleOrDefault(variant => variant.Architecture == architecture);
+        Find(architecture, "llama.cpp");
 
     public static LlamaRuntimeVariant? Find(Architecture architecture, string family) =>
-        family == NemotronBoltRuntimeFamily
-            ? architecture == Architecture.Arm64 ? s_nemotronBoltArm64 : null
-            : family == BonsaiRuntimeCatalog.Family
-                ? BonsaiRuntimeCatalog.Find(architecture)
-                : family == "llama.cpp" ? Find(architecture) : null;
+        FindAll(architecture, family) is { Count: > 0 } candidates ? candidates[0] : null;
+
+    /// <summary>
+    /// Every runtime that can serve the family on this architecture, preferred (newest CUDA) first.
+    /// Selection walks this order; receipts still resolve through <see cref="FindInstalled"/>.
+    /// </summary>
+    public static IReadOnlyList<LlamaRuntimeVariant> FindAll(Architecture architecture, string family) => family switch
+    {
+        NemotronBoltRuntimeFamily => architecture == Architecture.Arm64
+            ? s_nemotronBoltArm64Candidates
+            : Array.Empty<LlamaRuntimeVariant>(),
+        BonsaiRuntimeCatalog.Family => architecture == Architecture.X64
+            ? s_bonsaiX64Candidates
+            : Array.Empty<LlamaRuntimeVariant>(),
+        "llama.cpp" => architecture switch
+        {
+            Architecture.X64 => s_x64Variants,
+            Architecture.Arm64 => s_arm64Variants,
+            _ => Array.Empty<LlamaRuntimeVariant>(),
+        },
+        _ => Array.Empty<LlamaRuntimeVariant>(),
+    };
 
     /// <summary>
     /// Resolves a runtime id from an already-installed receipt, including a retired
@@ -285,6 +361,39 @@ public static partial class LlamaRuntimeCatalog
         RuntimeFile("ggml-cpu-x64.dll", 908_800, "95660d872ed83b6335708dbf539d1b15ca60ea5832a0aed59e9c6d38d6ed468e"),
         RuntimeFile("ggml-cpu-zen4.dll", 1_649_664, "e75dea4fc377ffe75096cdca48cd26fc4777f4ace76c94483a2414c8c41b7b02"),
         RuntimeFile("ggml-cuda.dll", 147_597_824, "af6121ddd035db3fddb90bdc7dbbef8bfb244db522157af459b9682f0d18934e"),
+        RuntimeFile("ggml-rpc.dll", 168_448, "29cd136e276a998b7d1ec43b5dd2d6d9dee837c38bbae73ffbc02e015584c740"),
+        RuntimeFile("ggml.dll", 79_872, "96a162e0be5a3c798af6b31a5d21c1bd04493914e7b11ae8f9212d0bf0996e6c"),
+        RuntimeFile("libomp.dll", 768_000, "a12116ba72d1d6820407cf30be23da04ce79d6bb8a71a5ee71759c5a1faa6f1c"),
+        RuntimeFile("llama-common.dll", 7_891_968, "a6a87f92224a11a562f5397554119882d81b9e0038ea98cf8aa4edc34f3d6d2d"),
+        RuntimeFile("llama-server-impl.dll", 8_946_688, "6dfeb749b21b6cd3f4a64d0319b75a090be3d79f222053239ac6a4527a5386ed"),
+        RuntimeFile("llama-server.exe", 9_216, "96bfefe33c2cf0f1f421cae2f9e1e4a385264c8d4d731f7b08ff880edbb4f133"),
+        RuntimeFile("llama.dll", 3_270_656, "cfbf1a2ac5d676ccb3c7685098877f832a90285ad21575faf5a71eefece7f759"),
+        RuntimeFile("mtmd.dll", 1_794_560, "c29eacab7497aa8b18951ea2e7466c8fd8867ff49d122322a203e8d6c7a87dfa"),
+    ];
+
+    // Hashed from both b11320 CUDA 12.4 archives; every non-CUDA file is byte-identical
+    // to the CUDA 13.4 x64 pins above.
+    private static IReadOnlyList<LlamaRuntimeFile> X64Cuda12RuntimeFiles() =>
+    [
+        RuntimeFile("cublas64_12.dll", 100_033_536, "e40202fe4223c1cd2d2dce7beec59e1ed61c7801bd827309183be9b50e358f4c"),
+        RuntimeFile("cublasLt64_12.dll", 473_551_360, "2a896460bef60ed57ef32b0875812f355a6984e671d638bb632f5e8c1d7a831f"),
+        RuntimeFile("cudart64_12.dll", 553_984, "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc"),
+        RuntimeFile("ggml-base.dll", 801_280, "777562364f0528eaadd7865faf0e6e0b17ff3904e50a18438caebc4bfd0790e3"),
+        RuntimeFile("ggml-cpu-alderlake.dll", 1_431_552, "6201c30f8b96e131654d196125c659d554ba478294c0703da0b7a20a89618122"),
+        RuntimeFile("ggml-cpu-cannonlake.dll", 1_657_856, "39a18866d22962cf20c604c93f877b351bd280d798d794c8e8905d03ca73c228"),
+        RuntimeFile("ggml-cpu-cascadelake.dll", 1_642_496, "e74f4902fa3bd58ccdfe75c36517a33574eeabb370e18b7ca803b9ee3f0e5113"),
+        RuntimeFile("ggml-cpu-cooperlake.dll", 1_643_520, "65bde4b5d95ff05523dbd3a403abbf47de569fae92708a38ebfd8abfa934a64c"),
+        RuntimeFile("ggml-cpu-haswell.dll", 1_436_160, "a54e0bb576b0b17453d0db649d0f367b59aeeaab9f5e394df501891dc7437142"),
+        RuntimeFile("ggml-cpu-icelake.dll", 1_649_152, "4734e2f5ad4a9003e0345d2dd785598fd8ea1af1f23408316b14aa54f2fbd855"),
+        RuntimeFile("ggml-cpu-ivybridge.dll", 1_307_136, "a6bc4be1e4cec08406fddead48feafc29dc5cc2ee3d4a30367335dc0ec277b8b"),
+        RuntimeFile("ggml-cpu-piledriver.dll", 1_310_208, "e86eb4d9c67a713b3a9faf7ffd430fc933d88fa993c150ba15fcc1ccc9edf334"),
+        RuntimeFile("ggml-cpu-sandybridge.dll", 1_286_656, "b2a4ac1f2a4391a707b23848a10326e42d86abf6e31ab3f1aa31eac8ff1a5f0c"),
+        RuntimeFile("ggml-cpu-sapphirerapids.dll", 1_920_000, "85b7c5163e8be5576e2bc87678c2a979c6d85b70be1b78317f0e7ee7324ff87e"),
+        RuntimeFile("ggml-cpu-skylakex.dll", 1_651_712, "572c006b7ab4df21f35f469ff7b20b9959a97097d2edb3f1fb28ee834c4c8f2f"),
+        RuntimeFile("ggml-cpu-sse42.dll", 916_480, "de669e22953f32567c0512199448fbd3259f96bd90b1d41967d42479a6d4f1be"),
+        RuntimeFile("ggml-cpu-x64.dll", 908_800, "95660d872ed83b6335708dbf539d1b15ca60ea5832a0aed59e9c6d38d6ed468e"),
+        RuntimeFile("ggml-cpu-zen4.dll", 1_649_664, "e75dea4fc377ffe75096cdca48cd26fc4777f4ace76c94483a2414c8c41b7b02"),
+        RuntimeFile("ggml-cuda.dll", 568_176_128, "aa1ca2c91917488bf8afef5310eecaeb30271b7a01ee2fa58c55f37b4204084e"),
         RuntimeFile("ggml-rpc.dll", 168_448, "29cd136e276a998b7d1ec43b5dd2d6d9dee837c38bbae73ffbc02e015584c740"),
         RuntimeFile("ggml.dll", 79_872, "96a162e0be5a3c798af6b31a5d21c1bd04493914e7b11ae8f9212d0bf0996e6c"),
         RuntimeFile("libomp.dll", 768_000, "a12116ba72d1d6820407cf30be23da04ce79d6bb8a71a5ee71759c5a1faa6f1c"),

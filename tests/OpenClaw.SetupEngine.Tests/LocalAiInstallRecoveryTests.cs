@@ -674,6 +674,29 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
+    public void CurrentX64RuntimesInstallToDistinctDirectoriesAndKeepTheCuda13Path()
+    {
+        using var temp = new TempDirectory();
+        LlamaRuntimeVariant cuda13 = LlamaRuntimeCatalog.FindInstalled(LlamaRuntimeCatalog.X64RuntimeId)!;
+        LlamaRuntimeVariant cuda12 = LlamaRuntimeCatalog.FindInstalled(LlamaRuntimeCatalog.X64Cuda12RuntimeId)!;
+
+        Assert.True(LocalAiPathPolicy.TryResolve(
+            temp.Path, LlamaRuntimeInstaller.Component(cuda13), out LocalAiSetupPaths cuda13Paths, out string error), error);
+        Assert.True(LocalAiPathPolicy.TryResolve(
+            temp.Path, LlamaRuntimeInstaller.Component(cuda12), out LocalAiSetupPaths cuda12Paths, out error), error);
+
+        // Existing CUDA 13 receipts record this path, so it must not move.
+        Assert.EndsWith(
+            Path.Combine("engines", "llama-server", "b11320", "win-x64"),
+            cuda13Paths.InstallDirectory,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(
+            Path.Combine("engines", "llama-server", "b11320", "win-x64-cuda12"),
+            cuda12Paths.InstallDirectory,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task RuntimeInstall_ReplacesExactUnclaimedCatalogDirectory()
     {
         using var temp = new TempDirectory();

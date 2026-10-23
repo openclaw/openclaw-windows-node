@@ -233,7 +233,7 @@ public static class LocalInferenceEligibility
                 freeMemoryBytes);
         }
 
-        if (gpu.CudaMajorVersion < runtime.CudaVersion.Major)
+        if (!LocalInferenceQualificationPolicy.HasRuntimePrerequisites(gpu, runtime))
         {
             return UnsupportedCandidate(
                 gpu,
