@@ -69,21 +69,6 @@ finally {
         $recorder.Dispose()
     }
 }
-$controllerReaped = $taskAbsent -and $mediumExited -and $recorderExited
-$driver = [ordered]@{
-    completed = [bool](!$errorText -and $controllerReaped -and $run -and $run.completed -and $run.functionalContractsPassed)
-    controllerResourcesReaped = [bool]$controllerReaped
-    taskAbsent = $taskAbsent; mediumProcessExited = $mediumExited; recorderProcessExited = $recorderExited
-    sourceHead = $c.sourceHead; mode = $Mode
-    traceStartsCounter = [int](Test-Path $c.traceStartsFile); error = $errorText
-}
-$driver | ConvertTo-Json | Set-Content (Join-Path $RunRoot 'driver.json') -Encoding utf8NoBOM
-if (!$driver.completed) { throw 'Complete wrapper dry-run/recording failed; preserve this immutable run directory.' }
-if ($Mode -ceq 'Disabled') {
-    $run | Add-Member -NotePropertyName controllerResourcesReaped -NotePropertyValue $controllerReaped
-    Assert-StartupDryRun $run $run.bindingHash ([int](Test-Path $c.traceStartsFile))
-    if (Test-Path $c.dryRunReceipt) { throw 'Never overwrite a qualified full dry-run.' }
-    $run | ConvertTo-Json -Depth 30 | Set-Content "$($c.dryRunReceipt).writing" -Encoding utf8NoBOM
-    Move-Item "$($c.dryRunReceipt).writing" $c.dryRunReceipt
-}
-$driver | ConvertTo-Json
+Complete-StartupProofController -Config $c -Mode $Mode -RunRoot $RunRoot -Run $run `
+    -TaskAbsent $taskAbsent -MediumProcessExited $mediumExited -RecorderProcessExited $recorderExited `
+    -ErrorText $errorText | ConvertTo-Json

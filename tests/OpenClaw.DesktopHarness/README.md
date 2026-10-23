@@ -369,4 +369,8 @@ pwsh -NoProfile -File .\tests\OpenClaw.DesktopHarness\Test-StartupProof.ps1 `
 ```
 
 These fixtures drive the real common state machine and final JSON formatter
-with fake native boundaries. They cannot qualify a guest dry-run or trace.
+with fake native boundaries. They also execute the actual configuration builder
+against a nonrecording tool fixture, then carry that configuration through the
+same engine, controller finalizer and parsed frozen receipt. Unreaped
+controllers, malformed functional receipts and mismatched-guest entrypoints
+remain failures. They cannot qualify a guest dry-run or trace.

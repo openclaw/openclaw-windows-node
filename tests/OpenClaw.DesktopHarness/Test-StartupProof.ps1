@@ -16,6 +16,8 @@ $config = [pscustomobject]@{
     sdkVersion = '1.0.0'; sourceHead = ('a' * 40)
     actorSid = 'S-1-5-21-1-2-3-1000'; actorSession = 1
     dotnet = $dotnet; dotnetVersion = '10.0.402'
+    traceStartsFile = Join-Path $root 'trace-starts.json'
+    dryRunReceipt = Join-Path $root 'DryRunReceipt.json'
     capsuleRoot = $capsule; observerSource = $observer; requiredPaths = @()
     files = @(
         @{ path = $observer; sha256 = (Get-FileHash $observer).Hash },
@@ -171,5 +173,144 @@ param($LeaseId,$OutputDirectory,[switch]$GuestAuthorized)
     $rejected = $false
     try { & "$PSScriptRoot\New-StartupGuestProbe.ps1" -LeaseId invalid -Destination (Join-Path $root 'bad-probe.ps1') -EntryPoint $probeFixture } catch { $rejected = $true }
     Assert-Proof $rejected 'An unresolved lease must not produce an executable authorized probe'
+    $e2e = Invoke-Fixture 'controller-e2e'
+    $driver = Complete-StartupProofController -Config $config -Mode Disabled `
+        -RunRoot (Join-Path $root 'controller-e2e') -Run $e2e `
+        -TaskAbsent $true -MediumProcessExited $true -RecorderProcessExited $true
+    $frozen = Get-Content $config.dryRunReceipt -Raw | ConvertFrom-Json
+    Assert-Proof ($driver.completed -and $frozen.completed -and $frozen.controllerResourcesReaped -and
+        $frozen.traceStartsCounter -eq 0 -and $null -eq $frozen.runUrl) 'Common engine, actual controller formatter, receipt parse and input freeze must finish end to end with tracing disabled'
+    Assert-Proof ($frozen.bindingHash -ceq (Get-StartupBinding $config $script:caller).digest) 'Successful controller completion must freeze the actual unchanged runtime binding'
+    $e2eRecord = Invoke-Fixture 'controller-record' Record $frozen
+    Set-Content $config.traceStartsFile '{"attempt":1}'
+    $recordDriver = Complete-StartupProofController -Config $config -Mode Record `
+        -RunRoot (Join-Path $root 'controller-record') -Run $e2eRecord `
+        -TaskAbsent $true -MediumProcessExited $true -RecorderProcessExited $true
+    Assert-Proof ($recordDriver.completed -and $recordDriver.traceStartsCounter -eq 1) 'Only the trace adapter changes after the fully finalized dry-run; the real controller finalizer also completes recording'
+    Remove-Item $config.traceStartsFile
+    $frozenHash = (Get-FileHash $config.dryRunReceipt).Hash
+    foreach ($missing in @('task','medium','recorder')) {
+        $unsafe = Invoke-Fixture "controller-unreaped-$missing"
+        $rejected = $false
+        try {
+            Complete-StartupProofController -Config $config -Mode Disabled `
+                -RunRoot (Join-Path $root "controller-unreaped-$missing") -Run $unsafe `
+                -TaskAbsent ($missing -cne 'task') -MediumProcessExited ($missing -cne 'medium') `
+                -RecorderProcessExited ($missing -cne 'recorder') | Out-Null
+        } catch { $rejected = $true }
+        $failedDriver = Get-Content (Join-Path $root "controller-unreaped-$missing\driver.json") -Raw | ConvertFrom-Json
+        Assert-Proof ($rejected -and !$failedDriver.completed -and !$failedDriver.controllerResourcesReaped -and
+            (Get-FileHash $config.dryRunReceipt).Hash -ceq $frozenHash) "A live $missing must fail the actual final controller and cannot replace the frozen dry-run"
+    }
+    Remove-Item $config.dryRunReceipt
+    $incomplete = Invoke-Fixture 'controller-malformed-stage'
+    $incomplete.stages[1].contractVerified = 'true'
+    $rejected = $false
+    try {
+        Complete-StartupProofController -Config $config -Mode Disabled `
+            -RunRoot (Join-Path $root 'controller-malformed-stage') -Run $incomplete `
+            -TaskAbsent $true -MediumProcessExited $true -RecorderProcessExited $true | Out-Null
+    } catch { $rejected = $true }
+    $failedDriver = Get-Content (Join-Path $root 'controller-malformed-stage\driver.json') -Raw | ConvertFrom-Json
+    Assert-Proof ($rejected -and !$failedDriver.completed -and !(Test-Path $config.dryRunReceipt)) 'All controllers exiting cannot qualify a malformed functional receipt or write a successful final driver'
+    $profile = Join-Path $root 'fixture.wprp'
+    Set-Content $profile '<fixture />'
+    @{computer=$env:COMPUTERNAME;traceStarted=$false;profileSha256=(Get-FileHash $profile).Hash
+        instanceName=('OpenClaw1791-' + ('a' * 32))}|ConvertTo-Json|Set-Content "$profile.receipt.json"
+    $wprFixture = Join-Path $root 'fixture-wpr.ps1'
+    @'
+$Verb=$args[0]
+$global:LASTEXITCODE=0
+switch($Verb) {
+    '-help' {
+        'wpr <command> -instancename <instance name>'
+        'Can be applied to any commands that manipulates the logging session'
+    }
+    '-profiledetails' { 'Fixture profile parsed without recording' }
+    '-status' { 'Windows Performance Recorder is not recording' }
+    default { throw 'No recording operation is permitted by this native-free fixture' }
+}
+'@ | Set-Content $wprFixture
+    $manifestPath = Join-Path $root 'fixture-manifest.json'
+    @{pr=1791;sdkVersion='1.0.0';leaseId='cbx_0123ab';disposableComputerName=$env:COMPUTERNAME
+        expectedHead=$config.sourceHead;repository=$root;dotnet=$dotnet;powerShell=$dotnet
+        jobSource=$dotnet;scopeApprovalReceipt=$dotnet
+        stages=@(@{name='managed';script=$dotnet},@{name='sdk-four-controls';script=$dotnet},@{name='ownership-timeout-tree';script=$dotnet})
+        supportScripts=@(@{path=$dotnet});artifacts=@(@{path=$dotnet})
+        inputs=@{nativeRuntime=$dotnet;nativeProbe=$dotnet;nativeInitFailure=$dotnet}}|
+        ConvertTo-Json -Depth 8|Set-Content $manifestPath
+    $generatedConfigPath = Join-Path $root 'generated-config.json'
+    $proofRoot = Join-Path $root 'generated-proof'
+    $configReceipt = & "$PSScriptRoot\New-StartupProofConfig.ps1" -Manifest $manifestPath `
+        -LeaseId cbx_0123ab -CapsuleRoot $capsule -Harness $dotnet -Profile $profile -Wpr $wprFixture `
+        -ActorSid $script:caller.sid -ActorSession $script:caller.session -CallerPath $script:caller.path `
+        -Destination $generatedConfigPath -ProofRoot $proofRoot -DotnetVersion '10.0.402'
+    $generatedConfig = Get-Content $generatedConfigPath -Raw|ConvertFrom-Json
+    Assert-Proof ($configReceipt.completed -and $configReceipt.traceStartsCounter -eq 0 -and
+        $null -eq $generatedConfig.runUrl -and $generatedConfig.observerSource -ceq $observer) 'The actual configuration builder must qualify its tool boundary, pin the exact observer layout and serialize nullable runUrl without recording'
+    $generatedRunRoot = Join-Path $root 'generated-config-run'
+    $generatedRun = Invoke-StartupProofRun -Config $generatedConfig -Trace (New-FixtureTrace Disabled) `
+        -Operations $ops -RunDirectory $generatedRunRoot
+    $generatedDriver = Complete-StartupProofController -Config $generatedConfig -Mode Disabled `
+        -RunRoot $generatedRunRoot -Run $generatedRun -TaskAbsent $true `
+        -MediumProcessExited $true -RecorderProcessExited $true
+    $generatedFrozen = Get-Content $generatedConfig.dryRunReceipt -Raw|ConvertFrom-Json
+    Assert-Proof ($generatedDriver.completed -and $generatedFrozen.traceStartsCounter -eq 0 -and
+        $generatedFrozen.bindingHash -ceq (Get-StartupBinding $generatedConfig $script:caller).digest) 'Actual config generation, identical engine, controller formatter and parsed frozen receipt must complete through native-free boundaries'
+    $generatedConfig.computer = 'NOT-THE-AUTHORIZED-GUEST'
+    $generatedConfig|ConvertTo-Json -Depth 40|Set-Content $generatedConfigPath
+    foreach($entry in @('Invoke-StartupProof.ps1','Invoke-StartupProofGuest.ps1','Invoke-StartupRecorder.ps1')) {
+        $deniedRoot = Join-Path $root "$entry-denied"
+        $rejected = $false
+        try {
+            & "$PSScriptRoot\$entry" -Config $generatedConfigPath -LeaseId cbx_0123ab `
+                -RunRoot $deniedRoot -Mode Disabled | Out-Null
+        } catch { $rejected = $true }
+        Assert-Proof ($rejected -and !(Test-Path $deniedRoot)) "$entry must reject a nonmatching guest before any process, task, observer or recorder can be started"
+    }
+    $deniedRoot = Join-Path $root 'unauthorized-qualification'
+    $rejected = $false
+    try {
+        & "$PSScriptRoot\Get-StartupGuestQualification.ps1" -LeaseId cbx_0123ab -OutputDirectory $deniedRoot | Out-Null
+    } catch { $rejected = $true }
+    Assert-Proof ($rejected -and !(Test-Path $deniedRoot)) 'Actual qualification entrypoint must reject missing guest authority without touching native tooling or creating a receipt'
+    $savedPreflight = $ops.Preflight
+    $ops.Preflight = { param($ctx) 'unexpected preparation output'; $script:caller }
+    $mixedOutput = Invoke-Fixture 'mixed-preflight-output'
+    Assert-Proof (!$mixedOutput.completed -and !$script:calls.Contains('enter') -and
+        $mixedOutput.traceStartsCounter -eq 0) 'Stray readiness output must fail before observer or recorder admission, not be mistaken for a caller receipt'
+    $ops.Preflight = $savedPreflight
+    $savedEnter = $ops.Enter
+    $ops.Enter = { param($ctx) $script:calls.Add('enter'); throw 'Fixture observer readiness failure' }
+    $failedEnter = Invoke-Fixture 'observer-start-failure'
+    Assert-Proof (!$failedEnter.completed -and $script:calls.Contains('cleanup') -and
+        $script:calls.Contains('stop:Disabled') -and !$script:calls.Contains('start:Disabled')) 'Observer startup failure must still finalize resources and the disabled adapter without admitting any scenario'
+    $ops.Enter = $savedEnter
+    $savedStage = $ops.Stage
+    foreach($failure in @('unreaped','blocked','malformed')) {
+        $script:stageFailure = $failure
+        $ops.Stage = {
+            param($ctx,$name)
+            $script:calls.Add($name)
+            @{name=$name;contractVerified=$true;resourcesReaped=($script:stageFailure -cne 'unreaped')
+                executionBlocked=if($script:stageFailure -ceq 'malformed'){'false'}else{$script:stageFailure -ceq 'blocked'}}
+        }
+        $unsafeStage = Invoke-Fixture "unsafe-stage-$failure"
+        Assert-Proof (!$unsafeStage.completed -and !$script:calls.Contains('sdk-four-controls') -and
+            $script:calls.Contains('cleanup') -and $script:calls.Contains('stop:Disabled')) "A $failure managed stage must stop later SDK/ownership execution while finalizing the real orchestration"
+    }
+    $ops.Stage = $savedStage
+    $script:calls.Clear()
+    $rollback = [StartupTraceAdapter]::new('Record', {
+        param($ctx,$mode)
+        @{ready=$true;traceStartsCounter=1}
+    }, {
+        param($ctx,$mode)
+        @{stopped=$true;instanceAbsent=$true;traceStartsCounter=0}
+    })
+    $badStop = Invoke-StartupProofRun -Config $config -Trace $rollback -Operations $ops `
+        -RunDirectory (Join-Path $root 'counter-rollback') -DryRunReceipt $frozen
+    Assert-Proof (!$badStop.completed -and $badStop.traceStartsCounter -eq 1 -and
+        !$badStop.traceInstanceAbsent) 'Malformed recorder finalization cannot erase an actual attempt or permit a second trace'
     "PASS: $checks native-free startup-wrapper regressions."
 } finally { Remove-Item -LiteralPath $root -Recurse -Force }

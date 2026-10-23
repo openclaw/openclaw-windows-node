@@ -11,9 +11,11 @@ Set-StrictMode -Version Latest
 . "$PSScriptRoot\StartupProof.ps1"
 . "$PSScriptRoot\StartupProof.Native.ps1"
 $c = Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
+if ($c.computer -cne $env:COMPUTERNAME -or $c.leaseId -cne $LeaseId) {
+    throw 'Recorder requires the exact authorized guest elevated controller, never observer elevation.'
+}
 $actor = [Security.Principal.WindowsIdentity]::GetCurrent()
-if ($c.computer -cne $env:COMPUTERNAME -or $c.leaseId -cne $LeaseId -or
-    !([Security.Principal.WindowsPrincipal]::new($actor)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+if (!([Security.Principal.WindowsPrincipal]::new($actor)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'Recorder requires the exact authorized guest elevated controller, never observer elevation.'
 }
 if ($c.instanceName -notmatch '^OpenClaw1791-[0-9a-f]{32}$' -or

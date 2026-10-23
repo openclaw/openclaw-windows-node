@@ -102,6 +102,59 @@ function Assert-StartupDryRun($Receipt, [string] $Digest, [int] $TraceStartsCoun
     }
 }
 
+function Complete-StartupProofController {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] $Config,
+        [Parameter(Mandatory)][StartupTraceMode] $Mode,
+        [Parameter(Mandatory)][string] $RunRoot,
+        $Run,
+        [bool] $TaskAbsent,
+        [bool] $MediumProcessExited,
+        [bool] $RecorderProcessExited,
+        [string] $ErrorText
+    )
+    $reaped = $TaskAbsent -and $MediumProcessExited -and $RecorderProcessExited
+    $counter = [int](Test-Path -LiteralPath $Config.traceStartsFile)
+    $validRun = $Run -and $Run.completed -is [bool] -and $Run.completed -and
+        $Run.functionalContractsPassed -is [bool] -and $Run.functionalContractsPassed -and
+        $Run.sourceHead -ceq $Config.sourceHead -and $Run.mode -ceq [string]$Mode -and
+        $Run.traceStartsCounter -eq $counter -and $Run.traceInstanceAbsent -is [bool] -and
+        $Run.traceInstanceAbsent -and $counter -eq [int]($Mode -eq [StartupTraceMode]::Record)
+    $parsedRun = $null
+    if ($validRun -and $reaped -and !$ErrorText -and $Mode -eq [StartupTraceMode]::Disabled) {
+        try {
+            $parsedRun = $Run | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+            $parsedRun | Add-Member -NotePropertyName controllerResourcesReaped -NotePropertyValue $reaped -Force
+            Assert-StartupDryRun $parsedRun $Run.bindingHash $counter
+        } catch { $validRun = $false; $ErrorText = $_.Exception.Message }
+    }
+    $driver = [ordered]@{
+        completed = [bool](!$ErrorText -and $reaped -and $validRun)
+        controllerResourcesReaped = [bool]$reaped
+        taskAbsent = $TaskAbsent; mediumProcessExited = $MediumProcessExited
+        recorderProcessExited = $RecorderProcessExited
+        sourceHead = $Config.sourceHead; mode = [string]$Mode
+        traceStartsCounter = $counter; error = $ErrorText
+    }
+    $driverPath = Join-Path $RunRoot 'driver.json'
+    if (Test-Path -LiteralPath $driverPath) { throw 'Never overwrite a finalized controller receipt.' }
+    $driver | ConvertTo-Json | Set-Content "$driverPath.writing" -Encoding utf8NoBOM
+    $parsedDriver = Get-Content -LiteralPath "$driverPath.writing" -Raw | ConvertFrom-Json
+    Move-Item -LiteralPath "$driverPath.writing" -Destination $driverPath
+    if (!$parsedDriver.completed) {
+        throw 'Complete wrapper dry-run/recording failed; preserve this immutable run directory.'
+    }
+    if ($Mode -eq [StartupTraceMode]::Disabled) {
+        if (Test-Path -LiteralPath $Config.dryRunReceipt) { throw 'Never overwrite a qualified full dry-run.' }
+        $parsedRun | ConvertTo-Json -Depth 30 | Set-Content "$($Config.dryRunReceipt).writing" -Encoding utf8NoBOM
+        $parsedRun = Get-Content -LiteralPath "$($Config.dryRunReceipt).writing" -Raw | ConvertFrom-Json
+        Assert-StartupDryRun $parsedRun $Run.bindingHash $counter
+        Move-Item -LiteralPath "$($Config.dryRunReceipt).writing" -Destination $Config.dryRunReceipt
+    }
+    $parsedDriver
+}
+
 function Invoke-StartupProofRun {
     [CmdletBinding()]
     param(
