@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "additionalPrompt": "Use the repository's native hanselman-code-review skill in addition to normal ClawSweeper PR-review duties.",
+  "multiModel": {
+    "reviewers": [
+      {
+        "runner": "openclaw",
+        "model": "anthropic/claude-opus-5-5",
+        "reasoningEffort": "high",
+        "contextTier": "default"
+      },
+      {
+        "runner": "openclaw",
+        "model": "openai/gpt-6-astra",
+        "reasoningEffort": "high",
+        "contextTier": "default"
+      }
+    ],
+    "coordinator": {
+      "runner": "openclaw",
+      "model": "openai/gpt-6-astra",
+      "reasoningEffort": "high",
+      "contextTier": "default"
+    }
+  }
+}
