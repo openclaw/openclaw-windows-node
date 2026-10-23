@@ -23,6 +23,9 @@ param(
     [ValidateSet("win-x64", "win-arm64")]
     [string]$RuntimeIdentifier,
 
+    [ValidateSet("Debug", "Release")]
+    [string]$Configuration = "Debug",
+
     [string]$ResultsDirectory,
     [string[]]$CaptureArtifact = @(),
     [string[]]$BinaryArtifact = @(),
@@ -80,6 +83,7 @@ if ($null -ne $binding) {
 $arguments = @(
     "test",
     $projectPath,
+    "--configuration", $Configuration,
     "--filter", $Filter,
     "--results-directory", $ResultsDirectory,
     "--logger", "trx;LogFileName=$ResultName.trx",

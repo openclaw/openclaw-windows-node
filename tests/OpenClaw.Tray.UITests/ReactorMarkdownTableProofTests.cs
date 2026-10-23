@@ -4,6 +4,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
+using OpenClawTray.Chat.Markdown;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using static OpenClaw.Tray.UITests.TestSupport;
@@ -76,7 +79,14 @@ public sealed class ReactorMarkdownTableProofTests
                 var cells = table.Children.OfType<RichTextBlock>().ToArray();
 
                 Assert.Equal(12, cells.Length);
-                Assert.All(cells, cell => Assert.True(cell.IsTextSelectionEnabled));
+                var owner = Assert.Single(FindLogical<NativeChatMessageText>(root!));
+                var provider = Assert.IsAssignableFrom<ITextProvider>(
+                    FrameworkElementAutomationPeer.CreatePeerForElement(owner)!.GetPattern(PatternInterface.Text));
+                var selected = provider.DocumentRange.FindText(
+                    "Price\t$205.27\nForward P/E\t13.40x (cheapest)", backward: false, ignoreCase: false);
+                Assert.NotNull(selected);
+                selected.Select();
+                Assert.Equal("Price\t$205.27\nForward P/E\t13.40x (cheapest)", owner.Document.SelectedText);
                 Assert.All(cells, cell => Assert.Equal(TextWrapping.Wrap, cell.TextWrapping));
                 Assert.All(cells, cell => Assert.InRange(cell.ActualWidth, 1, 160));
                 Assert.True(GetRuns(cells[0]).All(run => run.FontWeight.Weight > 400));

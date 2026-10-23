@@ -2,6 +2,9 @@ using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
+using OpenClawTray.Chat.Markdown;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using static OpenClaw.Tray.UITests.TestSupport;
@@ -50,7 +53,13 @@ public sealed class ReactorMarkdownListProofTests
                 Assert.Equal(marker, markerBlock.Text);
                 Assert.Equal(LongText, CollectText(content));
                 Assert.Equal(TextWrapping.Wrap, content.TextWrapping);
-                Assert.True(content.IsTextSelectionEnabled);
+                var owner = Assert.Single(FindLogical<NativeChatMessageText>(root!));
+                var provider = Assert.IsAssignableFrom<ITextProvider>(
+                    FrameworkElementAutomationPeer.CreatePeerForElement(owner)!.GetPattern(PatternInterface.Text));
+                var range = provider.DocumentRange.FindText(LongText, backward: false, ignoreCase: false);
+                Assert.NotNull(range);
+                range.Select();
+                Assert.Equal(LongText, owner.Document.SelectedText);
                 Assert.Equal(1, Grid.GetColumn(content));
                 Assert.InRange(content.ActualWidth, 1, 239);
                 Assert.True(content.ActualWidth + markerBlock.ActualWidth + row.ColumnSpacing <= 241);

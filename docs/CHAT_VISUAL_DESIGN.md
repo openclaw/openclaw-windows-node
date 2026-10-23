@@ -76,6 +76,23 @@ use the card fill above that content layer.
 
 ## Controls and states
 
+Assistant Markdown supports balanced, block-level `<details>` wrappers with a
+nonempty `<summary>` using a native `Expander`. The summary can follow the opener
+on the same line or a later line; `open` sets the initial expanded state.
+Expansion remains user-owned across unrelated rerenders, body streaming updates,
+and resizing. Nested disclosures are supported to 16 levels. The body uses the
+existing Markdown typography, lists, tables, quotes, literal code frames, and Copy.
+The native control owns keyboard activation, focus, and accessible expansion state.
+
+This is an allowlisted Markdown extension, not general HTML rendering. Only
+`<details>`, `<details open>`, `<summary>`, and their matching closing wrappers
+are recognized, with wrapper lines indented by at most three spaces. Disclosures
+inside Markdown code, quotes, lists, or table cells are not activated. Unsupported
+attributes, empty summaries, and incomplete streaming wrappers remain literal
+text. Summary text is inert; its HTML attributes and markup are never executed.
+Body links and images retain the existing inert sanitization. Text selection
+still belongs to each native Markdown text control, not to the whole message.
+
 Queued submissions leave the textbox and remain after the current turn as normal
 right-aligned user bubbles. A transparent `ChatPendingUserBrush`, subtle `ChatStrokeBrush`
 outline, and slightly faded `ChatSecondaryTextBrush` distinguish them from sent messages without
@@ -336,3 +353,42 @@ Attachment, queue, recording, loading, thinking and error presentations use the
 same resources and bounded layouts. Markdown sanitization, disabled HTML,
 blocked link navigation, inert images, list measurement, timeline keys and
 scroll-follow remain with their existing owners.
+
+### Per-message Markdown selection
+
+Each realized assistant Markdown body has a native `NativeChatMessageText`
+selection owner. A single range crosses paragraphs, list markers, multiline
+code, table cells (tab-separated columns and newline-separated rows), and inert
+inline link text. It never crosses into another message. Code language and Copy
+labels and collapsed disclosure bodies are not characters in this range.
+Disclosure summaries are visible, selectable native text: a spanning range
+includes the title, a collapsed disclosure contributes only its summary, and
+an expanded disclosure contributes its summary followed by its visible body.
+Pointer endpoints inside a summary resolve individual title characters and
+paint partial selections. A title click toggles the disclosure; dragging or
+Shift-clicking selects without toggling. The chevron, keyboard and native
+ExpandCollapse accessibility pattern retain their disclosure behavior.
+
+Pointer drag, double-click word selection, Shift extension, arrows, Home/End,
+Ctrl+Home/End, Ctrl+Shift+arrows, Ctrl+A, Ctrl+C and the selection context menu
+share the same model. Dragging beyond an ancestor viewport scrolls on render
+frames, with the pointer retained in root coordinates. Highlight and foreground
+use Windows system selection colors. Copy failures expose a polite live-region
+status instead of claiming success.
+
+`ChatMessageTextAutomationPeer` exposes the Text pattern with grapheme-aware
+ranges, selection, search, viewport geometry and revision rebasing. Native text
+leaves are Raw accessibility children to avoid duplicate text navigation;
+interactive widgets remain accessible. UIA Line units use rendered native
+geometry, including soft wraps; Paragraph units follow native paragraph metadata
+and include following separators. Unsupported Format promotes to Word.
+Unloading suspends selection subscriptions and native highlights while retaining
+a guarded Loaded hook, so the same native owner resumes without a Reactor update.
+Explicit disposal is final and removes that hook too.
+The timeline remains responsible for rendering and virtualization, not selection.
+
+The isolated native proof matrix exercises synthetic native geometry, keyboard
+dispatch, an injected clipboard, provider APIs and render-frame scrolling in
+Light, Dark and a synthetic High Contrast resource scope. Physical pointer/key
+injection, Narrator speech, actual Windows High Contrast switching and a published
+application run are separate manual checks, not claims made by these proofs.

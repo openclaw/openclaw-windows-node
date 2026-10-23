@@ -566,8 +566,34 @@ foreach ($token in @(
 }
 
 $trayUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
-Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof"' `
-    -Message "Tray UI tests must exclude accessibility and native-onboarding proof cases."
+Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=NativeMarkdownProof&Category!=NativeMarkdownSelectionProof"' `
+    -Message "Tray UI tests must exclude accessibility, native-onboarding and isolated native-Markdown proof cases."
+$markdownProofStep = Get-StepBlock -Text $uiJob -Name "Run native Markdown disclosure proofs"
+Assert-Contains -Text $markdownProofStep -Expected "foreach (`$theme in @('Light', 'Dark', 'HighContrast'))" `
+    -Message "Native Markdown disclosure proofs must run every theme in its own process."
+Assert-Contains -Text $markdownProofStep -Expected '-Filter "Category=NativeMarkdownProof&DisplayName~$theme"' `
+    -Message "Native Markdown disclosure proofs must select one theme per run-proof-tests.ps1 invocation."
+Assert-Contains -Text $markdownProofStep -Expected "AssistantMarkdown_UntrustedContentRemainsInertInsideDisclosure" `
+    -Message "Native Markdown disclosure proofs must keep the isolated inert-content case."
+$selectionProofStep = Get-StepBlock -Text $uiJob -Name "Run native per-message Markdown selection proofs"
+Assert-Contains -Text $selectionProofStep -Expected "foreach (`$configuration in @('Debug', 'Release'))" `
+    -Message "Native Markdown selection proofs must cover Debug and Release."
+Assert-Contains -Text $selectionProofStep -Expected "foreach (`$theme in @('Light'))" `
+    -Message "Native Markdown selection CI proofs must use the Light-only behavioral gate."
+Assert-Contains -Text $selectionProofStep -Expected '-Filter "Category=NativeMarkdownSelectionProof&FullyQualifiedName~$case&DisplayName~$theme"' `
+    -Message "Native Markdown selection proofs must isolate each case through the proof runner."
+foreach ($case in @(
+        'VisibleMessage_PointerKeyboardCopyAndTextProviderShareOneRange',
+        'MessageBoundary_DragScrollAndRealizationReuse',
+        'NativeUnits_RespectWrappingParagraphsAndTransientReload',
+        'SelectionPaint_PartialBlocksSurviveInactiveFocusAndReconcile',
+        'DisclosureSelection_VisibleSummaryAndExpandedBody'
+    )) {
+    Assert-Contains -Text $selectionProofStep -Expected $case `
+        -Message "Native Markdown selection lane is missing required behavioral case '$case'."
+}
+Assert-Contains -Text $selectionProofStep -Expected '-Configuration $configuration' `
+    -Message "Native Markdown selection proofs must pass the selected build configuration."
 Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
