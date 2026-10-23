@@ -3014,7 +3014,7 @@ Utilisez l'une de ces options :
     <value>Bienvenue dans OpenClaw</value>
   </data>
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
-    <value>Comment puis-je vous aider aujourd'hui ?</value>
+    <value>Choisissez où cette session s’exécute, puis indiquez quoi faire.</value>
   </data>
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>Terminé</value>
@@ -8073,9 +8073,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Le profil préféré {0} ne convient pas à ce matériel. La configuration peut utiliser {1} avec {2:N0} jetons de contexte. Vérifiez ce profil dans la configuration avant de l’installer.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Ce profil nécessite au moins {0} de mémoire vive système.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Ce profil nécessite au moins {0} libres sur les volumes du cache des modèles et du moteur.</value></data>
-  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Chargement du contenu d'accueil depuis votre Gateway...</value></data>
-  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>Ce Gateway ne fournit pas de contenu d'accueil partagé. Vous pouvez quand même démarrer une discussion ci-dessous.</value></data>
-  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>Impossible de charger le contenu d'accueil. Reconnectez-vous pour réessayer ou démarrez une discussion ci-dessous.</value></data>
   <data name="Chat_Placement_Unknown" xml:space="preserve">
     <value>Non vérifié</value>
   </data>
@@ -8104,4 +8101,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
     <value>Cette session n'est plus vide, donc le choix d'emplacement en attente a été annulé. Vérifiez la session et envoyez à nouveau pour continuer à son emplacement actuel.</value>
   </data>
   <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>Obtenir de l’assistance</value></data>
+  <data name="Chat_Welcome_WhatCanYouDo" xml:space="preserve"><value>Que pouvez-vous faire ?</value></data>
+  <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Résumer mes sessions récentes</value></data>
+  <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>M’aider à configurer un canal</value></data>
+  <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Vérifier l’état du système</value></data>
 </root>

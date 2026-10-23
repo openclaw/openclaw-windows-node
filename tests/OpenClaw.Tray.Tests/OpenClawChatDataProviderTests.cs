@@ -95,13 +95,6 @@ public class OpenClawChatDataProviderTests
         public Func<CommandCatalogQuery?, Task<CommandCatalog>>? ListCommandsBehavior { get; set; }
         public int ListCommandsCallCount { get; private set; }
         public CommandCatalogQuery? LastListCommandsQuery { get; private set; }
-        public Func<string, Task<ChatWelcomeCatalog?>>? WelcomeBehavior { get; set; }
-        public List<string> WelcomeLocales { get; } = [];
-        public Task<ChatWelcomeCatalog?> GetWelcomeCatalogAsync(string locale)
-        {
-            WelcomeLocales.Add(locale);
-            return WelcomeBehavior?.Invoke(locale) ?? Task.FromResult<ChatWelcomeCatalog?>(null);
-        }
         public SessionCreateResult CreateSessionResult { get; set; } = new()
         {
             Ok = true,
@@ -11377,93 +11370,6 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(2, snapshots[^1].AvailableModels.Length);
         Assert.Equal("gpt-5.4", snapshots[^1].AvailableModels[0]);
         Assert.Equal("gpt-5.4-mirror", snapshots[^1].AvailableModels[1]);
-    }
-
-    [Fact]
-    public async Task WelcomeContent_LoadsOncePerConnectionAndTracksCurrentGatewayCopy()
-    {
-        var (bridge, provider, _, _) = CreateProvider();
-        var catalog = new ChatWelcomeCatalog("fr", "Guide from Gateway", "Gateway recents",
-            [new("future-key", "Visible label", "Exact prompt from Gateway")]);
-        bridge.WelcomeBehavior = _ => Task.FromResult<ChatWelcomeCatalog?>(catalog);
-        bridge.RaiseStatus(ConnectionStatus.Connected);
-        var first = await provider.LoadAsync();
-        Assert.Equal(ChatWelcomeContentStatus.Available, first.WelcomeContent?.Status);
-        Assert.Same(catalog, first.WelcomeContent?.Catalog);
-        await provider.LoadAsync();
-        Assert.Single(bridge.WelcomeLocales);
-        Assert.Equal(System.Globalization.CultureInfo.CurrentUICulture.Name, bridge.WelcomeLocales[0]);
-
-        bridge.RaiseStatus(ConnectionStatus.Disconnected);
-        catalog = catalog with { Hint = "Updated at the Gateway" };
-        bridge.RaiseStatus(ConnectionStatus.Connected);
-        var reconnected = await provider.LoadAsync();
-        Assert.Equal(2, bridge.WelcomeLocales.Count);
-        Assert.Equal("Updated at the Gateway", reconnected.WelcomeContent?.Catalog?.Hint);
-        await provider.DisposeAsync();
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task WelcomeContent_UnsupportedAndFailuresDoNotInventPrompts(bool fail)
-    {
-        var (bridge, provider, _, _) = CreateProvider();
-        if (fail)
-            bridge.WelcomeBehavior = _ => Task.FromException<ChatWelcomeCatalog?>(new InvalidDataException("Invalid catalog"));
-        bridge.RaiseStatus(ConnectionStatus.Connected);
-        var snapshot = await provider.LoadAsync();
-        Assert.Equal(fail ? ChatWelcomeContentStatus.Failed : ChatWelcomeContentStatus.Unsupported,
-            snapshot.WelcomeContent?.Status);
-        Assert.Null(snapshot.WelcomeContent?.Catalog);
-        await provider.DisposeAsync();
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task WelcomeContent_DiscardsLateResultsAfterDisconnectOrDispose(bool dispose)
-    {
-        var release = new TaskCompletionSource<ChatWelcomeCatalog?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var bridge = new FakeBridge
-        {
-            CurrentStatus = ConnectionStatus.Connected,
-            WelcomeBehavior = _ => release.Task
-        };
-        var provider = new OpenClawChatDataProvider(bridge);
-        var snapshots = new List<ChatDataSnapshot>();
-        provider.Changed += (_, args) => snapshots.Add(args.Snapshot);
-        var fetch = provider.EnsureWelcomeContentAsync();
-        if (dispose)
-            await provider.DisposeAsync();
-        else
-            bridge.RaiseStatus(ConnectionStatus.Disconnected);
-        release.SetResult(new("en", "Stale hint", "Stale recents", [new("stale", "Stale", "Stale")]));
-        await fetch;
-        Assert.DoesNotContain(snapshots, snapshot => snapshot.WelcomeContent?.Catalog is not null);
-        if (!dispose)
-            await provider.DisposeAsync();
-    }
-
-    [Fact]
-    public async Task WelcomeContent_DisconnectBeforeUiDeliveryDropsStaleCatalog()
-    {
-        var bridge = new FakeBridge
-        {
-            CurrentStatus = ConnectionStatus.Connected,
-            WelcomeBehavior = _ => Task.FromResult<ChatWelcomeCatalog?>(new("en", "Stale", "Recents", []))
-        };
-        var queued = new List<Action>();
-        var provider = new OpenClawChatDataProvider(bridge, post: queued.Add);
-        var delivered = new List<ChatDataSnapshot>();
-        provider.Changed += (_, args) => delivered.Add(args.Snapshot);
-        await provider.EnsureWelcomeContentAsync();
-        bridge.RaiseStatus(ConnectionStatus.Disconnected);
-        foreach (var action in queued.ToArray())
-            action();
-        Assert.NotEmpty(delivered);
-        Assert.DoesNotContain(delivered, snapshot => snapshot.WelcomeContent?.Catalog is not null);
-        await provider.DisposeAsync();
     }
 
     [Fact]

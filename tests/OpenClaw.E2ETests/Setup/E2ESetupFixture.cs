@@ -210,7 +210,9 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         // ── Phase 4: Wait for gateway connection to reach Ready ──
         Log("Phase 4: Waiting for tray gateway connection...");
-        await WaitForConnectionReady();
+        await WaitForConnectionReadyAsync(
+            timeout: null,
+            protocolMismatchResultPath: Environment.GetEnvironmentVariable("OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT"));
         await WaitForNodeListReady();
         Log("Phase 4 complete: tray fully connected and node list populated.");
     }
@@ -512,7 +514,10 @@ public sealed class E2ESetupFixture : IAsyncLifetime
     /// both roles' FSMs to reach Connected, but the node service reports its
     /// own connected state directly — use that as the reliable signal.
     /// </summary>
-    public async Task WaitForConnectionReady(TimeSpan? timeout = null)
+    public Task WaitForConnectionReady(TimeSpan? timeout = null) =>
+        WaitForConnectionReadyAsync(timeout, protocolMismatchResultPath: null);
+
+    private async Task WaitForConnectionReadyAsync(TimeSpan? timeout, string? protocolMismatchResultPath)
     {
         var deadline = DateTime.UtcNow.Add(timeout ?? TimeSpan.FromSeconds(90));
         string lastStatus = "unknown";
@@ -542,8 +547,14 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 // Accept Connected or Ready when node is confirmed connected+paired
                 if ((lastStatus is "Ready" or "Connected") && lastNodeConnected && lastNodePaired)
                     return;
+
+                // Only initialization may record this outcome. A later recovery/test
+                // failure must never inherit a protocol-mismatch exception receipt.
+                if (!string.IsNullOrWhiteSpace(protocolMismatchResultPath))
+                    E2EProtocolMismatchResult.ThrowIfDetected(
+                        root, Path.Combine(DataDir, "openclaw-tray.log"), protocolMismatchResultPath);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not E2EProtocolMismatchException)
             {
                 Log($"Connection poll error: {ex.Message}");
             }

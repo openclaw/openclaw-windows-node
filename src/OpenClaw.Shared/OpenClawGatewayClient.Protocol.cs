@@ -340,31 +340,6 @@ public partial class OpenClawGatewayClient
 
     // ── commands.list ──
 
-    /// <summary>Reads the connected Gateway's shared web welcome catalog.</summary>
-    public async Task<ChatWelcomeCatalog?> GetChatWelcomeCatalogAsync(string? locale, int timeoutMs = 15000)
-    {
-        const string method = "controlUi.welcome.get";
-        if (!IsConnectedToGateway)
-            throw new InvalidOperationException("Gateway connection is not open.");
-        if (!AdvertisedServerMethods.Contains(method, StringComparer.Ordinal))
-            return null;
-
-        var epoch = SessionMutationConnectionEpoch;
-        try
-        {
-            var parameters = string.IsNullOrWhiteSpace(locale)
-                ? new Dictionary<string, string>()
-                : new Dictionary<string, string> { ["locale"] = locale };
-            var payload = await SendResponseRequestAsync(method, parameters, timeoutMs, epoch).ConfigureAwait(false);
-            return ChatWelcomeCatalog.Parse(payload);
-        }
-        catch (InvalidOperationException ex) when (IsUnknownMethodError(ex.Message))
-        {
-            _logger.Warn("controlUi.welcome.get unsupported on Gateway");
-            return null;
-        }
-    }
-
     /// <summary>
     /// Fetches the gateway command catalog. When <paramref name="query"/> is
     /// supplied it is applied as a client-side filter over the full catalog.

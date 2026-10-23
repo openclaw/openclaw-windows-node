@@ -370,8 +370,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 showWelcome
                     ? ReactorChatWelcome.Secondary(
                             ChatWelcomePresentation.RecentChats(snapshot.Threads, effectiveThread?.Id, effectiveThread?.AgentId),
-                            key => props.ComposerSession.Controller.TrySelectSession(key), onSuggestionPicked, firstSendInFlight,
-                            snapshot.WelcomeContent)
+                            key => props.ComposerSession.Controller.TrySelectSession(key), onSuggestionPicked, firstSendInFlight)
                         .Margin(ChatVisuals.Gutter(viewportWidth), 12, ChatVisuals.Gutter(viewportWidth), 24)
                         .Grid(row: 1)
                     : Empty().Grid(row: 1))

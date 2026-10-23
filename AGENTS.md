@@ -106,15 +106,15 @@ Use the [proof skill](.agents/skills/openclaw-proof-validation/SKILL.md) when a 
 
 ## User-Facing Copy
 
-Prefer one maintained source of truth for strings shared with the Gateway or web dashboard:
+Keep client presentation and Gateway data ownership distinct:
 
-- Before adding copy, find its existing owner and localization resources. Reuse the authoritative content rather than hard-coding or manually copying a second prompt/label catalog into Companion.
+- Before adding copy, find its existing owner and localization resources. Client-owned presentation belongs in native `.resw` resources; shared wording alone does not require a Gateway contract.
 - For cross-client copy that should track the installed Gateway, prefer an existing supported data contract. When a catalog is justified, generate it from the owner's translation sources at build time, package it with that owner, and serve validated, versioned data through the authenticated connection. Do not generate translations at launch or fetch repository sources at runtime.
 - Load shared catalogs asynchronously and cache them at the appropriate connection/package lifetime. Define locale fallback, unsupported-version behavior, and disconnect/update invalidation explicitly. Render strings as data, never executable UI or code.
-- Keep Windows-specific labels and loading/error/compatibility messages in native `.resw` resources. A minimal localized fallback, such as "Recent chats" when the shared catalog is unavailable, is appropriate; a duplicate starter-prompt list is not. Document any necessary duplication and its owner.
+- Keep Windows labels, welcome guidance, starter prompts, and loading/error/compatibility messages in native `.resw` resources. Update all supported languages together.
 - Use the simplest approach that fits. This is not a requirement to add an RPC or catalog for every string; existing native resources are the right home for native-only copy. Add focused coverage for source-to-catalog consistency and consumer failure/fallback behavior when introducing a shared contract.
 
-Reference pattern: welcome copy uses the web i18n sources in `openclaw/openclaw`, a build-generated `dist/control-ui-welcome.json`, and `controlUi.welcome.get`. Companion fetches once per connection; Gateway lazily reads and caches the packaged catalog on the first request. See [the native chat visual contract](docs/CHAT_VISUAL_DESIGN.md#controls-and-states). This pattern requires a Gateway build advertising that method; do not assume all released Gateways support it.
+Welcome copy is bundled with Companion and works independently of Gateway version. See [the native chat visual contract](docs/CHAT_VISUAL_DESIGN.md#controls-and-states).
 
 Do not use em dashes in user-facing prose, including UI text, error messages, CLI output, notifications, and agent-facing help. Use a period, colon, comma, parentheses, or a simple hyphen instead. A standalone em dash is allowed as an unavailable-value or status placeholder.
 

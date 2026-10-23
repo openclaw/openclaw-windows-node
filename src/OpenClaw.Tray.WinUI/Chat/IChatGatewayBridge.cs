@@ -52,9 +52,6 @@ public interface IChatGatewayBridge : IDisposable
     /// does not implement the method. Request/response — no event subscription.
     /// </summary>
     Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null);
-    /// <summary>Returns null only when the Gateway does not support shared welcome content.</summary>
-    Task<ChatWelcomeCatalog?> GetWelcomeCatalogAsync(string locale) =>
-        Task.FromResult<ChatWelcomeCatalog?>(null);
     Task<SessionCreateResult> CreateSessionAsync(SessionCreateRequest request) =>
         Task.FromResult(new SessionCreateResult
         {
@@ -273,9 +270,6 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null) =>
         _client.ListCommandsAsync(query);
-
-    public Task<ChatWelcomeCatalog?> GetWelcomeCatalogAsync(string locale) =>
-        _client.GetChatWelcomeCatalogAsync(locale);
 
     public Task<SessionCreateResult> CreateSessionAsync(SessionCreateRequest request) =>
         _client.CreateSessionAsync(request);

@@ -3015,7 +3015,7 @@ Gebruik een van deze opties:
     <value>Welkom bij OpenClaw</value>
   </data>
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
-    <value>Waarmee kan ik je vandaag helpen?</value>
+    <value>Kies waar deze sessie werkt en geef vervolgens aan wat er moet gebeuren.</value>
   </data>
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>Voltooid</value>
@@ -8074,9 +8074,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Het voorkeursprofiel {0} past niet bij deze hardware. De installatie kan {1} gebruiken met {2:N0} contexttokens. Controleer dit profiel in de installatie voordat u het installeert.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Dit profiel vereist minimaal {0} systeemgeheugen.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Dit profiel vereist minimaal {0} vrije ruimte op zowel het modelcachevolume als het runtimevolume.</value></data>
-  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Welkomstinhoud wordt geladen vanaf je Gateway...</value></data>
-  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>Deze Gateway biedt geen gedeelde welkomstinhoud. Je kunt hieronder wel een chat starten.</value></data>
-  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>De welkomstinhoud kon niet worden geladen. Maak opnieuw verbinding om het nogmaals te proberen of start hieronder een chat.</value></data>
   <data name="Chat_Placement_Unknown" xml:space="preserve">
     <value>Niet geverifieerd</value>
   </data>
@@ -8105,4 +8102,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Deze sessie is niet meer leeg, dus de wachtende locatiekeuze is geannuleerd. Controleer de sessie en verzend opnieuw om op de huidige locatie door te gaan.</value>
   </data>
   <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>Ondersteuning krijgen</value></data>
+  <data name="Chat_Welcome_WhatCanYouDo" xml:space="preserve"><value>Wat kun je doen?</value></data>
+  <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
+  <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
+  <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
 </root>

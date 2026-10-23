@@ -26,9 +26,6 @@ internal sealed class ChatPresentationState
     private CommandCatalog? _commandCatalog;
     private bool _commandsFetchInFlight;
     private int _commandsEpoch;
-    private ChatWelcomeContent _welcomeContent = ChatWelcomeContent.Loading;
-    private bool _welcomeFetchInFlight;
-    private int _welcomeEpoch;
     private int _keylessEventDiagnosticRaised;
     private OpenClawChatDataProvider.LastChatState? _lastChatState;
 
@@ -162,9 +159,6 @@ internal sealed class ChatPresentationState
         _commandsEpoch++;
         _commandCatalog = null;
         _commandsFetchInFlight = false;
-        _welcomeEpoch++;
-        _welcomeContent = ChatWelcomeContent.Loading;
-        _welcomeFetchInFlight = false;
     }
 
     internal ChatSessionOptionPatchLease BeginSessionOptionPatch(string threadId)
@@ -238,27 +232,6 @@ internal sealed class ChatPresentationState
     internal bool IsCommandCatalogEpochCurrent(int epoch) =>
         epoch == _commandsEpoch;
 
-    internal bool TryBeginWelcomeFetch(ConnectionStatus status, out int epoch)
-    {
-        epoch = _welcomeEpoch;
-        if (status != ConnectionStatus.Connected || _welcomeFetchInFlight ||
-            _welcomeContent.Status != ChatWelcomeContentStatus.Loading)
-            return false;
-        _welcomeFetchInFlight = true;
-        return true;
-    }
-
-    internal bool CompleteWelcomeFetch(int epoch, ConnectionStatus status, ChatWelcomeContent content)
-    {
-        if (epoch != _welcomeEpoch || status != ConnectionStatus.Connected)
-            return false;
-        _welcomeFetchInFlight = false;
-        _welcomeContent = content;
-        return true;
-    }
-
-    internal bool IsWelcomeEpochCurrent(int epoch) => epoch == _welcomeEpoch;
-
     internal bool TryRaiseKeylessDiagnostic()
     {
         if (_keylessEventDiagnosticRaised != 0)
@@ -292,8 +265,7 @@ internal sealed class ChatPresentationState
         RememberedDefaultThreadId: _lastChatState?.DefaultThreadId,
         RememberedThreadTitle: _lastChatState?.ThreadTitle,
         RememberedModel: _lastChatState?.Model,
-        RememberedModelProvider: _lastChatState?.ModelProvider,
-        WelcomeContent: _welcomeContent);
+        RememberedModelProvider: _lastChatState?.ModelProvider);
 
     internal string ResolveTimelineKey(
         SessionInfo session,

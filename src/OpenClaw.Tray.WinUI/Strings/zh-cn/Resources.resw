@@ -3014,7 +3014,7 @@
     <value>欢迎使用 OpenClaw</value>
   </data>
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
-    <value>今天我能帮你做什么？</value>
+    <value>选择此会话的运行位置，然后说明要执行的任务。</value>
   </data>
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>完成</value>
@@ -8073,9 +8073,6 @@
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>首选的 {0} 配置不适合此硬件。设置可使用 {1}，上下文为 {2:N0} 个令牌。安装前请在设置中查看此配置。</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>此配置至少需要 {0} 系统内存。</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>此配置要求模型缓存和运行时所在的卷都至少有 {0} 可用空间。</value></data>
-  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>正在从 Gateway 加载欢迎内容...</value></data>
-  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>此 Gateway 不提供共享欢迎内容。你仍可在下方开始聊天。</value></data>
-  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>无法加载欢迎内容。请重新连接以重试，或在下方开始聊天。</value></data>
   <data name="Chat_Placement_Unknown" xml:space="preserve">
     <value>未验证</value>
   </data>
@@ -8104,4 +8101,8 @@
     <value>此会话已不再为空，因此已取消待定的位置选择。请检查会话并重新发送，以在当前位置继续。</value>
   </data>
   <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>获取支持</value></data>
+  <data name="Chat_Welcome_WhatCanYouDo" xml:space="preserve"><value>你能做什么？</value></data>
+  <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>总结我最近的会话</value></data>
+  <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>帮我配置一个频道</value></data>
+  <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>检查系统健康状况</value></data>
 </root>

@@ -2979,7 +2979,7 @@ Use one of these options:
     <value>Welcome to OpenClaw</value>
   </data>
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
-    <value>How can I help you today?</value>
+    <value>Pick where this session works, then say what to do.</value>
   </data>
   <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>Recent chats</value></data>
   <data name="Chat_Placement_Environment" xml:space="preserve">
@@ -8140,9 +8140,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>The preferred {0} profile does not fit this hardware. Setup can use {1} with {2:N0} context tokens. Review this profile in setup before installing.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>This profile requires at least {0} of system RAM.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>This profile requires at least {0} free on both the model cache and runtime volumes.</value></data>
-  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Loading welcome content from your Gateway...</value></data>
-  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>This Gateway does not provide shared welcome content. You can still start a chat below.</value></data>
-  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>Welcome content could not be loaded. Reconnect to retry, or start a chat below.</value></data>
   <data name="Chat_Placement_Unknown" xml:space="preserve">
     <value>Not verified</value>
   </data>
@@ -8171,4 +8168,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>This session is no longer empty, so the pending location selection was cancelled. Review the session and send again to continue in its current location.</value>
   </data>
   <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>Get support</value></data>
+  <data name="Chat_Welcome_WhatCanYouDo" xml:space="preserve"><value>What can you do?</value></data>
+  <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Summarize my recent sessions</value></data>
+  <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me configure a channel</value></data>
+  <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Check system health</value></data>
 </root>

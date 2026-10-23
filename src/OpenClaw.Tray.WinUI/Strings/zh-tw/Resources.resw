@@ -3014,7 +3014,7 @@
     <value>歡迎使用 OpenClaw</value>
   </data>
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
-    <value>今天我能幫你做什麼？</value>
+    <value>選擇此工作階段的執行位置，再說明要做什麼。</value>
   </data>
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>完成</value>
@@ -8073,9 +8073,6 @@
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>首選的 {0} 設定不適合此硬體。設定可使用 {1}，上下文為 {2:N0} 個權杖。安裝前請在設定中查看此設定。</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>此設定至少需要 {0} 系統記憶體。</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>此設定要求模型快取和執行階段所在的磁碟區都至少有 {0} 可用空間。</value></data>
-  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>正在從 Gateway 載入歡迎內容...</value></data>
-  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>此 Gateway 不提供共用歡迎內容。你仍可在下方開始聊天。</value></data>
-  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>無法載入歡迎內容。請重新連線以重試，或在下方開始聊天。</value></data>
   <data name="Chat_Placement_Unknown" xml:space="preserve">
     <value>未驗證</value>
   </data>
@@ -8104,4 +8101,8 @@
     <value>此工作階段已不再為空，因此已取消待定的位置選擇。請檢查工作階段並重新傳送，以在目前位置繼續。</value>
   </data>
   <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>取得支援</value></data>
+  <data name="Chat_Welcome_WhatCanYouDo" xml:space="preserve"><value>你能做什麼？</value></data>
+  <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>摘要我的近期工作階段</value></data>
+  <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>協助我設定頻道</value></data>
+  <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>檢查系統健康狀態</value></data>
 </root>

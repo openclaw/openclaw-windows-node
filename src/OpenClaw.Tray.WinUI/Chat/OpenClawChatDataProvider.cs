@@ -78,7 +78,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 {
     internal const int MaxEntryTextBytes = 256 * 1024;
     private readonly IChatGatewayBridge _bridge;
-    private readonly string _welcomeLocale;
     private readonly ChatTelemetryTracker _telemetry = new();
     private readonly ChatMetadataStore _metadataStore;
     private readonly ChatStatePersistence _persistence;
@@ -155,7 +154,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         Func<Func<Task>, Task>? deferredAbortScheduler = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
-        _welcomeLocale = LocalizationHelper.CurrentLanguage;
         _post = post;
         _deferredAbortScheduler =
             deferredAbortScheduler ?? (work => Task.Run(work));
@@ -203,49 +201,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         cancellationToken.ThrowIfCancellationRequested();
         var sessions = _bridge.GetSessionList() ?? Array.Empty<SessionInfo>();
-        _ = EnsureWelcomeContentAsync(publishSynchronousResult: false);
         return Task.FromResult(_state.Load(sessions, ProjectionContext()));
-    }
-
-    internal async Task EnsureWelcomeContentAsync(bool publishSynchronousResult = true)
-    {
-        if (!_state.TryBeginWelcomeFetch(out var epoch))
-            return;
-
-        ChatWelcomeContent content;
-        var completedSynchronously = true;
-        try
-        {
-            var request = _bridge.GetWelcomeCatalogAsync(_welcomeLocale);
-            completedSynchronously = request.IsCompleted;
-            var catalog = await request.ConfigureAwait(false);
-            content = catalog is null
-                ? ChatWelcomeContent.Unsupported
-                : new ChatWelcomeContent(ChatWelcomeContentStatus.Available, catalog);
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"[ChatProvider] Welcome catalog failed: {ex.GetType().Name}");
-            content = ChatWelcomeContent.Failed;
-        }
-
-        if (!_state.CompleteWelcomeFetch(epoch, content))
-            return;
-        // LoadAsync already returns synchronous results. Asynchronous results
-        // join the normal coalesced drain, which reads authoritative state.
-        if (!publishSynchronousResult && completedSynchronously)
-            return;
-        if (_post is not null)
-        {
-            if (_state.SnapshotWelcomeIfFresh(epoch, ProjectionContext()) is { } snapshot)
-                Publish(snapshot);
-            return;
-        }
-        Deliver(() =>
-        {
-            if (_state.SnapshotWelcomeIfFresh(epoch, ProjectionContext()) is { } snapshot)
-                DeliverPublishBatch(snapshot, []);
-        });
     }
 
     internal void RememberSelectedThread(string? threadId)
@@ -1214,8 +1170,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
         if (transition.Disconnected)
             _state.ClearToolReplayState();
-        if (transition.Reconnected)
-            _ = EnsureWelcomeContentAsync();
     }
 
     private void OnSessionsUpdated(object? sender, SessionInfo[] sessions)
