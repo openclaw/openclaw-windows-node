@@ -53,6 +53,30 @@ Use `.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` for the
 opt-in real-app lane. It rejects skipped or zero-test runs and preserves
 per-run artifacts. Existing MCP-only integration defaults remain unchanged.
 
+### Cross-repository candidate compatibility
+
+The reusable [`release-candidate-e2e.yml`](../.github/workflows/release-candidate-e2e.yml)
+workflow tests one exact OpenClaw package against an independently identified
+Windows app. `windows_node_workflow_sha` pins both the workflow and the maintained
+setup/test harness. `windows_node_source_sha` identifies only the app under test:
+a verified published ZIP/MSIX in release mode, or a separately checked-out and
+built Tray in main mode. Fixing the harness does not rebuild historical releases.
+
+The fixture installs the candidate (including exact beta/alpha versions), waits
+for operator/node readiness, and runs
+`FullSetup_SafeNodeInvocation_RoutesThroughRealGateway` to invoke `system.which`
+through the real Gateway. Current-feature capability inventories and recovery
+scenarios remain in ordinary product E2E, not historical-app compatibility.
+
+Success requires an executed, passing test. Only an opted-in lane may accept
+`PROTOCOL_MISMATCH`: the initial fixture must observe the exact structured app
+error, write its receipt, and fail the selected test with the dedicated exception.
+Skipped tests, setup timeouts, unrelated failures, and run-level errors fail the
+lane. [`Resolve-ReleaseCandidateE2EOutcome.ps1`](../scripts/Resolve-ReleaseCandidateE2EOutcome.ps1)
+owns result admission; its executable regression cases run in fast-validation CI.
+Evidence names include the app source kind and release tag or source SHA so
+stable, prerelease, and main invocations can upload in the same caller run.
+
 ### OpenClaw.Shared.Tests
 
 - **Command output-drain timing** - The unsupported-Windows runner fixture gates launcher release, then requires completion within three seconds of root exit while a descendant retains stdout, stderr, or both. Ten repetitions per case check short output and PID/start-time-bound child cleanup. The nonparallel `MxcOwnership` collection isolates these wall-clock budgets from unrelated tests. Native SDK finalization has separate managed ownership tests and opt-in runtime proof.

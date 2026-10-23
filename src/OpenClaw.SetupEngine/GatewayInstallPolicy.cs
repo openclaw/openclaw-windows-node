@@ -191,9 +191,12 @@ public static class GatewayInstallPolicy
         }
 
         var selectedVersion = config.Gateway.Version?.Trim();
-        RequireExactVersion(
-            selectedVersion,
-            "Gateway candidate package validation requires an exact Gateway.Version.");
+        if (!GatewayPackageVersion.IsExact(selectedVersion))
+        {
+            throw Failure(
+                GatewayCompatibilityFailureKind.InvalidPolicy,
+                "Gateway candidate package validation requires an exact Gateway.Version.");
+        }
         config.Gateway.Version = selectedVersion;
         config.Gateway.Selection = null;
         config.Gateway.InstalledVersion = null;

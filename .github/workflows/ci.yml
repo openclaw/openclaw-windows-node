@@ -243,6 +243,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-stable-correction-release-validator.ps1
 
+    - name: Validate release-candidate outcome classification
+      shell: pwsh
+      run: ./scripts/Resolve-ReleaseCandidateE2EOutcome.Tests.ps1
+
     - name: Validate alpha promotion policy and workflow
       shell: pwsh
       run: ./scripts/test-alpha-promotion.ps1
