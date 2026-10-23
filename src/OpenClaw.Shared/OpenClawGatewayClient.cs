@@ -1544,7 +1544,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         var payloads = new List<object>();
         if (!force)
             payloads.Add(new { jobId, mode = "due" });
-        payloads.Add(new { jobId });
+        else
+            payloads.Add(new { jobId });
         payloads.Add(new { id = jobId, force });
 
         string? lastError = null;
@@ -1598,23 +1599,21 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     public Task<bool> RemoveCronJobAsync(string jobId)
     {
-        return TrySendTrackedRequestAsync("cron.remove", new { id = jobId });
+        return SendCronMutationAsync("cron.remove", new { id = jobId });
     }
 
     public Task<bool> AddCronJobAsync(object jobDefinition)
     {
-        return TrySendTrackedRequestAsync("cron.add", jobDefinition);
+        return SendCronMutationAsync("cron.add", jobDefinition);
     }
 
     public Task<bool> UpdateCronJobAsync(string id, object patch)
     {
-        // Wire format uses "id" consistently with cron.run / cron.remove
-        return TrySendTrackedRequestAsync("cron.update", new { id, patch });
+        return SendCronMutationAsync("cron.update", new { id, patch });
     }
 
     public async Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0)
     {
-        // Wire format uses "id" consistently with cron.run / cron.remove
         await SendTrackedRequestAsync("cron.runs", new { id, limit, offset });
     }
 

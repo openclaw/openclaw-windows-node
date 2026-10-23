@@ -183,6 +183,44 @@ and resetting for a new job. Artifacts include owned-window editor captures
 and the exact synthetic schedules read back after accepted saves. This proves
 the app/fixture wire path, not production Gateway persistence or scheduling.
 
+### Cron details, private scratch and retained transcripts
+
+`GatewayScenario.CreateCronManagement()` extends the cron editing fixture with
+explicit job lookup, scratch compare-and-swap, removal, manual-run acknowledgement,
+run listings and two-page retained transcripts. It never schedules or executes a
+job. `CreateCronEditing()` and browse retain their narrower mutation permissions.
+The contract reference is upstream
+[`098e991`](https://github.com/openclaw/openclaw/tree/098e991549b7986bcfaebdbe427aeaaf95afb926):
+`packages/gateway-protocol/src/schema/cron.ts` and
+`src/gateway/server-methods/cron{,-scratch,-history}.ts`.
+This pinned source is not evidence of an installed or released Gateway's schema.
+
+Expand a job in **Cron Jobs** for **Job details** and **Private scratch**.
+Scratch saves pass the revision read when opening the dialog. A conflict preserves
+the draft and disables saving until the dialog is reopened; an empty save clears
+the scratch without resetting its monotonic revision. The Gateway's UTF-8 byte
+limit is checked before sending. **Recorded transcript** on a run selects the
+exact job and run, not a client-selected chat session. **Next transcript page**
+uses the Gateway's opaque cursor. These dialogs retire on disconnection and
+reject requests bound to an earlier connection. Unsupported endpoints and denied
+authorization remain visible errors, not empty successful results.
+
+Use the cron proof command above with
+`--filter 'FullyQualifiedName~GatewayFixtureUiTests.CronDetails_'` for the new
+dialog proof. It checks a genuine second-client scratch conflict, retained draft,
+latest-state reopen, exact-run transcript paging and native dialog captures.
+`GatewayFixtureProtocolTests.CronProduction*` exercise the production convenience
+clients over authenticated loopback WebSockets, including rejection and stale
+connection paths. `CronMutation_DoesNotReportSuccessBeforeGatewayAcceptance`
+holds each CRUD response to distinguish sending from actual Gateway acceptance.
+No test-constructed payload serialization is counted as production wiring proof.
+
+The Mac native baseline only previews `cron.list` and routes the full editor to
+the dashboard. Windows keeps its existing full native editor and adds these
+native detail surfaces; this is not a claim that Mac has equivalent native CRUD
+dialogs. Synthetic proof does not establish real scheduling, execution, provider
+behavior, package compatibility or production credentials.
+
 ## Targeted context-usage proof
 
 `ContextFooterReconcilesLiveReplayHistoryAndAuthoritativeUsage` opts into

@@ -116,6 +116,14 @@ public interface IOperatorGatewayClient
     Task<bool> AddCronJobAsync(object jobDefinition);
     Task<bool> UpdateCronJobAsync(string id, object patch);
     Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0);
+    Task<JsonElement> GetCronJobAsync(string id, long connectionEpoch) =>
+        Task.FromException<JsonElement>(new NotSupportedException("cron.get is not supported by this client."));
+    Task<CronScratchSnapshot> GetCronScratchAsync(string id, long connectionEpoch) =>
+        Task.FromException<CronScratchSnapshot>(new NotSupportedException("cron.scratch.get is not supported by this client."));
+    Task<CronScratchWriteResult> SetCronScratchAsync(string id, string? content, long expectedRevision, long connectionEpoch) =>
+        Task.FromException<CronScratchWriteResult>(new NotSupportedException("cron.scratch.set is not supported by this client."));
+    Task<CronTranscriptPage> GetCronHistoryAsync(string id, string? runId, long? runAtMs, string? cursor, long connectionEpoch) =>
+        Task.FromException<CronTranscriptPage>(new NotSupportedException("cron.history is not supported by this client."));
     Task RequestSkillsStatusAsync(string? agentId = null);
     Task<bool> InstallSkillAsync(string skillId);
     Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled);

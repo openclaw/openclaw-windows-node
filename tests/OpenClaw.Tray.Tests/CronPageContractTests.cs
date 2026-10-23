@@ -3,6 +3,21 @@ namespace OpenClaw.Tray.Tests;
 public sealed class CronPageContractTests
 {
     [Fact]
+    public void CronEditor_UsesSupportedWakeModeAndFreezesPendingSaveInputs()
+    {
+        var pages = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Pages");
+        var xaml = File.ReadAllText(Path.Combine(pages, "CronPage.xaml"));
+        var source = File.ReadAllText(Path.Combine(pages, "CronPage.xaml.cs"));
+        Assert.Contains("Tag=\"next-heartbeat\"", xaml);
+        Assert.DoesNotContain("Tag=\"queue\"", xaml);
+        Assert.Contains("JobFormContent.IsEnabled = false;", source);
+        Assert.Contains("JobFormContent.IsEnabled = true;", source);
+        Assert.Contains("if (_submittingJob) return;", ExtractMethod(source, "OnNewJobClick"));
+        Assert.Contains("if (_submittingJob) return;", ExtractMethod(source, "OnEditJobClick"));
+        Assert.Contains("if (_submittingJob) return;", ExtractMethod(source, "OnFormCancelClick"));
+    }
+
+    [Fact]
     public void CompletedOneTimeJobs_KeepHistoryAndRemoveActionable()
     {
         var source = File.ReadAllText(Path.Combine(

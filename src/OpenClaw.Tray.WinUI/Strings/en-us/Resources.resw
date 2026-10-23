@@ -8149,4 +8149,12 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Summarize my recent sessions</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me configure a channel</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Check system health</value></data>
+  <data name="CronPage_Details" xml:space="preserve"><value>Job details</value></data>
+  <data name="CronPage_NextHeartbeat.Content" xml:space="preserve"><value>Next heartbeat</value></data>
+  <data name="CronPage_Scratch" xml:space="preserve"><value>Private scratch</value></data>
+  <data name="CronPage_Transcript" xml:space="preserve"><value>Recorded transcript</value></data>
+  <data name="CronPage_TranscriptNext" xml:space="preserve"><value>Next transcript page</value></data>
+  <data name="CronPage_ScratchHelp" xml:space="preserve"><value>Private state for this job. Maximum {0} UTF-8 bytes. Save an empty field to clear it.</value></data>
+  <data name="CronPage_ScratchTooLarge" xml:space="preserve"><value>Private scratch exceeds the {0}-byte limit.</value></data>
+  <data name="CronPage_ScratchConflict" xml:space="preserve"><value>Private scratch changed on the Gateway. Your draft is preserved here. Copy it, close this dialog and reopen to review the latest version before saving.</value></data>
 </root>

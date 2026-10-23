@@ -8082,4 +8082,12 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Résumer mes sessions récentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>M’aider à configurer un canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Vérifier l’état du système</value></data>
+  <data name="CronPage_Details" xml:space="preserve"><value>Détails de la tâche</value></data>
+  <data name="CronPage_NextHeartbeat.Content" xml:space="preserve"><value>Prochain signal périodique</value></data>
+  <data name="CronPage_Scratch" xml:space="preserve"><value>Notes privées</value></data>
+  <data name="CronPage_Transcript" xml:space="preserve"><value>Transcription enregistrée</value></data>
+  <data name="CronPage_TranscriptNext" xml:space="preserve"><value>Page suivante de la transcription</value></data>
+  <data name="CronPage_ScratchHelp" xml:space="preserve"><value>État privé de cette tâche. Maximum : {0} octets UTF-8. Enregistrez un champ vide pour l'effacer.</value></data>
+  <data name="CronPage_ScratchTooLarge" xml:space="preserve"><value>Les notes privées dépassent la limite de {0} octets.</value></data>
+  <data name="CronPage_ScratchConflict" xml:space="preserve"><value>Les notes privées ont changé sur la passerelle. Votre brouillon est conservé ici. Copiez-le, fermez cette boîte de dialogue et rouvrez-la pour consulter la dernière version avant d'enregistrer.</value></data>
 </root>
