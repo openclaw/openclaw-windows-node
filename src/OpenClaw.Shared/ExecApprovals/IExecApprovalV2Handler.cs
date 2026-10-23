@@ -28,8 +28,14 @@ public interface IExecApprovalV2Handler
 
 public readonly record struct ExecApprovalRevalidationResult(bool IsCurrent, string Reason)
 {
+    /// <summary>True only when a policy change was confirmed, not when revalidation failed.</summary>
+    public bool IsPolicyDenial { get; init; }
+
     public static ExecApprovalRevalidationResult Current { get; } = new(true, "current");
 
     public static ExecApprovalRevalidationResult NotCurrent(string reason)
         => new(false, reason);
+
+    public static ExecApprovalRevalidationResult PolicyDenied(string reason)
+        => new(false, reason) { IsPolicyDenial = true };
 }

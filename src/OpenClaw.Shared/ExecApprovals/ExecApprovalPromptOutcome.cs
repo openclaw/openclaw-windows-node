@@ -10,4 +10,6 @@ public enum ExecApprovalPromptOutcome
     Allow,
     AllowOnce,
     AllowAlways,
+    // Cancelled or unavailable approval infrastructure. Execution remains forbidden.
+    Failed,
 }

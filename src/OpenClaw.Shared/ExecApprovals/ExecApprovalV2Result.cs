@@ -81,6 +81,8 @@ public sealed class ExecApprovalV2Result
 {
     public ExecApprovalV2Code Code { get; }
     public string Reason { get; }
+    /// <summary>A confirmed policy refusal or user denial before execution, not an infrastructure failure.</summary>
+    public bool IsDefiniteDenial { get; }
 
     /// <summary>
     /// The command to execute. Non-null only on <see cref="ExecApprovalV2Code.Allow"/>.
@@ -89,7 +91,11 @@ public sealed class ExecApprovalV2Result
     /// </summary>
     public ExecApprovedExecution? Execution { get; }
 
-    private ExecApprovalV2Result(ExecApprovalV2Code code, string reason, ExecApprovedExecution? execution = null)
+    private ExecApprovalV2Result(
+        ExecApprovalV2Code code,
+        string reason,
+        ExecApprovedExecution? execution = null,
+        bool isDefiniteDenial = false)
     {
         // Invariant: Allow must carry a payload; non-Allow must not. A null payload
         // on Allow (or a payload on a deny) is a bug, not a representable state.
@@ -101,25 +107,30 @@ public sealed class ExecApprovalV2Result
         Code = code;
         Reason = reason;
         Execution = execution;
+        IsDefiniteDenial = isDefiniteDenial;
     }
 
     public static ExecApprovalV2Result Unavailable(string reason = "Handler not available")
         => new(ExecApprovalV2Code.Unavailable, reason);
 
     public static ExecApprovalV2Result SecurityDeny(string reason)
-        => new(ExecApprovalV2Code.SecurityDeny, reason);
+        => new(ExecApprovalV2Code.SecurityDeny, reason, isDefiniteDenial: true);
 
     public static ExecApprovalV2Result AskDeny(string reason)
-        => new(ExecApprovalV2Code.AskDeny, reason);
+        => new(ExecApprovalV2Code.AskDeny, reason, isDefiniteDenial: true);
 
     public static ExecApprovalV2Result AllowlistMiss(string reason)
-        => new(ExecApprovalV2Code.AllowlistMiss, reason);
+        => new(ExecApprovalV2Code.AllowlistMiss, reason, isDefiniteDenial: true);
 
     public static ExecApprovalV2Result UserDenied(string reason)
-        => new(ExecApprovalV2Code.UserDenied, reason);
+        => new(ExecApprovalV2Code.UserDenied, reason, isDefiniteDenial: true);
 
     public static ExecApprovalV2Result ValidationFailed(string reason)
         => new(ExecApprovalV2Code.ValidationFailed, reason);
+
+    /// <summary>Preserves the validation code while identifying confirmed policy revocation.</summary>
+    public static ExecApprovalV2Result PolicyDenied(string reason)
+        => new(ExecApprovalV2Code.ValidationFailed, reason, isDefiniteDenial: true);
 
     public static ExecApprovalV2Result ResolutionFailed(string reason)
         => new(ExecApprovalV2Code.ResolutionFailed, reason);

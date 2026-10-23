@@ -20,7 +20,7 @@ public sealed record ExecApprovalPromptView(
 /// Prompt-handler core behind the approval dialog. UI-free: the dispatcher hop and the
 /// window are injected as delegates so the full decision behavior is testable without
 /// WinUI. Fail-closed contract: never throws, never returns plain Allow, and resolves
-/// Deny on cancellation, enqueue failure, window close, or any internal error.
+/// Failed on cancellation or infrastructure error; Deny on user refusal or display policy.
 /// </summary>
 public sealed class ExecApprovalV2UiPromptHandler : IExecApprovalV2PromptHandler
 {
@@ -44,7 +44,7 @@ public sealed class ExecApprovalV2UiPromptHandler : IExecApprovalV2PromptHandler
         try
         {
             if (cancellationToken.IsCancellationRequested)
-                return ExecApprovalPromptOutcome.Deny;
+                return ExecApprovalPromptOutcome.Failed;
 
             // Every field shown in the dialog originates from agent-controlled input,
             // including the agent label, so all of them go through the display sanitizer
@@ -82,21 +82,21 @@ public sealed class ExecApprovalV2UiPromptHandler : IExecApprovalV2PromptHandler
                 TaskCreationOptions.RunContinuationsAsynchronously);
 
             // This TCS is the single authority for the outcome; first result wins.
-            // Cancellation resolves it directly — no dispatcher hop — so a hung or
-            // slow dialog can never delay the deny. Window teardown on cancel is
+            // Cancellation resolves it directly, without claiming a user refusal, so a
+            // hung or slow dialog cannot delay failure. Window teardown on cancel is
             // visual cleanup only, owned by the dialog delegate.
             using var registration = cancellationToken.Register(
-                () => tcs.TrySetResult(ExecApprovalPromptOutcome.Deny));
+                () => tcs.TrySetResult(ExecApprovalPromptOutcome.Failed));
 
             // Cancellation may have resolved the TCS already (inline during Register).
-            // A request that is already denied must never surface a window.
+            // A request that has already failed must never surface a window.
             if (tcs.Task.IsCompleted)
                 return await tcs.Task.ConfigureAwait(false);
 
             if (!_tryEnqueue(() => _ = RunDialogAsync(view, tcs, cancellationToken)))
             {
                 _logger.Warn("[EXEC-APPROVALS] prompt: dispatcher enqueue failed; denying");
-                tcs.TrySetResult(ExecApprovalPromptOutcome.Deny);
+                tcs.TrySetResult(ExecApprovalPromptOutcome.Failed);
             }
 
             var outcome = await tcs.Task.ConfigureAwait(false);
@@ -104,14 +104,14 @@ public sealed class ExecApprovalV2UiPromptHandler : IExecApprovalV2PromptHandler
             {
                 _logger.Error("[EXEC-APPROVALS] prompt: dialog returned plain Allow; " +
                     "only AllowOnce/AllowAlways are valid from UI — denying");
-                return ExecApprovalPromptOutcome.Deny;
+                return ExecApprovalPromptOutcome.Failed;
             }
             return outcome;
         }
         catch (Exception ex)
         {
             try { _logger.Warn($"[EXEC-APPROVALS] prompt failed; denying: {ex.Message}"); } catch { }
-            return ExecApprovalPromptOutcome.Deny;
+            return ExecApprovalPromptOutcome.Failed;
         }
     }
 
@@ -126,10 +126,10 @@ public sealed class ExecApprovalV2UiPromptHandler : IExecApprovalV2PromptHandler
         try
         {
             // The request may have been cancelled while this action sat in the
-            // dispatcher queue; it is already denied, so never show the dialog.
+            // dispatcher queue; it has already failed, so never show the dialog.
             if (cancellationToken.IsCancellationRequested)
             {
-                tcs.TrySetResult(ExecApprovalPromptOutcome.Deny);
+                tcs.TrySetResult(ExecApprovalPromptOutcome.Failed);
                 return;
             }
 
@@ -139,7 +139,7 @@ public sealed class ExecApprovalV2UiPromptHandler : IExecApprovalV2PromptHandler
         catch (Exception ex)
         {
             try { _logger.Warn($"[EXEC-APPROVALS] prompt dialog failed; denying: {ex.Message}"); } catch { }
-            tcs.TrySetResult(ExecApprovalPromptOutcome.Deny);
+            tcs.TrySetResult(ExecApprovalPromptOutcome.Failed);
         }
     }
 }
