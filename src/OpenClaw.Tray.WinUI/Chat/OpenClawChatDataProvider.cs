@@ -100,6 +100,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     public string DisplayName => "OpenClaw gateway";
     public IChatPlacementGateway? PlacementGateway => _bridge.PlacementGateway;
+    public IAgentIdentityGateway? AgentIdentityGateway => _bridge.AgentIdentityGateway;
 
     /// <summary>Last-known chat state from a previous session, used for pre-connection UI.</summary>
     internal LastChatState? CachedLastChatState => _state.CachedLastChatState;

@@ -17,6 +17,7 @@ public interface IChatGatewayBridge : IDisposable
     /// <summary>True once the gateway handshake has resolved session defaults.</summary>
     bool HasHandshakeSnapshot { get; }
     IChatPlacementGateway? PlacementGateway => null;
+    IAgentIdentityGateway? AgentIdentityGateway => null;
     SessionInfo[] GetSessionList();
     ModelsListInfo? GetCurrentModelsList();
     bool SupportsSessionScopedModelCatalog => false;
@@ -126,6 +127,7 @@ public interface IChatGatewayBridge : IDisposable
 /// </summary>
 public sealed class GatewayClientChatBridge : IChatGatewayBridge
 {
+    public IAgentIdentityGateway AgentIdentityGateway => _client;
     private readonly OpenClawGatewayClient _client;
     private readonly EventHandler<ConnectionStatus> _statusChangedHandler;
     private readonly EventHandler<SessionInfo[]> _sessionsUpdatedHandler;

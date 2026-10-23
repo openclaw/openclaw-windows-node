@@ -124,13 +124,30 @@ chats or starter prompts. It shares the 768-pixel reading width and responsive
 gutters. A native ScrollViewer makes the entire block reachable at short heights
 and large text scales. Existing transcripts keep the composer at the bottom.
 The composer's parent and input control survive the transition to a transcript.
-The selected Gateway agent's `identity.name`, then `name`, then ID supplies the
-heading through the placement catalog; a session title is never used as an agent name.
+The selected agent's resolved `agent.identity.get` name supplies the heading,
+independently of placement discovery. This read requires an advertised method,
+operator read authority and the current authenticated connection epoch. It sends
+the explicit selected `agentId`, following the
+[pinned Apple shared request contract](https://github.com/openclaw/openclaw/blob/098e991549b7986bcfaebdbe427aeaaf95afb926/apps/shared/OpenClawKit/Sources/OpenClawChatUI/ChatGatewayRequest.swift#L95).
+The Mac connection also exposes a
+[canonical-session identity lookup](https://github.com/openclaw/openclaw/blob/098e991549b7986bcfaebdbe427aeaaf95afb926/apps/macos/Sources/OpenClaw/GatewayConnection.swift#L1640);
+this Windows seam uses the selected-agent variant, not session alias inference.
+These are source-contract references, not upstream runtime proof.
+
+Unsupported or unauthorized lookup retains the existing matching-agent placement
+catalog fallback (`identity.name`, then `name`, then ID). A failed, null, malformed,
+or foreign-agent reply is logged and leaves that fallback intact. A valid identity
+with no name uses the agent ID; absent emoji/avatar fields clear old catalog
+decoration rather than mixing two identities. Session titles are never agent names.
+Agent changes, disconnects, reconnects and host disposal invalidate lookup results.
+This is display metadata, not authorization or session-routing authority, and it
+does not block message sending. `agent.wait` is not implemented by this seam.
 The agent avatar, name and guidance are horizontally centered. The avatar uses the
 same `AgentIdentityBadge` image loader, emoji and initials fallback as the Workspace
 agent picker, without its adjacent labels. It is 96 pixels, or 64 pixels at viewport
-widths of 768 pixels and below. The existing `agents.list` response supplies the
-selected agent's image and emoji, with no new request or copied identity.
+widths of 768 pixels and below. The resolved identity supplies its `avatar` and
+`emoji`; catalog metadata remains the fallback when lookup is unavailable. The
+Gateway's `avatarSource` is not treated as a Windows filesystem path or image URL.
 
 Welcome guidance, the Recent chats label, and the four starter prompts are
 bundled in the app's native `.resw` resources for all six supported languages.

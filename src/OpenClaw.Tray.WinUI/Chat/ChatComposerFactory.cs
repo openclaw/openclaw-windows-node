@@ -25,6 +25,8 @@ internal sealed class ChatComposerFactory(IUiDispatcher dispatcher) : IChatCompo
         var placement = provider.PlacementGateway is { } gateway
             ? new ChatPlacementController(gateway, _dispatcher) : null;
         var controller = new ChatComposerController(viewModel, port, hostActions, placement);
-        return new ChatComposerSession(viewModel, controller, hostActions, placement);
+        var identity = provider.AgentIdentityGateway is { } identityGateway
+            ? new ChatAgentIdentityController(identityGateway, _dispatcher) : null;
+        return new ChatComposerSession(viewModel, controller, hostActions, placement, identity);
     }
 }

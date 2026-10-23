@@ -83,6 +83,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSendQueue.cs" Link="Chat\ChatSendQueue.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSnapshotProjector.cs" Link="Chat\ChatSnapshotProjector.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatWelcomePresentation.cs" Link="Chat\ChatWelcomePresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAgentIdentityController.cs" Link="Chat\ChatAgentIdentityController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatStatePersistence.cs" Link="Chat\ChatStatePersistence.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\OpenClawChatDataProvider.cs" Link="Chat\OpenClawChatDataProvider.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerInputs.cs" Link="Chat\ChatComposerInputs.cs" />
