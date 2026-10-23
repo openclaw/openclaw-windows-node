@@ -1,5 +1,6 @@
 param(
     [Parameter(Mandatory)][string]$Family,
+    [string]$CleanupHostPath,
     [switch]$Register,
     [switch]$Preserve,
     [switch]$CreatedDistro,
@@ -78,13 +79,7 @@ function Test-PackageRemovedSince([string]$since) {
     return $false
 }
 function Register-CleanupTask {
-    $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $action = New-ScheduledTaskAction -Execute $powershell -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Family $Family"
-    $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
-    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)
-    $logon = New-ScheduledTaskTrigger -AtLogOn -User $principal.UserId
-    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 5) -StartWhenAvailable
-    Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Trigger @($trigger, $logon) -Settings $settings -Force | Out-Null
+    & (Join-Path $PSScriptRoot 'cleanup-task.ps1') -TaskName $taskName -HostPath $CleanupHostPath -Family $Family
 }
 New-Item -ItemType Directory -Path $root -Force | Out-Null
 $lock = $null

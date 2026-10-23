@@ -621,6 +621,10 @@ jobs:
         -TrxFileName OpenClaw.SetupEngine.Tests.trx
         -Runtime win-x64
 
+    - name: Test cleanup helper signing boundary
+      shell: pwsh
+      run: .\scripts\test-cleanup-host-signing.ps1
+
     - name: Run Dev containment settings tests
       run: >
         dotnet test tests/OpenClaw.Tray.Tests
@@ -1017,13 +1021,78 @@ jobs:
           TestResults/E2E/
         if-no-files-found: warn
 
+  sign-cleanup-host:
+    name: Sign embedded cleanup host before compilation
+    needs: [change-classification, metadata]
+    if: (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && needs.metadata.result == 'success'
+    runs-on: windows-latest
+    environment: release-signing
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
+
+    - uses: actions/setup-dotnet@v6
+      with:
+        global-json-file: global.json
+
+    - name: Build AnyCPU cleanup host
+      run: dotnet build src/OpenClaw.GatewayCleanupHost -c Release -o signing-cleanup-host
+
+    - name: Disable NuGet source mapping for cleanup signing
+      shell: pwsh
+      run: |
+        if (Test-Path NuGet.Config) { Rename-Item NuGet.Config NuGet.Config.signing.bak }
+
+    - name: Azure Login for Cleanup Signing
+      uses: azure/login@v3
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Sign cleanup executable before embedding
+      uses: azure/artifact-signing-action@v2
+      with:
+        endpoint: https://eus.codesigning.azure.net/
+        signing-account-name: openclaw
+        certificate-profile-name: openclaw
+        files-folder: signing-cleanup-host
+        files-folder-filter: exe
+        files-folder-depth: 1
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Verify signed cleanup input
+      shell: pwsh
+      run: >
+        .\scripts\Test-CleanupHostSignature.ps1
+        -HostPath signing-cleanup-host\OpenClaw.GatewayCleanupHost.exe -RequireSigned
+        -SignerSubject "CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-signed-cleanup-host
+        path: signing-cleanup-host/OpenClaw.GatewayCleanupHost.exe
+        if-no-files-found: error
+
   build-x64:
     name: x64 release publish smoke
-    needs: [change-classification, metadata]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && needs.change-classification.outputs.x64_release == 'true' }}
+    needs: [change-classification, metadata, sign-cleanup-host]
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && (needs.sign-cleanup-host.result == 'success' || needs.sign-cleanup-host.result == 'skipped') && needs.change-classification.outputs.x64_release == 'true' }}
     runs-on: windows-latest
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
+      RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
+      OpenClawSignedCleanupHostPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', github.workspace) || '' }}
 
     steps:
     - uses: actions/checkout@v7
@@ -1049,6 +1118,13 @@ jobs:
 
     - name: Restore WinUI Tray App
       run: dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
+
+    - name: Download signed cleanup host
+      if: needs.sign-cleanup-host.result == 'success'
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-signed-cleanup-host
+        path: signed-cleanup-host
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-x64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
@@ -1079,11 +1155,13 @@ jobs:
 
   build-arm64:
     name: ARM64 release publish
-    needs: [change-classification, metadata]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && needs.change-classification.outputs.arm64_release == 'true' }}
+    needs: [change-classification, metadata, sign-cleanup-host]
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && (needs.sign-cleanup-host.result == 'success' || needs.sign-cleanup-host.result == 'skipped') && needs.change-classification.outputs.arm64_release == 'true' }}
     runs-on: windows-11-arm
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
+      RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
+      OpenClawSignedCleanupHostPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', github.workspace) || '' }}
 
     steps:
     - uses: actions/checkout@v7
@@ -1109,6 +1187,13 @@ jobs:
 
     - name: Restore WinUI Tray App
       run: dotnet restore src/OpenClaw.Tray.WinUI -r win-arm64
+
+    - name: Download signed cleanup host
+      if: needs.sign-cleanup-host.result == 'success'
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-signed-cleanup-host
+        path: signed-cleanup-host
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-arm64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
@@ -1141,12 +1226,14 @@ jobs:
 
   build-msix:
     name: MSIX artifacts (${{ matrix.architecture }})
-    needs: [change-classification, metadata, reserve-msix-version]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && (needs.reserve-msix-version.result == 'success' || needs.reserve-msix-version.result == 'skipped') && (needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true') }}
+    needs: [change-classification, metadata, reserve-msix-version, sign-cleanup-host]
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && (needs.sign-cleanup-host.result == 'success' || needs.sign-cleanup-host.result == 'skipped') && (needs.reserve-msix-version.result == 'success' || needs.reserve-msix-version.result == 'skipped') && (needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true') }}
     # Dev-signed packages publish on tag releases. Unsigned Store packages stay workflow-only.
     runs-on: ${{ matrix.architecture == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
+      RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
+      OpenClawSignedCleanupHostPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', github.workspace) || '' }}
       DEV_MSIX_REVISION: ${{ github.run_number }}
       MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo || needs.metadata.outputs.msixVersionInfo }}
       MSIX_SOURCE_VERSION: ${{ needs.reserve-msix-version.outputs.sourceVersion || needs.metadata.outputs.msixSourceVersion }}
@@ -1188,6 +1275,13 @@ jobs:
           -SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION
         $info | ConvertTo-Json -Depth 4 |
           Set-Content -LiteralPath "$env:RUNNER_TEMP\openclaw-msix-version.json" -Encoding utf8
+
+    - name: Download signed cleanup host
+      if: needs.sign-cleanup-host.result == 'success'
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-signed-cleanup-host
+        path: signed-cleanup-host
 
     - name: Build and validate unsigned Store MSIX
       shell: pwsh
