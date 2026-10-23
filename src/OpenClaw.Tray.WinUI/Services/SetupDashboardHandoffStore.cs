@@ -16,6 +16,9 @@ internal sealed record SetupHandoffAcquisition(
 /// </summary>
 internal sealed class SetupDashboardHandoffStore
 {
+    private const string LegacyPreparationKind = "preparation-v1";
+    private const string PreparationKind = "preparation-v2";
+    private const string RestartingState = "restarting";
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
     // Records issued before the longer WSL recovery budget retain their
     // original, nonrenewable execution deadline across an app update.
@@ -56,9 +59,15 @@ internal sealed class SetupDashboardHandoffStore
         var handle = SetupDashboardHandoff.NativePrefix +
             Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         var now = _time.GetUtcNow();
+        var preparation = preparationSession is not null;
         // Both kinds explicitly supersede the one pending record under the same gate.
+        // Preparation execution includes old-process teardown, which may itself
+        // take longer than unused destination admission. Acquisition cannot renew it.
         Write(new PendingRecord(Guid.NewGuid().ToString("N"), Hash(handle), proof,
-            now, now + Lifetime, "ready", target, Kind: preparationSession is null ? "destination-v1" : "preparation-v1",
+            now, now + Lifetime, preparation ? RestartingState : "ready", target,
+            ExecutionStartedUtc: preparation ? now : null,
+            ExecutionExpiresUtc: preparation ? now + SetupNativeCompletionTiming.Execution : null,
+            Kind: preparation ? PreparationKind : "destination-v1",
             PreparationSession: preparationSession));
         return handle;
     }
@@ -106,7 +115,13 @@ internal sealed class SetupDashboardHandoffStore
             var now = _time.GetUtcNow();
             var executionStarted = pending.ExecutionStartedUtc;
             var executionExpires = pending.ExecutionExpiresUtc;
-            if ((executionStarted is null) != (executionExpires is null) ||
+            var startsAtIssue = pending.Kind == PreparationKind;
+            if ((startsAtIssue &&
+                 (executionStarted != pending.IssuedUtc ||
+                  executionExpires - pending.IssuedUtc != SetupNativeCompletionTiming.Execution ||
+                  pending.State == "ready")) ||
+                (pending.State == RestartingState && !startsAtIssue) ||
+                (executionStarted is null) != (executionExpires is null) ||
                 (executionStarted is { } started &&
                 (started < pending.IssuedUtc || started >= pending.ExpiresUtc || now < started ||
                  executionExpires - started != SetupNativeCompletionTiming.Execution &&
@@ -122,12 +137,12 @@ internal sealed class SetupDashboardHandoffStore
             }
             if (pending.State == "retry" && !explicitRetry)
                 return new(SetupHandoffAcquisitionStatus.RetryRequired);
-            // A pre-acquisition I/O failure leaves ready unchanged. Explicit retry may
-            // admit either unstarted ready or settled retry, never abandoned inflight.
-            if (pending.State != "ready" && !(explicitRetry && pending.State == "retry"))
+            // Pre-acquisition I/O failures leave the unacquired state unchanged.
+            // Explicit retry never admits an abandoned inflight record.
+            if (pending.State is not ("ready" or RestartingState) && !(explicitRetry && pending.State == "retry"))
                 return new(SetupHandoffAcquisitionStatus.Invalid);
-            // Admission remains five minutes. Only the first exclusive acquisition
-            // starts execution time; retries and another process cannot renew it.
+            // Destinations and legacy preparations start execution at first acquisition.
+            // New preparations retain their issuance deadline through shutdown and retry.
             var inFlight = pending with
             {
                 State = "inflight",
@@ -180,7 +195,7 @@ internal sealed class SetupDashboardHandoffStore
         // Existing receipts predate the explicit kind.
         null or "destination-v1" => pending.PreparationSession is null &&
             pending.NativeTarget is { } target && target.Matches(pending.Completion),
-        "preparation-v1" => pending.NativeTarget is null &&
+        LegacyPreparationKind or PreparationKind => pending.NativeTarget is null &&
             SetupNativePreparation.Matches(pending.Completion, pending.PreparationSession),
         _ => false,
     };
@@ -207,7 +222,7 @@ internal sealed class SetupDashboardHandoffStore
         private bool _disposed;
         public GatewayAiSetupCompletion Completion => _pending.Completion;
         public SetupNativeTarget? NativeTarget => _pending.NativeTarget;
-        public bool IsPreparation => _pending.Kind == "preparation-v1";
+        public bool IsPreparation => _pending.Kind is LegacyPreparationKind or PreparationKind;
         public string SessionKey => IsPreparation ? _pending.PreparationSession! : _pending.NativeTarget!.SessionKey;
         private DateTimeOffset ExecutionExpiresUtc => _pending.ExecutionExpiresUtc!.Value;
         public bool IsExpired => _owner._time.GetUtcNow() >= ExecutionExpiresUtc ||

@@ -411,6 +411,31 @@ public sealed class SetupNativeHandoffTests
     }
 
     [Fact]
+    public async Task PreparationSurvivesFiveMinuteTeardownBeforeFirstAcquisition()
+    {
+        using var temp = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.IssuePreparation(new(Proof, Proof.SessionKey!));
+        var recovery = new NativeRestartRecoveryStore(temp.Path);
+        recovery.Save(handle);
+        clock.Advance(TimeSpan.FromSeconds(330));
+        var ready = 0;
+        var failures = new List<SetupNativeLaunchFailure>();
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Proof.SessionKey!)),
+            (_, _) => throw new Exception("Preparation cannot open a destination"), failures.Add, clock,
+            showPreparing: (_, _) => Task.CompletedTask,
+            showReady: (_, _) => { ready++; return Task.CompletedTask; });
+
+        Assert.True(await launcher.OpenAsync(store, handle, restartRecovery: recovery));
+        Assert.Equal(1, ready);
+        Assert.Empty(failures);
+        Assert.Null(recovery.Read());
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+    }
+
+    [Fact]
     public async Task PreparationFailureRetriesWithinOriginalLeaseWithoutFinalization()
     {
         using var temp = new TempDirectory();
@@ -443,7 +468,7 @@ public sealed class SetupNativeHandoffTests
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
         handle = store.IssuePreparation(new(Proof, Proof.SessionKey!));
         var path = Path.Combine(temp.Path, "setup-dashboard-handoff", "pending.json");
-        File.WriteAllText(path, File.ReadAllText(path).Replace("preparation-v1", "preparation-v99", StringComparison.Ordinal));
+        File.WriteAllText(path, File.ReadAllText(path).Replace("preparation-v2", "preparation-v99", StringComparison.Ordinal));
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
     }
 
