@@ -30,6 +30,8 @@ earlier case fails, then runs the ownership regressions. The final
 `desktop-fidelity-regression.json` preserves each failure and the separate
 ownership outcome. Any failed case or ownership regression still makes the
 script fail. A complete receipt is not evidence that its cases passed.
+The collector preserves the case callback's output-directory binding across
+successful and failed cases.
 
 The observer records the original fallback's own OpenThread, owner, timing
 and close results independently of the later diagnostic retry. Limited-query

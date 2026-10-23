@@ -6,13 +6,13 @@ function Invoke-ProofCaseCollection {
     )
     foreach ($case in $Cases) {
         try {
-            $output = @(& $RunCase $case)
-            if (!$output.Count) { throw "No result returned for $($case.name)" }
-            $result = $output[-1]
-            if ($result.name -cne $case.name -or $result.passed -isnot [bool]) {
+            $caseInvocationOutput = @(& $RunCase $case)
+            if (!$caseInvocationOutput.Count) { throw "No result returned for $($case.name)" }
+            $collectedCaseResult = $caseInvocationOutput[-1]
+            if ($collectedCaseResult.name -cne $case.name -or $collectedCaseResult.passed -isnot [bool]) {
                 throw "Invalid result returned for $($case.name)"
             }
-            $result
+            $collectedCaseResult
         }
         catch {
             [ordered]@{

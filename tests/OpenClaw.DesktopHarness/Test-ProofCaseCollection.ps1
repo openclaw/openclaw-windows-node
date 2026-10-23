@@ -33,4 +33,13 @@ $invalid = @(Invoke-ProofCaseCollection @($specifications[0]) {
     @{ name = 'different-case'; passed = $true }
 })
 if ($invalid.Count -ne 1 -or $invalid[0].passed) { throw 'Mismatched case identity cannot pass.' }
-'PASS: 3 native-free case-collection regressions.'
+$output = 'controlled-proof-root'
+$paths = @(Invoke-ProofCaseCollection $specifications {
+    param($case)
+    [ordered]@{ name = $case.name; passed = $true; directory = "$output\$($case.name)" }
+})
+if (($paths.directory -join ',') -cne
+    'controlled-proof-root\one,controlled-proof-root\two,controlled-proof-root\three,controlled-proof-root\four') {
+    throw 'Collector locals must not replace the callback-owned output directory after a successful case.'
+}
+'PASS: 4 native-free case-collection regressions.'
