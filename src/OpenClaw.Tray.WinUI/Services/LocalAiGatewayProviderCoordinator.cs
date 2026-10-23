@@ -19,7 +19,6 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
     private readonly ILocalAiGatewayAtomicConfigurationTransport? _atomicConfiguration;
     private readonly Func<string>? _getApiKey;
     private readonly IOpenClawLogger _logger;
-    private bool _wslRouteMayBeActive;
 
     public LocalAiGatewayProviderCoordinator(
         IWslCommandRunner commands,
@@ -111,7 +110,6 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         }
         if (primaryIsManaged && !retainManagedPrimary)
         {
-            _wslRouteMayBeActive = true;
             expectedPrimary = install.Manifest.GatewayFallbackModel;
             LocalAiEndpointLifecycleResult primaryResult = expectedPrimary is null
                 ? await UnsetAsync(LocalAiGatewayProviderDefinition.PrimaryModelPath, cancellationToken)
@@ -123,7 +121,6 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
 
         if (current.ProviderExists)
         {
-            _wslRouteMayBeActive = true;
             LocalAiEndpointLifecycleResult providerResult = await UnsetAsync(
                     LocalAiGatewayProviderDefinition.ProviderPath,
                     cancellationToken)
@@ -135,18 +132,15 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         LocalAiEndpointLifecycleResult verified = await VerifyQuiescedAsync(expectedPrimary, cancellationToken)
             .ConfigureAwait(false);
         if (!verified.Success) return verified;
-        if (!_wslRouteMayBeActive) return verified;
 
-        // A prior restart may have activated a route despite an indeterminate CLI
-        // outcome. Even when disk already lacks the provider, require a confirmed
+        // A prior Companion process may have removed the saved route without
+        // confirming its restart. Even when disk lacks the provider, require a confirmed
         // restart before the runtime releases its owned listener.
         LocalAiGatewayCommandOutcome restarted = await _configuration!.RunAsync(
             ["gateway", "restart"], cancellationToken).ConfigureAwait(false);
         if (!restarted.Routed || !restarted.Result!.Success)
             return Failed("The managed Local AI route was removed from Gateway configuration, but the Gateway restart was not confirmed. Keep the listener running until its active route is reconciled.");
-        verified = await VerifyQuiescedAsync(expectedPrimary, cancellationToken).ConfigureAwait(false);
-        if (verified.Success) _wslRouteMayBeActive = false;
-        return verified;
+        return await VerifyQuiescedAsync(expectedPrimary, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<LocalAiEndpointLifecycleResult> VerifyQuiescedAsync(
@@ -180,8 +174,6 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
 
         GatewayCapture current = await CaptureGatewayAsync(cancellationToken).ConfigureAwait(false);
         LocalAiEndpointLifecycleResult admission = CheckPublication(current, install);
-        if (_configuration is not null && admission.Success && current.ProviderExists)
-            _wslRouteMayBeActive = true;
         if (!admission.Success || current.ProviderExists)
             return admission;
 
@@ -212,7 +204,6 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             return await VerifyPublishedAsync(install, CancellationToken.None).ConfigureAwait(false);
         }
 
-        _wslRouteMayBeActive = true;
         LocalAiGatewayCommandOutcome applied = await _configuration!.ApplyBatchAsync(batch, cancellationToken).ConfigureAwait(false);
         if (!applied.Routed)
             return Failed(applied.Detail!);

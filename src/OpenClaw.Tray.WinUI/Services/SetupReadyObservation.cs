@@ -30,7 +30,7 @@ internal sealed class SetupReadyObservation : IDisposable
         manager.OperatorClientChanged += OnOperator;
         registry.Changed += OnRegistry;
         _client.ConfigUpdated += OnConfig;
-        _client.ModelCatalogInvalidated += OnConfigurationChanged;
+        _client.ConfigurationChanged += OnConfigurationChanged;
         _client.SessionsUpdated += OnSessions;
         if (_runtime is not null) _runtime.StateChanged += OnRuntime;
         try { RequireCurrent(); }
@@ -104,7 +104,7 @@ internal sealed class SetupReadyObservation : IDisposable
         _manager.OperatorClientChanged -= OnOperator;
         _registry.Changed -= OnRegistry;
         _client.ConfigUpdated -= OnConfig;
-        _client.ModelCatalogInvalidated -= OnConfigurationChanged;
+        _client.ConfigurationChanged -= OnConfigurationChanged;
         _client.SessionsUpdated -= OnSessions;
         if (_runtime is not null) _runtime.StateChanged -= OnRuntime;
     }

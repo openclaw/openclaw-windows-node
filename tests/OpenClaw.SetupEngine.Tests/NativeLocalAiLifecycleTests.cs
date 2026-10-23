@@ -581,6 +581,22 @@ public sealed class NativeLocalAiLifecycleTests
     }
 
     [Fact]
+    public async Task HandoffReadsRuntimeAfterOwnedStartupCompletesBeforeTerminalDecision()
+    {
+        var install = LocalAiOnboardingTests.Install();
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(install, LocalAiRuntimeState.Stopped));
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await LocalAiGatewayLifecycle.WaitForRecoveryAsync(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), runtime, () =>
+            {
+                runtime.Snapshot = LocalAiOnboardingTests.RuntimeSnapshot(install, LocalAiRuntimeState.Healthy);
+                return Task.CompletedTask;
+            }, deadline.Token, failOnTerminalState: true);
+        Assert.Equal(0, runtime.Calls);
+    }
+
+    [Fact]
     public async Task HandoffIgnoresStaleCompletedRecoveryAndJoinsTheNextRecovery()
     {
         var install = LocalAiOnboardingTests.Install();

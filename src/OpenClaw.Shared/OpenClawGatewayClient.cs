@@ -281,6 +281,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<JsonElement>? CronRunsUpdated;
     public event EventHandler<JsonElement>? SkillsStatusUpdated;
     public event EventHandler<JsonElement>? ConfigUpdated;
+    public event EventHandler? ConfigurationChanged;
     public event EventHandler<JsonElement>? ConfigSchemaUpdated;
 
     /// <summary>
@@ -3626,6 +3627,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 _ = RequestSessionsAsync();
                 break;
             case "config.changed":
+                ConfigurationChanged?.Invoke(this, EventArgs.Empty);
+                ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
+                break;
             case "chat.metadata.changed":
                 ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
                 break;

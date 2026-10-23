@@ -348,11 +348,12 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.Null(commands.ProviderJson);
         Assert.Equal(provider, commands.ActiveProviderJson);
         Assert.Contains("restart", result.Detail, StringComparison.OrdinalIgnoreCase);
+        coordinator = CreateCoordinator(commands);
         Assert.True((await coordinator.QuiesceAsync(install)).Success);
         Assert.Null(commands.ActiveProviderJson);
         Assert.Equal(2, commands.Calls.Count(call => call.Contains("restart")));
         Assert.True((await coordinator.QuiesceAsync(install)).Success);
-        Assert.Equal(2, commands.Calls.Count(call => call.Contains("restart")));
+        Assert.Equal(3, commands.Calls.Count(call => call.Contains("restart")));
     }
 
     [Fact]
@@ -460,13 +461,13 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.Null(commands.ProviderJson);
         Assert.Null(commands.PrimaryModel);
         Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
-        Assert.DoesNotContain(commands.Calls, call => call.Contains("restart"));
+        Assert.Single(commands.Calls, call => call.Contains("restart"));
     }
 
     [Theory]
     [InlineData(LocalAiQuiesceReason.Teardown)]
     [InlineData(LocalAiQuiesceReason.EndpointCycle)]
-    public async Task Quiesce_UnpublishedInstallPreservesUnmanagedPrimaryWithoutRestart(LocalAiQuiesceReason reason)
+    public async Task Quiesce_EmptySavedRoutePreservesUnmanagedPrimaryAndConfirmsRunningGateway(LocalAiQuiesceReason reason)
     {
         var install = Install(28_765, "openai/gpt-5");
         var commands = new FakeWslCommandRunner(providerJson: null, primaryModel: "openai/gpt-5");
@@ -475,7 +476,8 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.True((await coordinator.QuiesceAsync(install, reason)).Success);
         Assert.True((await coordinator.QuiesceAsync(install, reason)).Success);
         Assert.Equal("openai/gpt-5", commands.PrimaryModel);
-        Assert.DoesNotContain(commands.Calls, call => call.Contains("restart") || call.Contains("unset"));
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
+        Assert.Equal(2, commands.Calls.Count(call => call.Contains("restart")));
     }
 
     [Fact]

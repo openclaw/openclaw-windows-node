@@ -483,6 +483,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     public Task NotifyConfigurationChangedAsync(CancellationToken cancellationToken = default) =>
         PublishEventAsync(new { type = "event", @event = "config.changed", payload = new { } }, cancellationToken);
 
+    public Task NotifyChatMetadataChangedAsync(CancellationToken cancellationToken = default) =>
+        PublishEventAsync(new { type = "event", @event = "chat.metadata.changed",
+            payload = new { modelCatalogChanged = false, authChanged = false } }, cancellationToken);
+
     private async Task PublishEventAsync(object message, CancellationToken cancellationToken)
     {
         var targets = AcquireConnections(onlyOpen: true);

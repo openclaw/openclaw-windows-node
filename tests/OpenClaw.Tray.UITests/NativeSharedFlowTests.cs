@@ -130,7 +130,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     Assert.Equal(before, server.Requests.Count);
                     Assert.Equal(starts, runtime.Starts);
                     Assert.Equal(stops, runtime.Stops);
-                }, invalidateDuringMount: duringMount);
+                }, invalidateDuringMount: duringMount, exerciseUnrelatedMetadata: true);
         }, isolated: true);
     }
 
@@ -553,7 +553,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
     private async Task WithPublishedReadyAsync(SetupWindow setupWindow, GatewayRegistry registry,
         FixtureGatewayServer server, SetupNativePreparation preparation, ElementTheme theme,
         Func<SetupReadyWindow, AiReadyPage, List<SetupNativeCompletion>, Runtime, Task> assertion,
-        bool invalidateDuringMount = false)
+        bool invalidateDuringMount = false, bool exerciseUnrelatedMetadata = false)
     {
         var data = Assert.IsType<string>(typeof(SetupWindow).GetProperty("DataDir",
             BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(setupWindow));
@@ -583,6 +583,25 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             readyWindow.Activate();
             readyWindow.AppWindow.Move(new(-32000, -32000));
             var readyFrame = Assert.IsType<Frame>(readyWindow.Content);
+            async Task AssertUnrelatedMetadataPreservesReadyAsync()
+            {
+                var page = Assert.IsType<AiReadyPage>(readyFrame.Content);
+                var requests = server.Requests.Count;
+                var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var client = Assert.IsType<OpenClawGatewayClient>(manager.OperatorClient);
+                EventHandler observer = (_, _) => received.TrySetResult();
+                client.ModelCatalogInvalidated += observer;
+                try
+                {
+                    await server.NotifyChatMetadataChangedAsync();
+                    await received.Task.WaitAsync(deadline.Token);
+                    await ui.YieldToRenderAsync();
+                    Assert.Same(page, readyFrame.Content);
+                    Assert.Equal(requests, server.Requests.Count);
+                    Assert.Empty(navigated);
+                }
+                finally { client.ModelCatalogInvalidated -= observer; }
+            }
             var launcher = new SetupNativeHandoffLauncher(() => registry.GetActive(),
                 (_, ct) => VerifyAsync(ct),
                 (_, _) => throw new InvalidOperationException("Preparation must not select a destination."),
@@ -596,6 +615,8 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     Assert.NotEqual("Your AI is ready", Find<TextBlock>(pending, "Heading").Text);
                     Assert.Equal(Visibility.Collapsed, Find<StackPanel>(pending, "Choices").Visibility);
                     Assert.Empty(navigated);
+                    if (exerciseUnrelatedMetadata)
+                        await AssertUnrelatedMetadataPreservesReadyAsync();
                     if (invalidateDuringMount)
                     {
                         var requests = server.Requests.Count;
@@ -620,6 +641,11 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
             var ready = Assert.IsType<AiReadyPage>(readyFrame.Content);
             Assert.Equal("Your AI is ready", Find<TextBlock>(ready, "Heading").Text);
+            if (exerciseUnrelatedMetadata)
+            {
+                await AssertUnrelatedMetadataPreservesReadyAsync();
+                Assert.Equal(Visibility.Visible, Find<StackPanel>(ready, "Choices").Visibility);
+            }
             await OnboardingNativeProof.ApplyThemeSurfaceAsync(Assert.IsType<Grid>(ready.Content), theme);
             await ui.YieldToRenderAsync();
             await assertion(readyWindow, ready, navigated, normalRuntime);

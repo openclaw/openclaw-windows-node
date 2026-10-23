@@ -332,6 +332,7 @@ internal sealed class LocalAiGatewayLifecycle(
                     await recovery.WaitAsync(ct).ConfigureAwait(false);
                 continue;
             }
+            state = runtime.Snapshot.State;
             if (state == LocalAiRuntimeState.Healthy ||
                 (!requiresManagedLocalAi && getRecoveryTask() is { IsCompleted: true })) break;
             if (failOnTerminalState && state is (LocalAiRuntimeState.Failed or LocalAiRuntimeState.Conflict or
