@@ -288,3 +288,85 @@ foreign, infer an OS class, claim no flash occurred or claim full observation
 acceptance. Owned Console/Ghost windows receive no class-based exemption.
 An ETW correlation that identifies our own window requires a root fix, not this
 limitation. The limitation does not change production behavior, rights or timeouts.
+
+## Full-wrapper dry-run before a single recording
+
+`StartupProof.ps1` owns the common execution and receipt state machine.
+`StartupProof.Native.ps1` binds it to the real medium caller, observer, job
+supervisor and existing full functional stage scripts. There is no test-mode
+stage path. Only `StartupTraceAdapter.Mode` changes between `Disabled` and
+`Record`. `Invoke-StartupProofGuest.ps1` controls the elevated guest recorder
+and a separate LIMITED interactive scheduled task running the original actor.
+These entrypoints require an explicitly authorized disposable guest; never run
+them on the controller or a developer's normal desktop.
+
+Before recording:
+
+1. Run `Get-StartupGuestQualification.ps1 -GuestAuthorized` with the exact new
+   `-LeaseId` and a fresh `-OutputDirectory`. It collects installed tool help and
+   provider schemas without starting a session. Metadata remains private.
+2. Stage official hash-verified tools in separate prerequisite phases. Build
+   the actual current-head harness and native fixtures. Preserve the published
+   SDK 1.0.0 pins. Reuse the reviewed job/stage helpers as hash-pinned inputs.
+3. Build the observer with `Build-ObserverEvidence.ps1 -OutputDirectory
+   '<capsule>\observer-final'`. The exact
+   `observer-final\QuietLaneCaptureObserver.dll` path is mandatory. Keep the
+   capsule immutable and put all run outputs outside it.
+4. Generate the installed-schema-qualified profile with the reviewed profile
+   generator. Use `New-StartupProofConfig.ps1` with the actual manifest, actor
+   SID/session, original qualified caller PATH, profile/receipt, WPR path,
+   harness and fresh proof root. It checks installed global named-instance
+   grammar, verb help, nonrecording `-profiledetails` and exact instance absence.
+   It pins the full capsule, wrappers, actual build outputs and input manifest.
+5. Run the complete wrapper with tracing disabled:
+
+   ```powershell
+   pwsh -NoProfile -File .\tests\OpenClaw.DesktopHarness\Invoke-StartupProofGuest.ps1 `
+     -Config '<guest configuration>' -LeaseId '<authorized cbx ID>' `
+     -RunRoot '<new dry-run directory>' -Mode Disabled
+   ```
+
+   Success requires actual managed, SDK **four of four**, ownership/HANDLE/tree
+   and desktop-closure contracts, observer finalization, recorder/watchdog exit,
+   medium-controller exit, exact task removal, named-session absence, final
+   formatting and parsed receipts. It writes `DryRunReceipt.json` only after
+   these pass. TraceStartsCounter remains **0**. Preserve every failed run;
+   fix orchestration and repeat only the disabled run until it passes.
+6. With the same immutable configuration, hashes, environment, actor and
+   canonical argument layout, call the **same** entrypoint with `-Mode Record`
+   and a new output `-RunRoot`. Both medium wrapper and elevated recorder
+   independently validate the passed dry-run binding. A single-use reservation
+   prevents a second recording. The trace-attempt ledger is written only at
+   the actual WPR start boundary. No trace retry is authorized.
+
+The recording covers the full managed/SDK/ownership scenario within the
+unchanged 900-second recorder bound, rather than stopping before later
+callbacks. The observer and jobs finalize before signaling recorder stop.
+The recorder always stops/cancels only its uniquely named instance in finally;
+an independent identity-bound watchdog also enforces the bound. Raw ETL,
+decoded XML, configuration, PATH and command arguments remain private.
+Review actual lifecycle/rundown/class fields, event losses and callback/ETW
+time overlap before any causal claim. Capture-state requests alone do not
+prove that preexisting-thread lifetime or window class was recorded.
+
+The explicitly user-authorized five-argument observer constructor can count
+**N** eligible invalid-at-entry unresolved SHOWs without aborting independent
+functional collection at the second event. Eligibility remains exactly the
+same as the single-event policy. Previously identified owned HWND history,
+live/reused/visible windows, known classes/owners, dialog events, native probe
+failures and cadence failures still block. `Failed` and `noDialogVerified=false`
+are preserved for any counted unknown. Functional success never establishes
+foreign ownership or a no-flash claim. Reporting “invalid before delivery”
+requires actual lifecycle evidence, not merely `IsWindow=false` at callback
+entry. Any proposed N-event limitation wording is conditional on all clauses,
+including actual SDK4 and ownership success, being supported.
+
+Native-free regression:
+
+```powershell
+pwsh -NoProfile -File .\tests\OpenClaw.DesktopHarness\Test-StartupProof.ps1 `
+  -OutputDirectory '.\.artifacts\startup-proof-fixtures'
+```
+
+These fixtures drive the real common state machine and final JSON formatter
+with fake native boundaries. They cannot qualify a guest dry-run or trace.

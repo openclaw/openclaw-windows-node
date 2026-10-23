@@ -24,6 +24,9 @@ public sealed class QuietLaneCaptureObserver : IDisposable
     private readonly WinEventProc callback;
     private volatile bool stopping, failed, executionBlocked;
     private readonly AttributionContinuationPolicy attributionContinuation;
+    private readonly ConcurrentDictionary<string, bool> previouslyOwnedWindows =
+        new ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
+    private readonly bool countEveryEligibleShow;
     private long lastProbeTicks;
     private uint workerId;
     private readonly QuietCaptureLedger capture = new QuietCaptureLedger();
@@ -40,11 +43,15 @@ public sealed class QuietLaneCaptureObserver : IDisposable
         : this(stopCases, intervalMs, maximumGapMs, false) { }
     public QuietLaneCaptureObserver(EventWaitHandle stopCases, int intervalMs, int maximumGapMs,
         bool explicitlyAuthorizeSingleUnattributableShow)
+        : this(stopCases, intervalMs, maximumGapMs, explicitlyAuthorizeSingleUnattributableShow, false) { }
+    public QuietLaneCaptureObserver(EventWaitHandle stopCases, int intervalMs, int maximumGapMs,
+        bool explicitlyAuthorizeUnattributableShow, bool countEveryEligibleShow)
     {
         if (intervalMs < 50 || maximumGapMs <= intervalMs)
             throw new ArgumentException("Invalid observer cadence.");
         this.stopCases = stopCases;
-        attributionContinuation = new AttributionContinuationPolicy(explicitlyAuthorizeSingleUnattributableShow);
+        attributionContinuation = new AttributionContinuationPolicy(explicitlyAuthorizeUnattributableShow, countEveryEligibleShow);
+        this.countEveryEligibleShow = countEveryEligibleShow;
         this.intervalMs = intervalMs;
         this.maximumGapMs = maximumGapMs;
         callback = OnEvent;
@@ -212,6 +219,10 @@ public sealed class QuietLaneCaptureObserver : IDisposable
             ["eventThreadKnownOwnedIdentity"] = capture.Correlate(threadProcessId, eventProcessCreatedUtc),
             ["nativeEventMilliseconds"] = eventTime
         });
+        string windowKey = QuietCaptureLedger.WindowKey(window);
+        if (capture.Correlate(processId, processCreatedUtc) == "exact-pid-and-creation-time-match" ||
+            capture.Correlate(threadProcessId, eventProcessCreatedUtc) == "exact-pid-and-creation-time-match")
+            previouslyOwnedWindows[windowKey] = true;
         if (modal)
         {
             failed = true;
@@ -236,14 +247,17 @@ public sealed class QuietLaneCaptureObserver : IDisposable
             });
             if (attributionContinuation.TryContinue(origin, callbackSequence, objectId, childId,
                 first.ValidBefore, visible, classLength, classError, processId,
-                !first.ValidAfter && first.OwnerPidAfter == 0 && first.OwnerThreadAfter == 0 && threadProcessId == 0))
+                !first.ValidAfter && first.OwnerPid == 0 && first.OwnerThread == 0 &&
+                first.OwnerPidAfter == 0 && first.OwnerThreadAfter == 0 && threadProcessId == 0,
+                previouslyOwnedWindows.ContainsKey(windowKey)))
             {
                 failed = true;
                 Emit("attribution-limitation", new Dictionary<string, object> {
                     ["callbackSequence"] = callbackSequence,
                     ["window"] = QuietCaptureLedger.WindowKey(window),
                     ["attributionStatus"] = "unknown-failed",
-                    ["executionContinuation"] = "explicit-user-single-show-policy",
+                    ["executionContinuation"] = countEveryEligibleShow ?
+                        "explicit-user-counted-invalid-show-policy" : "explicit-user-single-show-policy",
                     ["visibleAtObservation"] = visible,
                     ["foreignOwnershipProven"] = false
                 });

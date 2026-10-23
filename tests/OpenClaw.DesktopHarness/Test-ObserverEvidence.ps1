@@ -17,6 +17,14 @@ Assert-Evidence ($limited.TryContinue('WinEvent-object-show',3,0,0,$false,$false
 Assert-Evidence (!$limited.TryContinue('WinEvent-object-show',4,0,0,$false,$false,0,1400,0,$true)) 'A second unknown cannot silently inherit the one-event acceptance'
 $reuse = [AttributionContinuationPolicy]::new($true)
 Assert-Evidence (!$reuse.TryContinue('WinEvent-object-show',1,0,0,$false,$false,0,1400,0,$false) -and $reuse.Limitations -eq 0) 'A handle becoming valid or acquiring an owner in the end bracket cannot inherit this limitation'
+$counted = [AttributionContinuationPolicy]::new($true, $true)
+foreach ($sequence in @(3L, 6L, 9L)) {
+    Assert-Evidence ($counted.TryContinue('WinEvent-object-show',$sequence,0,0,$false,$false,0,1400,0,$true)) 'Documented counted limitation must not truncate functional collection at its second eligible event'
+}
+Assert-Evidence ($counted.Limitations -eq 3) 'Report the actual N, never clamp repeated eligible events to one'
+Assert-Evidence (!$counted.TryContinue('WinEvent-object-show',10,0,0,$false,$false,0,1400,0,$true,$true) -and $counted.Limitations -eq 3) 'Known-owned handle history or reuse must remain blocking'
+$unauthorizedCounted = [AttributionContinuationPolicy]::new($false, $true)
+Assert-Evidence (!$unauthorizedCounted.TryContinue('WinEvent-object-show',11,0,0,$false,$false,0,1400,0,$true)) 'Counted mode does not imply user authorization'
 foreach ($case in @(
     @('WinEvent-dialog-start',1,0,0,$false,$false,0,1400,0),
     @('fallback-default',0,0,0,$false,$false,0,1400,0),
@@ -34,6 +42,8 @@ foreach ($case in @(
 )) {
     $policy=[AttributionContinuationPolicy]::new($true)
     Assert-Evidence (!$policy.TryContinue($case[0],$case[1],$case[2],$case[3],$case[4],$case[5],$case[6],$case[7],$case[8],$true) -and $policy.Limitations -eq 0) 'Never waive a dialog, missing callback context, visible/live window, known Console/Ghost class, different native error or identified owner'
+    $countedPolicy=[AttributionContinuationPolicy]::new($true,$true)
+    Assert-Evidence (!$countedPolicy.TryContinue($case[0],$case[1],$case[2],$case[3],$case[4],$case[5],$case[6],$case[7],$case[8],$true) -and $countedPolicy.Limitations -eq 0) 'Counted mode preserves every strict eligibility exclusion'
 }
 $reusedNative=[WindowFirstFake]::new()
 $reusedNative.Invalid=$true
