@@ -66,6 +66,54 @@ test("new unknown methods and event definitions are pending, not automatically r
   assert.doesNotMatch(capability.renderAssessment(unknownOnly), /<!-- windows-capability-pending -->/);
 });
 
+test("report separates pending surface types and wiring evidence without claiming support", () => {
+  const doc = structuredClone(schema);
+  Object.assign(doc.methods, { health: {}, connect: {}, "future.answer": {} });
+  doc.definitions.FutureEvent = {};
+  const report = assess({ schema: doc });
+  const before = structuredClone(report);
+  const text = capability.renderAssessment(report);
+  assert.match(text, /Reviewed decisions: supported: 0; intentionally unsupported: 2/);
+  assert.match(text, /Awaiting assessment: \*\*10 protocol entries\*\*/);
+  assert.match(text, /\| RPC methods \| 1 \| 5 \| 6 \|/);
+  assert.match(text, /\| Explicit lifecycle events \| 0 \| 2 \| 2 \|/);
+  assert.match(text, /\| Event schema definitions \| 0 \| 2 \| 2 \|/);
+  assert.match(text, /Examples with recognized wiring: `health`/);
+  assert.match(text, /Examples without recognized wiring: `connect`, `future.answer`, `question.get`/);
+  assert.match(text, /recognized wiring is not proof of reachable or correct behavior/i);
+  assert.match(text, /5 pending method\/event entries belong to explicitly tracked families/);
+  assert.match(text, /5 other pending entries remain outside that candidate selection/);
+  assert.match(text, /question-answer.*pending/);
+  assert.match(text, /selected by .*gateway-capability-policy\.json.*not discovered by ranking/i);
+  assert.match(text, /green workflow means collection succeeded, not Windows compatibility/i);
+  assert.deepEqual(report, before, "presentation must not change evidence hashes, decisions or candidate identity");
+});
+
+test("untracked unknowns remain a visible coverage gap, including when no family is selected", () => {
+  const report = assess({ schema: { methods: { "future.answer": {} }, definitions: { FutureEvent: {} } } });
+  const text = capability.renderAssessment(report);
+  assert.match(text, /Tracked gap candidates: 0/);
+  assert.match(text, /0 pending method\/event entries belong to explicitly tracked families/);
+  assert.match(text, /2 other pending entries remain outside that candidate selection/);
+  assert.match(text, /Coverage incomplete/);
+  assert.match(text, /unknowns, not accepted exclusions/);
+  assert.match(text, /No explicitly tracked capability families are present/);
+  assert.doesNotMatch(text, /<!-- windows-capability-pending -->/);
+});
+
+test("large unreviewed inventories have bounded examples and do not create automatic candidates", () => {
+  const report = assess({ schema: {
+    methods: Object.fromEntries(Array.from({ length: 600 }, (_, index) => [`future.method${index}`, {}])),
+    definitions: {},
+  } });
+  const text = capability.renderAssessment(report);
+  assert.match(text, /\| RPC methods \| 0 \| 600 \| 600 \|/);
+  assert.match(text, /Examples without recognized wiring: `future.method0`, `future.method1`, `future.method10`/);
+  assert.doesNotMatch(text, /`future.method100`/);
+  assert.ok(text.length < 5000, "full surface inventories belong in report.json, not issue bodies");
+  assert.deepEqual(report.pendingGaps, []);
+});
+
 test("comments, dead strings, DTOs and even call candidates cannot establish supported behavior", () => {
   const file = [
     '// SendTrackedRequestAsync("question.list");',
@@ -95,13 +143,18 @@ test("reviewed source/test evidence resolves a surface, and any evidence change 
   const resolved = assess({ supportPolicy });
   assert.equal(resolved.assessments.find((item) => item.name === "question.resolve").status, "supported");
   assert.equal(resolved.families[0].status, "pending", "one reviewed RPC cannot imply full feature support");
+  assert.match(capability.renderAssessment(resolved), /Reviewed decisions: supported: 1; intentionally unsupported: 2/);
+  assert.match(capability.renderAssessment(resolved), /\| method:question.resolve \| supported \| Reviewed reachable/);
   for (const change of [
     { local: { ...local, files: { ...local.files, "src/Client.cs": "changed" } } },
     { local: { ...local, files: { ...local.files, "tests/ClientTests.cs": "changed" } } },
     { upstreamHash: "c".repeat(64) },
   ]) assert.equal(assess({ supportPolicy, ...change }).assessments.find((item) => item.name === "question.resolve").status, "pending");
   supportPolicy.decisions.at(-1).evidence.pop();
-  assert.equal(assess({ supportPolicy }).assessments.find((item) => item.name === "question.resolve").status, "pending");
+  const stale = assess({ supportPolicy });
+  assert.equal(stale.assessments.find((item) => item.name === "question.resolve").status, "pending");
+  assert.match(capability.renderAssessment(stale), /Reviewed decisions: supported: 0; intentionally unsupported: 2/);
+  assert.match(capability.renderAssessment(stale), /Awaiting assessment: \*\*6 protocol entries\*\*/);
 });
 
 test("publication payload rejects moving tags, unsafe versions, unknown fields, repositories and digests", () => {

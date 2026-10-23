@@ -5,6 +5,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFileSync } = require("node:child_process");
 const policy = require("./gateway-capability-policy.json");
+const REPORT_EXAMPLE_LIMIT = 3;
 
 function digest(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -176,21 +177,55 @@ function assess({ schema, local, upstreamHash, hash, supportPolicy = policy }) {
 function renderAssessment(value) {
   const counts = {};
   for (const item of value.assessments) counts[item.status] = (counts[item.status] ?? 0) + 1;
+  const pending = value.assessments.filter((item) => item.status === "pending");
+  const wired = pending.filter((item) => item.evidence.length > 0);
+  const unwired = pending.filter((item) => item.evidence.length === 0);
+  const tracked = new Set(value.families.flatMap((family) => family.surfaces));
+  const trackedPending = pending.filter((item) => tracked.has(item.id)).length;
+  const untrackedPending = pending.length - trackedPending;
+  const safe = (text) => String(text).replace(/[|`<>\r\n]/g, " ").replace(/@/g, "(at)");
+  const examples = (items) => items.slice(0, REPORT_EXAMPLE_LIMIT).map((item) => `\`${safe(item.name)}\``).join(", ") || "none";
   const lines = ["", "## Windows capability assessment", "",
     `Local head: \`${value.localHead}\`; dirty evidence: ${value.dirty}.`,
     `Input evidence: \`${value.inputHash}\`; support policy: \`${value.policyHash}\`.`,
-    `Supported: ${counts.supported ?? 0}; intentionally unsupported: ${counts["intentionally-unsupported"] ?? 0}; pending: ${counts.pending ?? 0}.`,
+    `Reviewed decisions: supported: ${counts.supported ?? 0}; intentionally unsupported: ${counts["intentionally-unsupported"] ?? 0}.`,
+    `Awaiting assessment: **${pending.length} protocol entries**, not a count of missing features.`,
+    "",
+    "| Surface | Recognized wiring, unreviewed | No recognized wiring, unreviewed | Total awaiting assessment |",
+    "| --- | ---: | ---: | ---: |"];
+  for (const [kind, label] of [["method", "RPC methods"], ["event", "Explicit lifecycle events"], ["definition", "Event schema definitions"]]) {
+    const withWiring = wired.filter((item) => item.kind === kind).length;
+    const withoutWiring = unwired.filter((item) => item.kind === kind).length;
+    lines.push(`| ${label} | ${withWiring} | ${withoutWiring} | ${withWiring + withoutWiring} |`);
+  }
+  lines.push("",
+    `Examples with recognized wiring: ${examples(wired)}.`,
+    `Examples without recognized wiring: ${examples(unwired)}.`,
+    `Examples are limited to ${REPORT_EXAMPLE_LIMIT} per evidence bucket; every entry, reason and evidence location is in report.json under capabilities.assessments.`,
+    "Recognized wiring is not proof of reachable or correct behavior. No recognized wiring can mean missing support, irrelevant functionality, or a scanner limitation; relevance remains unassessed.",
+    "Event schema definitions are data shapes, not additional feature counts. Explicit lifecycle events come from tracked families, not a complete upstream event inventory.",
+    "",
+    "### Tracked capability candidates",
+    "Families are explicitly selected by gateway-capability-policy.json, not discovered by ranking the pending inventory. A pending family is an investigation candidate, not a confirmed missing feature.",
     `Tracked gap candidates: ${value.pendingGaps.length}. Unassessed surfaces are review backlog, not automatic implementation tasks.`,
+    `${trackedPending} pending method/event entries belong to explicitly tracked families; ${untrackedPending} other pending entries remain outside that candidate selection.`);
+  if (untrackedPending) lines.push(
+    "**Coverage incomplete:** untracked pending entries are unknowns, not accepted exclusions. Review Windows relevance and behavior, then record evidence-backed support/exemptions or add a tracked family for an actionable investigation.");
+  lines.push(
+    "A green workflow means collection succeeded, not Windows compatibility or an acceptable backlog.",
     "Pending counts include unassessed relevance and behavior, not confirmed defects. Implement at most one evidenced production capability gap per PR.",
-    "", value.limitation, "", "| Capability | Status | Evidence / outstanding obligations |", "| --- | --- | --- |"];
+    "", value.limitation);
   if (value.pendingGaps.length) lines.splice(1, 0, "<!-- windows-capability-pending -->");
-  const safe = (text) => String(text).replace(/[|`<>\r\n]/g, " ").replace(/@/g, "(at)");
+  if (value.families.length) lines.push("", "| Capability | Status | Evidence / outstanding obligations |", "| --- | --- | --- |");
+  else lines.push("", "No explicitly tracked capability families are present in this observation.");
   for (const family of value.families)
     lines.push(`| ${safe(family.id)} | **${family.status}** | ${family.obligations.map(safe).join("; ")} |`);
-  // Bound issue size; the complete per-method assessment stays in report.json.
-  for (const item of value.assessments.filter((item) => item.status === "intentionally-unsupported"))
-    lines.push(`| ${safe(item.id)} | ${item.status} | ${safe(item.reason)} |`);
-  lines.push("", "All method classifications and exact production/test file hashes are in report.json. Closing an exact candidate acknowledges that evidence without claiming complete Windows support.",
+  const reviewed = value.assessments.filter((item) => item.status === "supported" || item.status === "intentionally-unsupported");
+  if (reviewed.length) lines.push("", "### Reviewed surface decisions", "",
+    "| Surface | Status | Evidence / rationale |", "| --- | --- | --- |");
+  for (const item of reviewed)
+    lines.push(`| ${safe(item.id)} | ${safe(item.status)} | ${safe(item.reason)} |`);
+  lines.push("", "All surface classifications and exact production/test file hashes are in report.json. Closing an exact candidate acknowledges that evidence without claiming complete Windows support.",
     "Check existing chat parity and interactive fixture PRs before implementation; link them rather than duplicating work.");
   return lines.join("\n") + "\n";
 }

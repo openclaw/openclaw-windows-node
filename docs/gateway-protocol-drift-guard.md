@@ -254,6 +254,37 @@ Windows compatibility; released package-to-source binding remains unverified.
 After merging, run the workflow with `report_only: true` (the default) and inspect
 its summary and `upstream-gateway-protocol-report` artifact. Writes stay disabled
 until an owner sets Actions variable `UPSTREAM_GATEWAY_MONITOR_ENABLED=true`.
+
+### Reading the capability assessment
+
+The summary separates reviewed support/exemption decisions from entries awaiting
+assessment. Its table splits pending RPC methods, explicit lifecycle events, and
+event schema definitions by whether the scanner recognized production wiring.
+Examples are bounded; `report.json` contains every entry under
+`capabilities.assessments`, including its status, reason, and evidence locations.
+Event definitions are data shapes, not separate missing features, and explicit
+lifecycle events cover tracked families rather than every upstream event.
+
+Recognized wiring is not proof of reachable, authorized, correctly tested
+behavior. No recognized wiring can mean missing support, an irrelevant API, or
+a scanner limitation. Neither bucket is automatically safe or supported.
+A green workflow means evidence collection succeeded, not that Windows
+compatibility is complete or the unreviewed backlog is acceptable.
+
+Investigation candidates come from explicitly named families in
+[`gateway-capability-policy.json`](../.github/scripts/gateway-capability-policy.json),
+not automatic ranking of all pending entries. For example, `question-answer`
+groups operator list/get/resolve methods and requested/resolved events with
+behavioral obligations. Its pending status requires investigation; it does not
+itself confirm a defect. Pending entries outside those families remain a visible
+coverage gap, not accepted exclusions. Review their Windows relevance and behavior,
+record evidence-backed support or justified exemptions, and add a tracked family
+when an actionable capability warrants investigation. Supported decisions require
+current source/test hashes and dispatch, handler, construction, and behavioral-test
+evidence; matching a method name alone cannot establish support.
+
+### Enabling investigation writes
+
 Before enabling writes, configure `COPILOT_GITHUB_TOKEN` with Agent tasks
 read/write and verify the user's Copilot cloud-agent eligibility and repo access.
 The token is used only for task API calls; issue writes use the workflow token.
