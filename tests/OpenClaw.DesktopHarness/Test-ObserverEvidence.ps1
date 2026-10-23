@@ -10,6 +10,39 @@ function Assert-Evidence([bool]$Condition, [string]$Message) {
     if (!$Condition) { throw $Message }
     $script:checks++
 }
+$strict = [AttributionContinuationPolicy]::new($false)
+Assert-Evidence (!$strict.TryContinue('WinEvent-object-show',1,0,0,$false,$false,0,1400,0,$true)) 'Default acceptance must still fail closed on an unattributable invalid HWND'
+$limited = [AttributionContinuationPolicy]::new($true)
+Assert-Evidence ($limited.TryContinue('WinEvent-object-show',3,0,0,$false,$false,0,1400,0,$true) -and $limited.Limitations -eq 1) 'Explicit user policy may separate one invalid-at-entry SHOW attribution failure from execution'
+Assert-Evidence (!$limited.TryContinue('WinEvent-object-show',4,0,0,$false,$false,0,1400,0,$true)) 'A second unknown cannot silently inherit the one-event acceptance'
+$reuse = [AttributionContinuationPolicy]::new($true)
+Assert-Evidence (!$reuse.TryContinue('WinEvent-object-show',1,0,0,$false,$false,0,1400,0,$false) -and $reuse.Limitations -eq 0) 'A handle becoming valid or acquiring an owner in the end bracket cannot inherit this limitation'
+foreach ($case in @(
+    @('WinEvent-dialog-start',1,0,0,$false,$false,0,1400,0),
+    @('fallback-default',0,0,0,$false,$false,0,1400,0),
+    @('WinEvent-object-show',0,0,0,$false,$false,0,1400,0),
+    @('WinEvent-object-show',1,-4,0,$false,$false,0,1400,0),
+    @('WinEvent-object-show',1,0,1,$false,$false,0,1400,0),
+    @('WinEvent-object-show',1,0,0,$true,$false,0,1400,0),
+    @('WinEvent-object-show',1,0,0,$false,$true,0,1400,0),
+    @('WinEvent-object-show',1,0,0,$false,$false,18,0,77),
+    @('WinEvent-object-show',1,0,0,$false,$false,5,0,77),
+    @('WinEvent-object-show',1,0,0,$false,$false,18,0,0),
+    @('WinEvent-object-show',1,0,0,$false,$false,5,0,0),
+    @('WinEvent-object-show',1,0,0,$false,$false,0,5,0),
+    @('WinEvent-object-show',1,0,0,$false,$false,0,1400,77)
+)) {
+    $policy=[AttributionContinuationPolicy]::new($true)
+    Assert-Evidence (!$policy.TryContinue($case[0],$case[1],$case[2],$case[3],$case[4],$case[5],$case[6],$case[7],$case[8],$true) -and $policy.Limitations -eq 0) 'Never waive a dialog, missing callback context, visible/live window, known Console/Ghost class, different native error or identified owner'
+}
+$reusedNative=[WindowFirstFake]::new()
+$reusedNative.Invalid=$true
+$reusedNative.BeforeQuery=[Action[string]]{
+    param($operation)
+    if($operation -eq 'IsWindow-after'){$reusedNative.Invalid=$false}
+}
+$reusedFirst=[WindowFirstCapture]::Capture($reusedNative,[IntPtr]::new(0x1234),[Func[long]]{100L})
+Assert-Evidence (!$reusedFirst.ValidBefore -and $reusedFirst.ValidAfter -and $reusedFirst.OwnerPid -eq 0 -and $reusedFirst.OwnerPidAfter -eq 77 -and $reusedFirst.OwnerThreadAfter -eq 88) 'A recycled HWND must retain its later live owner bracket independently from the invalid entry result'
 $windowNative = [WindowFirstFake]::new()
 $script:windowTick = 2000L
 $windowClock = [Func[long]]{ $script:windowTick++; $script:windowTick }

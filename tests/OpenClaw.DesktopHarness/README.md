@@ -202,3 +202,23 @@ It must not be used for an ordinary private validation run.
 
 This lane does not replace the strict WSL Gateway/MXC formal proof or the required
 full build, Shared and private-desktop Tray closeout.
+
+## Explicit one-event attribution limitation
+
+The default observer remains fail-closed. The four-argument constructor is only
+for the user-authorized final #1791 discriminator: it can continue execution
+after **one** callback-bound OBJECT_SHOW for OBJID_WINDOW/CHILDID_SELF whose
+HWND was invalid at entry, class query failed 1400, no owner resolved and no
+visibility was observed. End-bracket validity and ownership must also remain
+unresolved, so a newly live/reused handle cannot qualify.
+This preserves `Failed=true` and the raw unknown
+receipt. `ExecutionBlocked` remains false only for that narrow attribution
+limitation; a second unknown, known owner/class, live/visible window, dialog,
+probe failure, cadence failure or modal still stops execution.
+
+Supervisors opting in must record execution contracts separately from
+attribution status and the explicit user policy. They must not call the unknown
+foreign, infer an OS class, claim no flash occurred or claim full observation
+acceptance. Owned Console/Ghost windows receive no class-based exemption.
+An ETW correlation that identifies our own window requires a root fix, not this
+limitation. The limitation does not change production behavior, rights or timeouts.

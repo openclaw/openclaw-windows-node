@@ -22,22 +22,29 @@ public sealed class QuietLaneCaptureObserver : IDisposable
     private readonly ConcurrentDictionary<string, bool> ownedDesktops =
         new ConcurrentDictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
     private readonly WinEventProc callback;
-    private volatile bool stopping, failed;
+    private volatile bool stopping, failed, executionBlocked;
+    private readonly AttributionContinuationPolicy attributionContinuation;
     private long lastProbeTicks;
     private uint workerId;
     private readonly QuietCaptureLedger capture = new QuietCaptureLedger();
     private readonly ObserverCallbackContext callbackContext = new ObserverCallbackContext();
     public void TrackProcess(uint pid, string startedUtc) { capture.TrackProcess(pid, startedUtc); }
     public bool Failed { get { return failed; } }
+    public bool ExecutionBlocked { get { return executionBlocked; } }
+    public int AttributionLimitations { get { return attributionContinuation.Limitations; } }
     public double LastProbeAgeMs
     {
         get { return (clock.ElapsedTicks - Interlocked.Read(ref lastProbeTicks)) * 1000.0 / Stopwatch.Frequency; }
     }
     public QuietLaneCaptureObserver(EventWaitHandle stopCases, int intervalMs, int maximumGapMs)
+        : this(stopCases, intervalMs, maximumGapMs, false) { }
+    public QuietLaneCaptureObserver(EventWaitHandle stopCases, int intervalMs, int maximumGapMs,
+        bool explicitlyAuthorizeSingleUnattributableShow)
     {
         if (intervalMs < 50 || maximumGapMs <= intervalMs)
             throw new ArgumentException("Invalid observer cadence.");
         this.stopCases = stopCases;
+        attributionContinuation = new AttributionContinuationPolicy(explicitlyAuthorizeSingleUnattributableShow);
         this.intervalMs = intervalMs;
         this.maximumGapMs = maximumGapMs;
         callback = OnEvent;
@@ -53,6 +60,7 @@ public sealed class QuietLaneCaptureObserver : IDisposable
     public void Fail(string reason)
     {
         failed = true;
+        executionBlocked = true;
         stopCases.Set();
         Emit("lane-failure", new Dictionary<string, object> { ["reason"] = reason });
     }
@@ -63,11 +71,12 @@ public sealed class QuietLaneCaptureObserver : IDisposable
         fields["monotonicMs"] = clock.Elapsed.TotalMilliseconds;
         Records.Enqueue(fields);
         Changed.Set();
-        if (Records.Count > 4096) { failed = true; stopCases.Set(); }
+        if (Records.Count > 4096) { failed = true; executionBlocked = true; stopCases.Set(); }
     }
     private void ProbeError(string operation, int error)
     {
         failed = true;
+        executionBlocked = true;
         stopCases.Set();
         Emit("probe-error", new Dictionary<string, object> { ["operation"] = operation, ["win32Error"] = error });
     }
@@ -206,6 +215,7 @@ public sealed class QuietLaneCaptureObserver : IDisposable
         if (modal)
         {
             failed = true;
+            executionBlocked = true;
             stopCases.Set();
             Emit("modal", new Dictionary<string, object> {
                 ["origin"] = origin, ["window"] = "0x" + window.ToInt64().ToString("X"),
@@ -219,12 +229,26 @@ public sealed class QuietLaneCaptureObserver : IDisposable
         else if (classLength == 0 || processId == 0 || ownerError != null)
         {
             Emit("observer-token-evidence-at-incomplete-classification", ObserverTokenFields());
-            // Fail closed rather than silently losing a short-lived or inaccessible WER owner.
+            // Preserve unknown classification even when explicit policy separates execution status.
             Emit("classification-incomplete", new Dictionary<string, object> {
                 ["origin"] = origin, ["ownerPid"] = processId, ["ownerQueryError"] = ownerError,
                 ["nativeEventMilliseconds"] = eventTime, ["classError"] = classError
             });
-            ProbeError("visible-window-classification", classLength == 0 ? classError : 0);
+            if (attributionContinuation.TryContinue(origin, callbackSequence, objectId, childId,
+                first.ValidBefore, visible, classLength, classError, processId,
+                !first.ValidAfter && first.OwnerPidAfter == 0 && first.OwnerThreadAfter == 0 && threadProcessId == 0))
+            {
+                failed = true;
+                Emit("attribution-limitation", new Dictionary<string, object> {
+                    ["callbackSequence"] = callbackSequence,
+                    ["window"] = QuietCaptureLedger.WindowKey(window),
+                    ["attributionStatus"] = "unknown-failed",
+                    ["executionContinuation"] = "explicit-user-single-show-policy",
+                    ["visibleAtObservation"] = visible,
+                    ["foreignOwnershipProven"] = false
+                });
+            }
+            else ProbeError("visible-window-classification", classLength == 0 ? classError : 0);
         }
     }
     private void OnEvent(IntPtr hook, uint kind, IntPtr window, int objectId, int childId,

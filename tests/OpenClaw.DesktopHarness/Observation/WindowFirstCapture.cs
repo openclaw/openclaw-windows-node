@@ -26,6 +26,9 @@ public sealed class WindowFirstSnapshot
     public uint OwnerThread;
     public int OwnerError;
     public bool ValidBefore;
+    public bool ValidAfter;
+    public uint OwnerPidAfter;
+    public uint OwnerThreadAfter;
     public bool Visible;
     public long ClassBegin, ClassEnd, OwnerBegin, OwnerEnd;
 }
@@ -73,11 +76,16 @@ public static class WindowFirstCapture
                     result.OwnerBegin = begin; result.OwnerEnd = end;
                 }
                 else
+                {
+                    result.OwnerPidAfter = value.ProcessId;
+                    result.OwnerThreadAfter = unchecked((uint)value.ReturnValue);
                     result.Fields["ownerUnchangedAcrossFastCalls"] =
                         result.OwnerPid != 0 && result.OwnerThread != 0 &&
                         result.OwnerPid == value.ProcessId && result.OwnerThread == unchecked((uint)value.ReturnValue);
+                }
             }
             if (operation == "IsWindow") result.ValidBefore = value.ReturnValue != 0;
+            if (operation == "IsWindow-after") result.ValidAfter = value.ReturnValue != 0;
             if (operation == "IsWindowVisible") result.Visible = value.ReturnValue != 0;
             calls.Add(call);
         }
