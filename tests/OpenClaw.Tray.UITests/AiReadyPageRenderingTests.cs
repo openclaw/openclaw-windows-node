@@ -19,6 +19,46 @@ namespace OpenClaw.Tray.UITests;
 public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHelper output)
 {
     [Theory]
+    [InlineData(SetupNativeCompletionPhase.PageDrain, "Closing the previous AI setup page timed out.")]
+    [InlineData(SetupNativeCompletionPhase.Connection, "Connecting to the native Gateway timed out.")]
+    [InlineData(SetupNativeCompletionPhase.ModelRecovery, "Waiting for Local AI recovery timed out.")]
+    [InlineData(SetupNativeCompletionPhase.ModelVerification, "Verifying the selected AI model timed out.")]
+    [InlineData(SetupNativeCompletionPhase.Verification, "Verification timed out or was cancelled.")]
+    public async Task FinishingFailureRetainsSafePhaseGuidanceAndActionableClose(
+        SetupNativeCompletionPhase phase, string expected)
+    {
+        await ui.RunOnUIAsync(() =>
+        {
+            var page = new AiCompletionPage();
+            var closed = 0;
+            var error = Assert.IsType<SetupNativeCompletionTimeoutException>(Activator.CreateInstance(
+                typeof(SetupNativeCompletionTimeoutException), BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null, args: [phase, new IOException("private fixture content")], culture: null));
+            using var trace = new StringWriter();
+            using var listener = new System.Diagnostics.TextWriterTraceListener(trace);
+            System.Diagnostics.Trace.Listeners.Add(listener);
+            try
+            {
+                page.ShowFailure(error: error, close: () => closed++);
+                listener.Flush();
+                Assert.StartsWith(expected, Assert.IsType<TextBlock>(page.FindName("Detail")).Text);
+                Assert.DoesNotContain("private fixture content", trace.ToString());
+                Assert.Contains("phase: " + phase, trace.ToString());
+                Assert.False(Assert.IsType<ProgressBar>(page.FindName("Progress")).Visibility == Visibility.Visible);
+                Assert.Equal(Visibility.Collapsed, Assert.IsType<Button>(page.FindName("RetryButton")).Visibility);
+                Assert.Equal(Visibility.Collapsed, Assert.IsType<Button>(page.FindName("BackButton")).Visibility);
+                var close = Assert.IsType<Button>(page.FindName("CloseButton"));
+                Assert.Equal(Visibility.Visible, close.Visibility);
+                Assert.Equal("Close", close.Content);
+                typeof(AiCompletionPage).GetMethod("Close_Click", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(page, [close, new RoutedEventArgs()]);
+                Assert.Equal(1, closed);
+            }
+            finally { System.Diagnostics.Trace.Listeners.Remove(listener); }
+        });
+    }
+
+    [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
     public async Task OpenReadyAndRestartProgressFollowLiveAppThemeWithoutRemounting(ElementTheme initialTheme)

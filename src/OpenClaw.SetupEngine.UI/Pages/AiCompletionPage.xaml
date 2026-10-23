@@ -15,5 +15,7 @@
                 Visibility="Collapsed" Click="Retry_Click" HorizontalAlignment="Center" />
         <Button x:Name="BackButton" x:Uid="Onboarding_V2_Back" Content="Back"
                 Visibility="Collapsed" Click="Back_Click" HorizontalAlignment="Center" />
+        <Button x:Name="CloseButton" Content="Close"
+                Visibility="Collapsed" Click="Close_Click" HorizontalAlignment="Center" />
     </StackPanel>
 </Page>

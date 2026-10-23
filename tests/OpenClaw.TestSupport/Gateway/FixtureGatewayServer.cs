@@ -480,6 +480,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     public Task NotifySessionsChangedAsync(CancellationToken cancellationToken = default) =>
         PublishEventAsync(new { type = "event", @event = "sessions.changed", payload = new { } }, cancellationToken);
 
+    public Task NotifyConfigurationChangedAsync(CancellationToken cancellationToken = default) =>
+        PublishEventAsync(new { type = "event", @event = "config.changed", payload = new { } }, cancellationToken);
+
     private async Task PublishEventAsync(object message, CancellationToken cancellationToken)
     {
         var targets = AcquireConnections(onlyOpen: true);

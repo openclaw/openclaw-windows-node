@@ -1,5 +1,12 @@
 namespace OpenClaw.SetupEngine;
 
+/// <summary>The restart process exists, so publication must not launch it again.</summary>
+public sealed class SetupPreparationCommittedException : InvalidOperationException
+{
+    public SetupPreparationCommittedException()
+        : base("The setup restart was launched, but shutdown could not be scheduled. Close OpenClaw to continue.") { }
+}
+
 /// <summary>
 /// Window-owned completion, admitted by the explicit AI action. Start returns before
 /// draining that action's page. Teardown must join ActiveTask before releasing ownership.
@@ -17,12 +24,14 @@ public sealed class SetupCompletionPreparation(
     private bool _finalized;
     private bool _disposed;
     private bool _finalizationUncertain;
+    private bool _publicationCommitted;
     private Task? _draining;
     private GatewayAiSetupCompletion? _verified;
     private Task _cleanup = Task.CompletedTask;
     public Task ActiveTask { get; private set; } = Task.CompletedTask;
     public Task CleanupCompleted => _cleanup;
     public bool CanRetry => !_disposed && !IsCompleted && ActiveTask.IsCompleted &&
+        !_publicationCommitted &&
         (!_finalizationUncertain || canResumeCommittedFinalization?.Invoke() == true) &&
         (_draining?.IsCompletedSuccessfully ?? true);
     public SetupNativeCompletionStage Stage { get; private set; }
@@ -87,7 +96,16 @@ public sealed class SetupCompletionPreparation(
         ct.ThrowIfCancellationRequested();
         Stage = SetupNativeCompletionStage.Opening;
         StateChanged?.Invoke();
-        await publish(new(_verified!, _verified!.SessionKey!), ct);
+        try
+        {
+            await publish(new(_verified!, _verified!.SessionKey!), ct);
+            _publicationCommitted = true;
+        }
+        catch (SetupPreparationCommittedException)
+        {
+            _publicationCommitted = true;
+            throw;
+        }
         ct.ThrowIfCancellationRequested();
         IsCompleted = true;
     }

@@ -3868,7 +3868,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                         _windowManager?.CloseSetup();
                         await ExitApplicationAsync();
                     }, new AppLogger(), "Native setup restart shutdown")))
-                    throw new InvalidOperationException("The app could not schedule setup shutdown.");
+                    throw new OpenClaw.SetupEngine.SetupPreparationCommittedException();
                 return;
             }
             _windowManager?.CloseSetup();

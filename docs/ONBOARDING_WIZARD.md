@@ -38,6 +38,18 @@ A failed attempt remains available for explicit Retry,
 but automatic reactivation does not show the same failure dialog again. Successful
 runtime checks alone do not prove that a full, potentially longer chat turn has finished.
 
+Readiness is withdrawn when the live Gateway reports configuration or model-catalog
+changes, without replaying setup or model activation. Finishing failures retain
+localized timeout-phase guidance. If safe retry or Back is unavailable, Close
+remains available. Once a restart process has launched, failed shutdown scheduling
+cannot launch another restart through Retry.
+
+WSL Local AI withdrawal restarts the Gateway only after a configuration change or
+when a previously observed or possibly published route still needs reconciliation.
+An unchanged, unpublished installation does not restart the Gateway on inspection
+or teardown. A completed managed startup that remains stopped or uninstalled fails
+readiness promptly instead of waiting for the full recovery deadline.
+
 Native installation keeps Back at the left and Cancel setup (or Retry setup) at
 the right, using the same content-sized, 100 px minimum buttons as earlier setup
 screens. Progress stays centered on its own row and action labels can wrap.

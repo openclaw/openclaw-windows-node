@@ -782,11 +782,12 @@ public sealed partial class SetupWindow : Window
         catch (Exception error)
         {
             _finishingLoading?.Dispose();
-            System.Diagnostics.Trace.TraceWarning("Setup completion failed ({0}).", error.GetType().Name);
+            System.Diagnostics.Trace.TraceWarning("Setup completion failed ({0}; phase: {1}).",
+                error.GetType().Name, (error as SetupNativeCompletionTimeoutException)?.Phase.ToString() ?? "none");
             if (!_isClosed && RootFrame.Content is AiCompletionPage page)
                 page.ShowFailure(
                     owner.CanRetry ? () => _preparationTask = ObservePreparationAsync(owner, retry: true) : null,
-                    CanReturnFromFinishing ? ReturnFromFinishing : null);
+                    CanReturnFromFinishing ? ReturnFromFinishing : null, error, Close);
         }
     }
 
@@ -820,7 +821,7 @@ public sealed partial class SetupWindow : Window
         catch (Exception error)
         {
             System.Diagnostics.Trace.TraceWarning("Returning from setup completion failed ({0}).", error.GetType().Name);
-            if (!_isClosed && RootFrame.Content is AiCompletionPage page) page.ShowFailure();
+            if (!_isClosed && RootFrame.Content is AiCompletionPage page) page.ShowFailure(error: error, close: Close);
         }
     }
     private void RequireVerifiedGateway(GatewayAiSetupCompletion completion)

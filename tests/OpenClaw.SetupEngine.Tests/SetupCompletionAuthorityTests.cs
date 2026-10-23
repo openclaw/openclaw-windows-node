@@ -166,6 +166,48 @@ public sealed class SetupCompletionAuthorityTests
     }
 
     [Fact]
+    public async Task LaunchedRestartCannotBePublishedAgainAfterShutdownSchedulingFails()
+    {
+        var launches = 0;
+        using var owner = new SetupCompletionPreparation(Proof, _ => Task.CompletedTask,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Proof.SessionKey!)),
+            (_, _) => Task.CompletedTask,
+            (_, _) =>
+            {
+                launches++;
+                throw new SetupPreparationCommittedException();
+            });
+
+        await Assert.ThrowsAsync<SetupPreparationCommittedException>(owner.StartAsync);
+        Assert.False(owner.CanRetry);
+        Assert.False(owner.IsCompleted);
+        await Assert.ThrowsAsync<InvalidOperationException>(owner.RetryAsync);
+        Assert.Equal(1, launches);
+    }
+
+    [Fact]
+    public async Task CancellationAfterPublicationCannotLaunchASecondRestart()
+    {
+        var launches = 0;
+        SetupCompletionPreparation? owner = null;
+        using (owner = new SetupCompletionPreparation(Proof, _ => Task.CompletedTask,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Proof.SessionKey!)),
+            (_, _) => Task.CompletedTask,
+            (_, _) =>
+            {
+                launches++;
+                owner!.Dispose();
+                return Task.CompletedTask;
+            }))
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(owner.StartAsync);
+            Assert.False(owner.CanRetry);
+            Assert.Equal(1, launches);
+            await owner.CleanupCompleted;
+        }
+    }
+
+    [Fact]
     public async Task RetryAfterVerificationFailurePublishesWithoutRepeatingFinalization()
     {
         var verifies = 0;

@@ -1,7 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
-using OpenClaw.Connection.NativeGateway;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClaw.SetupEngine.UI.Controls;
@@ -75,15 +74,8 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
                 Choices.Visibility = Visibility.Collapsed;
                 RecoveryButton.Visibility = Visibility.Visible;
             }
-            ErrorBar.Message = SetupLocalization.GetString(error switch
-            {
-                SetupNativeOwnershipException => "Onboarding_Ready_OwnershipChanged",
-                SetupNativeCompletionTimeoutException { Phase: SetupNativeCompletionPhase.Verification } => "Onboarding_Ready_Timeout",
-                SetupNativeCompletionTimeoutException timeout => "Onboarding_Ready_Timeout" + timeout.Phase,
-                NativeGatewayStartupTimeoutException => "Onboarding_Ready_TimeoutGatewayStartup",
-                OperationCanceledException or TimeoutException => "Onboarding_Ready_Timeout",
-                _ => "Onboarding_Ready_OpeningFailed",
-            });
+            ErrorBar.Message = SetupLocalization.GetString(AiSetupReadinessPresentation.CompletionFailureKey(
+                error, "Onboarding_Ready_OpeningFailed"));
             ErrorBar.IsOpen = true;
             System.Diagnostics.Trace.TraceWarning("Native setup completion needs retry ({0}; phase: {1}).",
                 error.GetType().Name, (error as SetupNativeCompletionTimeoutException)?.Phase.ToString() ?? "none");

@@ -1,8 +1,20 @@
+using OpenClaw.Connection.NativeGateway;
+
 namespace OpenClaw.SetupEngine;
 
 /// <summary>Display hints only. Provider and Local AI actions retain their own authority checks.</summary>
 public static class AiSetupReadinessPresentation
 {
+    public static string CompletionFailureKey(Exception error, string fallbackKey) => error switch
+    {
+        SetupNativeOwnershipException => "Onboarding_Ready_OwnershipChanged",
+        SetupNativeCompletionTimeoutException { Phase: SetupNativeCompletionPhase.Verification } => "Onboarding_Ready_Timeout",
+        SetupNativeCompletionTimeoutException timeout => "Onboarding_Ready_Timeout" + timeout.Phase,
+        NativeGatewayStartupTimeoutException => "Onboarding_Ready_TimeoutGatewayStartup",
+        OperationCanceledException or TimeoutException => "Onboarding_Ready_Timeout",
+        _ => fallbackKey,
+    };
+
     public static string TitleKey(bool pinnedModel, bool localOperation, bool choicesPrepared, bool busy, bool failed,
         bool localAdmissionFailed = false) =>
         pinnedModel || localOperation

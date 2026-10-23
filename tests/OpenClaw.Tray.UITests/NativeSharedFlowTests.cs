@@ -101,6 +101,81 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         }, theme: theme, isolated: isolated);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConfigurationChangeWithdrawsReadyWithoutReplayingSetup(bool duringMount)
+    {
+        await WithNativeAsync(async (window, frame, registry, _, server, completed) =>
+        {
+            var ai = Assert.IsType<AiSetupPage>(frame.Content);
+            await WaitAsync(() => Find<ItemsControl>(ai, "CandidateChoices").IsEnabled &&
+                TestSupport.FindDescendants<SettingsCard>(Find<ItemsControl>(ai, "CandidateChoices")).Any(),
+                "AI candidate loaded");
+            TestSupport.InvokeSettingsCardAction(ai,
+                Assert.Single(TestSupport.FindDescendants<SettingsCard>(Find<ItemsControl>(ai, "CandidateChoices"))),
+                "ChoiceAction_Click");
+            await WaitAsync(() => completed.Count == 1, "setup preparation published");
+            await WithPublishedReadyAsync(window, registry, server, Assert.Single(completed), ElementTheme.Light,
+                async (readyWindow, _, navigated, runtime) =>
+                {
+                    var before = server.Requests.Count;
+                    var starts = runtime.Starts;
+                    var stops = runtime.Stops;
+                    await server.NotifyConfigurationChangedAsync();
+                    var readyFrame = Assert.IsType<Frame>(readyWindow.Content);
+                    await WaitAsync(() => readyFrame.Content is AiCompletionPage recovery &&
+                        Find<InfoBar>(recovery, "ErrorBar").IsOpen, "configuration event withdraws Ready");
+                    Assert.Empty(navigated);
+                    Assert.Equal(before, server.Requests.Count);
+                    Assert.Equal(starts, runtime.Starts);
+                    Assert.Equal(stops, runtime.Stops);
+                }, invalidateDuringMount: duringMount);
+        }, isolated: true);
+    }
+
+    [Fact]
+    public async Task FailedReturnFromFinishingStillOffersCloseWithoutRetryingSetup()
+    {
+        await WithNativeAsync(async (window, frame, _, runtime, _, completed) =>
+        {
+            await Assert.IsType<AiSetupPage>(frame.Content).CloseAsync();
+            var proof = new GatewayAiSetupCompletion(SetupCompletionIntent.CustodianOnboarding,
+                "native-ui", new string('A', 64), Model, "main", 1,
+                IdentityBinding: new string('B', 64), SessionKey: "agent:main:main");
+            using var owner = new SetupCompletionPreparation(proof,
+                _ => Task.CompletedTask,
+                (_, _) => throw new InvalidOperationException("Must not verify"),
+                (_, _) => throw new InvalidOperationException("Must not finalize"),
+                (_, _) => throw new InvalidOperationException("Must not publish"));
+            typeof(SetupWindow).GetField("_completionPreparation", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, owner);
+            frame.Navigate(typeof(AiCompletionPage));
+            runtime.DisposeFailure = new IOException("Synthetic native release failure");
+            await Assert.IsAssignableFrom<Task>(typeof(SetupWindow)
+                .GetMethod("ReturnFromFinishingAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, [owner]));
+            var recovery = Assert.IsType<AiCompletionPage>(frame.Content);
+            Assert.True(Find<InfoBar>(recovery, "ErrorBar").IsOpen);
+            Assert.Equal(Visibility.Collapsed, Find<Button>(recovery, "RetryButton").Visibility);
+            Assert.Equal(Visibility.Collapsed, Find<Button>(recovery, "BackButton").Visibility);
+            var close = Find<Button>(recovery, "CloseButton");
+            Assert.Equal(Visibility.Visible, close.Visibility);
+            Assert.True(close.IsEnabled);
+            await WaitAsync(() => close.IsLoaded, "failed cleanup Close action loaded");
+            if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
+            {
+                window.AppWindow.Move(new(120, 120));
+                OnboardingNativeProof.ActivateOwned(window);
+                using (await OnboardingNativeProof.CaptureAsync(window, "finishing-cleanup-failed-close", output,
+                    ["Finishing setup", "Close"], requiredContent: recovery)) { }
+            }
+            Invoke(close);
+            await WaitAsync(() => window.IsClosed, "failed cleanup can close setup");
+            Assert.Empty(completed);
+        }, isolated: true);
+    }
+
     [Fact]
     public async Task NativeApiUnavailable_StaysOnExplicitFallbackWithoutPublishing()
     {
@@ -477,7 +552,8 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
 
     private async Task WithPublishedReadyAsync(SetupWindow setupWindow, GatewayRegistry registry,
         FixtureGatewayServer server, SetupNativePreparation preparation, ElementTheme theme,
-        Func<SetupReadyWindow, AiReadyPage, List<SetupNativeCompletion>, Runtime, Task> assertion)
+        Func<SetupReadyWindow, AiReadyPage, List<SetupNativeCompletion>, Runtime, Task> assertion,
+        bool invalidateDuringMount = false)
     {
         var data = Assert.IsType<string>(typeof(SetupWindow).GetProperty("DataDir",
             BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(setupWindow));
@@ -520,9 +596,26 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     Assert.NotEqual("Your AI is ready", Find<TextBlock>(pending, "Heading").Text);
                     Assert.Equal(Visibility.Collapsed, Find<StackPanel>(pending, "Choices").Visibility);
                     Assert.Empty(navigated);
+                    if (invalidateDuringMount)
+                    {
+                        var requests = server.Requests.Count;
+                        await server.NotifyConfigurationChangedAsync();
+                        await WaitAsync(() => readyFrame.Content is AiCompletionPage,
+                            "configuration event invalidates pending mount");
+                        Assert.Equal(requests, server.Requests.Count);
+                    }
                 },
                 readyConsumed: readyWindow.CommitPresentation);
-            Assert.True(await launcher.OpenAsync(store, handle, ct: deadline.Token));
+            var opened = await launcher.OpenAsync(store, handle, ct: deadline.Token);
+            if (invalidateDuringMount)
+            {
+                Assert.False(opened);
+                Assert.Single(failures);
+                Assert.Empty(navigated);
+                Assert.IsType<AiCompletionPage>(readyFrame.Content);
+                return;
+            }
+            Assert.True(opened);
             Assert.Empty(failures);
             Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
             var ready = Assert.IsType<AiReadyPage>(readyFrame.Content);
@@ -835,11 +928,21 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         public int Starts { get; private set; }
         public int Stops { get; private set; }
         public int Disposals { get; private set; }
+        public Exception? DisposeFailure { get; set; }
         public GatewayEndpointProvenanceKind Provenance { get; set; } = GatewayEndpointProvenanceKind.ExpectedManagedGateway;
         public GatewayEndpointProvenance Inspect(GatewayRecord record) => new(Provenance, server.Endpoint.Port);
         public Task<GatewayEndpointProvenance> InspectAsync(GatewayRecord record, CancellationToken ct) => Task.FromResult(Inspect(record));
         public Task EnsureRunningAsync(GatewayRecord record, CancellationToken ct) { Starts++; Running = true; return Task.CompletedTask; }
         public async Task StopAsync(CancellationToken ct) { Stops++; Running = false; await server.CloseConnectionsAsync(ct); }
-        public ValueTask DisposeAsync() { Disposals++; return new(StopAsync(default)); }
+        public async ValueTask DisposeAsync()
+        {
+            Disposals++;
+            await StopAsync(default);
+            if (DisposeFailure is { } failure)
+            {
+                DisposeFailure = null;
+                throw failure;
+            }
+        }
     }
 }

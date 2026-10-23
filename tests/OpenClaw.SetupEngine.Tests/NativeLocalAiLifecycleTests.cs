@@ -563,6 +563,24 @@ public sealed class NativeLocalAiLifecycleTests
     }
 
     [Fact]
+    public async Task FinishedStoppedWslStartupFailsManagedHandoffWithoutStartingIt()
+    {
+        foreach (var state in new[] { LocalAiRuntimeState.Stopped, LocalAiRuntimeState.NotInstalled,
+            LocalAiRuntimeState.Failed, LocalAiRuntimeState.Conflict })
+        {
+            var install = LocalAiOnboardingTests.Install();
+            var runtime = new LocalAiOnboardingTests.FakeRuntime(
+                LocalAiOnboardingTests.RuntimeSnapshot(install, state));
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                LocalAiGatewayLifecycle.WaitForRecoveryAsync(
+                    LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), runtime, () => Task.CompletedTask,
+                    deadline.Token, failOnTerminalState: true));
+            Assert.Equal(0, runtime.Calls);
+        }
+    }
+
+    [Fact]
     public async Task HandoffIgnoresStaleCompletedRecoveryAndJoinsTheNextRecovery()
     {
         var install = LocalAiOnboardingTests.Install();

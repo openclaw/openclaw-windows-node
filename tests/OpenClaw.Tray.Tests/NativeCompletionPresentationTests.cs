@@ -179,9 +179,14 @@ public sealed class NativeCompletionPresentationTests
             Assert.False(string.IsNullOrWhiteSpace(entry.Element("value")?.Value));
         }
         var page = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml.cs");
-        Assert.Contains("\"Onboarding_Ready_Timeout\" + timeout.Phase", page);
-        Assert.Contains("Phase: SetupNativeCompletionPhase.Verification } => \"Onboarding_Ready_Timeout\"", page);
-        Assert.Contains("\"Onboarding_Ready_TimeoutGatewayStartup\"", page);
+        var presentation = Read(@"src\OpenClaw.SetupEngine\AiSetupReadinessPresentation.cs");
+        Assert.Contains("\"Onboarding_Ready_Timeout\" + timeout.Phase", presentation);
+        Assert.Contains("Phase: SetupNativeCompletionPhase.Verification } => \"Onboarding_Ready_Timeout\"", presentation);
+        Assert.Contains("\"Onboarding_Ready_TimeoutGatewayStartup\"", presentation);
+        Assert.Contains("AiSetupReadinessPresentation.CompletionFailureKey(", page);
+        var finishing = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiCompletionPage.xaml.cs");
+        Assert.Contains("AiSetupReadinessPresentation.CompletionFailureKey(", finishing);
+        Assert.DoesNotContain("error.Message", finishing);
         Assert.DoesNotContain("error.Message", page);
         var launcher = Read(@"src\OpenClaw.Tray.WinUI\Services\SetupNativeHandoffLauncher.cs");
         Assert.Contains("(error as SetupNativeCompletionTimeoutException)?.Phase", launcher);

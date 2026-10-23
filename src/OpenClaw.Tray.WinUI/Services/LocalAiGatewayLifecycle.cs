@@ -334,7 +334,8 @@ internal sealed class LocalAiGatewayLifecycle(
             }
             if (state == LocalAiRuntimeState.Healthy ||
                 (!requiresManagedLocalAi && getRecoveryTask() is { IsCompleted: true })) break;
-            if (failOnTerminalState && state is LocalAiRuntimeState.Failed or LocalAiRuntimeState.Conflict)
+            if (failOnTerminalState && state is (LocalAiRuntimeState.Failed or LocalAiRuntimeState.Conflict or
+                LocalAiRuntimeState.Stopped or LocalAiRuntimeState.NotInstalled))
                 throw new InvalidOperationException("The selected Local AI runtime failed before Gateway verification.");
             await Task.Delay(100, ct).ConfigureAwait(false);
         }

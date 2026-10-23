@@ -30,6 +30,7 @@ internal sealed class SetupReadyObservation : IDisposable
         manager.OperatorClientChanged += OnOperator;
         registry.Changed += OnRegistry;
         _client.ConfigUpdated += OnConfig;
+        _client.ModelCatalogInvalidated += OnConfigurationChanged;
         _client.SessionsUpdated += OnSessions;
         if (_runtime is not null) _runtime.StateChanged += OnRuntime;
         try { RequireCurrent(); }
@@ -88,6 +89,13 @@ internal sealed class SetupReadyObservation : IDisposable
             _invalidated();
     }
 
+    private void OnConfigurationChanged(object? sender, EventArgs args)
+    {
+        if (_disposed || !ReferenceEquals(sender, _client)) return;
+        _binding.Invalidate();
+        _invalidated();
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -96,6 +104,7 @@ internal sealed class SetupReadyObservation : IDisposable
         _manager.OperatorClientChanged -= OnOperator;
         _registry.Changed -= OnRegistry;
         _client.ConfigUpdated -= OnConfig;
+        _client.ModelCatalogInvalidated -= OnConfigurationChanged;
         _client.SessionsUpdated -= OnSessions;
         if (_runtime is not null) _runtime.StateChanged -= OnRuntime;
     }
