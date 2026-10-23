@@ -4,12 +4,53 @@ $ErrorActionPreference = 'Stop'
 # Compile native declarations, but never instantiate an observer or call a native API.
 $sources = Get-ChildItem (Join-Path $PSScriptRoot 'Observation') -Filter '*.cs' |
     ForEach-Object FullName
-Add-Type -Path @($sources; (Join-Path $PSScriptRoot '..\OpenClaw.DesktopHarness.Tests\ObserverEvidenceFake.cs'))
+Add-Type -Path @($sources; (Join-Path $PSScriptRoot '..\OpenClaw.DesktopHarness.Tests\ObserverEvidenceFake.cs'); (Join-Path $PSScriptRoot '..\OpenClaw.DesktopHarness.Tests\WindowFirstFake.cs'))
 $checks = 0
 function Assert-Evidence([bool]$Condition, [string]$Message) {
     if (!$Condition) { throw $Message }
     $script:checks++
 }
+$windowNative = [WindowFirstFake]::new()
+$script:windowTick = 2000L
+$windowClock = [Func[long]]{ $script:windowTick++; $script:windowTick }
+$first = [WindowFirstCapture]::Capture($windowNative, [IntPtr]::new(0xA00C8), $windowClock)
+Assert-Evidence (($windowNative.Calls -join ',') -eq 'IsWindow,GetClassNameW,GetWindowTextLengthW,GetWindowThreadProcessId,GetWindowRect,GetWindowLongPtrW-style,GetWindowLongPtrW-exStyle,IsWindowVisible,IsWindow-after,GetWindowThreadProcessId-after') 'Fast native calls must finish before slow ownership work'
+$windowNative.Invalid = $true
+$windowNative.Name = 'changed-after-capture'
+Assert-Evidence ($first.ClassName -eq 'ConsoleWindowClass' -and $first.ClassLength -eq 18 -and $first.OwnerPid -eq 77 -and $first.OwnerThread -eq 88) 'Later destruction or slow-query failure must not erase the original live class and owner'
+$fastCalls = $first.Fields['calls']
+Assert-Evidence ($fastCalls[2]['returnValue'] -eq 13 -and $fastCalls[4]['rectangle'][0] -eq -40 -and $fastCalls[5]['returnValue'] -eq 2147483648L) 'Record text length, signed rect coordinates and unsigned style bits without fetching title text'
+Assert-Evidence ($fastCalls[1]['beganTickCount64'] -eq 2003 -and $fastCalls[1]['endedTickCount64'] -eq 2004 -and $first.ClassBegin -eq 2003 -and $first.OwnerEnd -eq 2008) 'Preserve independent per-call first-capture intervals'
+Assert-Evidence ($first.Fields['ownerUnchangedAcrossFastCalls'] -and !$first.Fields['hwndLifetimeProven']) 'Matching fast owner brackets must not become a lifetime proof'
+$invalid = [WindowFirstCapture]::Capture($windowNative, [IntPtr]::new(0xA00C8), $windowClock)
+Assert-Evidence (!$invalid.ValidBefore -and $invalid.ClassLength -eq 0 -and $invalid.ClassError -eq 1400 -and $invalid.OwnerPid -eq 0 -and !$invalid.Fields['ownerUnchangedAcrossFastCalls']) 'Invalid at entry must remain unknown, never acquire a stale live owner'
+$changed = [WindowFirstFake]::new()
+$changed.BeforeQuery = [Action[string]]{ param($operation) if ($operation -eq 'GetWindowThreadProcessId-after') { $changed.Pid = 99 } }
+$reused = [WindowFirstCapture]::Capture($changed, [IntPtr]::new(0xA00C8), $windowClock)
+Assert-Evidence ($reused.OwnerPid -eq 77 -and !$reused.Fields['ownerUnchangedAcrossFastCalls']) 'Changed HWND owner must retain the original PID and mark the inconsistent bracket'
+$nestedContext = [ObserverCallbackContext]::new()
+$outerFrame = $nestedContext.Enter(100)
+$reentrant = [WindowFirstFake]::new()
+$script:nestedSnapshot = $null
+$script:nestedDepth = 0
+$script:nestedParent = $null
+$reentrant.BeforeQuery = [Action[string]]{
+    param($operation)
+    if ($operation -eq 'GetWindowTextLengthW') {
+        $innerFrame = $nestedContext.Enter(101)
+        try {
+            $innerNative = [WindowFirstFake]::new()
+            $innerNative.Name = 'Ghost'
+            $script:nestedSnapshot = [WindowFirstCapture]::Capture($innerNative, [IntPtr]::new(0xB0010), $windowClock)
+            $script:nestedDepth = $innerFrame.Depth
+            $script:nestedParent = $innerFrame.ParentSequence
+        } finally { $innerFrame.Dispose() }
+    }
+}
+try {
+    $outerSnapshot = [WindowFirstCapture]::Capture($reentrant, [IntPtr]::new(0xA00C8), $windowClock)
+    Assert-Evidence ($outerSnapshot.ClassName -eq 'ConsoleWindowClass' -and $script:nestedSnapshot.ClassName -eq 'Ghost' -and $script:nestedDepth -eq 2 -and $script:nestedParent -eq 100) 'Reentrant length query must retain independent class snapshots and the actual nested callback context'
+} finally { $outerFrame.Dispose() }
 $native = [ObserverEvidenceFake]::new()
 $native.OpenFailure = 5
 $original = [ThreadOwnershipProbe]::Query($native, 824)

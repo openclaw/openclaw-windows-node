@@ -79,21 +79,22 @@ public sealed class QuietLaneCaptureObserver : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error());
         return name.ToString();
     }
-    private void ObserveWindow(IntPtr window, string origin, bool dialogEvent, uint eventThread, uint eventTime, long callbackSequence = 0, int? objectId = null, int? childId = null)
+    private void ObserveWindow(IntPtr window, string origin, bool dialogEvent, uint eventThread, uint eventTime, long callbackSequence = 0, int? objectId = null, int? childId = null, WindowFirstSnapshot first = null, ThreadOwnershipAttempt originalAtEntry = null)
     {
-        bool validBefore = IsWindow(window);
-        bool visible = IsWindowVisible(window);
+        first = first ?? WindowFirstCapture.Capture(new WindowFirstNative(), window, () => Environment.TickCount64);
+        bool validBefore = first.ValidBefore;
+        bool visible = first.Visible;
         if (!visible && !dialogEvent && !origin.StartsWith("WinEvent-", StringComparison.Ordinal)) return;
-        StringBuilder className = new StringBuilder(256);
-        long classQueryBeganTickCount64 = Environment.TickCount64;
-        int classLength = GetClassNameW(window, className, className.Capacity);
-        int classError = Marshal.GetLastWin32Error();
-        long classQueryEndedTickCount64 = Environment.TickCount64;
-        uint processId;
-        long ownerQueryBeganTickCount64 = Environment.TickCount64;
-        uint windowThread = GetWindowThreadProcessId(window, out processId);
-        int windowOwnerError = Marshal.GetLastWin32Error();
-        long ownerQueryEndedTickCount64 = Environment.TickCount64;
+        StringBuilder className = new StringBuilder(first.ClassName ?? "");
+        long classQueryBeganTickCount64 = first.ClassBegin;
+        int classLength = first.ClassLength;
+        int classError = first.ClassError;
+        long classQueryEndedTickCount64 = first.ClassEnd;
+        uint processId = first.OwnerPid;
+        long ownerQueryBeganTickCount64 = first.OwnerBegin;
+        uint windowThread = first.OwnerThread;
+        int windowOwnerError = first.OwnerError;
+        long ownerQueryEndedTickCount64 = first.OwnerEnd;
         uint hwndProcessId = processId, threadProcessId = 0;
         long threadCreated = 0, threadExit = 0, threadKernel, threadUser;
         int openThreadError = 0, threadOwnerError = 0, threadTimesError = 0;
@@ -103,7 +104,7 @@ public sealed class QuietLaneCaptureObserver : IDisposable
         ThreadOwnershipAttempt originalAttempt = null;
         if (processId == 0 && eventThread != 0)
         {
-            originalAttempt = ThreadOwnershipProbe.Query(new ObserverThreadNative(), eventThread);
+            originalAttempt = originalAtEntry ?? ThreadOwnershipProbe.Query(new ObserverThreadNative(), eventThread);
             processId = originalAttempt.OwnerPid;
         }
         string processName = null, ownerError = null;
@@ -167,6 +168,7 @@ public sealed class QuietLaneCaptureObserver : IDisposable
             catch (Exception ex) { eventProcessIdentityError = ex.GetType().Name; }
         }
         Emit("native-classification-capture", new Dictionary<string, object> {
+            ["callbackFirstWindowCapture"] = first.Fields,
             ["objectId"] = objectId, ["childId"] = childId,
             ["originalThreadLookup"] = originalAttempt == null ? null : originalAttempt.Fields(),
             ["retryThreadLookupLabel"] = "diagnostic-retry-not-original",
@@ -236,12 +238,39 @@ public sealed class QuietLaneCaptureObserver : IDisposable
             raw["callbackDepth"] = frame.Depth;
             raw["parentCallbackSequence"] = frame.ParentSequence;
             raw["hook"] = QuietCaptureLedger.WindowKey(hook);
+            WindowFirstSnapshot first = null;
+            ThreadOwnershipAttempt originalAtEntry = null;
+            if (window != IntPtr.Zero && (kind == 0x0010 || (objectId == 0 && childId == 0)))
+            {
+                first = WindowFirstCapture.Capture(new WindowFirstNative(), window, () => Environment.TickCount64);
+                first.Fields["callbackSequence"] = raw["callbackSequence"];
+                first.Fields["callbackDepth"] = frame.Depth;
+                first.Fields["parentCallbackSequence"] = frame.ParentSequence;
+                first.Fields["eventThreadId"] = eventThread;
+                first.Fields["originalEventTime"] = eventTime;
+                first.Fields["originalEventKind"] = kind;
+                first.Fields["objectId"] = objectId;
+                first.Fields["childId"] = childId;
+                first.Fields["hook"] = QuietCaptureLedger.WindowKey(hook);
+                raw["callbackFirstWindowCapture"] = first.Fields;
+                Emit("callback-first-window-capture", new Dictionary<string, object>(first.Fields));
+                if (first.OwnerPid == 0 && eventThread != 0)
+                {
+                    originalAtEntry = ThreadOwnershipProbe.Query(new ObserverThreadNative(), eventThread);
+                    raw["callbackFirstFallbackThread"] = originalAtEntry.Fields();
+                }
+                raw["callbackFirstWindowOwnerThread"] = first.OwnerThread == 0 ? null :
+                    ThreadOwnershipProbe.Query(new ObserverThreadNative(), first.OwnerThread).Fields();
+                raw["callbackFirstWindowOwnerProcess"] = CallbackProcessIdentity.Capture(first.OwnerPid);
+                if (first.OwnerPid == 0 && eventThread != 0)
+                    raw["callbackDeliveryEventThreadSnapshot"] = CallbackThreadSnapshot.Capture(eventThread);
+            }
             Emit("raw-WinEvent-callback", raw);
             long sequence = (long)raw["callbackSequence"];
             if (kind == 0x0010)
-                ObserveWindow(window, "WinEvent-dialog-start", true, eventThread, eventTime, sequence, objectId, childId);
+                ObserveWindow(window, "WinEvent-dialog-start", true, eventThread, eventTime, sequence, objectId, childId, first, originalAtEntry);
             else if (kind == 0x8002 && objectId == 0 && childId == 0)
-                ObserveWindow(window, "WinEvent-object-show", false, eventThread, eventTime, sequence, objectId, childId);
+                ObserveWindow(window, "WinEvent-object-show", false, eventThread, eventTime, sequence, objectId, childId, first, originalAtEntry);
         }
         catch (Exception) { ProbeError("WinEvent-callback", Marshal.GetLastWin32Error()); }
         finally

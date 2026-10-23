@@ -48,6 +48,35 @@ tick intervals. Raw thread exit FILETIME is undefined for a running thread
 according to `GetThreadTimes`; it must not establish termination without
 independent lifecycle evidence.
 
+For live callbacks, a synchronous first-window capture precedes logging,
+thread/process/token queries and classification. It retains native returns,
+last errors and individual start/end ticks for validity, class, **text length
+only**, HWND owner PID/TID, rectangle, pointer-width style/ex-style and a second
+owner bracket. It never calls `GetWindowText` or stores a title. Classification
+uses those original class/owner values, not a later retry. A changed owner
+bracket is evidence of inconsistency; a matching bracket does not prove HWND
+lifetime identity. Length queries may reenter, so callback context is entered
+before this capture and nested snapshots remain independent.
+
+The first fallback thread lookup precedes additional ownership diagnostics.
+A retained limited-access process handle supplies PID, creation time, image
+path and session where permitted. A system-directory `csrss.exe` match is
+labeled **callback-delivery time**, not event-emission ownership. If the HWND
+has no owner, a synchronous Toolhelp event-thread snapshot supplies only a
+candidate PID and an independently attempted process identity. Toolhelp has no
+thread creation identity. Neither a later mapping, an OS class, a CSRSS name nor
+an access denial authorizes exclusion. Unknown remains FAIL, including handles
+already invalid at callback entry; owned Console/Ghost windows are not exempt.
+Protected-process access failures remain explicit unknowns. The observer does
+not parse undocumented reserved `NtQuerySystemInformation` fields to invent
+missing creation times or image paths.
+
+API contracts: [WinEventProc](https://learn.microsoft.com/windows/win32/api/winuser/nc-winuser-wineventproc),
+[GetWindowTextLengthW](https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getwindowtextlengthw),
+[GetClassNameW](https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getclassnamew),
+[GetProcessTimes](https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes),
+[NtQuerySystemInformation](https://learn.microsoft.com/windows/win32/api/winternl/nf-winternl-ntquerysysteminformation).
+
 This opt-in real-runtime lane tests the security fidelity of
 [`Invoke-PrivateDesktop.ps1`](../../scripts/Invoke-PrivateDesktop.ps1).
 It requires an interactive Windows user session, .NET 10, installed MSVC/Windows
