@@ -19,6 +19,7 @@ public sealed partial class SetupLogger : IDisposable
     private readonly string _runId;
     private readonly ConcurrentQueue<LogEntry> _recentEntries = new();
     private readonly object _writeLock = new();
+    private bool _disposed;
     private const int MaxRecentEntries = 256;
 
     public event EventHandler<LogEntry>? LogEmitted;
@@ -106,7 +107,7 @@ public sealed partial class SetupLogger : IDisposable
 
         lock (_writeLock)
         {
-            _writer?.WriteLine(json);
+            if (!_disposed) _writer?.WriteLine(json);
         }
 
         // Also write to console for headless mode
@@ -243,7 +244,14 @@ public sealed partial class SetupLogger : IDisposable
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
-    public void Dispose() => _writer?.Dispose();
+    public void Dispose()
+    {
+        lock (_writeLock)
+        {
+            _disposed = true;
+            _writer?.Dispose();
+        }
+    }
 }
 
 public sealed record LogEntry(DateTimeOffset Timestamp, string RunId, LogLevel Level, string Message, object? Data);

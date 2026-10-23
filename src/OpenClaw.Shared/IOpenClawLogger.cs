@@ -41,4 +41,3 @@ public class ConsoleLogger : IOpenClawLogger
     public void Error(string message, Exception? ex = null) => 
         Console.WriteLine($"[ERROR] {message}{(ex != null ? $": {ex.Message}" : "")}");
 }
-

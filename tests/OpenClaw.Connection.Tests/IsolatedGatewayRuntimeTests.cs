@@ -28,6 +28,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     };
     private readonly List<string> _calls = [];
     private readonly List<(string Family, string Command)> _packageCalls = [];
+    private readonly RecordingLogger _log = new();
     private readonly IsolatedGatewayRuntime _runtime;
     private WindowsTcpListenerInfo[] _listeners =
         [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
@@ -149,7 +150,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         _runtime = new IsolatedGatewayRuntime(new Resolver(_package, FixturePackage(OtherFamily)), client,
             () => new WindowsTcpListenerSnapshotResult(_listeners, _snapshotComplete, true),
             () => new Dictionary<int, ulong> { [ProcessId] = _hostSequence, [4567] = 88 },
-            _ => true, timeProvider: _clock);
+            _ => true, timeProvider: _clock, logger: _log);
     }
 
     [Fact]
@@ -489,9 +490,25 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         var start = _runtime.EnsureRunningAsync(_record, default);
         _clock.Advance(TimeSpan.FromSeconds(90));
 
-        await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+        var error = await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(
+            () => start.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal("starting", error.LastStatus?.State);
+        Assert.Contains(_log.InfoLines, line => line.Contains("Gateway status after") && line.Contains("state starting"));
         Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
         Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, _runtime.Inspect(_record).Kind);
+    }
+
+    [Fact]
+    public async Task PrestartConflictNamesTheSquattingProcessWithoutClaimingItsIdentity()
+    {
+        _state = "stopped";
+        _listeners = [new(IPAddress.Loopback, Port, 4567, "squatter", null)];
+
+        var error = await Assert.ThrowsAsync<NativeGatewayListenerException>(
+            () => _runtime.EnsureRunningAsync(_record, default));
+
+        Assert.Contains("squatter (PID 4567)", error.Provenance.Detail);
+        Assert.Null(error.Provenance.ProcessId);
     }
 
     [Fact]
@@ -927,5 +944,15 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             Task.FromResult(packages[0]);
         public Task<NativeGatewayPackage> ResolveAsync(string family, CancellationToken cancellationToken) =>
             Task.FromResult(packages.Single(package => package.PackageFamilyName == family));
+    }
+
+    private sealed class RecordingLogger : IOpenClawLogger
+    {
+        public List<string> InfoLines { get; } = [];
+        public List<string> Warnings { get; } = [];
+        public void Info(string message) => InfoLines.Add(message);
+        public void Debug(string message) { }
+        public void Warn(string message) => Warnings.Add(message);
+        public void Error(string message, Exception? ex = null) { }
     }
 }
