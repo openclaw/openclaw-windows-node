@@ -39,6 +39,15 @@ numeric HWND correlation do not establish event-time ownership. The pure
 tests prove diagnostic error preservation, not real native observation or a
 fix for the unresolved thread-824 incident. Native guest proof is mandatory.
 
+Each raw callback also records hook identity, nesting depth and parent sequence.
+A separate completion receipt distinguishes entry order from reentrant completion
+order. Native class and HWND-owner query intervals and the startup UTC/tick
+clock anchor are diagnostic bounds, not atomic lifetime or ownership proof.
+Original and retry thread opens, owner, timing and close calls have separate
+tick intervals. Raw thread exit FILETIME is undefined for a running thread
+according to `GetThreadTimes`; it must not establish termination without
+independent lifecycle evidence.
+
 This opt-in real-runtime lane tests the security fidelity of
 [`Invoke-PrivateDesktop.ps1`](../../scripts/Invoke-PrivateDesktop.ps1).
 It requires an interactive Windows user session, .NET 10, installed MSVC/Windows

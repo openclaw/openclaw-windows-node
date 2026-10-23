@@ -45,6 +45,27 @@ Assert-Evidence ($show['objectId'] -eq 0 -and $show['childId'] -eq 0 -and $show[
 Assert-Evidence ($destroy['pairedShowToDestroyMilliseconds'] -eq 3) 'SHOW/DESTROY interval lost'
 Assert-Evidence ($reshow['priorDestroyMillisecondsSameHandleOnly'] -eq 103) 'Tombstone missing'
 Assert-Evidence ($reshow['pairingIsSameHandleOnlyNotIdentityProof'] -eq $true) 'HWND reuse became identity proof'
+$context = [ObserverCallbackContext]::new()
+$outer = $context.Enter(4)
+$nested = $context.Enter(5)
+Assert-Evidence ($outer.Depth -eq 1 -and $null -eq $outer.ParentSequence) 'Outer callback acquired a false parent'
+Assert-Evidence ($nested.Depth -eq 2 -and $nested.ParentSequence -eq 4) 'Reentrant callback lost its parent'
+$outOfOrderRejected = $false
+try { $outer.Dispose() } catch { $outOfOrderRejected = $true }
+Assert-Evidence $outOfOrderRejected 'Out-of-order completion silently corrupted callback context'
+$nested.Dispose()
+$sibling = $context.Enter(6)
+Assert-Evidence ($sibling.Depth -eq 2 -and $sibling.ParentSequence -eq 4) 'Nested completion lost the active outer callback'
+$sibling.Dispose()
+$outer.Dispose()
+$outer.Dispose()
+$next = $context.Enter(7)
+Assert-Evidence ($next.Depth -eq 1 -and $null -eq $next.ParentSequence) 'Completed callback contaminated the next event'
+$next.Dispose()
+$script:tick = 100
+$timed = [ThreadOwnershipProbe]::Query($native, 824, [Func[long]]{ $script:tick++; $script:tick })
+Assert-Evidence ($timed.CallTicks['openBegin'] -eq 101 -and $timed.CallTicks['openEnd'] -eq 102) 'Original open interval lost'
+Assert-Evidence ($timed.CallTicks['ownerBegin'] -eq 103 -and $timed.CallTicks['timesEnd'] -eq 106 -and $timed.CallTicks['closeEnd'] -eq 108) 'Retained-handle query intervals lost'
 [pscustomobject]@{
     checks = $checks
     passed = $true

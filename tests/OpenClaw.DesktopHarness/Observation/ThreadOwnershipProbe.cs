@@ -17,6 +17,7 @@ public sealed record ThreadOwnershipAttempt(
     bool TimesSucceeded, int? TimesError, long? CreatedFileTime, long? ExitFileTime,
     int? CloseError)
 {
+    public Dictionary<string, long> CallTicks { get; init; } = new();
     public Dictionary<string, object?> Fields() => new()
     {
         ["threadId"] = ThreadId, ["requestedAccess"] = 0x0800,
@@ -24,18 +25,26 @@ public sealed record ThreadOwnershipAttempt(
         ["ownerPid"] = OwnerPid, ["ownerError"] = OwnerError,
         ["timesSucceeded"] = TimesSucceeded, ["timesError"] = TimesError,
         ["createdFileTime"] = CreatedFileTime, ["exitFileTime"] = ExitFileTime,
+        ["exitFileTimeRequiresIndependentTerminationEvidence"] = true,
         ["closeError"] = CloseError,
+        ["callTickCount64"] = CallTicks,
         ["identityIsCurrentQueryNotEventTimeProof"] = true
     };
 }
 
 public static class ThreadOwnershipProbe
 {
-    public static ThreadOwnershipAttempt Query(IObserverThreadNative native, uint threadId)
+    public static ThreadOwnershipAttempt Query(IObserverThreadNative native, uint threadId,
+        Func<long>? tickCount = null)
     {
+        tickCount ??= () => Environment.TickCount64;
+        var ticks = new Dictionary<string, long>();
+        ticks["openBegin"] = tickCount();
         IntPtr thread = native.OpenLimited(threadId);
+        int? openError = thread == IntPtr.Zero ? native.LastError : null;
+        ticks["openEnd"] = tickCount();
         if (thread == IntPtr.Zero)
-            return new(threadId, false, native.LastError, 0, null, false, null, null, null, null);
+            return new(threadId, false, openError, 0, null, false, null, null, null, null) { CallTicks = ticks };
 
         uint owner = 0;
         int? ownerError = null, timesError = null, closeError = null;
@@ -43,17 +52,23 @@ public static class ThreadOwnershipProbe
         bool times = false;
         try
         {
+            ticks["ownerBegin"] = tickCount();
             owner = native.Owner(thread);
             if (owner == 0) ownerError = native.LastError;
+            ticks["ownerEnd"] = tickCount();
+            ticks["timesBegin"] = tickCount();
             times = native.Times(thread, out created, out exited);
             if (!times) timesError = native.LastError;
+            ticks["timesEnd"] = tickCount();
         }
         finally
         {
+            ticks["closeBegin"] = tickCount();
             if (!native.Close(thread)) closeError = native.LastError;
+            ticks["closeEnd"] = tickCount();
         }
         return new(threadId, true, null, owner, ownerError, times, timesError,
-            times ? created : null, times ? exited : null, closeError);
+            times ? created : null, times ? exited : null, closeError) { CallTicks = ticks };
     }
 }
 

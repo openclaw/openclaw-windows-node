@@ -26,6 +26,7 @@ public sealed class QuietLaneCaptureObserver : IDisposable
     private long lastProbeTicks;
     private uint workerId;
     private readonly QuietCaptureLedger capture = new QuietCaptureLedger();
+    private readonly ObserverCallbackContext callbackContext = new ObserverCallbackContext();
     public void TrackProcess(uint pid, string startedUtc) { capture.TrackProcess(pid, startedUtc); }
     public bool Failed { get { return failed; } }
     public double LastProbeAgeMs
@@ -89,13 +90,16 @@ public sealed class QuietLaneCaptureObserver : IDisposable
         int classError = Marshal.GetLastWin32Error();
         long classQueryEndedTickCount64 = Environment.TickCount64;
         uint processId;
+        long ownerQueryBeganTickCount64 = Environment.TickCount64;
         uint windowThread = GetWindowThreadProcessId(window, out processId);
         int windowOwnerError = Marshal.GetLastWin32Error();
+        long ownerQueryEndedTickCount64 = Environment.TickCount64;
         uint hwndProcessId = processId, threadProcessId = 0;
-        long threadCreated = 0, threadExit, threadKernel, threadUser;
+        long threadCreated = 0, threadExit = 0, threadKernel, threadUser;
         int openThreadError = 0, threadOwnerError = 0, threadTimesError = 0;
         bool threadTimesOk = false;
         bool eventThreadOpened = false;
+        var retryTicks = new Dictionary<string, long>();
         ThreadOwnershipAttempt originalAttempt = null;
         if (processId == 0 && eventThread != 0)
         {
@@ -115,22 +119,30 @@ public sealed class QuietLaneCaptureObserver : IDisposable
         // Extra queries follow the original classification queries, never replace their fallback.
         if (eventThread != 0)
         {
+            retryTicks["openBegin"] = Environment.TickCount64;
             IntPtr diagnosticThread = OpenThread(0x0800, false, eventThread);
             openThreadError = Marshal.GetLastWin32Error();
+            retryTicks["openEnd"] = Environment.TickCount64;
             if (diagnosticThread != IntPtr.Zero)
             {
                 eventThreadOpened = true;
                 try
                 {
+                    retryTicks["ownerBegin"] = Environment.TickCount64;
                     threadProcessId = GetProcessIdOfThread(diagnosticThread);
                     threadOwnerError = Marshal.GetLastWin32Error();
+                    retryTicks["ownerEnd"] = Environment.TickCount64;
+                    retryTicks["timesBegin"] = Environment.TickCount64;
                     threadTimesOk = GetThreadTimes(diagnosticThread, out threadCreated, out threadExit, out threadKernel, out threadUser);
                     threadTimesError = Marshal.GetLastWin32Error();
+                    retryTicks["timesEnd"] = Environment.TickCount64;
                 }
                 finally
                 {
+                    retryTicks["closeBegin"] = Environment.TickCount64;
                     if (!CloseHandle(diagnosticThread))
                         ProbeError("close-event-thread-capture", Marshal.GetLastWin32Error());
+                    retryTicks["closeEnd"] = Environment.TickCount64;
                 }
             }
         }
@@ -158,9 +170,12 @@ public sealed class QuietLaneCaptureObserver : IDisposable
             ["objectId"] = objectId, ["childId"] = childId,
             ["originalThreadLookup"] = originalAttempt == null ? null : originalAttempt.Fields(),
             ["retryThreadLookupLabel"] = "diagnostic-retry-not-original",
+            ["retryThreadCallTickCount64"] = retryTicks,
             ["callbackSequence"] = callbackSequence,
             ["classQueryBeganTickCount64"] = classQueryBeganTickCount64,
             ["classQueryEndedTickCount64"] = classQueryEndedTickCount64,
+            ["ownerQueryBeganTickCount64"] = ownerQueryBeganTickCount64,
+            ["ownerQueryEndedTickCount64"] = ownerQueryEndedTickCount64,
             ["nativeCalls"] = QuietCaptureLedger.NativeCalls(classLength, classError, windowThread, windowOwnerError),
             ["window"] = QuietCaptureLedger.WindowKey(window), ["origin"] = origin,
             ["validBeforeQueries"] = validBefore, ["validAfterQueries"] = IsWindow(window),
@@ -176,6 +191,8 @@ public sealed class QuietLaneCaptureObserver : IDisposable
             ["eventThreadOwnerLastErrorRaw"] = threadOwnerError,
             ["eventThreadTimesSucceeded"] = threadTimesOk, ["eventThreadTimesLastErrorRaw"] = threadTimesError,
             ["eventThreadCreationFileTime"] = threadTimesOk ? (object)threadCreated : null,
+            ["eventThreadExitFileTime"] = threadTimesOk ? (object)threadExit : null,
+            ["eventThreadExitFileTimeRequiresIndependentTerminationEvidence"] = true,
             ["ownerPidAfterOriginalFallback"] = processId, ["ownerProcessCreatedUtc"] = processCreatedUtc,
             ["ownerIdentityError"] = processIdentityError,
             ["knownOwnedIdentity"] = capture.Correlate(processId, processCreatedUtc),
@@ -211,9 +228,14 @@ public sealed class QuietLaneCaptureObserver : IDisposable
     private void OnEvent(IntPtr hook, uint kind, IntPtr window, int objectId, int childId,
         uint eventThread, uint eventTime)
     {
+        ObserverCallbackContext.Frame frame = null;
         try
         {
             var raw = capture.Callback(kind, window, objectId, childId, eventThread, eventTime, Environment.TickCount64);
+            frame = callbackContext.Enter((long)raw["callbackSequence"]);
+            raw["callbackDepth"] = frame.Depth;
+            raw["parentCallbackSequence"] = frame.ParentSequence;
+            raw["hook"] = QuietCaptureLedger.WindowKey(hook);
             Emit("raw-WinEvent-callback", raw);
             long sequence = (long)raw["callbackSequence"];
             if (kind == 0x0010)
@@ -222,6 +244,18 @@ public sealed class QuietLaneCaptureObserver : IDisposable
                 ObserveWindow(window, "WinEvent-object-show", false, eventThread, eventTime, sequence, objectId, childId);
         }
         catch (Exception) { ProbeError("WinEvent-callback", Marshal.GetLastWin32Error()); }
+        finally
+        {
+            if (frame != null)
+            {
+                frame.Dispose();
+                Emit("WinEvent-callback-completed", new Dictionary<string, object> {
+                    ["callbackSequence"] = frame.Sequence, ["callbackDepth"] = frame.Depth,
+                    ["parentCallbackSequence"] = frame.ParentSequence,
+                    ["completedTickCount64"] = Environment.TickCount64
+                });
+            }
+        }
     }
     private static Dictionary<string, object> ObserverTokenFields()
     {
@@ -466,6 +500,8 @@ public sealed class QuietLaneCaptureObserver : IDisposable
             if (dialogs == IntPtr.Zero || shows == IntPtr.Zero || destroys == IntPtr.Zero)
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             var identity = ObserverTokenFields();
+            identity["clockAnchorTickCount64"] = Environment.TickCount64;
+            identity["clockAnchorUtcFileTime"] = DateTime.UtcNow.ToFileTimeUtc();
             identity["hookProcessFilter"] = 0;
             identity["hookThreadFilter"] = 0;
             identity["hookFlags"] = 0;
