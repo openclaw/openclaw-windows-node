@@ -544,13 +544,6 @@ public class OpenClawGatewayClientTests
         public long? GetChallengeTimestampMs() =>
             GetPrivateField<long?>("_challengeTimestampMs");
 
-        public string? GetLastSkillsStatusAgentId()
-        {
-            var field = typeof(OpenClawGatewayClient).GetField(
-                "_lastSkillsStatusAgentId",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            return field!.GetValue(_client) as string;
-        }
 
         public List<string> CaptureAuthenticationFailedEvents()
         {
@@ -1136,17 +1129,18 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
-    public async Task RequestSkillsStatusAsync_RemembersRequestedAgentScope()
+    public async Task RequestSkillsStatusAsync_BeforeHandshakeDoesNotPublishOrTrackUnsentData()
     {
         var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        var published = false;
+        client.SkillsStatusUpdated += (_, _) => published = true;
 
-        await helper.Client.RequestSkillsStatusAsync("agent-alpha");
+        await client.RequestSkillsStatusAsync("agent-alpha");
+        await client.RequestSkillsStatusAsync();
 
-        Assert.Equal("agent-alpha", helper.GetLastSkillsStatusAgentId());
-
-        await helper.Client.RequestSkillsStatusAsync();
-
-        Assert.Null(helper.GetLastSkillsStatusAgentId());
+        Assert.False(published);
+        Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
     [Fact]

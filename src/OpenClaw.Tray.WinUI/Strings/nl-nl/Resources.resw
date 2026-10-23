@@ -8092,4 +8092,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="SkillsPage_RequestFailed" xml:space="preserve">
+    <value>Vaardigheden konden niet worden geladen of bijgewerkt. Controleer de Gateway-verbinding en machtigingen en probeer het opnieuw.</value>
+  </data>
 </root>

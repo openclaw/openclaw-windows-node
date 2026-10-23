@@ -117,7 +117,9 @@ public interface IOperatorGatewayClient
     Task<bool> UpdateCronJobAsync(string id, object patch);
     Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0);
     Task RequestSkillsStatusAsync(string? agentId = null);
-    Task<bool> InstallSkillAsync(string skillId);
+    /// <summary>Install a dependency recipe advertised by skills.status. No Windows UI caller currently exposes this operation.</summary>
+    Task<bool> InstallSkillAsync(string name, string installId, string? agentId = null);
+    /// <summary>True only after Gateway acknowledgement. The caller refreshes its currently selected agent scope.</summary>
     Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled);
     Task RequestConfigAsync();
     Task RequestConfigSchemaAsync();

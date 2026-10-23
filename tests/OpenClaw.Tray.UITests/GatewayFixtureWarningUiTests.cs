@@ -104,7 +104,10 @@ public sealed partial class GatewayFixtureUiTests
         }, scenario: scenario, prepareSetupHandoff: IssueSyntheticHandoff);
     }
 
-    private static string IssueSyntheticHandoff(GatewayFixtureProfile profile)
+    private static string IssueSyntheticHandoff(GatewayFixtureProfile profile) =>
+        IssueSyntheticHandoff(profile, SetupNativeDestination.Chat);
+
+    private static string IssueSyntheticHandoff(GatewayFixtureProfile profile, SetupNativeDestination destination)
     {
         var registry = new GatewayRegistry(profile.DataDirectory);
         registry.Load();
@@ -117,7 +120,7 @@ public sealed partial class GatewayFixtureUiTests
             IdentityBinding: SetupCompletionAuthority.CaptureIdentity(identityPath, identity.DeviceId),
             SessionKey: GatewayScenario.MainSessionKey);
         return new SetupDashboardHandoffStore(profile.DataDirectory).Issue(new(verification,
-            new(SetupNativeDestination.Chat, GatewayScenario.MainSessionKey)));
+            new(destination, GatewayScenario.MainSessionKey)));
     }
 
     private static Task WaitVerifiedChatAsync(GatewayFixtureRun run) =>

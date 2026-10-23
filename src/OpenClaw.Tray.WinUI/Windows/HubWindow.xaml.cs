@@ -832,7 +832,8 @@ public sealed partial class HubWindow : WindowEx
         SyncNavSelection(tag);
         UpdateBackButton();
 
-        InitializeCurrentPage();
+        // Frame.Navigated initializes pages before Page.OnNavigatedTo supplies their parameters.
+        InitializeCurrentPage(nativeRequest);
         UpdateAppNotificationActionEnabledState();
         ArmContentReady(
             e.Content as FrameworkElement,
@@ -917,7 +918,7 @@ public sealed partial class HubWindow : WindowEx
         try { settings.Save(); } catch { /* swallow — don't block UI */ }
     }
 
-    private void InitializeCurrentPage()
+    private void InitializeCurrentPage(SetupNativeNavigationRequest? nativeRequest)
     {
         switch (ContentFrame.Content)
         {
@@ -926,7 +927,7 @@ public sealed partial class HubWindow : WindowEx
             case ChannelsPage channels: channels.Initialize(); break;
             case UsagePage usage: usage.Initialize(); break;
             case CronPage cron: cron.Initialize(); break;
-            case SkillsPage skills: skills.Initialize(); break;
+            case SkillsPage skills: skills.Initialize(nativeRequest); break;
             case ConfigPage config:
                 try { config.Initialize(); }
                 catch (Exception ex)

@@ -210,8 +210,11 @@ public sealed class NativeCompletionPresentationTests
         Assert.Contains("CurrentAgentId != request.Completion.Verification.AgentId", source);
         Assert.Contains("AgentFilterCombo.IsEnabled = false", source);
         Assert.DoesNotContain("InstallSkillAsync", source);
-        Assert.Contains("await skills.WaitForNativeSetupAsync(request, ct)",
-            Read(@"src\OpenClaw.Tray.WinUI\Windows\HubWindow.xaml.cs"));
+        Assert.Contains("_nativeSetupRequest = request;", source);
+        var hub = Read(@"src\OpenClaw.Tray.WinUI\Windows\HubWindow.xaml.cs");
+        Assert.Contains("InitializeCurrentPage(nativeRequest);", hub);
+        Assert.Contains("skills.Initialize(nativeRequest);", hub);
+        Assert.Contains("await skills.WaitForNativeSetupAsync(request, ct)", hub);
     }
 
     [Fact]
