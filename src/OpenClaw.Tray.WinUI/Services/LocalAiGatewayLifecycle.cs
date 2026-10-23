@@ -16,6 +16,8 @@ internal sealed class LocalAiGatewayLifecycle(
     Func<GatewayConnectionManager?> getManager, ILocalAiEndpointLifecycle wsl,
     IOpenClawLogger logger) : ILocalAiEndpointLifecycle
 {
+    private const string UnconfirmedGatewayChangeDetail =
+        "Local AI has an unconfirmed Gateway change. Reconnect the original Gateway and review Local AI first.";
     private readonly LocalAiNativeBindingStore _store = new(paths);
     private readonly LocalAiApiCredentialStore _credentials = new(paths);
     private readonly LocalAiGatewayDistroResolver _wslOwner = new(getRegistry());
@@ -66,6 +68,13 @@ internal sealed class LocalAiGatewayLifecycle(
             if (binding is not null)
             {
                 RequireBinding(binding, target);
+                // A journaled rebind belongs to the runtime's model-switch transaction. Only the
+                // runtime's manifest load settles it; discovery stays read-only.
+                if (binding.RebindFrom is not null)
+                {
+                    logger.Warn("Local AI ownership discovery found an unsettled model switch. Check again after it finishes.");
+                    return NativeLocalAiOwnershipState.Unavailable;
+                }
                 if (install is not null && binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
                     return NativeLocalAiOwnershipState.DifferentOwner;
             }
@@ -176,6 +185,112 @@ internal sealed class LocalAiGatewayLifecycle(
             throw new InvalidOperationException("Close Local AI setup before releasing Gateway ownership.");
         var binding = _store.Load() ?? throw new InvalidOperationException("There is no native Local AI ownership to release.");
         await ForgetWithdrawnAsync(binding.GatewayId, ct).ConfigureAwait(false);
+    }
+
+    public async Task CommitModelRebindAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next,
+        Func<Task> commitManifest, CancellationToken ct)
+    {
+        // The lease spans journal, manifest commit and settlement: no other lease holder can see
+        // the journal while the commit is in flight.
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        if (_store.Load() is not { } binding)
+        {
+            await commitManifest().ConfigureAwait(false);
+            return;
+        }
+        if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(previous) ||
+            binding.Pending || binding.AutomaticRecoveryEnabled || binding.RebindFrom is not null)
+            throw new InvalidOperationException("The native Local AI ownership receipt is not safe to change.");
+        var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
+        var current = await new LocalAiGatewayRpcConfigurationTransport(target, transport).CaptureAsync(ct).ConfigureAwait(false);
+        var config = JsonNode.Parse(current.Config.GetRawText())!;
+        if (config["models"]?["providers"]?["llamacpp"] is not null ||
+            config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() != binding.PreviousPrimary)
+            throw new InvalidOperationException("The original Gateway has not confirmed withdrawal. Its ownership receipt was retained.");
+        var model = LocalAiGatewayProviderDefinition.BuildPrimaryModel(next);
+        var rebound = binding with
+        {
+            ModelRef = model,
+            ConfigHash = current.Hash,
+            AddedAllowlistEntry = config["agents"]?["defaults"]?["models"] is JsonObject entries && !entries.ContainsKey(model),
+        };
+        // Write-ahead: a crash inside commitManifest leaves this journal for SettleModelRebindAsync.
+        _store.Save(rebound with { RebindFrom = new(binding.ModelRef, binding.AddedAllowlistEntry) });
+        try
+        {
+            await commitManifest().ConfigureAwait(false);
+        }
+        catch
+        {
+            // The manifest save is an atomic replace, so a throw means the previous manifest stands.
+            SaveSettledBestEffort(binding with { ConfigHash = current.Hash });
+            throw;
+        }
+        SaveSettledBestEffort(rebound);
+    }
+
+    private void SaveSettledBestEffort(LocalAiNativeBinding settled)
+    {
+        try { _store.Save(settled); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The journal stays on disk; the runtime's next manifest load settles it.
+            logger.Warn($"Local AI Gateway binding settlement was deferred ({ex.GetType().Name}).");
+        }
+    }
+
+    public async Task SettleModelRebindAsync(Func<CancellationToken, Task<LocalAiResolvedInstall?>> loadCommitted,
+        CancellationToken ct)
+    {
+        // Every manifest load calls this; skip the cross-process lease when nothing is journaled.
+        if (_store.Load() is not { RebindFrom: not null }) return;
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        if (_store.Load() is not { RebindFrom: { } from } binding) return;
+        // Read under the lease so the outcome follows the durable manifest, not a caller's snapshot.
+        if (await loadCommitted(ct).ConfigureAwait(false) is not { } committed) return;
+        var model = LocalAiGatewayProviderDefinition.BuildPrimaryModel(committed);
+        if (model == binding.ModelRef)
+        {
+            _store.Save(binding with { RebindFrom = null });
+        }
+        else if (model == from.ModelRef)
+        {
+            _store.Save(binding with
+            {
+                ModelRef = from.ModelRef,
+                AddedAllowlistEntry = from.AddedAllowlistEntry,
+                RebindFrom = null,
+            });
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "The native Local AI ownership receipt names neither the installed model nor the previous one.");
+        }
+    }
+
+    public async Task SetFallbackModelAsync(string? model, CancellationToken ct)
+    {
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        if (_store.Load() is not { } binding || binding.PreviousPrimary == model) return;
+        if (binding.Pending)
+            throw new InvalidOperationException(UnconfirmedGatewayChangeDetail);
+        _store.Save(binding with { PreviousPrimary = model });
+    }
+
+    public async Task SetPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
+        CancellationToken ct)
+    {
+        // The lease spans the check, the Gateway write and the receipt update, so no publication can
+        // mark the receipt pending in between. Unlike SetFallbackModelAsync, Pending is checked before
+        // any same-value shortcut: writing the current fallback still strands a published provider.
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        var binding = _store.Load();
+        if (binding?.Pending == true)
+            throw new InvalidOperationException(UnconfirmedGatewayChangeDetail);
+        await writePrimary(ct).ConfigureAwait(false);
+        if (binding is not null && binding.PreviousPrimary != model)
+            _store.Save(binding with { PreviousPrimary = model });
     }
 
     public async Task ReconcileVerifiedAsync(GatewayRecord record, IGatewayAiSetupTransport transport,

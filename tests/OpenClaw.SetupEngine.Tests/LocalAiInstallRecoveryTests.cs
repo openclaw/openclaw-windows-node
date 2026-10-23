@@ -264,6 +264,33 @@ public sealed class LocalAiInstallRecoveryTests
         Assert.Equal(modelBytes, await File.ReadAllBytesAsync(blobPath));
     }
 
+    [Fact]
+    public async Task ModelInstall_NestedGgufPathCopiesIntoMatchingLegacySubfolder()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "nested-verified-model"u8.ToArray();
+        LocalModelInfo model = CreateModel(modelBytes, "sub/dir/model.gguf");
+        LocalAiComponentIdentity component = TestComponent();
+        (string modelPath, string partialPath) = ResolveModelPaths(temp.Path, component, model);
+        using var client = new HttpClient(new DelegateHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(modelBytes),
+        }));
+
+        HuggingFaceModelInstallResult result = await CreateModelInstaller(client, temp.Path)
+            .InstallAsync(temp.Path, component, model, progress: null, CancellationToken.None);
+
+        Assert.Equal(modelPath, result.ModelPath);
+        Assert.EndsWith(
+            Path.Combine("sub", "dir", "model.gguf"),
+            result.LegacyModelPath,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(modelPath));
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(result.LegacyModelPath!));
+        Assert.False(File.Exists(partialPath));
+    }
+
+
     [SetupCrossVolumeFact]
     public async Task ModelInstall_MaterializesLegacyCompatibilityCopyAcrossConfiguredVolume()
     {
@@ -2233,14 +2260,14 @@ public sealed class LocalAiInstallRecoveryTests
         };
     }
 
-    private static LocalModelInfo CreateModel(byte[] bytes)
+    private static LocalModelInfo CreateModel(byte[] bytes, string relativePath = "model.gguf")
     {
         var source = new HuggingFaceRevisionSource("owner/repo", new string('a', 40));
         var artifact = new PinnedArtifact(
             "test-model",
             ArtifactRole.ModelWeights,
             source,
-            "model.gguf",
+            relativePath,
             bytes.Length,
             new Sha256Digest(Sha256(bytes)));
         return new LocalModelInfo(

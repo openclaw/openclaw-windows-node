@@ -54,6 +54,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private ILocalAiRuntime? _localAiRuntime;
     private LocalAiGatewayLifecycle? _localAiGatewayLifecycle;
     private KokoroVoicePackPrefetcher? _kokoroPrefetcher;
+    private ILocalAiModelSwitcher? _localAiModelSwitcher;
+    private DefaultModelGatewayService? _defaultModelGateway;
 
     /// <summary>
     /// Root DI composition root, built once during startup and disposed during
@@ -75,6 +77,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             [typeof(Pages.SettingsPage)] = typeof(SettingsPageViewModel),
             [typeof(Pages.PermissionsPage)] = typeof(PermissionsPageViewModel),
             [typeof(Pages.LocalAiPage)] = typeof(LocalAiPageViewModel),
+            [typeof(Pages.DefaultModelPage)] = typeof(DefaultModelPageViewModel),
         };
 
     /// <summary>The root service provider, or null before startup / after shutdown.</summary>
@@ -474,7 +477,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _settings,
             ExecApprovalsStore,
             this,
-            _localAiRuntime);
+            _localAiRuntime,
+            _localAiModelSwitcher,
+            _defaultModelGateway);
 
         var services = new ServiceCollection();
         services.AddOpenClawTrayCore(context);
@@ -820,6 +825,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 GetRecoveryPort = _localAiGatewayLifecycle.GetRecoveryPort,
             },
             localAiLogger);
+        _localAiModelSwitcher = new OpenClaw.SetupEngine.LocalAiModelSwitcher(
+            _localAiRuntime, AppIdentity.ResolveSetupLocalDataDirectory());
+        if (_appState is not null)
+        {
+            _defaultModelGateway = new DefaultModelGatewayService(
+                _appState, () => GatewayClient, () => _gatewayRegistry, _localAiGatewayLifecycle);
+        }
 
         // Build the DI composition root AFTER the tray is up, so additive plumbing
         // can never delay or preempt tray initialization. It only needs the
@@ -4022,7 +4034,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     void IAppCommands.CheckForUpdates() => _ = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync();
     void IAppCommands.ShowOnboarding() => _ = ShowOnboardingAsync();
     void IAppCommands.ShowLocalAiSetup() => _ = _windowManager?.ShowLocalAiSetupAsync();
-    void IAppCommands.ShowLocalAiModelSetup() => _ = _windowManager?.ShowLocalAiModelSetupAsync();
     void IAppCommands.OpenLocalAiLogs() =>
         OpenFolder(new LocalAiPaths(AppIdentity.ResolveSetupLocalDataDirectory()).LogsDirectory, "Local AI logs");
     void IAppCommands.ShowGatewayWizard() => _ = ShowGatewayWizardAsync();

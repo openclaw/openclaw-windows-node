@@ -564,12 +564,6 @@ internal sealed class WindowManager : IWindowManager
             localAiRecoveryTarget: null);
     }
 
-    public Task ShowLocalAiModelSetupAsync() =>
-        _callbacks.GetGatewayRegistry()?.GetActive() is
-            { NativePackageFamilyName: not null,
-              NativeRuntimeContract: OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract }
-                ? ShowLocalAiSetupAsync() : ShowOnboardingAsync();
-
     public async Task ShowLocalAiSetupAsync()
     {
         if (_callbacks.GetGatewayRegistry()?.GetActive() is

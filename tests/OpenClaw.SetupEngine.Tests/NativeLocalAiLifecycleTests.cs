@@ -1065,6 +1065,176 @@ public sealed class NativeLocalAiLifecycleTests
     }
 
     [Fact]
+    public async Task RebindModel_MovesOwnershipOnlyAfterConfirmedWithdrawal()
+    {
+        using var fixture = new Fixture();
+        LocalAiResolvedInstall next = LocalAiOnboardingTests.Install(OpenClaw.Shared.Inference.Catalog.LocalModelCatalog.Qwen27BModelId);
+        int commits = 0;
+        Task Commit() { commits++; return Task.CompletedTask; }
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(false);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.CommitModelRebindAsync(fixture.Install, next, Commit, default));
+        Assert.Equal(0, commits);
+        Assert.Equal(fixture.Model, fixture.Store.Load()!.ModelRef);
+
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        await fixture.Lifecycle.CommitModelRebindAsync(fixture.Install, next, Commit, default);
+
+        Assert.Equal(1, commits);
+        Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(next), fixture.Store.Load()!.ModelRef);
+        Assert.Null(fixture.Store.Load()!.RebindFrom);
+        Assert.True((await fixture.Lifecycle.PublishAsync(next)).Success);
+        Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(next),
+            fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RebindModel_InterruptedCommitSettlesToTheCommittedManifest(bool manifestCommitted)
+    {
+        using var fixture = new Fixture();
+        var (next, original) = await QuiesceForSwitchAsync(fixture);
+        await LeaveInterruptedJournalAsync(fixture, next);
+
+        // The process stopped mid-commit: the journal names the previous model and a second
+        // rebind is refused until a manifest load settles it.
+        Assert.NotNull(fixture.Store.Load()!.RebindFrom);
+        bool committedAgain = false;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.CommitModelRebindAsync(
+            fixture.Install, next, () => { committedAgain = true; return Task.CompletedTask; }, default));
+        Assert.False(committedAgain);
+
+        LocalAiResolvedInstall committed = manifestCommitted ? next : fixture.Install;
+        await fixture.Lifecycle.SettleModelRebindAsync(_ => Task.FromResult<LocalAiResolvedInstall?>(committed), default);
+
+        LocalAiNativeBinding settled = fixture.Store.Load()!;
+        Assert.Null(settled.RebindFrom);
+        Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(committed), settled.ModelRef);
+        if (!manifestCommitted)
+            Assert.Equal(original.AddedAllowlistEntry, settled.AddedAllowlistEntry);
+        Assert.True((await fixture.Lifecycle.PublishAsync(committed)).Success);
+    }
+
+    [Fact]
+    public async Task RebindModel_FailedManifestCommitRestoresThePreviousModel()
+    {
+        using var fixture = new Fixture();
+        var (next, original) = await QuiesceForSwitchAsync(fixture);
+
+        await Assert.ThrowsAsync<IOException>(() => fixture.Lifecycle.CommitModelRebindAsync(
+            fixture.Install, next, () => throw new IOException("disk full"), default));
+
+        LocalAiNativeBinding restored = fixture.Store.Load()!;
+        Assert.Equal(fixture.Model, restored.ModelRef);
+        Assert.Null(restored.RebindFrom);
+        Assert.Equal(original.AddedAllowlistEntry, restored.AddedAllowlistEntry);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+    }
+
+    [Fact]
+    public async Task OwnershipObservationDuringModelSwitchCommitLeavesTheJournalToTheCommit()
+    {
+        using var fixture = new Fixture();
+        var (next, _) = await QuiesceForSwitchAsync(fixture);
+        NativeLocalAiOwnershipState? observed = null;
+        int writes = fixture.Rpc.Writes;
+
+        await fixture.Lifecycle.CommitModelRebindAsync(fixture.Install, next, async () =>
+        {
+            // Setup readiness observes with the installation it loaded before the switch began.
+            byte[] mid = File.ReadAllBytes(fixture.BindingPath);
+            observed = await fixture.CreateLifecycle().ObserveOwnershipAsync(Record, fixture.Rpc, fixture.Install, default);
+            Assert.Equal(mid, File.ReadAllBytes(fixture.BindingPath));
+        }, default);
+
+        Assert.Equal(NativeLocalAiOwnershipState.Unavailable, observed);
+        Assert.Equal(writes, fixture.Rpc.Writes);
+        LocalAiNativeBinding committed = fixture.Store.Load()!;
+        Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(next), committed.ModelRef);
+        Assert.Null(committed.RebindFrom);
+        Assert.True((await fixture.Lifecycle.PublishAsync(next)).Success);
+    }
+
+    [Fact]
+    public async Task OwnershipObservationLeavesAnInterruptedSwitchJournalUnsettled()
+    {
+        using var fixture = new Fixture();
+        var (next, _) = await QuiesceForSwitchAsync(fixture);
+        byte[] journal = await LeaveInterruptedJournalAsync(fixture, next);
+        int writes = fixture.Rpc.Writes;
+
+        var observed = await fixture.Lifecycle.ObserveOwnershipAsync(Record, fixture.Rpc, fixture.Install, default);
+
+        Assert.Equal(NativeLocalAiOwnershipState.Unavailable, observed);
+        Assert.Equal(journal, File.ReadAllBytes(fixture.BindingPath));
+        Assert.Equal(writes, fixture.Rpc.Writes);
+        Assert.Equal(0, fixture.Rpc.Verifications);
+    }
+
+    private static async Task<(LocalAiResolvedInstall Next, LocalAiNativeBinding Original)> QuiesceForSwitchAsync(Fixture fixture)
+    {
+        LocalAiResolvedInstall next = LocalAiOnboardingTests.Install(OpenClaw.Shared.Inference.Catalog.LocalModelCatalog.Qwen27BModelId);
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(false);
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        return (next, fixture.Store.Load()!);
+    }
+
+    /// <summary>Restores the binding captured mid-commit, as a process that stopped inside the commit leaves it.</summary>
+    private static async Task<byte[]> LeaveInterruptedJournalAsync(Fixture fixture, LocalAiResolvedInstall next)
+    {
+        byte[]? journal = null;
+        await fixture.Lifecycle.CommitModelRebindAsync(fixture.Install, next,
+            () => { journal = File.ReadAllBytes(fixture.BindingPath); return Task.CompletedTask; }, default);
+        File.WriteAllBytes(fixture.BindingPath, journal!);
+        return journal!;
+    }
+
+    [Fact]
+    public async Task SetFallbackModel_RefusesPendingBindingAndUpdatesClearOne()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        fixture.Store.Save(fixture.Store.Load()! with { Pending = true });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.SetFallbackModelAsync("openai/gpt-6", default));
+
+        fixture.Store.Save(fixture.Store.Load()! with { Pending = false });
+        await fixture.Lifecycle.SetFallbackModelAsync("openai/gpt-6", default);
+        Assert.Equal("openai/gpt-6", fixture.Store.Load()!.PreviousPrimary);
+    }
+
+    [Fact]
+    public async Task SetPrimaryAndFallbackModel_RefusesPendingBindingBeforeWriting()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        fixture.Store.Save(fixture.Store.Load()! with { PreviousPrimary = "openai/gpt-5", Pending = true });
+        int writes = 0;
+        Func<CancellationToken, Task> write = _ => { writes++; return Task.CompletedTask; };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            fixture.Lifecycle.SetPrimaryAndFallbackModelAsync("openai/gpt-6", write, default));
+        // Writing the saved fallback would still strand a published provider, so it is refused too.
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            fixture.Lifecycle.SetPrimaryAndFallbackModelAsync("openai/gpt-5", write, default));
+        Assert.Equal(0, writes);
+
+        fixture.Store.Save(fixture.Store.Load()! with { Pending = false });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.SetPrimaryAndFallbackModelAsync(
+            "openai/gpt-6", _ => throw new InvalidOperationException("boom"), default));
+        Assert.Equal("openai/gpt-5", fixture.Store.Load()!.PreviousPrimary);
+
+        await fixture.Lifecycle.SetPrimaryAndFallbackModelAsync("openai/gpt-6", write, default);
+        Assert.Equal(1, writes);
+        Assert.Equal("openai/gpt-6", fixture.Store.Load()!.PreviousPrimary);
+    }
+
+    [Fact]
     public async Task SetupRegistrationExcludesExplicitRelease()
     {
         using var fixture = new Fixture();

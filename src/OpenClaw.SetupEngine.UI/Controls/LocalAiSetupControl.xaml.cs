@@ -132,8 +132,8 @@ public sealed partial class LocalAiSetupControl : UserControl
                 // still work once the GPU frees up, and CanInstall already covers that case.
                 if (_config.LocalAi.SelectedModelId is { } selectedModelId)
                 {
-                    if (_localAiRecoveryModelPinned && string.Equals(selectedModelId,
-                            LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase))
+                    if (_localAiRecoveryModelPinned &&
+                        LocalModelCatalog.RequiresRecordedProfile(selectedModelId))
                     {
                         var installed = await new LocalAiManifestStore(new LocalAiPaths(
                             setupWindow?.LocalDataDir ?? SetupContext.ResolveLocalDataDir())).LoadAsync();
@@ -141,7 +141,7 @@ public sealed partial class LocalAiSetupControl : UserControl
                             return;
                         if (installed is not null && string.Equals(installed.Manifest.ModelCatalogId,
                                 selectedModelId, StringComparison.OrdinalIgnoreCase))
-                            _localAiPinnedPlan = LlamaServerRouterConfiguration.ResolveInstalledPlan(installed);
+                            _config.LocalAi.PinnedPlan = _localAiPinnedPlan = LlamaServerRouterConfiguration.ResolveInstalledPlan(installed);
                     }
                     LocalInferenceEligibilityResult selectedEligibility =
                         _localAiPinnedPlan is { } pinnedPlan
@@ -458,10 +458,10 @@ public sealed partial class LocalAiSetupControl : UserControl
         _suppressLocalAiSelection = true;
         LocalAiModelSelector.Items.Clear();
         int selectedIndex = -1;
-        (LocalModelInfo Model, LocalInferencePlan Plan)[] fittingModels = LocalModelCatalog.Models
-            .Select(model => (Model: model, Eligibility: EvaluateLocalAiModel(model.Id)))
-            .Where(candidate => candidate.Eligibility.CanOffer && candidate.Eligibility.Plan is not null)
-            .Select(candidate => (candidate.Model, candidate.Eligibility.Plan!))
+        LocalInferencePlan[] offered = LocalInferenceEligibility.OfferedPlans(EvaluateLocalAiModel).ToArray();
+        (LocalModelInfo Model, LocalInferencePlan Plan)[] fittingModels =
+            (_localAiPinnedPlan is { Model.CustomRecipe: not null } pinned ? offered.Prepend(pinned) : offered)
+            .Select(plan => (plan.Model, plan))
             .ToArray();
         for (int index = 0; index < fittingModels.Length; index++)
         {

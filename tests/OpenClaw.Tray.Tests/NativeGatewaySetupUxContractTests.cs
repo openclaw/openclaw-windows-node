@@ -494,19 +494,6 @@ public sealed class NativeGatewaySetupUxContractTests
     }
 
     [Fact]
-    public void LocalAiChangeModel_PreservesNativeGatewayAndExistingWslSetupRoute()
-    {
-        var root = TestRepositoryPaths.GetRepositoryRoot();
-        var manager = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "WindowManager.cs"));
-        var start = manager.IndexOf("public Task ShowLocalAiModelSetupAsync()", StringComparison.Ordinal);
-        var route = manager[start..manager.IndexOf("public async Task ShowLocalAiSetupAsync()", start, StringComparison.Ordinal)];
-        Assert.Contains("NativeGatewayPackageClient.IsolatedContract", route);
-        Assert.Contains("? ShowLocalAiSetupAsync() : ShowOnboardingAsync()", route);
-        var model = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Presentation", "LocalAiPageViewModel.cs"));
-        Assert.Contains("RunCommand(CanChangeModel, _appCommands.ShowLocalAiModelSetup)", model);
-    }
-
-    [Fact]
     public void NativeFocusedFlow_UsesOwnedTransportAndFreshVerificationWithoutForgedWizardCompletion()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
