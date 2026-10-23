@@ -560,9 +560,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 modelPickerLabel,
                 $"{Localized("Chat_Composer_Accessibility_Model", "Model")}: {modelPickerLabel}",
                 "ChatComposerModelPicker",
-                inputs.CanChangeSessionOptions
-                    && modelCatalogStatus is not ChatModelCatalogStatus.Loading
-                        and not ChatModelCatalogStatus.Unavailable,
+                inputs.ConnectionState == "connected",
                 200)
                 .MinWidth(compactEffort ? 44 : 0)
                 .MinHeight(compactEffort ? 44 : 32)
@@ -572,7 +570,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 && modelCatalogStatus is not ChatModelCatalogStatus.Loading
                     and not ChatModelCatalogStatus.Unavailable,
             choice => controller.SetModel(choice.SelectionId),
-            viewportWidth));
+            viewportWidth,
+            props.Session.HostActions.ModelSignInRequest is { } signIn && inputs.CurrentThread.AgentId is not null
+                ? () => signIn(inputs.CurrentThread.Id, inputs.CurrentThread.AgentId) : null));
 
         var reasoningPicker = Component<ChatReasoningPicker, ChatReasoningPickerProps>(new(
             compactEffort ? EffortIconButton() : PickerButton(

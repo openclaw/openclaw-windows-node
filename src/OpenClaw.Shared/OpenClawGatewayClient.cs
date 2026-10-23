@@ -1364,7 +1364,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         SendResponseRequestAsync(method, parameters, timeoutMs);
 
     private async Task<JsonElement> SendResponseRequestAsync(
-        string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null)
+        string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null,
+        bool modelSignIn = false)
     {
         var connectionGeneration = GetReadyConnectionGeneration(method);
         if (expectedConnectionEpoch.HasValue && connectionGeneration != expectedConnectionEpoch.Value)
@@ -1382,7 +1383,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         _logger.Info($"[GatewayClient] Sending frame: {method}");
         var requestId = Guid.NewGuid().ToString();
-        var pending = _pendingRequests.RegisterWizard(requestId, method);
+        var pending = _pendingRequests.RegisterWizard(requestId, method, modelSignIn);
 
         try
         {
@@ -2488,7 +2489,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     okWiz.ValueKind == JsonValueKind.False)
                 {
                     var message = TryGetErrorMessage(root) ?? "wizard request failed";
-                    wizardCompletion.TryFault(new InvalidOperationException(message));
+                    if (wizardCompletion.ModelSignIn)
+                        wizardCompletion.TryFault(ReadModelSignInFailure(root));
+                    else
+                        wizardCompletion.TryFault(new InvalidOperationException(message));
                 }
                 else if (root.TryGetProperty("payload", out var wizPayload))
                 {
@@ -2890,7 +2894,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         if (string.IsNullOrEmpty(method))
         {
-            _logger.Warn($"Gateway request failed: {message}");
+            // A timed-out sign-in request no longer has method metadata.
+            // Its late provider error can contain credentials.
+            _logger.Warn("Gateway returned an error for an unknown or expired request.");
             return;
         }
 

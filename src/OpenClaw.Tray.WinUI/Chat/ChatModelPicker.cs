@@ -15,7 +15,8 @@ internal sealed record ChatModelPickerProps(
     string? CurrentProvider,
     bool Enabled,
     Action<ChatModelChoice> Select,
-    double AvailableWidth);
+    double AvailableWidth,
+    Action? SignIn = null);
 
 [GenerateReactorWrapper(typeof(NativeChatModelPicker), AutoDiscover = false,
     RegisterAssembly = false)]
@@ -39,6 +40,10 @@ internal sealed class ChatModelPicker : Component<ChatModelPickerProps>
                     {
                         Props.Select(choice);
                         anchor.Current?.Flyout?.Hide();
+                    }, () =>
+                    {
+                        anchor.Current?.Flyout?.Hide();
+                        Props.SignIn?.Invoke();
                     });
                 })
                 .OnUnmount(control =>

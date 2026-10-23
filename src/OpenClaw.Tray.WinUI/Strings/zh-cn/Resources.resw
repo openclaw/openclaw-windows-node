@@ -8091,4 +8091,29 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>总结我最近的会话</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>帮我配置一个频道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>检查系统健康状况</value></data>
+  <data name="ModelSignIn_Title" xml:space="preserve"><value>模型登录</value></data>
+  <data name="ModelSignIn_Close" xml:space="preserve"><value>关闭</value></data>
+  <data name="ModelSignIn_Cancel" xml:space="preserve"><value>取消登录</value></data>
+  <data name="ModelSignIn_Refresh" xml:space="preserve"><value>刷新</value></data>
+  <data name="ModelSignIn_Continue" xml:space="preserve"><value>继续</value></data>
+  <data name="ModelSignIn_Value" xml:space="preserve"><value>值</value></data>
+  <data name="ModelSignIn_Confirm" xml:space="preserve"><value>确认</value></data>
+  <data name="ModelSignIn_Option" xml:space="preserve"><value>选项</value></data>
+  <data name="ModelSignIn_OpenPage" xml:space="preserve"><value>打开登录页面</value></data>
+  <data name="ModelSignIn_Connected" xml:space="preserve"><value>已连接</value></data>
+  <data name="ModelSignIn_Expiring" xml:space="preserve"><value>登录即将过期</value></data>
+  <data name="ModelSignIn_Expired" xml:space="preserve"><value>登录已过期</value></data>
+  <data name="ModelSignIn_Missing" xml:space="preserve"><value>需要登录</value></data>
+  <data name="ModelSignIn_Unknown" xml:space="preserve"><value>状态不可用</value></data>
+  <data name="ModelSignIn_NoOptions" xml:space="preserve"><value>没有可用的原生登录选项。请在仪表板中打开“模型”，或更新网关。</value></data>
+  <data name="ModelSignIn_Unavailable" xml:space="preserve"><value>账户状态尚未就绪。请在设置完成后刷新。</value></data>
+  <data name="ModelSignIn_Finished" xml:space="preserve"><value>登录已完成。请检查账户状态。</value></data>
+  <data name="ModelSignIn_Ended" xml:space="preserve"><value>登录已结束。已保存的凭据可能仍然保留。重试前请检查账户状态。</value></data>
+  <data name="ModelSignIn_Uncertain" xml:space="preserve"><value>登录正在等待或结果不确定。重试前请取消此次尝试。</value></data>
+  <data name="ModelSignIn_CancellationUnconfirmed" xml:space="preserve"><value>尚未确认取消。请检查连接并再次取消。已保存的凭据不会回滚。</value></data>
+  <data name="ModelSignIn_ContextChanged" xml:space="preserve"><value>网关或对话已更改。请关闭登录后重新打开。此前的结果可能不确定。</value></data>
+  <data name="ModelSignIn_Failure" xml:space="preserve"><value>无法完成请求。请检查连接或更新网关。已接受的登录可能已保存凭据。</value></data>
+  <data name="ModelSignIn_UnsupportedStep" xml:space="preserve"><value>不支持此登录问题。请取消并使用仪表板中的“模型”。</value></data>
+  <data name="ModelSignIn_Retryable" xml:space="preserve"><value>可重试</value></data>
+  <data name="ModelSignIn_RetryAfter" xml:space="preserve"><value>重试延迟（毫秒）</value></data>
 </root>

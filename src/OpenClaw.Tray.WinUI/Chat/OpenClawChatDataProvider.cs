@@ -100,6 +100,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     public string DisplayName => "OpenClaw gateway";
     public IChatPlacementGateway? PlacementGateway => _bridge.PlacementGateway;
+    internal ModelSignInSession? CreateModelSignInSession(string agentId, Func<bool> isViewCurrent) =>
+        _bridge.CreateModelSignInSession(agentId, isViewCurrent);
 
     /// <summary>Last-known chat state from a previous session, used for pre-connection UI.</summary>
     internal LastChatState? CachedLastChatState => _state.CachedLastChatState;

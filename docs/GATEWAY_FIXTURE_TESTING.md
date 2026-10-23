@@ -72,6 +72,52 @@ orders work; this is deliberately not sequential packet playback.
 
 ## Run the application smoke
 
+### Model sign-in
+
+Use `-Scenario model-sign-in` with `run-gateway-fixture.ps1` to exercise the
+production model-picker entry and native sign-in sheet in the isolated app.
+Open Chat, open the model picker, choose **Model sign-in**, then **Fixture sign-in**.
+The synthetic sensitive question accepts `synthetic-answer-not-a-credential`.
+Continue to see refreshed connected status, or cancel to see the ended state.
+Do not activate external provider links; this scenario never supplies one.
+
+The opt-in scenario accepts only `models.authStatus`, `models.authLogin`,
+`wizard.next` and `wizard.cancel` as sign-in operations. It captures the exact
+agent, offered choice, client-generated wizard ID and answer shape, with all
+state held in memory. No real provider, browser profile, account, token store,
+model default or setup pipeline is modified. Normal browse stays read-only.
+
+`ModelSignInSessionTests` exercises the production lifetime independently.
+`GatewayFixtureProtocolTests.ModelSignIn_*` uses the real client and loopback
+socket, including scope/method denial, gateway-executed progress, omitted optional
+wizard status, saved-then-error refresh, held admission, lost delivery,
+cancel acknowledgement and reconnect fences. Fixture reply gates use short
+test deadlines, not a shortened production request timeout. The pinned Mac
+sign-in timeout remains 26 minutes.
+
+`ModelSignInProofTests` mounts the production chat composer and native picker,
+then drives the actual sign-in sheet through the same client. Its four cases
+cover light/dark completion, light cancellation and connection retirement,
+including secure input clearing and a retained draft, without global
+keyboard/pointer input. Run only with authorized
+exclusive desktop access:
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_VISUAL_TEST = '1'
+$env:OPENCLAW_VISUAL_TEST_DIR = "$env:TEMP\openclaw-model-sign-in-proof"
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -r win-arm64 -p:Platform=ARM64 --filter 'FullyQualifiedName~ModelSignInProofTests'
+```
+
+Use `win-x64` and `-p:Platform=x64` on x64. Inspect the active-state captures
+before claiming visual proof. These tests prove the contracts and Mac consumer
+at upstream commit `098e991549b7986bcfaebdbe427aeaaf95afb926`, not a real provider
+login or compatibility with any identically versioned published Gateway.
+API-key administration, logout, auth ordering, probing and refresh remain
+separate follow-up work.
+
+### General smoke
+
 ```powershell
 .\scripts\test-gateway-fixture.ps1 -AppPath $app
 ```

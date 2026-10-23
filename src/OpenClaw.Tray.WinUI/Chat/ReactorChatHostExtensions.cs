@@ -6,6 +6,7 @@ using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Sessions;
 using OpenClawTray.Helpers;
+using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -75,14 +76,47 @@ public static class ReactorChatHostExtensions
             return await dialog.ShowAsync() == ContentDialogResult.Primary;
         }
 
+        ChatComposerSession? session = null;
+        var signInOpen = false;
+        async void SignIn(string threadId, string? agentId)
+        {
+            if (signInOpen || target.XamlRoot is null || provider is not OpenClawChatDataProvider native ||
+                string.IsNullOrWhiteSpace(agentId) || session is null)
+                return;
+            signInOpen = true;
+            try
+            {
+                bool IsCurrent() => !session.Controller.IsDisposed &&
+                    session.ViewModel.Inputs?.CurrentThread.Id == threadId &&
+                    session.ViewModel.Inputs?.CurrentThread.AgentId == agentId;
+                var signIn = native.CreateModelSignInSession(agentId, IsCurrent);
+                if (signIn is not null)
+                {
+                    await using var dialog = new ModelSignInDialog(signIn, target);
+                    await dialog.Dialog.ShowAsync();
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                (Application.Current as App)?.AppNotifications?.Show(new AppNotification
+                {
+                    Title = LocalizationHelper.GetString("ModelSignIn_Title"),
+                    Message = LocalizationHelper.GetString("ModelSignIn_Failure"),
+                    Source = "chat", Severity = AppNotificationSeverity.Error
+                });
+            }
+            finally { signInOpen = false; }
+        }
         var hostActions = new ChatComposerHostActions(
             ConfirmResetAsync,
             onAttachClick,
             onVoiceRequest,
             onSpeakerMuteChanged,
             onSessionNavigationStarting,
-            onSessionSelected);
-        return composerFactory.Create(provider, hostActions, initialMuted);
+            onSessionSelected,
+            provider is OpenClawChatDataProvider ? SignIn : null);
+        session = composerFactory.Create(provider, hostActions, initialMuted);
+        return session;
     }
 
     public static MountedReactorChat MountReactorChat(

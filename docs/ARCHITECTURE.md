@@ -91,6 +91,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Loopback MCP server for tests | `OpenClaw.TestSupport.FakeMcpServer` | authoritative |
 | Authenticated MCP HTTP client for app fixtures | `OpenClaw.TestSupport.McpClient` | authoritative |
 | Synthetic Gateway protocol/scenarios | `OpenClaw.TestSupport.Gateway.FixtureGatewayServer` + `GatewayScenario` | authoritative |
+| Model-provider sign-in lifetime | `ModelSignInSession` owns memory-only offered choices, answers, client wizard ID and uncertain delivery; `OpenClawGatewayClient.ModelSignIn` binds requests to the original physical connection and granted scopes. `ModelSignInDialog` applies native controls; the existing chat host opens the sheet against its XamlRoot and fences conversation/agent replacement. This does not own setup, default-model settings or provider administration | authoritative |
 | Interactive synthetic Gateway state and run lifetime | `InteractiveGatewayRuntime` owns memory-only sessions, transcripts, idempotency, runs and decisions; `FixtureQuestion` validates question records and `FixturePlayback` owns host-side pacing. No production provider or page bypass | authoritative |
 | Fixture-backed app profile/process lifetime | `OpenClaw.GatewayFixtureHost.GatewayFixtureProfile` + `GatewayFixtureRun` | authoritative |
 | Explicit fixture context and host-effect isolation gate | `OpenClaw.Shared.GatewayFixtureIsolation` | authoritative |

@@ -60,7 +60,7 @@ internal static class Program
             Console.Error.WriteLine("--app is required. The installed app is never selected implicitly.");
             return 2;
         }
-        if (scenarioName is not (GatewayScenario.BrowseName or GatewayScenario.InteractiveName or ContextUsageFixture.Name))
+        if (scenarioName is not (GatewayScenario.BrowseName or GatewayScenario.InteractiveName or ContextUsageFixture.Name or ModelSignInFixture.Name))
         {
             Console.Error.WriteLine("Unknown fixture scenario.");
             return 2;
@@ -92,6 +92,8 @@ internal static class Program
             Console.WriteLine($"Artifacts: {run.ArtifactsDirectory}");
             Console.WriteLine(scenario.IsInteractive
                 ? "Synthetic interactive Gateway. No provider or host command executes. Type help for fixture controls."
+                : scenarioName == ModelSignInFixture.Name
+                    ? $"Synthetic model sign-in. Open the model picker, choose Model sign-in, then Fixture sign-in. Answer: {ModelSignInFixture.Answer}. No provider or browser executes."
                 : usage is null
                     ? "Synthetic read-only Gateway. Use Chat, Sessions, Settings and Configuration. Ctrl+C stops this run."
                 : $"Synthetic usage scenario. Select '{ContextUsageFixture.Title(ContextUsageListing.Initial)}' under Fixture Main.");
