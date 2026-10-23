@@ -319,6 +319,9 @@ Before recording:
    grammar using `wpr -help advanced`, verb help, nonrecording `-profiledetails`
    and exact instance absence.
    It pins the full capsule, wrappers, actual build outputs and input manifest.
+   Recorder operations build complete named-instance process argument vectors.
+   Status retains the qualified text and exit-code checks while normalizing
+   native CRLF to LF.
 5. Run the complete wrapper with tracing disabled:
 
    ```powershell

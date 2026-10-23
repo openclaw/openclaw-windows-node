@@ -1,5 +1,51 @@
 enum StartupTraceMode { Disabled; Record }
 
+function New-StartupRecorderStartInfo {
+    param(
+        [Parameter(Mandatory)][string] $Wpr,
+        [Parameter(Mandatory)][ValidateSet('Status','Start','Stop','Cancel')][string] $Operation,
+        [Parameter(Mandatory)][string] $InstanceName,
+        [string] $Profile,
+        [string] $TracePath
+    )
+    if ($InstanceName -notmatch '^OpenClaw1791-[0-9a-f]{32}$') {
+        throw 'A unique owned recorder instance is required for every WPR command.'
+    }
+    $arguments = switch ($Operation) {
+        Status { '-status' }
+        Start {
+            if ([string]::IsNullOrWhiteSpace($Profile)) { throw 'Recorder start requires the qualified profile.' }
+            '-start'; ($Profile + '!OpenClaw1791.Light')
+        }
+        Stop {
+            if ([string]::IsNullOrWhiteSpace($TracePath)) { throw 'Recorder stop requires its private ETL path.' }
+            '-stop'; $TracePath; 'OpenClaw1791 full startup scenario'; '-skipPdbGen'
+        }
+        Cancel { '-cancel' }
+    }
+    $psi = [Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $Wpr
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    foreach ($argument in @($arguments) + @('-instancename',$InstanceName)) {
+        $psi.ArgumentList.Add($argument)
+    }
+    $psi
+}
+
+function Test-StartupRecorderStatusAbsent {
+    param(
+        [int] $ExitCode,
+        [string] $Text,
+        [int] $ExpectedExitCode,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string] $ExpectedPattern
+    )
+    $canonicalText = ($Text -replace "`r`n","`n").Trim()
+    $ExitCode -eq $ExpectedExitCode -and $canonicalText -match $ExpectedPattern
+}
+
 class StartupTraceAdapter {
     [StartupTraceMode] $Mode
     [scriptblock] $StartOperation

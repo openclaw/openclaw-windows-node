@@ -74,6 +74,36 @@ function Invoke-Fixture([string] $Name, [StartupTraceMode] $Mode = 'Disabled', $
         -RunDirectory (Join-Path $root $Name) -DryRunReceipt $Receipt
 }
 try {
+    $instance = 'OpenClaw1791-' + ('b' * 32)
+    $profilePath = 'C:\proof inputs\startup.wprp'
+    $tracePath = 'C:\private proof\startup.etl'
+    $recorderCases = @(
+        @{operation='Status';expected=@('-status','-instancename',$instance)},
+        @{operation='Start';expected=@('-start','C:\proof inputs\startup.wprp!OpenClaw1791.Light','-instancename',$instance)},
+        @{operation='Stop';expected=@('-stop','C:\private proof\startup.etl','OpenClaw1791 full startup scenario','-skipPdbGen','-instancename',$instance)},
+        @{operation='Cancel';expected=@('-cancel','-instancename',$instance)}
+    )
+    foreach ($case in $recorderCases) {
+        $info = New-StartupRecorderStartInfo -Wpr 'C:\Windows\System32\wpr.exe' `
+            -Operation $case.operation -InstanceName $instance -Profile $profilePath -TracePath $tracePath
+        $actual = [string]::Join([char]0,[string[]]$info.ArgumentList)
+        $expected = [string]::Join([char]0,[string[]]$case.expected)
+        Assert-Proof ($actual -ceq $expected -and !$info.UseShellExecute -and $info.CreateNoWindow) `
+            "Actual $($case.operation) process launch must retain every operand and its exact owned instance"
+    }
+    $rejected = $false
+    try { New-StartupRecorderStartInfo -Wpr 'wpr.exe' -Operation Cancel -InstanceName 'unowned' | Out-Null }
+    catch { $rejected = $true }
+    Assert-Proof $rejected 'Recorder commands must reject an unowned instance before any process launch'
+    $qualifiedStatus = "Windows Performance Recorder is not recording.`nInstance Name: $instance"
+    $qualifiedPattern = [regex]::Escape($qualifiedStatus)
+    $nativeStatus = $qualifiedStatus -replace "`n","`r`n"
+    Assert-Proof (Test-StartupRecorderStatusAbsent -ExitCode 0 -Text $nativeStatus -ExpectedExitCode 0 -ExpectedPattern $qualifiedPattern) `
+        'Native CRLF and captured help-line LF must preserve the same qualified absence signature'
+    Assert-Proof (!(Test-StartupRecorderStatusAbsent -ExitCode 1 -Text $nativeStatus -ExpectedExitCode 0 -ExpectedPattern $qualifiedPattern)) `
+        'Matching absence text must not hide an unexpected tool exit code'
+    Assert-Proof (!(Test-StartupRecorderStatusAbsent -ExitCode 0 -Text 'Recorder is active' -ExpectedExitCode 0 -ExpectedPattern $qualifiedPattern)) `
+        'A successful status command must not classify an active or unknown recorder as absent'
     $missingReceipt = Join-Path $root 'not-created-yet\caller-ready.json'
     $waitError = $null
     try { Wait-StartupReceipt $missingReceipt 0 } catch { $waitError = $_.Exception.Message }

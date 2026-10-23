@@ -29,13 +29,11 @@ $intentPath = Join-Path $control 'adapter-started.json'
 $ownerPath = Join-Path $control 'recorder-owner.json'
 $mutex = [Threading.Mutex]::new($false,('Local\' + $c.instanceName + '-stop'))
 $sequence = 0
-function Invoke-RecorderWpr([string[]] $Arguments) {
+function Invoke-RecorderWpr([ValidateSet('Status','Start','Stop','Cancel')][string] $Operation) {
     $script:sequence++
     $p = $null
-    $psi = [Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = $c.wpr; $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
-    foreach ($arg in $Arguments) { $psi.ArgumentList.Add($arg) }
+    $psi = New-StartupRecorderStartInfo -Wpr $c.wpr -Operation $Operation `
+        -InstanceName $c.instanceName -Profile $c.profile -TracePath (Join-Path $private 'startup.etl')
     try {
         $p = [Diagnostics.Process]::Start($psi)
         $stdout = $p.StandardOutput.ReadToEndAsync(); $stderr = $p.StandardError.ReadToEndAsync()
@@ -49,8 +47,9 @@ function Invoke-RecorderWpr([string[]] $Arguments) {
     } finally { if ($p) { $p.Dispose() } }
 }
 function Test-RecorderAbsent {
-    $status = Invoke-RecorderWpr @('-status','-instancename',$c.instanceName)
-    $status.exitCode -eq $c.absentStatusExitCode -and $status.text -match $c.absentStatusPattern
+    $status = Invoke-RecorderWpr -Operation Status
+    Test-StartupRecorderStatusAbsent -ExitCode $status.exitCode -Text $status.text `
+        -ExpectedExitCode $c.absentStatusExitCode -ExpectedPattern $c.absentStatusPattern
 }
 function Stop-StartupRecorder {
     $held = $false
@@ -60,10 +59,9 @@ function Stop-StartupRecorder {
         if (Test-Path $stoppedPath) { return }
         $stopExit = $null; $cancelExit = $null
         if ($Mode -ceq 'Record' -and (Test-Path $intentPath) -and !(Test-RecorderAbsent)) {
-            $stopExit = (Invoke-RecorderWpr @('-stop',(Join-Path $private 'startup.etl'),
-                'OpenClaw1791 full startup scenario','-skipPdbGen','-instancename',$c.instanceName)).exitCode
+            $stopExit = (Invoke-RecorderWpr -Operation Stop).exitCode
             if (!(Test-RecorderAbsent)) {
-                $cancelExit = (Invoke-RecorderWpr @('-cancel','-instancename',$c.instanceName)).exitCode
+                $cancelExit = (Invoke-RecorderWpr -Operation Cancel).exitCode
             }
         }
         $absent = Test-RecorderAbsent
@@ -133,7 +131,7 @@ try {
                 } | ConvertTo-Json))
                 $attempt.Write($stamp,0,$stamp.Length)
             } finally { $attempt.Dispose() }
-            $start = Invoke-RecorderWpr @('-start',($c.profile + '!OpenClaw1791.Light'),'-instancename',$c.instanceName)
+            $start = Invoke-RecorderWpr -Operation Start
             if ($start.exitCode -ne 0) { throw 'Only trace start failed; no retry authorized.' }
         }
         @{ ready = $true; bindingHash = $binding.digest; leaseId = $LeaseId
