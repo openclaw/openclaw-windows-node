@@ -331,6 +331,26 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     }
 
     [Fact]
+    public async Task Quiesce_IndeterminateRestartKeepsActiveRouteUnresolved()
+    {
+        LocalAiResolvedInstall install = Install(28_770);
+        string provider = LocalAiGatewayProviderDefinition.BuildProviderJson(install);
+        var commands = new FakeWslCommandRunner(provider,
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+        {
+            IndeterminateRestartCalls = [1],
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(install);
+
+        Assert.False(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(provider, commands.ActiveProviderJson);
+        Assert.Contains("restart", result.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Quiesce_TeardownRestoresRealPriorModel()
     {
         LocalAiResolvedInstall install = Install(28_770, "openai/gpt-5");
@@ -559,6 +579,9 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             "openclaw config set --batch-file \"$batch_file\" --dry-run\n" +
             "openclaw config set --batch-file \"$batch_file\"\n",
             script, StringComparison.Ordinal);
+        int publishIndex = commands.Calls.FindIndex(call => call.Contains("/bin/sh"));
+        int restartIndex = commands.Calls.FindIndex(call => call.Contains("gateway") && call.Contains("restart"));
+        Assert.True(restartIndex > publishIndex, "The Gateway must activate the newly published Local AI route.");
         Assert.DoesNotContain("/dev/stdin", script, StringComparison.Ordinal);
         Assert.DoesNotContain('\r', script);
         Assert.All(commands.Distros, distro => Assert.Equal("CustomGateway", distro));
@@ -981,16 +1004,19 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     private sealed class FakeWslCommandRunner(string? providerJson, string? primaryModel = null) : IWslCommandRunner
     {
         public string? ProviderJson { get; private set; } = providerJson;
+        public string? ActiveProviderJson { get; private set; } = providerJson;
         public string? PrimaryModel { get; private set; } = primaryModel;
         public string? ProviderAfterApply { get; init; }
         public string? PrimaryAfterApply { get; init; }
         public bool FailReads { get; init; }
         public HashSet<int> FailedReadCalls { get; init; } = [];
+        public HashSet<int> IndeterminateRestartCalls { get; init; } = [];
         public Action<int>? CommandObserved { get; init; }
         public List<IReadOnlyList<string>> Calls { get; } = [];
         public List<string?> StandardInputs { get; } = [];
         public List<string> Distros { get; } = [];
         private int _readCalls;
+        private int _restartCalls;
 
         public Task<WslCommandResult> RunInDistroAsync(
             string name,
@@ -1014,6 +1040,14 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
                     ProviderJson = ProviderAfterApply;
                 PrimaryModel = PrimaryAfterApply;
                 return Result(PrimaryModel is null ? 1 : 0, string.Empty);
+            }
+            if (command.Contains("gateway") && command.Contains("restart"))
+            {
+                if (IndeterminateRestartCalls.Contains(++_restartCalls))
+                    return Task.FromResult(new WslCommandResult(-1, string.Empty, string.Empty,
+                        TimedOut: true, OutcomeIndeterminate: true));
+                ActiveProviderJson = ProviderJson;
+                return Result(0, string.Empty);
             }
             if (command.Contains("unset"))
             {

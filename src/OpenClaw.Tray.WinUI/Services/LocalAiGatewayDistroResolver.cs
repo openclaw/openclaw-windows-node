@@ -5,10 +5,11 @@ namespace OpenClawTray.Services;
 internal sealed record LocalAiGatewayDistroResolution(
     bool Success,
     string? DistroName,
-    string? Detail)
+    string? Detail,
+    string? GatewayId = null)
 {
-    public static LocalAiGatewayDistroResolution Resolved(string distroName) =>
-        new(true, distroName, null);
+    public static LocalAiGatewayDistroResolution Resolved(string distroName, string gatewayId) =>
+        new(true, distroName, null, gatewayId);
 
     public static LocalAiGatewayDistroResolution Failed(string detail) =>
         new(false, null, detail);
@@ -164,7 +165,7 @@ internal sealed class LocalAiGatewayDistroResolver : ILocalAiGatewayDistroResolv
                 "The setup-managed WSL gateway owner changed after Local AI startup; refusing to route lifecycle commands to an unknown distro.");
         }
 
-        return LocalAiGatewayDistroResolution.Resolved(_distroName);
+        return LocalAiGatewayDistroResolution.Resolved(_distroName, _gatewayId);
     }
 
     internal static IReadOnlyList<GatewayRecord> FindOwners(IEnumerable<GatewayRecord> records) =>

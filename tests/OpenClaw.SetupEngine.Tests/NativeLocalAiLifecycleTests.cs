@@ -134,6 +134,195 @@ public sealed class NativeLocalAiLifecycleTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task WslHandoffWaitsForManagedRuntimeWithoutStartingIt(bool markedManaged)
+    {
+        using var directory = new TempDirectory();
+        var registry = new GatewayRegistry(directory.Path);
+        var record = new GatewayRecord
+        { Id = "wsl", IsLocal = true, Url = "ws://127.0.0.1:18789", SetupManagedDistroName = "fixture-wsl" };
+        registry.AddOrUpdate(record);
+        registry.SetActive(record.Id);
+        var paths = new LocalAiPaths(directory.Path);
+        var lifecycle = new LocalAiGatewayLifecycle(paths, directory.Path,
+            () => registry, () => null, new ForbiddenWsl(), NullLogger.Instance);
+        var install = await SaveWslInstallAsync(paths);
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(install, LocalAiRuntimeState.Stopped) with
+            { ModelId = null, Ownership = LocalAiOwnership.None });
+        var completion = new GatewayAiSetupCompletion(SetupCompletionIntent.CustodianOnboarding,
+            record.Id, GatewayDashboardBinding.Capture(record),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), "main", 1,
+            IdentityBinding: new string('A', 64), SessionKey: "agent:main:main", RequiresManagedLocalAi: markedManaged);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var startup = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lifecycle.TrackWslStartup(startup.Task);
+
+        var waiting = lifecycle.WaitForRuntimeAsync(completion, runtime, cancellation.Token);
+        Assert.False(waiting.IsCompleted);
+        await Task.Delay(100);
+        Assert.False(waiting.IsCompleted);
+        runtime.Snapshot = LocalAiOnboardingTests.RuntimeSnapshot(install, LocalAiRuntimeState.Healthy);
+        startup.SetResult();
+        await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(0, runtime.Calls);
+    }
+
+    [Theory]
+    [InlineData(LocalAiRuntimeState.Failed, false)]
+    [InlineData(LocalAiRuntimeState.Conflict, false)]
+    [InlineData(LocalAiRuntimeState.Failed, true)]
+    [InlineData(LocalAiRuntimeState.Conflict, true)]
+    public async Task WslHandoffHandlesTerminalRuntimeAccordingToSelection(
+        LocalAiRuntimeState terminalState, bool markedManaged)
+    {
+        using var directory = new TempDirectory();
+        var registry = new GatewayRegistry(directory.Path);
+        var record = new GatewayRecord
+        { Id = "wsl", IsLocal = true, Url = "ws://127.0.0.1:18789", SetupManagedDistroName = "fixture-wsl" };
+        registry.AddOrUpdate(record);
+        registry.SetActive(record.Id);
+        var paths = new LocalAiPaths(directory.Path);
+        var lifecycle = new LocalAiGatewayLifecycle(paths, directory.Path,
+            () => registry, () => null, new ForbiddenWsl(), NullLogger.Instance);
+        var install = await SaveWslInstallAsync(paths);
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(install, LocalAiRuntimeState.Stopped) with
+            { ModelId = null, Ownership = LocalAiOwnership.None });
+        var completion = new GatewayAiSetupCompletion(SetupCompletionIntent.CustodianOnboarding,
+            record.Id, GatewayDashboardBinding.Capture(record),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), "main", 1,
+            IdentityBinding: new string('A', 64), SessionKey: "agent:main:main", RequiresManagedLocalAi: markedManaged);
+        var startup = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lifecycle.TrackWslStartup(startup.Task);
+
+        var waiting = lifecycle.WaitForRuntimeAsync(completion, runtime, CancellationToken.None);
+        Assert.False(waiting.IsCompleted);
+        runtime.Snapshot = LocalAiOnboardingTests.RuntimeSnapshot(install, terminalState);
+        if (markedManaged)
+        {
+            startup.SetResult();
+            await Assert.ThrowsAsync<InvalidOperationException>(() => waiting.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        else
+        {
+            await waiting.WaitAsync(TimeSpan.FromSeconds(2));
+            startup.SetResult();
+        }
+    }
+
+    [Fact]
+    public async Task OrdinaryWslHandoffWithoutOwnedStartupDoesNotWaitForStoppedRuntime()
+    {
+        using var directory = new TempDirectory();
+        var registry = new GatewayRegistry(directory.Path);
+        var record = new GatewayRecord
+        { Id = "wsl", IsLocal = true, Url = "ws://127.0.0.1:18789", SetupManagedDistroName = "fixture-wsl" };
+        registry.AddOrUpdate(record);
+        registry.SetActive(record.Id);
+        var paths = new LocalAiPaths(directory.Path);
+        var lifecycle = new LocalAiGatewayLifecycle(paths, directory.Path,
+            () => registry, () => null, new ForbiddenWsl(), NullLogger.Instance);
+        var install = await SaveWslInstallAsync(paths);
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(install, LocalAiRuntimeState.Stopped));
+        var completion = new GatewayAiSetupCompletion(SetupCompletionIntent.CustodianOnboarding,
+            record.Id, GatewayDashboardBinding.Capture(record),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), "main", 1,
+            IdentityBinding: new string('A', 64), SessionKey: "agent:main:main");
+
+        await lifecycle.WaitForRuntimeAsync(completion, runtime, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, runtime.Calls);
+    }
+
+    [Fact]
+    public async Task OrdinaryRemoteGatewayHandoffDoesNotJoinWslOwnersStartup()
+    {
+        using var directory = new TempDirectory();
+        var registry = new GatewayRegistry(directory.Path);
+        var owner = new GatewayRecord
+        { Id = "wsl", IsLocal = true, Url = "ws://127.0.0.1:18789", SetupManagedDistroName = "fixture-wsl" };
+        var remote = new GatewayRecord { Id = "remote", Url = "wss://remote.example:18789" };
+        registry.AddOrUpdate(owner);
+        registry.AddOrUpdate(remote);
+        registry.SetActive(remote.Id);
+        var paths = new LocalAiPaths(directory.Path);
+        var lifecycle = new LocalAiGatewayLifecycle(paths, directory.Path,
+            () => registry, () => null, new ForbiddenWsl(), NullLogger.Instance);
+        var install = await SaveWslInstallAsync(paths);
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(install, LocalAiRuntimeState.Stopped));
+        var startup = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lifecycle.TrackWslStartup(startup.Task);
+        var completion = new GatewayAiSetupCompletion(SetupCompletionIntent.CustodianOnboarding,
+            remote.Id, GatewayDashboardBinding.Capture(remote),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), "main", 1,
+            IdentityBinding: new string('A', 64), SessionKey: "agent:main:main");
+
+        await lifecycle.WaitForRuntimeAsync(completion, runtime, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(startup.Task.IsCompleted);
+        registry.SetActive(owner.Id);
+        var ownedCompletion = completion with
+        {
+            GatewayId = owner.Id,
+            EndpointBinding = GatewayDashboardBinding.Capture(owner)
+        };
+        var waiting = lifecycle.WaitForRuntimeAsync(ownedCompletion, runtime, CancellationToken.None);
+        Assert.False(waiting.IsCompleted);
+        runtime.Snapshot = LocalAiOnboardingTests.RuntimeSnapshot(install, LocalAiRuntimeState.Healthy);
+        startup.SetResult();
+        await waiting.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task OrdinaryWslHandoffCanVerifyHealthyUnmanagedRouteWhileStartupIsPending()
+    {
+        using var directory = new TempDirectory();
+        var registry = new GatewayRegistry(directory.Path);
+        var record = new GatewayRecord
+        { Id = "wsl", IsLocal = true, Url = "ws://127.0.0.1:18789", SetupManagedDistroName = "fixture-wsl" };
+        registry.AddOrUpdate(record);
+        registry.SetActive(record.Id);
+        var paths = new LocalAiPaths(directory.Path);
+        var lifecycle = new LocalAiGatewayLifecycle(paths, directory.Path,
+            () => registry, () => null, new ForbiddenWsl(), NullLogger.Instance);
+        var install = await SaveWslInstallAsync(paths);
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(install, LocalAiRuntimeState.Healthy) with
+            { ModelId = "other", Ownership = LocalAiOwnership.None });
+        var startup = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lifecycle.TrackWslStartup(startup.Task);
+        var completion = new GatewayAiSetupCompletion(SetupCompletionIntent.CustodianOnboarding,
+            record.Id, GatewayDashboardBinding.Capture(record),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), "main", 1,
+            IdentityBinding: new string('A', 64), SessionKey: "agent:main:main");
+
+        await lifecycle.WaitForRuntimeAsync(completion, runtime, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(startup.Task.IsCompleted);
+        startup.SetResult();
+    }
+
+    private static async Task<LocalAiResolvedInstall> SaveWslInstallAsync(LocalAiPaths paths)
+    {
+        var original = LocalAiOnboardingTests.Install().Manifest;
+        var revision = new string('a', 40);
+        var manifest = original with
+        {
+            RuntimeAssets = [original.ModelAsset with { FileName = "runtime.zip" }],
+            ModelId = $"test/model@{revision}",
+            ModelAsset = original.ModelAsset with
+            { SourceUrl = $"https://huggingface.co/test/model/resolve/{revision}/test.gguf" },
+        };
+        var store = new LocalAiManifestStore(paths);
+        await store.SaveAsync(manifest);
+        return (await store.LoadAsync())!;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task RejectedNoOwnerStartupLeavesLegacyNativeRepairAvailable(bool verified)
     {
         using var directory = new TempDirectory();

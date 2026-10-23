@@ -27,7 +27,9 @@ public sealed class SetupNativeCompletionTimeoutException : TimeoutException
 public static class SetupNativeCompletionTiming
 {
     public static readonly TimeSpan Connection = TimeSpan.FromSeconds(210);
-    public static readonly TimeSpan ModelRecovery = TimeSpan.FromSeconds(210);
+    // WSL Local AI startup can withdraw and republish its route with two guarded
+    // 420-second Gateway restarts, plus 90 seconds for the router to become healthy.
+    public static readonly TimeSpan ModelRecovery = TimeSpan.FromSeconds(1020);
     public static readonly TimeSpan ModelVerification = TimeSpan.FromSeconds(150);
     public static readonly TimeSpan Navigation = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan PublishedVerification = Connection + ModelRecovery + Connection + ModelVerification;

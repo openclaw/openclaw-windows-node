@@ -479,6 +479,58 @@ public sealed class NativeGatewaySetupConnectionTests
             SetupNativeCompletionVerifier.VerifyAsync(fixture.Temp.Path, proof, deadline.Token, manager));
     }
 
+    [Fact]
+    public async Task AuthorityReplacementDuringRecoveryStopsBeforeFinalModelRpc()
+    {
+        var verifyCalls = 0;
+        object Respond(string method, JsonElement parameters)
+        {
+            if (method == "openclaw.setup.verify")
+                Interlocked.Increment(ref verifyCalls);
+            return Reply(method, parameters);
+        }
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Respond), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        GatewayAiSetupCompletion proof;
+        await using (var owner = await fixture.PrepareAsync())
+        {
+            await using (var connection = await NativeGatewaySetupConnection.ConnectAsync(owner))
+            {
+                var client = new GatewayAiSetupClient(connection, Model);
+                await client.VerifyConfiguredAsync(Model);
+                proof = client.GetVerifiedCompletion();
+            }
+            await owner.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default);
+        }
+        var runtime = new NativeGatewaySetupTests.Runtime(fixture.Events)
+        {
+            StopConnections = () => server.CloseConnectionsAsync()
+        };
+        await using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance), new GatewayClientFactory(),
+            fixture.Registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync(proof.GatewayId);
+        var callsBeforeReplacement = Volatile.Read(ref verifyCalls);
+        var connectionsAtReplacement = -1;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+        await Assert.ThrowsAsync<SetupNativeOwnershipException>(() =>
+            SetupNativeCompletionVerifier.VerifyAsync(fixture.Temp.Path, proof, deadline.Token, manager,
+                (_, _) =>
+                {
+                    connectionsAtReplacement = server.ConnectionCount;
+                    var original = fixture.Registry.GetActive()!;
+                    fixture.Registry.AddOrUpdate(original with { Id = "replacement" });
+                    fixture.Registry.SetActive("replacement");
+                    fixture.Registry.Save();
+                    return Task.CompletedTask;
+                }));
+
+        Assert.Equal(callsBeforeReplacement, Volatile.Read(ref verifyCalls));
+        Assert.True(connectionsAtReplacement > 0);
+        Assert.Equal(connectionsAtReplacement, server.ConnectionCount);
+    }
+
     private sealed class PausedHandshakeLogger(TaskCompletionSource entered, ManualResetEventSlim release) : IOpenClawLogger
     {
         public void Info(string message)

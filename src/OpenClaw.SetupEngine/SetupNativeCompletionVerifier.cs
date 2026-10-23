@@ -48,6 +48,15 @@ public static class SetupNativeCompletionVerifier
             RequireOwner();
             return current;
         }
+        if (waitForModel is not null)
+        {
+            await SetupNativeCompletionTiming.RunAsync(async token =>
+            {
+                await waitForModel(expected, token);
+                return true;
+            }, SetupNativeCompletionTiming.ModelRecovery, SetupNativeCompletionPhase.ModelRecovery, ct, timeProvider);
+            RequireOwner();
+        }
         await using var session = await SetupGatewaySession.ConnectAsync(dataDir, ct: ct,
             expectedGatewayId: expected.GatewayId, expectedCompletion: expected);
         var route = session.GetRoute();

@@ -205,6 +205,33 @@ public sealed class SetupDashboardHandoffStoreTests
     }
 
     [Fact]
+    public void ExistingThirteenMinuteRetryKeepsItsOriginalDeadline()
+    {
+        using var directory = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(directory.Path, clock);
+        var handle = store.Issue(Choice);
+        using (var lease = store.Acquire(handle).Lease!)
+            lease.RetainForExplicitRetry();
+        var path = Path.Combine(directory.Path, "setup-dashboard-handoff", "pending.json");
+        var record = JsonSerializer.Deserialize<SetupDashboardHandoffStore.PendingRecord>(File.ReadAllText(path))!;
+        var originalExpiry = record.ExecutionStartedUtc!.Value.AddSeconds(810);
+        File.WriteAllText(path, JsonSerializer.Serialize(record with { ExecutionExpiresUtc = originalExpiry }));
+
+        clock.Advance(TimeSpan.FromMinutes(1));
+        using (var retry = new SetupDashboardHandoffStore(directory.Path, clock)
+            .Acquire(handle, explicitRetry: true).Lease)
+        {
+            Assert.NotNull(retry);
+            Assert.Equal(originalExpiry - clock.GetUtcNow(), retry.RemainingLifetime);
+            retry.RetainForExplicitRetry();
+        }
+        clock.Advance(originalExpiry - clock.GetUtcNow());
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid,
+            store.Acquire(handle, explicitRetry: true).Status);
+    }
+
+    [Fact]
     public async Task ConcurrentFirstAcquisitionCannotGrantTwoExecutionWindows()
     {
         using var directory = new TempDirectory();

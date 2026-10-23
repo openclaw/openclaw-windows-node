@@ -17,6 +17,9 @@ internal sealed record SetupHandoffAcquisition(
 internal sealed class SetupDashboardHandoffStore
 {
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
+    // Records issued before the longer WSL recovery budget retain their
+    // original, nonrenewable execution deadline across an app update.
+    private static readonly TimeSpan PreviousExecution = TimeSpan.FromSeconds(810);
     private readonly string _directory;
     private readonly TimeProvider _time;
     private string PendingPath => Path.Combine(_directory, "pending.json");
@@ -92,7 +95,8 @@ internal sealed class SetupDashboardHandoffStore
             if ((executionStarted is null) != (executionExpires is null) ||
                 (executionStarted is { } started &&
                 (started < pending.IssuedUtc || started >= pending.ExpiresUtc || now < started ||
-                 executionExpires - started != SetupNativeCompletionTiming.Execution)) ||
+                 executionExpires - started != SetupNativeCompletionTiming.Execution &&
+                 executionExpires - started != PreviousExecution)) ||
                 (pending.State == "ready" && executionStarted is not null) ||
                 (pending.State is "retry" or "inflight" && executionStarted is null))
                 return new(SetupHandoffAcquisitionStatus.Invalid);
