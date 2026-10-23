@@ -11,6 +11,7 @@ Run the native-free diagnostic regressions on the controller:
 
 ```powershell
 pwsh -NoProfile -File .\tests\OpenClaw.DesktopHarness\Test-ObserverEvidence.ps1
+pwsh -NoProfile -File .\tests\OpenClaw.DesktopHarness\Test-ProofCaseCollection.ps1
 pwsh -NoProfile -File .\tests\OpenClaw.DesktopHarness\Build-ObserverEvidence.ps1 `
   -OutputDirectory '.\artifacts\observer-evidence'
 ```
@@ -23,6 +24,12 @@ fresh guest, the existing proof controller can load this DLL with
 and `observerSha256` to its actual hash. Do not reuse or relax the older
 capture manifest's source pins. The original controller and all managed,
 SDK-four-controls, ownership-timeout-tree, and cleanup gates remain required.
+
+`Test-DesktopFidelity.ps1` collects all four independent SDK cases even when an
+earlier case fails, then runs the ownership regressions. The final
+`desktop-fidelity-regression.json` preserves each failure and the separate
+ownership outcome. Any failed case or ownership regression still makes the
+script fail. A complete receipt is not evidence that its cases passed.
 
 The observer records the original fallback's own OpenThread, owner, timing
 and close results independently of the later diagnostic retry. Limited-query

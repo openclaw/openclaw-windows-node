@@ -52,13 +52,14 @@ if ([string]::IsNullOrWhiteSpace($NativeInitFailureExecutable) -or
     throw 'The real DLL-attach-failure fixture is required with an externally built native probe.'
 }
 
-$cases = @()
-foreach ($case in @(
+. "$PSScriptRoot\Invoke-ProofCaseCollection.ps1"
+$cases = @(Invoke-ProofCaseCollection -Cases @(
     @{ name='negative-token'; payload='native-probe'; negative=$true },
     @{ name='negative-powershell'; payload='powershell'; negative=$true },
     @{ name='fixed-token'; payload='native-probe'; negative=$false },
     @{ name='fixed-powershell'; payload='powershell'; negative=$false }
-)) {
+) -RunCase {
+    param($case)
     $directory = Join-Path $output "regression\$($case.name)"
     $desktop = "NativeRegression-$([Guid]::NewGuid().ToString('N').Substring(0,12))"
     $arguments = '"{0}" "{1}" {2}' -f $directory,$native,$case.payload
@@ -119,17 +120,23 @@ foreach ($case in @(
     if ([Runtime.InteropServices.Marshal]::GetLastWin32Error() -ne 2) {
         throw "Could not verify owned desktop removal: $desktop"
     }
-    $cases += [ordered]@{
+    [ordered]@{
         name=$case.name; passed=$true; negativeControl=$case.negative
         desktop=$desktop; desktopRemoved=$true
         exitCode=$result.ExitCode; timedOut=$result.TimedOut; durationMs=$result.DurationMs
         aclAndLabelBytesEqual=$launch.aclAndLabelBytesEqual
     }
+})
+$ownershipPassed = $false
+$ownershipError = $null
+try {
+    & "$PSScriptRoot\Test-LauncherOwnership.ps1" -Launcher $launcher -ProbeExecutable $probe `
+        -NativeExecutable $native -NativeProbeExecutable $NativeProbeExecutable `
+        -NativeInitFailureExecutable $NativeInitFailureExecutable `
+        -OutputDirectory "$output\ownership"
+    $ownershipPassed = $true
 }
-& "$PSScriptRoot\Test-LauncherOwnership.ps1" -Launcher $launcher -ProbeExecutable $probe `
-    -NativeExecutable $native -NativeProbeExecutable $NativeProbeExecutable `
-    -NativeInitFailureExecutable $NativeInitFailureExecutable `
-    -OutputDirectory "$output\ownership"
+catch { $ownershipError = $_.Exception.Message }
 $sourceHead = @(git -C $repository rev-parse HEAD)
 if ($LASTEXITCODE -ne 0) { throw 'Could not record the tested source head.' }
 [ordered]@{
@@ -141,6 +148,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not record the tested source head.' }
     cases=$cases
     productOrSdkPolicyChanged=$false
     existingDesktopsModified=$false
-    ownershipAndEnvironmentRegressionsPassed=$true
+    ownershipAndEnvironmentRegressionsPassed=$ownershipPassed
+    ownershipError=$ownershipError
 } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$output\desktop-fidelity-regression.json" -Encoding utf8
 $cases | ForEach-Object { [pscustomobject]$_ } | Select-Object name,passed,exitCode,desktopRemoved
+$failedCases = @($cases | Where-Object { !$_.passed })
+if ($failedCases.Count -or !$ownershipPassed) {
+    throw "Desktop fidelity failed: $($failedCases.Count) case(s), ownership passed: $ownershipPassed. See $output\desktop-fidelity-regression.json"
+}
