@@ -28,9 +28,13 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("WebResourceRequested += _webResourceRequestedHandler", source);
         Assert.Contains("WebResourceRequested -= _webResourceRequestedHandler", source);
         Assert.Contains("RemoveWebResourceRequestedFilter", source);
+        Assert.Contains("CoreWebView2WebResourceRequestSourceKinds.All", source);
+        Assert.Contains("FrameNavigationStarting += OnNavigationStarting", source);
+        Assert.Contains("FrameNavigationStarting -= OnNavigationStarting", source);
         Assert.Contains("_gatewayToken = null", source);
         Assert.Contains("_trustedGatewayOrigin = null", source);
         Assert.Contains("IsUriForOrigin(args.Request.Uri, trustedOrigin)", source);
+        Assert.Contains("CanvasNavigationPolicy.MayAttachGatewayBearer(", source);
         Assert.DoesNotContain("WebResourceRequested += (", source);
     }
 
