@@ -40,6 +40,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
     private TaskCompletionSource? _sessionMutationGate;
+    private TaskCompletionSource? _configApplyGate;
     private TaskCompletionSource? _chatSendGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
     private int _chatEventSequence;
@@ -168,11 +169,34 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     if (connection.Socket.State == WebSocketState.Open)
                         await connection.Socket.CloseOutputAsync((WebSocketCloseStatus)1012, "Fixture restart", close.Token);
                 }
+
                 finally { connection.SendLock.Release(); }
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { connection.Socket.Abort(); }
             catch (WebSocketException) { connection.Socket.Abort(); }
             catch (ObjectDisposedException) { }
+        }
+    }
+
+    public void HoldConfigApplies()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (_configApplyGate is not null)
+                throw new InvalidOperationException("Configuration replies are already held.");
+            _configApplyGate = NewSignal();
+        }
+    }
+
+    public void ReleaseConfigApplies()
+    {
+        lock (_sync)
+        {
+            if (_configApplyGate is null)
+                throw new InvalidOperationException("Configuration replies are not held.");
+            _configApplyGate.TrySetResult();
+            _configApplyGate = null;
         }
     }
 
@@ -610,7 +634,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     Task<bool>? abortOutcome;
                     lock (_sync)
                     {
-                        gate = method is "sessions.patch" or "sessions.delete" or "sessions.create"
+                        gate = method == "config.apply" ? _configApplyGate?.Task
+                            : method is "sessions.patch" or "sessions.delete" or "sessions.create"
                             ? _sessionMutationGate?.Task
                             : method == "chat.send"
                                 ? _chatSendGate?.Task

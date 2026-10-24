@@ -6417,13 +6417,13 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Connectez-vous à une passerelle avant d'enregistrer la configuration.</value>
   </data>
   <data name="ConfigPage_StatusReadOnlyMessage" xml:space="preserve">
-    <value>Ce jeton opérateur ne dispose pas de l'autorisation operator.write ; les modifications de configuration ne peuvent donc pas être enregistrées.</value>
+    <value>Ce jeton opérateur ne dispose pas de l'autorisation operator.admin ; les modifications de configuration ne peuvent donc pas être enregistrées.</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedTitle" xml:space="preserve">
     <value>Configuration non chargée</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedMessage" xml:space="preserve">
-    <value>Actualisez la configuration de la passerelle avant d'enregistrer.</value>
+    <value>Abandonnez le brouillon et actualisez une configuration valide de la passerelle avant d'enregistrer. Une reconnexion ou un changement de passerelle nécessite une nouvelle modification.</value>
   </data>
   <data name="ConfigPage_StatusSavingConfigTitle" xml:space="preserve">
     <value>Enregistrement de la configuration…</value>
@@ -6498,7 +6498,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Ce jeton opérateur ne dispose pas de l'autorisation operator.read ; la configuration de la passerelle ne peut donc pas être chargée ici.</value>
   </data>
   <data name="ConfigPage_ConfigIsReadOnlyMessage" xml:space="preserve">
-    <value>Ce jeton opérateur peut lire la configuration, mais ne dispose pas de l'autorisation operator.write. Vous pouvez inspecter et valider les brouillons, mais Enregistrer est désactivé.</value>
+    <value>Ce jeton opérateur peut lire la configuration, mais ne dispose pas de l'autorisation operator.admin. Vous pouvez inspecter et valider les brouillons, mais Enregistrer est désactivé.</value>
   </data>
   <data name="ConfigPage_MetaNoUnsavedChanges" xml:space="preserve">
     <value>Aucune modification non enregistrée.</value>
@@ -6525,7 +6525,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Configuration indisponible : operator.read manquant</value>
   </data>
   <data name="ConfigPage_SaveStatusReadOnlyMissingWrite" xml:space="preserve">
-    <value>Lecture seule : operator.write manquant</value>
+    <value>Lecture seule : operator.admin manquant</value>
   </data>
   <data name="ConfigPage_SaveStatusFixValidationBeforeSaving" xml:space="preserve">
     <value>Corrigez les erreurs de validation avant d'enregistrer</value>

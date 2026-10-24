@@ -338,7 +338,8 @@ public sealed class ChannelStartResult
 }
 
 /// <summary>
-/// Result of <see cref="OpenClawGatewayClient.PatchConfigDetailedAsync"/>.
+/// Result of <see cref="OpenClawGatewayClient.PatchConfigDetailedAsync"/> or
+/// <see cref="OpenClawGatewayClient.ApplyConfigDetailedAsync"/>.
 ///
 /// Distinguishes "patch dispatched" (the older fire-and-forget bool) from
 /// "patch was accepted by the gateway". Lets the inline channel save flow
@@ -348,7 +349,7 @@ public sealed class ChannelStartResult
 /// </summary>
 public sealed class ConfigPatchResult
 {
-    /// <summary>True when the gateway accepted the patch (responded ok:true).</summary>
+    /// <summary>True when the gateway accepted the configuration write (responded ok:true).</summary>
     public bool Ok { get; init; }
 
     /// <summary>Gateway-side error message when <see cref="Ok"/> is false. Null on success.</summary>

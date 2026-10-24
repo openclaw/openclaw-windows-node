@@ -6393,13 +6393,13 @@ Certifique-se de que o Gateway está em execução.</value>
     <value>Conecte-se a um Gateway antes de salvar a configuração.</value>
   </data>
   <data name="ConfigPage_StatusReadOnlyMessage" xml:space="preserve">
-    <value>Este token de operador não tem permissão operator.write, então as alterações de configuração não podem ser salvas.</value>
+    <value>Este token de operador não tem permissão operator.admin, então as alterações de configuração não podem ser salvas.</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedTitle" xml:space="preserve">
     <value>Configuração não carregada</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedMessage" xml:space="preserve">
-    <value>Atualize a configuração do Gateway antes de salvar.</value>
+    <value>Descarte o rascunho e atualize uma configuração válida do gateway antes de salvar. Reconexões e mudanças de gateway exigem uma nova edição.</value>
   </data>
   <data name="ConfigPage_StatusSavingConfigTitle" xml:space="preserve">
     <value>Salvando configuração…</value>
@@ -6474,7 +6474,7 @@ Certifique-se de que o Gateway está em execução.</value>
     <value>Este token de operador não tem permissão operator.read, então a configuração do Gateway não pode ser carregada aqui.</value>
   </data>
   <data name="ConfigPage_ConfigIsReadOnlyMessage" xml:space="preserve">
-    <value>Este token de operador pode ler a configuração, mas não tem permissão operator.write. Você pode inspecionar e validar rascunhos, mas Salvar está desativado.</value>
+    <value>Este token de operador pode ler a configuração, mas não tem permissão operator.admin. Você pode inspecionar e validar rascunhos, mas Salvar está desativado.</value>
   </data>
   <data name="ConfigPage_MetaNoUnsavedChanges" xml:space="preserve">
     <value>Nenhuma alteração não salva.</value>
@@ -6501,7 +6501,7 @@ Certifique-se de que o Gateway está em execução.</value>
     <value>Configuração indisponível: operator.read ausente</value>
   </data>
   <data name="ConfigPage_SaveStatusReadOnlyMissingWrite" xml:space="preserve">
-    <value>Somente leitura: operator.write ausente</value>
+    <value>Somente leitura: operator.admin ausente</value>
   </data>
   <data name="ConfigPage_SaveStatusFixValidationBeforeSaving" xml:space="preserve">
     <value>Corrija os erros de validação antes de salvar</value>

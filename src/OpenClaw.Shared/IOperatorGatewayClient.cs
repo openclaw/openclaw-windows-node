@@ -125,6 +125,9 @@ public interface IOperatorGatewayClient
     Task<bool> PatchConfigAsync(JsonElement fullConfig, string? baseHash);
     /// <summary>Response-aware variant of <see cref="PatchConfigAsync"/>: awaits the gateway's reply and returns the real error on failure.</summary>
     Task<ConfigPatchResult> PatchConfigDetailedAsync(JsonElement fullConfig, string? baseHash, int timeoutMs = 15000);
+    /// <summary>Replace the complete configuration and apply/restart on the captured authenticated connection. Never retries a write.</summary>
+    Task<ConfigPatchResult> ApplyConfigDetailedAsync(JsonElement fullConfig, string baseHash, long connectionEpoch, int timeoutMs = 15000)
+        => Task.FromException<ConfigPatchResult>(new NotSupportedException("Full configuration apply is not supported by this gateway client."));
     Task RequestAgentsListAsync();
     Task RequestAgentFilesListAsync(string agentId = "main");
     Task RequestAgentFileGetAsync(string agentId, string name);

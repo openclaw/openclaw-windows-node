@@ -1642,6 +1642,35 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     // Gateway config management
 
+    public async Task<ConfigPatchResult> ApplyConfigDetailedAsync(
+        JsonElement fullConfig, string baseHash, long connectionEpoch, int timeoutMs = 15000)
+    {
+        try
+        {
+            if (fullConfig.ValueKind != JsonValueKind.Object || string.IsNullOrWhiteSpace(baseHash))
+                throw new InvalidOperationException("Reload a valid configuration revision before applying changes.");
+            if (!GrantedOperatorScopes.Contains("operator.admin", StringComparer.Ordinal))
+                throw new InvalidOperationException("Applying configuration requires operator.admin.");
+            if (!AdvertisedServerMethods.Contains("config.apply", StringComparer.Ordinal))
+                throw new InvalidOperationException("This Gateway does not advertise config.apply.");
+
+            var response = await SendResponseRequestAsync("config.apply",
+                new { raw = fullConfig.GetRawText(), baseHash }, timeoutMs, connectionEpoch).ConfigureAwait(false);
+            _logger.Info("config.apply succeeded");
+            return new ConfigPatchResult { Ok = true, RawResponse = response.GetRawText() };
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or OperationCanceledException or IOException or System.Net.WebSockets.WebSocketException)
+        {
+            _logger.Warn($"config.apply failed: {SanitizeErrorForLog(ex.Message)}");
+            return new ConfigPatchResult
+            {
+                Ok = false,
+                Error = ex.Message + " Reload configuration before retrying. The write is not automatically replayed.",
+                RawResponse = ex.ToString(),
+            };
+        }
+    }
+
     public async Task RequestConfigAsync()
     {
         await SendTrackedRequestAsync("config.get");

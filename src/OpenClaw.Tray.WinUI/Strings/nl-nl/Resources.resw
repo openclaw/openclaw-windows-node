@@ -6418,13 +6418,13 @@ Controleer of de gateway actief is.</value>
     <value>Maak verbinding met een gateway voordat u de configuratie opslaat.</value>
   </data>
   <data name="ConfigPage_StatusReadOnlyMessage" xml:space="preserve">
-    <value>Dit operatortoken heeft geen operator.write-machtiging, dus configuratiewijzigingen kunnen niet worden opgeslagen.</value>
+    <value>Dit operatortoken heeft geen operator.admin-machtiging, dus configuratiewijzigingen kunnen niet worden opgeslagen.</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedTitle" xml:space="preserve">
     <value>Configuratie niet geladen</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedMessage" xml:space="preserve">
-    <value>Vernieuw de gatewayconfiguratie voordat u opslaat.</value>
+    <value>Verwerp het concept en vernieuw een geldige gatewayconfiguratie voordat u opslaat. Na opnieuw verbinden of een gatewaywijziging moet u een nieuwe bewerking starten.</value>
   </data>
   <data name="ConfigPage_StatusSavingConfigTitle" xml:space="preserve">
     <value>Configuratie opslaan…</value>
@@ -6499,7 +6499,7 @@ Controleer of de gateway actief is.</value>
     <value>Dit operatortoken mist de operator.read-machtiging, dus de gatewayconfiguratie kan hier niet worden geladen.</value>
   </data>
   <data name="ConfigPage_ConfigIsReadOnlyMessage" xml:space="preserve">
-    <value>Dit operatortoken kan de configuratie lezen, maar mist de operator.write-machtiging. U kunt concepten bekijken en valideren, maar Opslaan is uitgeschakeld.</value>
+    <value>Dit operatortoken kan de configuratie lezen, maar mist de operator.admin-machtiging. U kunt concepten bekijken en valideren, maar Opslaan is uitgeschakeld.</value>
   </data>
   <data name="ConfigPage_MetaNoUnsavedChanges" xml:space="preserve">
     <value>Geen niet-opgeslagen wijzigingen.</value>
@@ -6526,7 +6526,7 @@ Controleer of de gateway actief is.</value>
     <value>Configuratie niet beschikbaar: operator.read ontbreekt</value>
   </data>
   <data name="ConfigPage_SaveStatusReadOnlyMissingWrite" xml:space="preserve">
-    <value>Alleen-lezen: operator.write ontbreekt</value>
+    <value>Alleen-lezen: operator.admin ontbreekt</value>
   </data>
   <data name="ConfigPage_SaveStatusFixValidationBeforeSaving" xml:space="preserve">
     <value>Los validatiefouten op voordat u opslaat</value>

@@ -1,10 +1,72 @@
 using System.Text.Json;
+using System.Reflection;
+using OpenClaw.Shared;
 using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
 
 public class ConfigEditorModelTests
 {
+    [Fact]
+    public void CapturedDraft_IsBoundToOriginalClientAndEpochBeforeAndAfterAcknowledgement()
+    {
+        using var document = JsonDocument.Parse("""{"parsed":{},"hash":"revision","valid":true}""");
+        var client = DispatchProxy.Create<IOperatorGatewayClient, EpochClient>();
+        var state = (EpochClient)(object)client;
+        state.Epoch = 7;
+        var snapshot = ConfigEditorModel.CaptureSnapshot(document.RootElement, client);
+        Assert.True(snapshot.MatchesConnection(client));
+        Assert.False(snapshot.MatchesConnection(DispatchProxy.Create<IOperatorGatewayClient, EpochClient>()));
+        state.Epoch = null;
+        Assert.False(snapshot.MatchesConnection(client));
+        state.Epoch = 8;
+        Assert.False(snapshot.MatchesConnection(client));
+        Assert.True(ConfigEditorModel.CaptureSnapshot(document.RootElement, client).MatchesConnection(client));
+    }
+
+    public class EpochClient : DispatchProxy
+    {
+        public long? Epoch { get; set; }
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
+            targetMethod?.Name == "get_SessionMutationConnectionEpoch"
+                ? Epoch : throw new NotSupportedException(targetMethod?.Name);
+    }
+
+    [Theory]
+    [InlineData("""{"parsed":{},"hash":"revision","valid":true}""", true)]
+    [InlineData("""{"parsed":{},"hash":"revision","valid":false}""", false)]
+    [InlineData("""{"parsed":[],"hash":"revision","valid":true}""", false)]
+    [InlineData("""{"parsed":{},"valid":true}""", false)]
+    public void CaptureSnapshot_OnlyValidVersionedObjectsCanBeReplaced(string response, bool canReplace)
+    {
+        using var document = JsonDocument.Parse(response);
+        Assert.Equal(canReplace, ConfigEditorModel.CaptureSnapshot(document.RootElement).CanReplace);
+    }
+
+    [Fact]
+    public void ApplyChanges_ReplacesIdArrayExactlyAndRetainsRedactedSecretsAndOtherSections()
+    {
+        using var source = JsonDocument.Parse("""
+        {
+          "models": { "providers": { "fixture": {
+            "apiKey": "__OPENCLAW_REDACTED__",
+            "models": [{"id":"alpha"},{"id":"beta"}]
+          } } },
+          "gateway": { "bind": "loopback" }
+        }
+        """);
+        using var replacement = JsonDocument.Parse("""[{"id":"beta"}]""");
+        var updated = ConfigEditorModel.ApplyChanges(source.RootElement,
+            new Dictionary<string, object?> { ["models.providers.fixture.models"] = replacement.RootElement });
+        var provider = updated.GetProperty("models").GetProperty("providers").GetProperty("fixture");
+        Assert.Equal("""[{"id":"beta"}]""",
+            JsonSerializer.Serialize(provider.GetProperty("models")));
+        Assert.Equal("__OPENCLAW_REDACTED__", provider.GetProperty("apiKey").GetString());
+        Assert.Equal("loopback", updated.GetProperty("gateway").GetProperty("bind").GetString());
+        Assert.Equal(2, source.RootElement.GetProperty("models").GetProperty("providers")
+            .GetProperty("fixture").GetProperty("models").GetArrayLength());
+    }
+
     [Fact]
     public void CaptureSnapshot_UsesParsedRootAndBaseHash()
     {

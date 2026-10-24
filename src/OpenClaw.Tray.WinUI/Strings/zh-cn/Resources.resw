@@ -6417,13 +6417,13 @@
     <value>保存配置前请先连接到网关。</value>
   </data>
   <data name="ConfigPage_StatusReadOnlyMessage" xml:space="preserve">
-    <value>此操作员令牌没有 operator.write 权限，因此无法保存配置更改。</value>
+    <value>此操作员令牌没有 operator.admin 权限，因此无法保存配置更改。</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedTitle" xml:space="preserve">
     <value>配置未加载</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedMessage" xml:space="preserve">
-    <value>保存前请刷新网关配置。</value>
+    <value>保存前请放弃草稿并刷新有效的网关配置。重新连接或切换网关后需要重新编辑。</value>
   </data>
   <data name="ConfigPage_StatusSavingConfigTitle" xml:space="preserve">
     <value>正在保存配置…</value>
@@ -6498,7 +6498,7 @@
     <value>此操作员令牌缺少 operator.read 权限，因此无法在此处加载网关配置。</value>
   </data>
   <data name="ConfigPage_ConfigIsReadOnlyMessage" xml:space="preserve">
-    <value>此操作员令牌可以读取配置，但缺少 operator.write 权限。你可以检查并验证草稿，但“保存”已禁用。</value>
+    <value>此操作员令牌可以读取配置，但缺少 operator.admin 权限。你可以检查并验证草稿，但“保存”已禁用。</value>
   </data>
   <data name="ConfigPage_MetaNoUnsavedChanges" xml:space="preserve">
     <value>没有未保存的更改。</value>
@@ -6525,7 +6525,7 @@
     <value>配置不可用：缺少 operator.read</value>
   </data>
   <data name="ConfigPage_SaveStatusReadOnlyMissingWrite" xml:space="preserve">
-    <value>只读：缺少 operator.write</value>
+    <value>只读：缺少 operator.admin</value>
   </data>
   <data name="ConfigPage_SaveStatusFixValidationBeforeSaving" xml:space="preserve">
     <value>保存前请修复验证错误</value>

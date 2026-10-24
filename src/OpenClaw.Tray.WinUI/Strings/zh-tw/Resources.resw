@@ -6417,13 +6417,13 @@
     <value>儲存設定前請先連線到閘道。</value>
   </data>
   <data name="ConfigPage_StatusReadOnlyMessage" xml:space="preserve">
-    <value>此操作員權杖沒有 operator.write 權限，因此無法儲存設定變更。</value>
+    <value>此操作員權杖沒有 operator.admin 權限，因此無法儲存設定變更。</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedTitle" xml:space="preserve">
     <value>設定未載入</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedMessage" xml:space="preserve">
-    <value>儲存前請重新整理閘道設定。</value>
+    <value>儲存前請捨棄草稿並重新整理有效的閘道設定。重新連線或切換閘道後需要重新編輯。</value>
   </data>
   <data name="ConfigPage_StatusSavingConfigTitle" xml:space="preserve">
     <value>正在儲存設定…</value>
@@ -6498,7 +6498,7 @@
     <value>此操作員權杖缺少 operator.read 權限，因此無法在此載入閘道設定。</value>
   </data>
   <data name="ConfigPage_ConfigIsReadOnlyMessage" xml:space="preserve">
-    <value>此操作員權杖可以讀取設定，但缺少 operator.write 權限。您可以檢查並驗證草稿，但「儲存」已停用。</value>
+    <value>此操作員權杖可以讀取設定，但缺少 operator.admin 權限。您可以檢查並驗證草稿，但「儲存」已停用。</value>
   </data>
   <data name="ConfigPage_MetaNoUnsavedChanges" xml:space="preserve">
     <value>沒有未儲存的變更。</value>
@@ -6525,7 +6525,7 @@
     <value>設定無法使用：缺少 operator.read</value>
   </data>
   <data name="ConfigPage_SaveStatusReadOnlyMissingWrite" xml:space="preserve">
-    <value>唯讀：缺少 operator.write</value>
+    <value>唯讀：缺少 operator.admin</value>
   </data>
   <data name="ConfigPage_SaveStatusFixValidationBeforeSaving" xml:space="preserve">
     <value>儲存前請修正驗證錯誤</value>
