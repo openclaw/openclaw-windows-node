@@ -8091,4 +8091,21 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Résumer mes sessions récentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>M’aider à configurer un canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Vérifier l’état du système</value></data>
+  <data name="Heartbeat_Card.Header" xml:space="preserve"><value>Signal périodique de l’agent Gateway</value></data>
+  <data name="Heartbeat_Explanation.Text" xml:space="preserve"><value>Lire le dernier signal périodique enregistré de l’agent. Ce n’est pas un ping de connexion et cela n’active ni ne lance les signaux périodiques.</value></data>
+  <data name="Heartbeat_Refresh.Content" xml:space="preserve"><value>Actualiser</value></data>
+  <data name="Heartbeat_StateReady" xml:space="preserve"><value>Actualisez pour lire le dernier signal périodique de l’agent.</value></data>
+  <data name="Heartbeat_StateDisconnected" xml:space="preserve"><value>Connectez-vous à une Gateway pour lire le signal périodique de son agent.</value></data>
+  <data name="Heartbeat_StateLoading" xml:space="preserve"><value>Lecture du signal périodique de l’agent...</value></data>
+  <data name="Heartbeat_StateEmpty" xml:space="preserve"><value>La Gateway n’a aucun signal périodique d’agent enregistré.</value></data>
+  <data name="Heartbeat_StateUnsupported" xml:space="preserve"><value>Cette Gateway n’annonce pas la lecture des signaux périodiques d’agent.</value></data>
+  <data name="Heartbeat_StateDenied" xml:space="preserve"><value>La connexion actuelle n’a pas l’autorisation de lire les signaux périodiques d’agent.</value></data>
+  <data name="Heartbeat_StateFailed" xml:space="preserve"><value>Impossible de lire le signal périodique de l’agent. Actualisez pour réessayer.</value></data>
+  <data name="Heartbeat_RecordedFormat" xml:space="preserve"><value>{0} à {1}</value></data>
+  <data name="Heartbeat_OutcomeSent" xml:space="preserve"><value>Envoyé</value></data>
+  <data name="Heartbeat_OutcomeEmpty" xml:space="preserve"><value>Terminé sans contenu</value></data>
+  <data name="Heartbeat_OutcomeToken" xml:space="preserve"><value>Terminé avec un jeton OK</value></data>
+  <data name="Heartbeat_OutcomeSkipped" xml:space="preserve"><value>Ignoré</value></data>
+  <data name="Heartbeat_OutcomeFailed" xml:space="preserve"><value>Échec</value></data>
+  <data name="Heartbeat_OutcomeUnknown" xml:space="preserve"><value>Résultat du signal périodique inconnu</value></data>
 </root>

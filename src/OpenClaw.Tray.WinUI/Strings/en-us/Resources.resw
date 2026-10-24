@@ -8158,4 +8158,21 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Summarize my recent sessions</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me configure a channel</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Check system health</value></data>
+  <data name="Heartbeat_Card.Header" xml:space="preserve"><value>Gateway agent heartbeat</value></data>
+  <data name="Heartbeat_Explanation.Text" xml:space="preserve"><value>Read the last recorded agent heartbeat. This is not a connection ping and does not enable or run heartbeats.</value></data>
+  <data name="Heartbeat_Refresh.Content" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Heartbeat_StateReady" xml:space="preserve"><value>Refresh to read the last agent heartbeat.</value></data>
+  <data name="Heartbeat_StateDisconnected" xml:space="preserve"><value>Connect to a Gateway to read its agent heartbeat.</value></data>
+  <data name="Heartbeat_StateLoading" xml:space="preserve"><value>Reading agent heartbeat...</value></data>
+  <data name="Heartbeat_StateEmpty" xml:space="preserve"><value>The Gateway has no recorded agent heartbeat.</value></data>
+  <data name="Heartbeat_StateUnsupported" xml:space="preserve"><value>This Gateway does not advertise agent heartbeat reads.</value></data>
+  <data name="Heartbeat_StateDenied" xml:space="preserve"><value>The current connection does not have permission to read agent heartbeats.</value></data>
+  <data name="Heartbeat_StateFailed" xml:space="preserve"><value>Could not read the agent heartbeat. Refresh to try again.</value></data>
+  <data name="Heartbeat_RecordedFormat" xml:space="preserve"><value>{0} at {1}</value></data>
+  <data name="Heartbeat_OutcomeSent" xml:space="preserve"><value>Sent</value></data>
+  <data name="Heartbeat_OutcomeEmpty" xml:space="preserve"><value>Completed with no content</value></data>
+  <data name="Heartbeat_OutcomeToken" xml:space="preserve"><value>Completed with an OK token</value></data>
+  <data name="Heartbeat_OutcomeSkipped" xml:space="preserve"><value>Skipped</value></data>
+  <data name="Heartbeat_OutcomeFailed" xml:space="preserve"><value>Failed</value></data>
+  <data name="Heartbeat_OutcomeUnknown" xml:space="preserve"><value>Unknown heartbeat outcome</value></data>
 </root>

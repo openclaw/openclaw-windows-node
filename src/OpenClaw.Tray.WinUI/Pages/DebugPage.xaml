@@ -91,6 +91,26 @@
                          (CanControlWslGateway). Hidden for SSH/remote
                          gateways. Visibility is driven from code-behind in
                          UpdateGatewayDoctorCard(). -->
+                    <toolkit:SettingsCard x:Uid="Heartbeat_Card"
+                                          Header="Gateway agent heartbeat">
+                        <toolkit:SettingsCard.Description>
+                            <StackPanel Spacing="{StaticResource DiagSettingsCardSpacing}">
+                                <TextBlock x:Uid="Heartbeat_Explanation"
+                                           Text="Read the last recorded agent heartbeat. This is not a connection ping and does not enable or run heartbeats."
+                                           TextWrapping="Wrap"/>
+                                <TextBlock x:Name="HeartbeatStatus"
+                                           AutomationProperties.AutomationId="GatewayHeartbeatStatus"
+                                           AutomationProperties.LiveSetting="Polite"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </toolkit:SettingsCard.Description>
+                        <Button x:Name="HeartbeatRefresh" x:Uid="Heartbeat_Refresh"
+                                Content="Refresh" Click="OnRefreshHeartbeat"
+                                AutomationProperties.AutomationId="GatewayHeartbeatRefresh"/>
+                    </toolkit:SettingsCard>
+
                     <StackPanel x:Name="GatewayDoctorSection"
                                 Spacing="{StaticResource DiagSettingsCardSpacing}"
                                 Visibility="Collapsed">

@@ -1364,8 +1364,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         SendResponseRequestAsync(method, parameters, timeoutMs);
 
     private async Task<JsonElement> SendResponseRequestAsync(
-        string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null)
+        string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null,
+        CancellationToken cancellationToken = default)
     {
+        using var requestLifetime = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken, cancellationToken);
+        requestLifetime.Token.ThrowIfCancellationRequested();
         var connectionGeneration = GetReadyConnectionGeneration(method);
         if (expectedConnectionEpoch.HasValue && connectionGeneration != expectedConnectionEpoch.Value)
             throw new InvalidOperationException("The Gateway connection changed before the request could be sent.");
@@ -1389,11 +1392,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             var sent = await SendRawAsync(
                     SerializeRequest(requestId, method, parameters),
                     connectionGeneration,
-                    CancellationToken)
+                    requestLifetime.Token)
                 .ConfigureAwait(false);
             if (!sent)
                 throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");
-            return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
+            return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), requestLifetime.Token);
         }
         catch (TimeoutException ex)
         {

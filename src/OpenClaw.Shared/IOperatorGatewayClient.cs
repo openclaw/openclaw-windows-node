@@ -74,6 +74,9 @@ public interface IOperatorGatewayClient
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey = null, int timeoutMs = 15000)
         => Task.FromException<ChatHistoryInfo>(new NotSupportedException("chat.history is not supported by this gateway client."));
     Task CheckHealthAsync();
+    /// <summary>Reads the last agent heartbeat on the captured authenticated transport. Null means no recorded event.</summary>
+    Task<GatewayHeartbeatEvent?> GetLastHeartbeatAsync(long connectionEpoch, CancellationToken cancellationToken = default)
+        => Task.FromException<GatewayHeartbeatEvent?>(new NotSupportedException("last-heartbeat is not supported by this gateway client."));
     Task RequestSessionsAsync(string? agentId = null);
     Task RequestUsageAsync();
     Task RequestNodesAsync();

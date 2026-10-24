@@ -70,6 +70,36 @@ test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
 orders work; this is deliberately not sequential packet playback.
 
+## Read-only agent heartbeat diagnostics
+
+Select `-Scenario agent-heartbeat` with the same explicit current-build app
+path and authorized isolated desktop as above. Open **Diagnostics**, then
+choose **Refresh** on **Gateway agent heartbeat**. The synthetic outcome is
+**Skipped**, with its recorded timestamp. This reads only `last-heartbeat`;
+it neither enables heartbeats nor schedules or executes agent work. This
+agent outcome is distinct from a WebSocket ping or last received packet.
+Navigate away or switch/reconnect the Gateway to discard the old read.
+
+The contract is pinned to
+[system.ts](https://github.com/openclaw/openclaw/blob/098e991549b7986bcfaebdbe427aeaaf95afb926/src/gateway/server-methods/system.ts#L210)
+and
+[heartbeat-events.ts](https://github.com/openclaw/openclaw/blob/098e991549b7986bcfaebdbe427aeaaf95afb926/src/infra/heartbeat-events.ts).
+The Mac baseline
+[ControlChannel.refreshHeartbeat](https://github.com/openclaw/openclaw/blob/098e991549b7986bcfaebdbe427aeaaf95afb926/apps/macos/Sources/OpenClaw/ControlChannel.swift#L685)
+also binds the read to its originating server lease. Windows uses an explicit
+diagnostics refresh, not Mac's separate heartbeat-enabling debug action.
+The advertised method and existing granted general read, write, or admin scope
+gate the read without requesting new permissions.
+
+Null means no recorded event. Unsupported, denied, malformed, and failed reads
+remain distinct from that empty state; future outcome names render as unknown,
+not successful. The UI shows only a localized outcome and timestamp, not
+potentially sensitive preview, destination, or account fields. Authenticated
+loopback tests in `GatewayFixtureProtocolTests.Heartbeat.cs` cover actual request
+frames, null/error payloads, scope/capability gates, cancellation and reconnect.
+These synthetic contracts do not prove published or live Gateway compatibility,
+and source-level page guards do not prove visible native rendering.
+
 ## Run the application smoke
 
 ```powershell

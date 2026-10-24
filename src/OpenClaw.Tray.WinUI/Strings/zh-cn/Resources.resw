@@ -8091,4 +8091,21 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>总结我最近的会话</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>帮我配置一个频道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>检查系统健康状况</value></data>
+  <data name="Heartbeat_Card.Header" xml:space="preserve"><value>Gateway 智能体心跳</value></data>
+  <data name="Heartbeat_Explanation.Text" xml:space="preserve"><value>读取最近记录的智能体心跳。这不是连接探测，也不会启用或运行心跳。</value></data>
+  <data name="Heartbeat_Refresh.Content" xml:space="preserve"><value>刷新</value></data>
+  <data name="Heartbeat_StateReady" xml:space="preserve"><value>刷新以读取最近的智能体心跳。</value></data>
+  <data name="Heartbeat_StateDisconnected" xml:space="preserve"><value>连接到 Gateway 以读取其智能体心跳。</value></data>
+  <data name="Heartbeat_StateLoading" xml:space="preserve"><value>正在读取智能体心跳...</value></data>
+  <data name="Heartbeat_StateEmpty" xml:space="preserve"><value>Gateway 尚未记录任何智能体心跳。</value></data>
+  <data name="Heartbeat_StateUnsupported" xml:space="preserve"><value>此 Gateway 未声明支持读取智能体心跳。</value></data>
+  <data name="Heartbeat_StateDenied" xml:space="preserve"><value>当前连接没有读取智能体心跳的权限。</value></data>
+  <data name="Heartbeat_StateFailed" xml:space="preserve"><value>无法读取智能体心跳。请刷新以重试。</value></data>
+  <data name="Heartbeat_RecordedFormat" xml:space="preserve"><value>{0}，时间：{1}</value></data>
+  <data name="Heartbeat_OutcomeSent" xml:space="preserve"><value>已发送</value></data>
+  <data name="Heartbeat_OutcomeEmpty" xml:space="preserve"><value>已完成，无内容</value></data>
+  <data name="Heartbeat_OutcomeToken" xml:space="preserve"><value>已完成，返回 OK 标记</value></data>
+  <data name="Heartbeat_OutcomeSkipped" xml:space="preserve"><value>已跳过</value></data>
+  <data name="Heartbeat_OutcomeFailed" xml:space="preserve"><value>失败</value></data>
+  <data name="Heartbeat_OutcomeUnknown" xml:space="preserve"><value>未知的心跳结果</value></data>
 </root>

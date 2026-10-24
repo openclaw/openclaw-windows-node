@@ -41,6 +41,8 @@ public sealed partial class DebugPage : Page
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
 
     private AppState? _appState;
+    private readonly GatewayHeartbeatDiagnostics _heartbeat = new(() => CurrentApp.GatewayClient);
+    private GatewayConnectionManager? _heartbeatConnection;
     private bool _suppressOverrideChange;
     private bool _suppressOpenTelemetryEndpointChange;
 
@@ -90,8 +92,10 @@ public sealed partial class DebugPage : Page
     public DebugPage()
     {
         InitializeComponent();
+        _heartbeat.Changed += (_, _) => RenderHeartbeat();
         Unloaded += (_, _) =>
         {
+            StopHeartbeat();
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
             CurrentApp.SettingsChanged -= OnSettingsChanged;
             StopCopyFeedbackTimer();
@@ -113,6 +117,15 @@ public sealed partial class DebugPage : Page
         // the top InfoBar updates without waiting for a Status flip
         // (per docs/DATA_FLOW_ARCHITECTURE.md reactive-by-default ethos).
         CurrentApp.SettingsChanged += OnSettingsChanged;
+        StopHeartbeat();
+        _heartbeatConnection = CurrentApp.ConnectionManager;
+        if (_heartbeatConnection is not null)
+        {
+            _heartbeatConnection.StateChanged += OnHeartbeatConnectionChanged;
+            _heartbeatConnection.OperatorClientChanged += OnHeartbeatClientChanged;
+        }
+        _heartbeat.Activate();
+        RenderHeartbeat();
         UpdateStatusInfoBar();
         UpdateGatewayDoctorCard();
         LoadDeviceIdentity();
@@ -147,10 +160,45 @@ public sealed partial class DebugPage : Page
     /// </summary>
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        StopHeartbeat();
         _detailMode = DetailMode.None;
         _detailGeneration++;
         StopCopyFeedbackTimer();
         base.OnNavigatedFrom(e);
+    }
+
+    private void OnHeartbeatConnectionChanged(object? sender, GatewayConnectionSnapshot e)
+        => DispatcherQueue.TryEnqueue(() => _heartbeat.Synchronize());
+
+    private void OnHeartbeatClientChanged(object? sender, OperatorClientChangedEventArgs e)
+        => DispatcherQueue.TryEnqueue(() => _heartbeat.Synchronize());
+
+    private void StopHeartbeat()
+    {
+        if (_heartbeatConnection is not null)
+        {
+            _heartbeatConnection.StateChanged -= OnHeartbeatConnectionChanged;
+            _heartbeatConnection.OperatorClientChanged -= OnHeartbeatClientChanged;
+            _heartbeatConnection = null;
+        }
+        _heartbeat.Dispose();
+    }
+
+    private void OnRefreshHeartbeat(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            _heartbeat.RefreshAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnRefreshHeartbeat));
+
+    private void RenderHeartbeat()
+    {
+        HeartbeatRefresh.IsEnabled = _heartbeat.State is not
+            (GatewayHeartbeatReadState.Disconnected or GatewayHeartbeatReadState.Loading);
+        HeartbeatStatus.Text = _heartbeat.Heartbeat is { } heartbeat
+            ? LocalizationHelper.Format("Heartbeat_RecordedFormat",
+                LocalizationHelper.GetString(GatewayHeartbeatDiagnostics.OutcomeResourceKey(heartbeat.Status)),
+                DateTimeOffset.FromUnixTimeMilliseconds(heartbeat.Timestamp).ToLocalTime().ToString("g"))
+            : LocalizationHelper.GetString("Heartbeat_State" + _heartbeat.State);
     }
 
     // ── Top status InfoBar ───────────────────────────────────────────

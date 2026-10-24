@@ -8092,4 +8092,21 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="Heartbeat_Card.Header" xml:space="preserve"><value>Gateway-agenthartslag</value></data>
+  <data name="Heartbeat_Explanation.Text" xml:space="preserve"><value>Lees de laatst vastgelegde agenthartslag. Dit is geen verbindingsping en schakelt hartslagen niet in of uit en voert ze niet uit.</value></data>
+  <data name="Heartbeat_Refresh.Content" xml:space="preserve"><value>Vernieuwen</value></data>
+  <data name="Heartbeat_StateReady" xml:space="preserve"><value>Vernieuw om de laatste agenthartslag te lezen.</value></data>
+  <data name="Heartbeat_StateDisconnected" xml:space="preserve"><value>Maak verbinding met een Gateway om de agenthartslag te lezen.</value></data>
+  <data name="Heartbeat_StateLoading" xml:space="preserve"><value>Agenthartslag lezen...</value></data>
+  <data name="Heartbeat_StateEmpty" xml:space="preserve"><value>De Gateway heeft geen vastgelegde agenthartslag.</value></data>
+  <data name="Heartbeat_StateUnsupported" xml:space="preserve"><value>Deze Gateway biedt het lezen van agenthartslagen niet aan.</value></data>
+  <data name="Heartbeat_StateDenied" xml:space="preserve"><value>De huidige verbinding heeft geen toestemming om agenthartslagen te lezen.</value></data>
+  <data name="Heartbeat_StateFailed" xml:space="preserve"><value>De agenthartslag kan niet worden gelezen. Vernieuw om het opnieuw te proberen.</value></data>
+  <data name="Heartbeat_RecordedFormat" xml:space="preserve"><value>{0} om {1}</value></data>
+  <data name="Heartbeat_OutcomeSent" xml:space="preserve"><value>Verzonden</value></data>
+  <data name="Heartbeat_OutcomeEmpty" xml:space="preserve"><value>Voltooid zonder inhoud</value></data>
+  <data name="Heartbeat_OutcomeToken" xml:space="preserve"><value>Voltooid met een OK-token</value></data>
+  <data name="Heartbeat_OutcomeSkipped" xml:space="preserve"><value>Overgeslagen</value></data>
+  <data name="Heartbeat_OutcomeFailed" xml:space="preserve"><value>Mislukt</value></data>
+  <data name="Heartbeat_OutcomeUnknown" xml:space="preserve"><value>Onbekend hartslagresultaat</value></data>
 </root>

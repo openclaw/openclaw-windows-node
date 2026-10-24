@@ -41,6 +41,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
     private TaskCompletionSource? _sessionMutationGate;
     private TaskCompletionSource? _chatSendGate;
+    private TaskCompletionSource? _heartbeatGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
     private int _chatEventSequence;
     private TaskCompletionSource? _nextSessionListGate;
@@ -168,11 +169,31 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     if (connection.Socket.State == WebSocketState.Open)
                         await connection.Socket.CloseOutputAsync((WebSocketCloseStatus)1012, "Fixture restart", close.Token);
                 }
+
                 finally { connection.SendLock.Release(); }
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { connection.Socket.Abort(); }
             catch (WebSocketException) { connection.Socket.Abort(); }
             catch (ObjectDisposedException) { }
+        }
+    }
+
+    public void HoldHeartbeatReads()
+    {
+        lock (_sync)
+        {
+            if (_heartbeatGate is not null) throw new InvalidOperationException("Heartbeat reads are already held.");
+            _heartbeatGate = NewSignal();
+        }
+    }
+
+    public void ReleaseHeartbeatReads()
+    {
+        lock (_sync)
+        {
+            var gate = _heartbeatGate ?? throw new InvalidOperationException("Heartbeat reads are not held.");
+            _heartbeatGate = null;
+            gate.TrySetResult();
         }
     }
 
@@ -610,7 +631,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     Task<bool>? abortOutcome;
                     lock (_sync)
                     {
-                        gate = method is "sessions.patch" or "sessions.delete" or "sessions.create"
+                        gate = method == "last-heartbeat" ? _heartbeatGate?.Task
+                            : method is "sessions.patch" or "sessions.delete" or "sessions.create"
                             ? _sessionMutationGate?.Task
                             : method == "chat.send"
                                 ? _chatSendGate?.Task
