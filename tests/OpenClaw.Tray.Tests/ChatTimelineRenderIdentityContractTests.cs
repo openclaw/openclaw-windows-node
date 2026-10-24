@@ -151,8 +151,32 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.Contains("tool-expander:{entry.Id}:collapse:{props.ToolCallsCollapseVersion}", renderer);
         Assert.DoesNotContain("entry.ToolArgs.ToJsonString", renderer);
         Assert.DoesNotContain("{entry.ToolResult}", renderer);
-        Assert.DoesNotContain("ToolRunId", renderer);
+        Assert.Contains("props.SessionId, props.TimelineGeneration, entry.Id, entry.ToolRunId", renderer);
+        Assert.DoesNotMatch(@"(?:WithKey|AutomationId|AutomationName)\([^\r\n]*ToolRunId", renderer);
+        Assert.DoesNotMatch(@"\$""[^\r\n]*\{entry\.ToolRunId\}", renderer);
         Assert.DoesNotContain("ToolLegacyTurn", renderer);
+    }
+
+    [Fact]
+    public void ToolDetails_StayWithFocusedRendererAndIdentityOnlyHostRequest()
+    {
+        var renderer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ToolCallCardRenderer.cs");
+        var context = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatTimelinePresentationContext.cs");
+        var presentation = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatToolActivityPresentation.cs");
+
+        Assert.Contains("Action<ChatToolDetailRequest>? OnOpenToolDetails = null", context);
+        Assert.Contains("long HistoryRevision = 0", context);
+        Assert.Contains("Timeline = props.Timeline with { HistoryRevision = props.HistoryRevision }",
+            Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs"));
+        Assert.Contains("public sealed record ChatToolDetailRequest(", presentation);
+        Assert.Contains("internal static Element BuildPanelDetails(ChatTimelineItem entry)", renderer);
+        Assert.Contains("BuildDetailSections(entry)", renderer);
+        Assert.Contains("!string.IsNullOrWhiteSpace(props.SessionId)", renderer);
+        Assert.Contains("props.OnOpenToolDetails is { } openDetails", renderer);
+        Assert.Contains(".WithKey(\"input\")", renderer);
+        Assert.Contains(".WithKey(\"output\")", renderer);
+        Assert.DoesNotContain("LaunchUriAsync", renderer);
+        Assert.DoesNotContain("NavigateUri", renderer);
     }
 
     private static string Read(params string[] parts)

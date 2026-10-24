@@ -3077,6 +3077,12 @@ Use uma destas opções:
   <data name="Chat_Tool_InputSection" xml:space="preserve">
     <value>Entrada da ferramenta</value>
   </data>
+  <data name="Chat_Tool_OpenDetails" xml:space="preserve">
+    <value>Abrir detalhes</value>
+  </data>
+  <data name="Chat_Tool_OpenDetailsPositionFormat" xml:space="preserve">
+    <value>{0}. Ferramenta {1}</value>
+  </data>
   <data name="Chat_Tool_FooterLabel" xml:space="preserve">
     <value>Ferramenta</value>
   </data>

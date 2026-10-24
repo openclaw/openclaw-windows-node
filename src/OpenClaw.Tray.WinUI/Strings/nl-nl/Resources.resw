@@ -3059,6 +3059,12 @@ Gebruik een van deze opties:
   <data name="Chat_Tool_InputSection" xml:space="preserve">
     <value>Hulpmiddelinvoer</value>
   </data>
+  <data name="Chat_Tool_OpenDetails" xml:space="preserve">
+    <value>Details openen</value>
+  </data>
+  <data name="Chat_Tool_OpenDetailsPositionFormat" xml:space="preserve">
+    <value>{0}. Hulpmiddel {1}</value>
+  </data>
   <data name="Chat_Tool_FooterLabel" xml:space="preserve">
     <value>Hulpmiddel</value>
   </data>

@@ -104,7 +104,11 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             }
         }
 
-        var rows = BuildRows(props with { ViewportWidth = viewportWidth });
+        var rows = BuildRows(props with
+        {
+            ViewportWidth = viewportWidth,
+            Timeline = props.Timeline with { HistoryRevision = props.HistoryRevision },
+        });
         var initialTailRequestKey =
             $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.HistoryRevision}|{props.Timeline.ScrollToBottomToken}";
         var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null;

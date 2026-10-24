@@ -3105,6 +3105,12 @@ Use one of these options:
   <data name="Chat_Tool_InputSection" xml:space="preserve">
     <value>Tool input</value>
   </data>
+  <data name="Chat_Tool_OpenDetails" xml:space="preserve">
+    <value>Open details</value>
+  </data>
+  <data name="Chat_Tool_OpenDetailsPositionFormat" xml:space="preserve">
+    <value>{0}. Tool {1}</value>
+  </data>
   <data name="Chat_Tool_FooterLabel" xml:space="preserve">
     <value>Tool</value>
   </data>

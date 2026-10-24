@@ -3058,6 +3058,12 @@ Utilisez l'une de ces options :
   <data name="Chat_Tool_InputSection" xml:space="preserve">
     <value>Entrée d'outil</value>
   </data>
+  <data name="Chat_Tool_OpenDetails" xml:space="preserve">
+    <value>Ouvrir les détails</value>
+  </data>
+  <data name="Chat_Tool_OpenDetailsPositionFormat" xml:space="preserve">
+    <value>{0}. Outil {1}</value>
+  </data>
   <data name="Chat_Tool_FooterLabel" xml:space="preserve">
     <value>Outil</value>
   </data>

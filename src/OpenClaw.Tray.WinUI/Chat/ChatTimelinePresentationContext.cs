@@ -5,6 +5,7 @@ namespace OpenClawTray.Chat;
 
 /// <summary>
 /// Presentation inputs shared by the Reactor chat timeline and its focused card renderers.
+/// SessionId is the Gateway session key (thread ID), not its transcript session ID.
 /// </summary>
 public sealed record ChatTimelinePresentationContext(
     string? SessionId,
@@ -29,4 +30,6 @@ public sealed record ChatTimelinePresentationContext(
     IReadOnlyList<ChatQueuedMessage>? QueuedMessages = null,
     Action<string>? OnCancelQueuedMessage = null,
     Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>>?
-        DownloadAssistantFileAsync = null);
+        DownloadAssistantFileAsync = null,
+    Action<ChatToolDetailRequest>? OnOpenToolDetails = null,
+    long HistoryRevision = 0);
