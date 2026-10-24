@@ -16,8 +16,9 @@ public sealed class SpeechToTextService : IDisposable
 {
     private readonly IOpenClawLogger _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private WhisperFactory? _factory;
-    private string? _loadedModelPath;
+    private volatile WhisperFactory? _factory;
+    private volatile string? _loadedModelPath;
+    private volatile bool _disposed;
 
     public bool IsModelLoaded => _factory != null;
     public string? LoadedModelPath => _loadedModelPath;
@@ -33,19 +34,44 @@ public sealed class SpeechToTextService : IDisposable
         if (!System.IO.File.Exists(modelPath))
             throw new System.IO.FileNotFoundException($"Whisper model not found: {modelPath}");
 
-        _factory?.Dispose();
-        _factory = WhisperFactory.FromPath(modelPath);
-        _loadedModelPath = modelPath;
-        _logger.Info($"Whisper model loaded: {modelPath}");
+        // A second EnsureInitializedAsync, or a reload, must not free the factory
+        // another TranscribeAsync is still using.
+        _gate.Wait();
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var previous = _factory;
+            _factory = null;
+            _loadedModelPath = null;
+            previous?.Dispose();
+            _factory = WhisperFactory.FromPath(modelPath);
+            _loadedModelPath = modelPath;
+            _logger.Info($"Whisper model loaded: {modelPath}");
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>Unload the current model and free memory.</summary>
     public void UnloadModel()
     {
-        _factory?.Dispose();
-        _factory = null;
-        _loadedModelPath = null;
-        _logger.Info("Whisper model unloaded");
+        if (_disposed) return;
+        _gate.Wait();
+        try
+        {
+            if (_disposed) return;
+            var previous = _factory;
+            _factory = null;
+            _loadedModelPath = null;
+            previous?.Dispose();
+            _logger.Info("Whisper model unloaded");
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>
@@ -57,12 +83,13 @@ public sealed class SpeechToTextService : IDisposable
         string language = "auto",
         CancellationToken cancellationToken = default)
     {
-        if (_factory == null)
-            throw new InvalidOperationException("No Whisper model is loaded. Call LoadModel first.");
-
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_factory == null)
+                throw new InvalidOperationException("No Whisper model is loaded. Call LoadModel first.");
+
             // Whisper.net's WithLanguage expects either "auto" or a 2-letter
             // ISO 639-1 code. The capability validator accepts the broader
             // BCP-47 shape ("en-US", "zh-Hans-CN") because that's what the
@@ -176,7 +203,22 @@ public sealed class SpeechToTextService : IDisposable
 
     public void Dispose()
     {
-        _factory?.Dispose();
-        _gate.Dispose();
+        // A second dispose is a no-op. The semaphore stays alive so a transcription
+        // that already queued on it can observe that the service is gone and return.
+        if (_disposed) return;
+        _gate.Wait();
+        try
+        {
+            if (_disposed) return;
+            var previous = _factory;
+            _factory = null;
+            _loadedModelPath = null;
+            _disposed = true;
+            previous?.Dispose();
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 }
