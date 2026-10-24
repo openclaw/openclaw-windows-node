@@ -5069,6 +5069,12 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
     <value>Nenhum uso diário neste período</value>
   </data>
+  <data name="UsagePage_UnsupportedRange.Title" xml:space="preserve">
+    <value>Período de uso indisponível</value>
+  </data>
+  <data name="UsagePage_UnsupportedRange.Message" xml:space="preserve">
+    <value>Este gateway retornou um total de {0} dias. Escolha esse período para vê-lo.</value>
+  </data>
   <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
     <value>Testar entrada de voz</value>
   </data>

@@ -5092,6 +5092,12 @@
   <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
     <value>此期间内无每日用量</value>
   </data>
+  <data name="UsagePage_UnsupportedRange.Title" xml:space="preserve">
+    <value>用量时段不可用</value>
+  </data>
+  <data name="UsagePage_UnsupportedRange.Message" xml:space="preserve">
+    <value>此网关返回了 {0} 天的合计。请选择该时间段查看。</value>
+  </data>
   <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
     <value>测试语音输入</value>
   </data>
