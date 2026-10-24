@@ -37,7 +37,9 @@ public static class DeepLinkParser
             var kv = part.Split('=', 2);
             if (kv.Length == 2)
             {
-                parameters[Uri.UnescapeDataString(kv[0])] = Uri.UnescapeDataString(kv[1]);
+                if (!TryDecode(kv[0], out var key) || !TryDecode(kv[1], out var value))
+                    return null;
+                parameters[key] = value;
             }
         }
 
@@ -54,10 +56,30 @@ public static class DeepLinkParser
             var kv = part.Split('=', 2);
             if (kv.Length == 2 && kv[0].Equals(key, StringComparison.OrdinalIgnoreCase))
             {
-                return Uri.UnescapeDataString(kv[1]);
+                return TryDecode(kv[1], out var value) ? value : null;
             }
         }
 
         return null;
+    }
+
+    private static bool TryDecode(string value, out string decoded)
+    {
+        for (var index = 0; index < value.Length; index++)
+        {
+            if (value[index] != '%')
+                continue;
+            if (index + 2 >= value.Length ||
+                !Uri.IsHexDigit(value[index + 1]) ||
+                !Uri.IsHexDigit(value[index + 2]))
+            {
+                decoded = string.Empty;
+                return false;
+            }
+            index += 2;
+        }
+
+        decoded = Uri.UnescapeDataString(value);
+        return true;
     }
 }

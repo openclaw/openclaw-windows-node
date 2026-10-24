@@ -25,6 +25,7 @@ internal enum HubPageKind
     AgentEvents,
     Skills,
     Cron,
+    ClawHub,
     Workspace
 }
 
@@ -171,6 +172,7 @@ internal static class HubPageRegistry
         "agentevents" => HubPageKind.AgentEvents,
         "skills" => HubPageKind.Skills,
         "cron" => HubPageKind.Cron,
+        "clawhub" => HubPageKind.ClawHub,
         "workspace" => HubPageKind.Workspace,
         _ when tag?.StartsWith("agent:", StringComparison.Ordinal) == true => ResolveAgentPage(tag),
         _ => null
@@ -244,6 +246,7 @@ internal static class HubPageRegistry
         HubPageKind.AgentEvents => typeof(AgentEventsPage),
         HubPageKind.Skills => typeof(SkillsPage),
         HubPageKind.Cron => typeof(CronPage),
+        HubPageKind.ClawHub => typeof(ClawHubPage),
         HubPageKind.Workspace => typeof(WorkspacePage),
         _ => null
     };

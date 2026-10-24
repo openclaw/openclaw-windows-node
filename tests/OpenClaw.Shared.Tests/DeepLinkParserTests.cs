@@ -91,6 +91,14 @@ public class DeepLinkParserTests
         Assert.Equal("a+b", result.Parameters["key"]);
     }
 
+    [Theory]
+    [InlineData("openclaw://clawhub/install?id=%")]
+    [InlineData("openclaw://clawhub/install?%ZZ=value")]
+    public void ParseDeepLink_ReturnsNull_ForMalformedEscaping(string uri)
+    {
+        Assert.Null(DeepLinkParser.ParseDeepLink(uri));
+    }
+
     [Fact]
     public void ParseDeepLink_ReturnsEmptyParameters_WhenNoQuery()
     {
