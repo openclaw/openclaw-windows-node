@@ -373,8 +373,10 @@ automatically. It rechecks device support, then calls
 packages start WinGet install/update once per attempt; development packages skip it.
 Duplicate registration, unhealthy packages
 and missing aliases fail explicitly instead of triggering reinstall loops.
-The cancellable acquisition deadline is five minutes including installation and
+The cancellable acquisition deadline defaults to 30 minutes, including installation and
 registration verification, with one-second polling after WinGet completes.
+`OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT` overrides that bound in seconds; an explicit
+`EnsureAsync` timeout argument still wins.
 Cancellation reaches `CommandRunner`, which stops its WinGet process tree;
 Windows may still finish an already submitted deployment. No installed package
 is removed, and retry starts by resolving registration again.

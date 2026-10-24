@@ -7770,6 +7770,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Continuez avec le même assistant Gateway que pour WSL, dans Companion. La configuration et l'état sont vérifiés avant la connexion. Les Gateways WSL existants et votre profil OpenClaw par défaut ne sont pas remplacés.</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Si le Gateway n'est pas installé, la configuration l'installe depuis Microsoft Store avec WinGet, puis vérifie le package avant de continuer automatiquement.</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>Installation du Gateway depuis Microsoft Store avec WinGet...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>L'installation du Gateway depuis Microsoft Store se poursuit. Cela peut prendre plusieurs minutes ({0} écoulées).</value></data>
+/data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet a terminé. Vérification de l'enregistrement du Gateway et de ses alias d'exécution avant de continuer...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion préparera votre Gateway, puis vous aidera à connecter votre IA.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Récupération du Gateway</value></data>

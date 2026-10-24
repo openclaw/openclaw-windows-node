@@ -271,6 +271,98 @@ public sealed class NativeGatewayPackageAcquisitionTests
         Assert.Equal(0, resolver.Calls);
     }
 
+    [Fact]
+    public void Timeout_DefaultsTo30Minutes()
+    {
+        var previous = Environment.GetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, null);
+            Assert.Equal(TimeSpan.FromMinutes(30), NativeGatewayPackageAcquisition.ResolveTimeout());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, previous);
+        }
+    }
+
+    [Theory]
+    [InlineData(" 90 ", 90)]
+    [InlineData("0", null)]
+    [InlineData("not-a-number", null)]
+    [InlineData("2147484", null)]
+    public void Timeout_EnvironmentOverride_IsUsedAndWarnsOnlyOnInvalidValues(string value, int? expectedSeconds)
+    {
+        var previous = Environment.GetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, value);
+            Assert.Equal(expectedSeconds is { } seconds
+                ? TimeSpan.FromSeconds(seconds)
+                : NativeGatewayPackageAcquisition.DefaultTimeout,
+                NativeGatewayPackageAcquisition.ResolveTimeout());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, previous);
+        }
+    }
+
+    [Fact]
+    public async Task EnsureAsync_UnsetEnvironment_Uses30MinuteDeadline()
+    {
+        var previous = Environment.GetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, null);
+            using var cancellation = new CancellationTokenSource();
+            var polling = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var calls = 0;
+            var resolver = new Resolver(_ =>
+            {
+                if (++calls == 2)
+                    polling.SetResult();
+                return Missing();
+            });
+            var acquisition = NativeGatewayPackageAcquisition.EnsureAsync(resolver, _ => Task.CompletedTask,
+                cancellationToken: cancellation.Token, pollInterval: TimeSpan.FromMilliseconds(1));
+            try
+            {
+                await polling.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.False(acquisition.IsCompleted);
+            }
+            finally
+            {
+                cancellation.Cancel();
+            }
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => acquisition);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, previous);
+        }
+    }
+
+    [Fact]
+    public async Task EnsureAsync_ExplicitTimeoutStillWinsOverEnvironment()
+    {
+        var previous = Environment.GetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, "300");
+            var resolver = new Resolver(_ => Missing());
+            var exception = await Assert.ThrowsAsync<TimeoutException>(() =>
+                NativeGatewayPackageAcquisition.EnsureAsync(resolver, _ => Task.CompletedTask,
+                    timeout: TimeSpan.FromMilliseconds(50), pollInterval: TimeSpan.FromMilliseconds(1)));
+            Assert.Contains("Check WinGet and Microsoft Store access", exception.Message);
+            Assert.Contains("retry native setup", exception.Message);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, previous);
+        }
+    }
+
     private static Task<NativeGatewayPackage> Missing() =>
         Task.FromException<NativeGatewayPackage>(new NativeGatewayPackageNotInstalledException());
 

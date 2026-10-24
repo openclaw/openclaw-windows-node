@@ -7771,6 +7771,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Ga verder met dezelfde Gateway-wizard als voor WSL, hier in Companion. Configuratie en gezondheid worden vóór het verbinden gecontroleerd. Bestaande WSL-Gateways en uw standaard OpenClaw-profiel worden niet vervangen.</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Als de Gateway niet is geïnstalleerd, installeert de instelling deze vanuit Microsoft Store met WinGet en controleert het pakket voordat automatisch wordt doorgegaan.</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>De Gateway installeren vanuit Microsoft Store met WinGet...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>De Gateway wordt nog steeds geïnstalleerd vanuit Microsoft Store. Dit kan enkele minuten duren ({0} verstreken).</value></data>
+/data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet is klaar. Gateway-registratie en uitvoeringsaliassen controleren voordat wordt doorgegaan...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion bereidt uw Gateway voor en helpt u daarna uw AI te verbinden.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway herstellen</value></data>
