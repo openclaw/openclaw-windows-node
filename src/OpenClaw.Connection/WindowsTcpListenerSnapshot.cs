@@ -22,6 +22,8 @@ public sealed record WindowsTcpListenerSnapshotResult(
 /// <summary>Address-specific TCP listener ownership from the Windows IP Helper API.</summary>
 public static class WindowsTcpListenerSnapshot
 {
+    public const uint TcpStateEstablished = 5;
+
     public static WindowsTcpListenerSnapshotResult Capture()
     {
         if (!OperatingSystem.IsWindows())
@@ -32,6 +34,93 @@ public static class WindowsTcpListenerSnapshot
         var ipv6Complete = CaptureIpv6(result);
         return new(result, ipv4Complete, ipv6Complete);
     }
+
+    /// <summary>
+    /// True when an established TCP row is using <paramref name="port"/> on loopback.
+    /// Listeners are not established, so the owned SSH socket alone does not match.
+    /// </summary>
+    public static bool HasEstablishedLoopbackConnection(int port)
+    {
+        if (!OperatingSystem.IsWindows() || port is < 1 or > 65535)
+            return false;
+
+        try
+        {
+            return ScanEstablished(AfInet, port, ipv6: false) ||
+                ScanEstablished(AfInet6, port, ipv6: true);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(
+                $"Established TCP lookup failed for port {port}: {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+    }
+
+    public static bool IsEstablishedLoopbackForwardUse(
+        uint state,
+        IPAddress localAddress,
+        int localPort,
+        IPAddress remoteAddress,
+        int remotePort,
+        int forwardPort)
+    {
+        if (state != TcpStateEstablished || forwardPort is < 1 or > 65535)
+            return false;
+        if (localPort == forwardPort && IPAddress.IsLoopback(localAddress))
+            return true;
+        if (remotePort == forwardPort && IPAddress.IsLoopback(remoteAddress))
+            return true;
+        return false;
+    }
+
+    public static string EstablishedForwardKey(
+        IPAddress localAddress,
+        int localPort,
+        IPAddress remoteAddress,
+        int remotePort,
+        int processId) =>
+        $"{localAddress}|{localPort}|{remoteAddress}|{remotePort}|{processId}";
+
+    public static bool IsUnseenEstablishedForwardUse(
+        uint state,
+        IPAddress localAddress,
+        int localPort,
+        IPAddress remoteAddress,
+        int remotePort,
+        int processId,
+        int forwardPort,
+        int? browserProcessId,
+        IReadOnlySet<string> seen)
+    {
+        if (!IsEstablishedLoopbackForwardUse(
+                state,
+                localAddress,
+                localPort,
+                remoteAddress,
+                remotePort,
+                forwardPort))
+        {
+            return false;
+        }
+
+        // An accepted SSH socket is not the browser that opened the dashboard.
+        if (localPort == forwardPort || remotePort != forwardPort)
+            return false;
+        if (browserProcessId is not int browser || browser <= 0 || processId != browser)
+            return false;
+
+        var key = EstablishedForwardKey(localAddress, localPort, remoteAddress, remotePort, processId);
+        return !seen.Contains(key);
+    }
+
+    private readonly record struct EstablishedTcpRow(
+        uint State,
+        IPAddress LocalAddress,
+        int LocalPort,
+        IPAddress RemoteAddress,
+        int RemotePort,
+        int ProcessId);
 
     public static string? GetProcessCommandLine(int processId)
     {
@@ -215,6 +304,206 @@ public static class WindowsTcpListenerSnapshot
         return false;
     }
 
+    public static bool TryConfirmAcceptedLoopbackOwner(int listenPort, int clientPort, int processId)
+    {
+        if (!OperatingSystem.IsWindows() ||
+            listenPort is < 1 or > 65535 ||
+            clientPort is < 1 or > 65535 ||
+            processId <= 0)
+        {
+            return false;
+        }
+
+        var found = false;
+        var complete = true;
+        bool Visit(EstablishedTcpRow row)
+        {
+            if (row.State == TcpStateEstablished &&
+                row.LocalPort == listenPort &&
+                row.RemotePort == clientPort &&
+                IPAddress.IsLoopback(row.LocalAddress) &&
+                IPAddress.IsLoopback(row.RemoteAddress) &&
+                row.ProcessId == processId)
+            {
+                found = true;
+                return true;
+            }
+
+            return false;
+        }
+
+        VisitEstablished(AfInet, ipv6: false, Visit, ref complete);
+        if (!found)
+            VisitEstablished(AfInet6, ipv6: true, Visit, ref complete);
+        return found && complete;
+    }
+
+    private static void VisitEstablished(
+        int addressFamily,
+        bool ipv6,
+        Func<EstablishedTcpRow, bool> visit,
+        ref bool complete)
+    {
+        var rowSize = ipv6
+            ? Marshal.SizeOf<MibTcp6RowOwnerPid>()
+            : Marshal.SizeOf<MibTcpRowOwnerPid>();
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var bufferLength = 0;
+            var status = GetExtendedTcpTable(
+                IntPtr.Zero,
+                ref bufferLength,
+                sort: true,
+                ipVersion: addressFamily,
+                tableClass: TcpTableOwnerPidAll,
+                reserved: 0);
+            if (status != ErrorInsufficientBuffer || bufferLength <= 0)
+            {
+                complete = false;
+                return;
+            }
+
+            var tablePtr = Marshal.AllocHGlobal(bufferLength);
+            try
+            {
+                status = GetExtendedTcpTable(
+                    tablePtr,
+                    ref bufferLength,
+                    sort: true,
+                    ipVersion: addressFamily,
+                    tableClass: TcpTableOwnerPidAll,
+                    reserved: 0);
+                if (status == ErrorInsufficientBuffer)
+                    continue;
+                if (status != ErrorSuccess)
+                {
+                    complete = false;
+                    return;
+                }
+
+                var rowCount = Marshal.ReadInt32(tablePtr);
+                var rowPtr = IntPtr.Add(tablePtr, sizeof(int));
+                for (var index = 0; index < rowCount; index++)
+                {
+                    if (visit(ReadEstablishedRow(rowPtr, ipv6)))
+                        return;
+                    rowPtr = IntPtr.Add(rowPtr, rowSize);
+                }
+
+                return;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(tablePtr);
+            }
+        }
+
+        complete = false;
+    }
+
+    private static EstablishedTcpRow ReadEstablishedRow(IntPtr rowPtr, bool ipv6)
+    {
+        if (ipv6)
+        {
+            var row = Marshal.PtrToStructure<MibTcp6RowOwnerPid>(rowPtr);
+            return new EstablishedTcpRow(
+                row.State,
+                new IPAddress(row.LocalAddress, row.LocalScopeId),
+                ReadPort(row.LocalPort),
+                new IPAddress(row.RemoteAddress, row.RemoteScopeId),
+                ReadPort(row.RemotePort),
+                unchecked((int)row.OwningProcessId));
+        }
+
+        var ipv4 = Marshal.PtrToStructure<MibTcpRowOwnerPid>(rowPtr);
+        return new EstablishedTcpRow(
+            ipv4.State,
+            new IPAddress(BitConverter.GetBytes(ipv4.LocalAddress)),
+            ReadPort(ipv4.LocalPort),
+            new IPAddress(BitConverter.GetBytes(ipv4.RemoteAddress)),
+            ReadPort(ipv4.RemotePort),
+            unchecked((int)ipv4.OwningProcessId));
+    }
+
+    private static bool ScanEstablished(int addressFamily, int port, bool ipv6)
+    {
+        var rowSize = ipv6
+            ? Marshal.SizeOf<MibTcp6RowOwnerPid>()
+            : Marshal.SizeOf<MibTcpRowOwnerPid>();
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var bufferLength = 0;
+            var status = GetExtendedTcpTable(
+                IntPtr.Zero,
+                ref bufferLength,
+                sort: true,
+                ipVersion: addressFamily,
+                tableClass: TcpTableOwnerPidAll,
+                reserved: 0);
+            if (status != ErrorInsufficientBuffer || bufferLength <= 0)
+                return false;
+
+            var tablePtr = Marshal.AllocHGlobal(bufferLength);
+            try
+            {
+                status = GetExtendedTcpTable(
+                    tablePtr,
+                    ref bufferLength,
+                    sort: true,
+                    ipVersion: addressFamily,
+                    tableClass: TcpTableOwnerPidAll,
+                    reserved: 0);
+                if (status == ErrorInsufficientBuffer)
+                    continue;
+                if (status != ErrorSuccess)
+                    return false;
+
+                var rowCount = Marshal.ReadInt32(tablePtr);
+                var rowPtr = IntPtr.Add(tablePtr, sizeof(int));
+                for (var index = 0; index < rowCount; index++)
+                {
+                    if (ReadEstablishedLoopback(rowPtr, ipv6, port))
+                        return true;
+                    rowPtr = IntPtr.Add(rowPtr, rowSize);
+                }
+
+                return false;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(tablePtr);
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ReadEstablishedLoopback(IntPtr rowPtr, bool ipv6, int port)
+    {
+        if (ipv6)
+        {
+            var row = Marshal.PtrToStructure<MibTcp6RowOwnerPid>(rowPtr);
+            var local = new IPAddress(row.LocalAddress, row.LocalScopeId);
+            var remote = new IPAddress(row.RemoteAddress, row.RemoteScopeId);
+            return IsEstablishedLoopbackForwardUse(
+                row.State,
+                local,
+                ReadPort(row.LocalPort),
+                remote,
+                ReadPort(row.RemotePort),
+                port);
+        }
+
+        var ipv4 = Marshal.PtrToStructure<MibTcpRowOwnerPid>(rowPtr);
+        return IsEstablishedLoopbackForwardUse(
+            ipv4.State,
+            new IPAddress(BitConverter.GetBytes(ipv4.LocalAddress)),
+            ReadPort(ipv4.LocalPort),
+            new IPAddress(BitConverter.GetBytes(ipv4.RemoteAddress)),
+            ReadPort(ipv4.RemotePort),
+            port);
+    }
+
     private static int ReadPort(byte[] bytes) =>
         bytes is { Length: >= 2 } ? (bytes[0] << 8) + bytes[1] : 0;
 
@@ -245,6 +534,7 @@ public static class WindowsTcpListenerSnapshot
     private const int AfInet = 2;
     private const int AfInet6 = 23;
     private const int TcpTableOwnerPidListener = 3;
+    private const int TcpTableOwnerPidAll = 5;
     private const uint ErrorSuccess = 0;
     private const uint ErrorInsufficientBuffer = 122;
 
