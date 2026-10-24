@@ -1011,6 +1011,14 @@
                                  Header="Shared token"
                                  PlaceholderText="Paste shared gateway token"
                                  AutomationProperties.AutomationId="AddDirectToken"/>
+                        <PasswordBox x:Uid="ConnectionPage_ProxyBearerToken" x:Name="DirectProxyBearerBox"
+                                     Header="Proxy Bearer token (optional)"
+                                     PlaceholderText="Paste a separate proxy token"
+                                     PasswordChanged="OnDirectProxyBearerChanged"
+                                     AutomationProperties.AutomationId="AddProxyBearerToken"/>
+                        <CheckBox x:Uid="ConnectionPage_ClearProxyBearerToken" x:Name="DirectClearProxyBearerCheckBox"
+                                  Content="Remove saved proxy token"
+                                  AutomationProperties.AutomationId="RemoveProxyBearerToken"/>
                         <TextBlock x:Uid="ConnectionPage_TokenOrPasswordHint" x:Name="DirectAuthHintText"
                                    Text="Paste a shared gateway token, or leave it blank to pair with a setup code."
                                    Style="{StaticResource CaptionTextBlockStyle}"

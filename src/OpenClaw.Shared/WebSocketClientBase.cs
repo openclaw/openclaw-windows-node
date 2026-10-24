@@ -156,6 +156,15 @@ public abstract class WebSocketClientBase : IDisposable
     public Func<CancellationToken, Task<ReconnectAuthorizationResult>>?
         ReconnectAuthorizationAsync { get; set; }
 
+    /// <summary>Independent proxy credential for the HTTP upgrade, pinned to a TLS origin.</summary>
+    public string? ProxyBearerToken { get; set; }
+    public string? ProxyBearerOrigin { get; set; }
+
+    /// <summary>Reauthorize the live owner before a proxy credential leaves in an HTTP upgrade.</summary>
+    protected virtual Task<ReconnectAuthorizationResult> AuthorizeProxyUpgradeAsync(
+        CancellationToken cancellationToken) => Task.FromResult(new ReconnectAuthorizationResult(
+            false, GatewayErrorKind.Auth, "Proxy credential delivery has no live authorization owner."));
+
     /// <summary>Reset reconnect backoff counter. Call after successful application-level handshake.</summary>
     protected void ResetReconnectAttempts() => _reconnectAttempts = 0;
 
@@ -213,11 +222,12 @@ public abstract class WebSocketClientBase : IDisposable
     /// <summary>Maximum time allowed for one WebSocket HTTP upgrade attempt.</summary>
     protected virtual TimeSpan ConnectAttemptTimeout => DefaultConnectAttemptTimeout;
 
-    protected WebSocketClientBase(string gatewayUrl, string token, IOpenClawLogger? logger = null)
+    protected WebSocketClientBase(string gatewayUrl, string token, IOpenClawLogger? logger = null,
+        bool allowEmptyGatewayToken = false)
     {
         if (string.IsNullOrEmpty(gatewayUrl))
             throw new ArgumentException("Gateway URL is required.", nameof(gatewayUrl));
-        if (string.IsNullOrEmpty(token))
+        if (string.IsNullOrEmpty(token) && !allowEmptyGatewayToken)
             throw new ArgumentException("Token is required.", nameof(token));
 
         _gatewayUrl = GatewayUrlHelper.NormalizeForWebSocket(gatewayUrl);
@@ -283,7 +293,36 @@ public abstract class WebSocketClientBase : IDisposable
             var origin = $"{originScheme}://{uri.Host}:{uri.Port}";
             ws.Options.SetRequestHeader("Origin", origin);
 
-            if (!string.IsNullOrEmpty(_credentials))
+            var proxyBearerToken = ProxyBearerToken;
+            var proxyBearerOrigin = ProxyBearerOrigin;
+            if (!string.IsNullOrEmpty(proxyBearerToken))
+            {
+                if (uri.Scheme != "wss" || !string.IsNullOrEmpty(_credentials) ||
+                    !string.Equals(uri.GetLeftPart(UriPartial.Authority), proxyBearerOrigin,
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("The proxy Bearer credential is not authorized for this WebSocket origin.");
+                var authorization = await AuthorizeProxyUpgradeAsync(_cts.Token).ConfigureAwait(false);
+                if (_cts.Token.IsCancellationRequested || !IsCurrentConnection(ws, connectGeneration))
+                {
+                    DisposeStaleSocket(ws);
+                    return null;
+                }
+                if (!authorization.Allowed ||
+                    !string.Equals(proxyBearerToken, ProxyBearerToken, StringComparison.Ordinal) ||
+                    !string.Equals(proxyBearerOrigin, ProxyBearerOrigin, StringComparison.Ordinal))
+                {
+                    OnReconnectAuthorizationDenied(authorization.Allowed
+                        ? new ReconnectAuthorizationResult(false, GatewayErrorKind.Auth,
+                            "The proxy credential changed during authorization.")
+                        : authorization);
+                    if (IsCurrentConnection(ws, connectGeneration))
+                        RaiseStatusChanged(ConnectionStatus.Error);
+                    DisposeStaleSocket(ws);
+                    return null;
+                }
+                ws.Options.SetRequestHeader("Authorization", $"Bearer {proxyBearerToken}");
+            }
+            else if (!string.IsNullOrEmpty(_credentials))
             {
                 var credentialsToEncode = GatewayUrlHelper.DecodeCredentials(_credentials);
                 ws.Options.SetRequestHeader(
@@ -294,6 +333,12 @@ public abstract class WebSocketClientBase : IDisposable
             // The first frames carry the gateway token. A loopback URI must not
             // traverse the process proxy. A remote URI keeps the default proxy.
             ConfigureConnectProxy(ws, uri);
+
+            if (!IsCurrentConnection(ws, connectGeneration))
+            {
+                DisposeStaleSocket(ws);
+                return null;
+            }
 
             var connectTimeout = ConnectAttemptTimeout;
             using var connectCancellation =

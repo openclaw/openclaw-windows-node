@@ -53,6 +53,7 @@ public class WindowsNodeClient : WebSocketClientBase
     private PairingStatus? _lastEmittedPairingStatus;
     private readonly string _gatewayToken;
     private readonly string? _bootstrapToken;
+    private readonly bool _proxyBearerOnly;
     
     // Cached serialization/validation — reused on every message instead of allocating per-call
     private static readonly JsonSerializerOptions s_ignoreNullOptions = new()
@@ -91,6 +92,11 @@ public class WindowsNodeClient : WebSocketClientBase
     /// </summary>
     public Func<CancellationToken, Task<ReconnectAuthorizationResult>>?
         HandshakeAuthorizationAsync { get; set; }
+
+    protected override Task<ReconnectAuthorizationResult> AuthorizeProxyUpgradeAsync(
+        CancellationToken cancellationToken) =>
+        HandshakeAuthorizationAsync?.Invoke(cancellationToken)
+        ?? base.AuthorizeProxyUpgradeAsync(cancellationToken);
     /// <summary>Raised with sanitized wire-protocol compatibility details for the current handshake.</summary>
     public event EventHandler<GatewayProtocolCompatibility>? ProtocolCompatibilityChanged;
 
@@ -146,9 +152,12 @@ public class WindowsNodeClient : WebSocketClientBase
         return Task.CompletedTask;
     }
     
-    public WindowsNodeClient(string gatewayUrl, string token, string dataPath, IOpenClawLogger? logger = null, string? bootstrapToken = null)
-        : base(gatewayUrl, ResolveRequiredCredential(token, bootstrapToken, dataPath, logger), logger)
+    public WindowsNodeClient(string gatewayUrl, string token, string dataPath, IOpenClawLogger? logger = null,
+        string? bootstrapToken = null, bool proxyBearerOnly = false)
+        : base(gatewayUrl, ResolveRequiredCredential(token, bootstrapToken, dataPath, logger, proxyBearerOnly),
+            logger, allowEmptyGatewayToken: proxyBearerOnly)
     {
+        _proxyBearerOnly = proxyBearerOnly;
         _gatewayToken = NormalizeOptionalCredential(token);
         _bootstrapToken = NormalizeOptionalCredential(bootstrapToken);
 
@@ -174,7 +183,8 @@ public class WindowsNodeClient : WebSocketClientBase
         return string.IsNullOrWhiteSpace(credential) ? string.Empty : credential;
     }
 
-    private static string ResolveRequiredCredential(string? token, string? bootstrapToken, string dataPath, IOpenClawLogger? logger)
+    private static string ResolveRequiredCredential(string? token, string? bootstrapToken, string dataPath,
+        IOpenClawLogger? logger, bool proxyBearerOnly)
     {
         var storedNodeToken = TryLoadStoredNodeToken(dataPath, logger);
         if (!string.IsNullOrEmpty(storedNodeToken))
@@ -192,6 +202,7 @@ public class WindowsNodeClient : WebSocketClientBase
             return bootstrap;
         }
 
+        if (proxyBearerOnly) return string.Empty;
         throw new ArgumentException("Token or bootstrap token is required.", nameof(token));
     }
 
@@ -844,6 +855,9 @@ public class WindowsNodeClient : WebSocketClientBase
 
         if (!string.IsNullOrEmpty(_bootstrapToken))
             return new BootstrapTokenConnectCredential(_bootstrapToken);
+
+        if (_proxyBearerOnly && string.IsNullOrEmpty(_gatewayToken))
+            return new ProxyAuthenticatedConnectCredential();
 
         return new TokenConnectCredential(_gatewayToken);
     }

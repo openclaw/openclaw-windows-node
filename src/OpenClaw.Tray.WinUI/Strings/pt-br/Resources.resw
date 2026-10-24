@@ -8143,4 +8143,28 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Resuma minhas sessões recentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Ajude-me a configurar um canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Verifique a integridade do sistema</value></data>
+  <data name="ConnectionPage_ProxyBearerToken.Header" xml:space="preserve">
+    <value>Token Bearer do proxy (opcional)</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerToken.PlaceholderText" xml:space="preserve">
+    <value>Cole um token de proxy separado</value>
+  </data>
+  <data name="ConnectionPage_ClearProxyBearerToken.Content" xml:space="preserve">
+    <value>Remover token de proxy salvo</value>
+  </data>
+  <data name="ConnectionPage_ProxyLoginRedirect" xml:space="preserve">
+    <value>O gateway redireciona para o login do proxy. Configure um token Bearer do proxy.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerOriginError" xml:space="preserve">
+    <value>Use uma URL de gateway wss:// sem credenciais na URL e informe o token do proxy novamente.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerTokenError" xml:space="preserve">
+    <value>Informe um token Bearer de proxy válido. Substitua o token neste campo e tente novamente.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerSavedError" xml:space="preserve">
+    <value>Não é possível usar o token de proxy salvo. Substitua-o no campo de token do proxy ou limpe o token salvo.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerSshError" xml:space="preserve">
+    <value>A autenticação Bearer do proxy não pode usar um túnel SSH. Remova o túnel ou limpe o token do proxy.</value>
+  </data>
 </root>

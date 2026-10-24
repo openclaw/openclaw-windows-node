@@ -19,7 +19,7 @@ internal abstract class ConnectCredential
     internal string Value { get; }
     internal abstract string FieldName { get; }
 
-    internal Dictionary<string, string> ToAuthPayload() =>
+    internal virtual Dictionary<string, string> ToAuthPayload() =>
         new() { [FieldName] = Value };
 
     public sealed override string ToString() =>
@@ -42,6 +42,13 @@ internal sealed class DeviceTokenConnectCredential(string deviceToken)
     : ConnectCredential(deviceToken)
 {
     internal override string FieldName => "deviceToken";
+}
+
+internal sealed class ProxyAuthenticatedConnectCredential()
+    : ConnectCredential(string.Empty)
+{
+    internal override string FieldName => "proxy";
+    internal override Dictionary<string, string> ToAuthPayload() => [];
 }
 
 internal interface IConnectEnvelopeSigner

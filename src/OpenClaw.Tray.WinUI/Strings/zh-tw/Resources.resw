@@ -8091,4 +8091,28 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>摘要我的近期工作階段</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>協助我設定頻道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>檢查系統健康狀態</value></data>
+  <data name="ConnectionPage_ProxyBearerToken.Header" xml:space="preserve">
+    <value>Proxy Bearer 權杖（選用）</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerToken.PlaceholderText" xml:space="preserve">
+    <value>貼上獨立的 Proxy 權杖</value>
+  </data>
+  <data name="ConnectionPage_ClearProxyBearerToken.Content" xml:space="preserve">
+    <value>移除已儲存的 Proxy 權杖</value>
+  </data>
+  <data name="ConnectionPage_ProxyLoginRedirect" xml:space="preserve">
+    <value>閘道重新導向至 Proxy 登入頁面。請設定 Proxy Bearer 權杖。</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerOriginError" xml:space="preserve">
+    <value>請使用不含 URL 認證資訊的 wss:// 閘道位址，然後重新輸入代理權杖。</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerTokenError" xml:space="preserve">
+    <value>請輸入有效的代理 Bearer 權杖。請替換此欄位中的權杖，然後重試。</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerSavedError" xml:space="preserve">
+    <value>無法使用已儲存的代理權杖。請在代理權杖欄位中替換它，或清除已儲存的權杖。</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerSshError" xml:space="preserve">
+    <value>代理 Bearer 驗證不能使用 SSH 通道。請移除通道或清除代理權杖。</value>
+  </data>
 </root>

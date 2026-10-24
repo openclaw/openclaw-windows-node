@@ -151,9 +151,13 @@ internal sealed class GatewayConnectionValidator(
             ignoreStoredDeviceToken: credential.Source != CredentialResolver.SourceDeviceToken,
             persistHandshakeDeviceTokens: false,
             ephemeralOperatorCredential: ephemeralOperatorCredential,
-            useBoundedBootstrapScopes: useBoundedBootstrapScopes)
+            useBoundedBootstrapScopes: useBoundedBootstrapScopes,
+            proxyBearerOnly: credential.Source == CredentialResolver.SourceProxyBearerOnly)
         {
-            UseV2Signature = record.IsLocal || record.RequiresV2Signature || credential.IsBootstrapToken
+            UseV2Signature = record.IsLocal || record.RequiresV2Signature || credential.IsBootstrapToken,
+            ProxyBearerToken = record.SshTunnel is null
+                ? GatewayProxyBearerCredential.Reveal(record) : null,
+            ProxyBearerOrigin = record.SshTunnel is null ? record.ProxyBearerOrigin : null,
         };
         client.ReconnectAuthorizationAsync = _ => Task.FromResult(new ReconnectAuthorizationResult(
             false, GatewayErrorKind.Auth, "Gateway validation is one-shot."));

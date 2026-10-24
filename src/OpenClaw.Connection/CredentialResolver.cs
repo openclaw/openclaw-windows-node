@@ -20,6 +20,7 @@ public sealed class CredentialResolver : ICredentialResolver
     public const string SourceNodeDeviceToken = "identity.NodeDeviceToken";
     public const string SourceSharedGatewayToken = "record.SharedGatewayToken";
     public const string SourceBootstrapToken = "record.BootstrapToken";
+    public const string SourceProxyBearerOnly = "record.ProxyBearerOnly";
 
     private readonly IDeviceIdentityReader _identityReader;
 
@@ -35,11 +36,11 @@ public sealed class CredentialResolver : ICredentialResolver
     {
         ArgumentNullException.ThrowIfNull(record);
 
-        return ResolveRole(
+        return ResolveProxyOnlyIfNeeded(record, ResolveRole(
             _identityReader.ReadStoredDeviceToken(identityPath),
             SourceDeviceToken,
             record.SharedGatewayToken,
-            record.BootstrapToken);
+            record.BootstrapToken));
     }
 
     public GatewayCredential? ResolveNode(GatewayRecord record, string identityPath) =>
@@ -49,11 +50,25 @@ public sealed class CredentialResolver : ICredentialResolver
     {
         ArgumentNullException.ThrowIfNull(record);
 
-        return ResolveRole(
+        return ResolveProxyOnlyIfNeeded(record, ResolveRole(
             _identityReader.ReadStoredNodeDeviceToken(identityPath),
             SourceNodeDeviceToken,
             record.SharedGatewayToken,
-            record.BootstrapToken);
+            record.BootstrapToken));
+    }
+
+    private static GatewayCredentialResolution ResolveProxyOnlyIfNeeded(
+        GatewayRecord record, GatewayCredentialResolution resolution)
+    {
+        if (resolution.Status != GatewayCredentialResolutionStatus.Missing ||
+            record.SshTunnel is not null ||
+            string.IsNullOrEmpty(record.ProtectedProxyBearerToken) ||
+            !GatewayProxyBearerCredential.MatchesOrigin(record.Url, record.ProxyBearerOrigin))
+            return resolution;
+
+        return new GatewayCredentialResolution(
+            new GatewayCredential(string.Empty, false, SourceProxyBearerOnly),
+            GatewayCredentialResolutionStatus.Resolved);
     }
 
     private static GatewayCredentialResolution ResolveRole(

@@ -24,6 +24,16 @@ Requires Windows 10 20H2 or later, or Windows 11. No source build is required.
 
 On first launch, the setup wizard can install a dedicated local gateway in WSL or connect OpenClaw Companion to an existing gateway. If you do not have a gateway yet, choose **Install a local gateway (WSL)**.
 
+### Connect through an authenticating reverse proxy
+
+Use this path when a reverse proxy accepts an RFC 6750 Bearer token before forwarding requests to the Gateway. Configure the proxy to validate that token and permit WebSocket upgrades. For example, oauth2-proxy can accept a provider-issued JWT when its `--skip-jwt-bearer-tokens` option is configured. A browser session cookie alone is not enough for Companion.
+
+1. Open **Companion Settings > Connection > Add gateway > Direct**.
+2. Enter the Gateway's `wss://` URL and paste the proxy credential into **Proxy Bearer token**. Do not put the proxy token in **Shared token**. If the Gateway also requires a separate shared token, enter that in **Shared token**.
+3. Select **Save & connect**. A successful connection shows the Gateway as connected; a fresh node may still need pairing approval.
+
+Companion protects the proxy token for the current Windows user and sends it only to the configured TLS origin during the connectivity probe and WebSocket upgrade. It does not follow HTTP probe redirects with the token. If the proxy redirects to an interactive sign-in page, configure a Bearer token accepted by the proxy instead. When a token expires, edit the saved gateway and replace it. Editing a gateway URL to another origin does not carry over its proxy credential. Proxy Bearer authentication cannot be combined with an SSH tunnel. The current flow does not perform interactive OIDC login or token refresh.
+
 ## Uninstall
 
 Go to **Settings → Apps → Installed apps**, find **OpenClaw Companion**, and click **Uninstall** (or use **Add or Remove Programs** in Control Panel). You'll be asked whether to also remove the local WSL gateway; choose **Yes** to unregister its WSL distro and generated state, or **No** to leave the gateway and that state in place.
