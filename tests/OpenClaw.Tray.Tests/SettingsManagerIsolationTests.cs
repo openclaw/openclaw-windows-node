@@ -131,9 +131,7 @@ public sealed class SettingsManagerIsolationTests
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             AppIdentity.DataDirectoryName,
             "settings.json");
-        var realSettingsBefore = File.Exists(realSettingsPath)
-            ? File.ReadAllText(realSettingsPath)
-            : null;
+        var realSettingsBefore = GetFileMetadata(realSettingsPath);
         var marker = $"ws://settings-isolation-{Guid.NewGuid():N}.invalid";
 
         try
@@ -148,16 +146,11 @@ public sealed class SettingsManagerIsolationTests
             settings.Save();
 
             Assert.Equal(isolatedDirectory, SettingsManager.SettingsDirectoryPath);
+            Assert.Equal(isolatedSettingsPath, SettingsManager.SettingsPath);
             Assert.True(File.Exists(isolatedSettingsPath));
-            Assert.Contains(marker, File.ReadAllText(isolatedSettingsPath));
-            if (realSettingsBefore is not null)
-            {
-                Assert.Equal(realSettingsBefore, File.ReadAllText(realSettingsPath));
-            }
-            else
-            {
-                Assert.False(File.Exists(realSettingsPath));
-            }
+            using var savedSettings = JsonDocument.Parse(File.ReadAllText(isolatedSettingsPath));
+            Assert.Equal(marker, savedSettings.RootElement.GetProperty("GatewayUrl").GetString());
+            Assert.Equal(realSettingsBefore, GetFileMetadata(realSettingsPath));
         }
         finally
         {
@@ -168,6 +161,12 @@ public sealed class SettingsManagerIsolationTests
                 try { Directory.Delete(isolatedDirectory, recursive: true); } catch { /* best effort */ }
             }
         }
+    }
+
+    private static (bool Exists, long Length, DateTime LastWriteTimeUtc) GetFileMetadata(string path)
+    {
+        var file = new FileInfo(path);
+        return file.Exists ? (true, file.Length, file.LastWriteTimeUtc) : (false, 0, default);
     }
 
     [Fact]
