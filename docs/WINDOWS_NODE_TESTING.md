@@ -66,6 +66,39 @@ owns the package upgrade and removal gates.
 
 Every new Windows node call must be exposed through local MCP and `winnode`: register the capability, update `McpToolBridge.CommandDescriptions`, update `.agents/skills/winnode/SKILL.md`, add focused tests, and prove discovery/invocation with `winnode` or raw MCP JSON-RPC.
 
+### Gateway node pairing decisions
+
+Connection settings, the pairing approval coordinator, and the existing
+connection capability handlers use `OpenClawGatewayClient.NodePairRejectAsync`.
+It returns true only after the matching Gateway response, not merely after
+sending a frame. Rejection and approval retain the originating physical
+connection through the await. A disconnect, denied request, unknown method, or
+12-second response timeout returns false and is logged. False after a timeout
+or disconnect means unconfirmed, not proof the Gateway made no change.
+Refresh the pending list before an explicit retry; decisions are never
+automatically replayed. Existing callers refresh after acknowledged rejection.
+
+This follows the pinned
+[macOS pairing decision flow](https://github.com/openclaw/openclaw/blob/098e991549b7986bcfaebdbe427aeaaf95afb926/apps/macos/Sources/OpenClaw/PairingPromptSupport.swift#L110),
+which captures its source lease, awaits the RPC, and discards a stale result.
+It is a source comparison, not macOS runtime proof. The
+[Gateway handler](https://github.com/openclaw/openclaw/blob/098e991549b7986bcfaebdbe427aeaaf95afb926/src/gateway/server-methods/nodes.pairing.ts#L232)
+requires `requestId` and can deny ownership or reject an unknown request.
+
+Run the focused owner and real-client loopback tests:
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj --filter 'FullyQualifiedName~NodePairDecision|FullyQualifiedName~NodePairRejection|FullyQualifiedName~NodePairRejectAsync'
+```
+
+These tests prove acknowledgement, denial, handshake gating, timeout, and
+disconnect/late-response behavior with synthetic Gateway data. They do not
+prove visible native UI, real Gateway pairing, or MXC execution. No new Windows
+node command is introduced: operator-side `node.pair.*` decisions are distinct
+from authenticated node-role producers such as `node.invoke.result`,
+`node.pending.*`, and node plugin or runner inventory updates.
+
 ### Permissions exec policy editor
 
 The Permissions page shows the `main`, wildcard (`*`), then defaults cascade

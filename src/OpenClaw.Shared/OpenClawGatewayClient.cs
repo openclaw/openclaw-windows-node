@@ -1828,12 +1828,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     }
 
     public virtual Task<bool> NodePairApproveAsync(string requestId) =>
-        ApprovePairingRequestAsync("node.pair.approve", requestId, RequestNodePairListAsync);
+        SendPairingDecisionAsync("node.pair.approve", requestId, RequestNodePairListAsync);
 
-    public Task<bool> NodePairRejectAsync(string requestId)
-    {
-        return TrySendTrackedRequestAsync("node.pair.reject", new { requestId });
-    }
+    /// <summary>
+    /// Rejects a pending node pairing only after the originating Gateway acknowledges it.
+    /// A failed or interrupted decision is not retried; callers must reconcile the pending list.
+    /// </summary>
+    public Task<bool> NodePairRejectAsync(string requestId) =>
+        SendPairingDecisionAsync("node.pair.reject", requestId);
 
     /// <summary>
     /// Removes a paired node from the gateway and waits for the gateway's
@@ -1937,22 +1939,38 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     }
 
     public virtual Task<bool> DevicePairApproveAsync(string requestId) =>
-        ApprovePairingRequestAsync("device.pair.approve", requestId, RequestDevicePairListAsync);
+        SendPairingDecisionAsync("device.pair.approve", requestId, RequestDevicePairListAsync);
 
-    private async Task<bool> ApprovePairingRequestAsync(
+    private const int PairingDecisionTimeoutMs = 12000;
+
+    private async Task<bool> SendPairingDecisionAsync(
         string method,
         string requestId,
-        Func<Task> refreshPairListAsync)
+        Func<Task>? refreshPairListAsync = null)
     {
         if (string.IsNullOrWhiteSpace(requestId))
+        {
+            _logger.Warn($"{method} requires a requestId");
             return false;
-        if (!IsConnected)
+        }
+        if (!TryGetReadyConnectionGeneration(out var generation))
+        {
+            _logger.Warn($"{method} requires a ready Gateway connection");
             return false;
+        }
 
         try
         {
-            await SendWizardRequestAsync(method, new { requestId }, timeoutMs: 12000);
-            _ = refreshPairListAsync();
+            await SendResponseRequestAsync(
+                method, new { requestId }, PairingDecisionTimeoutMs, generation);
+            // A reply belongs to its physical socket, even if this client reconnects.
+            if (!TryGetReadyConnectionGeneration(out var current) || current != generation)
+            {
+                _logger.Warn($"{method} result discarded after the Gateway connection changed");
+                return false;
+            }
+            if (refreshPairListAsync is not null)
+                _ = refreshPairListAsync();
             return true;
         }
         catch (InvalidOperationException ex)
