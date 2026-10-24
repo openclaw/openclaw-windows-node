@@ -984,6 +984,23 @@ pages retain their large centered heroes. Each provider has one native command
 surface, not a selectable ListViewItem wrapped around another clickable card.
 The page-local compact row style does not alter global Toolkit resources.
 
+Gateway-supplied provider/model choices and the final next-step cards use
+`SetupActionCard`, retaining the Toolkit card visuals while supplying a real
+UI Automation Invoke provider. Native UIA invocation and ordinary clicks enter
+the same guarded page action. Disabled or non-clickable choices cannot activate
+setup. The pinned Toolkit peer advertises Invoke without implementing its
+provider, so using that peer directly is not a supported automation path.
+The API Keys entry and recommended setup-link cards use the same adapter.
+Their existing actions, visibility, and consent requirements are unchanged.
+
+Mounted behavioral tests also preserve the independent ownership boundaries:
+normal Gateway review hides the competing Local AI choice, changing the API
+provider selection performs no activation, and the verified completion page
+has no footer action that can bypass its coordinator. A completion failure
+exposes recovery inside the error bar; that action returns through the owning
+AI setup flow without publishing a destination. These checks exercise actual
+controls and protocol effects rather than matching XAML or method text.
+
 1. **Local AI on this PC** is a concise native choice row beside the detected
    Gateway choices, with actual GPU/model facts and its trailing action. It has
    no separate introductory heading or always-visible technical paragraph.
