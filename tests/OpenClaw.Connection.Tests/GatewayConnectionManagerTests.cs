@@ -2373,6 +2373,838 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task ConnectWithSharedTokenAsync_RejectedTokenPreservesBootstrapAndSshTunnel()
+    {
+        var ssh = new SshTunnelConfig("user", "host.example", 18789, 45678);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup",
+            Url = "ws://127.0.0.1:9",
+            BootstrapToken = "setup-bootstrap",
+            SshTunnel = ssh,
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+
+        var result = await _manager.ConnectWithSharedTokenAsync(
+            "ws://127.0.0.1:9",
+            "rejected-shared-token").WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        var record = _registry.GetById("gw-setup");
+        Assert.Equal("setup-bootstrap", record?.BootstrapToken);
+        Assert.Equal(ssh, record?.SshTunnel);
+        Assert.Null(record?.SharedGatewayToken);
+        Assert.Equal("gw-setup", _registry.ActiveGatewayId);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_RejectedTokenRestoresCommittedSettings()
+    {
+        var ssh = new SshTunnelConfig("user", "host.example", 18789, 45678);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup",
+            Url = "ws://127.0.0.1:9",
+            BootstrapToken = "setup-bootstrap",
+            SshTunnel = ssh,
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        var committed = new List<GatewayRecord>();
+
+        var result = await _manager.ConnectWithSharedTokenAsync(
+            "ws://127.0.0.1:9",
+            "rejected-shared-token",
+            sshTunnel: null,
+            onGatewayCommitted: (record, _) =>
+            {
+                committed.Add(record);
+                return Task.CompletedTask;
+            }).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.Equal(2, committed.Count);
+        Assert.Equal("rejected-shared-token", committed[0].SharedGatewayToken);
+        Assert.Null(committed[0].BootstrapToken);
+        Assert.Equal("setup-bootstrap", committed[1].BootstrapToken);
+        Assert.Equal(ssh, committed[1].SshTunnel);
+        Assert.Equal(ssh, _registry.GetById("gw-setup")?.SshTunnel);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_RejectedTokenRestoresPriorLiveConnection()
+    {
+        var previousSsh = new SshTunnelConfig("old-user", "old.example", 18789, 45670);
+        var replacementSsh = new SshTunnelConfig("new-user", "new.example", 18789, 45671);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-live",
+            Url = "wss://live.example",
+            BootstrapToken = "setup-bootstrap",
+            SshTunnel = previousSsh,
+        });
+        _registry.SetActive("gw-live");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "setup-bootstrap",
+            IsBootstrapToken: true,
+            CredentialResolver.SourceBootstrapToken);
+        var tunnel = new CountingTunnelManager { FailForConfig = replacementSsh };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel);
+        await manager.ConnectAsync("gw-live");
+        _factory.CreatedClients[0].SimulateHandshake();
+        await WaitUntilAsync(
+            () => manager.CurrentSnapshot.OperatorState == RoleConnectionState.Connected);
+        var committed = new List<GatewayRecord>();
+
+        var connect = manager.ConnectWithSharedTokenAsync(
+            "wss://live.example",
+            "rejected-shared-token",
+            replacementSsh,
+            (record, _) =>
+            {
+                committed.Add(record);
+                return Task.CompletedTask;
+            });
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == 2);
+        _factory.CreatedClients[^1].SimulateHandshake();
+        var result = await connect.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.Equal(previousSsh, _registry.GetById("gw-live")?.SshTunnel);
+        Assert.Equal("setup-bootstrap", _registry.GetById("gw-live")?.BootstrapToken);
+        Assert.Equal(previousSsh, tunnel.ActiveConfig);
+        Assert.Equal(previousSsh, committed[^1].SshTunnel);
+        Assert.Equal("ws://localhost:45670", _factory.CreatedGatewayUrls[^1]);
+        Assert.Equal(RoleConnectionState.Connected, manager.CurrentSnapshot.OperatorState);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_ListenerFailureAfterTunnelStartRestoresPriorLiveConnection()
+    {
+        var previousSsh = new SshTunnelConfig("old-user", "old.example", 18789, 45670);
+        var replacementSsh = new SshTunnelConfig("new-user", "new.example", 18789, 45671);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-live",
+            Url = "wss://live.example",
+            BootstrapToken = "setup-bootstrap",
+            SshTunnel = previousSsh,
+        });
+        _registry.SetActive("gw-live");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "setup-bootstrap",
+            IsBootstrapToken: true,
+            CredentialResolver.SourceBootstrapToken);
+        var tunnel = new CountingTunnelManager();
+        tunnel.OwnedListenerCheckAsync = _ =>
+            Task.FromResult(tunnel.ActiveConfig?.Host != replacementSsh.Host);
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel);
+        await manager.ConnectAsync("gw-live");
+        _factory.CreatedClients[0].SimulateHandshake();
+        await WaitUntilAsync(
+            () => manager.CurrentSnapshot.OperatorState == RoleConnectionState.Connected);
+        var generationAfterPriorStart = tunnel.OwnershipGeneration;
+
+        var connect = manager.ConnectWithSharedTokenAsync(
+            "wss://live.example",
+            "rejected-shared-token",
+            replacementSsh);
+        await WaitUntilAsync(() => _factory.CreatedClients.Count >= 2);
+        _factory.CreatedClients[^1].SimulateHandshake();
+        var result = await connect.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.DoesNotContain("ownership changed during rollback", result.ErrorMessage ?? "");
+        Assert.Equal(previousSsh, _registry.GetById("gw-live")?.SshTunnel);
+        Assert.Equal("setup-bootstrap", _registry.GetById("gw-live")?.BootstrapToken);
+        Assert.Equal(previousSsh, tunnel.ActiveConfig);
+        Assert.Equal(RoleConnectionState.Connected, manager.CurrentSnapshot.OperatorState);
+        Assert.True(tunnel.OwnershipGeneration > generationAfterPriorStart);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_DeferredAuthFailureRestoresBootstrap()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup",
+            Url = "wss://deferred.example",
+            BootstrapToken = "setup-bootstrap",
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        _resolver.OperatorCredential = new GatewayCredential(
+            "rejected-shared-token",
+            IsBootstrapToken: false,
+            CredentialResolver.SourceSharedGatewayToken);
+        var committed = new List<GatewayRecord>();
+
+        var task = _manager.ConnectWithSharedTokenAsync(
+            "wss://deferred.example",
+            "rejected-shared-token",
+            sshTunnel: null,
+            (record, _) =>
+            {
+                committed.Add(record);
+                return Task.CompletedTask;
+            });
+
+        await WaitUntilAsync(() => _factory.CreatedClients.Count >= 1);
+        await Task.Delay(100);
+        _factory.CreatedClients[^1].SimulateAuthFailed("token mismatch");
+
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.Equal("setup-bootstrap", _registry.GetById("gw-setup")?.BootstrapToken);
+        Assert.Null(_registry.GetById("gw-setup")?.SharedGatewayToken);
+        Assert.Equal("setup-bootstrap", committed[^1].BootstrapToken);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_UnfinishedHandshakeRollsBack()
+    {
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            sharedTokenHandshakeTimeout: TimeSpan.FromMilliseconds(100));
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup",
+            Url = "wss://deferred.example",
+            BootstrapToken = "setup-bootstrap",
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        _resolver.OperatorCredential = new GatewayCredential(
+            "rejected-shared-token",
+            IsBootstrapToken: false,
+            CredentialResolver.SourceSharedGatewayToken);
+
+        var result = await manager.ConnectWithSharedTokenAsync(
+            "wss://deferred.example",
+            "rejected-shared-token",
+            sshTunnel: null,
+            (_, _) => Task.CompletedTask);
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.Contains("did not finish", result.ErrorMessage ?? "", StringComparison.Ordinal);
+        Assert.Equal("setup-bootstrap", _registry.GetById("gw-setup")?.BootstrapToken);
+        Assert.Null(_registry.GetById("gw-setup")?.SharedGatewayToken);
+        Assert.Equal(RoleConnectionState.Idle, manager.CurrentSnapshot.OperatorState);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_UnfinishedHandshakeReconnectsPriorGateway()
+    {
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            sharedTokenHandshakeTimeout: TimeSpan.FromMilliseconds(100));
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-live",
+            Url = "wss://live.example",
+            BootstrapToken = "setup-bootstrap",
+        });
+        _registry.SetActive("gw-live");
+        _registry.Save();
+        _resolver.OperatorCredential = new GatewayCredential(
+            "setup-bootstrap",
+            IsBootstrapToken: true,
+            CredentialResolver.SourceBootstrapToken);
+        await manager.ConnectAsync("gw-live");
+        _factory.CreatedClients[0].SimulateHandshake();
+        await WaitUntilAsync(
+            () => manager.CurrentSnapshot.OperatorState == RoleConnectionState.Connected);
+
+        var result = await manager.ConnectWithSharedTokenAsync(
+            "wss://live.example",
+            "rejected-shared-token",
+            sshTunnel: null,
+            (_, _) => Task.CompletedTask);
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.Equal("setup-bootstrap", _registry.GetById("gw-live")?.BootstrapToken);
+        Assert.True(_factory.CreatedClients.Count >= 3);
+        Assert.Equal("wss://live.example", _factory.CreatedGatewayUrls[^1]);
+        Assert.Contains(
+            "The previous gateway connection did not finish.",
+            result.ErrorMessage ?? "",
+            StringComparison.Ordinal);
+        Assert.Equal(RoleConnectionState.Connecting, manager.CurrentSnapshot.OperatorState);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConnectWithSharedTokenAsync_UserDisconnectRestoresConfigurationWithoutReconnecting(
+        bool previouslyConnected)
+    {
+        var ssh = new SshTunnelConfig("user", "old.example", 18789, 45670);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup",
+            Url = "wss://deferred.example",
+            BootstrapToken = "setup-bootstrap",
+            SshTunnel = ssh,
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        _resolver.OperatorCredential = new GatewayCredential(
+            "rejected-shared-token",
+            IsBootstrapToken: false,
+            CredentialResolver.SourceSharedGatewayToken);
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, tunnelManager: tunnel);
+        if (previouslyConnected)
+        {
+            await manager.ConnectAsync("gw-setup");
+            _factory.CreatedClients[0].SimulateHandshake();
+            await WaitUntilAsync(() => manager.CurrentSnapshot.OperatorState == RoleConnectionState.Connected);
+        }
+        var committed = new List<GatewayRecord>();
+
+        var task = manager.ConnectWithSharedTokenAsync(
+            "wss://deferred.example",
+            "rejected-shared-token",
+            sshTunnel: null,
+            (record, _) =>
+            {
+                committed.Add(record);
+                return Task.CompletedTask;
+            });
+
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == (previouslyConnected ? 2 : 1));
+        var candidate = _factory.CreatedClients[^1];
+        await manager.DisconnectByUserAsync();
+
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.Equal("setup-bootstrap", _registry.GetById("gw-setup")?.BootstrapToken);
+        Assert.Null(_registry.GetById("gw-setup")?.SharedGatewayToken);
+        Assert.Equal(ssh, _registry.GetById("gw-setup")?.SshTunnel);
+        Assert.Equal(2, committed.Count);
+        Assert.Equal("setup-bootstrap", committed[^1].BootstrapToken);
+        Assert.Equal(ssh, committed[^1].SshTunnel);
+        Assert.Equal(RoleConnectionState.Idle, manager.CurrentSnapshot.OperatorState);
+        Assert.False(manager.IsAutomaticReconnectAllowed("gw-setup"));
+        Assert.True(candidate.IsDisposed);
+        Assert.Equal(previouslyConnected ? 2 : 1, _factory.CreatedClients.Count);
+        var reloaded = new GatewayRegistry(_tempDir);
+        reloaded.Load();
+        Assert.Equal("setup-bootstrap", reloaded.GetActive()?.BootstrapToken);
+        Assert.Equal(ssh, reloaded.GetActive()?.SshTunnel);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ConnectWithSharedTokenAsync_NewerCredentialWriterIsPreserved(bool disconnect)
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup",
+            Url = "wss://deferred.example",
+            BootstrapToken = "setup-bootstrap",
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        _resolver.OperatorCredential = new("candidate", false, CredentialResolver.SourceSharedGatewayToken);
+        var committed = new List<GatewayRecord>();
+
+        var task = _manager.ConnectWithSharedTokenAsync(
+            "wss://deferred.example", "candidate", null,
+            (record, _) =>
+            {
+                committed.Add(record);
+                return Task.CompletedTask;
+            });
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == 1);
+        _registry.Update("gw-setup", record => record with { SharedGatewayToken = "newer-writer" });
+        _registry.Save();
+        if (disconnect)
+            await _manager.DisconnectByUserAsync();
+        else
+            _factory.CreatedClients[0].SimulateAuthFailed("token mismatch");
+
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.Contains("superseded", result.ErrorMessage ?? "", StringComparison.Ordinal);
+        Assert.Null(_registry.GetById("gw-setup")?.BootstrapToken);
+        Assert.Equal("newer-writer", _registry.GetById("gw-setup")?.SharedGatewayToken);
+        Assert.Single(committed);
+        var reloaded = new GatewayRegistry(_tempDir);
+        reloaded.Load();
+        Assert.Equal("newer-writer", reloaded.GetActive()?.SharedGatewayToken);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ConnectWithSharedTokenAsync_NonLiveRollbackStopsCandidateTunnelWithoutCallback(
+        bool authenticationFailure)
+    {
+        var priorSsh = new SshTunnelConfig("old-user", "old.example", 18789, 45670);
+        var candidateSsh = new SshTunnelConfig("new-user", "new.example", 18789, 45671);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup",
+            Url = "wss://deferred.example",
+            BootstrapToken = "setup-bootstrap",
+            SshTunnel = priorSsh,
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance),
+            _factory, _registry, NullLogger.Instance, tunnelManager: tunnel);
+
+        var task = manager.ConnectWithSharedTokenAsync(
+            "wss://deferred.example", "candidate", candidateSsh);
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == 1);
+        Assert.Equal(candidateSsh, tunnel.ActiveConfig);
+        Assert.Equal("candidate", _factory.CreatedCredentials[0].Token);
+        var candidate = _factory.CreatedClients[0];
+        if (authenticationFailure)
+            candidate.SimulateAuthFailed("token mismatch");
+        else
+            candidate.SimulateStatusChanged(ConnectionStatus.Error);
+
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.True(candidate.IsDisposed);
+        Assert.False(tunnel.IsActive);
+        Assert.Equal(1, tunnel.StopCount);
+        Assert.Equal(RoleConnectionState.Idle, manager.CurrentSnapshot.OperatorState);
+        var reloaded = new GatewayRegistry(_tempDir);
+        reloaded.Load();
+        Assert.Equal("setup-bootstrap", reloaded.GetActive()?.BootstrapToken);
+        Assert.Equal(priorSsh, reloaded.GetActive()?.SshTunnel);
+        Assert.Null(reloaded.GetActive()?.SharedGatewayToken);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConnectWithSharedTokenAsync_TunnelRollbackPreservesNewerOwnerAndReportsCleanupFailure(
+        bool cleanupFails)
+    {
+        var priorSsh = new SshTunnelConfig("old-user", "old.example", 18789, 45670);
+        var candidateSsh = new SshTunnelConfig("candidate", "candidate.example", 18789, 45671);
+        var newerSsh = new SshTunnelConfig("newer", "newer.example", 18789, 45672);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup", Url = "wss://deferred.example",
+            BootstrapToken = "setup-bootstrap", SshTunnel = priorSsh,
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance),
+            _factory, _registry, NullLogger.Instance, tunnelManager: tunnel);
+
+        var task = manager.ConnectWithSharedTokenAsync(
+            "wss://deferred.example", "candidate", candidateSsh);
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == 1);
+        if (cleanupFails)
+            tunnel.StopIfOwnedAsyncOverride = _ => throw new IOException("test cleanup failure");
+        else
+            await tunnel.StartOwnedAsync(newerSsh, CancellationToken.None);
+        _factory.CreatedClients[0].SimulateAuthFailed("token mismatch");
+
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.Equal("setup-bootstrap", _registry.GetActive()?.BootstrapToken);
+        Assert.Equal(priorSsh, _registry.GetActive()?.SshTunnel);
+        Assert.True(tunnel.IsActive);
+        Assert.Equal(cleanupFails ? candidateSsh : newerSsh, tunnel.ActiveConfig);
+        Assert.Equal(0, tunnel.StopCount);
+        if (cleanupFails)
+            Assert.Contains("SSH tunnel rollback failed: test cleanup failure", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_ExternalCredentialWriterIsNotOverwrittenByRollback()
+    {
+        var candidateSsh = new SshTunnelConfig("candidate", "candidate.example", 18789, 45671);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup", Url = "wss://deferred.example", BootstrapToken = "setup-bootstrap",
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        _resolver.OperatorCredential = new("candidate", false, CredentialResolver.SourceSharedGatewayToken);
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, tunnelManager: tunnel);
+        var task = manager.ConnectWithSharedTokenAsync("wss://deferred.example", "candidate", candidateSsh);
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == 1);
+        var external = new GatewayRegistry(_tempDir);
+        external.Load();
+        external.Update("gw-setup", record => record with { SharedGatewayToken = "external-writer" });
+        external.Save();
+        _factory.CreatedClients[0].SimulateAuthFailed("token mismatch");
+
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.Contains("Registry rollback failed", result.ErrorMessage);
+        Assert.True(_factory.CreatedClients[0].IsDisposed);
+        Assert.False(tunnel.IsActive);
+        Assert.Equal(1, tunnel.StopCount);
+        var reloaded = new GatewayRegistry(_tempDir);
+        reloaded.Load();
+        Assert.Equal("external-writer", reloaded.GetActive()?.SharedGatewayToken);
+        Assert.Null(reloaded.GetActive()?.BootstrapToken);
+    }
+
+    [Theory]
+    [InlineData("wsl", false)]
+    [InlineData("legacy-wsl", false)]
+    [InlineData("legacy-wsl", true)]
+    [InlineData("native", false)]
+    public async Task ConnectWithSharedTokenAsync_FailedSshReplacementRestoresManagedOwnership(
+        string kind, bool rename)
+    {
+        var original = new GatewayRecord
+        {
+            Id = "gw-setup", Url = "ws://127.0.0.1:18789",
+            BootstrapToken = "setup-bootstrap", IsLocal = true, RequiresV2Signature = true,
+            FriendlyName = kind == "legacy-wsl" ? "Local (proof-distro)" : "Managed proof",
+            SetupManagedDistroName = kind == "wsl" ? "proof-distro" : null,
+            NativePackageFamilyName = kind == "native" ? "OpenClaw.Gateway_test" : null,
+            NativeRuntimeContract = kind == "native" ? "isolated-session" : null,
+        };
+        _registry.AddOrUpdate(original);
+        _registry.SetActive(original.Id);
+        _registry.Save();
+        var candidateSsh = new SshTunnelConfig("candidate", "candidate.example", 18789, 45671);
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance),
+            _factory, _registry, NullLogger.Instance, tunnelManager: tunnel);
+
+        var task = manager.ConnectWithSharedTokenAsync(original.Url, "candidate", candidateSsh);
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == 1);
+        Assert.Null(_registry.GetActive()?.SetupManagedDistroName);
+        Assert.Null(_registry.GetActive()?.NativePackageFamilyName);
+        if (rename)
+        {
+            _registry.Update(original.Id, record => record with { FriendlyName = "My gateway" });
+            _registry.Save();
+        }
+        _factory.CreatedClients[0].SimulateAuthFailed("token mismatch");
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.False(result.GatewayCommitted);
+        var expected = rename
+            ? original with { FriendlyName = "My gateway", SetupManagedDistroName = "proof-distro" }
+            : original;
+        Assert.Equal(expected, _registry.GetActive());
+        var reloaded = new GatewayRegistry(_tempDir);
+        reloaded.Load();
+        Assert.Equal(expected, reloaded.GetActive());
+        Assert.False(tunnel.IsActive);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConnectWithSharedTokenAsync_NewerTunnelPreventsPriorLiveRecoveryAndCallback(
+        bool candidateUsesSsh)
+    {
+        var priorSsh = new SshTunnelConfig("old-user", "old.example", 18789, 45670);
+        var candidateSsh = new SshTunnelConfig("candidate", "candidate.example", 18789, 45671);
+        var newerSsh = new SshTunnelConfig("newer", "newer.example", 18789, 45672);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup", Url = "wss://deferred.example",
+            BootstrapToken = "setup-bootstrap", SshTunnel = priorSsh,
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance),
+            _factory, _registry, NullLogger.Instance, tunnelManager: tunnel);
+        await manager.ConnectAsync();
+        _factory.CreatedClients[0].SimulateHandshake();
+        await WaitUntilAsync(() => manager.CurrentSnapshot.OperatorState == RoleConnectionState.Connected);
+        var callbackCount = 0;
+        var task = manager.ConnectWithSharedTokenAsync(
+            "wss://deferred.example", "candidate", candidateUsesSsh ? candidateSsh : null,
+            async (record, ct) =>
+            {
+                callbackCount++;
+                if (record.SshTunnel is not null)
+                    await tunnel.StartOwnedAsync(record.SshTunnel, ct);
+                else
+                    await tunnel.StopAsync();
+            });
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == 2);
+        await tunnel.StartOwnedAsync(newerSsh, CancellationToken.None);
+        var stopCount = tunnel.StopCount;
+        _factory.CreatedClients[1].SimulateAuthFailed("token mismatch");
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.False(result.GatewayCommitted);
+        Assert.Contains("SSH tunnel ownership changed", result.ErrorMessage);
+        Assert.Equal(newerSsh, tunnel.ActiveConfig);
+        Assert.Equal(stopCount, tunnel.StopCount);
+        Assert.Equal(1, callbackCount);
+        Assert.Equal(2, _factory.CreatedClients.Count);
+        Assert.Equal(RoleConnectionState.Idle, manager.CurrentSnapshot.OperatorState);
+        Assert.Equal(priorSsh, _registry.GetActive()?.SshTunnel);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_TunnelChangedDuringRollbackCannotBeReplacedByRecovery()
+    {
+        var priorSsh = new SshTunnelConfig("prior", "prior.example", 18789, 45670);
+        var candidateSsh = new SshTunnelConfig("candidate", "candidate.example", 18789, 45671);
+        var newerSsh = new SshTunnelConfig("newer", "newer.example", 18789, 45672);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup", Url = "wss://deferred.example",
+            BootstrapToken = "setup-bootstrap", SshTunnel = priorSsh,
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance),
+            _factory, _registry, NullLogger.Instance, tunnelManager: tunnel);
+        await manager.ConnectAsync();
+        _factory.CreatedClients[0].SimulateHandshake();
+        await WaitUntilAsync(() => manager.CurrentSnapshot.OperatorState == RoleConnectionState.Connected);
+        var task = manager.ConnectWithSharedTokenAsync(
+            "wss://deferred.example", "candidate", candidateSsh,
+            async (record, ct) =>
+            {
+                if (record.SshTunnel is not null)
+                    await tunnel.StartOwnedAsync(record.SshTunnel, ct);
+            });
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == 2);
+        var changed = false;
+        _registry.Changed += (_, _) =>
+        {
+            if (!changed && _registry.GetActive()?.BootstrapToken == "setup-bootstrap")
+            {
+                changed = true;
+                tunnel.StartAsync(newerSsh, CancellationToken.None).GetAwaiter().GetResult();
+            }
+        };
+        _factory.CreatedClients[1].SimulateAuthFailed("token mismatch");
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(changed);
+        Assert.False(result.GatewayCommitted);
+        Assert.Contains("SSH tunnel ownership changed", result.ErrorMessage);
+        Assert.Equal(newerSsh, tunnel.ActiveConfig);
+        Assert.Equal(1, tunnel.StopCount);
+        Assert.Equal(2, _factory.CreatedClients.Count);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_RollbackPreservesUnrelatedRecordsAndLearnedMetadata()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup", Url = "wss://deferred.example", BootstrapToken = "setup-bootstrap",
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        _resolver.OperatorCredential = new("candidate", false, CredentialResolver.SourceSharedGatewayToken);
+        var task = _manager.ConnectWithSharedTokenAsync("wss://deferred.example", "candidate");
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == 1);
+        var connected = DateTime.UtcNow;
+        _registry.Update("gw-setup", record => record with { RequiresV2Signature = true, LastConnected = connected });
+        _registry.AddOrUpdate(new GatewayRecord { Id = "unrelated", Url = "wss://other.example" });
+        _registry.Save();
+        _factory.CreatedClients[0].SimulateAuthFailed("token mismatch");
+
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.False(result.GatewayCommitted);
+        Assert.Equal("setup-bootstrap", _registry.GetActive()?.BootstrapToken);
+        Assert.True(_registry.GetActive()?.RequiresV2Signature);
+        Assert.Equal(connected, _registry.GetActive()?.LastConnected);
+        Assert.NotNull(_registry.GetById("unrelated"));
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_ReconnectOfCandidateRestoresPriorLiveGateway()
+    {
+        var priorSsh = new SshTunnelConfig("old-user", "old.example", 18789, 45670);
+        var candidateSsh = new SshTunnelConfig("candidate", "candidate.example", 18789, 45671);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup", Url = "wss://deferred.example",
+            BootstrapToken = "setup-bootstrap", SshTunnel = priorSsh,
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance),
+            _factory, _registry, NullLogger.Instance, tunnelManager: tunnel);
+        await manager.ConnectAsync();
+        _factory.CreatedClients[0].SimulateHandshake();
+        await WaitUntilAsync(() => manager.CurrentSnapshot.OperatorState == RoleConnectionState.Connected);
+
+        var task = manager.ConnectWithSharedTokenAsync("wss://deferred.example", "candidate", candidateSsh);
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == 2);
+        await manager.ReconnectAsync();
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == 4);
+        _factory.CreatedClients[3].SimulateHandshake();
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.True(_factory.CreatedClients[1].IsDisposed);
+        Assert.True(_factory.CreatedClients[2].IsDisposed);
+        Assert.Equal("setup-bootstrap", _factory.CreatedCredentials[3].Token);
+        Assert.Equal(RoleConnectionState.Connected, manager.CurrentSnapshot.OperatorState);
+        Assert.Equal(priorSsh, tunnel.ActiveConfig);
+        Assert.Equal(1, tunnel.StopCount);
+        Assert.Equal("setup-bootstrap", _registry.GetActive()?.BootstrapToken);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_DelayedSuccessKeepsCandidateTunnelAndCredentials()
+    {
+        var priorSsh = new SshTunnelConfig("old-user", "old.example", 18789, 45670);
+        var candidateSsh = new SshTunnelConfig("candidate", "candidate.example", 18789, 45671);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup", Url = "wss://deferred.example",
+            BootstrapToken = "setup-bootstrap", SshTunnel = priorSsh,
+        });
+        _registry.SetActive("gw-setup");
+        _registry.Save();
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance),
+            _factory, _registry, NullLogger.Instance, tunnelManager: tunnel,
+            sharedTokenHandshakeTimeout: TimeSpan.FromSeconds(2));
+
+        var task = manager.ConnectWithSharedTokenAsync("wss://deferred.example", "candidate", candidateSsh);
+        await WaitUntilAsync(() => _factory.CreatedClients.Count == 1);
+        await Task.Delay(150);
+        Assert.False(task.IsCompleted);
+        _factory.CreatedClients[0].SimulateHandshake();
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.Success, result.Outcome);
+        Assert.True(result.GatewayCommitted);
+        Assert.False(_factory.CreatedClients[0].IsDisposed);
+        Assert.Equal("candidate", _registry.GetActive()?.SharedGatewayToken);
+        Assert.Null(_registry.GetActive()?.BootstrapToken);
+        Assert.Equal(candidateSsh, tunnel.ActiveConfig);
+        Assert.Equal(0, tunnel.StopCount);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_RejectedTokenRestoresPriorActiveGatewaySettings()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-live",
+            Url = "wss://live.example",
+            BootstrapToken = "live-bootstrap",
+        });
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-setup",
+            Url = "ws://127.0.0.1:9",
+            BootstrapToken = "setup-bootstrap",
+        });
+        _registry.SetActive("gw-live");
+        _registry.Save();
+        var committed = new List<GatewayRecord>();
+
+        var result = await _manager.ConnectWithSharedTokenAsync(
+            "ws://127.0.0.1:9",
+            "rejected-shared-token",
+            sshTunnel: null,
+            (record, _) =>
+            {
+                committed.Add(record);
+                return Task.CompletedTask;
+            });
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.Equal("gw-live", _registry.ActiveGatewayId);
+        Assert.Equal("setup-bootstrap", _registry.GetById("gw-setup")?.BootstrapToken);
+        Assert.Null(_registry.GetById("gw-setup")?.SharedGatewayToken);
+        Assert.Equal("gw-live", committed[^1].Id);
+        Assert.Equal("live-bootstrap", committed[^1].BootstrapToken);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_SecondTransactionStartsAfterTheFirstHoldsTheLock()
+    {
+        var order = new List<string>();
+        var firstHolding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = _manager.ConnectWithSharedTokenAsync(
+            "ws://127.0.0.1:9",
+            "rejected-shared-token",
+            sshTunnel: null,
+            onGatewayCommitted: null,
+            onTransactionStarted: async _ =>
+            {
+                order.Add("first");
+                firstEntered.TrySetResult();
+                await firstHolding.Task;
+            });
+        await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = _manager.ConnectWithSharedTokenAsync(
+            "ws://127.0.0.1:9",
+            "rejected-shared-token",
+            sshTunnel: null,
+            onGatewayCommitted: null,
+            onTransactionStarted: _ =>
+            {
+                order.Add("second");
+                return Task.CompletedTask;
+            });
+        await Task.Delay(100);
+        Assert.Equal(new[] { "first" }, order);
+        firstHolding.TrySetResult();
+        await Task.WhenAll(first, second);
+        Assert.Equal(new[] { "first", "second" }, order);
+    }
+
+    [Fact]
     public async Task ConnectWithSharedTokenAsync_PostCommitConnectionFailureReportsCommittedGateway()
     {
         SetupGateway("gw-1", "wss://test1");
@@ -6435,6 +7267,10 @@ public class GatewayConnectionManagerTests : IDisposable
 
     private sealed class CountingTunnelManager : ISshTunnelManager
     {
+        private readonly SshTunnelOwnershipGuard _ownershipGuard = new();
+        public SshTunnelOwnershipGuard.Scope BeginOwnershipScope(long expectedGeneration) =>
+            _ownershipGuard.Begin(expectedGeneration);
+
         public int StartCount { get; private set; }
         public int StopCount { get; private set; }
         public SshTunnelConfig? LastConfig { get; private set; }
@@ -6473,8 +7309,10 @@ public class GatewayConnectionManagerTests : IDisposable
         public Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
+            _ownershipGuard.RequireCurrent(OwnershipGeneration);
             StartCount++;
             OwnershipGeneration++;
+            _ownershipGuard.Advance(OwnershipGeneration);
             var normalizedConfig = config with
             {
                 User = config.User.Trim(),
@@ -6519,8 +7357,10 @@ public class GatewayConnectionManagerTests : IDisposable
 
         public Task StopAsync()
         {
+            _ownershipGuard.RequireCurrent(OwnershipGeneration);
             StopCount++;
             OwnershipGeneration++;
+            _ownershipGuard.Advance(OwnershipGeneration);
             IsActive = false;
             LocalTunnelUrl = null;
             return Task.CompletedTask;
@@ -6541,10 +7381,7 @@ public class GatewayConnectionManagerTests : IDisposable
                 return Task.FromResult(false);
             }
 
-            StopCount++;
-            OwnershipGeneration++;
-            IsActive = false;
-            LocalTunnelUrl = null;
+            StopAsync().GetAwaiter().GetResult();
             return Task.FromResult(true);
         }
 

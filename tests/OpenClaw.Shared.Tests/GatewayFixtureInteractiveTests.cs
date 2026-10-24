@@ -607,6 +607,8 @@ public sealed partial class GatewayFixtureProtocolTests
                 }
             }
             catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+            // Abort can dispose the socket before the reader observes cancellation.
+            catch (ObjectDisposedException) when (_lifetime.IsCancellationRequested) { }
             catch (WebSocketException) when (_lifetime.IsCancellationRequested || _expectServerShutdown) { }
             catch (ObjectDisposedException) when (_lifetime.IsCancellationRequested) { }
             finally

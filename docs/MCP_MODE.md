@@ -199,6 +199,19 @@ Local MCP-only app control commands currently include:
 - Chat automation: `app.chat.snapshot`, `app.chat.send`, `app.chat.reset`
 - Connection diagnostics/automation: `app.connection.status`, `app.connection.gateways`, `app.connection.applySetupCode`, `app.connection.connectSharedToken`, `app.connection.pendingApprovals`, `app.connection.approveDevicePairing`, `app.connection.rejectDevicePairing`, `app.connection.approveNodePairing`, `app.connection.rejectNodePairing`, `app.connection.reconnect`, `app.connection.reconnectNode`
 
+`app.connection.connectSharedToken` can wait for authentication and rollback
+when replacing an existing bootstrap/SSH-backed gateway without durable role
+tokens. It observes the candidate for up to 15 seconds and, when restoring a
+previously live connection, can observe recovery for another 15 seconds.
+Preparation and SSH startup add time; these are not a 30-second total request
+deadline. A failed or unfinished replacement returns a failure after attempting
+to restore the still-owned saved configuration. Cancel/Disconnect preserves
+the user's disconnected intent while restoring that configuration; genuinely
+newer credential writes are not overwritten. Rollback or owned-tunnel cleanup
+errors remain visible in the failed result. Use `app.connection.status` to
+inspect the resulting live state rather than assuming that a failed replacement
+left the operator connected.
+
 For connection troubleshooting, prefer `app.connection.status` over the older
 `app.status` summary. It is read-only and returns the manager-owned
 operator/node snapshot, active gateway metadata, credential source/status,
