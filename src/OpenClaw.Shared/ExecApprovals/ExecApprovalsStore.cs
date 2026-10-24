@@ -31,6 +31,7 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
     private readonly IOpenClawLogger _logger;
     private readonly SemaphoreSlim _lock = new(1, 1);
     private readonly SemaphoreSlim _observeLock = new(1, 1);
+    private readonly CancellationTokenSource _observationShutdown = new();
     private readonly object _changeGate = new();
 
     private EventHandler<ExecApprovalsChangedEventArgs>? _changed;
@@ -40,6 +41,7 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
     private string? _lastObservedSignature;
     private bool _lastObservedWasFailure;
     private long _changeSequence;
+    private int _activeObservationReads;
     private bool _disposed;
 
     private enum LegacyMigrationStatus
@@ -530,22 +532,36 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
         return snapshot;
     }
 
+    /// <summary>
+    /// Stops observation admission and drains its synchronous file reads. Callers must
+    /// finish their own public operations before releasing the store's data directory.
+    /// A Changed handler already admitted for invocation may finish after this returns.
+    /// An in-flight synchronous file read is not cancellable and may block this caller.
+    /// Read-diagnostic loggers must not reenter Dispose on the same store.
+    /// </summary>
     public void Dispose()
     {
         lock (_changeGate)
         {
-            if (_disposed)
+            if (!_disposed)
             {
-                return;
+                _disposed = true;
+                _changed = null;
+                DisposeWatcherNoLock();
             }
-
-            _disposed = true;
-            _changed = null;
-            DisposeWatcherNoLock();
         }
 
-        _observeLock.Dispose();
-        _lock.Dispose();
+        _observationShutdown.Cancel();
+        lock (_changeGate)
+        {
+            while (_activeObservationReads != 0)
+            {
+                Monitor.Wait(_changeGate);
+            }
+        }
+
+        // These managed synchronization objects have no wait handles. Retain them
+        // so admitted operations can release locks and cancelled observers can unwind.
     }
 
     private LoadFileResult LoadFile()
@@ -1497,22 +1513,22 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
 
     private async Task ObserveExternalChangeAsync()
     {
+        var observationLockHeld = false;
         var storeLockHeld = false;
-        try
-        {
-            await _observeLock.WaitAsync().ConfigureAwait(false);
-        }
-        catch (ObjectDisposedException)
-        {
-            return;
-        }
-
         ExecApprovalsChangedEventArgs? change = null;
         try
         {
-            await _lock.WaitAsync().ConfigureAwait(false);
+            var cancellationToken = _observationShutdown.Token;
+            await _observeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            observationLockHeld = true;
+            await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
             storeLockHeld = true;
-            var readOnly = await LoadObservedSnapshotAsync().ConfigureAwait(false);
+            var observed = await LoadObservedSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            if (observed is not { } readOnly)
+            {
+                return;
+            }
+
             lock (_changeGate)
             {
                 if (_disposed || _changed is null)
@@ -1559,6 +1575,9 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
                 }
             }
         }
+        catch (OperationCanceledException) when (_observationShutdown.IsCancellationRequested)
+        {
+        }
         catch (Exception ex)
         {
             _logger.Warn($"[EXEC-APPROVALS] Failed to observe exec-approvals.json changes ({ex.Message})");
@@ -1567,39 +1586,56 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
         {
             if (storeLockHeld)
             {
-                try
-                {
-                    _lock.Release();
-                }
-                catch (ObjectDisposedException)
-                {
-                }
+                _lock.Release();
             }
 
-            try
+            if (observationLockHeld)
             {
                 _observeLock.Release();
-            }
-            catch (ObjectDisposedException)
-            {
             }
         }
 
         RaiseChanged(change);
     }
 
-    private async Task<ReadOnlySnapshotLoadResult> LoadObservedSnapshotAsync()
+    private async Task<ReadOnlySnapshotLoadResult?> LoadObservedSnapshotAsync(CancellationToken cancellationToken)
     {
-        var readOnly = LoadReadOnlySnapshot();
+        var readOnly = TryLoadObservedSnapshot();
         for (var attempt = 1;
-             attempt <= 3 && readOnly.Failure?.Kind == ExecApprovalsSnapshotFailureKind.ReadFailed;
+             attempt <= 3 && readOnly?.Failure?.Kind == ExecApprovalsSnapshotFailureKind.ReadFailed;
              attempt++)
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(attempt * 25)).ConfigureAwait(false);
-            readOnly = LoadReadOnlySnapshot();
+            await Task.Delay(TimeSpan.FromMilliseconds(attempt * 25), cancellationToken).ConfigureAwait(false);
+            readOnly = TryLoadObservedSnapshot();
         }
 
         return readOnly;
+    }
+
+    private ReadOnlySnapshotLoadResult? TryLoadObservedSnapshot()
+    {
+        lock (_changeGate)
+        {
+            if (_disposed || _changed is null)
+            {
+                return null;
+            }
+
+            _activeObservationReads++;
+        }
+
+        try
+        {
+            return LoadReadOnlySnapshot();
+        }
+        finally
+        {
+            lock (_changeGate)
+            {
+                _activeObservationReads--;
+                Monitor.PulseAll(_changeGate);
+            }
+        }
     }
 
     private void RaiseChanged(ExecApprovalsChangedEventArgs? args)
@@ -1617,6 +1653,14 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
 
         foreach (EventHandler<ExecApprovalsChangedEventArgs> handler in handlers)
         {
+            lock (_changeGate)
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+            }
+
             try
             {
                 handler(this, args);

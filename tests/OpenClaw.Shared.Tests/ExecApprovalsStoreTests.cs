@@ -18,6 +18,8 @@ namespace OpenClaw.Shared.Tests;
 // default-deny semantics, persistence, and observation behavior.
 public class ExecApprovalsStoreTests : IDisposable
 {
+    private const int ObservationTimeoutMs = 5000;
+    private static readonly TimeSpan LifecycleDeadline = TimeSpan.FromMilliseconds(ObservationTimeoutMs);
     private readonly string _dir;
     private readonly CapturingLogger _log;
 
@@ -1716,6 +1718,146 @@ public class ExecApprovalsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Dispose_DrainsAdmittedReadBeforeReturning()
+    {
+        WriteFile(MinimalFile());
+        using var logger = new GatedReadLogger();
+        using var store = new ExecApprovalsStore(_dir, logger, stateDirOverride: _dir);
+        var changes = new ConcurrentQueue<ExecApprovalsChangedEventArgs>();
+        store.Changed += (_, args) => changes.Enqueue(args);
+        await store.GetSnapshotReadOnlyAsync();
+
+        using var blocker = new FileStream(FilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        File.SetLastWriteTimeUtc(FilePath, DateTime.UtcNow.AddMinutes(1));
+        await logger.ReadStarted.Task.WaitAsync(LifecycleDeadline);
+
+        var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disposer = new Thread(() =>
+        {
+            try
+            {
+                store.Dispose();
+                disposed.SetResult();
+            }
+            catch (Exception ex)
+            {
+                disposed.SetException(ex);
+            }
+        }) { IsBackground = true };
+        disposer.Start();
+
+        try
+        {
+            await WaitForConditionAsync(() =>
+            {
+                try
+                {
+                    store.CreateWriterOrigin();
+                    return false;
+                }
+                catch (ObjectDisposedException)
+                {
+                    return true;
+                }
+            }, "Disposal never closed public admission.");
+            await WaitForConditionAsync(
+                () => !disposer.IsAlive || (disposer.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                "Disposer neither returned nor waited for the admitted read.");
+
+            Assert.False(disposed.Task.IsCompleted, "Dispose returned with an admitted read still blocked.");
+        }
+        finally
+        {
+            logger.ReleaseRead.Set();
+            await disposed.Task.WaitAsync(LifecycleDeadline);
+            Assert.True(disposer.Join(LifecycleDeadline), "Owned disposer thread did not terminate.");
+        }
+
+        Assert.Equal(1, logger.ReadFailures);
+        Assert.Empty(changes);
+        Assert.DoesNotContain(logger.Warnings, message => message.Contains("Failed to observe", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Dispose_FromManagedChangedHandler_StopsRemainingHandlers()
+    {
+        WriteFile(MinimalFile());
+        using var store = Store();
+        var remainingCalls = 0;
+        store.Changed += (_, _) =>
+        {
+            store.Dispose();
+            store.Dispose();
+        };
+        store.Changed += (_, _) => Interlocked.Increment(ref remainingCalls);
+        var current = (await store.GetSnapshotReadOnlyAsync()).Snapshot!;
+
+        var updated = await store.ReplaceAsync(current.Hash, CreateAllowlistFile("**/git.exe"))
+            .WaitAsync(LifecycleDeadline);
+
+        Assert.NotNull(updated);
+        Assert.Equal(0, remainingCalls);
+        Assert.Throws<ObjectDisposedException>(() => store.CreateWriterOrigin());
+    }
+
+    [Fact]
+    public async Task Dispose_FromExternalChangedHandler_DoesNotWaitForItsOwnObservation()
+    {
+        WriteFile(MinimalFile());
+        using var store = Store();
+        var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        store.Changed += (_, _) =>
+        {
+            store.Dispose();
+            store.Dispose();
+            disposed.SetResult();
+        };
+        await store.GetSnapshotReadOnlyAsync();
+
+        WriteAtomically(FilePath, SerializeFile(CreateAllowlistFile("**/git.exe")));
+        await disposed.Task.WaitAsync(LifecycleDeadline);
+
+        Assert.Throws<ObjectDisposedException>(() => store.CreateWriterOrigin());
+    }
+
+    [Fact]
+    public async Task Dispose_WhileAdmittedWriterHoldsStoreLock_DoesNotDisposeItsSemaphore()
+    {
+        WriteFile(MinimalFile());
+        using var store = Store();
+        store.Changed += (_, _) => { };
+        var current = (await store.GetSnapshotReadOnlyAsync()).Snapshot!;
+        var validating = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseWriter = new ManualResetEventSlim();
+        var writing = Task.Run(() => store.ReplaceAsync(
+            current.Hash,
+            CreateAllowlistFile("**/git.exe"),
+            deltaValidator: (_, _) =>
+            {
+                validating.SetResult();
+                if (!releaseWriter.Wait(LifecycleDeadline))
+                {
+                    throw new TimeoutException("Owned writer was never released.");
+                }
+                return null;
+            }));
+
+        try
+        {
+            await validating.Task.WaitAsync(LifecycleDeadline);
+            File.SetLastWriteTimeUtc(FilePath, DateTime.UtcNow.AddMinutes(1));
+            store.Dispose();
+        }
+        finally
+        {
+            releaseWriter.Set();
+        }
+
+        Assert.NotNull(await writing.WaitAsync(LifecycleDeadline));
+        Assert.DoesNotContain(_log.Warnings, message => message.Contains("Failed to observe", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ReplaceAsync_StaleHash_ReturnsNullAndDoesNotRaiseSuccess()
     {
         WriteFile(MinimalFile());
@@ -1823,7 +1965,7 @@ public class ExecApprovalsStoreTests : IDisposable
         File.Move(tempPath, filePath, overwrite: true);
     }
 
-    private static async Task WaitForConditionAsync(Func<bool> condition, string message, int timeoutMs = 5000)
+    private static async Task WaitForConditionAsync(Func<bool> condition, string message, int timeoutMs = ObservationTimeoutMs)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
@@ -1837,6 +1979,34 @@ public class ExecApprovalsStoreTests : IDisposable
         }
 
         Assert.True(condition(), message);
+    }
+
+    private sealed class GatedReadLogger : IOpenClawLogger, IDisposable
+    {
+        private int _readFailures;
+        public TaskCompletionSource ReadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ManualResetEventSlim ReleaseRead { get; } = new();
+        public ConcurrentQueue<string> Warnings { get; } = new();
+        public int ReadFailures => Volatile.Read(ref _readFailures);
+        public void Info(string message) { }
+        public void Debug(string message) { }
+        public void Error(string message, Exception? ex = null) { }
+
+        public void Warn(string message)
+        {
+            Warnings.Enqueue(message);
+            if (message.StartsWith("[EXEC-APPROVALS] Failed to load exec-approvals.json", StringComparison.Ordinal)
+                && Interlocked.Increment(ref _readFailures) == 1)
+            {
+                ReadStarted.SetResult();
+                if (!ReleaseRead.Wait(LifecycleDeadline))
+                {
+                    throw new TimeoutException("Owned read was never released.");
+                }
+            }
+        }
+
+        public void Dispose() => ReleaseRead.Dispose();
     }
 }
 
