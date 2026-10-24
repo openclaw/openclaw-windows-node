@@ -151,7 +151,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         TimeSpan? lastChatStateSaveDelay = null,
         Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null,
         Action? historyFailureReservedForTesting = null,
-        Func<Func<Task>, Task>? deferredAbortScheduler = null)
+        Func<Func<Task>, Task>? deferredAbortScheduler = null,
+        string? abortedIdsFilePath = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         _post = post;
@@ -162,11 +163,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             attachmentMetaCacheFilePath);
         _persistence = new ChatStatePersistence(
             lastChatStateFilePath,
-            lastChatStateSaveDelay);
+            lastChatStateSaveDelay,
+            abortedIdsPath: abortedIdsFilePath);
         _state = new ChatConversationState(
             bridge.CurrentStatus,
             _persistence.InitialLastChatState,
-            bridge.GetCurrentModelsList());
+            bridge.GetCurrentModelsList(),
+            bridge.ConnectionEpoch);
         _historyLoader = new ChatHistoryLoader(
             bridge,
             _state,
@@ -229,6 +232,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     internal async Task<bool> SendMessageReportingAcceptanceAsync(string threadId, string message, CancellationToken cancellationToken = default, IReadOnlyList<ChatAttachment>? attachments = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(threadId))
+            throw new InvalidOperationException("chat.send requires an explicit sessionKey before sending a message.");
 
         var hasAttachments = attachments is { Count: > 0 };
         if (string.IsNullOrWhiteSpace(message) && !hasAttachments)
@@ -467,12 +472,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 return false;
             }
             sendOperation = _telemetry.StartSendAttempt(request.Id);
-            var sendResult = await _bridge.SendChatMessageForRunAsync(
+            var sendResult = await _bridge.SendChatMessageForRunAtEpochAsync(
                 request.Text,
                 threadId,
                 dispatch.SessionId,
                 request.Attachments,
-                idempotencyKey: request.SendRunId);
+                idempotencyKey: request.SendRunId,
+                expectedConnectionEpoch: dispatch.TransportEpoch);
             var admissionStatus = ToTelemetryAdmissionStatus(
                 ChatSendQueuePolicy.ClassifyAdmission(sendResult));
             var admissionOutcome = admissionStatus == ChatAdmissionTelemetryStatus.Canceled
@@ -539,7 +545,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 try
                 {
                     Logger.Info($"[Reset] Aborting late pre-reset send runId='{commit.StaleRunIdToAbort}' threadId='{threadId}'");
-                    await _bridge.SendChatAbortAsync(commit.StaleRunIdToAbort, threadId);
+                    await _bridge.SendChatAbortAtEpochAsync(
+                        commit.StaleRunIdToAbort, threadId, dispatch.TransportEpoch);
                 }
                 catch (Exception abortEx)
                 {
@@ -693,17 +700,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             try
             {
                 Logger.Info($"[ABORT] Sending chat.abort for runId='{runId}'");
-                await _bridge.SendChatAbortAsync(runId, threadId);
+                await _bridge.SendChatAbortAtEpochAsync(runId, threadId, abort.RuntimeGeneration.TransportEpoch);
                 Logger.Info($"[ABORT] chat.abort sent successfully");
             }
             catch (Exception ex)
             {
-                _state.RollbackAbort(threadId, runId);
                 Logger.Warn($"[ABORT] chat.abort failed, cleared suppression: {ex.Message}");
-                ApplyEventAndPublish(
-                    threadId,
-                    new ChatTurnEndEvent(),
-                    notification: new ChatProviderNotification(
+                var snapshot = _state.RollbackAbortAndEndTurnIfCurrent(
+                    threadId, runId, abort.RuntimeGeneration, ProjectionContext());
+                if (snapshot is not null)
+                    Publish(snapshot, new ChatProviderNotification(
                         ChatProviderNotificationKind.Error,
                         threadId,
                         LocalizationHelper.GetString(
@@ -724,19 +730,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // If there was a real in-flight turn, mark the partial assistant text
         // as aborted so users can tell it isn't a complete response (per spec
         // Edge Cases — "Aborted runs: Show with abort indicator").
-        if (hadActiveTurn)
-        {
-            ApplyEventAndPublish(threadId, new ChatStatusEvent("Aborted", ChatTone.Warning));
-        }
-
-        _state.CompleteAbort(threadId, runId);
-
-        // Always clear local "turn active" state — the gateway will emit a
-        // lifecycle.end if the abort succeeds, but we want the UI to reflect
-        // the user's intent immediately.
-        ApplyEventAndPublish(
-            threadId,
-            new ChatTurnEndEvent(RetainToolCorrelations: false));
+        if (_state.CompleteAbortIfCurrent(threadId, abort, ProjectionContext()) is { } completed)
+            Publish(completed);
     }
 
     /// <summary>
@@ -965,7 +960,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
 
         var decision = NormalizeApprovalAction(action);
-        if (!_state.CanRespondToPermission(threadId, requestId, decision))
+        if (!_state.TryBeginPermissionResponse(threadId, requestId, decision, out var generation))
         {
             Logger.Warn("[Approval] response blocked: no matching pending approval permits this decision");
             return;
@@ -983,7 +978,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         try
         {
-            await _bridge.ResolveExecApprovalAsync(requestId, decision);
+            await _bridge.ResolveExecApprovalAtEpochAsync(requestId, decision, generation.TransportEpoch);
         }
         catch (Exception ex)
         {
@@ -992,11 +987,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             // problem and leave the agent waiting on an approval that the
             // user has no way to re-issue.
             Logger.Warn($"[Approval] response send failed requestId={requestId}: {ex.Message} (banner preserved for retry)");
+            if (_state.IsRuntimeGenerationCurrent(threadId, generation))
+                Publish(_state.Snapshot(ProjectionContext()), new ChatProviderNotification(
+                    ChatProviderNotificationKind.Error, threadId,
+                    LocalizationHelper.GetString("Chat_Notification_SendFailed"), ex.Message));
             return;
         }
 
-        ClearPendingPermissionAndPublish(threadId, expectedRequestId: requestId,
-            decision: ChatDecisionForApprovalAction(decision));
+        Publish(_state.ClearPendingPermission(threadId, requestId,
+            ChatDecisionForApprovalAction(decision), ProjectionContext(), generation));
     }
 
     private static string FormatApprovalResult(string decision, string detail, string requestId)
@@ -1643,7 +1642,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             {
                 try
                 {
-                    await _bridge.SendChatAbortAsync(runId, threadId);
+                    await _bridge.SendChatAbortAtEpochAsync(runId, threadId, runtimeGeneration.TransportEpoch);
                 }
                 catch (Exception ex)
                 {
@@ -1946,7 +1945,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     }
 
     private ChatProjectionContext ProjectionContext() =>
-        new(_bridge.MainSessionKey, _bridge.HasHandshakeSnapshot);
+        new(_bridge.MainSessionKey, _bridge.HasHandshakeSnapshot, _bridge.ConnectionEpoch);
 
     private void Publish(
         ChatDataSnapshot snapshot,

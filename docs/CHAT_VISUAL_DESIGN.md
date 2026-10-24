@@ -90,6 +90,19 @@ action visible without hovering. Provider promotion replaces the pending row wit
 without adding queue-only rows to history. This applies to Workspace's ChatPage.
 See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
 
+Conversation sends, Stop requests and exec-approval responses retain the
+connection epoch captured by their state transaction. The transport refuses
+to write them onto a replacement connection. A rejected old epoch is a
+pre-write refusal, not proof of uncertain delivery. Epoch-bound sends and aborts
+require the explicit selected session key, never a fallback to the Gateway's
+main session. Late Stop or approval acknowledgements cannot complete a
+replacement run or dismiss a replacement approval. An accepted send reports
+acceptance even after navigation, clears only its unchanged draft revision and
+submitted attachment identities, and preserves edits and added attachments.
+Reset confirmation cannot authorize a conversation the user has since left. These fences do not
+establish delivery after a lost acknowledgement or implement uncertain-send
+reconciliation.
+
 Chat responses are not read aloud by default. Enabling the Text-to-speech
 capability permits playback but does not enable automatic spoken replies.
 Settings > Voice > "Read responses aloud" opts in to automatic playback;

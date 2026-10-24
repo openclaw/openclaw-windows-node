@@ -701,6 +701,65 @@ public class OpenClawGatewayClientTests
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
+    [Theory]
+    [InlineData("chat.send")]
+    [InlineData("chat.abort")]
+    [InlineData("exec.approval.resolve")]
+    public async Task ChatMutation_RefusesCapturedEpochWithoutWritingOnCurrentSocket(string method)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("chat-mutation-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        var staleEpoch = client.SessionMutationConnectionEpoch!.Value - 1;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => method switch
+        {
+            "chat.send" => client.SendChatMessageForRunAsync("Keep the draft.", "agent:test:session",
+                idempotencyKey: "original-input", expectedConnectionEpoch: staleEpoch),
+            "chat.abort" => client.SendChatAbortAsync("original-run", "agent:test:session",
+                expectedConnectionEpoch: staleEpoch),
+            _ => client.ResolveExecApprovalAsync("original-approval", "allow-once", staleEpoch),
+        });
+        Assert.Equal(0, helper.GetPendingRequestCount());
+
+        var probe = client.SendWizardRequestAsync("health");
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        using var frame = JsonDocument.Parse(request);
+        Assert.Equal("health", frame.RootElement.GetProperty("method").GetString());
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res", id = ReadRequestId(request), ok = true, payload = new { },
+        }));
+        await probe.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(false, " ")]
+    [InlineData(true, null)]
+    [InlineData(true, " ")]
+    public async Task EpochBoundChatMutation_RequiresExplicitSessionInsteadOfMainFallback(bool abort, string? key)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("chat-mutation-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady("agent:unrelated:main");
+        var epoch = client.SessionMutationConnectionEpoch!.Value;
+
+        await Assert.ThrowsAnyAsync<ArgumentException>(() => abort
+            ? client.SendChatAbortAsync("original-run", key, expectedConnectionEpoch: epoch)
+            : client.SendChatMessageForRunAsync("Keep the draft.", key,
+                idempotencyKey: "original-input", expectedConnectionEpoch: epoch));
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
     [Fact]
     public async Task SendWizardRequestAsync_ResponseBeforeDispose_ReturnsPayloadAndCleansTracking()
     {

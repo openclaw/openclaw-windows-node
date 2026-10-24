@@ -33,7 +33,10 @@ internal sealed record ChatQueuedSendDispatch(
     long ResetVersion,
     long StartedLifecycleSequence,
     long StartedRunStartSequence,
-    bool StartedDirectly);
+    bool StartedDirectly)
+{
+    internal long TransportEpoch { get; init; }
+}
 
 internal enum AssistantQueueFrameDisposition
 {

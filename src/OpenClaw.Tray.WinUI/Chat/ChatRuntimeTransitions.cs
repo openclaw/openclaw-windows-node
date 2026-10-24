@@ -6,11 +6,13 @@ namespace OpenClawTray.Chat;
 
 internal sealed record ChatProjectionContext(
     string? MainSessionKey,
-    bool HasHandshakeSnapshot);
+    bool HasHandshakeSnapshot,
+    long TransportEpoch = 0);
 
 internal readonly record struct ChatRuntimeGeneration(
     long ConnectionGeneration,
-    long ResetGeneration);
+    long ResetGeneration,
+    long TransportEpoch = 0);
 
 internal sealed record ChatStatusTransition(
     ChatDataSnapshot Snapshot,
@@ -32,7 +34,10 @@ internal sealed record ChatResetTransition(
 
 internal sealed record ChatAbortStart(
     string? RunId,
-    bool HadActiveTurn);
+    bool HadActiveTurn)
+{
+    internal ChatRuntimeGeneration RuntimeGeneration { get; init; }
+}
 
 internal sealed record ChatAgentEventTransition(
     bool Process,

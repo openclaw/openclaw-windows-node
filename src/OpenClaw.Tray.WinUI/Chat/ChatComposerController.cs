@@ -257,7 +257,9 @@ internal sealed partial class ChatComposerController : IDisposable
 #endif
 
         var generationAtStart = _generation;
+        var targetSelectionRevision = _selectionRevision;
         bool StillLive() => !_disposed && generationAtStart == _generation;
+        bool StillTargeted() => StillLive() && targetSelectionRevision == _selectionRevision;
 
         if (_port.SupportsNativeLifecycle
             && ChatLifecycleCommandParser.TryParse(message, attachments.Count > 0, out var command))
@@ -271,13 +273,13 @@ internal sealed partial class ChatComposerController : IDisposable
             if (command == ChatLifecycleCommandKind.Reset && _hostActions.ConfirmResetAsync is not null)
             {
                 var confirmed = await _hostActions.ConfirmResetAsync(threadId, displayName).ConfigureAwait(true);
-                if (!StillLive() || !confirmed)
+                if (!StillTargeted() || !confirmed)
                     return false;
             }
 
             if (command == ChatLifecycleCommandKind.New)
                 _hostActions.SessionNavigationStarting?.Invoke();
-            if (!StillLive())
+            if (!StillTargeted())
                 return false;
 
             var selectionRevision = _selectionRevision;
@@ -294,7 +296,7 @@ internal sealed partial class ChatComposerController : IDisposable
         {
             var requiresPreparation = _placement.RequiresPreparation;
             if (!await _placement.PrepareAsync(threadId, _lifetimeToken).ConfigureAwait(true)
-                || !StillLive() || (requiresPreparation && !_placement.IsCurrent(threadId)))
+                || !StillTargeted() || (requiresPreparation && !_placement.IsCurrent(threadId)))
                 return false;
         }
         var accepted = await _port.SendMessageAsync(threadId, message, attachments, _lifetimeToken).ConfigureAwait(true);

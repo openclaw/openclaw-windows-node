@@ -12,6 +12,7 @@ public interface IChatGatewayBridge : IDisposable
 {
     bool IsConnected { get; }
     ConnectionStatus CurrentStatus { get; }
+    long ConnectionEpoch => 0;
     /// <summary>Canonical main session key resolved by the gateway handshake; <c>null</c> until ready.</summary>
     string? MainSessionKey { get; }
     /// <summary>True once the gateway handshake has resolved session defaults.</summary>
@@ -45,6 +46,15 @@ public interface IChatGatewayBridge : IDisposable
         string? sessionId,
         IReadOnlyList<ChatAttachment>? attachments = null,
         string? idempotencyKey = null);
+    Task<ChatSendResult> SendChatMessageForRunAtEpochAsync(
+        string message, string sessionKey, string? sessionId,
+        IReadOnlyList<ChatAttachment>? attachments, string idempotencyKey, long expectedConnectionEpoch)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
+        if (ConnectionEpoch != expectedConnectionEpoch)
+            throw new InvalidOperationException("The Gateway connection changed before chat.send could be sent.");
+        return SendChatMessageForRunAsync(message, sessionKey, sessionId, attachments, idempotencyKey);
+    }
     /// <summary>
     /// Fetches the gateway command catalog (<c>commands.list</c>) via the typed
     /// protocol API. Returns a <see cref="CommandCatalog"/> whose
@@ -106,6 +116,19 @@ public interface IChatGatewayBridge : IDisposable
         Task.FromResult(AssistantFileDownloadStatus.Unavailable);
     Task SendChatAbortAsync(string runId, string? sessionKey = null);
     Task ResolveExecApprovalAsync(string approvalId, string decision);
+    Task SendChatAbortAtEpochAsync(string runId, string sessionKey, long expectedConnectionEpoch)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
+        if (ConnectionEpoch != expectedConnectionEpoch)
+            throw new InvalidOperationException("The Gateway connection changed before chat.abort could be sent.");
+        return SendChatAbortAsync(runId, sessionKey);
+    }
+    Task ResolveExecApprovalAtEpochAsync(string approvalId, string decision, long expectedConnectionEpoch)
+    {
+        if (ConnectionEpoch != expectedConnectionEpoch)
+            throw new InvalidOperationException("The Gateway connection changed before exec.approval.resolve could be sent.");
+        return ResolveExecApprovalAsync(approvalId, decision);
+    }
 
     event EventHandler<ConnectionStatus>? StatusChanged;
     event EventHandler<SessionInfo[]>? SessionsUpdated;
@@ -234,6 +257,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     public bool IsConnected => _client.IsConnectedToGateway;
     public IChatPlacementGateway PlacementGateway { get; }
     public ConnectionStatus CurrentStatus => _currentStatus;
+    public long ConnectionEpoch => _client.SessionMutationConnectionEpoch ?? -1;
     public string? MainSessionKey => _client.MainSessionKey;
     public bool HasHandshakeSnapshot => _client.HasHandshakeSnapshot;
     public SessionInfo[] GetSessionList() => _client.GetSessionList();
@@ -255,6 +279,12 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         IReadOnlyList<ChatAttachment>? attachments = null,
         string? idempotencyKey = null) =>
         _client.SendChatMessageForRunAsync(message, sessionKey, sessionId, attachments, idempotencyKey);
+
+    public Task<ChatSendResult> SendChatMessageForRunAtEpochAsync(
+        string message, string sessionKey, string? sessionId,
+        IReadOnlyList<ChatAttachment>? attachments, string idempotencyKey, long expectedConnectionEpoch) =>
+        _client.SendChatMessageForRunAsync(message, sessionKey, sessionId, attachments, idempotencyKey,
+            expectedConnectionEpoch);
 
     public Task PatchSessionModelAsync(string sessionKey, string model) =>
         _client.PatchSessionAsync(sessionKey, new SessionPatch { Model = model });
@@ -319,6 +349,12 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public Task ResolveExecApprovalAsync(string approvalId, string decision) =>
         _client.ResolveExecApprovalAsync(approvalId, decision);
+
+    public Task SendChatAbortAtEpochAsync(string runId, string sessionKey, long expectedConnectionEpoch) =>
+        _client.SendChatAbortAsync(runId, sessionKey, expectedConnectionEpoch: expectedConnectionEpoch);
+
+    public Task ResolveExecApprovalAtEpochAsync(string approvalId, string decision, long expectedConnectionEpoch) =>
+        _client.ResolveExecApprovalAsync(approvalId, decision, expectedConnectionEpoch);
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
     public event EventHandler<SessionInfo[]>? SessionsUpdated;

@@ -506,7 +506,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         string? sessionKey = null,
         string? sessionId = null,
         IReadOnlyList<ChatAttachment>? attachments = null,
-        string? idempotencyKey = null)
+        string? idempotencyKey = null,
+        long? expectedConnectionEpoch = null)
     {
         if (!IsConnected)
             throw new InvalidOperationException("Gateway connection is not open");
@@ -516,6 +517,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             throw new ArgumentException("Message or attachment is required", nameof(message));
         if (idempotencyKey is not null && string.IsNullOrWhiteSpace(idempotencyKey))
             throw new ArgumentException("Idempotency key cannot be whitespace", nameof(idempotencyKey));
+        if (expectedConnectionEpoch.HasValue)
+            ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
+
+        var connectionGeneration = GetReadyConnectionGeneration("chat.send");
+        if (expectedConnectionEpoch.HasValue && connectionGeneration != expectedConnectionEpoch.Value)
+            throw new InvalidOperationException("The Gateway connection changed before chat.send could be sent.");
 
         var effectiveSessionKey = ResolveEffectiveSessionKey(
             sessionKey, Volatile.Read(ref _mainSessionKey), "chat.send");
@@ -551,7 +558,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         try
         {
-            var connectionGeneration = GetReadyConnectionGeneration("chat.send");
             var sent = await SendRawAsync(
                     JsonSerializer.Serialize(req),
                     connectionGeneration,
@@ -602,13 +608,17 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// still be visible after the abort and is persisted into the transcript
     /// with abort metadata.
     /// </summary>
-    public async Task SendChatAbortAsync(string runId, string? sessionKey = null, int timeoutMs = 5000)
+    public async Task SendChatAbortAsync(string runId, string? sessionKey = null, int timeoutMs = 5000,
+        long? expectedConnectionEpoch = null)
     {
         if (string.IsNullOrWhiteSpace(runId))
             throw new ArgumentException("runId is required", nameof(runId));
+        if (expectedConnectionEpoch.HasValue)
+            ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
         var effectiveSessionKey = ResolveEffectiveSessionKey(
             sessionKey, Volatile.Read(ref _mainSessionKey), "chat.abort");
-        await SendWizardRequestAsync("chat.abort", new { runId, sessionKey = effectiveSessionKey }, timeoutMs);
+        await SendResponseRequestAsync("chat.abort", new { runId, sessionKey = effectiveSessionKey }, timeoutMs,
+            expectedConnectionEpoch);
     }
 
     /// <summary>
@@ -627,7 +637,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// <exception cref="InvalidOperationException">Thrown when the gateway is not connected at call time, or returns an <c>ok:false</c> response. The caller (e.g. the chat approval banner) relies on this to keep the Allow/Deny UI on screen for retry instead of silently dismissing it when the resolve was actually rejected.</exception>
     /// <exception cref="OperationCanceledException">Thrown when the gateway connection is lost while the resolve is in flight. Same banner-preserve contract.</exception>
     /// <exception cref="TimeoutException">Thrown when no response arrives within the resolve timeout window. Preserves the banner for retry.</exception>
-    public async Task ResolveExecApprovalAsync(string approvalId, string decision)
+    public async Task ResolveExecApprovalAsync(string approvalId, string decision, long? expectedConnectionEpoch = null)
     {
         if (string.IsNullOrWhiteSpace(approvalId))
             throw new ArgumentException("approvalId is required", nameof(approvalId));
@@ -643,6 +653,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             throw new InvalidOperationException("Cannot resolve exec approval: gateway is not connected.");
 
         var connectionGeneration = GetReadyConnectionGeneration("exec.approval.resolve");
+        if (expectedConnectionEpoch.HasValue && connectionGeneration != expectedConnectionEpoch.Value)
+            throw new InvalidOperationException("The Gateway connection changed before exec.approval.resolve could be sent.");
 
         var requestId = Guid.NewGuid().ToString();
         var pending = _pendingRequests.RegisterApproval(

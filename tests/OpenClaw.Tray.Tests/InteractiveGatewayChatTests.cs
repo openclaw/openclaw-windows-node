@@ -13,6 +13,40 @@ namespace OpenClaw.Tray.Tests;
 public sealed class InteractiveGatewayChatTests
 {
     [Theory]
+    [InlineData("chat.send")]
+    [InlineData("chat.abort")]
+    [InlineData("exec.approval.resolve")]
+    public async Task ProductionBridge_RejectsOldEpochBeforeWritingMutation(string method)
+    {
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateInteractive(), token);
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using var bridge = new GatewayClientChatBridge(client);
+        var epoch = bridge.ConnectionEpoch;
+        Assert.Equal(client.SessionMutationConnectionEpoch, epoch);
+        var key = GatewayScenario.EmptySessionKey;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => method switch
+        {
+            "chat.send" => bridge.SendChatMessageForRunAtEpochAsync(
+                "Synthetic prompt.", key, null, null, "original-input", epoch - 1),
+            "chat.abort" => bridge.SendChatAbortAtEpochAsync("original-run", key, epoch - 1),
+            _ => bridge.ResolveExecApprovalAtEpochAsync("original-approval", "allow-once", epoch - 1),
+        });
+
+        await client.RequestChatHistoryAsync(key);
+        Assert.DoesNotContain(server.Requests, request => request.Method == method);
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task SidebarForkPreservesCompletedHistory(bool active)

@@ -211,6 +211,34 @@ public sealed class ChatConversationStateTests
         Assert.True(state.Snapshot(context).Timelines["main"].TurnActive);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CompleteAbort_StaleRunOrConnectionCannotEndReplacementTurn(bool reconnect)
+    {
+        var state = new ChatConversationState(ConnectionStatus.Connected, null, null, transportEpoch: 7);
+        var context = new ChatProjectionContext("main", true, TransportEpoch: 7);
+        state.Load([new SessionInfo { Key = "main", IsMain = true }], context);
+        using var start = JsonDocument.Parse("""{"phase":"start"}""");
+        AgentEventInfo Run(string id) => new()
+        {
+            Stream = "lifecycle", SessionKey = "main", RunId = id, Data = start.RootElement.Clone(),
+        };
+        state.ProcessAgentEvent(Run("original-run"), "main", context);
+        var abort = state.BeginAbort("main");
+        if (reconnect)
+        {
+            state.ApplyStatus(ConnectionStatus.Disconnected, context);
+            context = context with { TransportEpoch = 8 };
+            state.ApplyStatus(ConnectionStatus.Connected, context);
+        }
+        state.ProcessAgentEvent(Run("replacement-run"), "main", context);
+
+        Assert.Null(state.CompleteAbortIfCurrent("main", abort, context));
+        Assert.True(state.Snapshot(context).Timelines["main"].TurnActive);
+        Assert.Equal("replacement-run", state.BeginAbort("main").RunId);
+    }
+
     [Fact]
     public void HistoryMerge_DeduplicatesPreservedLiveTailEntries()
     {

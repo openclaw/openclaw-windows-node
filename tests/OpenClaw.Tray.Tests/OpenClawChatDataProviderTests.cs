@@ -68,6 +68,7 @@ public class OpenClawChatDataProviderTests
     {
         public bool IsConnected { get; set; }
         public ConnectionStatus CurrentStatus { get; set; }
+        public long ConnectionEpoch { get; set; }
         public string? MainSessionKey { get; set; }
         public bool HasHandshakeSnapshot { get; set; }
         public List<string> SentMessages { get; } = new();
@@ -288,21 +289,20 @@ public class OpenClawChatDataProviderTests
             Action<Action>? post = null)
     {
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
-        var provider = toolMetaCachePath is null && attachmentMetaCachePath is null && lastChatStatePath is null &&
-            lastChatStateSaveDelay is null && historyRetryScheduler is null && historyFailureReservedForTesting is null &&
-            lastStateSaveReservedForTesting is null && beforeSelectedStateSaveForTesting is null &&
-            deferredAbortScheduler is null && post is null
-            ? new OpenClawChatDataProvider(bridge)
-            : new OpenClawChatDataProvider(
+        var stateDirectory = Path.GetDirectoryName(toolMetaCachePath);
+        if (string.IsNullOrEmpty(stateDirectory))
+            stateDirectory = Path.Combine(Path.GetTempPath(), "OpenClawChatTests", Guid.NewGuid().ToString("N"));
+        var provider = new OpenClawChatDataProvider(
                 bridge,
                 post,
-                toolMetaCacheFilePath: toolMetaCachePath ?? Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "tool-metadata.json"),
-                attachmentMetaCacheFilePath: attachmentMetaCachePath,
-                lastChatStateFilePath: lastChatStatePath,
+                toolMetaCacheFilePath: toolMetaCachePath ?? Path.Combine(stateDirectory, "tool-metadata.json"),
+                attachmentMetaCacheFilePath: attachmentMetaCachePath ?? Path.Combine(stateDirectory, "attachment-metadata.json"),
+                lastChatStateFilePath: lastChatStatePath ?? Path.Combine(stateDirectory, "last-chat-state.json"),
                 lastChatStateSaveDelay: lastChatStateSaveDelay,
                 historyRetryScheduler: historyRetryScheduler,
                 historyFailureReservedForTesting: historyFailureReservedForTesting,
-                deferredAbortScheduler: deferredAbortScheduler);
+                deferredAbortScheduler: deferredAbortScheduler,
+                abortedIdsFilePath: Path.Combine(stateDirectory, "aborted-messages.json"));
         provider.SetPersistenceTestHooks(
             lastStateSaveReservedForTesting,
             beforeSelectedStateSaveForTesting);
@@ -11936,6 +11936,33 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_EpochChangesWithoutStatusDelivery_DoesNotSendOnReplacementConnection()
+    {
+        using var temp = new OpenClaw.TestSupport.TempDirectory();
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()],
+            toolMetaCachePath: Path.Combine(temp.Path, "tool-metadata.json"),
+            attachmentMetaCachePath: Path.Combine(temp.Path, "attachment-metadata.json"),
+            lastChatStatePath: Path.Combine(temp.Path, "last-chat-state.json"));
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            provider.BeforePublishForTests = _ => bridge.ConnectionEpoch = 1;
+
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                provider.SendMessageReportingAcceptanceAsync("main", "Keep my original input."));
+
+            Assert.Contains("connection changed", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Empty(bridge.SentMessages);
+            Assert.Contains(snapshots[^1].Timelines["main"].Entries,
+                entry => entry.Text.Contains("connection changed", StringComparison.OrdinalIgnoreCase));
+            provider.BeforePublishForTests = null;
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            Assert.True(await provider.SendMessageReportingAcceptanceAsync("main", "Explicit fresh send."));
+            Assert.Equal(["Explicit fresh send."], bridge.SentMessages);
+        }
+    }
+
+    [Fact]
     public async Task SendMessageAsync_InFlightResultAfterReconnect_EndsStaleTurn()
     {
         var sendStarted = new TaskCompletionSource(
@@ -15511,24 +15538,18 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task SendMessageAsync_PreHandshake_GatewayClientRefusesViaProvider()
+    public async Task SendMessageAsync_PreHandshake_RefusesMissingSessionBeforeAdmission()
     {
-        // Provider-level proof that the upstream guard fires: SendMessageAsync
-        // bubbles the InvalidOperationException raised by the gateway client's
-        // ResolveEffectiveSessionKey when no canonical sessionKey is known.
-        // (The pure-function unit test for the helper itself lives in
-        //  OpenClawGatewayClientSessionKeyTests in OpenClaw.Shared.Tests.)
-        var (bridge, provider, _, _) = CreateProvider();
-        bridge.IsConnected = true;
-        bridge.SendBehavior = (_, key, _) =>
+        var (bridge, provider, snapshots, _) = CreateProvider();
+        await using (provider)
         {
-            if (string.IsNullOrWhiteSpace(key))
-                throw new InvalidOperationException(
-                    "chat.send requires a sessionKey, but the gateway handshake has not resolved one yet.");
-            return Task.CompletedTask;
-        };
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await provider.SendMessageAsync("", "hi"));
+            bridge.IsConnected = true;
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await provider.SendMessageAsync("", "hi"));
+            Assert.Contains("explicit sessionKey", error.Message);
+            Assert.Empty(bridge.SentMessages);
+            Assert.Empty(snapshots);
+        }
     }
 
     [Fact]
