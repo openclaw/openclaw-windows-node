@@ -6200,6 +6200,9 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
     <value>Could not load bindings</value>
   </data>
+  <data name="BindingsPage_ConfigRequestFailed.Message" xml:space="preserve">
+    <value>La passerelle n'a pas renvoyé les liaisons. Actualisez pour réessayer.</value>
+  </data>
   <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
     <value>Agent event log</value>
   </data>

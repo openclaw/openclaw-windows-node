@@ -6176,6 +6176,9 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
     <value>Could not load bindings</value>
   </data>
+  <data name="BindingsPage_ConfigRequestFailed.Message" xml:space="preserve">
+    <value>O gateway não retornou os vínculos. Atualize para tentar novamente.</value>
+  </data>
   <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
     <value>Agent event log</value>
   </data>
