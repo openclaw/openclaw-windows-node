@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
@@ -14,6 +16,13 @@ public sealed class OpenClawChatCoordinator : IDisposable
     private readonly Func<NodeService?> _nodeServiceAccessor;
     private readonly IOpenClawLogger _logger;
     private readonly Action<Action>? _post;
+    private static readonly TimeSpan DefaultModelWaitTimeout = TimeSpan.FromMinutes(2);
+    // Guarded by _defaultModelWaitGate. The generation changes with the operator client, so a
+    // previous client's wait cannot change the state the new client's sends read.
+    private readonly object _defaultModelWaitGate = new();
+    private Task? _defaultModelWait;
+    private bool _defaultModelWaitTimedOut;
+    private int _defaultModelWaitGeneration;
     private readonly object _gate = new();
     private readonly object _manualSpeechGate = new();
     private OpenClawChatDataProvider? _provider;
@@ -79,13 +88,23 @@ public sealed class OpenClawChatCoordinator : IDisposable
         }
 
         oldProvider?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        int generation;
+        lock (_defaultModelWaitGate)
+        {
+            generation = ++_defaultModelWaitGeneration;
+            _defaultModelWait = null;
+            _defaultModelWaitTimedOut = false;
+        }
 
         if (client is null)
         {
             return;
         }
 
-        var newProvider = new OpenClawChatDataProvider(new GatewayClientChatBridge(client), _post);
+        var newProvider = new OpenClawChatDataProvider(
+            new GatewayClientChatBridge(client),
+            _post,
+            (model, modelProvider) => HoldUntilDefaultModelListedAsync(client, generation, model, modelProvider));
         lock (_gate)
         {
             if (_disposed)
@@ -97,6 +116,98 @@ public sealed class OpenClawChatCoordinator : IDisposable
             _provider = newProvider;
         }
     }
+
+    /// <summary>
+    /// Holds chat sends while the Gateway cannot resolve its default model, for example while
+    /// companion Local AI restarts and its provider route is withdrawn (#1445). A turn sent then
+    /// fails as an unknown model, so it waits, re-checking the Gateway's model list every second,
+    /// for at most two minutes. A wait that timed out is not repeated until the model is listed.
+    /// A session whose own model (for example a cloud model) is still listed is never held.
+    /// </summary>
+    private async Task<Task?> HoldUntilDefaultModelListedAsync(
+        OpenClawGatewayClient client, int generation, string? sessionModel, string? sessionProvider)
+    {
+        var (defaultListed, sessionListed) =
+            await IsDefaultModelListedAsync(client, sessionModel, sessionProvider).ConfigureAwait(false);
+        lock (_defaultModelWaitGate)
+        {
+            if (generation != _defaultModelWaitGeneration)
+                return null;
+            if (defaultListed == true)
+                _defaultModelWaitTimedOut = false;
+            if (defaultListed == true || sessionListed)
+                return null;
+            if (_defaultModelWait is { IsCompleted: false } wait)
+                return wait;
+            if (defaultListed is null || _defaultModelWaitTimedOut)
+                return null;
+            _logger.Info("OpenClawChatCoordinator: holding chat sends until the Gateway lists its default model");
+            return _defaultModelWait = WaitForDefaultModelAsync(client, generation);
+        }
+    }
+
+    private async Task WaitForDefaultModelAsync(OpenClawGatewayClient client, int generation)
+    {
+        var started = Stopwatch.GetTimestamp();
+        while (Stopwatch.GetElapsedTime(started) < DefaultModelWaitTimeout)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            if (Volatile.Read(ref _defaultModelWaitGeneration) != generation)
+                return;
+            if ((await IsDefaultModelListedAsync(client, null, null).ConfigureAwait(false)).Default == true)
+            {
+                _logger.Info($"OpenClawChatCoordinator: held chat sends {Stopwatch.GetElapsedTime(started).TotalSeconds:F1}s until the Gateway listed its default model");
+                return;
+            }
+        }
+        lock (_defaultModelWaitGate)
+        {
+            if (generation != _defaultModelWaitGeneration)
+                return;
+            _defaultModelWaitTimedOut = true;
+        }
+        _logger.Warn("OpenClawChatCoordinator: the Gateway did not list its default model within two minutes; sending held chats anyway");
+    }
+
+    /// <summary>
+    /// Whether the Gateway's configured model list contains the model it tags <c>default</c>,
+    /// and whether it contains the session's own model when one is given. An older Gateway
+    /// without tags counts as listing its default. A failed or malformed reply leaves the default
+    /// unknown (<c>null</c>): it does not start a hold, but does not end one either.
+    /// </summary>
+    private static async Task<(bool? Default, bool Session)> IsDefaultModelListedAsync(
+        OpenClawGatewayClient client, string? sessionModel, string? sessionProvider)
+    {
+        try
+        {
+            var payload = await client.SendWizardRequestAsync(
+                "models.list", new { view = "configured" }, timeoutMs: 2000).ConfigureAwait(false);
+            if (!payload.TryGetProperty("models", out var models) || models.ValueKind != JsonValueKind.Array)
+                return (null, false);
+            var entries = models.EnumerateArray().Where(model => model.ValueKind == JsonValueKind.Object).ToArray();
+            var sessionListed = !string.IsNullOrEmpty(sessionModel) && entries.Any(model =>
+                IsSessionModel(StringProperty(model, "id"), StringProperty(model, "provider"), sessionModel, sessionProvider));
+            var tagged = entries
+                .Where(model => model.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Array)
+                .ToArray();
+            var defaultListed = tagged.Length == 0 && entries.Length > 0 ||
+                tagged.Any(model => model.GetProperty("tags").EnumerateArray()
+                    .Any(tag => tag.ValueKind == JsonValueKind.String && tag.GetString() == "default"));
+            return (defaultListed, sessionListed);
+        }
+        catch (Exception)
+        {
+            return (null, false);
+        }
+    }
+
+    private static bool IsSessionModel(string? id, string? provider, string sessionModel, string? sessionProvider) =>
+        id is not null &&
+        (id == sessionModel && (string.IsNullOrEmpty(sessionProvider) || provider == sessionProvider) ||
+         $"{provider}/{id}" == sessionModel);
+
+    private static string? StringProperty(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     public Task SpeakChatTextAsync(string text)
     {
