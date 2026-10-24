@@ -769,10 +769,20 @@ public class ToolMetaCacheTests
         public Task ResolveExecApprovalAsync(string approvalId, string decision) => Task.CompletedTask;
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<SessionInfo[]>? SessionsUpdated;
+        public event EventHandler<SessionUsageSnapshot>? SessionUsageSnapshotUpdated
+        {
+            add { }
+            remove { }
+        }
         public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
         public event EventHandler<ChatMessageInfo>? ChatMessageReceived;
         public event EventHandler<AgentEventInfo>? AgentEventReceived;
         public event EventHandler<ModelsListInfo>? ModelsListUpdated;
+        public event EventHandler? ModelCatalogInvalidated
+        {
+            add { }
+            remove { }
+        }
         public void RaiseStatus(ConnectionStatus status) => StatusChanged?.Invoke(this, status);
         public void RaiseSessions(SessionInfo[] sessions) => SessionsUpdated?.Invoke(this, sessions);
         public void RaiseSessionCommandCompleted(SessionCommandResult result) => SessionCommandCompleted?.Invoke(this, result);

@@ -88,7 +88,7 @@ internal static class NodeCapabilityGating
             string.Equals(n.NodeId, localDeviceId, System.StringComparison.OrdinalIgnoreCase));
     }
 
-    public static bool ShouldRegisterSystemRun(SettingsManager? s)    => s?.NodeSystemRunEnabled    != false;
+    public static bool ShouldRegisterSystemRun(SettingsManager? s)    => s?.IsSystemRunPermissionGranted != false;
 
     /// <summary>Counts node capability categories served by local MCP without a gateway node client.</summary>
     public static int CountMcpServedCapabilities(SettingsManager? s)

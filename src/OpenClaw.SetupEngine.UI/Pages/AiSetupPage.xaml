@@ -74,6 +74,15 @@
         <ScrollViewer x:Name="ChoicesScroller" Grid.Row="1" Margin="0,24,0,16" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="12">
                 <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error" />
+                <StackPanel x:Name="LocalAiFailurePanel" Spacing="4" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="OnboardingLocalAiFailure">
+                    <TextBlock x:Name="LocalAiDiagnosticsText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               Visibility="Collapsed" FontSize="12" FontFamily="Cascadia Code,Consolas,monospace"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <HyperlinkButton x:Name="OpenLocalAiLogsButton" Padding="0" Visibility="Collapsed"
+                                     Click="OpenLocalAiLogs_Click"
+                                     AutomationProperties.AutomationId="OnboardingOpenLocalAiLogs" />
+                </StackPanel>
                 <ItemsControl x:Name="SetupActivitySteps" Visibility="Collapsed"
                               AutomationProperties.AutomationId="OnboardingAiProgress">
                     <ItemsControl.ItemTemplate>
@@ -87,12 +96,25 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <TextBlock x:Name="CandidatesHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                <StackPanel x:Name="CandidatesSection" Spacing="8" Visibility="Collapsed">
+                    <TextBlock x:Name="CandidatesHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <ItemsControl x:Name="CandidateChoices" ItemTemplate="{StaticResource ChoiceTemplate}" />
+                    </Border>
+                </StackPanel>
+                <StackPanel x:Name="LocalGroupHeader" Spacing="4" Visibility="Collapsed">
+                    <TextBlock x:Name="LocalGroupHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                    <TextBlock x:Name="LocalGroupDescription" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
+                </StackPanel>
                 <StackPanel x:Name="LocalAiSection" Spacing="8">
                     <tk:SettingsCard x:Name="LocalAiCard" IsClickEnabled="False" Click="LocalAi_Click"
                                      AutomationProperties.AutomationId="OnboardingLocalAiCard">
                         <tk:SettingsCard.Header>
-                            <TextBlock x:Name="LocalAiTitle" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" HorizontalAlignment="Left">
+                                <TextBlock x:Name="LocalAiTitle" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                                <controls:RecommendedBadge x:Name="LocalAiRecommendedBadge" Grid.Column="1" />
+                            </Grid>
                         </tk:SettingsCard.Header>
                         <tk:SettingsCard.Description>
                             <TextBlock x:Name="LocalAiDescription" Style="{StaticResource CaptionTextBlockStyle}"
@@ -104,16 +126,16 @@
                 </StackPanel>
                 <StackPanel x:Name="ChoicePanel" Spacing="12">
                     <InfoBar x:Name="UtilityNotice" IsOpen="True" IsClosable="False" Severity="Informational" Visibility="Collapsed" />
+                    <StackPanel x:Name="PrepareSection" Spacing="8">
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                            <ItemsControl x:Name="PrepareChoices" ItemTemplate="{StaticResource ChoiceTemplate}" />
+                        </Border>
+                    </StackPanel>
                     <CheckBox x:Name="CatalogPreference" Visibility="Collapsed" IsChecked="False"
                               HorizontalAlignment="Stretch" Checked="Preference_Changed" Unchecked="Preference_Changed">
                         <TextBlock x:Name="CatalogPreferenceText" TextWrapping="Wrap" />
                     </CheckBox>
-                    <StackPanel x:Name="CandidatesSection" Spacing="8">
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-                        <ItemsControl x:Name="CandidateChoices" ItemTemplate="{StaticResource ChoiceTemplate}" />
-                        </Border>
-                    </StackPanel>
                     <StackPanel x:Name="UnavailableSection" Spacing="8">
                         <TextBlock x:Name="UnavailableHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
                         <ItemsControl x:Name="UnavailableCandidates">
@@ -132,16 +154,9 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
-                    <StackPanel x:Name="PrepareSection" Spacing="8">
-                        <TextBlock x:Name="PrepareHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                        <TextBlock x:Name="PrepareDetail" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-                        <ItemsControl x:Name="PrepareChoices" ItemTemplate="{StaticResource ChoiceTemplate}" />
-                        </Border>
-                    </StackPanel>
                     <StackPanel x:Name="SignInSection" Spacing="8">
                         <TextBlock x:Name="SignInHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="CloudDescription" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
                         <Border x:Name="ProviderGroup" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                         <StackPanel Spacing="0">
@@ -155,36 +170,6 @@
                         </StackPanel>
                         </Border>
                     </StackPanel>
-                    <tk:SettingsExpander x:Name="RecommendedSection" IsExpanded="False" HorizontalAlignment="Stretch">
-                        <tk:SettingsExpander.Header>
-                            <TextBlock x:Name="RecommendedHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                        </tk:SettingsExpander.Header>
-                        <tk:SettingsExpander.ItemsFooter>
-                            <StackPanel Spacing="8">
-                                <TextBlock x:Name="RecommendedDetail" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
-                                <ItemsControl x:Name="RecommendedInstalls">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <tk:SettingsCard x:Name="RecommendedInstallCard" IsClickEnabled="True" Click="RecommendedInstall_Click" Tag="{Binding Website}">
-                                                <tk:SettingsCard.Header>
-                                                    <Grid ColumnDefinitions="Auto,*">
-                                                        <Viewbox Width="32" Height="32" Margin="0,0,12,0">
-                                                            <controls:ProviderArtwork Descriptor="{Binding Artwork}" Session="{Binding ArtworkSession}" />
-                                                        </Viewbox>
-                                                        <StackPanel Grid.Column="1" Spacing="4">
-                                                            <TextBlock Text="{Binding Label}" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                                                            <TextBlock Text="{Binding Detail}" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
-                                                        </StackPanel>
-                                                    </Grid>
-                                                </tk:SettingsCard.Header>
-                                            </tk:SettingsCard>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <Button x:Name="CheckAgainButton" Click="Refresh_Click" />
-                            </StackPanel>
-                        </tk:SettingsExpander.ItemsFooter>
-                    </tk:SettingsExpander>
                     <StackPanel x:Name="ApiKeySection" Margin="0,12,0,0">
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
@@ -217,6 +202,36 @@
                             </StackPanel>
                         </Border>
                     </StackPanel>
+                    <tk:SettingsExpander x:Name="RecommendedSection" IsExpanded="False" HorizontalAlignment="Stretch">
+                        <tk:SettingsExpander.Header>
+                            <TextBlock x:Name="RecommendedHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                        </tk:SettingsExpander.Header>
+                        <tk:SettingsExpander.ItemsFooter>
+                            <StackPanel Spacing="8">
+                                <TextBlock x:Name="RecommendedDetail" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
+                                <ItemsControl x:Name="RecommendedInstalls">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <tk:SettingsCard x:Name="RecommendedInstallCard" IsClickEnabled="True" Click="RecommendedInstall_Click" Tag="{Binding Website}">
+                                                <tk:SettingsCard.Header>
+                                                    <Grid ColumnDefinitions="Auto,*">
+                                                        <Viewbox Width="32" Height="32" Margin="0,0,12,0">
+                                                            <controls:ProviderArtwork Descriptor="{Binding Artwork}" Session="{Binding ArtworkSession}" />
+                                                        </Viewbox>
+                                                        <StackPanel Grid.Column="1" Spacing="4">
+                                                            <TextBlock Text="{Binding Label}" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                                                            <TextBlock Text="{Binding Detail}" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </tk:SettingsCard.Header>
+                                            </tk:SettingsCard>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button x:Name="CheckAgainButton" Click="Refresh_Click" />
+                            </StackPanel>
+                        </tk:SettingsExpander.ItemsFooter>
+                    </tk:SettingsExpander>
                     <TextBlock x:Name="NoChoicesText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>

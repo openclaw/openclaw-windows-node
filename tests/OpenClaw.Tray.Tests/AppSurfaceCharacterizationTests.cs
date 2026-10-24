@@ -11,7 +11,7 @@ public sealed class AppSurfaceCharacterizationTests
         Assert.Contains(".Selected += OnTrayIconSelected", source);
         Assert.Contains(".ContextMenu += OnTrayContextMenu", source);
         Assert.Contains("CurrentSnapshot.OperatorState == RoleConnectionState.Connected", source);
-        Assert.Contains("ShowChatWindow();", source);
+        Assert.Contains("ShowHub(\"chat\")", source);
         Assert.Contains("ShowHub(\"connection\")", source);
         Assert.Contains("new TrayMenuWindow()", source);
         Assert.Contains(".MenuItemClicked += OnTrayMenuItemClicked", source);
@@ -48,9 +48,6 @@ public sealed class AppSurfaceCharacterizationTests
 
         Assert.Contains("TryResolveChatCredentials", source);
         Assert.Contains("ShowConnectionSettingsForPairingIssue", source);
-        Assert.Contains("RefreshCredentials(request.GatewayUrl, request.GatewayToken)", source);
-        Assert.Contains("HideNearTray()", source);
-        Assert.Contains("ShowNearTrayAnimated()", source);
         Assert.Contains("DispatcherQueuePriority.Low", source);
 
         Assert.Contains("_settings?.NodeCanvasEnabled == false", source);

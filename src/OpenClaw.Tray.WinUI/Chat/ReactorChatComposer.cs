@@ -31,9 +31,7 @@ internal sealed record ReactorChatComposerViewProps(
     ChatComposerSession Session,
     ChatComposerInputs Inputs,
     ChatDataSnapshot InputSnapshot,
-    Action OnSendRequested,
-    bool IsCompact,
-    bool ShowSessionPicker = true);
+    Action OnSendRequested);
 
 /// <summary>
 /// Declarative Reactor view for the composer. It owns control construction, popup/
@@ -52,16 +50,18 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var props = Props;
         var vm = props.Session.ViewModel;
         var controller = props.Session.Controller;
+        var placement = props.Session.Placement;
         var inputs = props.Inputs;
-        var sessionItemStatus = GatewayFixtureRenderObservation.Create(
+        var renderItemStatus = GatewayFixtureRenderObservation.Create(
             props.InputSnapshot, inputs.CurrentThread.Id, GatewayFixtureIsolation.IsEnabled);
         var colorScheme = UseColorScheme();
-        var (viewportWidth, setViewportWidth) = UseState(props.IsCompact ? 480d : 800d);
+        var (viewportWidth, setViewportWidth) = UseState(800d);
 
         // The Reactor view subscribes to the view model exactly once per mount and
         // unsubscribes on unmount. This render-invalidation counter is an adapter
         // detail: it is not a second copy of composer state, only a re-render token.
-        var (renderRevision, setRenderRevision) = UseState(vm.RenderRevision, threadSafe: true);
+        long CurrentRevision() => vm.RenderRevision + (placement?.Revision ?? 0);
+        var (renderRevision, setRenderRevision) = UseState(CurrentRevision(), threadSafe: true);
         var inputControl = UseRef<TextBox?>(null);
         var slashPopup = UseRef<Microsoft.UI.Xaml.Controls.Primitives.Popup?>(null);
         var slashPopupContentRef = UseRef<(string Key, FrameworkElement? Content)>((string.Empty, null));
@@ -81,13 +81,16 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
 
         UseEffect((Func<Action>)(() =>
         {
-            void OnChanged(object? sender, PropertyChangedEventArgs args) => setRenderRevision(vm.RenderRevision);
+            void OnChanged(object? sender, PropertyChangedEventArgs args) => setRenderRevision(CurrentRevision());
+            void OnPlacementChanged() => setRenderRevision(CurrentRevision());
             vm.PropertyChanged += OnChanged;
-            if (renderRevision != vm.RenderRevision)
-                setRenderRevision(vm.RenderRevision);
+            if (placement is not null) placement.Changed += OnPlacementChanged;
+            if (renderRevision != CurrentRevision())
+                setRenderRevision(CurrentRevision());
             return () =>
             {
                 vm.PropertyChanged -= OnChanged;
+                if (placement is not null) placement.Changed -= OnPlacementChanged;
                 CloseSlashPopup(slashPopup);
             };
         }), Array.Empty<object>());
@@ -95,8 +98,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         UseEffect((Func<Action>)(() =>
         {
             props.Session.ApplyInputs(inputs);
+            _ = controller.ReconcileModelCatalogAsync(inputs);
             return static () => { };
-        }), props.InputSnapshot, inputs.CurrentThread);
+        }), props.InputSnapshot, inputs.CurrentThread, inputs.ModelCatalogRevision, inputs.ShowPlacementPickers, inputs.PlacementTargetIsEmpty);
 
         var text = vm.Draft;
         var isSending = vm.IsSending;
@@ -144,9 +148,27 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             _ = controller.SendAsync();
         }
 
-        var modelChoices = inputs.ModelChoices is { Count: > 0 }
-            ? inputs.ModelChoices
-            : inputs.AvailableModels
+        var scopedCatalog = inputs.SessionModelCatalogEligible
+            && vm.SessionModelCatalog is { } currentCatalog
+            && string.Equals(currentCatalog.SessionKey, inputs.CurrentThread.Id, StringComparison.Ordinal)
+                ? currentCatalog
+                : null;
+        var modelCatalogStatus = inputs.SessionModelCatalogEligible
+            ? scopedCatalog?.Status ?? ChatModelCatalogStatus.Loading
+            : ChatModelCatalogStatus.Default;
+        var projectedChoices = inputs.SessionModelCatalogEligible
+            ? scopedCatalog?.Choices ?? []
+            : inputs.ModelChoices;
+        var projectedModelIds = inputs.SessionModelCatalogEligible
+            ? scopedCatalog?.Choices
+                .Where(choice => choice.IsSelectable)
+                .Select(choice => choice.Id)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray() ?? []
+            : inputs.AvailableModels;
+        var modelChoices = projectedChoices is { Count: > 0 }
+            ? projectedChoices
+            : projectedModelIds
                 .Where(model => !string.IsNullOrWhiteSpace(model))
                 .Select(model => new ChatModelChoice(model, model))
                 .ToArray();
@@ -154,7 +176,11 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var defaultReasoningLabel = Localized("Chat_Composer_Reasoning_Default", "Default");
         var selectedModel = catalogModels.FirstOrDefault(
             model => model.MatchesModel(inputs.CurrentThread.Model, inputs.CurrentThread.ModelProvider));
-        var thinkingLevels = inputs.ThinkingProfile?.Levels?.ToArray() ?? [];
+        var thinkingLevels = vm.ThinkingProfile?.Levels?.ToArray() ?? [];
+        var canChangeThinking = inputs.CanChangeSessionOptions
+            && modelCatalogStatus is not ChatModelCatalogStatus.Loading
+                and not ChatModelCatalogStatus.Unavailable
+            && (thinkingLevels.Length > 0 || !string.IsNullOrEmpty(inputs.CurrentThread.ThinkingLevel));
         var knownThinkingIndex = Array.FindIndex(thinkingLevels, option => option.Id == inputs.CurrentThread.ThinkingLevel);
         var thinkingIndex = string.IsNullOrEmpty(inputs.CurrentThread.ThinkingLevel)
             ? 0
@@ -164,7 +190,6 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .ToArray();
         var thinkingLabel = thinkingIndex < 0 ? inputs.CurrentThread.ThinkingLevel! : thinkingNames[thinkingIndex];
         var compactEffort = viewportWidth <= ChatVisuals.CompactEffortBreakpoint;
-        var compactSession = viewportWidth < ChatVisuals.CompactSessionBreakpoint;
         var actionLabel = inputs.TurnActive
             ? Localized("Chat_Composer_Tooltip_Stop", "Stop")
             : Localized("Chat_Composer_Tooltip_Send", "Send");
@@ -175,8 +200,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             string automationName,
             Action onClick,
             bool enabled = true,
-            string? automationId = null,
-            string? itemStatus = null)
+            string? automationId = null)
         {
             return Button(
                     TextBlock(glyph)
@@ -198,12 +222,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .BorderThickness(0)
                 .AutomationId(string.IsNullOrWhiteSpace(automationId) ? string.Empty : automationId)
                 .ToolTip(automationName)
-                .Set(button =>
-                {
-                    ComposerAutomationVisibility.Prepare(button);
-                    if (itemStatus is not null)
-                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(button, itemStatus);
-                })
+                .Set(button => ComposerAutomationVisibility.Prepare(button))
                 .OnUnmount(control => ComposerAutomationVisibility.Detach(
                     (FrameworkElement)control));
         }
@@ -214,12 +233,19 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             string automationId,
             bool enabled,
             double maxLabelWidth,
-            string? itemStatus = null)
+            string? itemStatus = null,
+            string? leadingGlyph = null)
         {
             return Button(
                     Grid(
-                        [GridSize.Star(), GridSize.Auto],
+                        [GridSize.Auto, GridSize.Star(), GridSize.Auto],
                         [GridSize.Auto],
+                        leadingGlyph is null ? Empty() :
+                            TextBlock(leadingGlyph).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                                .FontSize(16).Margin(0, 0, 8, 0).VAlign(VerticalAlignment.Center)
+                                .AccessibilityView(AccessibilityView.Raw)
+                                .Set(text => text.IsTextScaleFactorEnabled = false)
+                                .AutomationId(automationId + "Icon").Grid(column: 0),
                         TextBlock(label)
                             .MaxWidth(maxLabelWidth)
                             .FontSize(13)
@@ -227,7 +253,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                             .TextWrapping(TextWrapping.NoWrap)
                             .HAlign(HorizontalAlignment.Stretch)
                             .VAlign(VerticalAlignment.Center)
-                            .Grid(column: 0),
+                            .Grid(column: 1),
                         TextBlock(FluentIconCatalog.ChevronDown)
                             .Margin(4, 0, 0, 0)
                             .VAlign(VerticalAlignment.Center)
@@ -235,7 +261,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                             .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
                             .FontSize(12)
                             .Set(text => text.IsTextScaleFactorEnabled = false)
-                            .Grid(column: 1)),
+                            .Grid(column: 2)),
                     () => { })
                 .AutomationName(automationName)
                 .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
@@ -253,8 +279,6 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 {
                     button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
                     ComposerAutomationVisibility.Prepare(button);
-                    if (itemStatus is not null)
-                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(button, itemStatus);
                 })
                 .OnUnmount(control => ComposerAutomationVisibility.Detach(
                     (FrameworkElement)control));
@@ -263,7 +287,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         Element EffortIconButton()
         {
             var effectiveLevel = string.IsNullOrEmpty(inputs.CurrentThread.ThinkingLevel)
-                ? inputs.ThinkingProfile?.Default : inputs.CurrentThread.ThinkingLevel;
+                ? vm.ThinkingProfile?.Default : inputs.CurrentThread.ThinkingLevel;
             var gaugeIndex = Array.FindIndex(thinkingLevels, option => option.Id == effectiveLevel);
             // Resource overrides survive Reactor's generated theme-binding style on updates.
             return Button(HStack(4,
@@ -278,7 +302,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .AutomationId("ChatComposerReasoningPicker")
                 .AutomationName($"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}")
                 .ToolTip($"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}")
-                .IsEnabled(inputs.CanChangeThinking)
+                .IsEnabled(canChangeThinking)
                 .Set(button => ComposerAutomationVisibility.Prepare(button))
                 .OnUnmount(control => ComposerAutomationVisibility.Detach((FrameworkElement)control));
         }
@@ -485,7 +509,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .Set(control =>
             {
                 inputControl.Current = control;
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(control, sessionItemStatus);
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(control, renderItemStatus);
                 control.Resources["TextControlBorderThemeThickness"] = new Thickness(0);
                 control.Resources["TextControlBorderThemeThicknessFocused"] = new Thickness(0);
                 control.Resources["TextControlBackground"] = transparentInputBrush;
@@ -520,45 +544,33 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             return static () => { };
         }), popupStateKey);
 
-        var sessionPicker = MenuFlyout(
-            compactSession
-                ? IconButton(FluentIconCatalog.Sessions,
-                    $"{Localized("Chat_Composer_Accessibility_Session", "Session")}: {inputs.CurrentThread.Title}",
-                    () => { }, !inputs.MessageOptionsDisabled && inputs.AvailableChannels.Count > 1,
-                    "ChatComposerSessionPicker", sessionItemStatus)
-                : PickerButton(
-                inputs.CurrentThread.Title,
-                $"{Localized("Chat_Composer_Accessibility_Session", "Session")}: {inputs.CurrentThread.Title}",
-                "ChatComposerSessionPicker",
-                !inputs.MessageOptionsDisabled && inputs.AvailableChannels.Count > 1,
-                viewportWidth < ChatVisuals.FooterBreakpoint ? 80 : 120,
-                sessionItemStatus),
-            inputs.AvailableChannels
-                .Select(thread => RadioMenuItem(
-                    thread.Title,
-                    "chat-sessions",
-                    string.Equals(thread.Id, inputs.CurrentThread.Id, StringComparison.Ordinal),
-                    () => controller.SelectChannel(thread.Id)))
-                .ToArray())
-            .Set(ChatVisuals.StylePicker);
-
         var modelPickerLabel = string.IsNullOrWhiteSpace(inputs.CurrentThread.Model)
             ? catalogModels.FirstOrDefault(model => model.IsDefault)?.DisplayName
                 ?? Localized("Chat_Composer_Accessibility_Model", "Model")
             : selectedModel?.DisplayName
                 ?? ChatModelChoice.BuildSelectionId(inputs.CurrentThread.Model!, inputs.CurrentThread.ModelProvider);
+        modelPickerLabel = modelCatalogStatus switch
+        {
+            ChatModelCatalogStatus.Loading => Localized("Chat_Composer_Model_Loading", "Loading models..."),
+            ChatModelCatalogStatus.Unavailable => Localized("Chat_Composer_Model_Unavailable", "Models unavailable"),
+            _ => modelPickerLabel,
+        };
         var modelPicker = Component<ChatModelPicker, ChatModelPickerProps>(new(
             PickerButton(
                 modelPickerLabel,
                 $"{Localized("Chat_Composer_Accessibility_Model", "Model")}: {modelPickerLabel}",
                 "ChatComposerModelPicker",
-                inputs.CanChangeSessionOptions,
+                inputs.CanChangeSessionOptions
+                    && modelCatalogStatus is not ChatModelCatalogStatus.Loading
+                        and not ChatModelCatalogStatus.Unavailable,
                 200)
                 .MinWidth(compactEffort ? 44 : 0)
                 .MinHeight(compactEffort ? 44 : 32)
                 .Padding(compactEffort ? 0 : 8, compactEffort ? 0 : 4),
             catalogModels, inputs.CurrentThread.Model, inputs.CurrentThread.ModelProvider,
-            inputs.CanChangeSessionOptions,
+            inputs.CanChangeSessionOptions
+                && modelCatalogStatus is not ChatModelCatalogStatus.Loading
+                    and not ChatModelCatalogStatus.Unavailable,
             choice => controller.SetModel(choice.SelectionId),
             viewportWidth));
 
@@ -567,11 +579,11 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 thinkingLabel,
                 $"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}",
                 "ChatComposerReasoningPicker",
-                inputs.CanChangeThinking,
+                canChangeThinking,
                 96),
-            thinkingLevels, inputs.CurrentThread.ThinkingLevel, thinkingLabel, inputs.CanChangeThinking,
+            thinkingLevels, inputs.CurrentThread.ThinkingLevel, thinkingLabel, canChangeThinking,
             controller.SetThinkingLevel, controller.ClearThinkingLevel, viewportWidth,
-            inputs.ThinkingProfile?.Default));
+            vm.ThinkingProfile?.Default));
 
         var attachButton = IconButton(
             FluentIconCatalog.ChatAttach,
@@ -624,14 +636,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .OnUnmount(control => ComposerAutomationVisibility.Detach(
                     (FrameworkElement)control));
 
-        Element leading = props.ShowSessionPicker ? Grid(
-            [GridSize.Auto, GridSize.Star()],
-            [GridSize.Auto],
-            attachButton.Grid(column: 0),
-            sessionPicker.Margin(compactSession ? 0 : 4, 0, 0, 0).Grid(column: 1))
-            .MaxWidth(compactSession ? 64 : 184)
-            .HAlign(HorizontalAlignment.Left).VAlign(VerticalAlignment.Center)
-            : attachButton.VAlign(VerticalAlignment.Center);
+        Element leading = attachButton.VAlign(VerticalAlignment.Center);
         var pickers = Grid(
             [GridSize.Star(), GridSize.Auto],
             [GridSize.Auto],
@@ -645,7 +650,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var toolbar = Grid(
             [GridSize.Auto, GridSize.Star(), GridSize.Auto],
             [GridSize.Auto],
-            leading.Margin(0, 0, compactSession ? 0 : 4, 0).Grid(column: 0),
+            leading.Margin(0, 0, 4, 0).Grid(column: 0),
             pickers.Grid(column: 1),
             rightToolbar.Margin(4, 0, 0, 0).Grid(column: 2));
 
@@ -658,6 +663,17 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite));
         if (isRecording)
             composerChildren.Add(voiceFeedback);
+        if (placement?.State is { Error: { } placementError })
+            composerChildren.Add(TextBlock(NativeChatPlacementPicker.ErrorText(placementError))
+                .FontSize(12).TextWrapping(TextWrapping.Wrap)
+                .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                .AutomationId("ChatPlacementError")
+                .LiveRegion(AutomationLiveSetting.Polite));
+        else if (placement?.State.Preparing == true)
+            composerChildren.Add(TextBlock(Localized("Chat_Placement_Preparing", "Preparing chat location..."))
+                .FontSize(12).Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                .AutomationId("ChatPlacementProgress")
+                .LiveRegion(AutomationLiveSetting.Polite));
         if (attachmentRows.Length > 0)
             composerChildren.Add(ScrollViewer(HStack(8, attachmentRows))
                 .AutomationId("ChatAttachmentRail")
@@ -676,12 +692,52 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .BorderThickness(1)
             .CornerRadius(ChatVisuals.ComposerRadius)
             .MinHeight(112)
-            .MaxWidth(ChatVisuals.ReadingWidth)
-            .Margin(ChatVisuals.Gutter(viewportWidth), 12)
             .Background(Theme.Ref("ChatComposerBrush"))
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
-            .HAlign(HorizontalAlignment.Stretch);
-        return Border(writingSurface)
+            .HAlign(HorizontalAlignment.Stretch)
+            .AutomationId("ChatWritingSurface");
+        var surfaces = new List<Element>();
+        var agentId = inputs.CurrentThread.AgentId;
+        var catalog = placement?.State.Catalog;
+        surfaces.Add(inputs.ShowPlacementPickers
+            ? ReactorChatWelcome.Header(
+                ChatWelcomePresentation.AgentIdentity(catalog, agentId),
+                viewportWidth)
+            : Empty());
+        if (inputs.ShowPlacementPickers && placement is not null)
+        {
+            Element LocationPicker(bool environment)
+            {
+                var title = environment
+                    ? Localized("Chat_Placement_Environment", "Environment")
+                    : Localized("Chat_Placement_Workspace", "Workspace");
+                var selection = placement.State.Selection;
+                var label = !placement.State.SelectionIsKnown
+                    ? Localized("Chat_Placement_Unknown", "Not verified")
+                    : environment ? selection?.Environment.Label
+                    : selection is null ? null : NativeChatPlacementPicker.WorkspaceLabel(selection.Workspace);
+                var target = PickerButton(label ?? title, $"{title}: {label ?? title}",
+                    environment ? "ChatEnvironmentPicker" : "ChatWorkspacePicker",
+                    placement.CanEdit, Math.Max(40, (viewportWidth - 148) / 2),
+                    leadingGlyph: environment ? FluentIconCatalog.System : FluentIconCatalog.Folder);
+                return Component<ChatPlacementPicker, ChatPlacementPickerProps>(
+                    new(target, placement, environment, viewportWidth));
+            }
+            surfaces.Add(Grid([GridSize.Star(), GridSize.Star()], [GridSize.Auto],
+                LocationPicker(true).Grid(column: 0),
+                LocationPicker(false).Margin(8, 0, 0, 0).Grid(column: 1))
+                .MaxWidth(480).HAlign(HorizontalAlignment.Left)
+                .AutomationId("ChatPlacementPickers"));
+        }
+        else
+        {
+            surfaces.Add(Empty());
+        }
+        surfaces.Add(writingSurface.WithKey("chat-writing-surface"));
+        return Border(VStack(8, surfaces.ToArray())
+                .MaxWidth(ChatVisuals.ReadingWidth)
+                .Margin(ChatVisuals.Gutter(viewportWidth), 12)
+                .HAlign(HorizontalAlignment.Stretch))
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
             .OnUnmount(ChatVisuals.StopObserving);
     }

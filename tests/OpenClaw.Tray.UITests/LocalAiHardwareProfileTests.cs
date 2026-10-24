@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
 using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared.Inference;
+using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
 using OpenClawTray.Pages;
 using OpenClawTray.Presentation;
@@ -23,6 +24,78 @@ namespace OpenClaw.Tray.UITests;
 [Trait("Category", "NativeOnboardingProof")]
 public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputHelper output)
 {
+    [Theory]
+    [InlineData(LocalAiRuntimeState.Stopped, ElementTheme.Light)]
+    [InlineData(LocalAiRuntimeState.Stopped, ElementTheme.Dark)]
+    [InlineData(LocalAiRuntimeState.Healthy, ElementTheme.Light)]
+    [InlineData(LocalAiRuntimeState.Healthy, ElementTheme.Dark)]
+    public async Task LocalAiPage_NativeSelectionExplainsDisabledStartAndRestart(
+        LocalAiRuntimeState state, ElementTheme theme)
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            var originalSize = ui.TestWindow.AppWindow.Size;
+            var originalPosition = ui.TestWindow.AppWindow.Position;
+            FitWindow(ui.TestWindow);
+            var now = DateTimeOffset.UtcNow;
+            var runtime = new InertRuntime
+            {
+                RequiresNativeSelection = true,
+                Snapshot = new(state, state == LocalAiRuntimeState.Healthy
+                    ? LocalAiOwnership.CompanionManaged : LocalAiOwnership.None,
+                    new Uri("http://127.0.0.1:18080"), "fixture", LocalModelCatalog.Qwen35BModelId,
+                    new(LocalAiModelAvailabilityState.Verified, now, new string('a', 64), 1),
+                    state == LocalAiRuntimeState.Healthy ? 1234 : null,
+                    state == LocalAiRuntimeState.Healthy ? now : null,
+                    null, now) { GatewayRouteRequiresResolution = false },
+            };
+            using var viewModel = new LocalAiPageViewModel(runtime, new InertGateway(),
+                new InertCommands(), new WinUIDispatcher(ui.Dispatcher), new HardwareProbe(8));
+            var page = new LocalAiPage { DataContext = viewModel };
+            ui.Container.Children.Add(page);
+            try
+            {
+                viewModel.Activate(null);
+                await OnboardingNativeProof.ApplyThemeSurfaceAsync(ui.Container, theme);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => page.IsLoaded && viewModel.IsAvailabilityKnown, "Local AI selection guidance");
+                var guidance = Assert.IsType<TextBlock>(page.FindName("NativeSelectionGuidanceText"));
+                var start = Assert.IsType<Button>(page.FindName("StartButton"));
+                var restart = Assert.IsType<Button>(page.FindName("RestartButton"));
+                Assert.Equal(Visibility.Visible, guidance.Visibility);
+                Assert.Contains("Use Local AI", guidance.Text);
+                Assert.Contains("WSL Gateway", guidance.Text);
+                Assert.False(start.IsEnabled);
+                Assert.False(restart.IsEnabled);
+                Assert.Equal(state == LocalAiRuntimeState.Healthy,
+                    Assert.IsType<Button>(page.FindName("StopButton")).IsEnabled);
+                OnboardingNativeProof.ActivateOwned(ui.TestWindow);
+                await OnboardingNativeProof.AssertNativeLabelAfterWpfLoadAsync(
+                    WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow), guidance.Text);
+                // Verify the full visible text through UIA; OCR anchors avoid the capital-I/l ambiguity.
+                using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow,
+                    $"local-ai-native-selection-{state}-{theme}", output,
+                    ["Before starting or restarting", "native Gateway"],
+                    new { state = state.ToString(), theme = theme.ToString(), syntheticRuntime = true,
+                        startEnabled = start.IsEnabled, restartEnabled = restart.IsEnabled },
+                    requiredContent: page)) { }
+
+                runtime.SetNativeSelectionRequired(false);
+                Assert.Equal(Visibility.Collapsed, guidance.Visibility);
+                Assert.Equal(state == LocalAiRuntimeState.Stopped, start.IsEnabled);
+                Assert.Equal(state == LocalAiRuntimeState.Healthy, restart.IsEnabled);
+            }
+            finally
+            {
+                ui.Container.Children.Clear();
+                ui.TestWindow.AppWindow.Resize(originalSize);
+                ui.TestWindow.AppWindow.Move(originalPosition);
+            }
+        });
+    }
+
 #if LOCAL_AI_BASELINE
     private const bool IsBaseline = true;
 #else
@@ -195,7 +268,14 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
 
     private sealed class InertRuntime : ILocalAiRuntime
     {
-        public LocalAiRuntimeSnapshot Snapshot { get; } = LocalAiRuntimeSnapshot.Initial(
+        public bool RequiresNativeSelection { get; set; }
+        public event EventHandler? SelectionChanged;
+        public void SetNativeSelectionRequired(bool required)
+        {
+            RequiresNativeSelection = required;
+            SelectionChanged?.Invoke(this, EventArgs.Empty);
+        }
+        public LocalAiRuntimeSnapshot Snapshot { get; init; } = LocalAiRuntimeSnapshot.Initial(
             new Uri("http://127.0.0.1:18080"), DateTimeOffset.UtcNow);
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged { add { } remove { } }
         public Task<LocalAiRuntimeSnapshot> RefreshAsync(CancellationToken cancellationToken = default) => Task.FromResult(Snapshot);

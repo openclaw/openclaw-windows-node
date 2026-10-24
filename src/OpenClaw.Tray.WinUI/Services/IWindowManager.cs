@@ -19,9 +19,6 @@ internal interface IWindowManager
     void NavigateHubBack();
     void InitializeRuntimeAnchor();
     void BeginShutdown();
-    void PrewarmChat(ChatWindowRequest request);
-    void ShowChat(ChatWindowRequest request);
-    void ResetChatForCredentialChange();
     void ShowCanvas(CanvasWindowRequest request);
     void ShowHub(string? navigateTo = null, bool activate = true);
     void ShowConnectionStatus();
@@ -37,7 +34,7 @@ internal interface IWindowManager
     void UpdateHubTitleBarStatus(GatewayConnectionSnapshot snapshot, ConnectionStatus status);
     void RefreshHubDiagnosticsNavigationVisibility();
     void SetPendingChatSessionKey(string? sessionKey);
-    void ShowHubChatAndStartVoice();
+    void ShowWorkspaceChatAndStartVoice();
     IntPtr GetHubWindowHandle();
     IntPtr GetOnboardingWindowHandle();
     Task CloseForShutdownAsync();

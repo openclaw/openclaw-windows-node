@@ -9,10 +9,6 @@ public enum GatewaySetupChoice { Native, Existing, Wsl }
 /// <summary>Onboarding admission only. Capability does not imply that the Gateway runs in an MXC session.</summary>
 public static class NativeGatewaySetupEligibility
 {
-    // Session baseline documented by the pinned @microsoft/mxc-sdk README.
-    // The live probe, not a build-number comparison, remains authoritative.
-    public const string InsiderBuild = "26340.9212";
-
     public static NativeGatewayEligibility Probe(IOpenClawLogger? logger = null) =>
         Evaluate(MxcAvailability.Probe(logger));
 
@@ -22,7 +18,7 @@ public static class NativeGatewaySetupEligibility
             return NativeGatewayEligibility.CheckFailed;
         if (availability.ProbeSuppressedBySkuGate)
             return NativeGatewayEligibility.UnsupportedPlatform;
-        if (!availability.IsWxcExecResolvable)
+        if (!availability.IsSdkReady)
             return NativeGatewayEligibility.CheckFailed;
         return availability.IsolationSessionCapability switch
         {

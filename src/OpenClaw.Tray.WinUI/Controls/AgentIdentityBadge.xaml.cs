@@ -23,8 +23,11 @@ public sealed partial class AgentIdentityBadge : UserControl
         Unloaded += (_, _) => CancelLoad();
     }
 
-    internal void Initialize(WorkspaceAgent agent)
+    internal void Initialize(WorkspaceAgent agent, bool avatarOnly = false, double pictureSize = 32)
     {
+        Picture.Width = Picture.Height = pictureSize;
+        Details.Visibility = avatarOnly ? Visibility.Collapsed : Visibility.Visible;
+        Layout.ColumnSpacing = avatarOnly ? 0 : 12;
         if (_agent is { } previous && previous.Id == agent.Id && previous.Name == agent.Name &&
             previous.Emoji == agent.Emoji && previous.AvatarUrl == agent.AvatarUrl)
             return;

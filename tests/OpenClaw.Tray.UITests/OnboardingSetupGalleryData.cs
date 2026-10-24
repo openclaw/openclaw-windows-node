@@ -24,7 +24,7 @@ internal static class OnboardingSetupGalleryData
         "tailscale" => new(typeof(GatewaySetupDetailPage), "Tailscale Serve", "DetailTitle"),
         "local-review" => new(typeof(GatewaySetupDetailPage), "Local AI", "DetailTitle"),
         "networking" => new(typeof(GatewaySetupDetailPage), "WSL networking consent", "DetailTitle"),
-        "ai" or "ai-return" or "dialog" => new(typeof(AiSetupPage), "Connect your AI", "TitleText"),
+        "ai" or "ai-return" or "dialog" => new(typeof(AiSetupPage), "Set up your AI", "TitleText"),
         "preview" when scene.State.StartsWith("wizard", StringComparison.Ordinal) =>
             new(typeof(WizardPage), "OpenClaw onboard"),
         "preview" when scene.State == "milestone" =>
@@ -205,18 +205,21 @@ internal static class OnboardingSetupGalleryData
             if (state == "discovery-failed")
                 throw new IOException("Synthetic discovery failure. No Gateway was contacted.");
             var empty = state == "empty";
+            var simplified = state == "simplified-local";
+            var installsOnly = state == "installs-only";
             var detection = new GatewayAiSetupDetection
             {
-                Candidates = empty ? [] :
+                Candidates = empty || simplified || installsOnly ? [] :
                 [
                     new("existing-model", "Existing Gateway model", "Synthetic configured Gateway choice",
                         "openai/gallery-cloud-model", true, true, "codex"),
                     new("saved-auth:claude", "Claude on your Gateway", "Synthetic saved provider",
                         "anthropic/gallery-model", false, true, "claude"),
                 ],
-                ManualProviders = [new("openai-api-key", "OpenAI API key", "Synthetic provider", BrandId: "codex"),
+                ManualProviders = simplified || installsOnly ? [] : [new("openai-api-key", "OpenAI API key", "Synthetic provider", BrandId: "codex"),
                     new("anthropic-api-key", "Anthropic API key", "Synthetic provider", BrandId: "claude")],
-                AuthOptions = empty ? [] :
+                AuthOptions = installsOnly ? [] : simplified ? [new("codex-login", "Codex login (device code)",
+                    "Use a browser code when OpenClaw runs on a remote VM", BrandId: "codex", Featured: true)] : empty ? [] :
                 [
                     new("codex-login", "OpenAI sign-in", "Synthetic account", BrandId: "codex", Featured: true),
                     new("gemini-login", "Gemini sign-in", "Synthetic account", BrandId: "gemini", Featured: true),
@@ -230,10 +233,10 @@ internal static class OnboardingSetupGalleryData
                     new("ollama", "Ollama", "Synthetic local service", BrandId: "ollama", Kind: "install"),
                     new("lmstudio", "LM Studio", "Synthetic local service", BrandId: "lmstudio", Kind: "custom"),
                 ],
-                UnavailableCandidates = [new("unavailable", "Unavailable Gateway model",
+                UnavailableCandidates = simplified ? [] : [new("unavailable", "Unavailable Gateway model",
                     "Synthetic credential unavailable", "auth", BrandId: "claude")],
                 // These addresses are displayed by production controls, never opened or fetched.
-                RecommendedInstalls = [new("codex", "Install Codex", "Synthetic recommendation",
+                RecommendedInstalls = simplified ? [] : [new("codex", "Install Codex", "Synthetic recommendation",
                     BrandId: "codex", Website: "https://gallery.invalid/install")],
                 NativeSessionCatalogPreferenceRequired = state == "catalog",
                 NativeSessionCatalogs = [new("synthetic-catalog", "Synthetic conversation history")],

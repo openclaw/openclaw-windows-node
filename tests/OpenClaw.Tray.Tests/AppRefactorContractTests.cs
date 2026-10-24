@@ -6,6 +6,42 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void E2ESetupFixture_UsesSeparateRoamingRootThroughoutItsLifecycle()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root, "tests", "OpenClaw.E2ETests", "Setup", "E2ESetupFixture.cs"));
+
+        Assert.Contains(
+            "RoamingAppDataRoot = Path.Combine(Path.GetTempPath(), $\"openclaw-e2e-roaming-{runId}\");",
+            source);
+        Assert.Contains("Directory.CreateDirectory(RoamingAppDataRoot);", source);
+        foreach (var method in new[] { "InitializeEnabledAsync", "DisposeEnabledAsync" })
+        {
+            Assert.Contains(
+                "Environment.SetEnvironmentVariable(\"OPENCLAW_TRAY_APPDATA_DIR\", RoamingAppDataRoot);",
+                ExtractMethod(source, method));
+        }
+        Assert.Contains(
+            "psi.Environment[\"OPENCLAW_TRAY_APPDATA_DIR\"] = RoamingAppDataRoot;",
+            ExtractMethod(source, "SpawnTray"));
+        Assert.Contains(
+            "Directory.Delete(RoamingAppDataRoot, recursive: true);",
+            ExtractMethod(source, "DisposeEnabledAsync"));
+        Assert.DoesNotContain("\"OPENCLAW_TRAY_APPDATA_DIR\", DataDir", source);
+        Assert.DoesNotContain("\"OPENCLAW_TRAY_APPDATA_DIR\"] = DataDir", source);
+    }
+
+    [Fact]
+    public void AutomaticLocalAiStartupRequiresPositiveWslOwnershipAdmission()
+    {
+        var source = ReadAppSources();
+        // Retire when startup can be mounted without activating real app services.
+        Assert.Contains("if (_localAiGatewayLifecycle.CanStartWslAutomatically)", source);
+        Assert.DoesNotContain("if (!_localAiGatewayLifecycle.IsNativeMode)", source);
+    }
+
+    [Fact]
     public void Startup_InvalidCleanupDataIsReportedBeforeSettingsLoad()
     {
         var source = ReadAppSources();
@@ -45,7 +81,7 @@ public sealed class AppRefactorContractTests
         var source = ReadAppSources();
 
         Assert.Contains("new CredentialResolver", source);
-        Assert.Contains("new GatewayClientFactory", source);
+        Assert.Contains("new GatewayClientFactory { SupportsExecApprovals = true }", source);
         Assert.Contains("new NodeConnector", source);
         Assert.Contains("_connectionManager = new GatewayConnectionManager", source);
         Assert.Contains("nodeConnector.ClientCreated +=", source);
@@ -468,6 +504,37 @@ public sealed class AppRefactorContractTests
         Assert.Contains("SettingsManager.SettingsDirectoryPath", method);
         Assert.DoesNotContain("SharedGatewayToken =", method);
         Assert.DoesNotContain("BootstrapToken =", method);
+        var initializeGateway = ExtractMethod(source, "InitializeGatewayClient");
+        Assert.Contains(
+            "var gatewayUrl = _settings.GetLegacyCredentialGatewayUrlOrNull();",
+            initializeGateway);
+        Assert.Contains(
+            "_settings.GetLegacyCredentialGatewayUrlOrNull(),",
+            source);
+        Assert.Contains(
+            "_settings?.GetLegacyCredentialGatewayUrlOrNull()",
+            ExtractMethod(source, "ResolveStartupOperatorCredential"));
+        Assert.Contains(
+            "_settings?.GetLegacyCredentialGatewayUrlOrNull()",
+            ExtractMethod(source, "ResolveStartupNodeCredential"));
+    }
+
+    [Fact]
+    public void UrlLessSettings_KeepCliDefaultButUninstallValidationRemovesLegacyCredentialKeys()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var cli = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Cli", "Program.cs"));
+        var validator = File.ReadAllText(Path.Combine(root, "scripts", "validate-wsl-gateway-uninstall.ps1"));
+
+        Assert.Contains(
+            "return settings.GatewayUrl ?? \"ws://127.0.0.1:18789\";",
+            cli);
+        Assert.Contains(
+            "foreach ($field in @('Token', 'BootstrapToken', 'GatewayUrl'))",
+            validator);
+        Assert.Contains("$sObj.PSObject.Properties.Remove($field)", validator);
+        Assert.DoesNotContain("$sObj.$field = ''", validator);
+        Assert.DoesNotContain("$sObj.GatewayUrl = 'ws://localhost:18789'", validator);
     }
 
     [Fact]
@@ -498,6 +565,32 @@ public sealed class AppRefactorContractTests
         Assert.Contains("ShowDashboardLaunchFailureAsync", method);
         Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build", method);
         Assert.DoesNotContain("Process.Start", method);
+    }
+
+    [Fact]
+    public void SavedDashboard_InvalidUrl_UsesLocalizedCopy()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs"));
+        var method = ExtractMethod(source, "OnSavedRowOpenDashboardAsync");
+
+        AssertInOrder(method,
+            "GatewayDashboardUrlBuilder.TryBuild(",
+            "out _))",
+            "CurrentApp.ShowTransientConnectionError(",
+            "LocalizationHelper.GetString(\"ConnectionPage_SavedDashboardInvalidAddress\")",
+            "return;",
+            "Launcher.LaunchUriAsync(");
+        Assert.DoesNotContain("urlError", method);
+
+        var resources = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw"));
+        Assert.Contains(
+            "This saved gateway address cannot open the dashboard. Edit the saved gateway and use an http, https, ws, or wss address.",
+            resources,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -811,15 +904,13 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void ShowWebChat_ClearsStalePendingSessionKeyOnPlainOpen()
+    public void OpenChatSession_ClearsStalePendingSessionKeyOnPlainOpen()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "ShowWebChat");
+        var method = ExtractMethod(source, "OpenChatSession");
 
         Assert.Contains("PendingChatSessionKey = sessionKey;", method);
-        Assert.Contains("_windowManager?.SetPendingChatSessionKey(sessionKey);", method);
         Assert.Contains("PendingChatSessionKey = null;", method);
-        Assert.Contains("_windowManager?.SetPendingChatSessionKey(null);", method);
         AssertInOrder(
             method,
             "if (!string.IsNullOrEmpty(sessionKey))",
@@ -2013,16 +2104,19 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void AppNotifications_SandboxRiskMessageReflectsStrictFallbackBlocking()
+    public void AppNotifications_DistinguishConfirmedUnsupportedWindowsFromRepairFailures()
     {
         var source = ReadAppSources();
         var method = ExtractMethod(source, "PublishSandboxRiskNotification", parameterHint: "MxcAvailability");
 
-        Assert.Contains("SystemRunBlockHostFallbackWhenMxcUnavailable", method);
+        Assert.DoesNotContain("SystemRunBlockHostFallbackWhenMxcUnavailable", method);
         Assert.Contains("AppNotification_SandboxUnavailableBlocked_Title", method);
         Assert.Contains("AppNotification_SandboxUnavailableBlocked_MessageFormat", method);
-        Assert.Contains("host-fallback", method);
+        Assert.DoesNotContain("host-fallback", method);
         Assert.Contains("blocked", method);
+        Assert.Contains("availability.IsWindowsUnsupported", method);
+        Assert.Contains("uncontained-compatibility", method);
+        Assert.Contains("SandboxPage_WindowsCompatibilityText", method);
     }
 
     [Fact]
@@ -2041,84 +2135,200 @@ public sealed class AppRefactorContractTests
         AssertInOrder(
             loadState,
             "_suppress = true;",
-            "TimeoutSlider.Value = secs;",
+            "TimeoutSlider.Value = seconds;",
             "_suppress = false;");
         var timeoutChanged = ExtractMethod(source, "OnTimeoutChanged");
-        AssertInOrder(timeoutChanged, "if (_suppress) return;", "s.SandboxTimeoutMs =", "Save();");
+        AssertInOrder(timeoutChanged, "if (_suppress || CurrentApp.Settings is not { } settings) return;",
+            "settings.SandboxTimeoutMs =", "Save();");
     }
 
     [Fact]
-    public void SandboxPage_NormalizesDefinitiveUnavailableMxcOff()
+    public void SandboxPage_ProbeNeverMutatesPermissions()
     {
         var source = ReadSandboxPageSource();
         var refresh = ExtractMethod(source, "RefreshAvailabilityAsync");
-        var loadState = ExtractMethod(source, "LoadState");
-        var definitiveUnavailable = ExtractMethod(source, "IsSandboxDefinitivelyUnavailable");
-        var normalize = ExtractMethod(source, "NormalizeSandboxToggleForAvailability");
-
-        AssertInOrder(
-            refresh,
-            "NormalizeSandboxToggleForAvailability();",
-            "UpdateSandboxStatusCard();",
-            "UpdateControlsEnabledState();");
-        AssertInOrder(
-            loadState,
-            "NormalizeSandboxToggleForAvailability();",
-            "UpdatePresetHighlight();",
-            "UpdateSandboxStatusCard();",
-            "UpdateControlsEnabledState();");
-        Assert.Contains("CanRunSystemRunSandbox: false", definitiveUnavailable);
-        Assert.Contains("ProbeErrored: false", definitiveUnavailable);
-        Assert.Contains("ProbeSuppressedBySkuGate: false", definitiveUnavailable);
-        AssertInOrder(
-            normalize,
-            "settings.SystemRunSandboxEnabled",
-            "settings.SystemRunBlockHostFallbackWhenMxcUnavailable",
-            "settings.SystemRunSandboxEnabled = false");
-        Assert.Contains("settings.SystemRunSandboxEnabled = false", normalize);
-        Assert.Contains("SandboxEnabledToggle.IsOn = false", normalize);
-        Assert.Contains("Save();", normalize);
+        Assert.Contains("MxcAvailability.Probe", refresh);
+        Assert.DoesNotContain("Settings.Save", refresh);
+        Assert.DoesNotContain("Save(", refresh);
+        Assert.DoesNotContain("NormalizeSandboxToggleForAvailability", source);
     }
 
     [Fact]
-    public void SandboxPage_SkuSuppressionIsNotClassifiedAsMissingComponents()
+    public void SandboxPage_ResolvedUserScopesAndErrorsAreVisibleAndEditable()
     {
         var source = ReadSandboxPageSource();
-        var actionBar = ExtractMethod(source, "UpdateUnavailableActionBar");
-        var windowsCapability = ExtractMethod(source, "IsWindowsSandboxCapabilityUnavailable");
-
-        AssertInOrder(
-            actionBar,
-            "var isSetupIssue",
-            "!availability.ProbeSuppressedBySkuGate",
-            "!availability.IsWxcExecResolvable");
-        Assert.Contains("IsWindowsSandboxCapabilityUnavailable(availability)", actionBar);
-        Assert.Contains("!availability.ProbeErrored", windowsCapability);
-        Assert.Contains("availability.IsWxcExecResolvable", windowsCapability);
-        Assert.Contains("!availability.CanRunSystemRunSandbox", windowsCapability);
+        var status = ExtractMethod(source, "UpdateStatus");
+        Assert.Contains("SandboxPage_ScopeResolutionBlockedTitle", status);
+        Assert.Contains("SandboxPage_ScopeResolutionBlockedText", status);
+        Assert.Contains("FolderStatus.Text", status);
+        Assert.DoesNotContain("BroadBlocked", status);
+        Assert.Contains("SandboxControlsContainer.IsHitTestVisible = true", status);
     }
 
     [Fact]
-    public void SandboxPage_RejectsTurningOnWhenMxcIsDefinitivelyUnavailable()
+    public void SandboxPage_HasNoOffToggleAndDisablesPermissionsOnlyForConfirmedUnsupportedWindows()
     {
         var source = ReadSandboxPageSource();
-        var toggle = ExtractMethod(source, "OnSandboxEnabledToggledAsync");
-        var reject = ExtractMethod(source, "RejectSandboxEnableWhenUnavailableAsync");
+        Assert.DoesNotContain("SandboxEnabledToggle", source);
+        Assert.DoesNotContain("SystemRunSandboxEnabled", source);
+        Assert.DoesNotContain("HostFallback", source);
+        Assert.Contains("settings.ApplySystemRunPreset(preset)", source);
+        Assert.Contains("SandboxPermissionsControls.IsEnabled = !unsupported", source);
+        Assert.Contains("PresetLockedButton.IsEnabled = !unsupported", source);
+        Assert.Contains("PresetBalancedButton.IsEnabled = !unsupported", source);
+        Assert.Contains("PresetPermissiveButton.IsEnabled = !unsupported", source);
+        Assert.Contains("SandboxPage_WindowsCompatibilityText", source);
+    }
 
-        AssertInOrder(
-            toggle,
-            "newValue",
-            "!oldValue",
-            "IsSandboxDefinitivelyUnavailable()",
-            "!s.SystemRunBlockHostFallbackWhenMxcUnavailable",
-            "await RejectSandboxEnableWhenUnavailableAsync();",
-            "return;");
-        Assert.Contains("SandboxEnabledToggle.IsOn = false", reject);
-        Assert.Contains("Node Sandbox unavailable", reject);
-        Assert.Contains("IsWindowsSandboxCapabilityUnavailable(availability)", reject);
-        Assert.Contains("SandboxPage_WindowsUnsupportedTitle", reject);
-        Assert.Contains("SandboxPage_WindowsUnsupportedMessageFormat", reject);
-        Assert.Contains("SandboxPage_UnavailableBehaviorHostFallback", reject);
+    [Fact]
+    public void SandboxPage_RetiresWindowsUiSettingWithoutLeavingControlsHandlersOrResources()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = ReadSandboxPageSource();
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SandboxPage.xaml"));
+        foreach (var retired in new[] { "WindowsUi", "CommandCompatibility" })
+        {
+            Assert.DoesNotContain(retired, source);
+            Assert.DoesNotContain(retired, xaml);
+        }
+        Assert.Contains("CloseButtonText = L(\"CancelButton.Content\")", ExtractMethod(source, "ConfirmPresetAsync"));
+        foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
+        {
+            var resources = XDocument.Load(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw"));
+            var names = resources.Root!.Elements("data").Select(data => (string)data.Attribute("name")!).ToArray();
+            Assert.DoesNotContain(names, name => name.StartsWith("SandboxPage_", StringComparison.Ordinal) &&
+                (name.Contains("WindowsUi", StringComparison.Ordinal) || name.Contains("CommandCompatibility", StringComparison.Ordinal)));
+            Assert.Contains("CancelButton.Content", names);
+        }
+        var handlers = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "App.CapabilityHandlers.cs"));
+        Assert.DoesNotContain("SystemRunAllowWindowsUi", handlers);
+    }
+
+    [Fact]
+    public void SandboxPage_ShowsCustomAndDescribesSpecificFolderAccess()
+    {
+        var source = ReadSandboxPageSource();
+        Assert.Contains("SystemRunPermissionPresets.Detect", source);
+        Assert.Contains("CustomPresetLabel.Visibility", source);
+        Assert.Contains("if (await dialog.ShowAsync() == ContentDialogResult.Primary)", source);
+        Assert.Contains("DefaultButton = ContentDialogButton.Close", source);
+        var xaml = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "SandboxPage.xaml"));
+        Assert.Contains("Text=\"Folders\"", xaml);
+        Assert.Contains("explicitly listed subfolders keep their own access", xaml);
+        Assert.DoesNotContain("Text=\"Additional folders\"", xaml);
+        Assert.DoesNotContain("PATH are also granted", xaml);
+    }
+
+    [Fact]
+    public void SandboxPage_UsesStableTitleAndOneFolderListWithoutScopeOrFixedFolderSelectors()
+    {
+        var source = ReadSandboxPageSource();
+        var status = ExtractMethod(source, "UpdateStatus");
+        var xaml = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "SandboxPage.xaml"));
+        Assert.Contains("Text=\"Node Sandbox\"", xaml);
+        Assert.DoesNotContain("SandboxStatusTitle.Text =", source);
+        foreach (var control in new[] { "ScopeCombo", "DocsAccessCombo", "DownloadsAccessCombo", "DesktopAccessCombo" })
+        {
+            Assert.DoesNotContain(control, xaml);
+            Assert.DoesNotContain(control, source);
+        }
+        Assert.DoesNotContain("OnScopeChanged", source);
+        Assert.Contains("CurrentApp.Settings?.SystemRunFilesystemScope", status);
+        Assert.DoesNotContain("FileAccessSummary", source);
+        Assert.DoesNotContain("ResolvedFoldersExpander", xaml);
+        Assert.Contains("UnavailableActionBar.Title =", status);
+        Assert.Contains("MxcFolderPermissions.Resolve(settings.SnapshotSystemRunSettings(), _folderContext)", source);
+    }
+
+    [Fact]
+    public void SandboxPage_ExistingOverridesRemainVisibleAndEditTheirOriginalFields()
+    {
+        var source = ReadSandboxPageSource();
+        var load = ExtractMethod(source, "LoadFolders");
+        var edit = ExtractMethod(source, "SetFolderAccess");
+        foreach (var folder in new[] { "Documents", "Downloads", "Desktop" })
+        {
+            Assert.Contains($"settings.Sandbox{folder}Access = edited.Sandbox{folder}Access;", edit);
+        }
+        Assert.Contains("MxcFolderPermissions.Resolve", load);
+        Assert.DoesNotContain("Save(", load);
+        Assert.DoesNotContain("settings.SandboxCustomFolders =", load);
+        Assert.DoesNotContain("SystemRunFilesystemScope =", edit);
+        Assert.Contains("MxcFolderPermissions.Edit(settings.SnapshotSystemRunSettings(), row.Permission, access)", edit);
+        Assert.Contains("settings.SandboxCustomFolders = edited.SandboxCustomFolders", edit);
+        Assert.DoesNotContain("OnRemoveCustomFolder", source);
+        Assert.DoesNotContain("SetFolderAccess(row, null)", source);
+    }
+
+    [Fact]
+    public void SandboxPage_FolderBindingInitializationCannotBecomeAPermissionEdit()
+    {
+        var source = ReadSandboxPageSource();
+        var edit = ExtractMethod(source, "OnCustomFolderAccessChanged");
+        Assert.Contains("!combo.IsLoaded", edit);
+        Assert.Contains("combo.SelectedIndex == row.AccessIndex", edit);
+        Assert.Contains("combo.SelectedIndex is < 0 or > 2", edit);
+        Assert.Contains("ReferenceEquals(combo.Tag, row)", edit);
+        Assert.Contains("DispatcherQueue.TryEnqueue", edit);
+        Assert.DoesNotContain("CustomFolders.Remove(", edit);
+        var initialize = ExtractMethod(source, "InitializeFolderAccess");
+        AssertInOrder(initialize, "combo.Tag = null;", "combo.SelectedIndex =", "combo.Tag = combo.DataContext;");
+        Assert.DoesNotContain("InitialSelectionFired", source);
+        var xaml = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "SandboxPage.xaml"));
+        Assert.DoesNotContain("SelectedIndex=\"{Binding AccessIndex", xaml);
+        Assert.Contains("Loaded=\"OnFolderAccessLoaded\"", xaml);
+        Assert.Contains("DataContextChanged=\"OnFolderAccessDataContextChanged\"", xaml);
+        Assert.Contains("AutomationProperties.Name=\"{Binding AccessLabel}\"", xaml);
+        Assert.DoesNotContain("RemoveLabel", xaml);
+        Assert.DoesNotContain("RemoveText", xaml);
+        Assert.Contains("Content=\"No access\"", xaml);
+        Assert.DoesNotContain("Content=\"Legacy blocked (review)\"", xaml);
+        Assert.Contains("SandboxFolderAccess.NoAccess => 0", source);
+        Assert.Contains("SandboxFolderAccess.ReadOnly => 1", source);
+        Assert.Contains("SandboxFolderAccess.ReadWrite => 2", source);
+        Assert.Contains("SandboxPage_LegacyFolderReview", source);
+    }
+
+    [Theory]
+    [InlineData("en-us", "Balanced")]
+    [InlineData("fr-fr", "Équilibré")]
+    [InlineData("nl-nl", "Evenwichtig")]
+    [InlineData("pt-br", "Equilibrado")]
+    [InlineData("zh-cn", "平衡")]
+    [InlineData("zh-tw", "平衡")]
+    public void SandboxPage_LocalizedBalancedLabelHasNoDefaultQualifier(string locale, string expected)
+    {
+        var values = ReadReswValues(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw"));
+        Assert.Equal(expected, values["SandboxPage_PresetBalanced.Text"]);
+        Assert.Equal("Node Sandbox", values["SandboxPage_Title.Text"]);
+        Assert.DoesNotContain("(", values["SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name"]);
+        Assert.DoesNotContain("（", values["SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name"]);
+    }
+
+    [Theory]
+    [InlineData("PresetLockedButton", "PresetStrictIcon", "SandboxStrict", "SystemFillColorSuccessBrush")]
+    [InlineData("PresetBalancedButton", "PresetBalancedIcon", "Permissions", "AccentTextFillColorPrimaryBrush")]
+    [InlineData("PresetPermissiveButton", "PresetOpenIcon", "StatusWarn", "SystemFillColorCautionBrush")]
+    public void SandboxPage_PresetIconsUseCatalogWithoutChangingAccessibleNames(
+        string buttonName, string iconName, string glyph, string brush)
+    {
+        var xaml = XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "SandboxPage.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var button = Assert.Single(xaml.Descendants(), element =>
+            element.Name.LocalName == "Button" && (string?)element.Attribute(x + "Name") == buttonName);
+        var icon = Assert.Single(button.Descendants(), element => element.Name.LocalName == "FontIcon");
+        Assert.Equal(iconName, (string?)icon.Attribute(x + "Name"));
+        Assert.Equal($"{{x:Bind helpers:FluentIconCatalog.{glyph}, Mode=OneTime}}", (string?)icon.Attribute("Glyph"));
+        Assert.Equal("{ThemeResource SymbolThemeFontFamily}", (string?)icon.Attribute("FontFamily"));
+        Assert.Equal($"{{ThemeResource {brush}}}", (string?)icon.Attribute("Foreground"));
+        Assert.Equal("False", (string?)icon.Attribute("IsTextScaleFactorEnabled"));
+        Assert.Equal("Raw", (string?)icon.Attribute("AutomationProperties.AccessibilityView"));
+        Assert.Equal("SandboxPage_" + buttonName, (string?)button.Attribute(x + "Uid"));
     }
 
     private static string ReadCoordinatorSource()
@@ -2205,7 +2415,7 @@ public sealed class AppRefactorContractTests
 
     private static string ExtractMethod(string source, string methodName, string? parameterHint = null)
     {
-        var pattern = $@"(?m)^\s*(?:(?:private|protected|public|internal)\s+)?(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|TrayMenuSnapshot|RollbackResult|OpenClaw\.Connection\.GatewayCredential\?|AppShutdownPlan)\s+(?:[A-Za-z0-9_]+\.)?{Regex.Escape(methodName)}\s*\(";
+        var pattern = $@"(?m)^\s*(?:(?:private|protected|public|internal)\s+)?(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|Process|TrayMenuSnapshot|RollbackResult|OpenClaw\.Connection\.GatewayCredential\?|AppShutdownPlan)\s+(?:[A-Za-z0-9_]+\.)?{Regex.Escape(methodName)}\s*\(";
         var matches = Regex.Matches(source, pattern);
         Assert.True(matches.Count > 0, $"Could not find method {methodName}.");
 

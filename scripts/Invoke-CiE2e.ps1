@@ -7,7 +7,8 @@
 param(
     [Parameter(Mandatory)][ValidateSet("setup-connect", "revocation-recovery", "network-recovery")]
     [string]$Name,
-    [Parameter(Mandatory)][string]$Filter
+    [Parameter(Mandatory)][string]$Filter,
+    [ValidateRange(1, 3600)][int]$HangTimeoutSeconds = 600
 )
 
 Set-StrictMode -Version Latest
@@ -15,15 +16,18 @@ $ErrorActionPreference = "Stop"
 
 $resultsDirectory = "TestResults\E2E"
 $trxPath = Join-Path $resultsDirectory "OpenClaw.E2ETests.$Name.trx"
-dotnet test tests/OpenClaw.E2ETests `
-    --no-build `
-    -c Debug `
-    -r win-x64 `
-    --verbosity normal `
-    --results-directory $resultsDirectory `
-    --logger "trx;LogFileName=OpenClaw.E2ETests.$Name.trx" `
-    --logger "console;verbosity=detailed" `
-    --filter $Filter
+# VSTest's hang timer resets on test events, not fixture progress. A progressing
+# WSL install can exceed it before the first case starts. Bound output inactivity
+# instead; the existing workflow step still caps total wall time at 20 minutes.
+$testArguments = @(
+    'test', 'tests/OpenClaw.E2ETests', '--no-build', '-c', 'Debug', '-r', 'win-x64',
+    '--verbosity', 'normal', '--results-directory', $resultsDirectory,
+    '--logger', "trx;LogFileName=OpenClaw.E2ETests.$Name.trx",
+    '--logger', 'console;verbosity=detailed', '--blame', '--filter', $Filter
+)
+& (Join-Path $PSScriptRoot 'Invoke-CiProcess.ps1') -FilePath 'dotnet' `
+    -ArgumentList $testArguments -IdleTimeoutSeconds $HangTimeoutSeconds `
+    -OutputPath (Join-Path $resultsDirectory "OpenClaw.E2ETests.$Name.console.log")
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

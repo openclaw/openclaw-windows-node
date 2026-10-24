@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.Shared;
 using OpenClaw.Connection;
+using OpenClaw.Connection.LocalAi;
 using OpenClawTray.Helpers;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -72,6 +73,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private LocalAiOnboardingObservation? _localObservation;
     private bool _localActionBusy;
     private LocalAiOnboardingUse? _localUse;
+    private LocalAiFailureDetail? _localAiFailure;
+    private int _localAiFailureVersion;
     private string? _localExpectedModel => _localUse?.Expected?.ModelRef;
     private string? ExpectedGatewayId => _localUse?.Expected?.GatewayId ?? _args?.ExpectedGatewayId;
     private readonly ProviderArtworkSession _artworkSession = new();
@@ -81,13 +84,15 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     {
         InitializeComponent();
         TitleText.Text = S("Title.Text");
+        OpenLocalAiLogsButton.Content = S("OpenLocalAiLogs");
         CandidatesHeading.Text = SetupLocalization.GetString("Onboarding_V4_DetectedAi.Text");
         RecommendedHeading.Text = S("Recommended");
         RecommendedDetail.Text = S("RecommendedDetail");
         UnavailableHeading.Text = S("Unavailable");
-        PrepareHeading.Text = S("OtherLocal");
-        PrepareDetail.Text = S("OtherLocalDetail");
+        LocalGroupHeading.Text = S("LocalTitle");
+        LocalGroupDescription.Text = S("LocalGroupDescription");
         SignInHeading.Text = S("ConnectProvider");
+        CloudDescription.Text = S("CloudDetail");
         LocalAiTitle.Text = S("LocalTitle");
         LocalAiCard.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Devices, 20);
         AutomationProperties.SetName(LocalAiCard, S("LocalTitle"));
@@ -345,11 +350,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 await _localObservation!.RefreshAsync(CreateLocalProgress(ct));
                 TitleText.Text = S("Title.Text");
                 await DetectAsync(ct);
-                if (ex is LocalAiStartFailedException)
-                {
-                    ErrorBar.Message = S("LocalStartFailed") + " " + ex.Message;
-                    ErrorBar.IsOpen = true;
-                }
+                if (ex is LocalAiStartFailedException startFailed)
+                    ShowLocalAiStartFailure(startFailed);
                 else
                     ShowError("LocalChanged");
                 return;
@@ -409,6 +411,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             _nativeConsoleIssue = issue;
             var message = SetupLocalization.GetString(issue == GatewayLogTailIssue.Skipped
                 ? "Onboarding_Wizard_GatewayConsoleGap" : "Onboarding_Wizard_GatewayConsoleUnavailable");
+            ClearLocalAiFailure();
             if (BackdropLocked) _providerError = message;
             else
             {
@@ -477,12 +480,12 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             UnavailableCandidates.ItemsSource = _presentation.UnavailableCandidates.Select(candidate =>
                 new ChoiceRow(GatewayAiSetupChoiceKind.Candidate, candidate.Id, candidate.Label, candidate.Detail,
                     _artworkSession, BrandId: candidate.BrandId, Icon: candidate.Icon)).ToArray();
-            CandidatesSection.Visibility = Visible(_presentation.Candidates.Count > 0);
             RecommendedSection.Visibility = Visible(_presentation.RecommendedInstalls.Count > 0);
             UnavailableSection.Visibility = Visible(_presentation.UnavailableCandidates.Count > 0);
             PrepareSection.Visibility = Visible(_presentation.PrepareOptions.Count > 0);
-            SignInSection.Visibility = Visible(_presentation.FeaturedSignIn.Count +
-                _presentation.MoreSignIn.Count > 0);
+            var hasSignIn = _presentation.FeaturedSignIn.Count + _presentation.MoreSignIn.Count > 0;
+            SignInSection.Visibility = Visible(hasSignIn || _presentation.ManualProviders.Count > 0);
+            ProviderGroup.Visibility = Visible(hasSignIn);
             FeaturedSignInChoices.Visibility = Visible(_presentation.FeaturedSignIn.Count > 0);
             ApiKeySection.Visibility = Visible(_presentation.ManualProviders.Count > 0);
             ApiKeyForm.Visibility = Visible(_presentation.ShowApiKeyForm);
@@ -498,10 +501,15 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     }
 
     private ChoiceRow[] ProviderRows(IReadOnlyList<GatewayAiSetupProvider> providers, GatewayAiSetupChoiceKind kind) =>
-        providers.Select(option => new ChoiceRow(kind, option.Id, option.Label,
-            option.Hint ?? "",
-            _artworkSession, BrandId: option.BrandId, Icon: option.Icon, ProviderKind: option.Kind,
-            MetadataActionLabel: option.ActionLabel, Website: option.Website)).ToArray();
+        providers.Select(option =>
+        {
+            var localService = kind == GatewayAiSetupChoiceKind.Prepare &&
+                (option.Id is "lmstudio" or "ollama");
+            return new ChoiceRow(kind, option.Id, option.Label,
+                localService ? S(option.Id == "lmstudio" ? "LmStudioDetail" : "OllamaDetail") : option.Hint ?? "",
+                _artworkSession, BrandId: option.BrandId, Icon: option.Icon, ProviderKind: option.Kind,
+                MetadataActionLabel: localService ? S("ManualConnect") : option.ActionLabel, Website: option.Website);
+        }).ToArray();
 
     private void ApiKeys_Click(object sender, RoutedEventArgs e)
     {
@@ -644,10 +652,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                         if (_closed) return;
                         await _localObservation.RefreshAsync();
                         if (!_closed)
-                        {
-                            ErrorBar.Message = S("LocalStartFailed") + " " + ex.Message;
-                            ErrorBar.IsOpen = true;
-                        }
+                            ShowLocalAiStartFailure(ex);
                         return;
                     }
                     finally { ++_progressScope; }
@@ -885,6 +890,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         _activityStatus = SetupInstallationStatus.Running;
         // Uncertain is also used for recovery. Retain a prompt only for its own answer request.
         _submittingAnswer = submittingAnswer;
+        ClearLocalAiFailure();
         if (BackdropLocked) _providerError = null;
         else ErrorBar.IsOpen = false;
         Render();
@@ -1017,8 +1023,10 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                         (index == _activities.Count - 1 ? _activityStatus : SetupInstallationStatus.Complete)))).ToArray();
                 ChoicePanel.Visibility = Visible(_localExpectedModel is null && _args?.ExpectedConfiguredModelRef is null &&
                     (phase is GatewayAiSetupPhase.Choosing or GatewayAiSetupPhase.Cancelled or GatewayAiSetupPhase.Rejected));
-                CandidatesHeading.Visibility = Visible(LocalAiSection.Visibility == Visibility.Visible ||
-                    ChoicePanel.Visibility == Visibility.Visible && CandidatesSection.Visibility == Visibility.Visible);
+                CandidatesSection.Visibility = Visible(ChoicePanel.Visibility == Visibility.Visible &&
+                    _presentation.Candidates.Count > 0);
+                LocalGroupHeader.Visibility = Visible(LocalAiSection.Visibility == Visibility.Visible ||
+                    ChoicePanel.Visibility == Visibility.Visible && PrepareSection.Visibility == Visibility.Visible);
                 LegacyButton.Visibility = phase == GatewayAiSetupPhase.ClassicWizardRequired ? Visibility.Visible : Visibility.Collapsed;
             }
             else
@@ -1027,6 +1035,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 LocalAiCard.IsClickEnabled = false;
                 LocalAiCard.IsEnabled = false;
             }
+            LocalAiFailurePanel.Visibility = Visible(!freezeBackdrop && ErrorBar.IsOpen && _localAiFailure is not null);
             var backgroundEnabled = !_busy && !_localActionBusy && !BackdropLocked;
             CandidateChoices.IsEnabled = PrepareChoices.IsEnabled = FeaturedSignInChoices.IsEnabled =
                 MoreSignInChoices.IsEnabled = ApiProviderPicker.IsEnabled = ApiKeyInput.IsEnabled =
@@ -1177,7 +1186,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         LocalAiSection.Visibility = Visible(_args?.ExpectedConfiguredModelRef is null && _localExpectedModel is null &&
             snapshot.ShowLocalChoice);
         var state = snapshot.State;
-        LocalAiDescription.Text = string.Join(" · ", new[]
+        var detail = string.Join(" · ", new[]
         {
             S("LocalState_" + state),
             string.Join(" · ", new[] { snapshot.GpuName, snapshot.ModelName }.Where(value => !string.IsNullOrWhiteSpace(value))),
@@ -1185,6 +1194,10 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 ? LocalAiSetupControl.DescribeLocalAiUnavailable(eligibility) : null,
             state == LocalAiOnboardingState.ManagementBlocked && snapshot.ReasonKey is { } reason ? S(reason) : null,
         }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        LocalAiTitle.Text = state == LocalAiOnboardingState.SetUp ? S("OtherLocal") : S("LocalTitle");
+        AutomationProperties.SetName(LocalAiCard, LocalAiTitle.Text);
+        LocalAiDescription.Text = state == LocalAiOnboardingState.SetUp ? S("LocalSetUpDescription") : detail;
+        LocalAiRecommendedBadge.Visibility = Visible(state == LocalAiOnboardingState.SetUp);
         LocalAiActionText.Text = state switch
         {
             LocalAiOnboardingState.SetUp => S("LocalSetUp"),
@@ -1199,7 +1212,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         LocalAiCard.IsClickEnabled = _localObservation is not null && !_localActionBusy && !providerPending &&
             (snapshot.CanReview && _args?.ReviewLocalAi is not null || snapshot.CanUse || snapshot.CanRefresh);
         LocalAiCard.IsEnabled = !_localActionBusy && !providerPending;
-        AutomationProperties.SetHelpText(LocalAiCard, LocalAiDescription.Text + " " + LocalAiActionText.Text + " " +
+        AutomationProperties.SetHelpText(LocalAiCard, detail + " " + LocalAiActionText.Text + " " +
             S("LocalExplanation"));
     }
 
@@ -1217,6 +1230,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private static Visibility Visible(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
     private void ShowError(string key, string? detail = null)
     {
+        ClearLocalAiFailure();
         var message = S(key);
         detail ??= key is "VerificationFailed" or "Rejected"
             ? Client?.VerificationFailure ?? Client?.Wizard?.Error : null;
@@ -1232,8 +1246,55 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             ErrorBar.Message = message;
             ErrorBar.IsOpen = true;
         }
+        if (key is "VerificationFailed" or "Rejected" && _localUse?.Expected is not null)
+            CaptureLocalAiFailure();
         Render();
     }
+
+    private void ClearLocalAiFailure()
+    {
+        _localAiFailure = null;
+        ++_localAiFailureVersion;
+    }
+
+    /// <summary>
+    /// llama-server reports model-load causes only in its own logs; the Gateway's verification
+    /// error does not carry them. Reads the bounded log tail off the request path and shows it
+    /// with a link to the folder, mirroring CompletePage.ShowServerDiagnostics.
+    /// </summary>
+    private void CaptureLocalAiFailure()
+    {
+        if (_args is null) return;
+        var version = ++_localAiFailureVersion;
+        var paths = new LocalAiPaths(_args.LocalDataDir);
+        AsyncEventHandlerGuard.Run(async () =>
+        {
+            var diagnostics = await LocalAiLogTail.ReadDiagnosticLinesAsync(paths, CancellationToken.None);
+            if (_closed || version != _localAiFailureVersion) return;
+            var directory = LogFileLauncher.ResolveRealPath(paths.LogsDirectory);
+            var hasDirectory = Directory.Exists(directory);
+            if (diagnostics.Count == 0 && !hasDirectory) return;
+            _localAiFailure = new LocalAiFailureDetail(diagnostics, hasDirectory ? directory : "");
+            LocalAiDiagnosticsText.Text = string.Join(Environment.NewLine,
+                diagnostics.Select(line => $"llama-server: {line}"));
+            LocalAiDiagnosticsText.Visibility = Visible(diagnostics.Count > 0);
+            OpenLocalAiLogsButton.Visibility = Visible(hasDirectory);
+            ToolTipService.SetToolTip(OpenLocalAiLogsButton, hasDirectory ? directory : null);
+            Render();
+        }, onError: ex => Trace.TraceWarning("Local AI diagnostics could not be read ({0}).", ex.GetType().Name));
+    }
+
+    private void ShowLocalAiStartFailure(LocalAiStartFailedException error)
+    {
+        ClearLocalAiFailure();
+        ErrorBar.Message = S("LocalStartFailed") + " " + error.Message;
+        ErrorBar.IsOpen = true;
+        CaptureLocalAiFailure();
+    }
+
+    private void OpenLocalAiLogs_Click(object sender, RoutedEventArgs e) =>
+        LogFileLauncher.RevealInExplorer(_localAiFailure?.LogDirectory);
+
     private void ReportFailure(Exception error)
     {
         Trace.TraceWarning("AI setup request failed ({0}).", error.GetType().Name);
@@ -1246,7 +1307,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 if (_controller is not null && _localObservation is not null)
                     AsyncEventHandlerGuard.Run(_localObservation.RefreshAsync, onError: ReportFailure);
             }
-            ShowError(error is LocalAiSelectionRejectedException ? "LocalChanged" :
+            ShowError(error is LocalAiRepairRequiresStopException ? "LocalRepairRequiresStop" :
+                error is LocalAiSelectionRejectedException ? "LocalChanged" :
                 error is UnauthorizedAccessException ? "AdminRequired" :
                 Client?.Phase == GatewayAiSetupPhase.Prepared ? "PreparedChanged" :
                 _localExpectedModel is not null || Client?.RequiresReconciliation == true ? "Uncertain" : "Failed",

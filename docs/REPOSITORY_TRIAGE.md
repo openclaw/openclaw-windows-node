@@ -40,6 +40,12 @@ API failure marks the affected row partial and adds an auditable collection
 warning instead of suppressing the rest of the report. Missing ownership
 history always blocks cleanup.
 
+The top-level PR inventory uses small pages because each row also carries file
+and check summaries. Transient GraphQL throttling, network errors, and HTTP 5xx
+responses receive bounded retries with backoff. If the complete top-level PR or
+issue inventory still cannot be collected, the workflow fails and writes its
+failure artifact rather than presenting a partial report as global triage.
+
 ## Active ownership expiry
 
 `status: 🚢 actively landing` means a maintainer or delegated agent is actively

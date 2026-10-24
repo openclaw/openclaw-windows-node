@@ -50,7 +50,8 @@ public sealed class AccessibilityAppFixture : IDisposable
         string theme = "System",
         bool syntheticData = true,
         string? initialRoute = "connection",
-        bool agentIdentities = false)
+        bool agentIdentities = false,
+        Func<Process, IntPtr>? hubWindowLocator = null)
     {
         _chatFixture = chatFixture;
         _syntheticData = syntheticData;
@@ -95,9 +96,17 @@ public sealed class AccessibilityAppFixture : IDisposable
             """.Replace("THEME", theme, StringComparison.Ordinal));
 
         _process = StartProcess(initialRoute is null ? null : $"{OpenClawTray.AppIdentity.ProtocolScheme}://hub/{initialRoute}");
-        HubWindowHandle = WaitForHubWindow();
-        if (initializeAxe)
-            AxeHelper.Initialize(_process.Id);
+        try
+        {
+            HubWindowHandle = hubWindowLocator is null ? WaitForHubWindow() : hubWindowLocator(_process);
+            if (initializeAxe)
+                AxeHelper.Initialize(_process.Id);
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
     }
 
     public async Task NavigateAsync(

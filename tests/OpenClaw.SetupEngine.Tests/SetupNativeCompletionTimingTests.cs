@@ -15,6 +15,20 @@ public sealed class SetupNativeCompletionTimingTests
     }
 
     [Theory]
+    [InlineData(30, 810)]
+    [InlineData(180, 810)]
+    [InlineData(181, 812)]
+    [InlineData(600, 1650)]
+    [InlineData(3600, 7650)]
+    public void ExecutionWindowFollowsStartupOverrideWithinPersistedBounds(int startupSeconds, int executionSeconds)
+    {
+        Assert.Equal(TimeSpan.FromSeconds(executionSeconds), SetupNativeCompletionTiming.ExecutionFor(
+            SetupNativeCompletionTiming.ConnectionFor(TimeSpan.FromSeconds(startupSeconds))));
+        Assert.Equal(TimeSpan.FromSeconds(810), SetupNativeCompletionTiming.MinimumExecution);
+        Assert.Equal(TimeSpan.FromSeconds(7650), SetupNativeCompletionTiming.MaximumExecution);
+    }
+
+    [Theory]
     [InlineData(SetupNativeCompletionPhase.Connection)]
     [InlineData(SetupNativeCompletionPhase.ModelRecovery)]
     [InlineData(SetupNativeCompletionPhase.ModelVerification)]

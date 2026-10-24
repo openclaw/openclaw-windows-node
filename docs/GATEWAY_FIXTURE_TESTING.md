@@ -46,6 +46,25 @@ fields, returns a server-assigned ID, and exposes it through subsequent
 remain rejected. The test verifies the refreshed selector while retaining the
 existing session and unsent draft. Normal interactive browse runs remain read-only.
 
+Chat cancellation tests explicitly opt into the `chat-send` scenario. It issues
+synthetic run IDs and accepts `chat.abort` only for a run belonging to the supplied
+fixture session. The server can hold send acknowledgements and abort replies,
+then release an abort successfully or with a protocol error. Run-correlated
+lifecycle, assistant-delta, tool-outcome and structured-content chat events exercise the real client and provider
+without contacting an AI provider. These controls do not enable writes in the
+normal browse scenario.
+
+The opt-in `session-mutations` scenario accepts in-memory `sessions.patch`,
+`sessions.delete`, and parallel `sessions.create` requests. Creation uses a known
+parent, returns a distinct server-assigned key/session ID, and exposes the empty
+conversation through session-list and history reads without replacing its parent.
+The response gate can hold creation while the UI navigates elsewhere. Composer
+`/new` tests use this path to check initial Home -> new conversation -> Back/Forward
+and delayed completion on Notifications. A newer page navigation fences the
+pending selection: returning Home retains the original conversation, while the
+created session remains available for explicit sidebar selection. No provider, transcript file, or real
+Gateway is involved; other mutations and unsupported creation parameters still fail.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
@@ -68,6 +87,13 @@ tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
+`GatewayFixtureStartupTests` exercise parent and foreign browser-control startup
+without launching the app. Cancellation and readiness failures must reap the
+owned child, remove its readiness file, and release both listener ports.
+The Shared browser-proxy regression runs the production client and a default-handler
+control in separate test-host processes with explicit proxy settings. It does not
+change the test runner's environment or cached default proxy.
+
 The tests use local MCP for discovery, startup state and page navigation, and
 UI Automation for the actual agent selector, Workspace session sidebar, scrolling and settings
 controls. They verify:
@@ -76,12 +102,31 @@ controls. They verify:
 - Independent profiles, endpoints, tokens and preferences in two concurrent
   application instances. Stopping one must leave the other usable.
 - Repeated A/B session selection and session-specific visible histories.
+- Session-scoped configured model reads retain a current model outside the manual
+  selection policy. Its label and catalog-only reasoning remain available while
+  its picker row stays disabled. The fixture's omitted view uses `default`, like
+  the Gateway, so omitting `view: "configured"` cannot accidentally pass this case.
 - Natural initial-tail visibility of message 240 before any explicit scroll
   command, plus final-message visibility after scrolling at two window sizes.
 - Sessions/Settings/Configuration/Chat navigation, profile-only preference
   persistence, and the Sessions-page Open in chat action.
 - A deliberately held history response arriving after a different session is
   selected, without replacing the visible transcript.
+- Cancelling A through the native Stop action, then streaming and completing B
+  despite A's late terminal and final events.
+- A deferred abort failing after its run has ended, restoring the legitimate
+  trailing final both during and after a newer streaming turn without ending
+  or corrupting that turn. Replayed starts and deltas from the old run remain
+  unable to resume over the new turn.
+- A terminal run's late tool completion repairs only its retained tool while
+  a newer run reuses the tool ID. Repeated background finals render once, with
+  media kept separate from the newer streaming entry. Synthetic audio cards
+  exercise metadata/rendering without playback, resolution or downloads.
+
+The cancellation cases use process-scoped UI Automation, not global keyboard or
+pointer input. They assert visible text and the native Stop/Send action as well
+as supporting MCP state. Notifications and audio remain disabled in the fixture;
+these cases do not prove toast presentation or TTS playback.
 
 `app.chat.snapshot` is supporting evidence, not a rendering assertion. It
 returns only the last 30 entries and does not prove the mounted UI selection.
@@ -97,6 +142,18 @@ call cannot prevent failure reporting and owned-process cleanup.
 
 Inspect the captured PNGs when claiming visual proof. UI Automation alone does
 not detect every overlap, clipping or theme defect.
+
+`HistoricalFractionalVoiceConversationRendersWithoutLoadingPlaceholder` uses
+the opt-in `GatewayScenario.CreateFractionalVoiceHistory()` scenario. It adds
+30 synthetic historical messages, including 18 fractional-millisecond Talk
+rows with realtime voice provenance, block-array user text and no usage fields.
+The real Gateway client protocol test checks every message's content, ID,
+sequence and truncated timestamp. The native UI test checks all 30 projected
+texts, visible final voice content, no loading placeholder, and switching to an
+integer-timestamp typed control and back. Screenshots and the synthetic MCP
+snapshot are retained with the run artifacts. This proves stored-history
+compatibility, not microphone capture, live voice streaming or real Gateway
+pairing, and does not use the reporter's private sessions.
 
 ## Cron editor proof
 
@@ -126,6 +183,79 @@ and resetting for a new job. Artifacts include owned-window editor captures
 and the exact synthetic schedules read back after accepted saves. This proves
 the app/fixture wire path, not production Gateway persistence or scheduling.
 
+## Targeted context-usage proof
+
+`ContextFooterReconcilesLiveReplayHistoryAndAuthoritativeUsage` opts into
+`context-usage-snapshots`. It uses the existing isolated app/server ownership,
+native composer, real client/provider/history loader, and mounted transcript.
+Only two exact synthetic `chat.send` prompts are accepted in order; arbitrary
+prompts, additional sends, attachments and other mutations remain rejected.
+The normal browse scenario remains read-only.
+
+The test holds the selected session's initial history while sending a
+1,000-token request followed by a 1,500-token request. The second final is followed by an identical identityless,
+undated replay, then the held matching history at T-1 reports 1,000 tokens and
+20%. The history includes the complete transcript prefix, and the test checks
+that the final reply remains the last assistant entry. Its visible footer must
+remain `1.5K/5.0K (30%)`. It then exercises:
+
+| Listing timestamp | Wire usage | Required mounted footer |
+| --- | --- | --- |
+| T+10 | input 12, output 480, missing total, `totalTokensFresh=false` | `1.5K/5.0K (30%)` |
+| T+5 | valid total 800 | `800/5.0K (16%)` |
+| T+12 | valid total 600 | `600/5.0K (12%)` |
+| T+11, response held until after T+12 renders | valid total 1,200 | `600/5.0K (12%)` |
+
+A following `sessions.changed` request, with its reply held, acts as a wire
+barrier: all client subscribers for the preceding listing have finished before
+the native assertion, and another reply cannot repair a rewind before capture.
+No extra production debug command, provider replacement or timing sleep is used.
+Each asserted state always retains an owned-HWND PNG and adjacent JSON with
+footer UIA bounds, text and image SHA256, even without the screenshots flag.
+`context-usage-proof.json` records the scenario and supporting final snapshot.
+
+Run from the worktree on an interactive Windows desktop (use `win-x64` on x64):
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path '.\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-arm64\OpenClaw.Tray.WinUI.exe').Path
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = Join-Path $env:OPENCLAW_REPO_ROOT 'TestResults\context-usage-artifacts'
+# Keep this invocation's disposable profiles inside the worktree.
+$env:TEMP = $env:TMP = Join-Path $env:OPENCLAW_REPO_ROOT 'TestResults\fixture-runtime'
+New-Item -ItemType Directory -Force $env:TEMP | Out-Null
+.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'FullyQualifiedName~ContextFooterReconcilesLiveReplayHistoryAndAuthoritativeUsage' -ResultName 'context-usage-native' -RuntimeIdentifier win-arm64
+```
+
+For a separate bounded computer-use capture, start an interactive host console:
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $env:OPENCLAW_GATEWAY_FIXTURE_APP -Scenario context-usage-snapshots -ArtifactsDirectory $env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS -DurationSeconds 120
+```
+
+Select **Fixture Main**, then **Fixture: context usage Initial**. Send
+`Fixture usage: first request`, then `Fixture usage: repeat request` using the
+native composer. Enter `missing-total`, `lower800`, `lower600`, and
+`delayed1200` in the **host console**, capturing the footer after each changed
+sidebar label appears. These controls only select synthetic listing replies
+and notify the real client. Unknown console controls do nothing. `stop`, Ctrl+C
+or the duration limit cleans up only this app/profile/server. The host prints
+its exact PID and artifact path. The interactive host does not hold initial
+history or transport-delay a listing; use the automated case for those ordered
+proof assertions, and inspect its seven images before claiming complete proof.
+
+The separate accessibility pool remains required, for example:
+
+```powershell
+.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'context-usage-accessibility' -RuntimeIdentifier win-arm64
+```
+
+That existing gate launches its own isolated app and Axe.Windows scans. It needs
+an unlocked desktop, Windows App SDK prerequisites, and the current app executable,
+PRI and compiled page resources beside the native UI test assembly. It does not
+use this Gateway scenario or prove usage reconciliation. Run it serially with
+the fixture UI test and computer-use, not concurrently on the same desktop.
+
 ## Known runtime regression
 
 The strict cached-session tail assertion has exposed an intermittent failure:
@@ -153,7 +283,7 @@ $releaseApp = '.\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0
 ```
 
 An explicitly selected unpackaged publish executable is also supported. This
-does not prove installer/MSIX behavior, real Gateway pairing, streaming,
+does not prove installer/MSIX behavior, real Gateway pairing, live provider streaming,
 provider behavior, or MXC. Keep the existing full E2E proof for those changes.
 
 ## Isolation contract

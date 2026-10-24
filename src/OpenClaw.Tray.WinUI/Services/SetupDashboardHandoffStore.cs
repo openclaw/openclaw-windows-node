@@ -92,7 +92,7 @@ internal sealed class SetupDashboardHandoffStore
             if ((executionStarted is null) != (executionExpires is null) ||
                 (executionStarted is { } started &&
                 (started < pending.IssuedUtc || started >= pending.ExpiresUtc || now < started ||
-                 executionExpires - started != SetupNativeCompletionTiming.Execution)) ||
+                 !IsAdmissibleExecutionWindow(executionExpires!.Value - started))) ||
                 (pending.State == "ready" && executionStarted is not null) ||
                 (pending.State is "retry" or "inflight" && executionStarted is null))
                 return new(SetupHandoffAcquisitionStatus.Invalid);
@@ -156,6 +156,11 @@ internal sealed class SetupDashboardHandoffStore
 
     private static string Hash(string handle) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(handle)));
+
+    // Each process persists its own Execution window, which follows its OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT.
+    // Accept any window a supported override can produce so a restart keeps, never renews, the stored deadline.
+    private static bool IsAdmissibleExecutionWindow(TimeSpan window) =>
+        window >= SetupNativeCompletionTiming.MinimumExecution && window <= SetupNativeCompletionTiming.MaximumExecution;
 
     private static bool IsValidCompletion(GatewayAiSetupCompletion? value) =>
         value is { VerifiedGeneration: > 0, ModelTarget: null } &&

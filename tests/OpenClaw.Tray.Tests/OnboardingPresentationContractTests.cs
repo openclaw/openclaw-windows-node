@@ -113,7 +113,7 @@ public sealed class OnboardingPresentationContractTests
     }
 
     [Fact]
-    public void DashboardAction_LivesInConnectionCardAndRetainsCompactFlyoutShortcut()
+    public void DashboardAction_LivesInConnectionCard()
     {
         var document = XDocument.Parse(Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml"));
         var dashboard = Assert.Single(document.Descendants(),
@@ -123,10 +123,6 @@ public sealed class OnboardingPresentationContractTests
             element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardCard");
         Assert.Contains("((IAppCommands)CurrentApp).OpenDashboard()",
             Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml.cs"));
-        Assert.Contains("ChatFlyoutDashboardButton",
-            Read(@"src\OpenClaw.Tray.WinUI\Windows\ChatWindow.xaml"));
-        Assert.Contains("((IAppCommands)Application.Current).OpenDashboard()",
-            Read(@"src\OpenClaw.Tray.WinUI\Windows\ChatWindow.xaml.cs"));
     }
 
     [Fact]
@@ -165,8 +161,8 @@ public sealed class OnboardingPresentationContractTests
     {
         var xaml = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml");
         var source = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml.cs");
-        var groups = new[] { "LocalAiSection", "CandidatesSection", "UnavailableSection",
-            "PrepareSection", "SignInSection", "MoreExpander", "RecommendedSection", "ApiKeySection", "ApiKeyForm" };
+        var groups = new[] { "CandidatesSection", "LocalGroupHeader", "LocalAiSection", "PrepareSection",
+            "UnavailableSection", "SignInSection", "MoreExpander", "ApiKeySection", "ApiKeyForm", "RecommendedSection" };
         var offsets = groups.Select(name => xaml.IndexOf($"x:Name=\"{name}\"", StringComparison.Ordinal)).ToArray();
         Assert.All(offsets, offset => Assert.True(offset >= 0));
         Assert.Equal(offsets.Order(), offsets);
@@ -190,6 +186,8 @@ public sealed class OnboardingPresentationContractTests
         XElement Named(string name) => Assert.Single(document.Descendants(),
             element => (string?)element.Attribute(x + "Name") == name);
         Assert.Equal("SettingsCard", Named("ApiKeysButton").Name.LocalName);
+        Assert.Contains(Named("LocalAiRecommendedBadge").Ancestors(), element => element == Named("LocalAiCard"));
+        Assert.Contains(Named("PrepareChoices").Ancestors(), element => element == Named("PrepareSection"));
         Assert.Equal("StackPanel", Named("ApiKeysButton").Parent!.Name.LocalName);
         Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "ListView");
         Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "ContinueButton");

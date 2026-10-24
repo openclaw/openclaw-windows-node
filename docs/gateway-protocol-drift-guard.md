@@ -24,6 +24,11 @@ The typed client implements the richer protocol surface -
 `OpenClawGatewayClient.Protocol.cs` and the DTO/payload builders in
 `GatewayProtocolModels.cs`. This guard pins that whole surface.
 
+Active and archived `sessions.list` requests set `includeDerivedTitles: true`
+so unlabeled conversations can use the Gateway's generated titles. Direct-peer
+`displayName` values remain subject to the existing privacy rule; when no title
+is available, the client keeps its localized classification fallback.
+
 It is intentionally **deterministic and repo-contained**: it requires neither a
 clone of the upstream `openclaw/openclaw` repo nor any network access, so it runs
 in the normal `OpenClaw.Shared.Tests` suite. It **complements** the behavioural
@@ -236,3 +241,63 @@ The guard deliberately covers only the `sessions` / `files` / `commands` /
 compaction surface (`scopePrefixes` in the snapshot), which is where the
 drift-critical session and command APIs live. Other gateway namespaces
 (`cron.*`, `config.*`, `device.pair.*`, …) are out of scope for this guard.
+
+## Upstream monitoring
+
+The [Upstream Gateway Protocol check](../.github/workflows/upstream-gateway-protocol.yml)
+observes upstream main and published packages nightly at 05:41 UTC, on
+`gateway-protocol-published` dispatches, or manually from the default branch.
+Unlike the offline guard above, it fetches current upstream evidence.
+Reports identify investigation candidates, not confirmed defects or complete
+Windows compatibility; released package-to-source binding remains unverified.
+
+After merging, run the workflow with `report_only: true` (the default) and inspect
+its summary and `upstream-gateway-protocol-report` artifact. Writes stay disabled
+until an owner sets Actions variable `UPSTREAM_GATEWAY_MONITOR_ENABLED=true`.
+Before enabling writes, configure `COPILOT_GITHUB_TOKEN` with Agent tasks
+read/write and verify the user's Copilot cloud-agent eligibility and repo access.
+The token is used only for task API calls; issue writes use the workflow token.
+Publication dispatch separately requires the upstream sender's GitHub App to have
+Contents write on this repository; its private key stays upstream.
+
+An enabled `report_only: false` run updates [tracker #1829](https://github.com/openclaw/openclaw-windows-node/issues/1829)
+and can start one deduplicated Copilot investigation with automatic PR creation
+disabled. A confirmed gap may lead to one focused draft PR, never automatic merge.
+Candidate fingerprints, task IDs, deduplication and health stay on that one issue.
+Verify its task ID and disposition comment after activation; never close the tracker.
+Restore a missing/closed tracker rather than creating a replacement. For uncertain
+or stalled tasks, inspect the recorded task and reconcile manually; do not delete
+reservations to force retries. Unset the activation variable to stop new writes;
+`report_only: true` suppresses writes even while enabled.
+
+### Welcome copy notifications
+
+The same nightly workflow also compares welcome text for English, French, Dutch,
+Brazilian Portuguese, Simplified Chinese, and Traditional Chinese. It reads
+immutable upstream-main catalogs and translation memories without executing
+upstream code. Only `newSession.hint` and `chat.welcome.*` affect this comparison;
+unrelated UI copy and translation-cache metadata stay quiet. Stale or missing
+translations use English fallback, matching the upstream catalog contract.
+
+With `UPSTREAM_GATEWAY_MONITOR_ENABLED=true`, the first observation records one
+baseline comment on the [permanent tracker](https://github.com/openclaw/openclaw-windows-node/issues/1829).
+Later effective text changes post a comment listing the affected locale/key pairs
+and immutable source comparison. Subscribe to the tracker to receive these
+notifications. The initial baseline does not claim that Windows already matches
+upstream. Manual `report_only: true` and a disabled monitor collect a read-only
+comparison without recording or advancing the notification baseline.
+
+Review `Chat_ZeroState_WelcomeSubtitle`, `Chat_ZeroState_RecentChats`, and
+`Chat_Welcome_*` in `src/OpenClaw.Tray.WinUI/Strings/*/Resources.resw`. Update all
+six languages in one focused Windows PR, link existing coverage, or explain why
+no copy update is needed. Welcome text stays bundled with Companion, independent
+of Gateway version. This path requires no new App, upstream sender, Copilot token,
+agent task, or welcome-copy RPC.
+
+Welcome monitoring runs independently of protocol collection and uses the same
+nightly, publication, and manual triggers. Its source hashes and changed keys are
+retained in the `upstream-welcome-content-report` artifact. Source-layout changes,
+unreadable evidence, or damaged baseline comments fail visibly through the existing
+monitor health section on the permanent tracker. After an uncertain comment write,
+inspect tracker history before recovery; the next observation reconciles bot-owned comments and unchanged
+text does not post again. A change reverted between observations is not reported.
