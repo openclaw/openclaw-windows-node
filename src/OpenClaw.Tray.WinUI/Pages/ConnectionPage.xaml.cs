@@ -2667,8 +2667,22 @@ public sealed partial class ConnectionPage : Page
                 try { await _connectionManager.DisconnectAsync(); }
                 catch (Exception ex) { Logger.Warn($"ConnectionPage: Failed to disconnect active gateway before removal: {ex.Message}"); }
             }
-            _gatewayRegistry?.Remove(gwId);
-            _gatewayRegistry?.Save();
+            try
+            {
+                _gatewayRegistry?.RemoveAndSave(gwId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"ConnectionPage: Failed to remove gateway: {ex.Message}");
+                try
+                {
+                    CurrentApp.ShowTransientConnectionError(ex.Message);
+                }
+                catch (Exception showError)
+                {
+                    Logger.Warn($"ConnectionPage: Failed to show gateway removal error: {showError.Message}");
+                }
+            }
             LoadSavedGateways();
             RefreshFromSnapshot(_lastSnapshot);
         }

@@ -1625,7 +1625,7 @@ public sealed class GatewayConnectionManager :
                 _registry.SetActive(previousActiveId);
                 _logger.Warn($"[ConnMgr] Failed to persist active gateway switch: {ex.Message}");
                 _diagnostics.Record("state", "Switch gateway failed", $"Could not persist active gateway: {ex.Message}");
-                return;
+                throw;
             }
 
             await DisconnectCoreAsync();

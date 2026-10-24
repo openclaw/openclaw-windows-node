@@ -64,6 +64,58 @@ public class GatewayRegistryTests : IDisposable
     }
 
     [Fact]
+    public void TryAdoptExternalSnapshot_LoadsARecordPublishedByAnotherInstance()
+    {
+        var tray = _registry;
+        tray.Load();
+        var setup = new GatewayRegistry(_tempDir);
+        setup.Load();
+        var record = MakeRecord("gw-setup", "wss://setup.example");
+        setup.AddOrUpdate(record);
+        setup.SetActive(record.Id);
+        setup.Save();
+
+        Assert.Throws<InvalidOperationException>(() => tray.Save());
+        Assert.True(tray.TryAdoptExternalSnapshot());
+        Assert.Equal("gw-setup", tray.GetActive()!.Id);
+        tray.Save();
+        Console.WriteLine("ADOPT setup_record=gw-setup tray_save=ok active=gw-setup");
+    }
+
+    [Fact]
+    public void TryAdoptExternalSnapshot_LeavesUnsavedEditsAlone()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-local", "wss://local.example"));
+        var setup = new GatewayRegistry(_tempDir);
+        setup.Load();
+        setup.AddOrUpdate(MakeRecord("gw-setup", "wss://setup.example"));
+        setup.Save();
+
+        Assert.False(_registry.TryAdoptExternalSnapshot());
+        Assert.NotNull(_registry.GetById("gw-local"));
+        Assert.Null(_registry.GetById("gw-setup"));
+    }
+
+    [Fact]
+    public void RemoveAndSave_RestoresTheRecordWhenTheFileChanged()
+    {
+        var record = MakeRecord("gw-1", "wss://one.example");
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+        _registry.Save();
+        var other = new GatewayRegistry(_tempDir);
+        other.Load();
+        other.AddOrUpdate(MakeRecord("gw-2", "wss://two.example"));
+        other.Save();
+
+        Assert.Throws<InvalidOperationException>(() => _registry.RemoveAndSave("gw-1"));
+        Assert.NotNull(_registry.GetById("gw-1"));
+        Assert.Null(_registry.GetById("gw-2"));
+        Assert.Equal("gw-1", _registry.ActiveGatewayId);
+        Console.WriteLine("REMOVE_ROLLBACK kept=gw-1 active=gw-1");
+    }
+
+    [Fact]
     public void InitialState_IsEmpty()
     {
         Assert.Empty(_registry.GetAll());
