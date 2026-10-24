@@ -703,7 +703,10 @@ public sealed class GatewayConnectionManager :
                                     allowRuntimeStart: allowRuntimeStart)
                                 .ConfigureAwait(false);
                             if (IsCurrentGatewayAttempt(gen, record.Id) &&
-                                IsAutomaticReconnectAllowed(record.Id))
+                                IsAutomaticReconnectAllowed(record.Id) &&
+                                string.Equals(_registry.ActiveGatewayId, record.Id, StringComparison.Ordinal) &&
+                                _registry.GetById(record.Id) is { } verifiedHttpRecord &&
+                                IsSameCredentialHandoffRecord(verifiedHttpRecord, record))
                             {
                                 if (httpAuthorization.Allowed)
                                 {
@@ -722,6 +725,20 @@ public sealed class GatewayConnectionManager :
                     }
                 }
 
+                // Media endpoint authorization above can await native/SSH checks.
+                // Recheck the saved authority after that final await, before the
+                // caller can deliver a proxy credential in its HTTP upgrade.
+                if (authorization.Allowed &&
+                    (!IsCurrentGatewayAttempt(gen, record.Id) ||
+                     !IsAutomaticReconnectAllowed(record.Id) ||
+                     !string.Equals(_registry.ActiveGatewayId, record.Id, StringComparison.Ordinal) ||
+                     _registry.GetById(record.Id) is not { } finalRecord ||
+                     !IsSameCredentialHandoffRecord(finalRecord, record)))
+                {
+                    lifecycle.DataClient.SetAssistantMediaAuthToken(null);
+                    return new ReconnectAuthorizationResult(false, GatewayErrorKind.LocalPortConflict,
+                        "Gateway authority changed before proxy credential delivery.");
+                }
                 return authorization;
             }
 

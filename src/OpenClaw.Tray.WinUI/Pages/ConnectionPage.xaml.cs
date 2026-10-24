@@ -2871,7 +2871,10 @@ public sealed partial class ConnectionPage : Page
                     ? GatewayProxyBearerCredential.Reveal(editing)
                     : null;
             if (proxyToken is not null)
+            {
                 _ = GatewayProxyBearerCredential.RequireOrigin(url);
+                GatewayProxyBearerCredential.ValidateToken(proxyToken);
+            }
 
             using var handler = new System.Net.Http.HttpClientHandler { AllowAutoRedirect = false };
             using var httpClient = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
@@ -2933,12 +2936,20 @@ public sealed partial class ConnectionPage : Page
         }
         // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         catch (OperationCanceledException) { /* debounce or page nav */ }
+        catch (GatewayProxyCredentialException ex)
+        {
+            if (!ct.IsCancellationRequested)
+            {
+                AddTestResultText.Text = $"✗ {ProxyCredentialErrorText(ex.Failure)}";
+                AddTestResultText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
+            }
+        }
         catch (Exception ex)
         {
             if (!ct.IsCancellationRequested)
             {
                 Logger.Warn($"ConnectionPage: Gateway connectivity test failed for {GatewayUrlHelper.SanitizeForDisplay(rawUrl)}: {ex.Message}");
-                AddTestResultText.Text = "✗ Unable to test gateway connection. Check the URL and try again.";
+                AddTestResultText.Text = $"✗ {LocalizationHelper.GetString("ConnectionPage_CannotReachGateway")}";
                 AddTestResultText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
             }
         }
@@ -2962,6 +2973,10 @@ public sealed partial class ConnectionPage : Page
                 case "setup":   await DoApplySetupCodeFromAddFormAsync(); break;
                 case "scan":    AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_PickDiscoveredGateway"); break;
             }
+        }
+        catch (GatewayProxyCredentialException ex)
+        {
+            AddResultText.Text = $"✗ {ProxyCredentialErrorText(ex.Failure)}";
         }
         catch (Exception ex)
         {
@@ -3051,6 +3066,10 @@ public sealed partial class ConnectionPage : Page
             LoadSavedGateways();
             RefreshFromSnapshot(_lastSnapshot);
         }
+        catch (GatewayProxyCredentialException ex)
+        {
+            AddResultText.Text = $"✗ {ProxyCredentialErrorText(ex.Failure)}";
+        }
         catch (Exception ex)
         {
             AddResultText.Text = $"✗ {ex.Message}";
@@ -3060,6 +3079,15 @@ public sealed partial class ConnectionPage : Page
             AddSaveButton.IsEnabled = true;
         }
     }
+
+    private static string ProxyCredentialErrorText(GatewayProxyCredentialFailure failure) =>
+        LocalizationHelper.GetString(failure switch
+        {
+            GatewayProxyCredentialFailure.Origin => "ConnectionPage_ProxyBearerOriginError",
+            GatewayProxyCredentialFailure.InvalidToken => "ConnectionPage_ProxyBearerTokenError",
+            GatewayProxyCredentialFailure.SshCombination => "ConnectionPage_ProxyBearerSshError",
+            _ => "ConnectionPage_ProxyBearerSavedError",
+        });
 
     private bool TryBuildAddSshTunnelConfig(out SshTunnelConfig? sshConfig, out string? error)
     {

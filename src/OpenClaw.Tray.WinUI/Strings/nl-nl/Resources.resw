@@ -10266,4 +10266,16 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="ConnectionPage_ProxyLoginRedirect" xml:space="preserve">
     <value>Gateway verwijst door naar de proxy-aanmelding. Configureer een Proxy-Bearer-token.</value>
   </data>
+  <data name="ConnectionPage_ProxyBearerOriginError" xml:space="preserve">
+    <value>Gebruik een wss://-gateway-URL zonder aanmeldgegevens in de URL en voer het proxytoken opnieuw in.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerTokenError" xml:space="preserve">
+    <value>Voer een geldig Bearer-token voor de proxy in. Vervang het token in dit veld en probeer het opnieuw.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerSavedError" xml:space="preserve">
+    <value>Het opgeslagen proxytoken kan niet worden gebruikt. Vervang het in het proxytokenveld of wis het opgeslagen token.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerSshError" xml:space="preserve">
+    <value>Bearer-verificatie voor de proxy kan geen SSH-tunnel gebruiken. Verwijder de tunnel of wis het proxytoken.</value>
+  </data>
 </root>

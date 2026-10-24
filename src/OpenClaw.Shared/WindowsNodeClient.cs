@@ -97,6 +97,11 @@ public class WindowsNodeClient : WebSocketClientBase
     /// </summary>
     public Func<CancellationToken, Task<ReconnectAuthorizationResult>>?
         HandshakeAuthorizationAsync { get; set; }
+
+    protected override Task<ReconnectAuthorizationResult> AuthorizeProxyUpgradeAsync(
+        CancellationToken cancellationToken) =>
+        HandshakeAuthorizationAsync?.Invoke(cancellationToken)
+        ?? base.AuthorizeProxyUpgradeAsync(cancellationToken);
     /// <summary>Raised with sanitized wire-protocol compatibility details for the current handshake.</summary>
     public event EventHandler<GatewayProtocolCompatibility>? ProtocolCompatibilityChanged;
 

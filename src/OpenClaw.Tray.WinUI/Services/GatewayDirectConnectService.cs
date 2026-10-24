@@ -376,7 +376,8 @@ internal sealed class GatewayDirectConnectService
             ? null
             : GatewayProxyBearerCredential.RequireOrigin(request.GatewayUrl);
         if (newProxyOrigin is not null && request.SshTunnel is not null)
-            throw new InvalidDataException("A proxy Bearer token cannot be combined with an SSH tunnel.");
+            throw new GatewayProxyCredentialException(GatewayProxyCredentialFailure.SshCombination,
+                "A proxy Bearer token cannot be combined with an SSH tunnel.");
         var preserveProxy = !request.ClearProxyBearerToken && newProxyOrigin is null &&
             request.SshTunnel is null &&
             existing is not null && existing.Id == recordId &&

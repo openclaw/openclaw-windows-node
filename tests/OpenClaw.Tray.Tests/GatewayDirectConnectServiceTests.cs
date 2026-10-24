@@ -10,6 +10,34 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class GatewayDirectConnectServiceTests : IDisposable
 {
+    [Fact]
+    public void ProxyCredentialSaveErrors_AreLocalizedAtTheInnerDirectSaveBoundary()
+    {
+        // Regression: an outer typed catch was ineffective because this WinUI
+        // method swallowed the exception first. Retire this source guard when
+        // mounted invalid-token form coverage verifies the same localized state.
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs"));
+        var start = source.IndexOf("private async Task DoDirectConnectFromAddFormAsync()", StringComparison.Ordinal);
+        var end = source.IndexOf("private static string ProxyCredentialErrorText", start, StringComparison.Ordinal);
+        var method = source[start..end];
+        var typed = method.IndexOf("catch (GatewayProxyCredentialException ex)", StringComparison.Ordinal);
+        var generic = method.IndexOf("catch (Exception ex)", StringComparison.Ordinal);
+        Assert.True(typed >= 0 && typed < generic);
+        Assert.Contains("ProxyCredentialErrorText(ex.Failure)", method[typed..generic], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildCandidate_ProxyAndSshCombinationHasFinitePresentationFailure()
+    {
+        var request = new GatewayDirectConnectRequest("wss://gateway.example", null, null,
+            new SshTunnelConfig("user", "host.example", 18789, 45678), null,
+            ProxyBearerToken: "proxy-token");
+        var error = Assert.Throws<GatewayProxyCredentialException>(() =>
+            GatewayDirectConnectService.BuildCandidate(request, null, "new-gateway", false));
+        Assert.Equal(GatewayProxyCredentialFailure.SshCombination, error.Failure);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

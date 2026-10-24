@@ -16,7 +16,8 @@ public static class GatewayProxyBearerCredential
         if (!Uri.TryCreate(gatewayUrl, UriKind.Absolute, out var uri) ||
             !string.Equals(uri.Scheme, "wss", StringComparison.OrdinalIgnoreCase) ||
             !string.IsNullOrEmpty(uri.UserInfo))
-            throw new InvalidDataException("A proxy Bearer token requires a wss:// gateway URL without URL credentials.");
+            throw new GatewayProxyCredentialException(GatewayProxyCredentialFailure.Origin,
+                "A proxy Bearer token requires a wss:// gateway URL without URL credentials.");
 
         return uri.GetLeftPart(UriPartial.Authority);
     }
@@ -28,7 +29,7 @@ public static class GatewayProxyBearerCredential
         {
             return string.Equals(RequireOrigin(gatewayUrl), expectedOrigin, StringComparison.OrdinalIgnoreCase);
         }
-        catch (InvalidDataException)
+        catch (GatewayProxyCredentialException)
         {
             return false;
         }
@@ -38,7 +39,8 @@ public static class GatewayProxyBearerCredential
     {
         ValidateToken(token);
         if (!OperatingSystem.IsWindows())
-            throw new PlatformNotSupportedException("Proxy Bearer credentials require Windows user protection.");
+            throw new GatewayProxyCredentialException(GatewayProxyCredentialFailure.SavedCredential,
+                "Proxy Bearer credentials require Windows user protection.");
 
         var plain = Encoding.ASCII.GetBytes(token);
         try
@@ -53,15 +55,19 @@ public static class GatewayProxyBearerCredential
     {
         if (string.IsNullOrEmpty(record.ProtectedProxyBearerToken)) return null;
         if (!MatchesOrigin(record.Url, record.ProxyBearerOrigin))
-            throw new InvalidDataException("The saved proxy credential does not match this gateway origin.");
+            throw new GatewayProxyCredentialException(GatewayProxyCredentialFailure.SavedCredential,
+                "The saved proxy credential does not match this gateway origin.");
         if (record.ProtectedProxyBearerToken.Length > 32768)
-            throw new InvalidDataException("The saved proxy credential is invalid.");
+            throw new GatewayProxyCredentialException(GatewayProxyCredentialFailure.SavedCredential,
+                "The saved proxy credential is invalid.");
         if (!OperatingSystem.IsWindows())
-            throw new PlatformNotSupportedException("Proxy Bearer credentials require Windows user protection.");
+            throw new GatewayProxyCredentialException(GatewayProxyCredentialFailure.SavedCredential,
+                "Proxy Bearer credentials require Windows user protection.");
 
         byte[] protectedBytes;
         try { protectedBytes = Convert.FromBase64String(record.ProtectedProxyBearerToken); }
-        catch (FormatException ex) { throw new InvalidDataException("The saved proxy credential is invalid.", ex); }
+        catch (FormatException ex) { throw new GatewayProxyCredentialException(
+            GatewayProxyCredentialFailure.SavedCredential, "The saved proxy credential is invalid.", ex); }
 
         byte[] plain;
         try
@@ -73,7 +79,8 @@ public static class GatewayProxyBearerCredential
         }
         catch (CryptographicException ex)
         {
-            throw new InvalidDataException("The saved proxy credential cannot be read by this Windows user.", ex);
+            throw new GatewayProxyCredentialException(GatewayProxyCredentialFailure.SavedCredential,
+                "The saved proxy credential cannot be read by this Windows user.", ex);
         }
 
         try
@@ -85,10 +92,11 @@ public static class GatewayProxyBearerCredential
         finally { CryptographicOperations.ZeroMemory(plain); }
     }
 
-    private static void ValidateToken(string token)
+    public static void ValidateToken(string token)
     {
         if (string.IsNullOrEmpty(token) || token.Length > 8192 || token[0] == '=')
-            throw new InvalidDataException("The proxy Bearer token is not a valid RFC 6750 token.");
+            throw new GatewayProxyCredentialException(GatewayProxyCredentialFailure.InvalidToken,
+                "The proxy Bearer token is not a valid RFC 6750 token.");
 
         var padding = false;
         foreach (var c in token)
@@ -99,7 +107,8 @@ public static class GatewayProxyBearerCredential
                 continue;
             }
             if (padding || c is not (>= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9' or '-' or '.' or '_' or '~' or '+' or '/'))
-                throw new InvalidDataException("The proxy Bearer token is not a valid RFC 6750 token.");
+                throw new GatewayProxyCredentialException(GatewayProxyCredentialFailure.InvalidToken,
+                    "The proxy Bearer token is not a valid RFC 6750 token.");
         }
     }
 }

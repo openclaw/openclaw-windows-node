@@ -461,6 +461,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public Func<CancellationToken, Task<ReconnectAuthorizationResult>>?
         HandshakeAuthorizationAsync { get; set; }
 
+    protected override Task<ReconnectAuthorizationResult> AuthorizeProxyUpgradeAsync(
+        CancellationToken cancellationToken) =>
+        HandshakeAuthorizationAsync?.Invoke(cancellationToken)
+        ?? base.AuthorizeProxyUpgradeAsync(cancellationToken);
+
     // New events for agent events, pairing, and models
     public event EventHandler<AgentEventInfo>? AgentEventReceived;
     public event EventHandler<PairingListInfo>? NodePairListUpdated;

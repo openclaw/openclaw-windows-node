@@ -8,8 +8,8 @@ public sealed class GatewayProxyBearerCredentialTests
     public void OriginRequiresTlsAndRejectsUrlCredentials()
     {
         Assert.Equal("wss://gateway.example", GatewayProxyBearerCredential.RequireOrigin("wss://gateway.example/ws"));
-        Assert.Throws<InvalidDataException>(() => GatewayProxyBearerCredential.RequireOrigin("ws://gateway.example/ws"));
-        Assert.Throws<InvalidDataException>(() => GatewayProxyBearerCredential.RequireOrigin("wss://user:pass@gateway.example/ws"));
+        Assert.Throws<GatewayProxyCredentialException>(() => GatewayProxyBearerCredential.RequireOrigin("ws://gateway.example/ws"));
+        Assert.Throws<GatewayProxyCredentialException>(() => GatewayProxyBearerCredential.RequireOrigin("wss://user:pass@gateway.example/ws"));
     }
 
     [Theory]
@@ -18,8 +18,23 @@ public sealed class GatewayProxyBearerCredentialTests
     [InlineData("abc!def")]
     public void ProtectRejectsInvalidRfc6750Tokens(string token)
     {
-        Assert.Throws<InvalidDataException>(() =>
+        var error = Assert.Throws<GatewayProxyCredentialException>(() =>
             GatewayProxyBearerCredential.Protect(token, "wss://gateway.example"));
+        Assert.Equal(GatewayProxyCredentialFailure.InvalidToken, error.Failure);
+        Assert.DoesNotContain(token, error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SavedCredentialMismatch_HasAnActionableFiniteFailureWithoutSecretText()
+    {
+        var error = Assert.Throws<GatewayProxyCredentialException>(() => GatewayProxyBearerCredential.Reveal(
+            new GatewayRecord
+            {
+                Url = "wss://replacement.example/ws", ProxyBearerOrigin = "wss://original.example",
+                ProtectedProxyBearerToken = "private-test-value",
+            }));
+        Assert.Equal(GatewayProxyCredentialFailure.SavedCredential, error.Failure);
+        Assert.DoesNotContain("private-test-value", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -36,9 +51,9 @@ public sealed class GatewayProxyBearerCredentialTests
             ProtectedProxyBearerToken = protectedToken,
         };
         Assert.Equal("abc.def-123", GatewayProxyBearerCredential.Reveal(record));
-        Assert.Throws<InvalidDataException>(() => GatewayProxyBearerCredential.Reveal(
+        Assert.Throws<GatewayProxyCredentialException>(() => GatewayProxyBearerCredential.Reveal(
             record with { Url = "wss://other.example/ws" }));
-        Assert.Throws<InvalidDataException>(() => GatewayProxyBearerCredential.Reveal(
+        Assert.Throws<GatewayProxyCredentialException>(() => GatewayProxyBearerCredential.Reveal(
             record with { ProxyBearerOrigin = "wss://other.example" }));
     }
 }

@@ -10265,4 +10265,16 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="ConnectionPage_ProxyLoginRedirect" xml:space="preserve">
     <value>La passerelle redirige vers la connexion au proxy. Configurez un jeton Bearer de proxy.</value>
   </data>
+  <data name="ConnectionPage_ProxyBearerOriginError" xml:space="preserve">
+    <value>Utilisez une URL de passerelle wss:// sans identifiants dans l’URL, puis saisissez à nouveau le jeton du proxy.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerTokenError" xml:space="preserve">
+    <value>Saisissez un jeton Bearer de proxy valide. Remplacez le jeton dans ce champ et réessayez.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerSavedError" xml:space="preserve">
+    <value>Le jeton de proxy enregistré est inutilisable. Remplacez-le dans le champ du jeton de proxy ou effacez le jeton enregistré.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerSshError" xml:space="preserve">
+    <value>L’authentification Bearer du proxy ne peut pas utiliser un tunnel SSH. Supprimez le tunnel ou effacez le jeton du proxy.</value>
+  </data>
 </root>

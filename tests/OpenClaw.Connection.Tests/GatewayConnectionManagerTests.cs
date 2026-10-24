@@ -1099,6 +1099,45 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task HandshakeAuthorization_RotationDuringFinalMediaProbeWithholdsCredentials()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-local", Url = "ws://localhost:18789", IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway", SharedGatewayToken = "shared-http-token",
+        });
+        _registry.SetActive("gw-local");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "paired-device-token", false, CredentialResolver.SourceDeviceToken);
+        var armed = false;
+        var probes = 0;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            endpointProvenanceProbe: async (_, _) =>
+            {
+                if (armed && ++probes == 2)
+                {
+                    entered.SetResult();
+                    await release.Task;
+                }
+                return new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.ExpectedManagedGateway, 18789);
+            });
+        await manager.ConnectAsync("gw-local");
+        var client = Assert.Single(_factory.CreatedClients);
+        armed = true;
+        var handoff = client.DataClient.HandshakeAuthorizationAsync!(CancellationToken.None);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        _registry.AddOrUpdate(_registry.GetById("gw-local")! with { SharedGatewayToken = "rotated-http-token" });
+        release.SetResult();
+        var result = await handoff;
+        Assert.False(result.Allowed);
+        Assert.Null(client.AssistantMediaAuthToken);
+    }
+
+    [Fact]
     public async Task ReconnectAuthorization_RefreshesHttpTokenAcrossProvenanceChanges()
     {
         _registry.AddOrUpdate(new GatewayRecord
