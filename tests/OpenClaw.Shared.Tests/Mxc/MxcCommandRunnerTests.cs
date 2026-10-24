@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Mxc.Sdk.V1;
 using OpenClaw.Shared.Mxc;
 using OpenClaw.Shared.Telemetry;
+using OpenClaw.TestSupport;
 using Xunit;
 
 namespace OpenClaw.Shared.Tests.Mxc;
@@ -989,10 +990,18 @@ public sealed class MxcCommandRunnerTests : IDisposable
         using var reader = new StreamReader(stream);
         var identity = reader.ReadToEnd().Trim().Split('|');
         var child = Process.GetProcessById(int.Parse(identity[0]));
-        _ = child.SafeHandle;
-        Assert.Equal(long.Parse(identity[1]), child.StartTime.ToUniversalTime().Ticks);
-        Assert.Equal("OpenClaw.Shared.TestHost.exe", Path.GetFileName(child.MainModule!.FileName));
-        return child;
+        try
+        {
+            _ = child.SafeHandle;
+            Assert.Equal(long.Parse(identity[1]), child.StartTime.ToUniversalTime().Ticks);
+            Assert.Equal("OpenClaw.Shared.TestHost.exe", Path.GetFileName(ProcessImagePath.Read(child.SafeHandle)));
+            return child;
+        }
+        catch
+        {
+            child.Dispose();
+            throw;
+        }
     }
 
     internal sealed class FakeProcess : IMxcProcess

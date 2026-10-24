@@ -1,5 +1,6 @@
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.TestSupport;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text;
@@ -205,7 +206,7 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
             Processes = new[] { parent, child }.Select(p => new
             {
                 Pid = p.Id, StartTimeUtc = p.StartTime.ToUniversalTime(),
-                Executable = p.MainModule!.FileName,
+                Executable = ProcessImagePath.Read(p.SafeHandle),
                 CommandLine = p.Id == Environment.ProcessId ? Environment.CommandLine : "--process-fixture hold-silent 60000",
             }).ToArray(),
             DataRoots = new[] { "OPENCLAW_TRAY_DATA_DIR", "OPENCLAW_TRAY_APPDATA_DIR", "OPENCLAW_TRAY_LOCALAPPDATA_DIR" }
