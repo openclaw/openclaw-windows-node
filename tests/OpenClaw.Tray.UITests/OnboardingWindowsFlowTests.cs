@@ -860,6 +860,51 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
         Assert.All(host.Checks.Concat(host.Connects), request => Assert.Equal("wss://mounted-flow.invalid", request.GatewayUrl));
     }
 
+    [Theory]
+    [InlineData(SetupGatewayRoute.Existing, 0)]
+    [InlineData(SetupGatewayRoute.Remote, 1)]
+    public async Task NativeEditor_FailureRemainsVisibleWithoutScrolling(SetupGatewayRoute route, int choiceIndex)
+    {
+        var host = new FailingNativeHost();
+        await WithWindowAsync(async (window, frame, data) =>
+        {
+            window.NavigateToAdvancedSetup();
+            var choices = await MountedPageAsync<AdvancedSetupPage>(window, frame);
+            await InvokeCardAsync(window, choices,
+                TestSupport.FindDescendants<SettingsCard>(choices).ElementAt(choiceIndex), route + "_Click");
+            var editor = await MountedPageAsync<SetupNativeConnectionPage>(window, frame);
+            var scale = editor.XamlRoot.RasterizationScale;
+            window.AppWindow.Resize(new((int)(480 * scale), (int)(640 * scale)));
+            await ui.YieldToRenderAsync();
+            Find<TextBox>(editor, "AddressInput").Text = "wss://mounted-flow.invalid";
+            await ui.YieldToRenderAsync();
+            Invoke(Find<Button>(editor, "CheckButton"));
+            await WaitAsync(() => host.Checks.Count == 1 && Find<Button>(editor, "CheckButton").IsEnabled, "failed Check");
+            var failure = Find<InfoBar>(editor, "ResultBar");
+            failure.ApplyTemplate();
+            editor.InvalidateMeasure();
+            editor.UpdateLayout();
+            await ui.YieldToRenderAsync();
+            editor.UpdateLayout();
+            Assert.True(failure.IsOpen);
+            Assert.Equal("Synthetic check failure. No Gateway was contacted.", failure.Message);
+            var bounds = Bounds(failure, editor);
+            var footer = Bounds(Find<Grid>(editor, "NavigationFooter"), editor);
+            Assert.True(bounds.Height > 0 && bounds.Top >= 0 && bounds.Bottom <= footer.Top + 0.1,
+                $"Failure must be visible above the actions without scrolling. Failure: {bounds}; footer: {footer}.");
+            await MountedControlCapture.OptionalAsync(window, $"native-editor-failure-{route}");
+            for (var ancestor = VisualTreeHelper.GetParent(failure); ancestor is not null;
+                ancestor = VisualTreeHelper.GetParent(ancestor))
+            {
+                if (ancestor is ScrollViewer viewport)
+                    AssertFullyVisible(failure, viewport);
+            }
+            Assert.Same(editor, frame.Content);
+            Assert.False(window.AccessDraft.GatewayAvailable);
+            Assert.False(File.Exists(Path.Combine(data, "gateways.json")));
+        }, host);
+    }
+
     private static void AssertNativeConnectionText(string suffix, object actual)
     {
         // Resolve expected copy independently, using the same default language context as the page.
