@@ -566,8 +566,13 @@ foreach ($token in @(
 }
 
 $trayUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
-Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof"' `
-    -Message "Tray UI tests must exclude accessibility and native-onboarding proof cases."
+Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=NativeMarkdownProof"' `
+    -Message "Tray UI tests must exclude accessibility, native-onboarding and native-Markdown proof cases."
+$markdownProofStep = Get-StepBlock -Text $uiJob -Name "Run native Markdown disclosure proofs"
+Assert-Contains -Text $markdownProofStep -Expected "-Filter 'Category=NativeMarkdownProof'" `
+    -Message "Native Markdown disclosure proofs must run as one isolated run-proof-tests.ps1 invocation."
+Assert-NotContains -Text $markdownProofStep -Unexpected "foreach" `
+    -Message "Native Markdown disclosure proofs must not fan out per theme; Dark and HighContrast are screenshot-only."
 Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `

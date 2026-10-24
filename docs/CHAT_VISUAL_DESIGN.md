@@ -76,6 +76,23 @@ use the card fill above that content layer.
 
 ## Controls and states
 
+Assistant Markdown supports balanced, block-level `<details>` wrappers with a
+nonempty `<summary>` using a native `Expander`. The summary can follow the opener
+on the same line or a later line; `open` sets the initial expanded state.
+Expansion remains user-owned across unrelated rerenders, body streaming updates,
+and resizing. Nested disclosures are supported to 16 levels. The body uses the
+existing Markdown typography, lists, tables, quotes, literal code frames, and Copy.
+The native control owns keyboard activation, focus, and accessible expansion state.
+
+This is an allowlisted Markdown extension, not general HTML rendering. Only
+`<details>`, `<details open>`, `<summary>`, and their matching closing wrappers
+are recognized, with wrapper lines indented by at most three spaces. Disclosures
+inside Markdown code, quotes, lists, or table cells are not activated. Unsupported
+attributes, empty summaries, and incomplete streaming wrappers remain literal
+text. Summary text is inert; its HTML attributes and markup are never executed.
+Body links and images retain the existing inert sanitization. Text selection
+still belongs to each native Markdown text control, not to the whole message.
+
 Queued submissions leave the textbox and remain after the current turn as normal
 right-aligned user bubbles. A transparent `ChatPendingUserBrush`, subtle `ChatStrokeBrush`
 outline, and slightly faded `ChatSecondaryTextBrush` distinguish them from sent messages without
