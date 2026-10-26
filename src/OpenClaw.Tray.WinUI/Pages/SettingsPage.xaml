@@ -667,6 +667,10 @@
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            VerticalAlignment="Center"/>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                    <HyperlinkButton x:Uid="SettingsPage_AppInfoSupport"
+                                                     Content="Get support"
+                                                     Padding="0"
+                                                     Click="OnSupportLink"/>
                                     <HyperlinkButton x:Uid="SettingsPage_AppInfoDocumentation"
                                                      Content="Documentation"
                                                      Padding="0"

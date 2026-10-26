@@ -306,6 +306,13 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     }
 
     [Fact]
+    public void GallerySceneInventory_CoversEveryLocalAiState()
+    {
+        Assert.All(Enum.GetValues<LocalAiOnboardingState>(), state =>
+            Assert.Contains(RequiredScenes, scene => scene.Family == "ai" && scene.State == state.ToString()));
+    }
+
+    [Fact]
     [Trait("Category", "NativeOnboardingProof")]
     public async Task OwnedWindows_KeepProductDpiAcrossSharedCaptureAndAsyncGalleryCreation()
     {
@@ -893,7 +900,11 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             Assert.Equal(Visibility.Visible, Find<SettingsExpander>(page, "RecommendedSection").Visibility);
         }
         if (state == "catalog")
-            Assert.False(Find<CheckBox>(page, "CatalogPreference").IsChecked);
+        {
+            var preference = Find<CheckBox>(page, "CatalogPreference");
+            Assert.Equal(Visibility.Visible, preference.Visibility);
+            Assert.Equal(false, preference.IsChecked);
+        }
         if (result.Scene.Family == "ai-return")
         {
             Assert.NotNull(reviewedModel);

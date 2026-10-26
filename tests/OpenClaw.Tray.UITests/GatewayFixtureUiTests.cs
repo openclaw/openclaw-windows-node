@@ -210,10 +210,24 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             const string draft = "Keep draft through back and forward";
             ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
             await SelectSessionAsync(run, GatewayScenario.OtherSessionTitle, GatewayScenario.OtherSessionKey);
+            await WaitUiAsync(run, () => run.Gateway.Requests.Any(request =>
+                request.Method == "models.list" && request.SessionKey == GatewayScenario.OtherSessionKey),
+                "session-scoped worker model request");
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerModelPicker") is { } picker
+                && picker.Current.IsEnabled
+                && picker.Current.Name == "Model: Fixture Worker", "worker-scoped model picker");
+            Invoke(FindById(run, "ChatComposerModelPicker")!);
+            await WaitUiAsync(run, () => FindById(run, "ChatModelChoice_fixture/worker") is { } choice
+                && choice.Current.IsEnabled
+                && choice.Current.Name.Contains("Fixture Worker", StringComparison.Ordinal),
+                "worker-scoped model choice");
+            await CaptureIfRequestedAsync(run, "worker-session-model-catalog.png");
             Assert.True(FindById(run, "WorkspaceBack")!.Current.IsEnabled);
             Invoke(FindById(run, "WorkspaceBack")!);
             await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle)
                 && IsVisibleInTimeline(run, GatewayScenario.LongHistoryFinalMarker), "back to original session and transcript");
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerModelPicker")?.Current.Name == "Model: Fixture Browse",
+                "gateway model catalog after leaving worker session");
             Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
             Assert.True(FindById(run, "WorkspaceForward")!.Current.IsEnabled);
             Invoke(FindById(run, "WorkspaceForward")!);
@@ -230,6 +244,31 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Invoke(FindById(run, "WorkspaceBack")!);
             await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle), "back after branching history");
             Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task CurrentModelOutsideManualPolicyRetainsLabelAndReasoning()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await SelectSessionAsync(run, GatewayScenario.EdgeTitle, GatewayScenario.EdgeSessionKey);
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerModelPicker") is { } picker
+                && picker.Current.IsEnabled
+                && picker.Current.Name == "Model: Fixture Retained Research", "retained current-model label");
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerReasoningPicker")?.Current.IsEnabled == true,
+                "reasoning from retained model metadata");
+            Invoke(FindById(run, "ChatComposerModelPicker")!);
+            await WaitUiAsync(run, () => FindById(run, "ChatModelChoice_fixture/research") is { } choice
+                && !choice.Current.IsEnabled
+                && choice.Current.Name.Contains("Fixture Retained Research", StringComparison.Ordinal),
+                "visible but nonselectable current model");
+            Assert.Contains(run.Gateway.Requests, request => request.Method == "models.list"
+                && request.SessionKey == GatewayScenario.EdgeSessionKey
+                && request.ModelCatalogView == "configured");
+            await CaptureIfRequestedAsync(run, "retained-current-model-catalog.png");
         });
     }
 

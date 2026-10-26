@@ -40,8 +40,9 @@ evidence.
   npm tags.
 - Embedded release evidence, the product security floor, and the
   candidate-promotion workflow are removed.
-- Setup continues to pin and verify Node `24.19.0`. This decision changes the
-  OpenClaw npm package selection, not the managed Node runtime.
+- Setup continues to pin and verify its managed Node runtime separately from
+  the OpenClaw npm package selection. The original pin was `24.19.0`; it is now
+  `24.22.1` to meet the upstream installer minimum.
 
 ## Consequences
 

@@ -40,6 +40,23 @@ Cancellation still ends only that caller's wait, not the shared transfer.
 Terminal recovery restores Retry and hides progress even when a storage-backed
 status refresh fails, while retaining a sanitized error message.
 
+The selected Kokoro voice pack also downloads in the background
+(`KokoroVoicePackPrefetcher`), evaluated at tray startup and after every settings
+save. It runs only when Kokoro is the TTS provider, node or voice-response TTS is
+enabled, `TtsKokoroAutoDownload` is true, and Windows reports the connection as
+unrestricted (not metered, unknown cost, roaming, over its data limit, or offline). It touches `models\kokoro` only after
+the provider, TTS, and auto-download checks pass, and an unusable models
+directory is logged as a skipped prefetch rather than interrupting tray startup.
+A skipped or failed prefetch waits for the next launch or save. Deleting the pack
+in Voice settings clears `TtsKokoroAutoDownload` so it is not fetched again;
+Download sets it. Every waiter on the shared transfer receives its progress, so
+Voice settings attaches to a running prefetch on load, voice selection, or a
+provider/TTS change that starts one, instead of showing "not downloaded".
+
+Settings schema v2 moves a schema v1 `piper` provider with no downloaded Piper
+voice to Kokoro once. Setup writes settings.json without a provider, and v1
+resolved that to Piper, so setup-driven installs spoke through the Windows fallback.
+
 `AssetHashPinningTests` guards the catalog shape by requiring a lowercase
 64-character SHA-256 and an HTTPS URL for every shipped entry.
 

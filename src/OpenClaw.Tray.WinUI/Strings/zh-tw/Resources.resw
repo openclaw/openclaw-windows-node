@@ -3014,7 +3014,7 @@
     <value>歡迎使用 OpenClaw</value>
   </data>
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
-    <value>今天我能幫你做什麼？</value>
+    <value>選擇此工作階段的執行位置，再說明要做什麼。</value>
   </data>
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>完成</value>
@@ -3108,6 +3108,12 @@
   </data>
   <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
     <value>模型</value>
+  </data>
+  <data name="Chat_Composer_Model_Loading" xml:space="preserve">
+    <value>正在載入模型…</value>
+  </data>
+  <data name="Chat_Composer_Model_Unavailable" xml:space="preserve">
+    <value>模型無法使用</value>
   </data>
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>推理</value>
@@ -5735,6 +5741,9 @@
   <data name="ConnectionPage_InvalidUrl" xml:space="preserve">
     <value>URL 無效</value>
   </data>
+  <data name="ConnectionPage_SavedDashboardInvalidAddress" xml:space="preserve">
+    <value>此已儲存的閘道位址無法開啟儀表板。請編輯已儲存的閘道，並使用 http、https、ws 或 wss 位址。</value>
+  </data>
   <data name="ConnectionPage_ConnectionFailed" xml:space="preserve">
     <value>連線失敗</value>
   </data>
@@ -7434,6 +7443,7 @@
   <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>正在設定本機 AI</value></data>
   <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>Gateway 或本機 AI 的就緒狀態已變更。請返回連線 AI 頁面並重新檢查，然後再安裝。</value></data>
   <data name="Onboarding_AiSetup_LocalStartFailed" xml:space="preserve"><value>本機 AI 無法啟動。清理已完成。請修復本機 AI 或選擇其他提供者。</value></data>
+  <data name="Onboarding_AiSetup_OpenLocalAiLogs" xml:space="preserve"><value>開啟本機 AI 記錄</value></data>
   <data name="Onboarding_AiSetup_LocalState_Checking" xml:space="preserve"><value>正在檢查此電腦。你仍可選擇 AI 提供者。</value></data>
   <data name="Onboarding_AiSetup_LocalState_SetUp" xml:space="preserve"><value>電腦相容。安裝前請檢閱設定。</value></data>
   <data name="Onboarding_AiSetup_LocalState_StartAndUse" xml:space="preserve"><value>已安裝，未執行</value></data>
@@ -7476,7 +7486,34 @@
   <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>瀏覽代理程式的技能。不會自動安裝任何內容。</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>連接頻道</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp、Telegram 等。由您選擇何時登入。</value></data>
-  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>返回 AI 設定</value></data>
+  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>重新檢查就緒狀態</value></data>
+  <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>正在準備 AI 選項</value></data>
+  <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>正在準備閘道</value></data>
+  <data name="Onboarding_Loading_StartGateway" xml:space="preserve"><value>正在啟動閘道並檢查接聽程式...</value></data>
+  <data name="Onboarding_Loading_PairGateway" xml:space="preserve"><value>正在將 Companion 與閘道配對...</value></data>
+  <data name="Onboarding_Loading_AcquireArtifacts" xml:space="preserve"><value>正在取得本機 AI 檔案...</value></data>
+  <data name="Onboarding_Loading_ApplyCapabilities" xml:space="preserve"><value>正在套用已檢閱的 Windows 功能...</value></data>
+  <data name="Onboarding_Loading_CheckConfiguration" xml:space="preserve"><value>正在檢查已儲存的閘道設定...</value></data>
+  <data name="Onboarding_Loading_RestartGateway" xml:space="preserve"><value>正在重新啟動已設定的閘道...</value></data>
+  <data name="Onboarding_Loading_CheckHealth" xml:space="preserve"><value>正在透過驗證檢查閘道健康狀態...</value></data>
+  <data name="Onboarding_Loading_ReconcileLocalAi" xml:space="preserve"><value>正在協調所選本機 AI 的設定...</value></data>
+  <data name="Onboarding_Loading_PublishGateway" xml:space="preserve"><value>正在儲存已驗證的閘道設定檔...</value></data>
+  <data name="Onboarding_Loading_SaveSettings" xml:space="preserve"><value>正在儲存設定選項...</value></data>
+  <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>正在套用登入時啟動的偏好設定...</value></data>
+  <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>正在啟動 Companion 服務，然後進行最終 AI 檢查...</value></data>
+  <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>正在等待所選本機 AI 執行階段復原...</value></data>
+  <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>正在安全停止舊的本機 AI 執行階段...</value></data>
+  <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>正在釋放舊的閘道連線和執行階段...</value></data>
+  <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>正在檢查 AI</value></data>
+  <data name="Onboarding_AiSetup_VerificationFailedTitle" xml:space="preserve"><value>AI 需要處理</value></data>
+  <data name="Onboarding_AiSetup_ManagerRecoveryBlocked" xml:space="preserve"><value>設定尚未完成時閘道連線發生了變化。請關閉此設定視窗，檢查「連線」，然後重新開啟 AI 設定以驗證已儲存的結果。在結果不確定時，請勿重複提供者操作。關閉時會等待已准許的操作完成。</value></data>
+  <data name="Onboarding_Finishing_Draining" xml:space="preserve"><value>正在安全結束上一項設定操作...</value></data>
+  <data name="Onboarding_Finishing_Restarting" xml:space="preserve"><value>正在重新啟動 OpenClaw，然後進行最終就緒檢查...</value></data>
+  <data name="Onboarding_Finishing_Recovery" xml:space="preserve"><value>設定尚未就緒。請使用可用的復原操作，或關閉此視窗。不會自動重複任何提供者操作。</value></data>
+  <data name="Onboarding_Ai_CompletionConsent.Text" xml:space="preserve"><value>選取 AI 或繼續其設定，即授權 OpenClaw 完成您已檢閱的設定選項，並在顯示就緒狀態前重新啟動。</value></data>
+  <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>正在完成設定</value></data>
+  <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>正在套用您的選項、重新啟動 OpenClaw 並檢查 AI。這可能需要幾分鐘。</value></data>
+  <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>設定需要處理。不會自動重複任何 AI 操作。請關閉此視窗，在「連線」中檢查已儲存的閘道，然後明確重新開啟 AI 設定進行驗證。</value></data>
   <data name="Onboarding_Ready_Model" xml:space="preserve"><value>已驗證的模型：{0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>正在重新驗證相同的 Gateway、代理程式和模型...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>正在完成您的 Windows 設定選項...</value></data>
@@ -7492,7 +7529,7 @@
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows 設定未能完成。所選目標尚未開啟。請重試或返回 AI 設定。</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>應用程式無法開啟所選目標。請再次選擇以重試。未啟動任何頻道登入。</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>無法開啟所選設定目標</value></data>
-  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>此設定交接已過期、已使用或無法使用。請重新開啟設定並驗證 AI。</value></data>
+  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>此設定交接已中斷、不相容、已過期或已使用，無法重播。請在「連線」中檢查已儲存的閘道，然後明確重新開啟 AI 設定進行驗證。不會自動重複先前的設定操作。</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>已驗證的 Gateway 或代理程式已變更。請返回原 Gateway 並重新開啟 AI 設定。未開啟其他帳戶。</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>已驗證的 Gateway 或應用程式頁面尚未就緒。請檢查 Connection，然後手動重試。</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>重試</value></data>
@@ -7771,6 +7808,15 @@
   <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>準備您的 Gateway 設定檔</value></data>
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>啟動並驗證 Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重試設定</value></data>
+  <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>收集 Gateway 診斷資訊</value></data>
+  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>檢視設定記錄</value></data>
+  <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>收集 Gateway 診斷資訊以取得可檢視或分享的已遮蔽 ZIP，或在隔離的 Gateway 中開啟終端機。然後選擇「重試設定」。</value></data>
+  <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>Gateway 未在 {0} 秒內就緒。首次啟動可能較慢。請收集 Gateway 診斷資訊查看原因，然後選擇「重試設定」。若要允許更長的啟動時間，請將環境變數 {1} 設為秒數並重新啟動 Companion。</value></data>
+  <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>正在收集已遮蔽的 Gateway 診斷資訊...</value></data>
+  <data name="Onboarding_Native_DiagnosticsSaved" xml:space="preserve"><value>Gateway 診斷資訊已儲存至 {0}。</value></data>
+  <data name="Onboarding_Native_DiagnosticsNoPath" xml:space="preserve"><value>Gateway 套件已收集診斷資訊，但未回報儲存位置。</value></data>
+  <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>無法收集 Gateway 診斷資訊：{0}</value></data>
+  <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>無法開啟 Gateway 終端機：{0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>僅供預覽。不會安裝任何套件或啟動 Gateway。</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>節點模式連線至 Gateway 並完成配對後，即可使用這些 Windows 功能。Windows 權限和命令核准仍然適用。</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>原生 Gateway 已設定</value></data>
@@ -7934,7 +7980,7 @@
   <data name="WorkspaceShell_OpenDashboard" xml:space="preserve"><value>Open gateway dashboard</value></data>
   <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help</value></data>
   <data name="WorkspaceShell_Documentation" xml:space="preserve"><value>Documentation</value></data>
-  <data name="WorkspaceShell_Support" xml:space="preserve"><value>Get help</value></data>
+  <data name="WorkspaceShell_Support" xml:space="preserve"><value>取得支援</value></data>
   <data name="WorkspaceShell_Community" xml:space="preserve"><value>Community</value></data>
   <data name="WorkspaceShell_ReleaseNotes" xml:space="preserve"><value>Release notes</value></data>
   <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
@@ -8040,9 +8086,6 @@
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>首選的 {0} 設定不適合此硬體。設定可使用 {1}，上下文為 {2:N0} 個權杖。安裝前請在設定中查看此設定。</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>此設定至少需要 {0} 系統記憶體。</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>此設定要求模型快取和執行階段所在的磁碟區都至少有 {0} 可用空間。</value></data>
-  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>正在從 Gateway 載入歡迎內容...</value></data>
-  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>此 Gateway 不提供共用歡迎內容。你仍可在下方開始聊天。</value></data>
-  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>無法載入歡迎內容。請重新連線以重試，或在下方開始聊天。</value></data>
   <data name="Chat_Placement_Unknown" xml:space="preserve">
     <value>未驗證</value>
   </data>
@@ -8070,4 +8113,9 @@
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>此工作階段已不再為空，因此已取消待定的位置選擇。請檢查工作階段並重新傳送，以在目前位置繼續。</value>
   </data>
+  <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>取得支援</value></data>
+  <data name="Chat_Welcome_WhatCanYouDo" xml:space="preserve"><value>你能做什麼？</value></data>
+  <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>摘要我的近期工作階段</value></data>
+  <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>協助我設定頻道</value></data>
+  <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>檢查系統健康狀態</value></data>
 </root>

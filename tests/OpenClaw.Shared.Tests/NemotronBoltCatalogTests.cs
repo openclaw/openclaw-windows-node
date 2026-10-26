@@ -11,10 +11,12 @@ public class NemotronBoltCatalogTests
     public void Bolt_ResolvesPrereleasePinsOnlyForTheirInstalledSource()
     {
         var model = Assert.IsType<LocalModelInfo>(LocalModelCatalog.FindInstalled(
-            "nemotron-3.5-bolt-74b-a9b-iq2-lilicorr", NemotronBoltPrereleaseFixture.Weights.DownloadUri.AbsoluteUri));
+            "nemotron-3.5-bolt-74b-a9b-24gb", NemotronBoltPrereleaseFixture.Weights.DownloadUri.AbsoluteUri));
 
         Assert.Equal(NemotronBoltPrereleaseFixture.Weights, model.Weights);
         Assert.Equal(NemotronBoltPrereleaseFixture.DraftWeights, model.Recipe.DraftWeights);
+        Assert.Null(model.Recipe.VisionProjector);
+        Assert.False(model.SupportsVision);
         Assert.DoesNotContain(model, LocalModelCatalog.Models);
         Assert.DoesNotContain(model, LocalModelCatalog.ExplicitAlternatives);
         Assert.NotEqual(model, LocalModelCatalog.Find(model.Id));
@@ -34,11 +36,17 @@ public class NemotronBoltCatalogTests
         AssertArtifact(draft, "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-LiLiCorr-GGUF",
             "182d2987939e12f458298b5d5f6ef98912f4ad6c", "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-LiLiCorr.gguf", 998_242_560,
             "080e1ea41c9562a7804dbf30c6fbd4d17e216c6b8ff666f88e6edb1816010194");
-        Assert.Equal(23_016_569_088, LocalModelCatalog.TotalDownloadSizeBytes(model));
-        Assert.Equal(draft, Assert.Single(LocalModelCatalog.AdditionalArtifacts(model)));
+        // The projector is pinned at the same immutable revision as the target weights.
+        var projector = Assert.IsType<PinnedArtifact>(model.Recipe.VisionProjector);
+        AssertArtifact(projector, "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF",
+            "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246", "mmproj-NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf", 1_733_692_736,
+            "0ee891eadc7bf0cae6289b249c74eb1ef420534351f6ef8b64d49f0ca6a926b0");
+        Assert.Equal(24_750_261_824, LocalModelCatalog.TotalDownloadSizeBytes(model));
+        // Receipts, acquisition and launch agree on this order: drafter first, projector last.
+        Assert.Equal(new[] { draft, projector }, LocalModelCatalog.AdditionalArtifacts(model));
         Assert.False(model.IsDefault);
         Assert.True(model.IsExplicitAlternative);
-        Assert.False(model.SupportsVision);
+        Assert.True(model.SupportsVision);
         Assert.Equal(0, model.RecommendationPriority);
     }
 
@@ -73,8 +81,9 @@ public class NemotronBoltCatalogTests
             Assert.Same(profile, LocalModelCatalog.FindProfile(model, profile.ContextTokens,
                 profile.KeyCachePrecision, profile.ValueCachePrecision, profile.DraftKeyCachePrecision,
                 profile.DraftValueCachePrecision));
-            long measuredPeak = profile.ContextTokens == 262_144 ? 34_944_585_728 : 30_304_747_520;
-            Assert.True(LocalInferenceEligibility.GetRequiredMemoryBytes(model, profile) >= measuredPeak + 2L * 1024 * 1024 * 1024);
+            // Files and KV caches plus a 2 GiB (128K) or 2.5 GiB (256K) reserve: 28 GB class with vision.
+            Assert.Equal(profile.ContextTokens == 262_144 ? 29_917_644_352 : 28_139_259_456,
+                LocalInferenceEligibility.GetRequiredMemoryBytes(model, profile));
         }
     }
 

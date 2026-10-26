@@ -24,6 +24,7 @@ using OpenClaw.Shared;
 /// <param name="HasConfiguredFlag">True when the gateway explicitly reported configuration state.</param>
 /// <param name="Reasoning">Optional catalog flag, not a list of supported thinking levels.</param>
 /// <param name="ThinkingContext">Advertised thinking profile and its exact catalog identity.</param>
+/// <param name="ManualSelectionAllowed">Whether the gateway permits manual selection of this model.</param>
 public sealed record ChatModelChoice(
     string Id,
     string DisplayName,
@@ -36,7 +37,8 @@ public sealed record ChatModelChoice(
     bool IsDefault = false,
     bool HasConfiguredFlag = false,
     bool? Reasoning = null,
-    ThinkingContext? ThinkingContext = null)
+    ThinkingContext? ThinkingContext = null,
+    bool? ManualSelectionAllowed = null)
 {
     /// <summary>
     /// Provider-qualified identity used for picker tags and <c>sessions.patch</c>
@@ -50,7 +52,9 @@ public sealed record ChatModelChoice(
     /// and explicitly unavailable models remain visible but disabled.
     /// </summary>
     public bool IsSelectable =>
-        IsAvailable && (!HasConfiguredFlag || IsConfigured || RequiresAuth);
+        ManualSelectionAllowed != false
+        && IsAvailable
+        && (!HasConfiguredFlag || IsConfigured || RequiresAuth);
 
     /// <summary>
     /// Maps gateway models into ordered, selection-deduplicated picker entries.
@@ -76,7 +80,8 @@ public sealed record ChatModelChoice(
                 IsDefault: m.IsDefault,
                 HasConfiguredFlag: m.HasConfiguredFlag,
                 Reasoning: m.Reasoning,
-                ThinkingContext: m.ThinkingContext);
+                ThinkingContext: m.ThinkingContext,
+                ManualSelectionAllowed: m.ManualSelectionAllowed);
             if (!seen.Add(choice.SelectionId)) continue;
             list.Add(choice);
         }

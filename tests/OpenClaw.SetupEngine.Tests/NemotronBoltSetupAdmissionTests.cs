@@ -58,6 +58,8 @@ public class NemotronBoltSetupAdmissionTests
         var model = LocalModelCatalog.Find(LocalModelCatalog.NemotronBoltModelId)!;
         var weights = prerelease ? NemotronBoltPrereleaseFixture.Weights : model.Weights;
         var draft = prerelease ? NemotronBoltPrereleaseFixture.DraftWeights : model.Recipe.DraftWeights!;
+        // Prerelease receipts predate the vision projector and stay drafter-only.
+        var additional = prerelease ? ImmutableArray.Create(draft) : LocalModelCatalog.AdditionalArtifacts(model);
         var runtime = LlamaRuntimeCatalog.Find(RuntimeArchitecture.Arm64, model.RuntimeFamily)!;
         var profile = LocalModelCatalog.GetProfiles(model).Single(p => p.ContextTokens == installedContext);
         var source = (HuggingFaceRevisionSource)weights.Source;
@@ -88,8 +90,8 @@ public class NemotronBoltSetupAdmissionTests
             ModelPath = Path.Combine("models", weights.RelativePath),
             ModelId = source.RepositoryId + "@" + source.RevisionSha, ModelAsset = Receipt(weights),
             ModelCacheRoot = cache, CachedModelPath = Snapshot(weights),
-            AdditionalModelAssets = [Receipt(draft)],
-            AdditionalModelPaths = [Snapshot(draft)],
+            AdditionalModelAssets = additional.Select(Receipt).ToImmutableArray(),
+            AdditionalModelPaths = additional.Select(Snapshot).ToImmutableArray(),
             ContextLength = installedContext, KeyCachePrecision = profile.KeyCachePrecision,
             ValueCachePrecision = profile.ValueCachePrecision, DraftKeyCachePrecision = profile.DraftKeyCachePrecision,
             DraftValueCachePrecision = profile.DraftValueCachePrecision,
@@ -129,8 +131,8 @@ public class NemotronBoltSetupAdmissionTests
             Assert.Null(recovery.RuntimeInstall);
             Assert.Equal(manifest.ModelAsset, recovery.OriginalInstall!.Manifest.ModelAsset);
             Assert.Equal(manifest.CachedModelPath, recovery.ModelInstall!.ModelPath);
-            Assert.Equal(Assert.Single(manifest.AdditionalModelPathsOrEmpty),
-                Assert.Single(recovery.AdditionalModelInstalls!.Value).ModelPath);
+            Assert.Equal(manifest.AdditionalModelPathsOrEmpty,
+                recovery.AdditionalModelInstalls!.Value.Select(install => install.ModelPath));
         }
 
         Assert.Equal(before, await File.ReadAllTextAsync(paths.ManifestPath));

@@ -195,7 +195,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | In-flight native chat navigation identity | `SetupNativeChatBinding` holds the exact request reference; `WorkspaceWindow` invalidates it at admitted agent/session navigation intent, before asynchronous creation. `ChatPage` checks identity and cancellation on ready and waiting paths; `SetupNativeHandoffLauncher` fences receipt consumption with the linked timeout | authoritative |
 | Setup-bound Chat warning and recovery presentation | `SetupNativeChatPresentation` retains the exact verified target through failed mounts; temporary unavailability and provider-confirmation waits hide but retain the host/draft and cannot satisfy handoff readiness. `SetupNativeChatRefresh` observes the existing manager with activation/request/manager fences and operator-only coalescing. `ChatPage` applies the InfoBar, releases the binding for composer navigation through `ChatComposerHostActions` as well as foreign-session queues, and performs the unchanged authority check before reuse. Hidden hosts cancel capture; pending voice starts only after successful evaluation | authoritative |
 | Native receipt acquisition classification and restart recovery settlement | `SetupDashboardHandoffStore` distinguishes acquired/busy/invalid/unavailable; `SetupNativeHandoffLauncher` retains recovery on busy/unavailable and clears it only after consumption or definitive rejection | authoritative |
-| Native completion startup readiness | `SetupNativeCompletionTiming` defines finite phase budgets; `SetupNativeCompletionVerifier` enforces both borrows, the existing Local AI recovery join and exact-model proof; `SetupDashboardHandoffStore` keeps five-minute unused admission and persists one non-renewable execution start/deadline under its exclusive lease; `SetupNativeHandoffLauncher` enforces navigation and total execution deadlines and does not redisplay settled retry failures on automatic activation | authoritative |
+| Native completion startup readiness | `SetupNativeCompletionTiming` defines finite phase budgets; `SetupNativeCompletionVerifier` enforces both borrows, the existing Local AI recovery join and exact-model proof; `SetupDashboardHandoffStore` starts new preparation execution at issuance, including old-process teardown, and preserves that deadline through acquisition and retry. Destinations and legacy preparations retain five-minute unused admission and their original execution deadlines. `SetupNativeHandoffLauncher` enforces navigation and total execution deadlines and does not redisplay settled retry failures on automatic activation | authoritative |
 | Pre-acquisition restart recovery deletion | `App.OpenNativeSetupCompletion`; deletion is delegated to the receipt outcome owner | closed |
 | Setup startup availability | `WindowManager` supplies app identity availability; `SetupWindow` gates presentation and persisted preference | authoritative |
 | Setup registration outcome and fallback admission | `WindowsStartupTaskRegistration` classifies completed numeric HRESULT; `SetupStartupPolicy` still requires strict task absence for rejected-operation Run-key fallback | authoritative |
@@ -240,11 +240,11 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Compact notification list reconciliation and dismissal | `NotificationFlyoutContent` | authoritative |
 | Gateway/operator/node status flyout controls | `GatewayStatusContent` | authoritative |
 | Tray-menu semantic composition and connection-toggle state | `TrayMenuPresenter` + `ConnectionTogglePresenter` | authoritative |
-| App-owned non-tray window creation, reuse, focus, theme, and lifetime | `IWindowManager` + `WindowManager`; Workspace is the only application chat host | authoritative |
+| App-owned non-tray window creation, reuse, focus, theme, and lifetime | `IWindowManager` + `WindowManager`; Workspace is the only application chat host, and the never-activated runtime anchor stays hidden without shell switcher registration | authoritative |
 | Standalone compact chat hosting and prewarming | Removed; chat entry points use Workspace, with no hidden replacement window during background startup | closed |
 | Composer session picker and compact-host layout mode | Removed, including the picker-only `IsVisibleInChatPicker` helper; non-picker session filters remain. Workspace owns session selection, while actual-width observation retains responsive model/reasoning controls and transcript geometry | closed |
 | Composer host settings-navigation callback and single-attachment ingress wrappers | Removed after the single-host audit. Voice readiness dialogs retain direct, actionable settings navigation; attachment ingress uses the controller's plural API. `MountedReactorChat` retains callback clearing and exactly-once disposal for late voice/mute events | closed |
-| Tray icon, popup coordination, live status, and callback lifetime | `ITrayController` + `TrayController` | authoritative |
+| Tray icon, popup coordination, live status, and callback lifetime | `ITrayController` + `TrayController`; unsupported-desktop tray construction is logged without preventing requested Hub startup | authoritative |
 | Deep-link/protocol/toast/forwarded activation normalization, current-user IPC, and semantic activation plans | `ActivationRouter` | authoritative |
 | Packaged activation-kind preservation | `App.GetLaunchActivation` adapts Windows AppLifecycle metadata into `LaunchActivationInput`; `ActivationRouter` shares candidate selection for initial/secondary launches and reserves implicit foreground navigation for interactive Launch | authoritative |
 | Post-save settings change effect ordering, detached snapshot comparison, and concurrent save serialization | `SettingsChangeCoordinator` | authoritative |
@@ -266,8 +266,8 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Chat atomic runtime transaction lock and cross-domain commits | `ChatConversationState` | authoritative |
 | Chat queue collections, echo correlation, drain and retry commit mechanics | `ChatQueueState` under the `ChatConversationState` lock | authoritative |
 | Pending chat bubble presentation | `ReactorChatTimeline` projects the selected-thread queue after the current turn, using the normal user bubble and existing controller cancellation | authoritative |
-| Empty-chat hero and recent/prompt content | `ReactorChatWelcome` renders the connected Gateway's welcome catalog; `ReactorChatComposer` applies Gateway catalog agent identity and `OpenClawReactorChatRoot` centers the stable composer subtree | authoritative |
-| Shared welcome content | `OpenClawGatewayClient.GetChatWelcomeCatalogAsync` reads advertised `controlUi.welcome.get`; `ChatPresentationState` holds connection-scoped content under `ChatConversationState`, and provider delivery rechecks its epoch. Native resources contain availability messages, never a copied prompt catalog | authoritative |
+| Empty-chat hero and recent/prompt content | `ReactorChatWelcome` renders native localized welcome copy; `ReactorChatComposer` applies Gateway catalog agent identity and `OpenClawReactorChatRoot` centers the stable composer subtree | authoritative |
+| Welcome copy | Native `.resw` resources own guidance, the Recent chats label, and starter prompts in every supported language; `ReactorChatWelcome` renders them and sends the displayed prompt through the existing composer action. No Gateway welcome catalog or connection-scoped fetch state | authoritative |
 | Pending new-chat selection | `OpenClawReactorChatRoot` retains the exact requested key until a materialized session arrives; a synthetic compose-only thread is not publication acknowledgment | authoritative |
 | Pending chat preview list inside the composer | Closed in `ReactorChatComposer`; the composer contains only the unsubmitted draft and attachments | closed |
 | Chat reset generations, gates, echoes and backfill state | `ChatResetState` under the `ChatConversationState` lock | authoritative |
@@ -529,12 +529,18 @@ reload setting intact. Stopping either runtime does not delete its configuration
 ### Isolated listener proof and legacy process ownership
 
 After a successful package start acknowledgement, `IsolatedGatewayRuntime`
-allows up to three minutes, including the start command, for its own start to
-become ready. A late successful acknowledgement retains ten seconds for status
-confirmation, extending the start/status ceiling to at most 190 seconds. This
-allowance remains subordinate to caller deadlines; the outer 210-second connection
+allows up to three minutes by default, including the start command, for its own start to
+become ready. `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT` (whole seconds, 30 to 3600,
+read once per process) overrides that budget; the package command timeout never drops
+below three minutes, and the derived credential handoff and setup connection phase
+budgets grow with a longer override. A late successful acknowledgement retains ten seconds for status
+confirmation, extending the start/status ceiling to at most 190 seconds at the default. This
+allowance remains subordinate to caller deadlines; the outer 210-second default connection
 budget also includes preflight, inspection and handshake work. It polls status
 every two seconds without issuing another start.
+A timeout raises `NativeGatewayStartupTimeoutException` with its phase (start request or
+readiness), budget and last package status. Its message uses only validated lifecycle
+states and token-shaped readiness reason codes, never package prose.
 `starting` or `unhealthy` with no listener is only a pending observation, never
 credential authority. A listener racing the pending observation permits one fresh
 status recheck, but only `running` plus full port/process attribution can pass.

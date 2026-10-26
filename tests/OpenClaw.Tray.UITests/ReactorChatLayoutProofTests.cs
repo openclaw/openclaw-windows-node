@@ -27,14 +27,6 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
 {
     private Window? _captureWindow;
     private const string Draft = "Turn this into a schedule for tomorrow.";
-    private static ChatWelcomeContent WelcomeFixture => new(ChatWelcomeContentStatus.Available,
-        new("en", "Pick where this session works, then say what to do.", "Recent chats",
-        [
-            new("whatCanYouDo", "What can you do?", "What can you do?"),
-            new("summarizeRecentSessions", "Summarize my recent sessions", "Summarize my recent sessions"),
-            new("configureChannel", "Help me configure a channel", "Help me configure a channel"),
-            new("checkSystemHealth", "Check system health", "Check system health")
-        ]));
     private const string UserMessage = "Help me plan a focused workday.";
     private const string AssistantMessage =
         "## A calmer plan\n\nStart with one outcome that matters. Protect a quiet block for it, then batch the smaller tasks.\n\n" +
@@ -44,56 +36,43 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         "Would you like me to turn this into a schedule?";
 
     [Theory]
-    [InlineData(ChatWelcomeContentStatus.Loading)]
-    [InlineData(ChatWelcomeContentStatus.Unsupported)]
-    [InlineData(ChatWelcomeContentStatus.Failed)]
-    public async Task Welcome_UnavailableContentKeepsComposerUsableWithoutCopiedPrompts(ChatWelcomeContentStatus status)
+    [InlineData("en-us", "Pick where this session works, then say what to do.", "What can you do?")]
+    [InlineData("fr-fr", "Choisissez où cette session s’exécute, puis indiquez quoi faire.", "Que pouvez-vous faire ?")]
+    [InlineData("nl-nl", "Kies waar deze sessie werkt en geef vervolgens aan wat er moet gebeuren.", "Wat kun je doen?")]
+    [InlineData("pt-br", "Escolha onde esta sessão será executada e diga o que fazer.", "O que você pode fazer?")]
+    [InlineData("zh-cn", "选择此会话的运行位置，然后说明要执行的任务。", "你能做什么？")]
+    [InlineData("zh-tw", "選擇此工作階段的執行位置，再說明要做什麼。", "你能做什麼？")]
+    public async Task Welcome_BundledCopyUsesUiLanguageAndSendsSelectedPrompt(string language, string hint, string prompt)
     {
-        await WithChatAsync(800, async (surface, _, _, provider) =>
+        var previousLanguage = LocalizationHelper.CurrentLanguage;
+        LocalizationHelper.SetLanguageOverride(language);
+        try
         {
-            var snapshot = await provider.LoadAsync();
-            await ui.RunOnUIAsync(() => provider.Publish(snapshot with { WelcomeContent = new(status) }));
-            await Task.Delay(1000);
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
+            await WithChatAsync(800, async (surface, _, _, provider) =>
             {
-                Assert.DoesNotContain(FindDescendants<Button>(surface), button =>
-                    AutomationProperties.GetAutomationId(button).StartsWith("ChatSuggestion_", StringComparison.Ordinal));
-                Assert.False(string.IsNullOrWhiteSpace(FindControl<TextBlock>(surface, "ChatWelcomeHint").Text));
-                Assert.True(FindControl<Button>(surface, "ChatComposerPrimaryAction").IsEnabled);
-                Assert.Equal(Draft, FindControl<TextBox>(surface, "ChatComposerInput").Text);
-            });
-        }, "empty");
-    }
-
-    [Fact]
-    public async Task Welcome_GatewayContentUpdatesWithoutReplacingInputAndSendsAdvertisedPrompt()
-    {
-        await WithChatAsync(800, async (surface, _, _, provider) =>
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => FindDescendants<TextBlock>(surface).Any(text =>
+                        AutomationProperties.GetAutomationId(text) == "ChatWelcomeHint"),
+                    "empty chat welcome header"));
+                await CaptureAsync(surface, $"LocalWelcome-{language}");
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.Equal(hint, FindControl<TextBlock>(surface, "ChatWelcomeHint").Text);
+                    var suggestions = FindDescendants<Button>(surface).Where(button =>
+                        AutomationProperties.GetAutomationId(button).StartsWith("ChatSuggestion_", StringComparison.Ordinal)).ToArray();
+                    Assert.Equal(4, suggestions.Length);
+                    Assert.Equal(prompt, AutomationProperties.GetName(suggestions[0]));
+                    Assert.Equal(Draft, FindControl<TextBox>(surface, "ChatComposerInput").Text);
+                    Invoke(suggestions[0]);
+                });
+                await SettleAsync();
+                Assert.Equal(("proof", prompt), Assert.Single(provider.SentMessages));
+            }, "empty", placementGateway: new PlacementProofGateway());
+        }
+        finally
         {
-            await Task.Delay(1000);
-            await SettleAsync();
-            var input = await ui.RunOnUIAsync(() => Task.FromResult(FindControl<TextBox>(surface, "ChatComposerInput")));
-            var snapshot = await provider.LoadAsync();
-            var content = new ChatWelcomeContent(ChatWelcomeContentStatus.Available,
-                new("fr", "Updated Gateway guidance", "Updated recents",
-                    [new("future-suggestion", "A new visible label", "Different exact send text")]));
-            await ui.RunOnUIAsync(() => provider.Publish(snapshot with { WelcomeContent = content }));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                Assert.Same(input, FindControl<TextBox>(surface, "ChatComposerInput"));
-                Assert.Equal(Draft, input.Text);
-                Assert.Equal("Updated Gateway guidance", FindControl<TextBlock>(surface, "ChatWelcomeHint").Text);
-                var button = Assert.Single(FindDescendants<Button>(surface), button =>
-                    AutomationProperties.GetAutomationId(button).StartsWith("ChatSuggestion_", StringComparison.Ordinal));
-                Assert.Equal("A new visible label", AutomationProperties.GetName(button));
-            });
-            await CaptureAsync(surface, "GatewayWelcomeContent");
-            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSuggestion_future-suggestion")));
-            await SettleAsync();
-            Assert.Equal(("proof", "Different exact send text"), Assert.Single(provider.SentMessages));
-        }, "empty");
+            LocalizationHelper.SetLanguageOverride(previousLanguage);
+        }
     }
 
     [Theory]
@@ -2937,7 +2916,6 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                             "The example message could not be sent. Try again when connected.")],
                     }
                     : null,
-                WelcomeContent: WelcomeFixture,
                 CurrentHistoryThreads: scenario != "disconnected" && timeline.HistoryLoaded
                     ? new HashSet<string> { thread.Id } : new HashSet<string>()));
         }

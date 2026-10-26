@@ -368,6 +368,11 @@ public sealed partial class SettingsPage : Page
         OpenShellTarget(DocumentationUrl, "documentation");
     }
 
+    private void OnSupportLink(object sender, RoutedEventArgs e)
+    {
+        OpenShellTarget(SupportLinks.OfficialSupportUrl, "support");
+    }
+
     private void OnGitHubLink(object sender, RoutedEventArgs e)
     {
         OpenShellTarget(GitHubUrl, "GitHub");

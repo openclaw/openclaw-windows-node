@@ -22,7 +22,6 @@ internal sealed record ChatSnapshotProjectionInput(
     string? RememberedThreadTitle,
     string? RememberedModel,
     string? RememberedModelProvider,
-    ChatWelcomeContent? WelcomeContent = null,
     IReadOnlySet<string>? CurrentHistoryThreads = null);
 
 internal static class ChatSnapshotProjector
@@ -95,7 +94,6 @@ internal static class ChatSnapshotProjector
             TimelineGenerations: input.TimelineGenerations,
             HistoryRevisions: input.HistoryRevisions,
             QueuedMessagesByThread: input.QueuedMessages,
-            WelcomeContent: input.WelcomeContent,
             CurrentHistoryThreads: input.Status == ConnectionStatus.Connected
                 ? input.CurrentHistoryThreads?.ToImmutableHashSet(StringComparer.Ordinal)
                     ?? ImmutableHashSet<string>.Empty

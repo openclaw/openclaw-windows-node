@@ -53,11 +53,36 @@ Use `.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` for the
 opt-in real-app lane. It rejects skipped or zero-test runs and preserves
 per-run artifacts. Existing MCP-only integration defaults remain unchanged.
 
+### Cross-repository candidate compatibility
+
+The reusable [`release-candidate-e2e.yml`](../.github/workflows/release-candidate-e2e.yml)
+workflow tests one exact OpenClaw package against an independently identified
+Windows app. `windows_node_workflow_sha` pins both the workflow and the maintained
+setup/test harness. `windows_node_source_sha` identifies only the app under test:
+a verified published ZIP/MSIX in release mode, or a separately checked-out and
+built Tray in main mode. Fixing the harness does not rebuild historical releases.
+
+The fixture installs the candidate (including exact beta/alpha versions), waits
+for operator/node readiness, and runs
+`FullSetup_SafeNodeInvocation_RoutesThroughRealGateway` to invoke `system.which`
+through the real Gateway. Current-feature capability inventories and recovery
+scenarios remain in ordinary product E2E, not historical-app compatibility.
+
+Success requires an executed, passing test. Only an opted-in lane may accept
+`PROTOCOL_MISMATCH`: the initial fixture must observe the exact structured app
+error, write its receipt, and fail the selected test with the dedicated exception.
+Skipped tests, setup timeouts, unrelated failures, and run-level errors fail the
+lane. [`Resolve-ReleaseCandidateE2EOutcome.ps1`](../scripts/Resolve-ReleaseCandidateE2EOutcome.ps1)
+owns result admission; its executable regression cases run in fast-validation CI.
+Evidence names include the app source kind and release tag or source SHA so
+stable, prerelease, and main invocations can upload in the same caller run.
+
 ### OpenClaw.Shared.Tests
 
 - **Command output-drain timing** - The unsupported-Windows runner fixture gates launcher release, then requires completion within three seconds of root exit while a descendant retains stdout, stderr, or both. Ten repetitions per case check short output and PID/start-time-bound child cleanup. The nonparallel `MxcOwnership` collection isolates these wall-clock budgets from unrelated tests. Native SDK finalization has separate managed ownership tests and opt-in runtime proof.
+- **Fixture process identity** - MXC pipe-fixture metadata, cleanup ownership checks, and the opt-in native MXC descendant-identity check query the observed full executable image through a retained process handle, not the loader's nullable `MainModule` or a requested launch path. `ProcessImagePathTests` checks a real, never-resumed Windows process with no initialized loader view, a different command-line image name, caller-handle lifetime, and explicit native query failure. This deterministically covers unavailable loader metadata; it does not reproduce the timing of a normally scheduled child or prove native MXC containment.
 - **Model and display formatting** - activity glyphs, app version display, session labels, gateway usage/node display, channel status, and rich text helpers.
-- **Gateway and WebSocket behavior** - gateway client parsing, session keys, WebSocket base handling, URL normalization, local gateway classification, and token sanitization. The signing-identity regression covers native and managed loopback WebSockets, with the fixture completing the close handshake and bounding disconnect waits.
+- **Gateway and WebSocket behavior** - gateway client parsing, session keys, WebSocket base handling, URL normalization, local gateway classification, and token sanitization. The signing-identity regression covers native and managed loopback WebSockets with a bounded client-initiated disconnect and a queued health request. The fixture drains application frames already in flight until the client's close frame, replies, and closes its transport under one deadline rather than relying on the client's EOF fallback timer. A separate fixture regression checks the close frame and actual TCP EOF on both transports, including fragmented text and binary data queued before close.
 - **Capabilities and MCP** - app/canvas/screen/camera/system capabilities, MCP auth token reset, MCP HTTP server, MCP tool bridge, MXC availability, MXC policy building, and command runners.
 - **Exec approval** - legacy policy coverage plus V2 evaluator, input validation, normalization, prompt adapter, routing, coordinator, store, environment sanitizing, and shell-wrapper parsing.
 - **A2UI and web bridge** - A2UI capability security, asset hash pinning, web bridge message handling, and channel payload/status tests.
@@ -138,6 +163,8 @@ required closeout lane for code changes.
 | Migration preservation source checks | `dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj --filter FullyQualifiedName~InnoMigrationContractTests` | Protects completion/checker-failure exits and deletion authorization, including unsafe source mutations; not a substitute for real installer proof |
 | Migration record and cleanup scripts | `dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj --filter FullyQualifiedName~MigrationRecordTests` | Exercises real Windows PowerShell receipt checks and cleanup lock contention. The subprocess deadline defaults to 30 seconds so a genuine regression fails fast; the cleanup lock-contention theory overrides it to 120 seconds because its failure path writes log and result files that a loaded runner can stall on. Timeout handling attempts process-tree termination before fixture teardown and reports output, script logs, the observed process state, and cleanup failures without replacing the original timeout |
 | Migration startup admission | `dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj --filter "FullyQualifiedName~InnoInstallationDetectorTests\|FullyQualifiedName~StoreMigrationStartupCoordinatorTests\|FullyQualifiedName~MigrationStartupRecordReaderTests\|FullyQualifiedName~MigrationVersionPolicyTests"` | Read-only exact Inno discovery, version/architecture admission, pending-record precedence and preservation; pair with packaged preview guidance proof, not a claim of completed migration |
+| Store migration helper fixtures | `.\scripts\test-store-migration-test-script.ps1` | Actual helper execution with in-memory registry/version adapters, blocked process commands and test-owned files. Covers complete version compatibility before mutation, native draft/atomic-sibling preservation, explicit unknown-file quarantine, exclusive non-tray lock contention, lock/receipt preservation, opt-in reset, path-specific reparse refusal, relabel/revert drift, WhatIf and failure paths. Runs in Windows fast-validation CI; not installer, signature, Store UI or gateway-preservation proof |
+| Disposable Inno to Store migration | `.\scripts\Enable-StoreMigrationTest.ps1` with [`STORE_MIGRATION_TESTING.md`](./STORE_MIGRATION_TESTING.md) | Manual signed-artifact, installer and visible handoff proof on a disposable machine. Select eligible source/target metadata and matching architecture; alpha ProductVersion cannot be fixed by registry relabeling. Helper preflight is not completed migration proof. Record exact artifacts, actual outcomes and preservation evidence, or report the missing artifact/runtime prerequisite as blocked |
 | Local AI model fixture | `dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj --filter "FullyQualifiedName~SparseFixtureFileTests\|FullyQualifiedName~LocalAiPortLifecycleTests"` | Test-only sparse files preserve the catalog-sized logical length and readable zeros without model downloads. Checks cover Windows sparse allocation, independent mutation, overwrite refusal, and cleanup. Windows requires a sparse-capable filesystem and fails explicitly if marking the fixture sparse fails; Unix uses the holes created by `SetLength`. Production receipt, size, and hash checks remain unchanged |
 | Legacy installer runtime ordering | `.\tests\PackagingTests\Test-InnoUninstallOrdering.ps1` | Deprecated. It targets the old `[UninstallRun]` layout, while current cleanup is owned by `[Code]`; do not use it as current installer runtime proof |
 
@@ -291,6 +318,13 @@ The WSL E2E fixture installs npm `latest` by default.
 package test. Running the packaging repository's pinned npm version in WSL does
 not prove Microsoft Store acquisition, package identity, MXC session setup, or
 the packaged Gateway lifecycle.
+
+Both E2E tray fixtures read `gateways.json` through `GatewayRegistryFile`, which
+joins the production `PersistenceFileLease` before opening the file. This keeps
+fixture reads out of an in-flight atomic replacement without retrying IO or
+hiding malformed JSON. The fixture-free `SetupAndConnectTestsRegistryReads`
+regressions cover writer/reader ordering, concurrent saves and error propagation;
+they do not replace the real WSL Gateway setup/connect proofs.
 
 Actual package E2E needs a disposable Windows account/host with a successful
 MXC session capability probe and a verified installable MSIX from

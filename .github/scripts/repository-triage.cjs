@@ -21,6 +21,15 @@ const BOT_LOGINS = new Set([
   "dependabot[bot]",
   "github-actions[bot]",
 ]);
+const PULL_REQUEST_PAGE_SIZE = 10;
+const GRAPHQL_RETRY_DELAYS_MS = [1_000, 3_000];
+const TRANSIENT_GRAPHQL_STATUSES = new Set([429, 500, 502, 503, 504]);
+const TRANSIENT_GRAPHQL_CODES = new Set([
+  "ECONNRESET",
+  "EAI_AGAIN",
+  "ENETUNREACH",
+  "ETIMEDOUT",
+]);
 const OWNERSHIP_ACTIVITY_EVENTS = new Set([
   "assigned",
   "commented",
@@ -587,11 +596,51 @@ function apiFailure(scope, error) {
   return `${scope}: ${status}; this section is partial and no cleanup decision uses the missing data.`;
 }
 
-async function fetchPullRequests(github, owner, repo, warnings) {
+function isTransientGraphqlError(error) {
+  return (
+    TRANSIENT_GRAPHQL_STATUSES.has(error?.status) ||
+    TRANSIENT_GRAPHQL_CODES.has(error?.code) ||
+    TRANSIENT_GRAPHQL_CODES.has(error?.cause?.code)
+  );
+}
+
+async function graphqlWithRetry(
+  github,
+  query,
+  variables,
+  {
+    delaysMs = GRAPHQL_RETRY_DELAYS_MS,
+    sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+    warn = (message) => console.warn(message),
+  } = {},
+) {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await github.graphql(query, variables);
+    } catch (error) {
+      if (!isTransientGraphqlError(error) || attempt >= delaysMs.length) {
+        throw error;
+      }
+
+      const status = Number.isInteger(error?.status)
+        ? `HTTP ${error.status}`
+        : error?.code ?? error?.cause?.code ?? error?.name ?? "API error";
+      const delayMs = delaysMs[attempt];
+      attempt += 1;
+      warn(
+        `Repository triage GraphQL request failed with ${status}; retry ${attempt}/${delaysMs.length} in ${delayMs}ms.`,
+      );
+      await sleep(delayMs);
+    }
+  }
+}
+
+async function fetchPullRequests(github, owner, repo, warnings, graphqlRetryOptions) {
   const query = `
     query($owner: String!, $repo: String!, $cursor: String) {
       repository(owner: $owner, name: $repo) {
-        pullRequests(states: OPEN, first: 100, after: $cursor, orderBy: {field: UPDATED_AT, direction: DESC}) {
+        pullRequests(states: OPEN, first: ${PULL_REQUEST_PAGE_SIZE}, after: $cursor, orderBy: {field: UPDATED_AT, direction: DESC}) {
           pageInfo { hasNextPage endCursor }
           nodes {
             number title url body createdAt updatedAt isDraft additions deletions changedFiles
@@ -624,7 +673,12 @@ async function fetchPullRequests(github, owner, repo, warnings) {
   let cursor = null;
 
   do {
-    const result = await github.graphql(query, { owner, repo, cursor });
+    const result = await graphqlWithRetry(
+      github,
+      query,
+      { owner, repo, cursor },
+      graphqlRetryOptions,
+    );
     const connection = result.repository.pullRequests;
     pullRequests.push(...(connection.nodes ?? []).filter(Boolean));
     cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
@@ -647,6 +701,7 @@ async function fetchPullRequests(github, owner, repo, warnings) {
             repo,
             pr.number,
             pr.files.pageInfo.endCursor,
+            graphqlRetryOptions,
           )),
         );
       } catch (error) {
@@ -665,6 +720,7 @@ async function fetchPullRequests(github, owner, repo, warnings) {
             repo,
             pr.number,
             contexts.pageInfo.endCursor,
+            graphqlRetryOptions,
           )),
         );
       } catch (error) {
@@ -678,7 +734,13 @@ async function fetchPullRequests(github, owner, repo, warnings) {
       ["UNKNOWN", null, undefined].includes(pr.mergeStateStatus)
     ) {
       try {
-        const refreshed = await fetchMergeState(github, owner, repo, pr.number);
+        const refreshed = await fetchMergeState(
+          github,
+          owner,
+          repo,
+          pr.number,
+          graphqlRetryOptions,
+        );
         pr.mergeable = refreshed.mergeable ?? pr.mergeable;
         pr.mergeStateStatus = refreshed.mergeStateStatus ?? pr.mergeStateStatus;
       } catch (error) {
@@ -690,7 +752,7 @@ async function fetchPullRequests(github, owner, repo, warnings) {
   return pullRequests;
 }
 
-async function fetchMergeState(github, owner, repo, number) {
+async function fetchMergeState(github, owner, repo, number, graphqlRetryOptions) {
   const query = `
     query($owner: String!, $repo: String!, $number: Int!) {
       repository(owner: $owner, name: $repo) {
@@ -700,11 +762,23 @@ async function fetchMergeState(github, owner, repo, number) {
         }
       }
     }`;
-  const result = await github.graphql(query, { owner, repo, number });
+  const result = await graphqlWithRetry(
+    github,
+    query,
+    { owner, repo, number },
+    graphqlRetryOptions,
+  );
   return result.repository.pullRequest ?? {};
 }
 
-async function fetchRemainingPullRequestFiles(github, owner, repo, number, initialCursor) {
+async function fetchRemainingPullRequestFiles(
+  github,
+  owner,
+  repo,
+  number,
+  initialCursor,
+  graphqlRetryOptions,
+) {
   const query = `
     query($owner: String!, $repo: String!, $number: Int!, $cursor: String!) {
       repository(owner: $owner, name: $repo) {
@@ -719,7 +793,12 @@ async function fetchRemainingPullRequestFiles(github, owner, repo, number, initi
   const files = [];
   let cursor = initialCursor;
   do {
-    const result = await github.graphql(query, { owner, repo, number, cursor });
+    const result = await graphqlWithRetry(
+      github,
+      query,
+      { owner, repo, number, cursor },
+      graphqlRetryOptions,
+    );
     const connection = result.repository.pullRequest.files;
     files.push(...(connection.nodes ?? []).filter(Boolean));
     cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
@@ -727,7 +806,14 @@ async function fetchRemainingPullRequestFiles(github, owner, repo, number, initi
   return files;
 }
 
-async function fetchRemainingCheckContexts(github, owner, repo, number, initialCursor) {
+async function fetchRemainingCheckContexts(
+  github,
+  owner,
+  repo,
+  number,
+  initialCursor,
+  graphqlRetryOptions,
+) {
   const query = `
     query($owner: String!, $repo: String!, $number: Int!, $cursor: String!) {
       repository(owner: $owner, name: $repo) {
@@ -748,7 +834,12 @@ async function fetchRemainingCheckContexts(github, owner, repo, number, initialC
   const contexts = [];
   let cursor = initialCursor;
   do {
-    const result = await github.graphql(query, { owner, repo, number, cursor });
+    const result = await graphqlWithRetry(
+      github,
+      query,
+      { owner, repo, number, cursor },
+      graphqlRetryOptions,
+    );
     const connection = result.repository.pullRequest.statusCheckRollup.contexts;
     contexts.push(...(connection.nodes ?? []).filter(Boolean));
     cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
@@ -756,7 +847,7 @@ async function fetchRemainingCheckContexts(github, owner, repo, number, initialC
   return contexts;
 }
 
-async function fetchIssues(github, owner, repo) {
+async function fetchIssues(github, owner, repo, graphqlRetryOptions) {
   const query = `
     query($owner: String!, $repo: String!, $cursor: String) {
       repository(owner: $owner, name: $repo) {
@@ -778,7 +869,12 @@ async function fetchIssues(github, owner, repo) {
   let cursor = null;
 
   do {
-    const result = await github.graphql(query, { owner, repo, cursor });
+    const result = await graphqlWithRetry(
+      github,
+      query,
+      { owner, repo, cursor },
+      graphqlRetryOptions,
+    );
     const connection = result.repository.issues;
     issues.push(...(connection.nodes ?? []).filter(Boolean));
     cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
@@ -815,7 +911,7 @@ function linkedPullRequestNumber(event, openPullRequestNumbers, repository, issu
   return source.number;
 }
 
-async function collectRepositoryData({ github, owner, repo }) {
+async function collectRepositoryData({ github, owner, repo, graphqlRetryOptions }) {
   const metaQuery = `
     query($owner: String!, $repo: String!) {
       repository(owner: $owner, name: $repo) {
@@ -824,10 +920,16 @@ async function collectRepositoryData({ github, owner, repo }) {
     }`;
   const warnings = [];
   const [meta, issues] = await Promise.all([
-    github.graphql(metaQuery, { owner, repo }),
-    fetchIssues(github, owner, repo),
+    graphqlWithRetry(github, metaQuery, { owner, repo }, graphqlRetryOptions),
+    fetchIssues(github, owner, repo, graphqlRetryOptions),
   ]);
-  const pullRequests = await fetchPullRequests(github, owner, repo, warnings);
+  const pullRequests = await fetchPullRequests(
+    github,
+    owner,
+    repo,
+    warnings,
+    graphqlRetryOptions,
+  );
   const openPullRequestNumbers = new Set(pullRequests.map((pr) => pr.number));
   const timelineByNumber = new Map();
   const linkedPrsByIssue = new Map(
@@ -1028,7 +1130,15 @@ function writeReportArtifacts({ data, now, operation, audit, outputDir }) {
   return { report, markdownPath, jsonPath };
 }
 
-async function run({ github, context, core, outputDir, operation = "report-only", now = new Date() }) {
+async function run({
+  github,
+  context,
+  core,
+  outputDir,
+  operation = "report-only",
+  now = new Date(),
+  graphqlRetryOptions,
+}) {
   fs.mkdirSync(outputDir, { recursive: true });
   const auditJournalPath = path.join(outputDir, "repository-triage-cleanup-audit.json");
   const persistAudit = (entries) => {
@@ -1041,7 +1151,12 @@ async function run({ github, context, core, outputDir, operation = "report-only"
     }
 
     const { owner, repo } = context.repo;
-    const data = await collectRepositoryData({ github, owner, repo });
+    const data = await collectRepositoryData({
+      github,
+      owner,
+      repo,
+      graphqlRetryOptions,
+    });
     let cleanupFailure = null;
     let artifacts;
     if (operation === CLEANUP_OPERATION) {
@@ -1118,6 +1233,8 @@ module.exports = {
   collectRepositoryData,
   evaluateActiveOwnership,
   extractReferencedIssueNumbers,
+  graphqlWithRetry,
+  isTransientGraphqlError,
   linkedPullRequestNumber,
   proofLabels,
   removeExpiredActiveOwnership,

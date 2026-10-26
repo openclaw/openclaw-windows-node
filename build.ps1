@@ -375,6 +375,21 @@ if ($arch -eq "ARM64") {
     Write-Info "ARM64 detected - builds will target ARM64 by default"
 }
 
+# Use the same resolver as the app output. A system-installed redistributable
+# cannot repair the older app-local fallback that shadows it in x64 builds.
+if ($dotnet -and $hasNet10 -and $arch -ne "ARM64" -and $Project -in @("All", "Tray", "WinUI")) {
+    & dotnet msbuild (Join-Path $repoRoot "src\Directory.Build.targets") `
+        -target:ResolveOpenClawVCRuntimeFromVSInstall `
+        -property:OpenClawVCRuntimeArch=x64 -nologo -verbosity:minimal
+    if ($LASTEXITCODE -eq 0) {
+        Write-Success "Compatible app-local Visual C++ runtime detected"
+    } else {
+        Write-Error "Compatible app-local Visual C++ runtime not found"
+        Write-Info "Install or update 'C++ Redistributable Update' (Microsoft.VisualStudio.Component.VC.Redist.14.Latest) in the Visual Studio Installer."
+        $issues += "Missing compatible Visual Studio C++ Redistributable"
+    }
+}
+
 if ($buildStoreMsix) {
     if ($Project -notin @("All", "Tray", "WinUI")) {
         Write-Error "-Msix Store requires -Project All, Tray, or WinUI."
@@ -431,14 +446,14 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-if ($CheckOnly) {
-    Write-Host "`nRun without -CheckOnly to build.`n"
-    exit 0
-}
-
 if ($issues.Count -gt 0) {
     Write-Host "`nFix the prerequisite issue(s) above, then rerun .\build.ps1.`n" -ForegroundColor Yellow
     exit 1
+}
+
+if ($CheckOnly) {
+    Write-Host "`nRun without -CheckOnly to build.`n"
+    exit 0
 }
 
 # =============================================================================

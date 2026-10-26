@@ -5,6 +5,150 @@ namespace OpenClaw.Tray.Tests;
 public sealed class NativeCompletionPresentationTests
 {
     [Fact]
+    public void LoadingShellPreservesShutdownOrderingAndAppearsBeforeReplacementRuntimeConstruction()
+    {
+        var app = Read(@"src\OpenClaw.Tray.WinUI\App.xaml.cs");
+        var restart = app[app.IndexOf("private async Task RestartAfterSetupAsync", StringComparison.Ordinal)..
+            app.IndexOf("private async Task ShowSetupRestartErrorAsync", StringComparison.Ordinal)];
+        var passive = restart.IndexOf("ShowSetupRestartProgress()", StringComparison.Ordinal);
+        var close = restart.IndexOf("CloseSetup()", passive, StringComparison.Ordinal);
+        var exit = restart.IndexOf("await ExitApplicationAsync()", close, StringComparison.Ordinal);
+        Assert.True(passive >= 0 && close > passive && exit > close);
+        Assert.Contains("DispatcherQueuePriority.Low", restart);
+        var startup = app.IndexOf("ShowNativeSetupStartupProgress()", StringComparison.Ordinal);
+        Assert.True(startup > app.IndexOf("_gatewayRegistry.Load()", StringComparison.Ordinal));
+        Assert.True(startup < app.IndexOf("_localAiRuntime = new LlamaServerRuntimeService", StringComparison.Ordinal));
+        Assert.True(startup > app.IndexOf("if (!ownsMutex)", StringComparison.Ordinal));
+        var manager = Read(@"src\OpenClaw.Tray.WinUI\Services\WindowManager.cs");
+        Assert.Contains("No setup handoff has been admitted.", manager);
+        var shutdown = Read(@"src\OpenClaw.Tray.WinUI\App.AppShutdownCoordinator.cs");
+        Assert.True(shutdown.IndexOf("ReportSetupShutdownProgress", StringComparison.Ordinal) <
+            shutdown.IndexOf("await localAiRuntime.DisposeAsync()", StringComparison.Ordinal));
+        var setup = Read(@"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml");
+        Assert.Contains("x:Name=\"LoadingOverlay\"", setup);
+        var passiveWindow = Read(@"src\OpenClaw.SetupEngine.UI\SetupLoadingWindow.cs");
+        Assert.DoesNotContain("CleanupCompleted", passiveWindow);
+        Assert.DoesNotContain("GatewayConnectionManager", passiveWindow);
+        Assert.DoesNotContain("ExitApplication", passiveWindow);
+        Assert.Contains("acquisitionDeferred: status => _windowManager?.SettleDeferredNativeSetupPresentation", app);
+        Assert.Contains("acquirePresentation: () => _windowManager?.BeginNativeSetupPresentation()", app);
+        Assert.Contains("SetupDeferredPresentationPolicy.Project(status,", manager);
+        Assert.Contains("_readyProof is null, _handoffPresentationOwnership.IsActive", manager);
+        // retirement_condition: replace with a mounted failure-dialog race test when WindowManager
+        // no longer depends on the process-global App and XamlRoot.
+        var commit = manager[manager.IndexOf("public void CommitNativeSetupReady()", StringComparison.Ordinal)..
+            manager.IndexOf("public Task<SetupVerifiedNativeRoute> VerifyNativeSetupReadyAsync", StringComparison.Ordinal)];
+        Assert.Contains("if (_readyWindow?.IsReady != true) return;", commit);
+        Assert.True(commit.IndexOf("_nativeSetupFailureVersion++", StringComparison.Ordinal) <
+            commit.IndexOf("_nativeSetupFailureDialog?.Hide();", StringComparison.Ordinal));
+        var failure = manager[manager.IndexOf("public async Task ShowNativeSetupFailureAsync", StringComparison.Ordinal)..
+            manager.IndexOf("private void ShowHubCore", StringComparison.Ordinal)];
+        var duplicateUnavailable = failure.IndexOf(
+            "if (_nativeSetupFailureVisible && failure == SetupNativeLaunchFailure.Unavailable) return;",
+            StringComparison.Ordinal);
+        var advanceFailureVersion = failure.IndexOf("var failureVersion = ++_nativeSetupFailureVersion;", StringComparison.Ordinal);
+        Assert.True(duplicateUnavailable >= 0 && duplicateUnavailable < advanceFailureVersion);
+        Assert.Contains("if (failureVersion != _nativeSetupFailureVersion) return;", failure);
+        Assert.Contains("retryRequested && failureVersion == _nativeSetupFailureVersion", failure);
+        var pipeline = Read(@"src\OpenClaw.SetupEngine.UI\Pages\ProgressPage.xaml.cs");
+        var navigation = pipeline[pipeline.IndexOf("protected override void OnNavigatedTo", StringComparison.Ordinal)..
+            pipeline.IndexOf("private void RenderProgressPreview", StringComparison.Ordinal)];
+        Assert.DoesNotContain("BeginLoading", navigation);
+        Assert.Contains("SetupLoadingProgress.PipelineGroup(config.NativeLocalAiAcquisition, _localAiRecoveryOnly)", pipeline);
+    }
+
+    [Fact]
+    public void SharedLoadingSurfaceOmitsSubstepSubtitleButPreservesAccessibleActivityAndMeasurements()
+    {
+        var xaml = XDocument.Parse(Read(@"src\OpenClaw.SetupEngine.UI\Controls\SetupLoadingView.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        Assert.DoesNotContain(xaml.Descendants(), element => (string?)element.Attribute(x + "Name") == "Detail");
+        var progress = Assert.Single(xaml.Descendants(),
+            element => (string?)element.Attribute(x + "Name") == "ActivityProgress");
+        Assert.Equal("ProgressBar", progress.Name.LocalName);
+        Assert.Equal("Polite", (string?)progress.Attribute("AutomationProperties.LiveSetting"));
+        Assert.Contains(xaml.Descendants(), element => (string?)element.Attribute(x + "Name") == "Measurement");
+        var source = Read(@"src\OpenClaw.SetupEngine.UI\Controls\SetupLoadingView.xaml.cs");
+        Assert.Contains("AutomationProperties.SetName(ActivityProgress, snapshot.Activity ?? DetailFor(snapshot.Step))", source);
+    }
+
+    [Fact]
+    public void LoadingSubstepsHaveCopyInEverySupportedLocale()
+    {
+        var keys = new[] { "Gateway", "StartGateway", "PairGateway", "AcquireArtifacts", "ApplyCapabilities",
+            "CheckConfiguration", "RestartGateway", "CheckHealth", "ReconcileLocalAi", "PublishGateway",
+            "SaveSettings", "ApplyStartup", "StartCompanion", "RecoverLocalAi", "StopLocalAi", "StopGateway" };
+        foreach (var language in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
+        {
+            var resources = XDocument.Parse(Read($@"src\OpenClaw.Tray.WinUI\Strings\{language}\Resources.resw"));
+            foreach (var key in keys)
+            {
+                var entry = Assert.Single(resources.Descendants("data"),
+                    item => (string?)item.Attribute("name") == "Onboarding_Loading_" + key);
+                Assert.False(string.IsNullOrWhiteSpace(entry.Element("value")?.Value));
+            }
+        }
+    }
+
+    [Fact]
+    public void FinishingAndReadyHaveLocalizedCopyAndNoFinalizationEntryAfterRestart()
+    {
+        foreach (var language in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
+        {
+            var resources = XDocument.Parse(Read($@"src\OpenClaw.Tray.WinUI\Strings\{language}\Resources.resw"));
+            foreach (var key in new[] { "Onboarding_AiSetup_Preparing", "Onboarding_Ai_CompletionConsent.Text",
+                "Onboarding_Finishing_Heading.Text", "Onboarding_Finishing_Detail.Text", "Onboarding_Finishing_Interrupted",
+                "Onboarding_Finishing_Draining", "Onboarding_Finishing_Restarting", "Onboarding_Finishing_Recovery",
+                "Onboarding_AiSetup_VerifyingTitle", "Onboarding_AiSetup_VerificationFailedTitle",
+                "Onboarding_AiSetup_ManagerRecoveryBlocked" })
+                Assert.False(string.IsNullOrWhiteSpace(Assert.Single(resources.Descendants("data"),
+                    item => (string?)item.Attribute("name") == key).Element("value")?.Value));
+        }
+        var ready = Read(@"src\OpenClaw.SetupEngine.UI\SetupReadyWindow.cs");
+        Assert.DoesNotContain("CompleteVerifiedAsync", ready);
+        Assert.DoesNotContain("SaveSetupChoices", ready);
+        Assert.DoesNotMatch(@"\bSetupWindow\b", ready);
+        Assert.Contains("CommitPresentation()", ready);
+        Assert.Contains("await loaded.Task.WaitAsync(ct)", ready);
+        var page = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml.cs");
+        Assert.Contains("!_admitted", page);
+        Assert.DoesNotContain("SetupNativeCompletionCoordinator", page);
+        var readyXaml = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml");
+        Assert.DoesNotContain("Text=\"Your AI is ready\"", readyXaml);
+        Assert.DoesNotContain("Mood=\"Celebrating\"", readyXaml);
+        Assert.Contains("_presentation.CompleteMount(generation)", ready);
+        Assert.Contains("_presentation.IsReady", ready);
+        Assert.Contains("page.ShowFailure(_presentation.ReceiptConsumed ? Recover : retryReceipt, _returnToConnection)", ready);
+    }
+
+    [Fact]
+    public void ReadinessObserversSubscribeBeforeAdmissionAndFenceManagerReplacement()
+    {
+        var observer = Read(@"src\OpenClaw.Tray.WinUI\Services\SetupReadyObservation.cs");
+        Assert.True(observer.IndexOf("manager.OperatorClientChanged += OnOperator", StringComparison.Ordinal) <
+            observer.IndexOf("try { RequireCurrent(); }", StringComparison.Ordinal));
+        Assert.Contains("_manager.OperatorClientChanged -= OnOperator", observer);
+        Assert.Contains("catch\n        {\n            Dispose();\n            throw;", observer.Replace("\r\n", "\n", StringComparison.Ordinal));
+        var page = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml.cs");
+        Assert.Contains("connectionManager.OperatorClientChanged += OnAiOperatorChanged", page);
+        Assert.Contains("manager.OperatorClientChanged -= OnAiOperatorChanged", page);
+        Assert.Contains("!ReferenceEquals(sender, _observedManager)", page);
+        Assert.Contains("_managerClientReplaced && Client?.CanLeaveForLocalAi == true", page);
+        Assert.Contains("if (ManagerRecoveryBlocked) return;", page);
+        Assert.Contains("_args?.CloseSetupWindow?.Invoke()", page);
+        Assert.Contains("private bool _choicesPrepared => !_detecting && !_managerClientReplaced && Client?.HasCurrentDiscovery == true", page);
+        var callback = page[page.IndexOf("private void RefreshManagerPresentation", StringComparison.Ordinal)..];
+        Assert.DoesNotContain("await InitializeAsync", callback);
+        Assert.Contains("_localAdmissionFailed = false;", callback);
+        var release = page[page.IndexOf("private async Task ReleaseAsync", StringComparison.Ordinal)..
+            page.IndexOf("private void OnAiHandshake", StringComparison.Ordinal)];
+        Assert.Contains("_localAdmissionFailed = false;", release);
+        var render = page[page.IndexOf("private void Render()", StringComparison.Ordinal)..
+            page.IndexOf("private void UpdateNativeRecovery", StringComparison.Ordinal)];
+        Assert.DoesNotContain("_localAdmissionFailed = false;", render);
+    }
+
+    [Fact]
     public void CandidateCreationReturnsItsBaselineWithoutAnUnlockedPostCopyRead()
     {
         var source = Read(@"src\OpenClaw.Tray.WinUI\Services\GatewayDirectConnectService.cs");
@@ -35,9 +179,14 @@ public sealed class NativeCompletionPresentationTests
             Assert.False(string.IsNullOrWhiteSpace(entry.Element("value")?.Value));
         }
         var page = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml.cs");
-        Assert.Contains("\"Onboarding_Ready_Timeout\" + timeout.Phase", page);
-        Assert.Contains("Phase: SetupNativeCompletionPhase.Verification } => \"Onboarding_Ready_Timeout\"", page);
-        Assert.Contains("\"Onboarding_Ready_TimeoutGatewayStartup\"", page);
+        var presentation = Read(@"src\OpenClaw.SetupEngine\AiSetupReadinessPresentation.cs");
+        Assert.Contains("\"Onboarding_Ready_Timeout\" + timeout.Phase", presentation);
+        Assert.Contains("Phase: SetupNativeCompletionPhase.Verification } => \"Onboarding_Ready_Timeout\"", presentation);
+        Assert.Contains("\"Onboarding_Ready_TimeoutGatewayStartup\"", presentation);
+        Assert.Contains("AiSetupReadinessPresentation.CompletionFailureKey(", page);
+        var finishing = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiCompletionPage.xaml.cs");
+        Assert.Contains("AiSetupReadinessPresentation.CompletionFailureKey(", finishing);
+        Assert.DoesNotContain("error.Message", finishing);
         Assert.DoesNotContain("error.Message", page);
         var launcher = Read(@"src\OpenClaw.Tray.WinUI\Services\SetupNativeHandoffLauncher.cs");
         Assert.Contains("(error as SetupNativeCompletionTimeoutException)?.Phase", launcher);
@@ -59,7 +208,7 @@ public sealed class NativeCompletionPresentationTests
         Assert.Contains(page.Descendants(), element => element.Name.LocalName == "SetupProgressIndicator");
         Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(x + "Name") == "FinishButton");
         var source = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml.cs");
-        Assert.Contains("args.Owner.OwnsReadyChoice(args.Coordinator)", source);
+        Assert.Contains("args.IsCurrent()", source);
         Assert.Contains("args.Coordinator.SelectAsync(destination)", source);
         Assert.DoesNotContain("Launcher.LaunchUri", source);
     }
@@ -86,7 +235,7 @@ public sealed class NativeCompletionPresentationTests
             Read(@"src\OpenClaw.Tray.WinUI\App.ActivationRouter.cs"));
         var app = Read(@"src\OpenClaw.Tray.WinUI\App.xaml.cs");
         Assert.DoesNotContain("handoffHandle", app);
-        Assert.Contains("launchTarget = store.Issue(nativeCompletion)", app);
+        Assert.Contains("store.IssuePreparation(preparation) : store.Issue(nativeCompletion!)", app);
         var dashboard = Read(@"src\OpenClaw.Tray.WinUI\Services\GatewayDashboardLauncher.cs");
         Assert.DoesNotContain("GatewayAiSetupCompletion", dashboard);
         Assert.DoesNotContain("OpenPendingAsync", dashboard);

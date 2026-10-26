@@ -82,32 +82,6 @@ public sealed class WorkspaceChatRemovalContractTests
         Assert.DoesNotContain("override void OnNavigatedTo(", Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs"));
     }
 
-    [Fact]
-    public void ChatLaunchersAndBackgroundAnchor_RemainIndependentOfPopupOwnership()
-    {
-        var app = Read(@"src\OpenClaw.Tray.WinUI\App.xaml.cs");
-        Assert.Contains("ShowChat: () => ShowHub(\"chat\")", app);
-        Assert.Contains("case \"webchat\": OpenChatSession(); break;", app);
-        Assert.Contains("_windowManager?.ShowWorkspaceChatAndStartVoice();", app);
-        Assert.Contains("_windowManager?.InitializeRuntimeAnchor()", app);
-        Assert.Contains("RunCommand(CanOpenChat, () => _appCommands.Navigate(\"chat\"))",
-            Read(@"src\OpenClaw.Tray.WinUI\Presentation\LocalAiPageViewModel.cs"));
-
-        var manager = Read(@"src\OpenClaw.Tray.WinUI\Services\WindowManager.cs");
-        var anchor = Method(manager, "public void InitializeRuntimeAnchor()");
-        Assert.Contains("_keepAliveWindow = new Window", anchor);
-        Assert.Contains("Content = new Grid()", anchor);
-        Assert.Contains("IsShownInSwitchers = false", anchor);
-        Assert.DoesNotContain("WorkspaceWindow", anchor);
-        Assert.DoesNotContain("ShowWorkspace", anchor);
-        Assert.Contains("RuntimeAnchorXamlRoot", manager);
-        var voice = Method(manager, "public void ShowWorkspaceChatAndStartVoice()");
-        Assert.Contains("ShowHub(\"chat\");", voice);
-        Assert.Contains("_workspaceWindow?.ChatPage.TriggerAutoStartVoice();", voice);
-        Assert.Contains("void ShowWorkspaceChatAndStartVoice();",
-            Read(@"src\OpenClaw.Tray.WinUI\Services\IWindowManager.cs"));
-    }
-
     [Theory]
     [InlineData("private void ShowReactorSurface()")]
     [InlineData("private void ShowWebViewSurface(")]

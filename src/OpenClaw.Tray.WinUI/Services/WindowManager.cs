@@ -37,7 +37,8 @@ internal sealed record WindowManagerCallbacks(
     Func<SetupNativeCompletion, CancellationToken, Task>? PublishNativeCompletion = null,
     Func<bool, CancellationToken, Task>? ApplyNativeStartup = null,
     Func<ISettingsStore?>? GetSettingsStore = null,
-    Func<LocalAiGatewayLifecycle?>? GetLocalAiGatewayLifecycle = null);
+    Func<LocalAiGatewayLifecycle?>? GetLocalAiGatewayLifecycle = null,
+    Func<SetupNativePreparation, CancellationToken, Task>? PublishNativePreparation = null);
 
 internal sealed class WindowManager : IWindowManager
 {
@@ -53,9 +54,17 @@ internal sealed class WindowManager : IWindowManager
     private Window? _lastActiveMainWindow;
     private ConnectionStatusWindow? _connectionStatusWindow;
     private SetupWindow? _setupWindow;
+    private OpenClaw.SetupEngine.UI.SetupReadyWindow? _readyWindow;
+    private OpenClaw.SetupEngine.UI.SetupLoadingWindow? _restartProgressWindow;
+    private Func<CancellationToken, Task<SetupVerifiedNativeRoute>>? _readyVerification;
+    private SetupReadyObservation? _readyObservation;
+    private GatewayAiSetupCompletion? _readyProof;
+    private readonly SetupHandoffPresentationOwnership _handoffPresentationOwnership = new();
     private bool _isShuttingDown;
     private Task? _closeForShutdownTask;
     private bool _nativeSetupFailureVisible;
+    private ContentDialog? _nativeSetupFailureDialog;
+    private int _nativeSetupFailureVersion;
 
     internal WindowManager(
         DispatcherQueue dispatcherQueue,
@@ -124,7 +133,7 @@ internal sealed class WindowManager : IWindowManager
             Content = new Grid(),
         };
         _callbacks.ApplyTheme(_keepAliveWindow);
-        _keepAliveWindow.AppWindow.IsShownInSwitchers = false;
+        // This anchor is never activated. Hidden windows do not need shell switcher registration.
         _keepAliveWindow.AppWindow.MoveAndResize(
             new global::Windows.Graphics.RectInt32(-32000, -32000, 1, 1));
     }
@@ -240,8 +249,151 @@ internal sealed class WindowManager : IWindowManager
         window.Activate();
     }
 
+    public Task ShowNativeSetupPreparingAsync(GatewayAiSetupCompletion proof,
+        Func<CancellationToken, Task<SetupVerifiedNativeRoute>> verify, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (_isShuttingDown) throw new InvalidOperationException("The application is shutting down.");
+        if (_readyWindow is { IsClosed: false })
+        {
+            if (_readyProof is not null && _readyProof != proof)
+                throw new InvalidOperationException("A different setup completion window is already open.");
+            _readyObservation?.Dispose();
+            _readyObservation = null;
+        }
+        _readyProof = proof;
+        _readyVerification = verify;
+        var ready = EnsureReadyWindow();
+        ready.ShowPreparing();
+        ready.Activate();
+        return Task.CompletedTask;
+    }
+
+    public IProgress<SetupLoadingStep>? NativeSetupProgress => _readyWindow?.Progress;
+
+    public void ShowNativeSetupStartupProgress()
+    {
+        if (_isShuttingDown) return;
+        try { EnsureReadyWindow().Activate(); }
+        catch (Exception error) when (error is COMException or InvalidOperationException)
+        {
+            Logger.Warn($"Early setup progress could not be shown ({error.GetType().Name}). Handoff will retry presentation.");
+        }
+    }
+
+    public void FinishNativeLaunchPresentation()
+    {
+        if (_readyProof is null) _readyWindow?.Close();
+    }
+
+    public void FailNativeSetupStartupProgress()
+    {
+        if (_readyProof is null) _readyWindow?.ShowFailure();
+    }
+
+    public void SettleDeferredNativeSetupPresentation(SetupHandoffAcquisitionStatus status, Action retry)
+    {
+        if (_isShuttingDown) return;
+        var action = SetupDeferredPresentationPolicy.Project(status,
+            _readyWindow is { IsClosed: false } && _readyProof is null, _handoffPresentationOwnership.IsActive);
+        if (action == SetupDeferredPresentation.CloseUnboundShell)
+            _readyWindow?.Close();
+        else if (action == SetupDeferredPresentation.OfferRetry)
+            AsyncEventHandlerGuard.Run(() => ShowNativeSetupFailureAsync(SetupNativeLaunchFailure.Unavailable, retry),
+                new AppLogger(), "Deferred setup recovery presentation");
+    }
+
+    public IDisposable BeginNativeSetupPresentation() => _handoffPresentationOwnership.Acquire();
+
+    public void ShowSetupRestartProgress()
+    {
+        if (_isShuttingDown || _restartProgressWindow is not null) return;
+        try
+        {
+            var passive = new OpenClaw.SetupEngine.UI.SetupLoadingWindow();
+            _restartProgressWindow = passive;
+            passive.Closed += (_, _) =>
+            {
+                if (ReferenceEquals(_restartProgressWindow, passive)) _restartProgressWindow = null;
+            };
+            _callbacks.ApplyTheme(passive);
+            passive.Activate();
+        }
+        catch (Exception error) when (error is COMException or InvalidOperationException)
+        {
+            Logger.Warn($"Passive setup progress could not be shown ({error.GetType().Name}). Owned shutdown will continue.");
+        }
+    }
+
+    public void ReportSetupShutdownProgress(SetupLoadingStep step) => _restartProgressWindow?.Report(step);
+
+    private OpenClaw.SetupEngine.UI.SetupReadyWindow EnsureReadyWindow()
+    {
+        if (_readyWindow is { IsClosed: false } existing) return existing;
+        var ready = new OpenClaw.SetupEngine.UI.SetupReadyWindow(
+            ct => _readyVerification?.Invoke(ct) ??
+                Task.FromException<SetupVerifiedNativeRoute>(new InvalidOperationException("No setup handoff has been admitted.")),
+            ShowNativeSetupAsync,
+            binding =>
+            {
+                _readyObservation?.Dispose();
+                _readyObservation = new SetupReadyObservation(
+                    _callbacks.GetConnectionManager() ?? throw new InvalidOperationException("The Gateway owner is unavailable."),
+                    _callbacks.GetGatewayRegistry() ?? throw new InvalidOperationException("The Gateway registry is unavailable."),
+                    _callbacks.GetLocalAiRuntime(), binding, () =>
+                    {
+                        _dispatcherQueue.TryEnqueue(() =>
+                        {
+                            if (ReferenceEquals(_readyObservation?.Binding, binding))
+                                _readyWindow?.Invalidate();
+                        });
+                    });
+                return _readyObservation;
+            },
+            () => _readyObservation?.RequireCurrent(),
+            () =>
+            {
+                _readyWindow?.Close();
+                ShowHub("connection");
+            });
+        _readyWindow = ready;
+        ready.Closed += (_, _) =>
+        {
+            if (!ReferenceEquals(_readyWindow, ready)) return;
+            _readyObservation?.Dispose();
+            _readyObservation = null;
+            _readyWindow = null;
+            _readyProof = null;
+            _readyVerification = null;
+        };
+        _callbacks.ApplyTheme(ready);
+        return ready;
+    }
+
+    public Task ShowNativeSetupReadyAsync(SetupVerifiedNativeRoute route, CancellationToken ct) =>
+        _readyWindow is { IsClosed: false } window
+            ? window.ShowReadyAsync(route, ct)
+            : Task.FromException(new InvalidOperationException("The setup completion window closed."));
+
+    public void CommitNativeSetupReady()
+    {
+        _readyWindow?.CommitPresentation();
+        if (_readyWindow?.IsReady != true) return;
+        _nativeSetupFailureVersion++;
+        _nativeSetupFailureDialog?.Hide();
+    }
+
+    public Task<SetupVerifiedNativeRoute> VerifyNativeSetupReadyAsync(CancellationToken ct) =>
+        _readyWindow is { IsClosed: false } window
+            ? window.VerifyAsync(ct)
+            : Task.FromException<SetupVerifiedNativeRoute>(new InvalidOperationException("The setup completion window closed."));
+
     public async Task ShowNativeSetupFailureAsync(SetupNativeLaunchFailure failure, Action? retry)
     {
+        if (failure == SetupNativeLaunchFailure.Invalid && _readyWindow?.IsReady == true) return;
+        if (_nativeSetupFailureVisible && failure == SetupNativeLaunchFailure.Unavailable) return;
+        var failureVersion = ++_nativeSetupFailureVersion;
+        _readyWindow?.ShowFailure(failure == SetupNativeLaunchFailure.Unavailable ? retry : null);
         var title = LocalizationHelper.GetString("Onboarding_Ready_LaunchFailedTitle");
         var message = LocalizationHelper.GetString("Onboarding_Ready_Launch" + failure);
         _callbacks.GetAppNotificationService()?.Show(new AppNotification
@@ -254,7 +406,11 @@ internal sealed class WindowManager : IWindowManager
             DedupeKey = SetupNativeHandoffLauncher.FailureNotificationId,
             ActionRoute = "connection",
         });
-        if (_nativeSetupFailureVisible) return;
+        if (_nativeSetupFailureVisible)
+        {
+            _nativeSetupFailureDialog?.Hide();
+            return;
+        }
         _nativeSetupFailureVisible = true;
         var retryRequested = false;
         try
@@ -267,6 +423,7 @@ internal sealed class WindowManager : IWindowManager
                 Logger.Error("Native setup destination failed; the persistent notification is available in Connection.");
                 return;
             }
+            if (failureVersion != _nativeSetupFailureVersion) return;
             var dialog = new ContentDialog
             {
                 XamlRoot = root,
@@ -276,10 +433,16 @@ internal sealed class WindowManager : IWindowManager
                 PrimaryButtonText = failure == SetupNativeLaunchFailure.Unavailable && retry is not null
                     ? LocalizationHelper.GetString("Onboarding_Ready_Retry") : "",
             };
+            _nativeSetupFailureDialog = dialog;
             retryRequested = await dialog.ShowAsync() == ContentDialogResult.Primary;
         }
-        finally { _nativeSetupFailureVisible = false; }
-        if (retryRequested && !_isShuttingDown) retry?.Invoke();
+        finally
+        {
+            _nativeSetupFailureDialog = null;
+            _nativeSetupFailureVisible = false;
+        }
+        if (retryRequested && failureVersion == _nativeSetupFailureVersion && !_isShuttingDown)
+            retry?.Invoke();
     }
 
     private void ShowHubCore(string? navigateTo, bool activate)
@@ -802,6 +965,7 @@ internal sealed class WindowManager : IWindowManager
                 localAiHost: CreateLocalAiSetupHost(),
                 connectionManager: _callbacks.GetConnectionManager(),
                 publishNativeCompletion: _callbacks.PublishNativeCompletion,
+                publishNativePreparation: _callbacks.PublishNativePreparation,
                 applyNativeStartup: _callbacks.ApplyNativeStartup,
                 startupRegistrationAllowed: !AppIdentity.IsIsolated,
                 persistChoices: (config, startup, onlyStartup) =>
@@ -914,6 +1078,8 @@ internal sealed class WindowManager : IWindowManager
         _callbacks.ApplyTheme(_workspaceWindow);
         _callbacks.ApplyTheme(_connectionStatusWindow);
         _callbacks.ApplyTheme(_setupWindow);
+        _callbacks.ApplyTheme(_readyWindow);
+        _callbacks.ApplyTheme(_restartProgressWindow);
     }
 
     public void UpdateHubTitleBarStatus(
@@ -981,6 +1147,13 @@ internal sealed class WindowManager : IWindowManager
         }
 
         var setupWindow = _setupWindow;
+        _readyObservation?.Dispose();
+        _readyObservation = null;
+        var readyWindow = _readyWindow;
+        TryClose("Ready window", () => readyWindow?.Close(), ref failures);
+        if (readyWindow is { IsClosed: true })
+            await readyWindow.CleanupCompleted;
+        _readyWindow = null;
         if (setupWindow is not null)
         {
             setupWindow.AdvancedSetupRequested -= _callbacks.AdvancedSetupRequested;
@@ -1039,6 +1212,8 @@ internal sealed class WindowManager : IWindowManager
         _lastActiveMainWindow = null;
         TryClose("Runtime anchor window", () => _keepAliveWindow?.Close(), ref failures);
         _keepAliveWindow = null;
+        TryClose("Setup restart progress", () => _restartProgressWindow?.Close(), ref failures);
+        _restartProgressWindow = null;
 
         if (failures is { Count: > 0 })
         {

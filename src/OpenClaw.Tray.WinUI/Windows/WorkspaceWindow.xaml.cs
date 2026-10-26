@@ -784,7 +784,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         foreach (var (label, url) in new[]
         {
             ("Documentation", "https://docs.openclaw.ai"),
-            ("Support", "https://docs.openclaw.ai/help"),
+            ("Support", SupportLinks.OfficialSupportUrl),
             ("Community", "https://discord.gg/clawd"),
             ("ReleaseNotes", "https://docs.openclaw.ai/releases")
         })
