@@ -40,9 +40,11 @@ internal sealed class ChatSendRequestResolution(
 
 internal sealed class WizardRequestResolution(
     string method,
-    TaskCompletionSource<JsonElement> completion)
+    TaskCompletionSource<JsonElement> completion,
+    bool modelSignIn = false)
     : PendingRequestResolution(method, PendingRequestCategory.Wizard)
 {
+    internal bool ModelSignIn { get; } = modelSignIn;
     internal bool TryComplete(JsonElement result) => completion.TrySetResult(result);
     internal bool TryFault(Exception exception) => completion.TrySetException(exception);
 }
@@ -102,9 +104,9 @@ internal sealed class PendingRequestRegistry
 
     internal PendingRequestRegistration<JsonElement> RegisterWizard(
         string requestId,
-        string method)
+        string method, bool modelSignIn = false)
     {
-        var entry = new WizardEntry(requestId, method);
+        var entry = new WizardEntry(requestId, method, modelSignIn);
         var handle = Register(entry);
         return new PendingRequestRegistration<JsonElement>(entry.Task, handle);
     }
@@ -274,18 +276,20 @@ internal sealed class PendingRequestRegistry
 
     private sealed class WizardEntry : Entry
     {
+        private readonly bool _modelSignIn;
         private readonly TaskCompletionSource<JsonElement> _completion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        internal WizardEntry(string requestId, string method)
+        internal WizardEntry(string requestId, string method, bool modelSignIn)
             : base(requestId, method, PendingRequestCategory.Wizard)
         {
+            _modelSignIn = modelSignIn;
         }
 
         internal Task<JsonElement> Task => _completion.Task;
 
         internal override PendingRequestResolution CreateResolution() =>
-            new WizardRequestResolution(Method, _completion);
+            new WizardRequestResolution(Method, _completion, _modelSignIn);
 
         internal override void FaultFromDrain(
             GatewayConnectionLostException? wizardDisconnect) =>

@@ -17,6 +17,7 @@ public interface IChatGatewayBridge : IDisposable
     /// <summary>True once the gateway handshake has resolved session defaults.</summary>
     bool HasHandshakeSnapshot { get; }
     IChatPlacementGateway? PlacementGateway => null;
+    ModelSignInSession? CreateModelSignInSession(string agentId, Func<bool> isViewCurrent) => null;
     SessionInfo[] GetSessionList();
     ModelsListInfo? GetCurrentModelsList();
     bool SupportsSessionScopedModelCatalog => false;
@@ -148,6 +149,13 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     private ModelsListInfo? _currentModels;
     private readonly Func<Uri, Task<bool>> _launchUri;
     private bool _disposed;
+
+    public ModelSignInSession CreateModelSignInSession(string agentId, Func<bool> isViewCurrent)
+    {
+        var session = _client.CreateModelSignInSession(agentId, () => !_disposed && isViewCurrent());
+        session.AuthChanged += (_, _) => { if (!_disposed) _ = _client.RequestModelsListAsync(); };
+        return session;
+    }
 
     public GatewayClientChatBridge(
         OpenClawGatewayClient client,

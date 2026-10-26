@@ -39,6 +39,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly HashSet<string> _issuedApprovalIds = new(StringComparer.Ordinal);
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, TaskCompletionSource> _modelSignInGates = new(StringComparer.Ordinal);
     private TaskCompletionSource? _sessionMutationGate;
     private TaskCompletionSource? _chatSendGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
@@ -93,6 +94,24 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     public int DeviceTokenRejections => Volatile.Read(ref _deviceTokenRejections);
     public Task HandshakeCompleted => _handshake.Task;
     public Task ConnectionAccepted => _accepted.Task;
+    public void HoldModelSignInReply(string method)
+    {
+        if (!ModelSignInFixture.Methods.Contains(method, StringComparer.Ordinal))
+            throw new ArgumentException("Only model sign-in replies may be held.", nameof(method));
+        lock (_sync)
+            if (!_modelSignInGates.TryAdd(method, NewSignal()))
+                throw new InvalidOperationException("The model sign-in reply is already held.");
+    }
+
+    public void ReleaseModelSignInReply(string method)
+    {
+        lock (_sync)
+        {
+            if (!_modelSignInGates.Remove(method, out var gate))
+                throw new InvalidOperationException("The model sign-in reply is not held.");
+            gate.TrySetResult();
+        }
+    }
     public int ConnectionCount => Volatile.Read(ref _connectionCount);
     public int ActiveConnectionCount => Volatile.Read(ref _activeConnectionCount);
     public int SubscriptionCount
@@ -654,7 +673,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     Task<bool>? abortOutcome;
                     lock (_sync)
                     {
-                        gate = method is "sessions.patch" or "sessions.delete" or "sessions.create"
+                        gate = _modelSignInGates.TryGetValue(method!, out var signInGate) ? signInGate.Task :
+                            method is "sessions.patch" or "sessions.delete" or "sessions.create"
                             ? _sessionMutationGate?.Task
                             : method == "chat.send"
                                 ? _chatSendGate?.Task
@@ -756,7 +776,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 if (gate is not null)
                     await gate.WaitAsync(cancellationToken);
                 Complete(requestIndex, $"error:{ex.Code}", ex.Unexpected);
-                await SendErrorAsync(socket, sendLock, id, ex.Code, ex.Message, cancellationToken);
+                await SendErrorAsync(socket, sendLock, id, ex.Code, ex.Message, cancellationToken,
+                    ex.DetailCode, ex.Retryable, ex.RetryAfterMs);
                 return;
             }
             catch (InvalidOperationException) when (Interactive is not null
@@ -910,12 +931,17 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         && method.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
 
     private static Task SendErrorAsync(
-        WebSocket socket, SemaphoreSlim sendLock, string? id, string code, string message, CancellationToken ct) =>
-        SendAsync(socket, sendLock, new
+        WebSocket socket, SemaphoreSlim sendLock, string? id, string code, string message, CancellationToken ct,
+        string? detailCode = null, bool? retryable = null, int? retryAfterMs = null)
+    {
+        var error = new Dictionary<string, object>
         {
-            type = "res", id, ok = false,
-            error = new { code, message, details = new { code } }
-        }, ct);
+            ["code"] = code, ["message"] = message, ["details"] = new { code = detailCode ?? code }
+        };
+        if (retryable is { } retry) error["retryable"] = retry;
+        if (retryAfterMs is { } delay) error["retryAfterMs"] = delay;
+        return SendAsync(socket, sendLock, new { type = "res", id, ok = false, error }, ct);
+    }
 
     private static async Task SendAsync(WebSocket socket, SemaphoreSlim sendLock, object value, CancellationToken ct)
     {
@@ -983,6 +1009,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             foreach (var gate in _historyGates.Values)
                 gate.TrySetCanceled(_lifetime.Token);
             _historyGates.Clear();
+            foreach (var gate in _modelSignInGates.Values)
+                gate.TrySetCanceled(_lifetime.Token);
+            _modelSignInGates.Clear();
             _sessionMutationGate?.TrySetCanceled();
             _sessionMutationGate = null;
             _chatSendGate?.TrySetCanceled();

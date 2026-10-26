@@ -8170,4 +8170,29 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Resuma minhas sessões recentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Ajude-me a configurar um canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Verifique a integridade do sistema</value></data>
+  <data name="ModelSignIn_Title" xml:space="preserve"><value>Entrar nos modelos</value></data>
+  <data name="ModelSignIn_Close" xml:space="preserve"><value>Fechar</value></data>
+  <data name="ModelSignIn_Cancel" xml:space="preserve"><value>Cancelar entrada</value></data>
+  <data name="ModelSignIn_Refresh" xml:space="preserve"><value>Atualizar</value></data>
+  <data name="ModelSignIn_Continue" xml:space="preserve"><value>Continuar</value></data>
+  <data name="ModelSignIn_Value" xml:space="preserve"><value>Valor</value></data>
+  <data name="ModelSignIn_Confirm" xml:space="preserve"><value>Confirmar</value></data>
+  <data name="ModelSignIn_Option" xml:space="preserve"><value>Opção</value></data>
+  <data name="ModelSignIn_OpenPage" xml:space="preserve"><value>Abrir página de entrada</value></data>
+  <data name="ModelSignIn_Connected" xml:space="preserve"><value>Conectado</value></data>
+  <data name="ModelSignIn_Expiring" xml:space="preserve"><value>A entrada expira em breve</value></data>
+  <data name="ModelSignIn_Expired" xml:space="preserve"><value>Entrada expirada</value></data>
+  <data name="ModelSignIn_Missing" xml:space="preserve"><value>Entrada necessária</value></data>
+  <data name="ModelSignIn_Unknown" xml:space="preserve"><value>Status indisponível</value></data>
+  <data name="ModelSignIn_NoOptions" xml:space="preserve"><value>Nenhuma opção de entrada nativa disponível. Abra Modelos no painel ou atualize o Gateway.</value></data>
+  <data name="ModelSignIn_Unavailable" xml:space="preserve"><value>O status da conta ainda não está pronto. Atualize após a configuração.</value></data>
+  <data name="ModelSignIn_Finished" xml:space="preserve"><value>Entrada concluída. Verifique o status da conta.</value></data>
+  <data name="ModelSignIn_Ended" xml:space="preserve"><value>Entrada encerrada. As credenciais salvas podem permanecer. Verifique a conta antes de tentar novamente.</value></data>
+  <data name="ModelSignIn_Uncertain" xml:space="preserve"><value>A entrada está pendente ou o resultado é incerto. Cancele esta tentativa antes de repetir.</value></data>
+  <data name="ModelSignIn_CancellationUnconfirmed" xml:space="preserve"><value>Cancelamento não confirmado. Verifique a conexão e tente cancelar novamente. As credenciais salvas não são revertidas.</value></data>
+  <data name="ModelSignIn_ContextChanged" xml:space="preserve"><value>O Gateway ou a conversa mudou. Feche a entrada e abra novamente. O resultado anterior pode ser incerto.</value></data>
+  <data name="ModelSignIn_Failure" xml:space="preserve"><value>Não foi possível concluir a solicitação. Verifique a conexão ou atualize o Gateway. Uma entrada aceita pode ter salvo credenciais.</value></data>
+  <data name="ModelSignIn_UnsupportedStep" xml:space="preserve"><value>Esta pergunta de entrada não é compatível. Cancele e use Modelos no painel.</value></data>
+  <data name="ModelSignIn_Retryable" xml:space="preserve"><value>Pode tentar novamente</value></data>
+  <data name="ModelSignIn_RetryAfter" xml:space="preserve"><value>Espera para nova tentativa (ms)</value></data>
 </root>

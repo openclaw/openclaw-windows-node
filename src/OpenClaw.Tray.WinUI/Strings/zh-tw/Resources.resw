@@ -8118,4 +8118,29 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>摘要我的近期工作階段</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>協助我設定頻道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>檢查系統健康狀態</value></data>
+  <data name="ModelSignIn_Title" xml:space="preserve"><value>模型登入</value></data>
+  <data name="ModelSignIn_Close" xml:space="preserve"><value>關閉</value></data>
+  <data name="ModelSignIn_Cancel" xml:space="preserve"><value>取消登入</value></data>
+  <data name="ModelSignIn_Refresh" xml:space="preserve"><value>重新整理</value></data>
+  <data name="ModelSignIn_Continue" xml:space="preserve"><value>繼續</value></data>
+  <data name="ModelSignIn_Value" xml:space="preserve"><value>值</value></data>
+  <data name="ModelSignIn_Confirm" xml:space="preserve"><value>確認</value></data>
+  <data name="ModelSignIn_Option" xml:space="preserve"><value>選項</value></data>
+  <data name="ModelSignIn_OpenPage" xml:space="preserve"><value>開啟登入頁面</value></data>
+  <data name="ModelSignIn_Connected" xml:space="preserve"><value>已連線</value></data>
+  <data name="ModelSignIn_Expiring" xml:space="preserve"><value>登入即將到期</value></data>
+  <data name="ModelSignIn_Expired" xml:space="preserve"><value>登入已到期</value></data>
+  <data name="ModelSignIn_Missing" xml:space="preserve"><value>需要登入</value></data>
+  <data name="ModelSignIn_Unknown" xml:space="preserve"><value>狀態無法使用</value></data>
+  <data name="ModelSignIn_NoOptions" xml:space="preserve"><value>沒有可用的原生登入選項。請在儀表板中開啟「模型」，或更新閘道。</value></data>
+  <data name="ModelSignIn_Unavailable" xml:space="preserve"><value>帳戶狀態尚未就緒。請在設定完成後重新整理。</value></data>
+  <data name="ModelSignIn_Finished" xml:space="preserve"><value>登入已完成。請檢查帳戶狀態。</value></data>
+  <data name="ModelSignIn_Ended" xml:space="preserve"><value>登入已結束。已儲存的認證可能仍然保留。重試前請檢查帳戶狀態。</value></data>
+  <data name="ModelSignIn_Uncertain" xml:space="preserve"><value>登入正在等候或結果不確定。重試前請取消此次嘗試。</value></data>
+  <data name="ModelSignIn_CancellationUnconfirmed" xml:space="preserve"><value>尚未確認取消。請檢查連線並再次取消。已儲存的認證不會復原。</value></data>
+  <data name="ModelSignIn_ContextChanged" xml:space="preserve"><value>閘道或對話已變更。請關閉登入後重新開啟。先前的結果可能不確定。</value></data>
+  <data name="ModelSignIn_Failure" xml:space="preserve"><value>無法完成要求。請檢查連線或更新閘道。已接受的登入可能已儲存認證。</value></data>
+  <data name="ModelSignIn_UnsupportedStep" xml:space="preserve"><value>不支援此登入問題。請取消並使用儀表板中的「模型」。</value></data>
+  <data name="ModelSignIn_Retryable" xml:space="preserve"><value>可重試</value></data>
+  <data name="ModelSignIn_RetryAfter" xml:space="preserve"><value>重試延遲（毫秒）</value></data>
 </root>

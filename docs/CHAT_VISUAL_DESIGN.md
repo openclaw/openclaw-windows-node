@@ -233,6 +233,19 @@ may inform the gauge without becoming a persisted override. The icon remains
 decorative; the button keeps the textual accessible name and tooltip.
 The source is pinned to 2026.9.4 and credited in `THIRD_PARTY_NOTICES.md`.
 
+The model picker's **Model sign-in** action opens a native, connection-bound
+sheet for the selected conversation's agent. It stays reachable while connected
+even when no models are available. The sheet reads provider account status and
+only offers Gateway-advertised sign-in methods. Read-only operators can inspect
+status but cannot begin a sign-in. Sensitive questions use a native PasswordBox;
+answers are cleared on submission, dismissal and conversation replacement.
+External pages require explicit activation. Completing or ending a wizard
+refreshes account status and the model catalog, without selecting a default model
+or claiming that cancellation rolled back saved credentials. A missing
+cancellation acknowledgement remains uncertain. Reconnect invalidates the sheet;
+it never sends cancellation to the replacement connection. Native client copy
+comes from all six resource locales; provider prompts are displayed as data.
+
 The model picker uses the standard native flyout presenter and an `AutoSuggestBox`
 above one grouped, single-selection `ListView`. Native list-item templates own
 hover, pressed, selected, selected-hover, disabled and keyboard-focus visuals,

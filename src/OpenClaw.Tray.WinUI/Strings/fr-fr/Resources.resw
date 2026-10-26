@@ -8118,4 +8118,29 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Résumer mes sessions récentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>M’aider à configurer un canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Vérifier l’état du système</value></data>
+  <data name="ModelSignIn_Title" xml:space="preserve"><value>Connexion aux modèles</value></data>
+  <data name="ModelSignIn_Close" xml:space="preserve"><value>Fermer</value></data>
+  <data name="ModelSignIn_Cancel" xml:space="preserve"><value>Annuler la connexion</value></data>
+  <data name="ModelSignIn_Refresh" xml:space="preserve"><value>Actualiser</value></data>
+  <data name="ModelSignIn_Continue" xml:space="preserve"><value>Continuer</value></data>
+  <data name="ModelSignIn_Value" xml:space="preserve"><value>Valeur</value></data>
+  <data name="ModelSignIn_Confirm" xml:space="preserve"><value>Confirmer</value></data>
+  <data name="ModelSignIn_Option" xml:space="preserve"><value>Choix</value></data>
+  <data name="ModelSignIn_OpenPage" xml:space="preserve"><value>Ouvrir la page de connexion</value></data>
+  <data name="ModelSignIn_Connected" xml:space="preserve"><value>Connecté</value></data>
+  <data name="ModelSignIn_Expiring" xml:space="preserve"><value>La connexion expire bientôt</value></data>
+  <data name="ModelSignIn_Expired" xml:space="preserve"><value>Connexion expirée</value></data>
+  <data name="ModelSignIn_Missing" xml:space="preserve"><value>Connexion requise</value></data>
+  <data name="ModelSignIn_Unknown" xml:space="preserve"><value>État indisponible</value></data>
+  <data name="ModelSignIn_NoOptions" xml:space="preserve"><value>Aucune connexion native disponible. Ouvrez Modèles dans le tableau de bord ou mettez à jour la passerelle.</value></data>
+  <data name="ModelSignIn_Unavailable" xml:space="preserve"><value>L'état du compte n'est pas prêt. Actualisez après la configuration.</value></data>
+  <data name="ModelSignIn_Finished" xml:space="preserve"><value>Connexion terminée. Vérifiez l'état du compte.</value></data>
+  <data name="ModelSignIn_Ended" xml:space="preserve"><value>Connexion arrêtée. Des identifiants peuvent rester enregistrés. Vérifiez le compte avant de réessayer.</value></data>
+  <data name="ModelSignIn_Uncertain" xml:space="preserve"><value>Connexion en cours ou résultat incertain. Annulez cette tentative avant de réessayer.</value></data>
+  <data name="ModelSignIn_CancellationUnconfirmed" xml:space="preserve"><value>Annulation non confirmée. Vérifiez la connexion et réessayez d'annuler. Les identifiants enregistrés ne sont pas supprimés.</value></data>
+  <data name="ModelSignIn_ContextChanged" xml:space="preserve"><value>La passerelle ou la conversation a changé. Fermez puis rouvrez la connexion. Le résultat précédent peut être incertain.</value></data>
+  <data name="ModelSignIn_Failure" xml:space="preserve"><value>La requête n'a pas abouti. Vérifiez la connexion ou mettez à jour la passerelle. Une connexion acceptée peut avoir enregistré des identifiants.</value></data>
+  <data name="ModelSignIn_UnsupportedStep" xml:space="preserve"><value>Cette question n'est pas prise en charge. Annulez et utilisez Modèles dans le tableau de bord.</value></data>
+  <data name="ModelSignIn_Retryable" xml:space="preserve"><value>Nouvelle tentative possible</value></data>
+  <data name="ModelSignIn_RetryAfter" xml:space="preserve"><value>Délai avant nouvelle tentative (ms)</value></data>
 </root>

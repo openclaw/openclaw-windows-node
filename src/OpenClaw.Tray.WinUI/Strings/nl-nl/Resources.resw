@@ -8119,4 +8119,29 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="ModelSignIn_Title" xml:space="preserve"><value>Aanmelden bij modellen</value></data>
+  <data name="ModelSignIn_Close" xml:space="preserve"><value>Sluiten</value></data>
+  <data name="ModelSignIn_Cancel" xml:space="preserve"><value>Aanmelden annuleren</value></data>
+  <data name="ModelSignIn_Refresh" xml:space="preserve"><value>Vernieuwen</value></data>
+  <data name="ModelSignIn_Continue" xml:space="preserve"><value>Doorgaan</value></data>
+  <data name="ModelSignIn_Value" xml:space="preserve"><value>Waarde</value></data>
+  <data name="ModelSignIn_Confirm" xml:space="preserve"><value>Bevestigen</value></data>
+  <data name="ModelSignIn_Option" xml:space="preserve"><value>Optie</value></data>
+  <data name="ModelSignIn_OpenPage" xml:space="preserve"><value>Aanmeldpagina openen</value></data>
+  <data name="ModelSignIn_Connected" xml:space="preserve"><value>Verbonden</value></data>
+  <data name="ModelSignIn_Expiring" xml:space="preserve"><value>Aanmelding verloopt binnenkort</value></data>
+  <data name="ModelSignIn_Expired" xml:space="preserve"><value>Aanmelding verlopen</value></data>
+  <data name="ModelSignIn_Missing" xml:space="preserve"><value>Aanmelding vereist</value></data>
+  <data name="ModelSignIn_Unknown" xml:space="preserve"><value>Status niet beschikbaar</value></data>
+  <data name="ModelSignIn_NoOptions" xml:space="preserve"><value>Geen native aanmeldopties beschikbaar. Open Modellen in het dashboard of werk de Gateway bij.</value></data>
+  <data name="ModelSignIn_Unavailable" xml:space="preserve"><value>Accountstatus is nog niet klaar. Vernieuw na de installatie.</value></data>
+  <data name="ModelSignIn_Finished" xml:space="preserve"><value>Aanmelding voltooid. Controleer de accountstatus.</value></data>
+  <data name="ModelSignIn_Ended" xml:space="preserve"><value>Aanmelding beëindigd. Opgeslagen inloggegevens kunnen blijven bestaan. Controleer het account voordat u opnieuw probeert.</value></data>
+  <data name="ModelSignIn_Uncertain" xml:space="preserve"><value>Aanmelding loopt nog of het resultaat is onzeker. Annuleer deze poging voordat u opnieuw probeert.</value></data>
+  <data name="ModelSignIn_CancellationUnconfirmed" xml:space="preserve"><value>Annulering niet bevestigd. Controleer de verbinding en annuleer opnieuw. Opgeslagen inloggegevens worden niet teruggedraaid.</value></data>
+  <data name="ModelSignIn_ContextChanged" xml:space="preserve"><value>De Gateway of het gesprek is gewijzigd. Sluit de aanmelding en open deze opnieuw. Het vorige resultaat kan onzeker zijn.</value></data>
+  <data name="ModelSignIn_Failure" xml:space="preserve"><value>De aanvraag is niet voltooid. Controleer de verbinding of werk de Gateway bij. Een geaccepteerde aanmelding kan inloggegevens hebben opgeslagen.</value></data>
+  <data name="ModelSignIn_UnsupportedStep" xml:space="preserve"><value>Deze aanmeldvraag wordt niet ondersteund. Annuleer en gebruik Modellen in het dashboard.</value></data>
+  <data name="ModelSignIn_Retryable" xml:space="preserve"><value>Opnieuw proberen mogelijk</value></data>
+  <data name="ModelSignIn_RetryAfter" xml:space="preserve"><value>Wachttijd voor opnieuw proberen (ms)</value></data>
 </root>

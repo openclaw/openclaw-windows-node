@@ -44,6 +44,8 @@ public sealed partial class GatewayScenario
     private readonly Session[] _sessions;
     private readonly IReadOnlyDictionary<string, JsonElement> _reads;
     private readonly Func<string, JsonElement, object>? _setup;
+    private readonly ModelSignInFixture? _modelSignIn;
+    private readonly string[]? _modelSignInScopes;
     private static readonly string[] SetupMethods =
     [
         "openclaw.setup.detect", "openclaw.setup.verify", "openclaw.setup.activate.start",
@@ -63,7 +65,7 @@ public sealed partial class GatewayScenario
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _modelSignIn is not null ? ModelSignInFixture.Name : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -76,11 +78,14 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        ModelSignInFixture? modelSignIn = null, string[]? modelSignInScopes = null)
     {
         _sessions = sessions;
         _reads = reads;
         _setup = setup;
+        _modelSignIn = modelSignIn;
+        _modelSignInScopes = modelSignInScopes;
         _allowAgentCreation = allowAgentCreation;
         _publishedModelCatalog = publishedModelCatalog;
         _allowSessionMutations = allowSessionMutations;
@@ -97,6 +102,7 @@ public sealed partial class GatewayScenario
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
+            .Concat(modelSignIn is null ? [] : ModelSignInFixture.Methods)
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
@@ -110,6 +116,7 @@ public sealed partial class GatewayScenario
     {
         BrowseName => CreateBrowse(),
         InteractiveName => CreateInteractive(),
+        ModelSignInFixture.Name => CreateModelSignIn(),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
 
@@ -117,6 +124,13 @@ public sealed partial class GatewayScenario
     {
         var browse = CreateBrowse();
         return new(browse._sessions, browse._reads, interactive: true);
+    }
+
+    public static GatewayScenario CreateModelSignIn(ModelSignInFixture? fixture = null, string[]? scopes = null)
+    {
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, modelSignIn: fixture ?? new ModelSignInFixture(),
+            modelSignInScopes: scopes ?? ["operator.admin", "operator.read"]);
     }
 
     public static GatewayScenario CreateContextUsage(ContextUsageFixture contextUsage)
@@ -329,7 +343,7 @@ public sealed partial class GatewayScenario
                 role,
                 scopes = role == "node"
                     ? Array.Empty<string>()
-                    : IsInteractive
+                    : _modelSignInScopes is not null ? _modelSignInScopes : IsInteractive
                         ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
                         : _contextUsage is not null ? new[] { "operator.read", "operator.write" }
                         : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null
@@ -355,6 +369,8 @@ public sealed partial class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters, Func<string, bool>? containsModelSession = null)
     {
+        if (_modelSignIn is not null && ModelSignInFixture.Methods.Contains(method, StringComparer.Ordinal))
+            return _modelSignIn.Respond(method, parameters);
         if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
             return RespondCron(method, parameters);
         if (_contextUsage is not null && method == "chat.send")
@@ -740,8 +756,12 @@ public sealed partial class GatewayScenario
     private sealed record Session(string Key, string Id, string AgentId, long UpdatedAt, JsonElement Row, JsonElement[] Messages, string[] Texts);
 }
 
-internal sealed class FixtureRequestException(string code, string message, bool unexpected = false) : Exception(message)
+internal sealed class FixtureRequestException(string code, string message, bool unexpected = false,
+    string? detailCode = null, bool? retryable = null, int? retryAfterMs = null) : Exception(message)
 {
     public string Code { get; } = code;
+    public string? DetailCode { get; } = detailCode;
+    public bool? Retryable { get; } = retryable;
+    public int? RetryAfterMs { get; } = retryAfterMs;
     public bool Unexpected { get; } = unexpected;
 }

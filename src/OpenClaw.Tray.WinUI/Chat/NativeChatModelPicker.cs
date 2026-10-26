@@ -38,6 +38,8 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
     };
     private readonly TextBlock _current = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _empty = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly Button _signIn = new();
+    private Action? _requestSignIn;
     private ChatModelPickerProps? _props;
     private Action<ChatModelChoice>? _select;
     private ChatModelPickerRow[] _rows = [];
@@ -67,6 +69,10 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
         Layout.Children.Add(_current);
         Layout.Children.Add(_list);
         Layout.Children.Add(_empty);
+        _signIn.Content = Helpers.LocalizationHelper.GetString("ModelSignIn_Title");
+        AutomationProperties.SetAutomationId(_signIn, "ChatModelSignIn");
+        _signIn.Click += OnSignIn;
+        Layout.Children.Add(_signIn);
         AttachEvents();
     }
 
@@ -87,13 +93,15 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
         _eventsAttached = true;
     }
 
-    internal void Update(ChatModelPickerProps props, Action<ChatModelChoice> select)
+    internal void Update(ChatModelPickerProps props, Action<ChatModelChoice> select, Action? signIn = null)
     {
         var rebuild = _props is null || !_props.Choices.SequenceEqual(props.Choices);
         var selectionChanged = _props?.CurrentModel != props.CurrentModel
             || _props?.CurrentProvider != props.CurrentProvider;
         _props = props;
         _select = select;
+        _requestSignIn = signIn;
+        _signIn.Visibility = props.SignIn is null ? Visibility.Collapsed : Visibility.Visible;
         AttachEvents();
         Width = Math.Min(320, Math.Max(200, props.AvailableWidth - 56));
         _list.IsEnabled = props.Enabled;
@@ -110,6 +118,7 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
     }
 
     private void OnSearchChanged(DependencyObject sender, DependencyProperty property) => Filter();
+    private void OnSignIn(object sender, RoutedEventArgs args) => _requestSignIn?.Invoke();
 
     private void Filter()
     {
@@ -203,6 +212,7 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
     {
         _props = null;
         _select = null;
+        _requestSignIn = null;
         if (_eventsAttached)
             _search.UnregisterPropertyChangedCallback(AutoSuggestBox.TextProperty, _textChangeToken);
         _search.QuerySubmitted -= OnQuerySubmitted;

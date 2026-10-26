@@ -1945,6 +1945,19 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ProcessRawMessage_LateUnknownRequestErrorNeverLogsProviderContent()
+    {
+        var logger = new TestLogger();
+        var helper = new GatewayClientTestHelper(logger);
+        helper.ProcessRawMessage("""
+            {"type":"res","id":"expired-model-auth-request","ok":false,
+             "error":{"code":"INVALID_REQUEST","message":"synthetic-secret-provider-content"}}
+            """);
+        Assert.Contains(logger.Logs, entry => entry.Contains("unknown or expired request", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Logs, entry => entry.Contains("synthetic-secret", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ProcessRawMessage_ChatEventLogsRawLengthWithoutPayloadContent()
     {
         var logger = new TestLogger();

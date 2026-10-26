@@ -86,7 +86,15 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.Contains("timeline.TurnActive || hasPendingQueuedSend", root);
         Assert.Contains("message.SendState is ChatQueuedMessageSendState.Queued or ChatQueuedMessageSendState.Sending", root);
         Assert.Contains(".IsEnabled(enabled)", composer);
-        Assert.Equal(3, Regex.Matches(composer, @"inputs\.CanChangeSessionOptions").Count);
+        Assert.Matches(
+            @"catalogModels, inputs\.CurrentThread\.Model, inputs\.CurrentThread\.ModelProvider,\s*inputs\.CanChangeSessionOptions\s*&& modelCatalogStatus is not ChatModelCatalogStatus\.Loading\s*and not ChatModelCatalogStatus\.Unavailable",
+            composer);
+        Assert.Matches(
+            "\"ChatComposerModelPicker\",\\s*inputs.ConnectionState == \"connected\"",
+            composer);
+        var picker = Read("src", "OpenClaw.Tray.WinUI", "Chat", "NativeChatModelPicker.cs");
+        Assert.Contains("_list.IsEnabled = props.Enabled;", picker);
+        Assert.Contains("if (!_props.Enabled || choice?.IsSelectable != true)", picker);
         Assert.Contains("var canChangeThinking = inputs.CanChangeSessionOptions", composer);
         Assert.Contains("var thinkingLevels = vm.ThinkingProfile?.Levels?.ToArray() ?? [];", composer);
     }
