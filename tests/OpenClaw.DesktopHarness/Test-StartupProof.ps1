@@ -39,6 +39,8 @@ $script:caller = [pscustomobject]@{
 $script:calls = [Collections.Generic.List[string]]::new()
 $script:rawFailed = $false; $script:cleanupOk = $true; $script:badStage = ''
 $script:badPreparation = $false
+$script:cleanupBlocked = $false
+$script:traceStopExit = 0; $script:traceBytes = 1024; $script:traceHash = 'c' * 64
 $ops = @{
     Preflight = { param($ctx) $script:calls.Add('preflight'); $script:caller }
     Enter = { param($ctx) $script:calls.Add('enter') }
@@ -52,7 +54,7 @@ $ops = @{
         param($ctx)
         $script:calls.Add('cleanup')
         @{ resourcesReaped = $script:cleanupOk; observerFailed = $script:rawFailed
-            executionBlocked = $false; attributionLimitationCount = if ($script:rawFailed) { 2 } else { 0 } }
+            executionBlocked = $script:cleanupBlocked; attributionLimitationCount = if ($script:rawFailed) { 2 } else { 0 } }
     }
 }
 function New-FixtureTrace([StartupTraceMode] $Mode) {
@@ -68,6 +70,7 @@ function New-FixtureTrace([StartupTraceMode] $Mode) {
         param($ctx,$mode)
         $script:calls.Add("stop:$mode")
         @{ stopped = $true; instanceAbsent = $true
+            stopExitCode = $script:traceStopExit; etlBytes = $script:traceBytes; etlSha256 = $script:traceHash
             traceStartsCounter = [int]($mode -eq [StartupTraceMode]::Record -and $script:calls.Contains('start:Record')) }
     })
 }
@@ -165,6 +168,16 @@ try {
     $unreaped = Invoke-Fixture 'unreaped-controller' 'Record' $dry
     Assert-Proof (!$unreaped.completed -and !$script:calls.Contains('start:Record')) 'Native resource cleanup alone cannot hide a live task, recorder or medium controller'
     $dry.controllerResourcesReaped = $true
+    $script:cleanupBlocked = $true
+    $script:rawFailed = $true
+    foreach ($mode in @('Disabled','Record')) {
+        $blocked = Invoke-Fixture "cleanup-blocked-$mode" $mode $dry
+        Assert-Proof (!$blocked.completed -and !$blocked.functionalContractsPassed -and
+            $blocked.resourcesReaped -and $blocked.traceInstanceAbsent -and $blocked.stages.Count -eq 3) `
+            "A blocking observation first found while draining cleanup must reject $mode despite three passing stages"
+    }
+    $script:cleanupBlocked = $false
+    $script:rawFailed = $false
     $badReceipt = $dry | ConvertTo-Json -Depth 30 | ConvertFrom-Json
     $badReceipt.completed = 'false'
     $malformed = Invoke-Fixture 'malformed-dry-status' 'Record' $badReceipt
@@ -224,6 +237,40 @@ param($LeaseId,$OutputDirectory,[switch]$GuestAuthorized)
         -RunRoot (Join-Path $root 'controller-record') -Run $e2eRecord `
         -TaskAbsent $true -MediumProcessExited $true -RecorderProcessExited $true
     Assert-Proof ($recordDriver.completed -and $recordDriver.traceStartsCounter -eq 1) 'Only the trace adapter changes after the fully finalized dry-run; the real controller finalizer also completes recording'
+    foreach ($field in @('observerExecutionBlocked','recordingOutputVerified')) {
+        $unsafeRecord = $e2eRecord | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+        $unsafeRecord.$field = $field -ceq 'observerExecutionBlocked'
+        $unsafeRoot = Join-Path $root "controller-reject-$field"
+        $null = New-Item -ItemType Directory $unsafeRoot
+        $rejected = $false
+        try {
+            Complete-StartupProofController -Config $config -Mode Record -RunRoot $unsafeRoot `
+                -Run $unsafeRecord -TaskAbsent $true -MediumProcessExited $true `
+                -RecorderProcessExited $true | Out-Null
+        } catch { $rejected = $true }
+        $unsafeDriver = Get-Content (Join-Path $unsafeRoot 'driver.json') -Raw | ConvertFrom-Json
+        Assert-Proof ($rejected -and !$unsafeDriver.completed -and $unsafeDriver.controllerResourcesReaped) `
+            "Controller must independently reject $field even when the run claims completion"
+    }
+    foreach ($fault in @('stop-failed','missing-etl','empty-etl','missing-hash')) {
+        $script:traceStopExit = if ($fault -ceq 'stop-failed') { 1 } else { 0 }
+        $script:traceBytes = if ($fault -in @('missing-etl','empty-etl')) { 0 } else { 1024 }
+        $script:traceHash = if ($fault -in @('missing-etl','missing-hash')) { $null } else { 'c' * 64 }
+        $failedRecording = Invoke-Fixture "recording-$fault" Record $frozen
+        Assert-Proof (!$failedRecording.completed -and $failedRecording.resourcesReaped -and
+            $failedRecording.traceInstanceAbsent -and $failedRecording.traceStartsCounter -eq 1) `
+            "Successful cancellation/cleanup cannot qualify a recording with $fault"
+        $rejected = $false
+        try {
+            Complete-StartupProofController -Config $config -Mode Record `
+                -RunRoot (Join-Path $root "recording-$fault") -Run $failedRecording `
+                -TaskAbsent $true -MediumProcessExited $true -RecorderProcessExited $true | Out-Null
+        } catch { $rejected = $true }
+        $failedDriver = Get-Content (Join-Path $root "recording-$fault\driver.json") -Raw | ConvertFrom-Json
+        Assert-Proof ($rejected -and !$failedDriver.completed -and $failedDriver.controllerResourcesReaped) `
+            "Controller finalization must retain cleanup success but reject $fault"
+    }
+    $script:traceStopExit = 0; $script:traceBytes = 1024; $script:traceHash = 'c' * 64
     Remove-Item $config.traceStartsFile
     $frozenHash = (Get-FileHash $config.dryRunReceipt).Hash
     foreach ($missing in @('task','medium','recorder')) {

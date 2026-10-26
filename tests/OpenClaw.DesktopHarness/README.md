@@ -342,12 +342,18 @@ Before recording:
    formatting and parsed receipts. It writes `DryRunReceipt.json` only after
    these pass. TraceStartsCounter remains **0**. Preserve every failed run;
    fix orchestration and repeat only the disabled run until it passes.
+   A blocking observation discovered while stopping and draining the observer
+   rejects completion even when all stages passed and resources were reaped.
+   Attribution-only observer failures remain limitations, not blocking failures.
 6. With the same immutable configuration, hashes, environment, actor and
    canonical argument layout, call the **same** entrypoint with `-Mode Record`
    and a new output `-RunRoot`. Both medium wrapper and elevated recorder
    independently validate the passed dry-run binding. A single-use reservation
    prevents a second recording. The trace-attempt ledger is written only at
    the actual WPR start boundary. No trace retry is authorized.
+   Recording completion additionally requires WPR stop exit code **0** and a
+   nonempty ETL with its SHA-256 receipt (`recordingOutputVerified=true`).
+   Cancellation and named-session absence establish cleanup, not a saved trace.
 
 The recording covers the full managed/SDK/ownership scenario within the
 unchanged 900-second recorder bound, rather than stopping before later

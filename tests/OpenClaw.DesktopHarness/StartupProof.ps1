@@ -63,6 +63,20 @@ class StartupTraceAdapter {
     [object] Stop([object] $context) { return (& $this.StopOperation $context $this.Mode) }
 }
 
+function Test-StartupRecordingOutput($Receipt) {
+    if ($null -eq $Receipt) { return $false }
+    foreach ($name in @('stopExitCode','etlBytes','etlSha256')) {
+        if ($Receipt -is [Collections.IDictionary]) {
+            if (!$Receipt.Contains($name)) { return $false }
+        } elseif (!$Receipt.PSObject.Properties[$name]) { return $false }
+    }
+    ($Receipt.stopExitCode -is [int] -or $Receipt.stopExitCode -is [long]) -and
+        $Receipt.stopExitCode -eq 0 -and
+        ($Receipt.etlBytes -is [int] -or $Receipt.etlBytes -is [long]) -and
+        $Receipt.etlBytes -gt 0 -and $Receipt.etlSha256 -is [string] -and
+        $Receipt.etlSha256 -cmatch '^[a-fA-F0-9]{64}$'
+}
+
 function Test-StartupProcessIdentity([int] $ExpectedPid, $CreationUtc, $ActualProcess) {
     try {
         return $null -ne $ActualProcess -and $ActualProcess.Id -eq $ExpectedPid -and
@@ -169,6 +183,9 @@ function Complete-StartupProofController {
         $Run.functionalContractsPassed -is [bool] -and $Run.functionalContractsPassed -and
         $Run.sourceHead -ceq $Config.sourceHead -and $Run.mode -ceq [string]$Mode -and
         $Run.traceStartsCounter -eq $counter -and $Run.traceInstanceAbsent -is [bool] -and
+        $Run.observerExecutionBlocked -is [bool] -and !$Run.observerExecutionBlocked -and
+        ($Mode -eq [StartupTraceMode]::Disabled -or
+            ($Run.recordingOutputVerified -is [bool] -and $Run.recordingOutputVerified)) -and
         $Run.traceInstanceAbsent -and $counter -eq [int]($Mode -eq [StartupTraceMode]::Record)
     $parsedRun = $null
     if ($validRun -and $reaped -and !$ErrorText -and $Mode -eq [StartupTraceMode]::Disabled) {
@@ -219,6 +236,7 @@ function Invoke-StartupProofRun {
     $stages = [Collections.Generic.List[object]]::new()
     $context = [pscustomobject]@{ config = $Config; output = $RunDirectory; bindingHash = $null }
     $entered = $false; $traceStopped = $false; $traceAbsent = $false
+    $recordingOutputVerified = $false
     $actualCounter = $TraceStartsCounter
     $errors = [Collections.Generic.List[string]]::new()
     $cleanup = $null; $binding = $null
@@ -270,6 +288,7 @@ function Invoke-StartupProofRun {
                 $cleanup.observerFailed -isnot [bool] -or $cleanup.executionBlocked -isnot [bool]) {
                 throw 'Wrapper resource cleanup not verified.'
             }
+            if ($cleanup.executionBlocked) { throw 'Blocking observer failure found during wrapper cleanup.' }
             if ($binding -and (Get-StartupBinding $Config $caller).digest -cne $binding.digest) {
                 throw 'Frozen artifacts or caller inputs changed during the wrapper.'
             }
@@ -284,9 +303,13 @@ function Invoke-StartupProofRun {
             $traceAbsent = $stopped.instanceAbsent
             $actualCounter = $stopped.traceStartsCounter
             if (!$traceStopped -or !$traceAbsent) { throw 'Exact trace instance cleanup not verified.' }
+            if ($Trace.Mode -eq [StartupTraceMode]::Record) {
+                $recordingOutputVerified = $actualCounter -eq 1 -and (Test-StartupRecordingOutput $stopped)
+                if (!$recordingOutputVerified) { throw 'Recording output requires a successful stop and a nonempty hashed ETL.' }
+            }
         } catch { $errors.Add($_.Exception.Message) }
     }
-    $functional = $stages.Count -eq 3 -and
+    $functional = $stages.Count -eq 3 -and $null -ne $cleanup -and !$cleanup.executionBlocked -and
         @($stages | Where-Object { !$_.contractVerified -or !$_.resourcesReaped -or $_.executionBlocked }).Count -eq 0
     $complete = $entered -and !$errors.Count -and $traceStopped -and $traceAbsent -and
         $null -ne $cleanup -and $cleanup.resourcesReaped
@@ -295,6 +318,7 @@ function Invoke-StartupProofRun {
         bindingHash = if ($binding) { $binding.digest } else { $null }
         sourceHead = $Config.sourceHead; runUrl = if ($binding) { $binding.runUrl } else { $null }
         functionalContractsPassed = [bool]$functional
+        recordingOutputVerified = [bool]$recordingOutputVerified
         resourcesReaped = [bool]($cleanup -and $cleanup.resourcesReaped)
         observerFailed = [bool]($cleanup -and $cleanup.observerFailed)
         observerExecutionBlocked = [bool]($cleanup -and $cleanup.executionBlocked)
