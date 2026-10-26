@@ -68,6 +68,20 @@ public sealed class NativeGatewaySetupUxContractTests
     }
 
     [Fact]
+    public void GatewayPreparationNeverReopensSharedLoadingScreenFromAiPage()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.SetupEngine.UI", "Pages", "AiSetupPage.xaml.cs"));
+        Assert.DoesNotContain("SetupLoadingGroup.GatewayPreparation", source);
+        var navigation = source[source.IndexOf("protected override void OnNavigatedTo", StringComparison.Ordinal)..
+            source.IndexOf("protected override void OnNavigatedFrom", StringComparison.Ordinal)];
+        Assert.Contains("_args.Preparation?.Take()", navigation);
+        Assert.DoesNotContain(".Loading?.Begin(", navigation);
+        Assert.Contains("SetupActivitySteps.Visibility = Visible(_activities.Count > 0", source);
+        Assert.Contains("SetupLoadingGroup.LocalAi", source);
+    }
+
+    [Fact]
     public void ConsoleFailureRecovery_IsIndependentOfWizardErrorAndSurvivesNormalStepClears()
     {
         // Retire when the WinUI wizard exposes a mounted log-failure interaction fixture.
@@ -179,11 +193,24 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("Onboarding_Native_InstallingPackage", source);
         Assert.Contains("Onboarding_Native_VerifyingPackage", source);
         Assert.DoesNotContain("Onboarding_Native_InstallerOpened", source);
-        Assert.Contains("NavigateToNativeAiSetup(session)", source);
+        Assert.Contains("NavigateToNativeAiSetup(session, prepared)", source);
+        Assert.True(source.IndexOf("GatewayAiPreparation.PrepareNativeAsync", StringComparison.Ordinal) <
+            source.IndexOf("NavigateToNativeAiSetup(session, prepared)", StringComparison.Ordinal));
         Assert.DoesNotContain("NavigateToNativeWizard", source);
-        Assert.Contains("new NativeGatewaySetupHost(ReportProgress, ReportStage)", source);
-        Assert.Contains("progressDispatcher.TryEnqueue", source);
-        Assert.Contains("if (IsLoaded && !cancellationToken.IsCancellationRequested)", source);
+        Assert.Contains("new NativeGatewaySetupHost(ReportProgress, ReportStage, log)", source);
+        Assert.Contains("void ReportProgress(string message)", source);
+        Assert.Contains("SetupLoadingView.DetailFor(step)", source);
+        Assert.Contains("GatewayAiPreparation.PrepareNativeAsync(session, cancellationToken, progress)", source);
+        Assert.DoesNotContain("BeginLoading(", source);
+        Assert.DoesNotContain("SetLoadingCancellation(", source);
+        Assert.Contains("IsLoaded && IsBusy && !cancellationToken.IsCancellationRequested", source);
+        Assert.Contains("_operationCts?.Token == cancellationToken", source);
+        Assert.Contains("if (DispatcherQueue.HasThreadAccess) Apply();", source);
+        Assert.Contains("DispatcherQueue.TryEnqueue(Apply)", source);
+        var stages = source[source.IndexOf("void ReportStage(", StringComparison.Ordinal)..
+            source.IndexOf("var progress =", StringComparison.Ordinal)];
+        Assert.Contains("NativeGatewaySetupStage.StartingGateway or NativeGatewaySetupStage.VerifyingEndpoint", stages);
+        Assert.Contains("SetCurrentStep(3)", stages);
         Assert.Contains("Unloaded += (_, _) => _operationCts?.Cancel()", source);
         Assert.True(source.IndexOf("if (SetupPreview.IsActive)", StringComparison.Ordinal) <
                     source.IndexOf("_operation = RunOperationAsync", StringComparison.Ordinal));
@@ -481,7 +508,9 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("WizardConsoleTail.CreateGatewayLogReader(", wizard);
         var focused = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "AiSetupPage.xaml.cs"));
         Assert.Contains("NativeSession is { IsIsolated: false }", focused);
-        Assert.Contains("WizardConsoleTail.CreateGatewayLogReader(transport.RequestAsync)", focused);
+        var preparation = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "NativeAiPreparation.cs"));
+        Assert.Contains("WizardConsoleTail.CreateGatewayLogReader(transport.RequestAsync)", preparation);
+        Assert.Contains("AttachIsolatedConsole(preparedConsole)", focused);
         Assert.Contains("Onboarding_Wizard_GatewayConsoleGap", focused);
         Assert.Contains("Onboarding_Wizard_GatewayConsoleUnavailable", focused);
         Assert.DoesNotContain("onboard", host);
@@ -518,16 +547,16 @@ public sealed class NativeGatewaySetupUxContractTests
         var route = window[start..window.IndexOf("internal async Task CancelNativeAiSetupAsync", start, StringComparison.Ordinal)];
         Assert.Contains("typeof(AiSetupPage)", route);
         Assert.DoesNotContain("WizardPage", route);
-        Assert.Contains("NativeGatewaySetupConnection.ConnectAsync(native, ct)", ai);
+        Assert.Contains("NativeGatewaySetupConnection.ConnectAsync(native, ct, _loading)", ai);
         Assert.Contains("await native.RestartAsync(token)", ai);
-        Assert.Contains("native.VerifyAsync(proof, ct)", window);
+        Assert.Contains("native.VerifyAsync(proof, ct, _finishingLoading)", window);
         Assert.Contains("native.CompleteVerifiedAsync(proof, _config.Capabilities, ct,", window);
         Assert.Contains("ReconcileNativeAsync", window);
         Assert.Contains("await afterVerification(connection, linked.Token)", session);
         Assert.DoesNotContain("MarkWizardCompleted", ai);
         Assert.DoesNotContain("MarkWizardCompleted", window);
         Assert.Contains("ConnectForFinalizationAsync", session);
-        Assert.Contains("await VerifyConnectionAsync(connection, proof, linked.Token)", session);
+        Assert.Contains("await VerifyConnectionAsync(connection, proof, linked.Token, progress)", session);
         Assert.Contains("registry.Save(beforePublication)", session);
         foreach (var file in new[] { Path.Combine(ui, "Pages", "AiSetupPage.xaml"),
                      Path.Combine(ui, "Controls", "ProviderSetupDialog.xaml") })

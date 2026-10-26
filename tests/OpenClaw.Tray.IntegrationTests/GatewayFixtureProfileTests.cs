@@ -1,6 +1,7 @@
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.GatewayFixtureHost;
+using OpenClaw.Shared;
 
 namespace OpenClaw.Tray.IntegrationTests;
 
@@ -118,6 +119,9 @@ public sealed class GatewayFixtureProfileTests
         Assert.Equal("49233", start.Environment["OPENCLAW_MCP_PORT"]);
         Assert.False(start.Environment.ContainsKey("OPENCLAW_ACCESSIBILITY_TEST_CHAT"));
         Assert.False(start.Environment.ContainsKey("OPENCLAW_FORCE_ONBOARDING"));
+        Assert.Equal(Path.Combine(profile.RunDirectory, "local"), start.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"]);
+        Assert.Equal(profile.SetupDirectory, GatewayFixtureIsolation.Get(
+            name => start.Environment.TryGetValue(name, out var value) ? value : null).LocalDataDirectory);
         Assert.False(start.Environment.ContainsKey("OPENCLAW_FUTURE_UNRECOGNIZED_OVERRIDE"));
         Assert.Equal("must-not-use", Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR"));
         Assert.Equal("must-not-use", Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR"));

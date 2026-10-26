@@ -39,6 +39,7 @@ public sealed class KokoroModelManager
     // Static so two managers over the same data directory coalesce against the
     // same in-flight download. Ordinal: pack ids are fixed catalog keys.
     private static readonly ConcurrentDictionary<string, Lazy<Task>> InFlightDownloads = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, DownloadProgressBroadcast> ProgressByPack = new(StringComparer.Ordinal);
 
     private static readonly string[] ChineseVoiceIds =
     [
@@ -154,13 +155,16 @@ public sealed class KokoroModelManager
     public bool IsVoiceReady(string? voiceId) =>
         FindPackForVoice(voiceId) is { } pack && IsPackDownloaded(pack.PackId);
 
+    /// <summary>True while a download of <paramref name="packId"/> is running in this process.</summary>
+    public static bool IsDownloadInProgress(string packId) => InFlightDownloads.ContainsKey(packId);
+
     /// <summary>
     /// Download and verify a voice pack. Reports progress as bytes downloaded
     /// across both files / <see cref="KokoroModelPackInfo.TotalSizeBytes"/>.
-    /// Per-pack single-flight: concurrent calls await the same download, and
-    /// cancelling one caller only cancels its wait.
+    /// Per-pack single-flight: concurrent calls await the same download, every
+    /// waiter receives its progress, and cancelling one caller only cancels its wait.
     /// </summary>
-    public Task DownloadPackAsync(
+    public async Task DownloadPackAsync(
         string packId,
         IProgress<(long downloaded, long total)>? progress = null,
         CancellationToken cancellationToken = default)
@@ -169,14 +173,27 @@ public sealed class KokoroModelManager
         if (IsPackDownloaded(pack.PackId))
         {
             _logger.Info($"Kokoro voice pack '{pack.PackId}' already downloaded");
-            return Task.CompletedTask;
+            return;
         }
 
-        return SingleFlightDownload.RunAsync(
-            InFlightDownloads,
-            pack.PackId,
-            token => DownloadPackCoreAsync(pack, progress, token),
-            cancellationToken);
+        var broadcast = ProgressByPack.GetOrAdd(pack.PackId, _ => new DownloadProgressBroadcast());
+        if (progress != null) broadcast.Subscribe(progress);
+        try
+        {
+            await SingleFlightDownload.RunAsync(
+                InFlightDownloads,
+                pack.PackId,
+                token =>
+                {
+                    broadcast.Reset();
+                    return DownloadPackCoreAsync(pack, broadcast, token);
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (progress != null) broadcast.Unsubscribe(progress);
+        }
     }
 
     private async Task DownloadPackCoreAsync(

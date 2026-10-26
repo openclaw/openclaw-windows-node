@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -22,6 +23,7 @@ internal static class OnboardingNativeProof
 {
     private static readonly Lazy<SourceIdentity> Source = new(ReadSourceIdentity);
     private static readonly string RunId = Guid.NewGuid().ToString("N");
+    internal static readonly TimeSpan OcrPassTimeout = TimeSpan.FromSeconds(30);
     private static readonly ConditionalWeakTable<Microsoft.UI.Xaml.Controls.Frame, NavigationCaptureState> NavigationStates = new();
     private static readonly List<string> DpiContextTrace = [];
 
@@ -235,8 +237,27 @@ internal static class OnboardingNativeProof
         var handle = Handle(window);
         AssertOwned(handle);
         window.Activate();
-        SetForegroundWindow(handle);
-        Assert.Equal(handle, GetForegroundWindow());
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            BringWindowToTop(handle);
+            SetForegroundWindow(handle);
+            if (GetForegroundWindow() == handle)
+                return;
+            Thread.Sleep(50);
+        }
+        var actual = GetForegroundWindow();
+        Assert.Fail($"Could not foreground the owned proof window. Expected {DescribeWindow(handle)}; actual {DescribeWindow(actual)}.");
+    }
+
+    private static string DescribeWindow(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero) return "HWND=0";
+        _ = GetWindowThreadProcessId(handle, out var processId);
+        var className = new StringBuilder(256);
+        var title = new StringBuilder(256);
+        _ = GetClassName(handle, className, className.Capacity);
+        _ = GetWindowText(handle, title, title.Capacity);
+        return $"HWND=0x{handle.ToInt64():X}, PID={processId}, class='{className}', title='{title}'";
     }
 
     internal static async Task AwaitManualForegroundAdmissionAsync(Window window, ITestOutputHelper output)
@@ -719,8 +740,7 @@ internal static class OnboardingNativeProof
         var decoder = await BitmapDecoder.CreateAsync(stream);
         static string Normalize(string text) => string.Concat(text.Where(char.IsLetterOrDigit)).ToLowerInvariant();
         using var originalBitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore);
-        using var originalTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        var original = await engine.RecognizeAsync(originalBitmap).AsTask(originalTimeout.Token);
+        var original = await RunOcrPassAsync(ct => engine.RecognizeAsync(originalBitmap).AsTask(ct));
         if (labels.All(label => Normalize(original.Text).Contains(Normalize(label), StringComparison.Ordinal)))
             return new(original.Text, original.Text, 1, decoder.PixelWidth, decoder.PixelHeight,
                 decoder.PixelWidth, decoder.PixelHeight, []);
@@ -737,8 +757,7 @@ internal static class OnboardingNativeProof
         };
         using var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore,
             transform, ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        var result = await engine.RecognizeAsync(bitmap).AsTask(timeout.Token);
+        var result = await RunOcrPassAsync(ct => engine.RecognizeAsync(bitmap).AsTask(ct));
         var missing = labels.Where(label => !Normalize(result.Text).Contains(Normalize(label), StringComparison.Ordinal)).ToArray();
         File.WriteAllText(Path.ChangeExtension(path, ".ocr.json"), JsonSerializer.Serialize(new
         {
@@ -753,6 +772,17 @@ internal static class OnboardingNativeProof
             Assert.Contains(label, new[] { "Set up your AI", "Set up a local model" });
         return new(original.Text, result.Text, factor, decoder.PixelWidth, decoder.PixelHeight,
             transform.ScaledWidth, transform.ScaledHeight, missing);
+    }
+
+    internal static async Task<T> RunOcrPassAsync<T>(
+        Func<CancellationToken, Task<T>> recognize, TimeProvider? timeProvider = null)
+    {
+        using var timeout = new CancellationTokenSource(OcrPassTimeout, timeProvider ?? TimeProvider.System);
+        try { return await recognize(timeout.Token); }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            throw new TimeoutException("Native-window proof OCR exceeded its 30-second pass deadline.");
+        }
     }
 
     private static SourceIdentity ReadSourceIdentity()
@@ -925,6 +955,11 @@ internal static class OnboardingNativeProof
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr window);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(
+        IntPtr window, StringBuilder className, int maxCount);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(
+        IntPtr window, StringBuilder title, int maxCount);
     [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(NativePoint point);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);

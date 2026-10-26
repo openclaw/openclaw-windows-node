@@ -23,7 +23,8 @@ public class SettingsManager
     private readonly string _settingsFilePath;
     private string? _persistedJson;
     private const string ProtectedSecretPrefix = "dpapi:";
-    private const int CurrentSettingsSchemaVersion = 1;
+    // v2: TTS provider migration (see MigrateTtsProvider).
+    private const int CurrentSettingsSchemaVersion = 2;
     private static readonly byte[] ProtectedSecretEntropy = Encoding.UTF8.GetBytes("OpenClawTray.Settings.v1");
     public const string AppThemeSystem = "System";
     public const string AppThemeLight = "Light";
@@ -200,6 +201,8 @@ public class SettingsManager
     public string TtsPiperVoiceId { get => string.IsNullOrWhiteSpace(_data.TtsPiperVoiceId) ? "en_US-amy-low" : _data.TtsPiperVoiceId; set => _data = _data with { TtsPiperVoiceId = value }; }
     /// <summary>Kokoro voice name, e.g. "af_maple".</summary>
     public string TtsKokoroVoiceId { get => string.IsNullOrWhiteSpace(_data.TtsKokoroVoiceId) ? KokoroModelManager.DefaultVoiceId : _data.TtsKokoroVoiceId; set => _data = _data with { TtsKokoroVoiceId = value }; }
+    /// <summary>Background download of the selected Kokoro voice pack; cleared when the user deletes the pack.</summary>
+    public bool TtsKokoroAutoDownload { get => _data.TtsKokoroAutoDownload; set => _data = _data with { TtsKokoroAutoDownload = value }; }
     // Local MCP HTTP server (independent of EnableNodeMode)
     public bool EnableMcpServer { get => _data.EnableMcpServer; set => _data = _data with { EnableMcpServer = value }; }
     // Automatic self-repair of app-owned setup-managed local WSL gateways (kill switch).
@@ -289,7 +292,7 @@ public class SettingsManager
                 var loaded = SettingsData.FromJson(json);
                 if (loaded != null)
                 {
-                    _data = NormalizeLoadedData(loaded, json);
+                    _data = NormalizeLoadedData(loaded, _settingsDirectory, json);
                 }
             }
             _persistedSystemRunEnabled = _data.NodeSystemRunEnabled;
@@ -374,6 +377,7 @@ public class SettingsManager
         HubNavPaneOpen = true,
         TtsPiperVoiceId = "en_US-amy-low",
         TtsKokoroVoiceId = KokoroModelManager.DefaultVoiceId,
+        TtsKokoroAutoDownload = true,
         EnableMcpServer = false,
         A2UIImageHosts = new(),
         HasSeenActivityStreamTip = false,
@@ -390,7 +394,7 @@ public class SettingsManager
         SandboxMaxOutputBytes = 4 * 1024 * 1024
     };
 
-    private SettingsData NormalizeLoadedData(SettingsData loaded, string? rawJson = null)
+    private SettingsData NormalizeLoadedData(SettingsData loaded, string settingsDirectory, string? rawJson)
     {
         using var document = rawJson is null ? null : JsonDocument.Parse(rawJson);
         var legacyScope = document is null ||
@@ -413,7 +417,7 @@ public class SettingsManager
             SttLanguage = string.IsNullOrWhiteSpace(loaded.SttLanguage) ? defaults.SttLanguage : loaded.SttLanguage,
             SttModelName = string.IsNullOrWhiteSpace(loaded.SttModelName) ? defaults.SttModelName : loaded.SttModelName,
             SttSilenceTimeout = loaded.SttSilenceTimeout > 0 ? loaded.SttSilenceTimeout : defaults.SttSilenceTimeout,
-            TtsProvider = string.IsNullOrWhiteSpace(loaded.TtsProvider) ? SettingsData.LegacyDefaultTtsProvider : loaded.TtsProvider,
+            TtsProvider = MigrateTtsProvider(loaded, settingsDirectory, defaults.TtsProvider),
             TtsElevenLabsApiKey = elevenLabs.Plaintext ?? defaults.TtsElevenLabsApiKey,
             TtsElevenLabsModel = loaded.TtsElevenLabsModel ?? defaults.TtsElevenLabsModel,
             TtsElevenLabsVoiceId = loaded.TtsElevenLabsVoiceId ?? defaults.TtsElevenLabsVoiceId,
@@ -479,6 +483,36 @@ public class SettingsManager
         }
 
         return data;
+    }
+
+    /// <summary>
+    /// Schema v1 files resolved a missing provider to Piper, and setup writes settings.json
+    /// without a provider, so fresh setup installs landed on Piper with no voice and spoke
+    /// through the Windows fallback. On the first v2 load a Piper choice with no downloaded
+    /// voice moves to Kokoro; a working Piper voice is kept, and later choices stick.
+    /// </summary>
+    private static string MigrateTtsProvider(SettingsData loaded, string settingsDirectory, string defaultProvider)
+    {
+        if (string.IsNullOrWhiteSpace(loaded.TtsProvider))
+            return defaultProvider;
+        if (loaded.SettingsSchemaVersion >= 2
+            || !string.Equals(loaded.TtsProvider.Trim(), TtsCapability.PiperProvider, StringComparison.OrdinalIgnoreCase))
+            return loaded.TtsProvider;
+
+        var piperVoiceId = string.IsNullOrWhiteSpace(loaded.TtsPiperVoiceId) ? "en_US-amy-low" : loaded.TtsPiperVoiceId;
+        try
+        {
+            if (new PiperVoiceManager(settingsDirectory, new AppLogger()).IsVoiceDownloaded(piperVoiceId))
+                return loaded.TtsProvider;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Piper voice check during settings migration failed: {ex.Message}");
+            return loaded.TtsProvider;
+        }
+
+        Logger.Info("Settings migration: Piper had no downloaded voice; TTS provider set to Kokoro");
+        return defaultProvider;
     }
 
     private static bool IsValidPort(int port) => port is >= 1 and <= 65535;
@@ -552,6 +586,7 @@ public class SettingsManager
         TtsWindowsVoiceId = string.IsNullOrWhiteSpace(TtsWindowsVoiceId) ? null : TtsWindowsVoiceId,
         TtsPiperVoiceId = TtsPiperVoiceId,
         TtsKokoroVoiceId = TtsKokoroVoiceId,
+        TtsKokoroAutoDownload = TtsKokoroAutoDownload,
         AppTheme = AppTheme,
         ShowDiagnostics = ShowDiagnosticsOverride,
         OpenTelemetryEndpoint = NormalizeOptionalString(OpenTelemetryEndpoint),

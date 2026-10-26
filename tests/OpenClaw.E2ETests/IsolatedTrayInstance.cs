@@ -82,8 +82,7 @@ internal sealed class IsolatedTrayInstance : IAsyncDisposable
 
     public (string? GatewayUrl, string? SharedGatewayToken, string? ActiveId) ReadActiveGatewayRecord()
     {
-        var gatewaysPath = Path.Combine(DataDir, "gateways.json");
-        using var doc = JsonDocument.Parse(File.ReadAllText(gatewaysPath));
+        using var doc = GatewayRegistryFile.Read(DataDir);
         var root = doc.RootElement;
         var activeId = root.TryGetProperty("activeId", out var activeIdElement)
             ? activeIdElement.GetString()
@@ -126,8 +125,7 @@ internal sealed class IsolatedTrayInstance : IAsyncDisposable
                 !string.IsNullOrWhiteSpace(node.GetString());
         }
 
-        var gatewaysPath = Path.Combine(DataDir, "gateways.json");
-        using var gatewaysDoc = ReadJsonDocumentWithRetry(gatewaysPath);
+        using var gatewaysDoc = GatewayRegistryFile.Read(DataDir);
         var hasBootstrap = false;
         if (gatewaysDoc.RootElement.TryGetProperty("gateways", out var gateways) &&
             gateways.ValueKind == JsonValueKind.Array)

@@ -59,7 +59,7 @@ public sealed class LocalAiOnboardingOwnershipTests
         Assert.Contains("ExpectedEndpointBinding = intent.Target.EndpointBinding", window);
         Assert.Contains("owner.ContinueInstalledNativeLocalAi();", progress);
         var start = page.IndexOf("if (_args.InstallAndUse is { IsConsumed: false } intent)", StringComparison.Ordinal);
-        var end = page.IndexOf("if (_localObservation is not null && _localExpectedModel is null)", start, StringComparison.Ordinal);
+        var end = page.IndexOf("if (initialNativePrepared && _isolatedConsole", start, StringComparison.Ordinal);
         var continuation = page[start..end];
         Assert.Contains("EnsureLocalAiCanStart(intent.Target.GatewayId)", continuation);
         Assert.Contains("await _localUse.UseInstalledAsync(intent", continuation);
@@ -72,7 +72,7 @@ public sealed class LocalAiOnboardingOwnershipTests
         Assert.Contains("LocalAiSelectionRejectedException or LocalAiStartFailedException", recovery);
         Assert.Contains("_localObservation!.RefreshAsync", recovery);
         Assert.Contains("TitleText.Text = S(\"Title.Text\")", recovery);
-        Assert.Contains("S(\"LocalStartFailed\") + \" \" + ex.Message", recovery);
+        Assert.Contains("ShowLocalAiStartFailure(startFailed)", recovery);
         Assert.Contains("await DetectAsync(ct)", recovery);
         Assert.DoesNotContain("DetectAsync", continuation[recoveryEnd..]);
         var navigation = page[page.IndexOf("protected override void OnNavigatedTo", StringComparison.Ordinal)..
@@ -98,7 +98,22 @@ public sealed class LocalAiOnboardingOwnershipTests
         var connect = initialize.IndexOf("await SetupGatewaySession.ConnectAsync", StringComparison.Ordinal);
         Assert.True(observation >= 0 && observation < connect);
         Assert.Contains("observationStarted = true;", initialize[observation..connect]);
-        Assert.Contains("else if (!observationStarted)", initialize[connect..]);
+        var optionalStart = initialize.LastIndexOf(
+            "if (!initialNativePrepared && _localObservation is not null && _localExpectedModel is null)", StringComparison.Ordinal);
+        var consoleStart = initialize.IndexOf(
+            "if (!initialNativePrepared && _args.NativeSession is { IsIsolated: true } isolated)", optionalStart, StringComparison.Ordinal);
+        Assert.True(optionalStart > connect && consoleStart > optionalStart);
+        var optionalObservation = initialize[optionalStart..consoleStart].Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert.Contains("if (!observationStarted)\n                " +
+            "AsyncEventHandlerGuard.Run(_localObservation.RefreshAsync, onError: ReportLocalObservationFailure);", optionalObservation);
+        Assert.DoesNotContain("await _localObservation.RefreshAsync", optionalObservation);
+        Assert.Equal(2, initialize.Split("AsyncEventHandlerGuard.Run(_localObservation.RefreshAsync",
+            StringSplitOptions.None).Length - 1);
+        Assert.True(initialize.IndexOf("localAi.ConfigureNative(", StringComparison.Ordinal) < optionalStart);
+        Assert.True(initialize.IndexOf("await StartIsolatedConsoleAsync", StringComparison.Ordinal) <
+            initialize.IndexOf("ApplyDetection(detection)", StringComparison.Ordinal));
+        Assert.Contains("AiSetupReadinessPresentation.ShowLocalChoice(", page);
+        Assert.Contains("state != LocalAiOnboardingState.Checking", page);
     }
 
     [Fact]
@@ -109,7 +124,7 @@ public sealed class LocalAiOnboardingOwnershipTests
         Assert.Contains("ISetupLocalAiHost? LocalAiHost", page);
         Assert.Contains("ReviewLocalAi: ReviewLocalAiAsync", window);
         Assert.Contains("await _localAiHost.RevalidateReviewAsync(selection, _lifetimeCts.Token)", window);
-        Assert.Contains("_localObservation = new(host)", page);
+        Assert.Contains("_localObservation ??= new(host)", page);
         Assert.DoesNotContain("ShowLocalAiSetupAsync", page + window);
         Assert.DoesNotContain("new SetupWindow(", page + window);
         Assert.DoesNotContain("new LlamaServerRuntimeService", page + window);
@@ -151,7 +166,7 @@ public sealed class LocalAiOnboardingOwnershipTests
         {
             var resources = System.Xml.Linq.XDocument.Parse(Read($@"src\OpenClaw.Tray.WinUI\Strings\{locale}\Resources.resw"));
             foreach (var key in new[] { "LocalState_ManagementBlocked", "LocalOwnershipMissing", "LocalOwnershipInvalid",
-                "LocalOwnershipUnavailable", "LocalOwnershipFiles" })
+                "LocalOwnershipUnavailable", "LocalOwnershipFiles", "OpenLocalAiLogs" })
             {
                 var value = Assert.Single(resources.Descendants("data"),
                     element => (string?)element.Attribute("name") == "Onboarding_AiSetup_" + key).Element("value")!.Value;
@@ -168,7 +183,10 @@ public sealed class LocalAiOnboardingOwnershipTests
         var progress = Read(@"src\OpenClaw.SetupEngine.UI\Pages\ProgressPage.xaml.cs");
         Assert.Contains("RootFrame.Content is AiSetupPage aiPage", window);
         Assert.Contains("Task.WhenAll(_aiPageCleanupTask, aiPage.CloseAsync())", window);
-        Assert.True(window.IndexOf("await _aiPageCleanupTask", StringComparison.Ordinal) <
+        Assert.Contains("await Task.WhenAll(\n                                " +
+            "_nativePageCleanupTask, _aiPageCleanupTask, _preparationTask,",
+            window.Replace("\r\n", "\n", StringComparison.Ordinal));
+        Assert.True(window.IndexOf("_completionPreparation?.CleanupCompleted ?? Task.CompletedTask", StringComparison.Ordinal) <
             window.IndexOf("_setupLock?.Dispose()", StringComparison.Ordinal));
         Assert.Contains("Page, IAsyncDisposable", progress);
         Assert.Contains("await _pipelineTask", progress);

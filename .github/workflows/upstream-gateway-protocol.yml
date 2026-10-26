@@ -1,0 +1,229 @@
+name: Upstream Gateway Protocol check
+
+on:
+  repository_dispatch:
+    types: [gateway-protocol-published]
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+    inputs:
+      report_only:
+        description: Collect live upstream evidence without updating the tracker or comments or starting Copilot tasks
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: upstream-gateway-protocol-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    if: ${{ github.repository == 'openclaw/openclaw-windows-node' && github.ref_name == github.event.repository.default_branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Test monitor without network or writes
+        run: node --test .github/scripts/upstream-gateway-protocol.test.cjs .github/scripts/gateway-capabilities.test.cjs
+      - name: Find last reviewed observation for cumulative deltas
+        id: previous
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { findBaseline } = require("./.github/scripts/upstream-gateway-publish.cjs");
+            const baseline = await findBaseline({ github, context });
+            if (baseline) {
+              core.setOutput("run", baseline.runId);
+              core.setOutput("fingerprint", baseline.fingerprint);
+            } else {
+              core.notice("No retained reviewed observation. Requesting a full baseline audit.");
+            }
+      - uses: actions/download-artifact@v8
+        if: ${{ steps.previous.outputs.run != '' }}
+        with:
+          name: upstream-gateway-protocol-report
+          path: ${{ runner.temp }}/previous-protocol
+          run-id: ${{ steps.previous.outputs.run }}
+          github-token: ${{ github.token }}
+      - name: Observe main, npm latest and published schema
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_REPORT: ${{ runner.temp }}/previous-protocol/report.json
+          BASELINE_FINGERPRINT: ${{ steps.previous.outputs.fingerprint }}
+          OUTPUT_DIR: ${{ runner.temp }}/upstream-protocol
+        run: node .github/scripts/upstream-gateway-protocol.cjs
+      - name: Report notification readiness without blocking polling
+        uses: actions/github-script@v9
+        env:
+          REPORT_DIR: ${{ runner.temp }}/upstream-protocol
+        with:
+          script: |
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const { notificationReadiness } = require("./.github/scripts/upstream-gateway-publish.cjs");
+            const readiness = await notificationReadiness({ github, context });
+            if (readiness.status !== "received") core.warning(readiness.message);
+            const evidence = readiness.runUrl ? `\n\n[Observed publication dispatch](${readiness.runUrl})` : "";
+            fs.appendFileSync(path.join(process.env.REPORT_DIR, "report.md"),
+              `\n## Notification readiness: ${readiness.status}\n\n${readiness.message}${evidence}\n`);
+            fs.writeFileSync(path.join(process.env.REPORT_DIR, "notification-readiness.json"),
+              JSON.stringify(readiness, null, 2) + "\n");
+      - name: Summarize observation
+        env:
+          REPORT: ${{ runner.temp }}/upstream-protocol/report.md
+        run: cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: upstream-gateway-protocol-report
+          path: ${{ runner.temp }}/upstream-protocol
+          if-no-files-found: error
+          retention-days: 90
+
+  observation-failure:
+    needs: [observe, publish, implement, welcome-copy]
+    if: ${{ always() && vars.UPSTREAM_GATEWAY_MONITOR_ENABLED == 'true' && (needs.observe.result == 'failure' || needs.publish.result == 'failure' || needs.implement.result == 'failure' || needs.welcome-copy.result == 'failure') && (github.event_name == 'schedule' || !inputs.report_only) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Record collection failures on the permanent tracker
+        uses: actions/github-script@v9
+        with:
+          retries: 0
+          script: |
+            const { publishFailure } = require("./.github/scripts/upstream-gateway-publish.cjs");
+            const number = await publishFailure({ github, context });
+            await core.summary.addRaw(`Monitor blocked. Tracker #${number}; no compatibility conclusion.`).write();
+
+  publish:
+    needs: observe
+    if: ${{ vars.UPSTREAM_GATEWAY_MONITOR_ENABLED == 'true' && (github.event_name == 'schedule' || !inputs.report_only) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    outputs:
+      issue: ${{ steps.publish.outputs.issue }}
+      action: ${{ steps.publish.outputs.action }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: upstream-gateway-protocol-report
+          path: ${{ runner.temp }}/upstream-protocol
+      - name: Reconcile candidate state on the permanent tracker
+        id: publish
+        uses: actions/github-script@v9
+        env:
+          REPORT: ${{ runner.temp }}/upstream-protocol/report.json
+        with:
+          retries: 0
+          script: |
+            const fs = require("node:fs");
+            const { publish } = require("./.github/scripts/upstream-gateway-publish.cjs");
+            const report = JSON.parse(fs.readFileSync(process.env.REPORT, "utf8"));
+            const result = await publish({ github, context, core, report });
+            core.setOutput("action", result.action);
+            if (result.issueNumber) core.setOutput("issue", String(result.issueNumber));
+            await core.summary.addRaw(`Tracker #${result.trackerNumber}: ${result.action}. Candidate: ${result.issueNumber ?? "none"}. An issue alone does not mean an agent started.`).write();
+
+  implement:
+    needs: publish
+    if: ${{ needs.publish.outputs.issue != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: upstream-gateway-protocol-report
+          path: ${{ runner.temp }}/upstream-protocol
+      - name: Reconcile or start investigation without an automatic PR
+        uses: actions/github-script@v9
+        env:
+          ISSUE_NUMBER: ${{ needs.publish.outputs.issue }}
+          REPORT: ${{ runner.temp }}/upstream-protocol/report.json
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        with:
+          retries: 0
+          script: |
+            const { handoff } = require("./.github/scripts/upstream-gateway-publish.cjs");
+            const report = JSON.parse(require("node:fs").readFileSync(process.env.REPORT, "utf8"));
+            // Per-request Authorization headers are overwritten by Octokit auth hooks.
+            // The action factory also preserves retries: 0 for non-idempotent task POSTs.
+            const copilot = process.env.COPILOT_GITHUB_TOKEN
+              ? getOctokit(process.env.COPILOT_GITHUB_TOKEN) : null;
+            const result = await handoff({ github, copilot, context, core, report, issueNumber: Number(process.env.ISSUE_NUMBER) });
+            await core.summary.addRaw(`Investigation handoff: ${result.state}. No automatic PR requested; inspect task disposition and any linked draft PR.`).write();
+      - name: Refresh tracker status after handoff
+        if: ${{ always() }}
+        uses: actions/github-script@v9
+        env:
+          REPORT: ${{ runner.temp }}/upstream-protocol/report.json
+        with:
+          retries: 0
+          script: |
+            const { publish } = require("./.github/scripts/upstream-gateway-publish.cjs");
+            const report = JSON.parse(require("node:fs").readFileSync(process.env.REPORT, "utf8"));
+            await publish({ github, context, core, report, createWork: false });
+
+  welcome-copy:
+    if: ${{ github.repository == 'openclaw/openclaw-windows-node' && github.ref_name == github.event.repository.default_branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Test welcome monitoring without network or writes
+        run: node --test .github/scripts/welcome-content-notification.test.cjs
+      - name: Compare welcome content and notify the permanent tracker
+        uses: actions/github-script@v9
+        env:
+          REPORT_ONLY: ${{ vars.UPSTREAM_GATEWAY_MONITOR_ENABLED != 'true' || (github.event_name == 'workflow_dispatch' && inputs.report_only) }}
+          REPORT_DIR: ${{ runner.temp }}/welcome-content
+        with:
+          retries: 0
+          script: |
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const { notifyWelcomeChange } = require("./.github/scripts/upstream-gateway-publish.cjs");
+            const result = await notifyWelcomeChange({ github, context, reportOnly: process.env.REPORT_ONLY !== "false" });
+            fs.mkdirSync(process.env.REPORT_DIR, { recursive: true });
+            fs.writeFileSync(path.join(process.env.REPORT_DIR, "report.json"), JSON.stringify(result, null, 2) + "\n");
+            await core.summary.addRaw(`Welcome copy: ${result.action}. Tracker #${result.trackerNumber}; ${result.changedKeys.length} changed locale/key pairs. No agent task or runtime copy change.`).write();
+      - uses: actions/upload-artifact@v7
+        with:
+          name: upstream-welcome-content-report
+          path: ${{ runner.temp }}/welcome-content
+          if-no-files-found: error
+          retention-days: 90

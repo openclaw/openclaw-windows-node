@@ -10,6 +10,17 @@ public sealed class NativeGatewayPackageClient
 {
     public const string IsolatedContract = "isolated-session-v1";
 
+    private static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromMinutes(3);
+
+    /// <summary>
+    /// A long startup override must not kill the start command at three minutes, and a short
+    /// override must not shorten setup or other package commands.
+    /// </summary>
+    internal static readonly TimeSpan CommandTimeout =
+        IsolatedGatewayRuntime.StartupTimeout > DefaultCommandTimeout
+            ? IsolatedGatewayRuntime.StartupTimeout
+            : DefaultCommandTimeout;
+
     private readonly Func<NativeGatewayPackage, IReadOnlyList<string>, string?, CancellationToken,
         Task<NativeGatewayCommandResult>> _invoke;
 
@@ -187,6 +198,32 @@ public sealed class NativeGatewayPackageClient
     public async Task StopAsync(NativeGatewayPackage package, CancellationToken cancellationToken) =>
         await RunLifecycleAsync(package, "stop", cancellationToken).ConfigureAwait(false);
 
+    public async Task<NativeGatewayDiagnosticsBundle> CollectLogsAsync(
+        NativeGatewayPackage package, CancellationToken cancellationToken)
+    {
+        // Without --output the package writes the ZIP under its own state root and reports the path.
+        NativeGatewayCommandResult result = await _invoke(
+            package, ["collect-logs", "--json"], null, cancellationToken).ConfigureAwait(false);
+        using JsonDocument document = Parse(result.StandardOutput);
+        JsonElement root = document.RootElement;
+        RequireIntegration(root, "collect-logs");
+        RequireSuccess(root, result.ExitCode);
+        JsonElement bundle = RequiredObject(root, "bundle");
+        string? path = null;
+        if (bundle.TryGetProperty("path", out JsonElement pathValue) && pathValue.ValueKind != JsonValueKind.Null)
+            path = pathValue.ValueKind == JsonValueKind.String ? pathValue.GetString() : throw Unsupported();
+        string included = RequiredString(bundle, "included");
+        var notes = new List<string>();
+        if (bundle.TryGetProperty("notes", out JsonElement entries))
+        {
+            if (entries.ValueKind != JsonValueKind.Array)
+                throw Unsupported();
+            foreach (JsonElement entry in entries.EnumerateArray())
+                notes.Add(entry.ValueKind == JsonValueKind.String ? entry.GetString()! : throw Unsupported());
+        }
+        return new NativeGatewayDiagnosticsBundle(path, included, notes);
+    }
+
     private async Task RunLifecycleAsync(
         NativeGatewayPackage package, string operation, CancellationToken cancellationToken)
     {
@@ -340,7 +377,7 @@ public sealed class NativeGatewayPackageClient
         CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromMinutes(3));
+        timeout.CancelAfter(CommandTimeout);
         Task<string> output = process.StandardOutput.ReadToEndAsync(timeout.Token);
         Task<string> error = process.StandardError.ReadToEndAsync(timeout.Token);
         try
@@ -364,7 +401,8 @@ public sealed class NativeGatewayPackageClient
                 await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             }
             cancellationToken.ThrowIfCancellationRequested();
-            throw new TimeoutException("The Gateway package did not respond within three minutes. Retry setup.");
+            throw new TimeoutException(
+                $"The Gateway package did not respond within {(int)CommandTimeout.TotalSeconds} seconds. Retry setup.");
         }
     }
 }

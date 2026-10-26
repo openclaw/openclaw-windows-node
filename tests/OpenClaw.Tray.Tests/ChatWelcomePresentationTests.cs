@@ -39,24 +39,6 @@ public sealed class ChatWelcomePresentationTests
     }
 
     [Fact]
-    public void WelcomeResources_ContainCompatibilityMessagesButNoCopiedCatalog()
-    {
-        string[] locales = ["en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw"];
-        foreach (var locale in locales)
-        {
-            var path = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src",
-                "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw");
-            var values = System.Xml.Linq.XDocument.Load(path).Root!.Elements("data")
-                .ToDictionary(element => (string)element.Attribute("name")!, element => (string)element.Element("value")!);
-            Assert.Equal(["Chat_Welcome_Failed", "Chat_Welcome_Loading", "Chat_Welcome_Unsupported"],
-                values.Keys.Where(key => key.StartsWith("Chat_Welcome_", StringComparison.Ordinal)).Order());
-            foreach (var key in new[] { "Chat_Welcome_Loading", "Chat_Welcome_Unsupported", "Chat_Welcome_Failed" })
-                Assert.False(string.IsNullOrWhiteSpace(values[key]));
-            Assert.False(string.IsNullOrWhiteSpace(values["Chat_ZeroState_RecentChats"]));
-        }
-    }
-
-    [Fact]
     public void RecentChats_UsesRecencyThenKeyAndCapsAtFive()
     {
         var threads = Enumerable.Range(0, 7)

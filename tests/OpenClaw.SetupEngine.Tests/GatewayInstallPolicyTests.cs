@@ -215,13 +215,83 @@ public sealed class GatewayInstallPolicyTests
         Assert.Equal("2026.8.1", config.Gateway.Version);
     }
 
-    [Fact]
-    public void ValidateAndApplyValidationPackage_RequiresExactVersion()
+    [Theory]
+    [InlineData("2026.10.22")]
+    [InlineData("2026.10.22-1")]
+    [InlineData("2026.10.22-beta.1")]
+    [InlineData("2026.10.22-alpha.1+build-local")]
+    public void ValidateAndApplyValidationPackage_AcceptsExactPackageVersion(string version)
     {
-        var config = new SetupConfig();
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = $" {version} ",
+                Selection = "recommended",
+                InstalledVersion = "2026.9.1"
+            }
+        };
+
+        GatewayInstallPolicy.ValidateAndApplyValidationPackage(config);
+
+        Assert.Equal(version, config.Gateway.Version);
+        Assert.Null(config.Gateway.Selection);
+        Assert.Null(config.Gateway.InstalledVersion);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("latest")]
+    [InlineData("beta")]
+    [InlineData("2026.13.1-beta.1")]
+    [InlineData("2026.10.22-beta.")]
+    public void ValidateAndApplyValidationPackage_RequiresExactVersion(string? version)
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig { Version = version }
+        };
 
         var error = Assert.Throws<GatewayCompatibilityException>(
             () => GatewayInstallPolicy.ValidateAndApplyValidationPackage(config));
+
+        Assert.Equal(GatewayCompatibilityFailureKind.InvalidPolicy, error.Kind);
+    }
+
+    [Fact]
+    public void ValidateAndApplyValidationPackage_RejectsCustomInstaller()
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                InstallUrl = "https://example.test/install.sh",
+                Version = "2026.10.22-beta.1"
+            }
+        };
+
+        var error = Assert.Throws<GatewayCompatibilityException>(
+            () => GatewayInstallPolicy.ValidateAndApplyValidationPackage(config));
+
+        Assert.Equal(GatewayCompatibilityFailureKind.InvalidPolicy, error.Kind);
+        Assert.Contains("official installer", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ValidateAndApply_CustomInstallerStillRequiresStableVersion()
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                InstallUrl = "https://example.test/install.sh",
+                Version = "2026.10.22-beta.1"
+            }
+        };
+
+        var error = Assert.Throws<GatewayCompatibilityException>(
+            () => GatewayInstallPolicy.ValidateAndApply(config));
 
         Assert.Equal(GatewayCompatibilityFailureKind.InvalidPolicy, error.Kind);
     }

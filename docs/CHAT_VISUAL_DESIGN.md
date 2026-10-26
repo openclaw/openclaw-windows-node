@@ -132,30 +132,13 @@ agent picker, without its adjacent labels. It is 96 pixels, or 64 pixels at view
 widths of 768 pixels and below. The existing `agents.list` response supplies the
 selected agent's image and emoji, with no new request or copied identity.
 
-Welcome copy comes from the connected Gateway's advertised, authenticated
-`controlUi.welcome.get` RPC, with `{ locale }` set to the app's UI language.
-Version 1 returns `requestedLocale`, `resolvedLocale`, `hint`,
-`recentChatsLabel`, and ordered `suggestions` containing `id`, `displayText`,
-and `sendText`. The Gateway derives this catalog from the same welcome key list
-and i18n sources as the web UI during its normal build. The native app does not
-bundle a second prompt list, pin a copy revision, fetch GitHub sources, or execute
-web assets. Unknown suggestion IDs and their supplied order work without a
-Companion update; clicking sends the exact advertised `sendText`.
-
-Content is fetched once per connection and discarded on disconnect. Reconnection
-loads the current Gateway's content, and epoch checks reject late responses and
-queued UI deliveries from the previous connection. The language is fixed for the
-provider lifetime, matching the app's startup-only language override. Missing
-method advertisement or an unknown-method response shows an explicit
-unavailable message, not stale copied prompts. Invalid catalogs and failed
-requests show a separate error with reconnect guidance. In either case the
-composer and recent-chat navigation remain usable; the native localized recent
-chat caption is used when a Gateway caption is unavailable. These compatibility
-messages are the only welcome copy maintained in native resources.
-
-The shared RPC requires the companion upstream Gateway change. Released Gateways
-without it, including the previously tested 2026.9.9 preview, use the explicit
-unavailable state until upgraded to a build containing that contract.
+Welcome guidance, the Recent chats label, and the four starter prompts are
+bundled in the app's native `.resw` resources for all six supported languages.
+They match the current web welcome copy, but Windows owns its presentation and
+updates the strings with the app. No welcome RPC, catalog download, or Gateway
+upgrade is required. Clicking a suggestion sends its displayed text through the
+normal chat send path. Copy uses the app's startup UI language and the existing
+Windows resource fallback, independently of the connected Gateway version.
 
 An authoritative empty chat also shows **Environment** and **Workspace** pickers
 above the writing surface. They use the same native toolbar chrome and searchable,

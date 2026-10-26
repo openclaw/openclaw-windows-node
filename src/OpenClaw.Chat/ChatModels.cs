@@ -280,23 +280,6 @@ public record ChatPermissionRequestEvent(string RequestId, string PermissionKind
 public record ChatModelChangedEvent(string Model) : ChatEvent;
 public record ChatRawEvent(string EventType, string? Text = null) : ChatEvent;
 
-public enum ChatWelcomeContentStatus
-{
-    Loading,
-    Available,
-    Unsupported,
-    Failed
-}
-
-public sealed record ChatWelcomeContent(
-    ChatWelcomeContentStatus Status,
-    ChatWelcomeCatalog? Catalog = null)
-{
-    public static ChatWelcomeContent Loading { get; } = new(ChatWelcomeContentStatus.Loading);
-    public static ChatWelcomeContent Unsupported { get; } = new(ChatWelcomeContentStatus.Unsupported);
-    public static ChatWelcomeContent Failed { get; } = new(ChatWelcomeContentStatus.Failed);
-}
-
 /// <remarks>
 /// <see cref="CurrentHistoryThreads"/> contains session keys whose history is authoritative for the current connection.
 /// Null means freshness is unknown, even when a cached timeline has HistoryLoaded.
@@ -314,7 +297,6 @@ public record ChatDataSnapshot(
     IReadOnlyDictionary<string, long>? TimelineGenerations = null,
     IReadOnlyDictionary<string, long>? HistoryRevisions = null,
     IReadOnlyDictionary<string, IReadOnlyList<ChatQueuedMessage>>? QueuedMessagesByThread = null,
-    ChatWelcomeContent? WelcomeContent = null,
     IReadOnlySet<string>? CurrentHistoryThreads = null);
 
 /// <summary>

@@ -730,14 +730,14 @@ extract the matching architecture archive and follow its instructions,
 including explicitly trusting the included public certificate.
 
 Unsigned Store submission packages, the multi-architecture bundle, and their
-metadata remain Actions artifacts only. Upload the unsigned bundle to Partner
-Center for one architecture-selecting submission. No production signing step
-is applied to those Store inputs.
+metadata remain Actions artifacts only. Use [Store submission](MICROSOFT_STORE.md)
+to upload the validated unsigned bundle from a successful release run. No
+production signing step is applied to those Store inputs.
 
-Store distribution remains paused: automatic Partner Center submission,
+Automatic Partner Center submission is staged behind `MSSTORE_ENABLED`.
 Store-signed retrieval and publication, and official lifecycle acceptance
-remain follow-up work in #1375. Release submission artifacts do not clear those
-rollout gates.
+remain release gates tracked in #1375. Submission automation and release
+artifacts do not clear those rollout gates.
 
 Store versions still end in `.0`. Official tagged builds now reserve distinct
 package versions as described below; reruns reuse the same reservation.
@@ -1061,3 +1061,7 @@ only receive a stable tag through the controlled promotion workflow above.
   `X.Y.Z-alpha.(N+1)`.
 - CI computes GitVersion outputs for artifact naming, while product builds use
   GitVersion-backed assembly metadata.
+
+## Automated Store submission
+
+See [Microsoft Store submission](MICROSOFT_STORE.md) for protected OIDC setup, manual submission from an existing release run, automatic activation, and recovery. Automatic submission remains off until the repository variable `MSSTORE_ENABLED` is `true`; the existing release and artifact handoffs are unchanged.

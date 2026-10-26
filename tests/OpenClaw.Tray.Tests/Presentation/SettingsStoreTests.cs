@@ -59,24 +59,64 @@ public sealed class SettingsStoreTests
     {
         using var store = NewStore(out var settings, out _, out var temp);
         using (temp)
-        using (var entered = new ManualResetEventSlim())
         using (var release = new ManualResetEventSlim())
         {
+            var timeout = TimeSpan.FromSeconds(5);
+            // The holder must outlast the writer-start wait plus the 150 ms window, so only the
+            // test's release can end it. A self-release would complete it during that window.
+            var holderTimeout = timeout * 2;
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var writingStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var path = Path.Combine(temp.Path, "settings.json");
             File.WriteAllText(path, """{"UnrelatedSentinel":"keep"}""");
             settings.Load();
             var setup = new SetupSettingsWriter(store);
-            var background = Task.Run(() => store.Update(null, editor =>
+            // Both writers block in production code, so they must not depend on available pool workers.
+            var background = Task.Factory.StartNew(() => store.Update(null, editor =>
             {
                 editor.NotificationSound = "background";
-                entered.Set();
-                if (!release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException();
-            }));
-            Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
-            var writing = Task.Run(() => setup.Apply(new Dictionary<string, bool> { ["NodeCameraEnabled"] = false }));
-            try { Assert.NotSame(writing, await Task.WhenAny(writing, Task.Delay(150))); }
-            finally { release.Set(); }
-            await Task.WhenAll(background, writing);
+                entered.SetResult();
+                if (!release.Wait(holderTimeout))
+                    throw new TimeoutException("The background settings writer was not released.");
+            }), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            Task? writing = null;
+            Exception? failure = null;
+            try
+            {
+                var ready = await Task.WhenAny(entered.Task, background).WaitAsync(timeout);
+                await ready;
+                writing = Task.Factory.StartNew(() =>
+                {
+                    writingStarted.SetResult();
+                    setup.Apply(new Dictionary<string, bool> { ["NodeCameraEnabled"] = false });
+                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                var started = await Task.WhenAny(writingStarted.Task, writing).WaitAsync(timeout);
+                await started;
+                Assert.False(background.IsCompleted);
+                Assert.NotSame(writing, await Task.WhenAny(writing, Task.Delay(150)));
+                Assert.False(background.IsCompleted);
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+                throw;
+            }
+            finally
+            {
+                release.Set();
+                // Join both workers before the fixtures are disposed. After an earlier failure, a
+                // worker fault is secondary and must not replace that failure.
+                var workers = Task.WhenAll(background, writing ?? Task.CompletedTask);
+                if (failure is null)
+                {
+                    await workers;
+                }
+                else
+                {
+                    await Task.WhenAny(workers);
+                    _ = workers.Exception;
+                }
+            }
             var saved = new SettingsManager(temp.Path);
             Assert.Equal("background", saved.NotificationSound);
             Assert.False(saved.NodeCameraEnabled);

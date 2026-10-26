@@ -40,6 +40,7 @@ public sealed partial class VoiceSettingsPage : Page
         {
             UpdateModelStatus();
             UpdateKokoroVoiceState();
+            JoinActiveKokoroDownload();
             UpdatePiperVoiceState();
         };
         Unloaded += async (_, _) =>
@@ -213,6 +214,10 @@ public sealed partial class VoiceSettingsPage : Page
         if (_suppressEvents || CurrentApp.Settings == null) return;
         // Use centralized SetChatSpeakerMuted which persists + broadcasts
         (App.Current as App)?.SetChatSpeakerMuted(!TtsResponseToggle.IsOn);
+        // The persisted save can start a Kokoro prefetch; attach this page to it
+        // like a provider change does.
+        JoinActiveKokoroDownload();
+        UpdateKokoroVoiceState();
     }
 
     private void OnAudioFeedbackToggled(object sender, RoutedEventArgs e)
@@ -633,6 +638,23 @@ public sealed partial class VoiceSettingsPage : Page
             CurrentApp.Settings.Save();
         }
         UpdateKokoroVoiceState();
+        JoinActiveKokoroDownload();
+    }
+
+    /// <summary>
+    /// Attach the download controls to a transfer already running for the selected
+    /// voice's pack (the background prefetch), so progress shows instead of "not downloaded".
+    /// Called on page load, voice selection, and any settings change that may have
+    /// started a prefetch (provider or TTS enable); never from a download's own
+    /// completion.
+    /// </summary>
+    private void JoinActiveKokoroDownload()
+    {
+        if (_kokoroDownloadCts != null) return;
+        if (KokoroVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
+        if (KokoroModelManager.FindPackForVoice(voiceId) is not { } pack) return;
+        if (!KokoroModelManager.IsDownloadInProgress(pack.PackId)) return;
+        OnKokoroDownloadClick(KokoroDownloadButton, new RoutedEventArgs());
     }
 
     private void UpdateKokoroVoiceState()
@@ -671,6 +693,12 @@ public sealed partial class VoiceSettingsPage : Page
         if (KokoroVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
         var pack = KokoroModelManager.FindPackForVoice(voiceId);
         if (pack == null) return;
+        if (!CurrentApp.Settings.TtsKokoroAutoDownload)
+        {
+            // An explicit download re-enables background fetching cleared by Delete.
+            CurrentApp.Settings.TtsKokoroAutoDownload = true;
+            CurrentApp.Settings.Save();
+        }
 
         using var downloadCts = new CancellationTokenSource();
         _kokoroDownloadCts = downloadCts;
@@ -765,6 +793,9 @@ public sealed partial class VoiceSettingsPage : Page
         {
             await KokoroSpeechEngine.Shared.UnloadAsync(pack.PackId);
             new KokoroModelManager(SettingsManager.SettingsDirectoryPath, new AppLogger()).DeletePack(pack.PackId);
+            // Keep the background prefetch from downloading the pack the user just removed.
+            CurrentApp.Settings.TtsKokoroAutoDownload = false;
+            CurrentApp.Settings.Save();
             UpdateKokoroVoiceState();
             KokoroStatusText.Text = L("VoiceSettingsPage_KokoroDeleted");
         }
@@ -1081,6 +1112,11 @@ public sealed partial class VoiceSettingsPage : Page
         }
         UpdateTtsProviderVisibility();
         UpdateCapabilityState();
+        // Save can start a background prefetch; attach so an in-flight download
+        // shows progress instead of a stale "not downloaded" panel (or refresh to
+        // the ready state when the transfer already finished).
+        JoinActiveKokoroDownload();
+        UpdateKokoroVoiceState();
     }
 
     private void OnOpenPermissionsClick(object sender, RoutedEventArgs e)

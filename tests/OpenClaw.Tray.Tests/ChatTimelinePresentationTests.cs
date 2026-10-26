@@ -27,7 +27,6 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains(".BorderThickness(0)", source);
         Assert.Contains("ChatVisuals.ToolbarButtonResources(resources)", source);
         Assert.Contains("Theme.Ref(\"ControlAltFillColorSecondaryBrush\")", source);
-        Assert.Contains("onSuggestionPicked?.Invoke(suggestion.Prompt)", source);
         Assert.Contains("!disabled && onSuggestionPicked is not null", source);
         Assert.Contains(".IsEnabled(enabled)", source);
     }

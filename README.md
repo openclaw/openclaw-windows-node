@@ -9,7 +9,9 @@
 
 The native Windows companion for [OpenClaw](https://github.com/openclaw/openclaw). Connect your PC to a gateway, chat with your agents, and choose which Windows capabilities they can use.
 
-[Download](https://docs.openclaw.ai/platforms/windows) | [Setup guide](docs/SETUP.md) | [Windows docs](https://docs.openclaw.ai/platforms/windows) | [Discord](https://discord.gg/clawd)
+[Download](https://docs.openclaw.ai/platforms/windows) | [Setup guide](docs/SETUP.md) | [Windows docs](https://docs.openclaw.ai/platforms/windows) | [Support](https://community.openclaw.ai/) | [Discord](https://discord.gg/clawd)
+
+For official OpenClaw support with installation, setup, or usage, visit [community.openclaw.ai](https://community.openclaw.ai/). Use GitHub issues for reproducible bugs and private security reporting for vulnerabilities.
 
 ## Install
 
@@ -194,6 +196,12 @@ The default local gateway URL is `ws://localhost:18789`.
 .\scripts\setup-dev.ps1 -CheckOnly
 .\scripts\setup-dev.ps1 -RunValidation
 ```
+
+Local x64 app builds also need Visual Studio's **C++ Redistributable Update**
+component (`Microsoft.VisualStudio.Component.VC.Redist.14.Latest`). Install or
+update it through the Visual Studio Installer. The standalone VC++ Redistributable
+does not provide the app-local DLLs that these builds copy. `-CheckOnly` checks
+the same runtime resolver as the app build and rejects a missing or outdated component.
 
 ### Build
 

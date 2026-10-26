@@ -62,6 +62,9 @@
                        TextAlignment="Center" />
             <TextBlock x:Name="StatusText" Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap"
                        TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
+            <TextBlock x:Uid="Onboarding_Ai_CompletionConsent"
+                       Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" TextAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <StackPanel x:Name="ProviderActivity" Spacing="16" Visibility="Collapsed">
                 <TextBlock x:Name="ProviderActivityStatus" Style="{StaticResource BodyTextBlockStyle}"
                            TextWrapping="Wrap" TextAlignment="Center"
@@ -73,7 +76,21 @@
         </StackPanel>
         <ScrollViewer x:Name="ChoicesScroller" Grid.Row="1" Margin="0,24,0,16" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="12">
-                <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error" />
+                <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error">
+                    <InfoBar.ActionButton>
+                        <Button x:Name="CloseBlockedSetupButton"
+                                Content="Close" Visibility="Collapsed" Click="CloseBlockedSetup_Click" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+                <StackPanel x:Name="LocalAiFailurePanel" Spacing="4" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="OnboardingLocalAiFailure">
+                    <TextBlock x:Name="LocalAiDiagnosticsText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               Visibility="Collapsed" FontSize="12" FontFamily="Cascadia Code,Consolas,monospace"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <HyperlinkButton x:Name="OpenLocalAiLogsButton" Padding="0" Visibility="Collapsed"
+                                     Click="OpenLocalAiLogs_Click"
+                                     AutomationProperties.AutomationId="OnboardingOpenLocalAiLogs" />
+                </StackPanel>
                 <ItemsControl x:Name="SetupActivitySteps" Visibility="Collapsed"
                               AutomationProperties.AutomationId="OnboardingAiProgress">
                     <ItemsControl.ItemTemplate>

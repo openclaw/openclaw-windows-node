@@ -102,6 +102,10 @@ controls. They verify:
 - Independent profiles, endpoints, tokens and preferences in two concurrent
   application instances. Stopping one must leave the other usable.
 - Repeated A/B session selection and session-specific visible histories.
+- Session-scoped configured model reads retain a current model outside the manual
+  selection policy. Its label and catalog-only reasoning remain available while
+  its picker row stays disabled. The fixture's omitted view uses `default`, like
+  the Gateway, so omitting `view: "configured"` cannot accidentally pass this case.
 - Natural initial-tail visibility of message 240 before any explicit scroll
   command, plus final-message visibility after scrolling at two window sizes.
 - Sessions/Settings/Configuration/Chat navigation, profile-only preference

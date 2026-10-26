@@ -10,10 +10,10 @@
     </Page.Resources>
     <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto">
         <StackPanel Spacing="4">
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Celebrating" HorizontalAlignment="Center" />
-            <TextBlock x:Uid="Onboarding_Ready_Heading" Text="Your AI is ready"
+            <controls:OnboardingMascot x:Name="MascotHero" Mood="Thinking" HorizontalAlignment="Center" />
+            <TextBlock x:Name="Heading" Text="Finishing setup"
                        Style="{StaticResource TitleTextBlockStyle}" TextAlignment="Center" TextWrapping="Wrap" />
-            <TextBlock x:Uid="Onboarding_Ready_Prompt" Text="What would you like to do first?"
+            <TextBlock x:Name="Prompt"
                        Style="{StaticResource BodyTextBlockStyle}" TextAlignment="Center" TextWrapping="Wrap" />
             <TextBlock x:Name="ModelSummary" Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" />
@@ -26,7 +26,7 @@
                                 Click="Return_Click" ContentTemplate="{StaticResource WrappedAction}" />
                     </InfoBar.ActionButton>
                 </InfoBar>
-                <StackPanel x:Name="Choices" Spacing="8">
+                <StackPanel x:Name="Choices" Spacing="8" Visibility="Collapsed">
                     <tk:SettingsCard x:Name="ChatChoice" x:Uid="Onboarding_Ready_Chat" Header="Talk to my agent"
                                      Description="Open Chat with your agent." Tag="Chat" IsClickEnabled="True" Click="Choose_Click"
                                      AutomationProperties.Name="Talk to my agent, recommended">

@@ -147,6 +147,9 @@ jobs:
     - name: Test repository triage automation and dashboard
       run: node --test .github/scripts/repository-triage.test.cjs .github/extensions/openclaw-triage-dashboard/triage-state.test.mjs
 
+    - name: Test upstream welcome copy monitoring
+      run: node --test .github/scripts/welcome-content-notification.test.cjs
+
     - name: Validate documentation
       shell: pwsh
       run: ./scripts/validate-docs.ps1
@@ -199,6 +202,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-migration-test-msix.ps1
 
+    - name: Validate Store migration helper fixtures
+      shell: pwsh
+      run: .\scripts\test-store-migration-test-script.ps1
+
     # installer.iss is only compiled for real in the tag-only release job, so a
     # Pascal Script error would otherwise be found at release time. The runner image
     # does not ship Inno Setup; the release job installs it the same way.
@@ -208,6 +215,12 @@ jobs:
     - name: Compile installer script
       shell: pwsh
       run: ./scripts/Test-InstallerScriptCompiles.ps1 -RequireCompiler
+
+    - name: Validate Store submission and source authorization
+      shell: pwsh
+      run: |
+        ./scripts/test-microsoft-store-submission.ps1
+        ./scripts/Test-StoreSubmissionSource.Tests.ps1
 
     - name: Validate Store MSIX bundle construction
       shell: pwsh
@@ -232,6 +245,10 @@ jobs:
     - name: Validate stable correction release ordering regressions
       shell: pwsh
       run: ./scripts/test-stable-correction-release-validator.ps1
+
+    - name: Validate release-candidate outcome classification
+      shell: pwsh
+      run: ./scripts/Resolve-ReleaseCandidateE2EOutcome.Tests.ps1
 
     - name: Validate alpha promotion policy and workflow
       shell: pwsh
@@ -2008,3 +2025,33 @@ jobs:
         . ./scripts/AlphaPromotion.ps1
         Publish-AlphaPromotion -Record ($env:PROMOTION_RECORD | ConvertFrom-Json) `
           -Directory promotion-assets -RunId $env:GITHUB_RUN_ID -PreparedAttempt $env:PREPARED_ATTEMPT
+
+  store-release-source:
+    name: Record authorized Store release source
+    needs: [metadata, release, publish-promotion, build-msix-bundle]
+    if: >-
+      ${{ !cancelled() && needs.metadata.outputs.isPrerelease == 'false' &&
+          needs.release.result == 'success' && needs.build-msix-bundle.result == 'success' &&
+          (needs.publish-promotion.result == 'success' || needs.publish-promotion.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: openclaw-msix-store-unsigned-bundle
+        path: store
+    - name: Bind Store bundle to published release
+      shell: pwsh
+      run: |
+        [ordered]@{
+          runId = $env:GITHUB_RUN_ID
+          runAttempt = $env:GITHUB_RUN_ATTEMPT
+          releaseTag = $env:OPENCLAW_RELEASE_TAG
+          sourceSha = $env:OPENCLAW_RELEASE_SOURCE_SHA
+          bundleSha256 = (Get-FileHash ./store/OpenClaw.msixbundle -Algorithm SHA256).Hash.ToLowerInvariant()
+        } | ConvertTo-Json | Set-Content store-source.json -Encoding utf8
+    - uses: actions/upload-artifact@v7
+      with:
+        name: store-release-source-${{ github.run_attempt }}
+        path: store-source.json
+        if-no-files-found: error
+        retention-days: 90

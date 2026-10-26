@@ -3033,7 +3033,7 @@ Use uma destas opções:
     <value>Bem-vindo ao OpenClaw</value>
   </data>
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
-    <value>Como posso ajudar você hoje?</value>
+    <value>Escolha onde esta sessão será executada e diga o que fazer.</value>
   </data>
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>Concluído</value>
@@ -3127,6 +3127,12 @@ Use uma destas opções:
   </data>
   <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
     <value>Modelo</value>
+  </data>
+  <data name="Chat_Composer_Model_Loading" xml:space="preserve">
+    <value>Carregando modelos…</value>
+  </data>
+  <data name="Chat_Composer_Model_Unavailable" xml:space="preserve">
+    <value>Modelos indisponíveis</value>
   </data>
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Raciocínio</value>
@@ -5711,6 +5717,9 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="ConnectionPage_InvalidUrl" xml:space="preserve">
     <value>URL inválida</value>
   </data>
+  <data name="ConnectionPage_SavedDashboardInvalidAddress" xml:space="preserve">
+    <value>Este endereço salvo do gateway não pode abrir o painel. Edite o gateway salvo e use um endereço http, https, ws ou wss.</value>
+  </data>
   <data name="ConnectionPage_ConnectionFailed" xml:space="preserve">
     <value>Falha na conexão</value>
   </data>
@@ -7486,6 +7495,7 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>Configurando a IA local</value></data>
   <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>O Gateway ou a disponibilidade da IA local mudou. Volte à conexão da IA e verifique novamente antes de instalar.</value></data>
   <data name="Onboarding_AiSetup_LocalStartFailed" xml:space="preserve"><value>A IA local não pôde iniciar. A limpeza foi concluída. Repare a IA local ou escolha outro provedor.</value></data>
+  <data name="Onboarding_AiSetup_OpenLocalAiLogs" xml:space="preserve"><value>Abrir logs da IA local</value></data>
   <data name="Onboarding_AiSetup_LocalState_Checking" xml:space="preserve"><value>Verificando este PC. Você ainda pode escolher um provedor de IA.</value></data>
   <data name="Onboarding_AiSetup_LocalState_SetUp" xml:space="preserve"><value>PC compatível. Revise a configuração antes de instalar.</value></data>
   <data name="Onboarding_AiSetup_LocalState_StartAndUse" xml:space="preserve"><value>Instalado, não está em execução</value></data>
@@ -7528,7 +7538,34 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Veja habilidades para seu agente. Nada é instalado automaticamente.</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Conectar canais</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram e mais. Você escolhe quando entrar.</value></data>
-  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Voltar à IA</value></data>
+  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Verificar prontidão novamente</value></data>
+  <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>Preparando suas opções de IA</value></data>
+  <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>Preparando o gateway</value></data>
+  <data name="Onboarding_Loading_StartGateway" xml:space="preserve"><value>Iniciando o gateway e verificando sua escuta...</value></data>
+  <data name="Onboarding_Loading_PairGateway" xml:space="preserve"><value>Pareando o Companion com o gateway...</value></data>
+  <data name="Onboarding_Loading_AcquireArtifacts" xml:space="preserve"><value>Obtendo os arquivos da IA local...</value></data>
+  <data name="Onboarding_Loading_ApplyCapabilities" xml:space="preserve"><value>Aplicando os recursos do Windows revisados...</value></data>
+  <data name="Onboarding_Loading_CheckConfiguration" xml:space="preserve"><value>Verificando a configuração salva do gateway...</value></data>
+  <data name="Onboarding_Loading_RestartGateway" xml:space="preserve"><value>Reiniciando o gateway configurado...</value></data>
+  <data name="Onboarding_Loading_CheckHealth" xml:space="preserve"><value>Verificando a integridade autenticada do gateway...</value></data>
+  <data name="Onboarding_Loading_ReconcileLocalAi" xml:space="preserve"><value>Reconciliando a configuração da IA local selecionada...</value></data>
+  <data name="Onboarding_Loading_PublishGateway" xml:space="preserve"><value>Salvando o perfil verificado do gateway...</value></data>
+  <data name="Onboarding_Loading_SaveSettings" xml:space="preserve"><value>Salvando suas opções de configuração...</value></data>
+  <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>Aplicando sua preferência de início ao entrar...</value></data>
+  <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>Iniciando os serviços do Companion antes da verificação final de IA...</value></data>
+  <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>Aguardando a recuperação do runtime de IA local selecionado...</value></data>
+  <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>Parando com segurança o runtime de IA local anterior...</value></data>
+  <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>Liberando a conexão e o runtime anteriores do gateway...</value></data>
+  <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>Verificando sua IA</value></data>
+  <data name="Onboarding_AiSetup_VerificationFailedTitle" xml:space="preserve"><value>Sua IA precisa de atenção</value></data>
+  <data name="Onboarding_AiSetup_ManagerRecoveryBlocked" xml:space="preserve"><value>A conexão do gateway mudou durante a configuração. Feche esta janela, verifique Conexão e reabra a configuração de IA para verificar o resultado salvo. Não repita a ação do provedor enquanto o resultado for incerto. O fechamento aguarda a conclusão de qualquer operação admitida.</value></data>
+  <data name="Onboarding_Finishing_Draining" xml:space="preserve"><value>Encerrando a operação de configuração anterior com segurança...</value></data>
+  <data name="Onboarding_Finishing_Restarting" xml:space="preserve"><value>Reiniciando o OpenClaw antes da verificação final...</value></data>
+  <data name="Onboarding_Finishing_Recovery" xml:space="preserve"><value>A configuração não está pronta. Use uma ação de recuperação disponível ou feche esta janela. Nenhuma ação de provedor será repetida automaticamente.</value></data>
+  <data name="Onboarding_Ai_CompletionConsent.Text" xml:space="preserve"><value>Selecionar uma IA ou continuar sua configuração autoriza o OpenClaw a concluir suas opções revisadas e reiniciar antes de mostrar Pronto.</value></data>
+  <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>Concluindo a configuração</value></data>
+  <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>Aplicando suas opções, reiniciando o OpenClaw e verificando sua IA. Isso pode levar alguns minutos.</value></data>
+  <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>A configuração precisa de atenção. Nenhuma ação de IA será repetida automaticamente. Feche esta janela, verifique o gateway salvo em Conexão e reabra explicitamente a configuração de IA para verificá-la.</value></data>
   <data name="Onboarding_Ready_Model" xml:space="preserve"><value>Modelo verificado: {0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>Verificando novamente o mesmo Gateway, agente e modelo...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>Concluindo suas opções de configuração do Windows...</value></data>
@@ -7544,7 +7581,7 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Não foi possível concluir a configuração do Windows. O destino não foi aberto. Tente novamente ou volte à configuração da IA.</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>O aplicativo não conseguiu abrir o destino escolhido. Escolha novamente para tentar. Nenhum login de canal foi iniciado.</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>Não foi possível abrir o destino escolhido</value></data>
-  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>Esta transferência de configuração expirou, já foi usada ou está indisponível. Reabra a configuração e verifique sua IA.</value></data>
+  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>Esta transferência de configuração foi interrompida, é incompatível, expirou ou já foi usada. Ela não pode ser repetida. Verifique o gateway salvo em Conexão e reabra explicitamente a configuração de IA para verificá-la. As ações anteriores não serão repetidas automaticamente.</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>O Gateway ou agente verificado mudou. Volte ao Gateway original e reabra a configuração da IA. Nenhuma outra conta foi aberta.</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>O Gateway verificado ou a página ainda não está pronto. Confira Connection e tente novamente explicitamente.</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Tentar novamente</value></data>
@@ -7823,6 +7860,15 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>Preparar seu perfil do Gateway</value></data>
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Iniciar e verificar o Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Tentar configurar novamente</value></data>
+  <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>Coletar diagnósticos do Gateway</value></data>
+  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>Ver log de configuração</value></data>
+  <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>Colete diagnósticos do Gateway para obter um ZIP com dados ocultados que você pode revisar ou compartilhar, ou abra um terminal dentro do Gateway isolado. Depois, escolha Tentar configurar novamente.</value></data>
+  <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>O Gateway não ficou pronto em {0} segundos. A primeira inicialização pode ser lenta. Colete diagnósticos do Gateway para ver o motivo e escolha Tentar configurar novamente. Para permitir uma inicialização mais longa, defina a variável de ambiente {1} com um número de segundos e reinicie o Companion.</value></data>
+  <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>Coletando diagnósticos do Gateway com dados ocultados...</value></data>
+  <data name="Onboarding_Native_DiagnosticsSaved" xml:space="preserve"><value>Diagnósticos do Gateway salvos em {0}.</value></data>
+  <data name="Onboarding_Native_DiagnosticsNoPath" xml:space="preserve"><value>O pacote Gateway coletou os diagnósticos, mas não informou onde os salvou.</value></data>
+  <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>Não foi possível coletar os diagnósticos do Gateway: {0}</value></data>
+  <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>Não foi possível abrir o terminal do Gateway: {0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Somente visualização. Nenhum pacote será instalado e nenhum Gateway será iniciado.</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Esses recursos do Windows ficam disponíveis após o Modo Nó se conectar e emparelhar com o Gateway. As permissões do Windows e as aprovações de comandos continuam sendo aplicáveis.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Gateway nativo configurado</value></data>
@@ -7986,7 +8032,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="WorkspaceShell_OpenDashboard" xml:space="preserve"><value>Open gateway dashboard</value></data>
   <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help</value></data>
   <data name="WorkspaceShell_Documentation" xml:space="preserve"><value>Documentation</value></data>
-  <data name="WorkspaceShell_Support" xml:space="preserve"><value>Get help</value></data>
+  <data name="WorkspaceShell_Support" xml:space="preserve"><value>Obter suporte</value></data>
   <data name="WorkspaceShell_Community" xml:space="preserve"><value>Community</value></data>
   <data name="WorkspaceShell_ReleaseNotes" xml:space="preserve"><value>Release notes</value></data>
   <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
@@ -8092,9 +8138,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>O perfil preferido {0} não cabe neste hardware. A configuração pode usar {1} com {2:N0} tokens de contexto. Revise este perfil na configuração antes de instalar.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Este perfil requer pelo menos {0} de RAM do sistema.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Este perfil requer pelo menos {0} livres nos volumes do cache de modelos e do mecanismo.</value></data>
-  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Carregando conteúdo de boas-vindas do seu Gateway...</value></data>
-  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>Este Gateway não fornece conteúdo de boas-vindas compartilhado. Você ainda pode iniciar uma conversa abaixo.</value></data>
-  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>Não foi possível carregar o conteúdo de boas-vindas. Reconecte para tentar novamente ou inicie uma conversa abaixo.</value></data>
   <data name="Chat_Placement_Unknown" xml:space="preserve">
     <value>Não verificado</value>
   </data>
@@ -8122,4 +8165,9 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>Esta sessão não está mais vazia, então a seleção de local pendente foi cancelada. Verifique a sessão e envie novamente para continuar no local atual.</value>
   </data>
+  <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>Obter suporte</value></data>
+  <data name="Chat_Welcome_WhatCanYouDo" xml:space="preserve"><value>O que você pode fazer?</value></data>
+  <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Resuma minhas sessões recentes</value></data>
+  <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Ajude-me a configurar um canal</value></data>
+  <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Verifique a integridade do sistema</value></data>
 </root>

@@ -1580,9 +1580,11 @@ public class OpenClawGatewayClientTests
         File.Copy(Path.Combine(replacementPath, "device-key-ed25519.json"),
             Path.Combine(identityPath, "device-key-ed25519.json"), true);
         Assert.Equal(signedId, client.AuthenticatedSigningDeviceId);
+        await client.CheckHealthAsync();
+        using var closeDeadline = new CancellationTokenSource(CloseHandshakeTimeout);
         var disconnect = client.DisconnectAsync();
-        await server.CloseSocketAsync(0).WaitAsync(CloseHandshakeTimeout);
-        await disconnect.WaitAsync(CloseHandshakeTimeout);
+        await server.CompleteClientCloseAsync(0, closeDeadline.Token);
+        await disconnect.WaitAsync(closeDeadline.Token);
         Assert.Null(client.AuthenticatedSigningDeviceId);
     }
 
@@ -3161,6 +3163,57 @@ public class OpenClawGatewayClientTests
         Assert.DoesNotContain(logger.Logs, log => log.Contains("super-secret", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData("config.changed")]
+    [InlineData("chat.metadata.changed")]
+    public void ProcessRawMessage_ModelMetadataEventsInvalidateCatalog(string eventName)
+    {
+        var helper = new GatewayClientTestHelper();
+        var invalidations = 0;
+        helper.Client.ModelCatalogInvalidated += (_, _) => invalidations++;
+
+        helper.ProcessRawMessage($$"""
+        { "type": "event", "event": "{{eventName}}", "payload": {} }
+        """);
+
+        Assert.Equal(1, invalidations);
+    }
+
+    [Fact]
+    public void ProcessRawMessage_ConfigurationChangesAreDistinctFromChatMetadataUpdates()
+    {
+        var helper = new GatewayClientTestHelper();
+        var changes = 0;
+        var catalogInvalidations = 0;
+        helper.Client.ConfigurationChanged += (_, _) => changes++;
+        helper.Client.ModelCatalogInvalidated += (_, _) => catalogInvalidations++;
+        helper.ProcessRawMessage("""
+        { "type": "event", "event": "chat.metadata.changed",
+          "payload": { "modelCatalogChanged": false, "authChanged": false } }
+        """);
+        Assert.Equal(0, changes);
+        Assert.Equal(1, catalogInvalidations);
+        helper.ProcessRawMessage("""
+        { "type": "event", "event": "config.changed", "payload": {} }
+        """);
+        Assert.Equal(1, changes);
+        Assert.Equal(2, catalogInvalidations);
+    }
+
+    [Fact]
+    public void ProcessRawMessage_SessionCatalogChangeInvalidatesCatalog()
+    {
+        var helper = new GatewayClientTestHelper();
+        var invalidations = 0;
+        helper.Client.ModelCatalogInvalidated += (_, _) => invalidations++;
+
+        helper.ProcessRawMessage("""
+        { "type": "event", "event": "sessions.changed", "payload": { "catalogChanged": true } }
+        """);
+
+        Assert.Equal(1, invalidations);
+    }
+
     [Fact]
     public void ParseModelsList_PreservesConfiguredFlagPresence()
     {
@@ -3169,7 +3222,7 @@ public class OpenClawGatewayClientTests
         var models = helper.ParseModelsListPayload("""
         {
           "models": [
-            { "id": "gpt-5.4", "configured": true },
+            { "id": "gpt-5.4", "configured": true, "manualSelectionAllowed": false },
             { "id": "gpt-5.5", "configured": false },
             { "id": "legacy-gateway-model" }
           ]
@@ -3183,18 +3236,21 @@ public class OpenClawGatewayClientTests
                 Assert.Equal("gpt-5.4", model.Id);
                 Assert.True(model.HasConfiguredFlag);
                 Assert.True(model.IsConfigured);
+                Assert.False(model.ManualSelectionAllowed);
             },
             model =>
             {
                 Assert.Equal("gpt-5.5", model.Id);
                 Assert.True(model.HasConfiguredFlag);
                 Assert.False(model.IsConfigured);
+                Assert.Null(model.ManualSelectionAllowed);
             },
             model =>
             {
                 Assert.Equal("legacy-gateway-model", model.Id);
                 Assert.False(model.HasConfiguredFlag);
                 Assert.False(model.IsConfigured);
+                Assert.Null(model.ManualSelectionAllowed);
             });
     }
 

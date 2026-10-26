@@ -1,0 +1,188 @@
+name: Submit Microsoft Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful release workflow run containing the authorized Store bundle
+        type: string
+        required: true
+  workflow_run:
+    workflows: [Build and Test, Promote alpha to stable]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: microsoft-store-submission
+  cancel-in-progress: false
+
+jobs:
+  source:
+    if: >-
+      github.repository == 'openclaw/openclaw-windows-node' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (vars.MSSTORE_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success'))
+    runs-on: ubuntu-latest
+    outputs:
+      eligible: ${{ steps.source.outputs.eligible }}
+      artifact_id: ${{ steps.source.outputs.artifact_id }}
+      bundle_name: ${{ steps.source.outputs.bundle_name }}
+      bundle_sha256: ${{ steps.source.outputs.bundle_sha256 }}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+    - name: Resolve authorized release artifact
+      id: source
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SOURCE_RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
+      run: |
+        $source = ./scripts/Get-StoreSubmissionSource.ps1 -RunId $env:SOURCE_RUN_ID
+        if ($null -eq $source) {
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { throw 'The selected run is not an eligible Store release.' }
+          'eligible=false' >> $env:GITHUB_OUTPUT
+          exit 0
+        }
+        'eligible=true' >> $env:GITHUB_OUTPUT
+        "artifact_id=$($source.artifactId)" >> $env:GITHUB_OUTPUT
+        "bundle_name=$($source.bundleName)" >> $env:GITHUB_OUTPUT
+        "bundle_sha256=$($source.bundleSha256)" >> $env:GITHUB_OUTPUT
+        "Store source: run $env:SOURCE_RUN_ID, artifact $($source.artifactId), bundle $($source.bundleName)" >> $env:GITHUB_STEP_SUMMARY
+
+  submit-microsoft-store:
+    needs: source
+    if: needs.source.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    environment: microsoft-store
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+
+    - name: Download verified Store bundle
+      uses: actions/download-artifact@v8
+      with:
+        artifact-ids: ${{ needs.source.outputs.artifact_id }}
+        run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+        github-token: ${{ github.token }}
+        merge-multiple: true
+        path: store
+
+    - name: Validate Microsoft Store environment
+      shell: pwsh
+      env:
+        MSSTORE_TENANT_ID: ${{ vars.MSSTORE_TENANT_ID }}
+        MSSTORE_CLIENT_ID: ${{ vars.MSSTORE_CLIENT_ID }}
+        MSSTORE_APPLICATION_ID: ${{ vars.MSSTORE_APPLICATION_ID }}
+      run: |
+        foreach ($name in @(
+            'MSSTORE_TENANT_ID'
+            'MSSTORE_CLIENT_ID'
+            'MSSTORE_APPLICATION_ID'
+        )) {
+          if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+            throw "The microsoft-store environment is missing $name."
+          }
+        }
+        foreach ($name in @('MSSTORE_TENANT_ID', 'MSSTORE_CLIENT_ID')) {
+          $value = [Environment]::GetEnvironmentVariable($name)
+          $parsed = [guid]::Empty
+          if (-not [guid]::TryParse($value, [ref]$parsed)) {
+            throw "$name must be a GUID."
+          }
+        }
+    - name: Request short-lived Microsoft Store assertion
+      id: oidc
+      shell: pwsh
+      run: |
+        $policy = Get-Content -LiteralPath .\store-submission.json -Raw |
+          ConvertFrom-Json
+        $requestUrl = $env:ACTIONS_ID_TOKEN_REQUEST_URL
+        $requestToken = $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN
+        if ([string]::IsNullOrWhiteSpace($requestUrl) -or
+            [string]::IsNullOrWhiteSpace($requestToken)) {
+          throw 'GitHub did not provide an OIDC token endpoint.'
+        }
+        $oidcRequestUri = .\scripts\New-GitHubOidcRequestUri.ps1 `
+          -RequestUri $requestUrl `
+          -Audience ([string]$policy.oidcAudience)
+        $response = Invoke-RestMethod `
+          -Headers @{ Authorization = "Bearer $requestToken" } `
+          -Uri $oidcRequestUri
+        $assertion = [string]$response.value
+        if ([string]::IsNullOrWhiteSpace($assertion)) {
+          throw 'GitHub returned an empty OIDC assertion.'
+        }
+        Write-Output "::add-mask::$assertion"
+        $assertionPath = Join-Path $env:RUNNER_TEMP 'msstore-assertion.jwt'
+        [IO.File]::WriteAllText($assertionPath, $assertion)
+        & chmod 600 $assertionPath
+        if ($LASTEXITCODE -ne 0) {
+          throw 'Unable to restrict the OIDC assertion file permissions.'
+        }
+        "assertion_path=$assertionPath" >> $env:GITHUB_OUTPUT
+
+    - name: Submit bundle and commit Store update
+      shell: pwsh
+      env:
+        MSSTORE_TENANT_ID: ${{ vars.MSSTORE_TENANT_ID }}
+        MSSTORE_CLIENT_ID: ${{ vars.MSSTORE_CLIENT_ID }}
+        MSSTORE_APPLICATION_ID: ${{ vars.MSSTORE_APPLICATION_ID }}
+        MSSTORE_ASSERTION_FILE: ${{ steps.oidc.outputs.assertion_path }}
+        EXPECTED_BUNDLE_NAME: ${{ needs.source.outputs.bundle_name }}
+        EXPECTED_BUNDLE_SHA256: ${{ needs.source.outputs.bundle_sha256 }}
+      run: |
+        [xml]$identityDocument = Get-Content ./src/OpenClaw.Tray.WinUI/Package.appxmanifest -Raw
+        $identityName = [string]$identityDocument.Package.Identity.Name
+        $publisher = [string]$identityDocument.Package.Identity.Publisher
+        $bundle = @(Get-ChildItem ./store -File -Filter *.msixbundle)
+        if ($bundle.Count -ne 1 -or $bundle[0].Name -cne $env:EXPECTED_BUNDLE_NAME) {
+          throw 'Downloaded Store artifact must contain the selected bundle.'
+        }
+        if ($env:EXPECTED_BUNDLE_SHA256 -and
+            (Get-FileHash $bundle[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $env:EXPECTED_BUNDLE_SHA256) {
+          throw 'Store bundle does not match the release witness.'
+        }
+        .\scripts\Submit-MicrosoftStore.ps1 `
+          -BundlePath $bundle[0].FullName `
+          -ApplicationId $env:MSSTORE_APPLICATION_ID `
+          -PackageIdentityName $identityName -Publisher $publisher `
+          -TenantId $env:MSSTORE_TENANT_ID `
+          -ClientId $env:MSSTORE_CLIENT_ID `
+          -ClientAssertionFile $env:MSSTORE_ASSERTION_FILE `
+          -PolicyPath .\store-submission.json `
+          -EvidencePath .\evidence\store-submission.json
+
+    - name: Upload Store submission evidence
+      if: ${{ always() }}
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-node-store-submission-evidence
+        path: evidence/store-submission.json
+        if-no-files-found: error
+        retention-days: 90
+
+    - name: Remove short-lived assertion
+      if: ${{ always() }}
+      shell: pwsh
+      env:
+        MSSTORE_ASSERTION_FILE: ${{ steps.oidc.outputs.assertion_path }}
+      run: |
+        if (-not [string]::IsNullOrWhiteSpace($env:MSSTORE_ASSERTION_FILE)) {
+          Remove-Item `
+            -LiteralPath $env:MSSTORE_ASSERTION_FILE `
+            -Force `
+            -ErrorAction SilentlyContinue
+        }

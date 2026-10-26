@@ -46,6 +46,9 @@ public sealed class ReleaseCandidateE2EWorkflowTests
             workflow);
         Assert.Contains("$candidateArtifactRunId -gt 9007199254740991", workflow);
         Assert.Contains("ref: ${{ inputs.windows_node_source_sha }}", workflow);
+        Assert.Contains("ref: ${{ inputs.windows_node_workflow_sha }}", workflow);
+        Assert.Contains("path: app-under-test", workflow);
+        Assert.Contains("working-directory: app-under-test", workflow);
         Assert.Contains("windows_node_source must be release or main.", workflow);
         Assert.Contains("main mode must not receive Windows-node release artifact inputs.", workflow);
         Assert.Contains("windows_node_source_sha must be a full lowercase Git SHA.", workflow);
@@ -100,13 +103,10 @@ public sealed class ReleaseCandidateE2EWorkflowTests
         var workflow = ReadWorkflow();
 
         Assert.Contains("outcome: ${{ steps.e2e.outputs.outcome }}", workflow);
-        Assert.Contains(
-            "$result.source -cnotin \"app.status.nodeError\", \"openclaw-tray.log.node_rx_error_code\"",
-            workflow);
-        Assert.Contains("$result.code -cne \"PROTOCOL_MISMATCH\"", workflow);
-        Assert.Contains("\"outcome=protocol_mismatch\" >> $env:GITHUB_OUTPUT", workflow);
-        Assert.Contains("\"outcome=passed\" >> $env:GITHUB_OUTPUT", workflow);
-        Assert.Contains("$executed -lt 1", workflow);
+        Assert.Contains("./scripts/Resolve-ReleaseCandidateE2EOutcome.ps1", workflow);
+        Assert.Contains("-AllowProtocolMismatch ($env:INPUT_ALLOW_PROTOCOL_MISMATCH -ceq \"true\")", workflow);
+        Assert.Contains("\"outcome=$outcome\" >> $env:GITHUB_OUTPUT", workflow);
+        Assert.Contains("FullyQualifiedName=OpenClaw.E2ETests.Setup.SetupAndConnectTests.FullSetup_SafeNodeInvocation_RoutesThroughRealGateway", workflow);
     }
 
     private static IEnumerable<string> ExtractRunBlocks(string workflow)

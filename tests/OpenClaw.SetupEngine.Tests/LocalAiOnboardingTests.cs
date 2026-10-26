@@ -190,6 +190,30 @@ public sealed class LocalAiOnboardingTests
         Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingHardware], stages);
     }
 
+    [Fact]
+    public async Task InitialObservationCancellationFencesLateSnapshotAndExplicitRefreshHasItsOwnLifetime()
+    {
+        var first = new TaskCompletionSource<LocalAiOnboardingSnapshot>();
+        var host = new ObservationHost(first.Task, Task.FromResult(new LocalAiOnboardingSnapshot(
+            LocalAiOnboardingState.SetUp, Target)));
+        await using var observation = new LocalAiOnboardingObservation(host);
+        using var initial = new CancellationTokenSource();
+        var notifications = 0;
+        observation.Changed += () => notifications++;
+        var pending = observation.RefreshAsync(null, initial.Token);
+        initial.Cancel();
+        Assert.True(host.Tokens[0].IsCancellationRequested);
+        first.SetResult(new(LocalAiOnboardingState.Use, Target));
+        await pending;
+        Assert.Equal(LocalAiOnboardingState.Checking, observation.Snapshot.State);
+        Assert.Equal(1, notifications);
+        await observation.RefreshAsync();
+        Assert.False(host.Tokens[1].IsCancellationRequested);
+        Assert.Equal(LocalAiOnboardingState.SetUp, observation.Snapshot.State);
+        Assert.Equal(3, notifications);
+        Assert.Equal(0, host.Mutations);
+    }
+
     [Theory]
     [InlineData(LocalAiRuntimeState.Stopped, LocalAiOnboardingState.StartAndUse)]
     [InlineData(LocalAiRuntimeState.Healthy, LocalAiOnboardingState.Use)]
@@ -257,8 +281,8 @@ public sealed class LocalAiOnboardingTests
             ModelId = source.RepositoryId + "@" + source.RevisionSha,
             ModelAsset = mismatchedWeights ? Receipt(model.Weights) with { Sha256 = new string('a', 64) } : Receipt(model.Weights),
             ModelCacheRoot = cache, CachedModelPath = Snapshot(model.Weights),
-            AdditionalModelAssets = [Receipt(model.Recipe.DraftWeights!)],
-            AdditionalModelPaths = [Snapshot(model.Recipe.DraftWeights!)],
+            AdditionalModelAssets = LocalModelCatalog.AdditionalArtifacts(model).Select(Receipt).ToImmutableArray(),
+            AdditionalModelPaths = LocalModelCatalog.AdditionalArtifacts(model).Select(Snapshot).ToImmutableArray(),
             ContextLength = contextTokens, KeyCachePrecision = profile.KeyCachePrecision,
             ValueCachePrecision = profile.ValueCachePrecision, DraftKeyCachePrecision = profile.DraftKeyCachePrecision,
             DraftValueCachePrecision = profile.DraftValueCachePrecision,
@@ -921,6 +945,8 @@ public sealed class LocalAiOnboardingTests
         public int WithdrawOnlyCalls { get; private set; }
         public Action? OnStart { get; init; }
         public Func<Task>? OnStartAsync { get; init; }
+        public Func<IProgress<LocalAiRuntimeStartStage>?, Task>? OnStartWithProgressAsync { get; init; }
+        public Action? AfterStart { get; set; }
         public LocalAiRuntimeSnapshot? StartResult { get; init; }
         public LocalAiRuntimeSnapshot Snapshot { get; set; } = snapshot;
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged { add { } remove { } }
@@ -928,13 +954,20 @@ public sealed class LocalAiOnboardingTests
             EnsureStartedAsync(cancellationToken);
         public Task<LocalAiRuntimeSnapshot> ReconcileStoppedAsync(CancellationToken cancellationToken = default)
         { WithdrawOnlyCalls++; return Task.FromResult(Snapshot); }
-        public async Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default)
+        public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
+            EnsureStartedAsync(cancellationToken, null);
+        public async Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken,
+            IProgress<LocalAiRuntimeStartStage>? progress)
         {
+            progress?.Report(LocalAiRuntimeStartStage.StartingRuntime);
             Calls++;
             OnStart?.Invoke();
             Snapshot = StartResult ?? Snapshot;
             if (OnStartAsync is not null) await OnStartAsync();
-            return Snapshot;
+            if (OnStartWithProgressAsync is not null) await OnStartWithProgressAsync(progress);
+            var result = Snapshot;
+            AfterStart?.Invoke();
+            return result;
         }
         public Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Observation must not stop a runtime.");

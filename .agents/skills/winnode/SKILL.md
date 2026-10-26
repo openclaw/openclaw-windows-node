@@ -359,6 +359,9 @@ where `readiness` ∈ `"ready" | "initializing" | "model-downloading" | "model-n
 Five providers - Kokoro (local neural via kokoro.cpp, default), Piper (local
 neural via Sherpa-ONNX), Windows built-in speech, ElevenLabs (cloud), and
 MiniMax (cloud). Provider + per-provider voice are configured in tray Settings.
+While Kokoro is the provider and TTS is enabled, the tray downloads the selected
+Kokoro voice pack in the background on unmetered connections; until it is ready,
+`tts.status` reports `voice-not-downloaded` and speech falls back to Windows.
 
 ### tts.speak
 Speak text aloud on the Windows node.

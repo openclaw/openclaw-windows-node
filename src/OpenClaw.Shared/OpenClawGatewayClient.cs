@@ -236,6 +236,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         Volatile.Write(ref _handshakeConnectionGeneration, 0);
         Volatile.Write(ref _hasHandshakeSnapshot, false);
         Volatile.Write(ref _advertisedServerMethods, Array.Empty<string>());
+        Volatile.Write(ref _advertisedServerCapabilities, Array.Empty<string>());
         Interlocked.Increment(ref _serverHandshakeGeneration);
         _pendingRequests.Drain(
             new GatewayConnectionLostException(
@@ -280,6 +281,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<JsonElement>? CronRunsUpdated;
     public event EventHandler<JsonElement>? SkillsStatusUpdated;
     public event EventHandler<JsonElement>? ConfigUpdated;
+    public event EventHandler? ConfigurationChanged;
     public event EventHandler<JsonElement>? ConfigSchemaUpdated;
 
     /// <summary>
@@ -295,6 +297,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<PairingListInfo>? NodePairListUpdated;
     public event EventHandler<DevicePairingListInfo>? DevicePairListUpdated;
     public event EventHandler<ModelsListInfo>? ModelsListUpdated;
+    public event EventHandler? ModelCatalogInvalidated;
     public event EventHandler<PresenceEntry[]>? PresenceUpdated;
     public event EventHandler<JsonElement>? AgentsListUpdated;
     public event EventHandler<JsonElement>? AgentFilesListUpdated;
@@ -354,8 +357,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public long? SessionMutationConnectionEpoch =>
         TryGetReadyConnectionGeneration(out var generation) ? generation : null;
     private string[] _advertisedServerMethods = [];
+    private string[] _advertisedServerCapabilities = [];
     private long _serverHandshakeGeneration;
     public IReadOnlyList<string> AdvertisedServerMethods => Array.AsReadOnly(Volatile.Read(ref _advertisedServerMethods));
+    public IReadOnlyList<string> AdvertisedServerCapabilities =>
+        Array.AsReadOnly(Volatile.Read(ref _advertisedServerCapabilities));
     public long ServerHandshakeGeneration => Interlocked.Read(ref _serverHandshakeGeneration);
     public int? LastRemoteCloseStatusCode => RemoteCloseStatusCode;
 
@@ -1792,6 +1798,28 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         ModelsListUpdated?.Invoke(this, MergeModelCatalog(configured, catalog));
     }
 
+    public async Task<ModelsListInfo?> RequestSessionModelsListAsync(string sessionKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
+        if (!AdvertisedServerCapabilities.Contains(
+                "session-scoped-model-catalog",
+                StringComparer.Ordinal))
+        {
+            return null;
+        }
+
+        object parameters = AdvertisedServerCapabilities.Contains(
+            "published-model-catalog",
+            StringComparer.Ordinal)
+            ? new { sessionKey, view = "configured", includeDetails = true }
+            : new { sessionKey, view = "configured" };
+        var payload = await SendWizardRequestAsync(
+            "models.list",
+            parameters,
+            timeoutMs: 10000);
+        return ParseModelsListPayload(payload);
+    }
+
     // Node/Device pairing
 
     public async Task RequestNodePairListAsync()
@@ -2565,6 +2593,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             _operatorDeviceId = TryGetHandshakeDeviceId(payload);
             _grantedOperatorScopes = TryGetHandshakeScopes(payload);
             Volatile.Write(ref _advertisedServerMethods, GatewayServerMethodAdvertisement.Parse(payload));
+            Volatile.Write(
+                ref _advertisedServerCapabilities,
+                GatewayServerMethodAdvertisement.ParseCapabilities(payload));
             Interlocked.Increment(ref _serverHandshakeGeneration);
             // Write the key first, then publish the readiness flag. Pair with
             // Volatile.Read on the public getters so a reader observing
@@ -3575,16 +3606,32 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     TryParsePresenceFromBroadcast(presPayload);
                 break;
             case "sessions.changed":
-                if (root.TryGetProperty("payload", out var sessionChange) &&
-                    sessionChange.ValueKind == JsonValueKind.Object &&
-                    sessionChange.TryGetProperty("reason", out var changeReason) &&
-                    changeReason.ValueKind == JsonValueKind.String &&
-                    changeReason.GetString() == "profile-identity")
-                    SelfProfileChanged?.Invoke(this, EventArgs.Empty);
+                if (root.TryGetProperty("payload", out var sessionChange)
+                    && sessionChange.ValueKind == JsonValueKind.Object)
+                {
+                    if (sessionChange.TryGetProperty("reason", out var changeReason)
+                        && changeReason.ValueKind == JsonValueKind.String
+                        && changeReason.GetString() == "profile-identity")
+                    {
+                        SelfProfileChanged?.Invoke(this, EventArgs.Empty);
+                    }
+                    if (sessionChange.TryGetProperty("catalogChanged", out var catalogChanged)
+                        && catalogChanged.ValueKind == JsonValueKind.True)
+                    {
+                        ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
+                    }
+                }
                 // Gateway broadcasts this after session mutations (patch, send, etc.).
                 // Re-request the full sessions list so we pick up model/thinking changes.
                 _logger.Info("[EVENT] sessions.changed received — refreshing sessions list");
                 _ = RequestSessionsAsync();
+                break;
+            case "config.changed":
+                ConfigurationChanged?.Invoke(this, EventArgs.Empty);
+                ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
+                break;
+            case "chat.metadata.changed":
+                ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
                 break;
             case "cron":
                 // Gateway pushes cron events when jobs run/change — refresh the list
@@ -5500,7 +5547,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 HasConfiguredFlag = hasConfiguredFlag,
                 IsDefault = ReadBool(item, "default", "isDefault"),
                 IsAvailable = available,
-                RequiresAuth = ReadBool(item, "requiresAuth", "authRequired", "needsAuth", "authNeeded")
+                RequiresAuth = ReadBool(item, "requiresAuth", "authRequired", "needsAuth", "authNeeded"),
+                ManualSelectionAllowed = TryReadBool(item, out var manualSelectionAllowed, "manualSelectionAllowed")
+                    ? manualSelectionAllowed
+                    : null
             };
             if (!string.IsNullOrEmpty(model.Id))
                 info.Models.Add(model);
@@ -5541,6 +5591,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 configuredModel.ContextTokens ??= source.ContextTokens;
                 configuredModel.IsDefault |= source.IsDefault;
                 configuredModel.RequiresAuth |= source.RequiresAuth;
+                configuredModel.ManualSelectionAllowed ??= source.ManualSelectionAllowed;
                 if (configuredModel.ThinkingContext?.Profile is null
                     && string.Equals(GetModelIdentity(configuredModel), GetModelIdentity(source), StringComparison.Ordinal)
                     && new ThinkingIdentity(RuntimeId: configuredModel.ThinkingContext?.Identity.RuntimeId)
@@ -5575,7 +5626,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         HasConfiguredFlag = source.HasConfiguredFlag,
         IsDefault = source.IsDefault,
         IsAvailable = source.IsAvailable,
-        RequiresAuth = source.RequiresAuth
+        RequiresAuth = source.RequiresAuth,
+        ManualSelectionAllowed = source.ManualSelectionAllowed
     };
 
     private static string GetModelIdentity(ModelInfo model)

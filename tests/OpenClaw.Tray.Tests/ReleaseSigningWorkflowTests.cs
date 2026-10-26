@@ -187,7 +187,11 @@ public sealed class ReleaseSigningWorkflowTests
     {
         var start = workflow.IndexOf("    - name: Create Release", StringComparison.Ordinal);
         Assert.True(start >= 0, "Could not find Create Release step.");
-        return workflow[start..];
+        var nextBoundary = System.Text.RegularExpressions.Regex.Match(
+            workflow[(start + 1)..], @"(?m)^(?:    - |  [A-Za-z0-9_-]+:)");
+        return nextBoundary.Success
+            ? workflow[start..(start + 1 + nextBoundary.Index)]
+            : workflow[start..];
     }
 
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenClaw.Shared;
+using OpenClaw.TestSupport;
 using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
@@ -314,7 +315,8 @@ public class SettingsRoundTripTests
         Assert.Equal("auto", settings.SttLanguage);
         Assert.False(settings.VoiceTtsEnabled);
         Assert.False(settings.NodeTtsEnabled);
-        Assert.Equal("piper", settings.TtsProvider); // legacy default; fresh installs get kokoro from SettingsManager
+        Assert.Equal("kokoro", settings.TtsProvider);
+        Assert.True(settings.TtsKokoroAutoDownload);
         Assert.Null(settings.TtsElevenLabsApiKey);
         Assert.Null(settings.TtsElevenLabsModel);
         Assert.Null(settings.TtsElevenLabsVoiceId);
@@ -361,28 +363,49 @@ public class SettingsRoundTripTests
     }
 
     [Theory]
-    [InlineData("""{ "NodeTtsEnabled": true }""", "piper")] // file predates TtsProvider
-    [InlineData("""{ "TtsProvider": "" }""", "piper")]
-    [InlineData("""{ "TtsProvider": "   " }""", "piper")]
-    [InlineData("""{ "TtsProvider": "piper" }""", "piper")]
+    // Shape setup's TraySettingsConfig writes before the tray first saves: no provider, no schema.
+    [InlineData("""{ "EnableNodeMode": true, "NodeTtsEnabled": true, "NodeSttEnabled": true, "AutoStart": false }""", "kokoro")]
+    [InlineData("""{ "TtsProvider": "" }""", "kokoro")]
+    [InlineData("""{ "TtsProvider": "   " }""", "kokoro")]
+    [InlineData("""{ "TtsProvider": "piper" }""", "kokoro")] // v1 Piper with no voice downloaded
+    [InlineData("""{ "SettingsSchemaVersion": 1, "TtsProvider": "piper" }""", "kokoro")]
+    [InlineData("""{ "SettingsSchemaVersion": 2, "TtsProvider": "piper" }""", "piper")] // chosen after migration
     [InlineData("""{ "TtsProvider": "windows" }""", "windows")]
     [InlineData("""{ "TtsProvider": "kokoro" }""", "kokoro")]
-    public void SettingsManager_ExistingSettingsFile_KeepsPreKokoroProviderResolution(string json, string expected)
+    public void SettingsManager_ExistingSettingsFile_ResolvesTtsProvider(string json, string expected)
     {
-        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        using var dir = new TempDirectory("tts-provider-");
+        File.WriteAllText(Path.Combine(dir.Path, "settings.json"), json);
 
-        try
-        {
-            Directory.CreateDirectory(dir);
-            File.WriteAllText(Path.Combine(dir, "settings.json"), json);
+        var settings = new SettingsManager(dir.Path);
+        Assert.Equal(expected, settings.TtsProvider);
 
-            Assert.Equal(expected, new SettingsManager(dir).TtsProvider);
-        }
-        finally
-        {
-            if (Directory.Exists(dir))
-                Directory.Delete(dir, recursive: true);
-        }
+        settings.Save();
+        Assert.Equal(expected, new SettingsManager(dir.Path).TtsProvider);
+    }
+
+    [Fact]
+    public void SettingsManager_SchemaV1PiperWithDownloadedVoice_KeepsPiper()
+    {
+        using var dir = new TempDirectory("tts-provider-");
+        var voiceDir = Path.Combine(dir.Path, "models", "piper", "en_GB-alan-low");
+        Directory.CreateDirectory(Path.Combine(voiceDir, "espeak-ng-data"));
+        File.WriteAllText(Path.Combine(voiceDir, "en_GB-alan-low.onnx"), "");
+        File.WriteAllText(Path.Combine(voiceDir, "tokens.txt"), "");
+        File.WriteAllText(Path.Combine(dir.Path, "settings.json"),
+            """{ "TtsProvider": "piper", "TtsPiperVoiceId": "en_GB-alan-low" }""");
+
+        Assert.Equal("piper", new SettingsManager(dir.Path).TtsProvider);
+    }
+
+    [Fact]
+    public void SettingsManager_TtsKokoroAutoDownload_RoundTripsOptOut()
+    {
+        using var dir = new TempDirectory("tts-provider-");
+        var settings = new SettingsManager(dir.Path) { TtsKokoroAutoDownload = false };
+        settings.Save();
+
+        Assert.False(new SettingsManager(dir.Path).TtsKokoroAutoDownload);
     }
 
     [Fact]
@@ -495,7 +518,7 @@ public class SettingsRoundTripTests
             settings.Save();
 
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "settings.json")));
-            Assert.Equal(1, saved.RootElement.GetProperty(nameof(SettingsData.SettingsSchemaVersion)).GetInt32());
+            Assert.Equal(2, saved.RootElement.GetProperty(nameof(SettingsData.SettingsSchemaVersion)).GetInt32());
             Assert.False(saved.RootElement.TryGetProperty("SystemRunSandboxEnabled", out _));
             Assert.False(saved.RootElement.TryGetProperty("SystemRunBlockHostFallbackWhenMxcUnavailable", out _));
         }
@@ -646,7 +669,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.NodeSttEnabled);
         Assert.Equal("auto", settings.SttLanguage);
         Assert.False(settings.NodeTtsEnabled);
-        Assert.Equal("piper", settings.TtsProvider);
+        Assert.Equal("kokoro", settings.TtsProvider);
         Assert.Null(settings.TtsElevenLabsApiKey);
         Assert.Null(settings.TtsElevenLabsModel);
         Assert.Null(settings.TtsElevenLabsVoiceId);

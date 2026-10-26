@@ -76,6 +76,26 @@ public sealed class ConnectEnvelopeBuilderTests
         }
     }
 
+    [Theory]
+    [InlineData("operator", true, new[] { "exec-approvals", "model-selection-policy" })]
+    [InlineData("operator", false, new[] { "model-selection-policy" })]
+    [InlineData("node", true, new string[] { })]
+    [InlineData("node", false, new string[] { })]
+    public void OperatorCapabilities_ComposeModelPolicyWithoutMakingHeadlessOrNodeClientsApprovalHandlers(
+        string role, bool supportsExecApprovals, string[] expected)
+    {
+        var testCase = Assert.IsType<EnvelopeCase>(Operator(
+            "capability composition",
+            new DeviceTokenConnectCredential("paired-device"),
+            role,
+            [],
+            supportsExecApprovals));
+        var envelope = Prepare(testCase, new CaptureSigner(), useV2: false);
+        using var json = JsonDocument.Parse(envelope.Serialize(envelope.Sign()));
+
+        Assert.Equal(expected, StringValues(json.RootElement.GetProperty("params").GetProperty("caps")));
+    }
+
     [Fact]
     public void CredentialFormatting_IdentifiesKindWithoutTokenValue()
     {
@@ -480,7 +500,8 @@ public sealed class ConnectEnvelopeBuilderTests
 
     private static string[] ExpectedCapabilities(EnvelopeCase testCase) =>
         testCase.Profile == ConnectEnvelopeProfile.Node ? ["screen", "system"] :
-        testCase.SupportsExecApprovals && testCase.Role == "operator" ? ["exec-approvals"] : [];
+        testCase.Role != "operator" ? [] :
+        testCase.SupportsExecApprovals ? ["exec-approvals", "model-selection-policy"] : ["model-selection-policy"];
 
     private static JsonArray ToJsonArray(IEnumerable<string> values) =>
         new(values.Select(value => (JsonNode?)JsonValue.Create(value)).ToArray());
