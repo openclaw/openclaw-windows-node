@@ -16,19 +16,15 @@ internal static class CliUninstallHandler
 
     private const int AttachParentProcess = -1;
 
-    public const string UninstallFlag = "--uninstall";
-    public const string ResetLocalAiFlag = OpenClawTray.Services.LocalAiResetService.ResetLocalAiFlag;
-
-    public static bool IsDestructiveCommand(string[] args) =>
-        args.Contains(UninstallFlag, StringComparer.OrdinalIgnoreCase) ||
-        args.Contains(ResetLocalAiFlag, StringComparer.OrdinalIgnoreCase);
-
     public static async Task RunAsync(string[] args)
     {
         AttachConsole(AttachParentProcess);
-        string operationFlag = args.Contains(UninstallFlag, StringComparer.OrdinalIgnoreCase)
-            ? UninstallFlag
-            : ResetLocalAiFlag;
+        if (!DestructiveCliOperation.TrySelect(args, out string? operationFlag, out string? selectionError))
+        {
+            Console.Error.WriteLine(selectionError);
+            Environment.Exit(2);
+            return;
+        }
         bool dryRun             = args.Contains("--dry-run",             StringComparer.OrdinalIgnoreCase);
         bool confirmDestructive = args.Contains("--confirm-destructive", StringComparer.OrdinalIgnoreCase);
 

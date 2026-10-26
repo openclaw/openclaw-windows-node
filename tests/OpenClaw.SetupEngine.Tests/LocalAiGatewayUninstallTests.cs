@@ -257,7 +257,10 @@ public sealed class LocalAiGatewayUninstallTests
         string provider = LocalAiGatewayProviderDefinition.BuildProviderJson(install);
         string primary = JsonSerializer.Serialize(
             LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
-        var commands = new GatewayStateCommandRunner(provider, primary) { FailCapture = true };
+        var commands = new GatewayStateCommandRunner(provider, primary)
+        {
+            CaptureFailure = new CommandResult(1, "", "openclaw config get failed", TimeSpan.Zero, TimedOut: false),
+        };
         SetupContext context = CreateContext(temp.Path, commands);
         context.IsUninstalling = true;
 
@@ -266,6 +269,30 @@ public sealed class LocalAiGatewayUninstallTests
 
         Assert.Equal(provider, commands.ProviderJson);
         Assert.Equal(primary, commands.PrimaryJson);
+        Assert.DoesNotContain(commands.WslCalls, command =>
+            command.Contains("LOCAL_AI_GATEWAY_UNSET", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(-1, "There is no distribution with the supplied name.")]
+    [InlineData(-1, "WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED")]
+    [InlineData(1, "Windows Subsystem for Linux is not installed. Visit https://aka.ms/wslinstall")]
+    [InlineData(-1, "Failed to start process 'wsl.exe'")]
+    public async Task Uninstall_TreatsConclusivelyUnavailableWslAsNoRoute(int exitCode, string stderr)
+    {
+        // Native Local AI runs without WSL: a conclusive "no distro" or "WSL unavailable" answer
+        // proves no WSL Gateway holds the managed route, so reset must not fail before deletion.
+        using var temp = new TempDirectory("local-ai-gateway-uninstall-");
+        await SaveManifestAsync(temp.Path);
+        var commands = new GatewayStateCommandRunner(null, null)
+        {
+            CaptureFailure = new CommandResult(exitCode, "", stderr, TimeSpan.Zero, TimedOut: false),
+        };
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.IsUninstalling = true;
+
+        await new ConfigureLocalAiGatewayStep().RollbackAsync(context, CancellationToken.None);
+
         Assert.DoesNotContain(commands.WslCalls, command =>
             command.Contains("LOCAL_AI_GATEWAY_UNSET", StringComparison.Ordinal));
     }
@@ -803,7 +830,7 @@ public sealed class LocalAiGatewayUninstallTests
 
         public string? ProviderJson { get; private set; } = providerJson;
         public string? PrimaryJson { get; private set; } = primaryJson;
-        public bool FailCapture { get; init; }
+        public CommandResult? CaptureFailure { get; init; }
         public bool FailConfiguredBatchOnce { get; set; }
         public bool LoseConfiguredAcknowledgementOnce { get; set; }
         public bool FailRestoreBatchOnce { get; set; }
@@ -922,15 +949,8 @@ public sealed class LocalAiGatewayUninstallTests
                 ThrowOnNextCapture = false;
                 throw new OperationCanceledException(ct);
             }
-            if (FailCapture)
-            {
-                return Task.FromResult(new CommandResult(
-                    1,
-                    "",
-                    "openclaw config get failed",
-                    TimeSpan.Zero,
-                    TimedOut: false));
-            }
+            if (CaptureFailure is not null)
+                return Task.FromResult(CaptureFailure);
 
             string stdout =
                 ProviderMarker + EncodeOrMissing(ProviderJson) + Environment.NewLine +

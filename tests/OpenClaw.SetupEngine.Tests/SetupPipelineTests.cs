@@ -951,7 +951,8 @@ public class SetupPipelineTests
     [Fact]
     public async Task ResetLocalAiAsync_RequiresConfirmDestructive()
     {
-        var context = CreateContext(new SetupConfig { ConfirmDestructive = false });
+        using var temp = new TempDirectory("local-ai-reset-");
+        var context = CreateContext(new SetupConfig { ConfirmDestructive = false }, localDataDir: temp.Path);
         var pipeline = new SetupPipeline([new MockStep("local-ai", (_, _) => Task.FromResult(StepResult.Ok()))]);
 
         PipelineResult result = await pipeline.ResetLocalAiAsync(context);
@@ -964,7 +965,8 @@ public class SetupPipelineTests
     public async Task ResetLocalAiAsync_RunsOnlyResetStepsInReverse()
     {
         var order = new List<string>();
-        var context = CreateContext(new SetupConfig { ConfirmDestructive = true });
+        using var temp = new TempDirectory("local-ai-reset-");
+        var context = CreateContext(new SetupConfig { ConfirmDestructive = true }, localDataDir: temp.Path);
         var pipeline = new SetupPipeline(
         [
             new MockStep("persist-local-ai-manifest", (_, _) => Task.FromResult(StepResult.Ok()),
@@ -983,7 +985,8 @@ public class SetupPipelineTests
     public async Task ResetLocalAiAsync_KeepsReceiptWhenGatewayWithdrawalFails()
     {
         bool receiptDeleted = false;
-        var context = CreateContext(new SetupConfig { ConfirmDestructive = true });
+        using var temp = new TempDirectory("local-ai-reset-");
+        var context = CreateContext(new SetupConfig { ConfirmDestructive = true }, localDataDir: temp.Path);
         var pipeline = new SetupPipeline(
         [
             new MockStep("persist-local-ai-manifest", (_, _) => Task.FromResult(StepResult.Ok()),
@@ -998,6 +1001,37 @@ public class SetupPipelineTests
         Assert.Equal("configure-local-ai-gateway", result.FailedStepId);
         Assert.Contains("changed after setup", result.Message);
         Assert.False(receiptDeleted);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ResetLocalAiAsync_RefusesWhileNativeBindingExists(bool dryRun)
+    {
+        // The tray deletes gateway-binding.json only after the native Gateway confirms withdrawal;
+        // a headless reset that deleted it anyway would orphan the native route.
+        using var temp = new TempDirectory("local-ai-reset-native-");
+        string bindingPath = Path.Combine(temp.Path, "LocalAI", "gateway-binding.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(bindingPath)!);
+        File.WriteAllText(bindingPath, "{}");
+        bool rollbackRan = false;
+        var context = CreateContext(
+            new SetupConfig { ConfirmDestructive = !dryRun, DryRun = dryRun },
+            localDataDir: temp.Path);
+        var pipeline = new SetupPipeline(
+        [
+            new MockStep("persist-local-ai-manifest", (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) => { rollbackRan = true; return Task.CompletedTask; }),
+            new MockStep("configure-local-ai-gateway", (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) => { rollbackRan = true; return Task.CompletedTask; }),
+        ]);
+
+        PipelineResult result = await pipeline.ResetLocalAiAsync(context);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Contains("native Gateway ownership", result.Message);
+        Assert.False(rollbackRan);
+        Assert.True(File.Exists(bindingPath));
     }
 
     [Fact]

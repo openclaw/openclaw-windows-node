@@ -21,15 +21,27 @@ internal sealed class LocalAiResetService
     private readonly ILocalAiRuntime _runtime;
     private readonly Func<ProcessStartInfo, CancellationToken, Task<int>> _runProcess;
     private readonly Func<string?> _resolveExecutablePath;
+    private readonly TimeSpan _timeout;
 
+    /// <param name="runProcess">
+    /// Runs the setup-engine child and returns its exit code. It must not complete until the
+    /// child has exited: on cancellation it kills the child process tree and awaits its exit
+    /// before throwing <see cref="OperationCanceledException"/>, so no destructive work can
+    /// continue after the reset reports a result.
+    /// </param>
+    /// <param name="timeout">
+    /// Per-phase reset timeout; defaults to <c>OPENCLAW_LOCAL_AI_RESET_TIMEOUT_SECONDS</c> or two minutes.
+    /// </param>
     public LocalAiResetService(
         ILocalAiRuntime runtime,
         Func<ProcessStartInfo, CancellationToken, Task<int>>? runProcess = null,
-        Func<string?>? resolveExecutablePath = null)
+        Func<string?>? resolveExecutablePath = null,
+        TimeSpan? timeout = null)
     {
         _runtime = runtime;
         _runProcess = runProcess ?? RunProcessAsync;
         _resolveExecutablePath = resolveExecutablePath ?? ResolveCurrentExecutablePath;
+        _timeout = timeout ?? GetResetTimeout();
     }
 
     /// <summary>
@@ -41,10 +53,10 @@ internal sealed class LocalAiResetService
     {
         try
         {
-            await _runtime.StopAsync(cancellationToken).WaitAsync(GetResetTimeout(), cancellationToken).ConfigureAwait(false);
+            await _runtime.StopAsync(cancellationToken).WaitAsync(_timeout, cancellationToken).ConfigureAwait(false);
             if (_runtime.HasReleasableOwnership)
                 await _runtime.ReleaseOwnershipAsync(cancellationToken)
-                    .WaitAsync(GetResetTimeout(), cancellationToken).ConfigureAwait(false);
+                    .WaitAsync(_timeout, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -60,6 +72,8 @@ internal sealed class LocalAiResetService
             return new(LocalAiResetOutcome.Failed, "OpenClaw tray executable could not be resolved for Local AI reset.");
 
         string jsonOutput = Path.Combine(Path.GetTempPath(), $"openclaw-local-ai-reset-{Guid.NewGuid():N}.json");
+        using var engineCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        engineCancellation.CancelAfter(_timeout);
         try
         {
             var startInfo = new ProcessStartInfo(executablePath)
@@ -71,13 +85,20 @@ internal sealed class LocalAiResetService
             startInfo.ArgumentList.Add("--confirm-destructive");
             startInfo.ArgumentList.Add("--json-output");
             startInfo.ArgumentList.Add(jsonOutput);
-            int exitCode = await _runProcess(startInfo, cancellationToken)
-                .WaitAsync(GetResetTimeout(), cancellationToken).ConfigureAwait(false);
+            // No WaitAsync here: abandoning the child would let it keep deleting files after
+            // this method reports a result. The runner settles the child before returning.
+            int exitCode = await _runProcess(startInfo, engineCancellation.Token).ConfigureAwait(false);
             return await ClassifyOutcomeAsync(exitCode, jsonOutput, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new(LocalAiResetOutcome.Cancelled, "Local AI reset was cancelled.");
         }
         catch (OperationCanceledException)
         {
-            return new(LocalAiResetOutcome.Cancelled, "Local AI reset was cancelled.");
+            return new(
+                LocalAiResetOutcome.Failed,
+                $"Local AI reset timed out after {_timeout.TotalSeconds:0} seconds and was stopped. Run Reset Local AI again to finish.");
         }
         catch (Exception ex)
         {
@@ -90,11 +111,24 @@ internal sealed class LocalAiResetService
         }
     }
 
+    // Killing the engine is safe: SetupRunLock is a FileShare.None handle the OS releases when
+    // the process dies, and reset is re-runnable because the receipt is deleted only by the
+    // last step, so a rerun re-proves Gateway ownership before touching anything.
     private static async Task<int> RunProcessAsync(ProcessStartInfo startInfo, CancellationToken ct)
     {
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start Local AI reset process.");
-        await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            try { process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { } // already exited
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
         return process.ExitCode;
     }
 

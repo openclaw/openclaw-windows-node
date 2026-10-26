@@ -413,9 +413,12 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         CommandResult currentResult = await CaptureStateAsync(ctx, ct).ConfigureAwait(false);
         if (currentResult.ExitCode != 0 || currentResult.TimedOut)
         {
-            if (IsMissingDistro(currentResult))
+            // A conclusive "no distro" or "WSL is unavailable" answer proves no WSL Gateway can
+            // hold the managed route (native-only installs need no WSL); ambiguous failures throw.
+            if (WindowsNodeBootstrapContextStep.IsMissingDistroResult(currentResult) ||
+                WindowsNodeBootstrapContextStep.IsWslUnavailableResult(currentResult))
             {
-                ctx.Logger.Info("Local AI reset found no WSL distro. Gateway settings are already removed.");
+                ctx.Logger.Info("No managed WSL distro is available. WSL Gateway settings are already removed.");
                 return;
             }
 
@@ -504,16 +507,6 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
                 : !verified.PrimaryModelExisted;
         if (verified.ProviderExisted || !primaryIsSafe)
             throw new IOException("Managed Local AI gateway settings remained after uninstall cleanup.");
-    }
-
-    private static bool IsMissingDistro(CommandResult result)
-    {
-        const string DistroNotFound = "There is no distribution with the supplied name";
-        const string DistroNotInstalled = "WSL_E_DISTRO_NOT_FOUND";
-        return result.Stderr.Contains(DistroNotFound, StringComparison.OrdinalIgnoreCase) ||
-               result.Stderr.Contains(DistroNotInstalled, StringComparison.OrdinalIgnoreCase) ||
-               result.Stdout.Contains(DistroNotFound, StringComparison.OrdinalIgnoreCase) ||
-               result.Stdout.Contains(DistroNotInstalled, StringComparison.OrdinalIgnoreCase);
     }
 
     private static Task<CommandResult> CaptureStateAsync(SetupContext ctx, CancellationToken ct)

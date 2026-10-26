@@ -82,7 +82,7 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     public Task<LocalAiResetResult> ResetLocalAiAsync(CancellationToken cancellationToken = default)
     {
         ResetLocalAiCount++;
-        return Task.FromResult(ResetLocalAiResult);
+        return PendingResetLocalAi ?? Task.FromResult(ResetLocalAiResult);
     }
     public void ShowGatewayWizard() => ShowGatewayWizardCount++;
     public void OpenLocalAiLogs() => OpenLocalAiLogsCount++;
@@ -108,6 +108,8 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     public int ShowGatewayWizardCount { get; private set; }
     public int ResetLocalAiCount { get; private set; }
     public LocalAiResetResult ResetLocalAiResult { get; set; } = new(LocalAiResetOutcome.Success);
+    /// <summary>When set, returned instead of <see cref="ResetLocalAiResult"/> so tests control completion timing.</summary>
+    public Task<LocalAiResetResult>? PendingResetLocalAi { get; set; }
 
     /// <summary>Result returned by <see cref="ApplyAutoStart"/> so tests can simulate OS-write failure.</summary>
     public bool AutoStartResult { get; set; } = true;

@@ -503,9 +503,11 @@ A damaged or foreign ownership receipt is never adopted implicitly.
 
 ### Reset Local AI
 
-`BuildLocalAiResetSteps` runs only the existing Local AI rollback owners: it withdraws the receipt-proven WSL Gateway provider, restores the recorded primary model, and deletes `<LocalDataDir>\LocalAI`. It keeps `<LocalDataDir>\LocalAICache` and the Hugging Face hub cache. Missing receipts and absent WSL distros are already removed and succeed. Provider changes that cannot be proven app-owned remain visible failures.
+`BuildLocalAiResetSteps` runs only the existing Local AI rollback owners: it withdraws the receipt-proven WSL Gateway provider, restores the recorded primary model, and deletes `<LocalDataDir>\LocalAI`. It keeps `<LocalDataDir>\LocalAICache` and the Hugging Face hub cache. Missing receipts, absent WSL distros, and conclusively unavailable WSL (for example a native-only install without the WSL optional component) are already removed and succeed. Provider changes that cannot be proven app-owned remain visible failures.
 
-Run `--reset-local-ai --confirm-destructive` for a live reset, or add `--dry-run` to preview it. The flag is mutually exclusive with `--uninstall`, uses the setup run lock, and never runs tray artifact cleanup or non-Local-AI rollback steps. Reconciliation failures caused by unusable Local AI receipts return `failureCode: "LocalAiReceiptUnusable"` in `--json-output` so callers can offer Reset Local AI without parsing text.
+Reset refuses before any rollback while `<LocalDataDir>\LocalAI\gateway-binding.json` exists. That file is the native Gateway ownership receipt, and the tray deletes it only after the native Gateway confirms an authenticated withdrawal. Use Settings > Local AI > Reset Local AI, which stops the runtime and releases native ownership first. The tray reset kills and drains the engine process tree on cancellation or timeout (`OPENCLAW_LOCAL_AI_RESET_TIMEOUT_SECONDS`, default 120) before reporting; rerunning the reset is safe because the receipt is deleted last.
+
+Run `--reset-local-ai --confirm-destructive` for a live reset, or add `--dry-run` to preview it. The flag is mutually exclusive with `--uninstall` (the tray exe and SetupEngine both exit 2 when both are passed), uses the setup run lock, and never runs tray artifact cleanup or non-Local-AI rollback steps. Reconciliation failures caused by unusable Local AI receipts return `failureCode: "LocalAiReceiptUnusable"` in `--json-output` so callers can offer Reset Local AI without parsing text.
 
 ### Local AI GPU admission
 

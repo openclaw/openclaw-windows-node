@@ -232,7 +232,9 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         OnPropertyChanged(null);
         try
         {
-            LocalAiResetResult result = await _appCommands.ResetLocalAiAsync().ConfigureAwait(false);
+            // Stay on the caller's UI context (like RunRuntimeActionAsync): PropertyChanged
+            // drives LocalAiPage controls, which throw when touched from a worker thread.
+            LocalAiResetResult result = await _appCommands.ResetLocalAiAsync();
             if (!result.Succeeded)
                 _actionError = result.Message;
             return result.Succeeded;

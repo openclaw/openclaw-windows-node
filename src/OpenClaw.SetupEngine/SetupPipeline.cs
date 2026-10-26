@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using OpenClaw.Connection.LocalAi;
 
 namespace OpenClaw.SetupEngine;
 
@@ -434,6 +435,10 @@ public sealed class SetupPipeline
     private static readonly DestructiveOperation s_uninstall = new("uninstall", "Uninstall", StopOnFailure: false);
     private static readonly DestructiveOperation s_resetLocalAi = new("reset_local_ai", "Reset Local AI", StopOnFailure: true);
 
+    private const string NativeOwnershipRetainedMessage =
+        "Local AI reset refused: native Gateway ownership is still recorded. Open OpenClaw Settings > Local AI " +
+        "and use Reset Local AI so the app can release Gateway ownership first.";
+
     private async Task<PipelineResult> RunDestructiveRollbackAsync(SetupContext ctx, DestructiveOperation operation)
     {
         _completedSteps.Clear();
@@ -452,6 +457,19 @@ public sealed class SetupPipeline
                 Message: pathError);
         }
 
+        // Native Gateway ownership is retained until an authenticated withdrawal is confirmed
+        // (#1570): the tray deletes gateway-binding.json only after that confirmation. A binding
+        // that still exists here was never released, and deleting the LocalAI tree would erase the
+        // only receipt proving which native Gateway route is app-owned. Existence alone refuses,
+        // so damaged or pending bindings fail closed too.
+        if (operation == s_resetLocalAi &&
+            new LocalAiNativeBindingStore(new LocalAiPaths(ctx.LocalDataDir)).Exists)
+        {
+            ctx.Logger.Error("Reset Local AI refused: native Gateway ownership is still recorded.");
+            return new PipelineResult(
+                PipelineOutcome.Failed,
+                Message: NativeOwnershipRetainedMessage);
+        }
 
         if (!ctx.Config.ConfirmDestructive && !ctx.Config.DryRun)
         {

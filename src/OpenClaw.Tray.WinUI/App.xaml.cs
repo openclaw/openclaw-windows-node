@@ -534,7 +534,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // Bypasses the single-instance mutex so the Inno uninstaller can invoke
         // this even while the tray is running.
         // -----------------------------------------------------------------------
-        if (CliUninstallHandler.IsDestructiveCommand(_startupArgs))
+        if (DestructiveCliOperation.IsRequested(_startupArgs))
         {
             await CliUninstallHandler.RunAsync(_startupArgs);
             return; // Environment.Exit called inside; defensive return

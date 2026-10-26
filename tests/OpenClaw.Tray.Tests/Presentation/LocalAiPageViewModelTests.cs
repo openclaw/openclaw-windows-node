@@ -796,6 +796,68 @@ public sealed class LocalAiPageViewModelTests
         Assert.Equal("Gateway settings changed after setup.", harness.ViewModel.ActionError);
     }
 
+    [Fact]
+    public async Task ResetCompletion_NotifiesOnCallerSynchronizationContext()
+    {
+        // LocalAiPage updates WinUI controls from PropertyChanged, so completion must be raised on
+        // the UI context the reset started from, even when the reset finishes on a worker thread.
+        using var harness = new LocalAiHarness(UnqualifiedReceiptSnapshot());
+        var engine = new TaskCompletionSource<LocalAiResetResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Commands.PendingResetLocalAi = engine.Task;
+        var ui = new TrackingSynchronizationContext();
+        SynchronizationContext? completionContext = null;
+        bool wasBusy = false, completed = false;
+        harness.ViewModel.PropertyChanged += (_, _) =>
+        {
+            if (harness.ViewModel.IsBusy)
+            {
+                wasBusy = true;
+            }
+            else if (wasBusy && !completed)
+            {
+                // Only the busy -> idle transition is the reset completion notification.
+                completed = true;
+                completionContext = SynchronizationContext.Current;
+            }
+        };
+
+        Task<bool> reset;
+        SynchronizationContext? previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(ui);
+        try
+        {
+            reset = harness.ViewModel.ResetLocalAiAsync();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+        await Task.Run(() => engine.SetResult(new LocalAiResetResult(LocalAiResetOutcome.Success)));
+
+        Assert.True(await reset);
+        Assert.Same(ui, completionContext);
+    }
+
+    private sealed class TrackingSynchronizationContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                var previous = Current;
+                SetSynchronizationContext(this);
+                try
+                {
+                    callback(state);
+                }
+                finally
+                {
+                    SetSynchronizationContext(previous);
+                }
+            });
+        }
+    }
+
     [Theory]
     [InlineData(LocalAiRuntimeState.Healthy)]
     [InlineData(LocalAiRuntimeState.Conflict)]

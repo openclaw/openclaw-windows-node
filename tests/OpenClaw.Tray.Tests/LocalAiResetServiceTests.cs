@@ -94,6 +94,67 @@ public sealed class LocalAiResetServiceTests
         Assert.NotNull(result.Message);
     }
 
+    [Fact]
+    public async Task Reset_Cancelled_WaitsForEngineToStopBeforeReturning()
+    {
+        var order = new List<string>();
+        var engineStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new LocalAiResetService(new OrderedRuntime(order), async (_, ct) =>
+        {
+            engineStarted.SetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                // Simulates the kill-and-drain that must finish before the reset reports.
+                await Task.Delay(100, CancellationToken.None);
+                lock (order) order.Add("engine-exited");
+                throw;
+            }
+            return 0;
+        }, () => "OpenClaw.Tray.WinUI.exe");
+        using var cts = new CancellationTokenSource();
+
+        Task<LocalAiResetResult> reset = service.ResetAsync(cts.Token);
+        await engineStarted.Task;
+        cts.Cancel();
+        LocalAiResetResult result = await reset;
+
+        bool engineExitedBeforeReturn;
+        lock (order) engineExitedBeforeReturn = order.Contains("engine-exited");
+        Assert.True(engineExitedBeforeReturn);
+        Assert.Equal(LocalAiResetOutcome.Cancelled, result.Outcome);
+    }
+
+    [Fact]
+    public async Task Reset_EngineTimeout_StopsEngineAndReportsTimeout()
+    {
+        var order = new List<string>();
+        var service = new LocalAiResetService(new OrderedRuntime(order), async (_, ct) =>
+        {
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                lock (order) order.Add("engine-stopped");
+                throw;
+            }
+            return 0;
+        }, () => "OpenClaw.Tray.WinUI.exe", timeout: TimeSpan.FromMilliseconds(100));
+
+        LocalAiResetResult result = await service.ResetAsync();
+
+        Assert.Equal(LocalAiResetOutcome.Failed, result.Outcome);
+        Assert.Contains("timed out after", result.Message);
+        bool engineStopped;
+        lock (order) engineStopped = order.Contains("engine-stopped");
+        Assert.True(engineStopped);
+    }
+
     private static string JsonOutputPath(ProcessStartInfo startInfo) =>
         startInfo.ArgumentList[startInfo.ArgumentList.IndexOf("--json-output") + 1];
 
