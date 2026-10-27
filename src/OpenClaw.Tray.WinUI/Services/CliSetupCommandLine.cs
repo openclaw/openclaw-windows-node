@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace OpenClawTray.Services;
 
-internal sealed record CliSetupRequest(string? ConfigPath, bool Force);
+internal sealed record CliSetupRequest(string? ConfigPath, bool Force, bool ReplaceExisting);
 
 /// <summary>
 /// Strict command line for the tray's <c>--headless-setup</c> CLI mode, which runs the
@@ -14,6 +14,7 @@ internal static class CliSetupCommandLine
     internal const string HeadlessSetupFlag = "--headless-setup";
     internal const string ConfigOption = "--config";
     internal const string ForceFlag = "--force-setup";
+    internal const string ReplaceExistingFlag = "--replace-existing";
 
     /// <param name="processArguments">
     /// <see cref="Environment.GetCommandLineArgs"/>; index 0 (the executable path) is skipped.
@@ -22,6 +23,7 @@ internal static class CliSetupCommandLine
     {
         string? configPath = null;
         var force = false;
+        var replaceExisting = false;
         for (var i = 1; i < processArguments.Length; i++)
         {
             var token = processArguments[i];
@@ -31,6 +33,12 @@ internal static class CliSetupCommandLine
             if (string.Equals(token, ForceFlag, StringComparison.OrdinalIgnoreCase))
             {
                 force = true;
+                continue;
+            }
+
+            if (string.Equals(token, ReplaceExistingFlag, StringComparison.OrdinalIgnoreCase))
+            {
+                replaceExisting = true;
                 continue;
             }
 
@@ -51,7 +59,7 @@ internal static class CliSetupCommandLine
             return Fail($"Unknown option '{token}'.", out request, out error);
         }
 
-        request = new CliSetupRequest(configPath, force);
+        request = new CliSetupRequest(configPath, force, replaceExisting);
         error = null;
         return true;
     }
@@ -79,7 +87,7 @@ internal static class CliSetupCommandLine
 
     private static bool Fail(string message, out CliSetupRequest request, out string? error)
     {
-        request = new CliSetupRequest(null, false);
+        request = new CliSetupRequest(null, false, false);
         error = message;
         return false;
     }

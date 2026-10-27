@@ -75,10 +75,16 @@
     launching (copy src\OpenClaw.SetupEngine\default-config.json and edit it).
     Relative paths resolve from the repository root. Skipped when the data dir
     is already configured. DistroName and GatewayPort come from the app
-    identity, as in interactive setup.
+    identity, as in interactive setup. -Isolated and -DataDir do not isolate
+    the WSL distro or local setup data: setup refuses to replace an existing
+    distro, distro data, or local gateway record unless -ReplaceExisting is set.
 
 .PARAMETER ForceSetup
     With -SetupConfig, run setup even when the data dir is already configured.
+
+.PARAMETER ReplaceExisting
+    With -SetupConfig, allow setup to delete and recreate the existing app-owned
+    WSL distro and replace the local gateway record.
 
 .EXAMPLE
     .\run-app-local.ps1
@@ -137,7 +143,9 @@ param(
 
     [string]$SetupConfig,
 
-    [switch]$ForceSetup
+    [switch]$ForceSetup,
+
+    [switch]$ReplaceExisting
 )
 
 $ErrorActionPreference = "Stop"
@@ -176,7 +184,7 @@ function Get-ShortHash {
     }
 }
 
-if ($ForceSetup -and -not $SetupConfig) { throw "-ForceSetup requires -SetupConfig." }
+if (($ForceSetup -or $ReplaceExisting) -and -not $SetupConfig) { throw "-ForceSetup and -ReplaceExisting require -SetupConfig." }
 $setupConfigPath = $null
 if ($SetupConfig) {
     $setupConfigPath = Resolve-FullPath $SetupConfig
@@ -309,7 +317,8 @@ try {
         Write-Host "  Update channel: $env:OPENCLAW_UPDATE_CHANNEL"
     }
     if ($setupConfigPath) {
-        Write-Host "  Setup config:  $setupConfigPath$(if ($ForceSetup) { ' (forced)' })"
+        $setupFlags = @(@('forced') * [int]$ForceSetup.IsPresent) + @(@('replace existing') * [int]$ReplaceExisting.IsPresent)
+        Write-Host "  Setup config:  $setupConfigPath$(if ($setupFlags) { ' (' + ($setupFlags -join ', ') + ')' })"
     }
     if ($UseWinApp) {
         Write-Host "  Launcher:      $($winapp.Source)"
@@ -326,6 +335,7 @@ try {
         # Windows PowerShell's Start-Process joins arguments without quoting.
         $setupArgs = @('--headless-setup', '--config', ('"{0}"' -f $setupConfigPath))
         if ($ForceSetup) { $setupArgs += '--force-setup' }
+        if ($ReplaceExisting) { $setupArgs += '--replace-existing' }
         Write-Host "Running headless setup" -ForegroundColor Cyan
         # Setup leaves a WSL keepalive running; -Wait would block on that descendant, so wait
         # on the setup process alone. Reading Handle keeps ExitCode available after exit.
