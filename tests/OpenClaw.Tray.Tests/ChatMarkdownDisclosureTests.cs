@@ -139,6 +139,31 @@ public sealed class ChatMarkdownDisclosureTests
             });
     }
 
+    [Theory]
+    [InlineData(2500)]
+    [InlineData(5000)]
+    public void SiblingDisclosures_InspectAtMostOneTokenPerWrapper(int count)
+    {
+        var input = string.Concat(Enumerable.Range(0, count).Select(index =>
+            $"<details><summary>{index}</summary>\n{index}\n</details>\n\n"));
+        Assert.True(input.Length <= OpenClaw.Shared.Markdown.ChatMarkdownAstBuilder.MaxInputBytes);
+
+        var parts = ChatMarkdownDisclosures.Parse(input, out var partTokenVisits);
+
+        Assert.Equal(count, parts.Count);
+        for (var index = 0; index < count; index++)
+        {
+            var disclosure = Assert.IsType<ChatMarkdownDisclosure>(parts[index]);
+            Assert.Equal(index.ToString(), disclosure.Summary);
+            Assert.False(disclosure.InitiallyExpanded);
+            Assert.Equal(index.ToString(), Assert.IsType<ChatMarkdownText>(
+                Assert.Single(disclosure.Body)).Text);
+        }
+        // Each sibling has two wrapper tokens. Growing breadth must not rescan
+        // unrelated siblings while building a body, even under the input cap.
+        Assert.InRange(partTokenVisits, count, 2 * count);
+    }
+
     [Fact]
     public void DisclosureDepth_IsBoundedWithoutDiscardingDeepContent()
     {
