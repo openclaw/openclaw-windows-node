@@ -86,10 +86,75 @@ internal static class LocalAiSetupRoutePolicy
 }
 
 /// <summary>
-/// Pins the singleton Local AI installation to the one explicitly setup-managed
-/// local WSL gateway in the loaded registry. Every resolution revalidates the
-/// pinned record so a registry replacement or ownership drift cannot redirect
-/// lifecycle commands to another distro.
+/// Resolves and validates the WSL distro that owns the Local AI installation.
+///
+/// This module pins the Local AI lifecycle to exactly one explicitly setup-managed
+/// local WSL gateway. It enforces ownership stability: once a gateway is bound as the
+/// Local AI owner, any registry change that would redirect lifecycle commands to a
+/// different distro is rejected.
+///
+/// The resolver runs in two phases:
+///   1. Constructor-time binding: attempts to bind to an existing single setup-managed
+///      gateway that meets ownership criteria. If none exists (first-run), the resolver
+///      remains unbound until a registry update arrives.
+///   2. Resolve() calls: revalidate the current registry state and return a resolution
+///      record with the distro name and gateway ID, or a failure detail if ownership
+///      changed or prerequisites are missing.
+///
+/// Use <see cref="LocalAiSetupRoutePolicy.Decide"/> to determine the setup route
+/// (Provision/Recovery/Blocked) based on current system state. This resolver validates
+/// that an existing Local AI binding remains valid before executing lifecycle commands.
+///
+/// <example>
+/// // Basic resolution with error handling
+/// var registry = new GatewayRegistry(settingsManager);
+/// var resolver = new LocalAiGatewayDistroResolver(registry);
+///
+/// LocalAiGatewayDistroResolution result = resolver.Resolve();
+/// if (result.Success)
+/// {
+///     Console.WriteLine($"Local AI using distro '{result.DistroName}' (gateway {result.GatewayId})");
+///     // Proceed with lifecycle commands
+/// }
+/// else
+/// {
+///     Console.WriteLine($"Local AI routing failed: {result.Detail}");
+///     // Show setup prompt or recovery options
+/// }
+///
+/// // Combine with setup route decision
+/// LocalAiSetupResolution setup = LocalAiSetupRoutePolicy.Decide(
+///     owners: registry.GetAll(),
+///     hasLocalGateway: false,
+///     localGatewayId: null,
+///     hasDistro: false,
+///     hasDistroDataDirectory: false,
+///     distroIsAppOwned: false);
+///
+/// switch (setup.Route)
+/// {
+///     case LocalAiSetupRoute.Provision:
+///         // Start first-time setup
+///         break;
+///     case LocalAiSetupRoute.Recovery:
+///         // Use resolver to obtain the target for recovery
+///         var resolution = resolver.Resolve();
+///         if (resolution.Success)
+///         {
+///             var target = new LocalAiRecoveryTarget(
+///                 resolution.GatewayId!,
+///                 resolution.DistroName!,
+///                 port: 1234,
+///                 modelCatalogId: null,
+///                 requestedLocalAiPort: null);
+///             // Execute recovery
+///         }
+///         break;
+///     case LocalAiSetupRoute.Blocked:
+///         // Show error or引导 user to fix configuration
+///         break;
+/// }
+/// </example>
 /// </summary>
 internal sealed class LocalAiGatewayDistroResolver : ILocalAiGatewayDistroResolver
 {
