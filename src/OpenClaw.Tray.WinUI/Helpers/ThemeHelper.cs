@@ -1,3 +1,4 @@
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.Win32;
 using OpenClawTray.Services;
@@ -41,7 +42,16 @@ public static class ThemeHelper
     public static void ApplyTheme(Window? window, string? preference)
     {
         if (window?.Content is FrameworkElement rootElement)
+        {
             rootElement.RequestedTheme = GetRequestedTheme(preference);
+            // Native caption buttons do not inherit the XAML root theme.
+            window.AppWindow.TitleBar.PreferredTheme = rootElement.RequestedTheme switch
+            {
+                ElementTheme.Light => TitleBarTheme.Light,
+                ElementTheme.Dark => TitleBarTheme.Dark,
+                _ => TitleBarTheme.UseDefaultAppMode
+            };
+        }
     }
 
     public static Color GetAccentColor()
