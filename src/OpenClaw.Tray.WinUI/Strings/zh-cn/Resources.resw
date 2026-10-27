@@ -8118,4 +8118,7 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>总结我最近的会话</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>帮我配置一个频道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>检查系统健康状况</value></data>
+  <data name="SkillsPage_RequestFailed" xml:space="preserve">
+    <value>无法加载或更新技能。请检查 Gateway 连接和权限，然后重试。</value>
+  </data>
 </root>

@@ -8118,4 +8118,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Résumer mes sessions récentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>M’aider à configurer un canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Vérifier l’état du système</value></data>
+  <data name="SkillsPage_RequestFailed" xml:space="preserve">
+    <value>Impossible de charger ou de modifier les compétences. Vérifiez la connexion à la passerelle et les autorisations, puis réessayez.</value>
+  </data>
 </root>

@@ -55,6 +55,7 @@ public sealed partial class GatewayScenario
     private readonly bool _publishedModelCatalog;
     private readonly bool _allowSessionMutations;
     private readonly bool _allowChatSend;
+    private readonly Dictionary<string, bool>? _skillChanges;
     public bool IsInteractive { get; }
     private readonly ContextUsageFixture? _contextUsage;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
@@ -63,7 +64,7 @@ public sealed partial class GatewayScenario
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _skillChanges is not null ? "skills-editing" : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -76,7 +77,8 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        bool allowSkillUpdates = false)
     {
         _sessions = sessions;
         _reads = reads;
@@ -86,6 +88,7 @@ public sealed partial class GatewayScenario
         _allowSessionMutations = allowSessionMutations;
         IsInteractive = interactive;
         _allowChatSend = allowChatSend;
+        _skillChanges = allowSkillUpdates ? new(StringComparer.Ordinal) : null;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         _contextUsage = contextUsage;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
@@ -97,6 +100,7 @@ public sealed partial class GatewayScenario
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
+            .Concat(allowSkillUpdates ? ["skills.update"] : [])
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
@@ -131,6 +135,12 @@ public sealed partial class GatewayScenario
     {
         var browse = CreateBrowse();
         return new(browse._sessions, browse._reads, responder, advertiseSetup);
+    }
+
+    public static GatewayScenario CreateSkillsEditing(Func<string, JsonElement, object>? setup = null)
+    {
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, setup, allowSkillUpdates: true);
     }
 
     /// <summary>Synthetic historical Talk rows, not a recording of a user's conversation.</summary>
@@ -291,6 +301,23 @@ public sealed partial class GatewayScenario
                     ["gateway"] = new { label = "Fixture Gateway", group = "Gateway", order = 20 }
                 },
                 version = "fixture-1", generatedAt = Epoch.ToString("O")
+            }),
+            ["skills.status"] = JsonSerializer.SerializeToElement(new
+            {
+                workspaceDir = "/fixture/workspace", managedSkillsDir = "/fixture/skills",
+                skills = new[]
+                {
+                    new
+                    {
+                        name = "Fixture calendar", skillKey = "fixture-calendar", description = "Synthetic enabled skill.",
+                        source = "openclaw-workspace", disabled = false, eligible = true
+                    },
+                    new
+                    {
+                        name = "Fixture notes", skillKey = "fixture-notes", description = "Synthetic disabled skill.",
+                        source = "openclaw-workspace", disabled = true, eligible = false
+                    }
+                }
             })
         };
         return new GatewayScenario(sessions, reads, allowAgentCreation: allowAgentCreation,
@@ -332,7 +359,7 @@ public sealed partial class GatewayScenario
                     : IsInteractive
                         ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
                         : _contextUsage is not null ? new[] { "operator.read", "operator.write" }
-                        : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null
+                        : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null || _skillChanges is not null
                             ? new[] { "operator.admin", "operator.read" }
                             : new[] { _setup is null ? "operator.read" : "operator.admin" }
             },
@@ -355,6 +382,18 @@ public sealed partial class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters, Func<string, bool>? containsModelSession = null)
     {
+        if (_skillChanges is not null && method == "skills.update")
+        {
+            ValidateProperties(parameters, "skillKey", "enabled");
+            var key = OptionalString(parameters, "skillKey");
+            if (key is not ("fixture-calendar" or "fixture-notes") ||
+                !parameters.TryGetProperty("enabled", out var enabled) ||
+                enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new FixtureRequestException("INVALID_PARAMS", "Known skillKey and enabled boolean are required.");
+            lock (_skillChanges)
+                _skillChanges[key] = enabled.GetBoolean();
+            return new { ok = true, skillKey = key };
+        }
         if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
             return RespondCron(method, parameters);
         if (_contextUsage is not null && method == "chat.send")
@@ -617,6 +656,30 @@ public sealed partial class GatewayScenario
 
     private JsonElement Read(string method, JsonElement p)
     {
+        if (method == "skills.status")
+        {
+            ValidateProperties(p, "agentId", "sessionKey", "refresh");
+            var agentId = OptionalString(p, "agentId") ?? "main";
+            if (agentId is not ("main" or "research"))
+                throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agent.");
+            var sessionKey = OptionalString(p, "sessionKey");
+            if (sessionKey is not null && !ContainsSession(sessionKey))
+                throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture session.");
+            OptionalBoolean(p, "refresh");
+            var report = JsonNode.Parse(_reads[method].GetRawText())!.AsObject();
+            report["agentId"] = agentId;
+            if (_skillChanges is not null)
+            {
+                lock (_skillChanges)
+                    foreach (var skill in report["skills"]!.AsArray())
+                        if (_skillChanges.TryGetValue(skill!["skillKey"]!.GetValue<string>(), out var enabled))
+                        {
+                            skill["disabled"] = !enabled;
+                            skill["eligible"] = enabled;
+                        }
+            }
+            return JsonSerializer.SerializeToElement(report);
+        }
         ValidateProperties(p, method == "health" ? ["deep", "probe"] : []);
         if (method == "health")
         {

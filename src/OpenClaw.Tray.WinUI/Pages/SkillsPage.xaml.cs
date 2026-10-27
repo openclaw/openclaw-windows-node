@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
@@ -23,6 +24,7 @@ public sealed partial class SkillsPage : Page
     private CancellationTokenSource? _nativeLifetime;
     private Task? _nativeLoad;
     private Exception? _nativeLoadError;
+    private long _refreshRevision;
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
@@ -55,6 +57,7 @@ public sealed partial class SkillsPage : Page
         InitializeComponent();
         Unloaded += (_, _) =>
         {
+            _refreshRevision++;
             _nativeLifetime?.Cancel();
             _nativeLifetime?.Dispose();
             _nativeLifetime = null;
@@ -62,9 +65,10 @@ public sealed partial class SkillsPage : Page
         };
     }
 
-    public void Initialize()
+    internal void Initialize(SetupNativeNavigationRequest? request)
     {
-        if (_nativeSetupRequest is { } request)
+        _nativeSetupRequest = request;
+        if (request is not null)
         {
             _nativeLifetime?.Cancel();
             _nativeLifetime?.Dispose();
@@ -95,7 +99,7 @@ public sealed partial class SkillsPage : Page
 
         if (CurrentApp.GatewayClient != null)
         {
-            _ = CurrentApp.GatewayClient.RequestSkillsStatusAsync(GetSelectedAgentId());
+            _ = RefreshSkillsAsync(CurrentApp.GatewayClient);
         }
     }
 
@@ -170,7 +174,41 @@ public sealed partial class SkillsPage : Page
     {
         var client = CurrentApp.GatewayClient;
         if (client != null)
-            _ = client.RequestSkillsStatusAsync(GetSelectedAgentId());
+            _ = RefreshSkillsAsync(client);
+    }
+
+    private async Task RefreshSkillsAsync(IOperatorGatewayClient client)
+    {
+        if (_nativeSetupRequest is { } request && _nativeLifetime is { } lifetime)
+        {
+            await LoadNativeAsync(request, lifetime.Token);
+            return;
+        }
+        var revision = ++_refreshRevision;
+        if (!client.IsConnectedToGateway)
+        {
+            ShowSkillsError();
+            return;
+        }
+        try
+        {
+            await client.RequestSkillsStatusAsync(GetSelectedAgentId());
+        }
+        catch (Exception error)
+        {
+            Logger.Warn($"[SkillsPage] Skills refresh failed: {error.Message}");
+            if (revision == _refreshRevision && IsLoaded &&
+                (_nativeSetupRequest is not null || ReferenceEquals(client, CurrentApp.GatewayClient)))
+                ShowSkillsError();
+        }
+    }
+
+    private void ShowSkillsError()
+    {
+        LoadingState.Visibility = Visibility.Collapsed;
+        NativeSetupError.Message = LocalizationHelper.GetString("SkillsPage_RequestFailed");
+        NativeSetupError.Visibility = Visibility.Visible;
+        NativeSetupError.IsOpen = true;
     }
 
     private void OnToggleSkillClick(object sender, RoutedEventArgs e) =>
@@ -183,33 +221,43 @@ public sealed partial class SkillsPage : Page
     {
         if (sender is not Button btn || btn.Tag is not string skillKey) return;
         var client = _nativeSetupRequest is null ? CurrentApp.GatewayClient : RequireNativeClient();
-        if (client == null) return;
+        if (client == null)
+        {
+            ShowSkillsError();
+            return;
+        }
 
         var skill = _allSkills.FirstOrDefault(s => s.SkillKey == skillKey);
         if (skill == null) return;
 
         bool newState = !skill.IsEnabled;
         btn.IsEnabled = false;
-        var success = await client.SetSkillEnabledAsync(skillKey, newState);
-        btn.IsEnabled = true;
-        if (_nativeSetupRequest is not null && !ReferenceEquals(client, RequireNativeClient()))
-            throw new SetupNativeOwnershipException();
-
-        if (success)
+        try
         {
-            // Re-lookup after await — _allSkills may have been replaced by UpdateFromGateway
-            var current = _allSkills.FirstOrDefault(s => s.SkillKey == skillKey);
-            if (current != null)
+            var success = await client.SetSkillEnabledAsync(skillKey, newState);
+            if (!IsLoaded || (_nativeSetupRequest is null && !ReferenceEquals(client, CurrentApp.GatewayClient)))
+                return;
+            if (_nativeSetupRequest is not null && !ReferenceEquals(client, RequireNativeClient()))
+                throw new SetupNativeOwnershipException();
+            if (!success)
             {
-                current.IsEnabled = newState;
-                RebuildCards();
+                ShowSkillsError();
+                return;
             }
+            // The refreshed report, not the submitted intention, owns the displayed state.
+            await RefreshSkillsAsync(client);
+        }
+        finally
+        {
+            btn.IsEnabled = true;
         }
     }
 
     public void UpdateFromGateway(JsonElement data)
     {
         OpenClawTray.Services.Logger.Info("[SkillsPage] Received gateway skills data");
+        NativeSetupError.IsOpen = false;
+        NativeSetupError.Visibility = Visibility.Collapsed;
 
         JsonElement skillsArray;
         if (data.TryGetProperty("skills", out var inner))
@@ -369,6 +417,8 @@ public sealed partial class SkillsPage : Page
             Padding = new Thickness(6, 4, 6, 4), MinWidth = 0, MinHeight = 0
         };
         ToolTipService.SetToolTip(toggleBtn, s.IsEnabled ? "Disable" : "Enable");
+        AutomationProperties.SetAutomationId(toggleBtn, $"SkillsPageToggle:{s.SkillKey}");
+        AutomationProperties.SetName(toggleBtn, s.Name);
         toggleBtn.Content = new FontIcon { Glyph = s.IsEnabled ? "\uE769" : "\uE768", FontSize = 12 };
         toggleBtn.Click += OnToggleSkillClick;
         Grid.SetRow(toggleBtn, 0);

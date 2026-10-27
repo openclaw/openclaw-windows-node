@@ -120,7 +120,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private bool _authFailed;
     private readonly HandshakeChallengeGate _handshakeChallengeGate = new();
     private bool _protocolMismatch;
-    private string? _lastSkillsStatusAgentId;
+    private long _skillsStatusRevision;
     private readonly bool _tokenIsBootstrapToken;
     private readonly bool _bootstrapPairAsNode;
     private readonly bool _ignoreStoredDeviceToken;
@@ -1623,22 +1623,52 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     public async Task RequestSkillsStatusAsync(string? agentId = null)
     {
-        _lastSkillsStatusAgentId = string.IsNullOrWhiteSpace(agentId) ? null : agentId;
+        var scope = string.IsNullOrWhiteSpace(agentId) ? null : agentId;
+        var revision = Interlocked.Increment(ref _skillsStatusRevision);
+        if (!TryGetReadyConnectionGeneration(out var generation))
+            return;
 
-        if (_lastSkillsStatusAgentId is not null)
-            await SendTrackedRequestAsync("skills.status", new { agentId = _lastSkillsStatusAgentId });
-        else
-            await SendTrackedRequestAsync("skills.status");
+        var report = await SendWizardRequestAsync("skills.status", scope is null ? new { } : (object)new { agentId = scope });
+        // An earlier agent's report must not overwrite a newer filter or a replacement connection.
+        if (revision == Volatile.Read(ref _skillsStatusRevision) &&
+            TryGetReadyConnectionGeneration(out var currentGeneration) && generation == currentGeneration)
+            SkillsStatusUpdated?.Invoke(this, report);
     }
 
-    public Task<bool> InstallSkillAsync(string skillId)
+    public Task<bool> InstallSkillAsync(string name, string installId, string? agentId = null)
     {
-        return TrySendTrackedRequestAsync("skills.install", new { id = skillId });
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(installId);
+        // Upstream's dependency-recipe branch requires both name and installId, not an arbitrary id.
+        return TryMutateSkillAsync("skills.install", string.IsNullOrWhiteSpace(agentId)
+            ? new { name, installId }
+            : (object)new { name, installId, agentId });
     }
 
     public Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled)
     {
-        return TrySendTrackedRequestAsync("skills.update", new { skillKey, enabled });
+        ArgumentException.ThrowIfNullOrWhiteSpace(skillKey);
+        return TryMutateSkillAsync("skills.update", new { skillKey, enabled });
+    }
+
+    private async Task<bool> TryMutateSkillAsync(string method, object parameters)
+    {
+        try
+        {
+            var result = await SendWizardRequestAsync(method, parameters);
+            if (result.ValueKind == JsonValueKind.Object &&
+                result.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
+            {
+                _logger.Warn($"{method} was not accepted by the Gateway");
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"{method} request failed: {ex.Message}");
+            return false;
+        }
     }
 
     // Gateway config management
@@ -2780,11 +2810,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 return true;
             case "skills.status":
                 SkillsStatusUpdated?.Invoke(this, payload.Clone());
-                return true;
-            case "skills.install":
-            case "skills.update":
-                // Re-fetch the same skills scope so filtered views do not jump back to all agents.
-                _ = RequestSkillsStatusAsync(_lastSkillsStatusAgentId);
                 return true;
             case "config.get":
                 ConfigUpdated?.Invoke(this, payload.Clone());

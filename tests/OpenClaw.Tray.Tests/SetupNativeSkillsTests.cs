@@ -2,12 +2,50 @@ using System.Reflection;
 using System.Text.Json;
 using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
+using OpenClaw.TestSupport;
+using OpenClaw.TestSupport.Gateway;
 using OpenClawTray.Presentation;
 
 namespace OpenClaw.Tray.Tests;
 
 public sealed class SetupNativeSkillsTests
 {
+    [Fact]
+    public async Task RealClientReloadsBoundStatusAfterAcknowledgedMutation()
+    {
+        const string token = "synthetic-skills-owner-token";
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateSkillsEditing(), token);
+        using var identity = new TempDirectory("native-skills-socket-");
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, identityPath: identity.Path,
+            ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.HandshakeSucceeded += (_, _) => ready.TrySetResult();
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        var request = new SetupNativeNavigationRequest(new(
+            new(SetupCompletionIntent.CustodianOnboarding, "gateway", "binding", "provider/model", "main", 1,
+                IdentityBinding: new string('B', 64), SessionKey: "agent:main:main"),
+            new(SetupNativeDestination.Skills, "agent:main:main")));
+        try
+        {
+            var before = await SetupNativeSkills.LoadAsync(request, () => client, CancellationToken.None);
+            Assert.Equal("main", before.GetProperty("agentId").GetString());
+            Assert.False(before.GetProperty("skills")[0].GetProperty("disabled").GetBoolean());
+            Assert.True(await client.SetSkillEnabledAsync("fixture-calendar", false));
+
+            var after = await SetupNativeSkills.LoadAsync(request, () => client, CancellationToken.None);
+
+            Assert.True(after.GetProperty("skills")[0].GetProperty("disabled").GetBoolean());
+            Assert.Equal("main", after.GetProperty("agentId").GetString());
+            Assert.Equal(2, server.Requests.Count(row => row.Method == "skills.status"));
+            Assert.Empty(server.UnexpectedRequests);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
     private static SetupNativeNavigationRequest Request => new(new(
         new(SetupCompletionIntent.CustodianOnboarding, "gateway", "binding", "provider/model", "primary", 1,
             IdentityBinding: new string('B', 64), SessionKey: "agent:primary:main"),
@@ -48,11 +86,16 @@ public sealed class SetupNativeSkillsTests
     public async Task CancelledReadDoesNotWaitForGatewayOrInstallAnything()
     {
         var client = DispatchProxy.Create<IOperatorGatewayClient, SkillsClient>();
-        ((SkillsClient)client).Response = new TaskCompletionSource<JsonElement>().Task;
+        var reply = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ((SkillsClient)client).Response = reply.Task;
         using var cancel = new CancellationTokenSource();
-        var load = SetupNativeSkills.LoadAsync(Request, () => client, cancel.Token);
+        var ownerChecks = 0;
+        var load = SetupNativeSkills.LoadAsync(Request, () => { ownerChecks++; return client; }, cancel.Token);
         cancel.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => load);
+        reply.SetResult(JsonDocument.Parse("{\"skills\":[]}").RootElement.Clone());
+        Assert.True(load.IsCanceled);
+        Assert.Equal(1, ownerChecks);
         Assert.Equal(1, ((SkillsClient)client).Calls);
     }
 

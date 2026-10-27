@@ -11,6 +11,18 @@ session identities and titles, and 240 mixed-height messages with an explicit
 final-message marker. Supporting model, agent, health, usage and configuration
 responses populate the application rather than just its disconnected shell.
 
+Skills browsing includes synthetic enabled and disabled entries through the real
+`skills.status` client. The native rejection proof invokes the page's toggle
+against the read-only Gateway, checks visible recovery guidance and retained
+acknowledged state, and captures the rejected state when screenshots are enabled.
+This does not install skills or prove a live Gateway's installation policy.
+The opt-in `skills-editing` scenario accepts only enabled-state changes to its
+two synthetic entries in memory. Acceptance tests refresh both ordinary and
+setup-bound Skills pages from Gateway reports, without executing recipes.
+The setup-bound case uses the production handoff and waits for its verified
+agent's page to load before mutating. Skills screenshots target the owned
+Settings window and assert the captured state, not the larger Chat window.
+
 ## Build and explore
 
 Build the current app first, then pass its executable explicitly. An installed

@@ -8185,4 +8185,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Summarize my recent sessions</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me configure a channel</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Check system health</value></data>
+  <data name="SkillsPage_RequestFailed" xml:space="preserve">
+    <value>Could not load or update skills. Check the Gateway connection and permissions, then try again.</value>
+  </data>
 </root>

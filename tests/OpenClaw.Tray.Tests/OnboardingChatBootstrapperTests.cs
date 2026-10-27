@@ -621,7 +621,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public Task<bool> UpdateCronJobAsync(string id, object patch) => Task.FromResult(false);
         public Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0) => Task.CompletedTask;
         public Task RequestSkillsStatusAsync(string? agentId = null) => Task.CompletedTask;
-        public Task<bool> InstallSkillAsync(string skillId) => Task.FromResult(false);
+        public Task<bool> InstallSkillAsync(string name, string installId, string? agentId = null) => Task.FromResult(false);
         public Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled) => Task.FromResult(false);
         public Task<bool> UpdateSkillAsync(string skillId) => Task.FromResult(false);
         public Task RequestConfigAsync() => Task.CompletedTask;
