@@ -86,76 +86,26 @@ internal static class LocalAiSetupRoutePolicy
 }
 
 /// <summary>
-/// Resolves and validates the WSL distro that owns the Local AI installation.
+/// Resolves the WSL distro that owns the Local AI installation and rejects any
+/// registry change that would redirect lifecycle commands to a different distro.
+/// Binding happens at construction; every <see cref="Resolve"/> revalidates the
+/// pinned owner against the current registry.
 ///
-/// This module pins the Local AI lifecycle to exactly one explicitly setup-managed
-/// local WSL gateway. It enforces ownership stability: once a gateway is bound as the
-/// Local AI owner, any registry change that would redirect lifecycle commands to a
-/// different distro is rejected.
-///
-/// The resolver runs in two phases:
-///   1. Constructor-time binding: attempts to bind to an existing single setup-managed
-///      gateway that meets ownership criteria. If none exists (first-run), the resolver
-///      remains unbound until a registry update arrives.
-///   2. Resolve() calls: revalidate the current registry state and return a resolution
-///      record with the distro name and gateway ID, or a failure detail if ownership
-///      changed or prerequisites are missing.
-///
-/// Use <see cref="LocalAiSetupRoutePolicy.Decide"/> to determine the setup route
-/// (Provision/Recovery/Blocked) based on current system state. This resolver validates
-/// that an existing Local AI binding remains valid before executing lifecycle commands.
+/// Use <see cref="LocalAiSetupRouteResolver.ResolveAsync"/> (not raw
+/// <see cref="LocalAiSetupRoutePolicy.Decide"/> flags) for setup route decisions:
+/// it observes real gateway/distro state and supplies the RecoveryTarget.
 ///
 /// <example>
-/// // Basic resolution with error handling
-/// var registry = new GatewayRegistry(dataDir);
 /// var resolver = new LocalAiGatewayDistroResolver(registry);
-///
 /// LocalAiGatewayDistroResolution result = resolver.Resolve();
-/// if (result.Success)
-/// {
-///     Console.WriteLine($"Local AI using distro '{result.DistroName}' (gateway {result.GatewayId})");
-///     // Proceed with lifecycle commands
-/// }
-/// else
-/// {
-///     Console.WriteLine($"Local AI routing failed: {result.Detail}");
-///     // Show setup prompt or recovery options
-/// }
+/// if (result.Success) { /* run lifecycle commands against result.DistroName */ }
+/// else { /* show setup or recovery guidance for result.Detail */ }
 ///
-/// // Combine with setup route decision
-/// LocalAiSetupResolution setup = LocalAiSetupRoutePolicy.Decide(
-///     owners: registry.GetAll(),
-///     hasLocalGateway: false,
-///     localGatewayId: null,
-///     hasDistro: false,
-///     hasDistroDataDirectory: false,
-///     distroIsAppOwned: false);
-///
-/// switch (setup.Route)
-/// {
-///     case LocalAiSetupRoute.Provision:
-///         // Start first-time setup
-///         break;
-///     case LocalAiSetupRoute.Recovery:
-///         // Use resolver to obtain the target for recovery
-///         var resolution = resolver.Resolve();
-///         var target = resolution.Success
-///             ? new LocalAiRecoveryTarget(
-///                 resolution.GatewayId!,
-///                 resolution.DistroName!,
-///                 GatewayPort: 1234,
-///                 ModelCatalogId: null,
-///                 RequestedLocalAiPort: null)
-///             : null;
-///         if (target is not null)
-///         {
-///             // Execute recovery against the resolved target
-///         }
-///         break;
-///     case LocalAiSetupRoute.Blocked:
-///         // Show error or guide user to fix configuration
-///         break;
-/// }
+/// // Setup route (production path, also the only supported way to get RecoveryTarget):
+/// LocalAiSetupResolution setup = await new LocalAiSetupRouteResolver(
+///     () => registry, dataDir, localDataDir, defaultDistroName).ResolveAsync(ct);
+/// LocalAiRecoveryTarget? target = setup.Route is LocalAiSetupRoute.Recovery
+///     ? setup.RecoveryTarget : null;
 /// </example>
 /// </summary>
 internal sealed class LocalAiGatewayDistroResolver : ILocalAiGatewayDistroResolver

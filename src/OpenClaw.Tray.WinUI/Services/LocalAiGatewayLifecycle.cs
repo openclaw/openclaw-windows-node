@@ -21,10 +21,12 @@
 //   // NativeLocalAiOwnershipState: Unselected | MissingReceipt | DifferentOwner |
 //   //                              RecoveryRequired | SameOwner | InvalidReceipt | Unavailable
 //
-//   // 2. First use: stage the receipt, then start the runtime, then publish the provider.
-//   await lifecycle.PrepareAsync(install, ct);        // requires a registered Gateway (Register)
-//   var started = await lifecycle.CompleteStartAsync(install, ct, progress);
-//   var published = await lifecycle.PublishAsync(install, ct, progress);
+//   // 2. First use: stage the receipt, then start the runtime through its owning
+//   //    service; the runtime invokes CompleteStartAsync/PublishAsync itself as
+//   //    callbacks under its operation gate (see LlamaServerRuntimeService.EnsureStartedAsync
+//   //    and SetupLocalAiHost). Calling them directly never launches the process.
+//   await lifecycle.PrepareAsync(install, ct);   // requires a registered Gateway (Register)
+//   var started = await runtime.EnsureStartedAsync(ct, progress);
 //
 //   // 3. Stop/teardown: withdraw the provider, restore the previous primary model,
 //   //    and remove the Companion-added allowlist entry.
