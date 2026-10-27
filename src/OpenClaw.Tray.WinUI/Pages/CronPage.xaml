@@ -82,6 +82,7 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="8" Padding="20" Margin="0,0,0,12">
+            <ContentControl x:Name="JobFormContent" HorizontalContentAlignment="Stretch">
             <StackPanel Spacing="16">
                 <TextBlock x:Name="FormTitle" x:Uid="CronPage_NewCronJob" Text="New cron job" Style="{StaticResource SubtitleTextBlockStyle}"/>
 
@@ -238,7 +239,7 @@
                                 <TextBlock x:Uid="CronPage_WAKEMODE" Text="Wake mode" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                                 <ComboBox x:Name="FormWakeMode" SelectedIndex="0" HorizontalAlignment="Stretch">
                                     <ComboBoxItem x:Uid="CronPage_NowImmediate" Content="Now (immediate)" Tag="now"/>
-                                    <ComboBoxItem x:Uid="CronPage_QueueWaitForIdle" Content="Queue (wait for idle)" Tag="queue"/>
+                                    <ComboBoxItem x:Uid="CronPage_NextHeartbeat" Content="Next heartbeat" Tag="next-heartbeat"/>
                                 </ComboBox>
                             </StackPanel>
                         </Grid>
@@ -258,6 +259,7 @@
                             Style="{StaticResource AccentButtonStyle}"/>
                 </StackPanel>
             </StackPanel>
+            </ContentControl>
         </Border>
 
         <!-- Notification for completed one-shot jobs -->

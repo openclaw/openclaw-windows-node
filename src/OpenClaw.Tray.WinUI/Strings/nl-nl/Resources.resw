@@ -8119,4 +8119,12 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="CronPage_Details" xml:space="preserve"><value>Taakdetails</value></data>
+  <data name="CronPage_NextHeartbeat.Content" xml:space="preserve"><value>Volgende heartbeat</value></data>
+  <data name="CronPage_Scratch" xml:space="preserve"><value>Privénotities</value></data>
+  <data name="CronPage_Transcript" xml:space="preserve"><value>Opgeslagen transcript</value></data>
+  <data name="CronPage_TranscriptNext" xml:space="preserve"><value>Volgende transcriptpagina</value></data>
+  <data name="CronPage_ScratchHelp" xml:space="preserve"><value>Privéstatus voor deze taak. Maximaal {0} UTF-8-bytes. Sla een leeg veld op om de inhoud te wissen.</value></data>
+  <data name="CronPage_ScratchTooLarge" xml:space="preserve"><value>Privénotities overschrijden de limiet van {0} bytes.</value></data>
+  <data name="CronPage_ScratchConflict" xml:space="preserve"><value>De privénotities zijn gewijzigd op de gateway. Uw concept blijft hier bewaard. Kopieer het, sluit dit dialoogvenster en open het opnieuw om de nieuwste versie te bekijken voordat u opslaat.</value></data>
 </root>

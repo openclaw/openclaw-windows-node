@@ -6,9 +6,8 @@ using Xunit;
 namespace OpenClaw.Shared.Tests;
 
 /// <summary>
-/// Validates that cron API payloads use the expected wire format.
-/// All cron commands should use "id" (not "jobId") to identify a job,
-/// matching the gateway contract for cron.run and cron.remove.
+/// Cron response parser contracts. Production request shapes are exercised
+/// through real clients in GatewayFixtureProtocolTests and live round-trip tests.
 /// </summary>
 public class CronPayloadShapeTests
 {
@@ -16,47 +15,6 @@ public class CronPayloadShapeTests
     {
         var json = JsonSerializer.Serialize(payload);
         return JsonDocument.Parse(json).RootElement;
-    }
-
-    [Fact]
-    public void CronUpdate_Payload_Uses_Id_Not_JobId()
-    {
-        // Mirrors the wire object built by UpdateCronJobAsync(string id, object patch)
-        var payload = new { id = "job-123", patch = new { enabled = false } };
-        var el = Serialize(payload);
-
-        Assert.True(el.TryGetProperty("id", out var idProp));
-        Assert.Equal("job-123", idProp.GetString());
-        Assert.False(el.TryGetProperty("jobId", out _), "Payload should use 'id', not 'jobId'");
-        Assert.True(el.TryGetProperty("patch", out var patchProp));
-        Assert.False(patchProp.GetProperty("enabled").GetBoolean());
-    }
-
-    [Fact]
-    public void CronRuns_Payload_Uses_Id_Not_JobId()
-    {
-        // Mirrors the wire object built by RequestCronRunsAsync
-        var payload = new { id = "job-456", limit = 20, offset = 0 };
-        var el = Serialize(payload);
-
-        Assert.True(el.TryGetProperty("id", out var idProp));
-        Assert.Equal("job-456", idProp.GetString());
-        Assert.False(el.TryGetProperty("jobId", out _), "Payload should use 'id', not 'jobId'");
-        Assert.Equal(20, el.GetProperty("limit").GetInt32());
-        Assert.Equal(0, el.GetProperty("offset").GetInt32());
-    }
-
-    [Fact]
-    public void CronRun_Payload_Uses_JobId()
-    {
-        // Mirrors the wire object built by RunCronJobAsync
-        var payload = new { jobId = "job-789" };
-        var el = Serialize(payload);
-
-        Assert.True(el.TryGetProperty("jobId", out var idProp));
-        Assert.Equal("job-789", idProp.GetString());
-        Assert.False(el.TryGetProperty("id", out _));
-        Assert.False(el.TryGetProperty("force", out _));
     }
 
     [Fact]
@@ -96,62 +54,72 @@ public class CronPayloadShapeTests
     }
 
     [Fact]
-    public void CronRemove_Payload_Uses_Id()
+    public void ScratchResponse_PreservesContentAndMonotonicRevisionAfterClear()
     {
-        // Mirrors the wire object built by RemoveCronJobAsync
-        var payload = new { id = "job-abc" };
-        var el = Serialize(payload);
+        var present = OpenClawGatewayClient.ParseCronScratch(Serialize(new
+        {
+            scratch = new { content = "Private state", revision = 3, updatedAtMs = 12 },
+            currentRevision = 3, maxBytes = 262144
+        }));
+        Assert.Equal("Private state", present.Content);
+        Assert.Equal(3, present.CurrentRevision);
+        Assert.Equal(262144, present.MaxBytes);
+        var cleared = OpenClawGatewayClient.ParseCronScratch(Serialize(new
+        {
+            scratch = (object?)null, currentRevision = 4, maxBytes = 262144
+        }));
+        Assert.Null(cleared.Content);
+        Assert.Equal(4, cleared.CurrentRevision);
+    }
 
-        Assert.True(el.TryGetProperty("id", out var idProp));
-        Assert.Equal("job-abc", idProp.GetString());
-        Assert.False(el.TryGetProperty("jobId", out _));
+    [Theory]
+    [InlineData(-1, 262144)]
+    [InlineData(0, 0)]
+    public void ScratchResponse_InvalidBoundsAreNotAnEmptySuccess(long revision, int maxBytes)
+    {
+        Assert.Throws<JsonException>(() => OpenClawGatewayClient.ParseCronScratch(Serialize(new
+        {
+            scratch = (object?)null, currentRevision = revision, maxBytes
+        })));
     }
 
     [Fact]
-    public void CronAdd_Payload_Contains_Required_Fields()
+    public void ScratchWrite_ConflictIsNotSuccess()
     {
-        // Mirrors the wire object built by the form save handler
-        var payload = new Dictionary<string, object>
+        var result = OpenClawGatewayClient.ParseCronScratchWrite(Serialize(new
         {
-            ["name"] = "My Test Job",
-            ["enabled"] = true,
-            ["schedule"] = new Dictionary<string, object> { ["kind"] = "cron", ["expr"] = "0 * * * *" },
-            ["sessionTarget"] = "isolated",
-            ["wakeMode"] = "now",
-            ["payload"] = new Dictionary<string, object> { ["kind"] = "agentTurn", ["message"] = "Hello" },
-            ["delivery"] = new Dictionary<string, object> { ["mode"] = "none" }
-        };
-        var el = Serialize(payload);
-
-        Assert.Equal("My Test Job", el.GetProperty("name").GetString());
-        Assert.True(el.GetProperty("enabled").GetBoolean());
-        Assert.Equal("cron", el.GetProperty("schedule").GetProperty("kind").GetString());
-        Assert.Equal("isolated", el.GetProperty("sessionTarget").GetString());
-        Assert.Equal("agentTurn", el.GetProperty("payload").GetProperty("kind").GetString());
-        Assert.False(el.TryGetProperty("jobId", out _), "Add payload should not contain jobId");
-        Assert.False(el.TryGetProperty("id", out _), "Add payload should not contain id (server assigns it)");
+            ok = false, reason = "revision-conflict", currentRevision = 9
+        }));
+        Assert.False(result.Ok);
+        Assert.Equal(9, result.CurrentRevision);
+        Assert.Throws<JsonException>(() => OpenClawGatewayClient.ParseCronScratchWrite(Serialize(new
+        {
+            ok = false, reason = "unexpected", currentRevision = 9
+        })));
     }
 
     [Fact]
-    public void CronUpdate_Patch_With_DeleteAfterRun_Serializes_Correctly()
+    public void ScratchResponse_InconsistentRevisionCannotAuthorizeAnOverwrite()
     {
-        var patch = new Dictionary<string, object>
+        Assert.Throws<JsonException>(() => OpenClawGatewayClient.ParseCronScratch(Serialize(new
         {
-            ["name"] = "Updated Job",
-            ["schedule"] = new Dictionary<string, object> { ["kind"] = "at", ["at"] = "2026-12-31T23:59:59.000Z" },
-            ["deleteAfterRun"] = true,
-            ["sessionTarget"] = "isolated",
-            ["wakeMode"] = "now",
-            ["payload"] = new Dictionary<string, object> { ["kind"] = "agentTurn", ["message"] = "Run once" },
-            ["delivery"] = new Dictionary<string, object> { ["mode"] = "none" }
-        };
-        var payload = new { id = "job-once", patch };
-        var el = Serialize(payload);
+            scratch = new { content = "State", revision = 1, updatedAtMs = 12 },
+            currentRevision = 2, maxBytes = 262144
+        })));
+    }
 
-        Assert.Equal("job-once", el.GetProperty("id").GetString());
-        var patchEl = el.GetProperty("patch");
-        Assert.True(patchEl.GetProperty("deleteAfterRun").GetBoolean());
-        Assert.Equal("at", patchEl.GetProperty("schedule").GetProperty("kind").GetString());
+    [Fact]
+    public void TranscriptResponse_PreservesRolesAndOpaqueCursorAndOwnsJsonLifetime()
+    {
+        CronTranscriptPage page;
+        using (var document = JsonDocument.Parse("""{"messages":[{"role":"assistant","content":"Recorded answer"}],"nextCursor":"opaque:page"}"""))
+            page = OpenClawGatewayClient.ParseCronTranscript(document.RootElement);
+        Assert.Equal("opaque:page", page.NextCursor);
+        Assert.Equal("Recorded answer", Assert.Single(page.Messages).GetProperty("content").GetString());
+        Assert.Equal("assistant", page.Messages[0].GetProperty("role").GetString());
+        var last = OpenClawGatewayClient.ParseCronTranscript(Serialize(new { messages = Array.Empty<object>() }));
+        Assert.Empty(last.Messages);
+        Assert.Null(last.NextCursor);
     }
 
     // ── Run history display sanitization ──

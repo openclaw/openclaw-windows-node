@@ -8170,4 +8170,12 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Resuma minhas sessões recentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Ajude-me a configurar um canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Verifique a integridade do sistema</value></data>
+  <data name="CronPage_Details" xml:space="preserve"><value>Detalhes da tarefa</value></data>
+  <data name="CronPage_NextHeartbeat.Content" xml:space="preserve"><value>Próximo sinal periódico</value></data>
+  <data name="CronPage_Scratch" xml:space="preserve"><value>Notas privadas</value></data>
+  <data name="CronPage_Transcript" xml:space="preserve"><value>Transcrição registrada</value></data>
+  <data name="CronPage_TranscriptNext" xml:space="preserve"><value>Próxima página da transcrição</value></data>
+  <data name="CronPage_ScratchHelp" xml:space="preserve"><value>Estado privado desta tarefa. Máximo de {0} bytes UTF-8. Salve o campo vazio para limpar o conteúdo.</value></data>
+  <data name="CronPage_ScratchTooLarge" xml:space="preserve"><value>As notas privadas excedem o limite de {0} bytes.</value></data>
+  <data name="CronPage_ScratchConflict" xml:space="preserve"><value>As notas privadas foram alteradas no Gateway. Seu rascunho foi preservado aqui. Copie-o, feche esta caixa de diálogo e abra-a novamente para revisar a versão mais recente antes de salvar.</value></data>
 </root>

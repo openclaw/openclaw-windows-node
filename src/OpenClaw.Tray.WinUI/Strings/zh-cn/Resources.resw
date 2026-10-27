@@ -8118,4 +8118,12 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>总结我最近的会话</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>帮我配置一个频道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>检查系统健康状况</value></data>
+  <data name="CronPage_Details" xml:space="preserve"><value>任务详情</value></data>
+  <data name="CronPage_NextHeartbeat.Content" xml:space="preserve"><value>下次心跳</value></data>
+  <data name="CronPage_Scratch" xml:space="preserve"><value>私有暂存</value></data>
+  <data name="CronPage_Transcript" xml:space="preserve"><value>已记录的对话</value></data>
+  <data name="CronPage_TranscriptNext" xml:space="preserve"><value>下一页对话</value></data>
+  <data name="CronPage_ScratchHelp" xml:space="preserve"><value>此任务的私有状态。最多 {0} 个 UTF-8 字节。保存空白字段可清除内容。</value></data>
+  <data name="CronPage_ScratchTooLarge" xml:space="preserve"><value>私有暂存内容超过 {0} 字节的限制。</value></data>
+  <data name="CronPage_ScratchConflict" xml:space="preserve"><value>网关上的私有暂存内容已更改。您的草稿已保留在此处。请复制草稿，关闭并重新打开此对话框，在保存前查看最新版本。</value></data>
 </root>

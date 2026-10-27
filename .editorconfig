@@ -176,6 +176,10 @@ dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 [src/OpenClaw.Tray.WinUI/Dialogs/SessionCheckpointDialogCoordinator.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
+# CronPage owns these native XAML dialogs, outside the Reactor chat tree.
+[src/OpenClaw.Tray.WinUI/Dialogs/CronDetailsDialog.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
 [src/OpenClaw.Tray.WinUI/Chat/ReactorChatHostExtensions.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 

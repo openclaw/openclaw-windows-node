@@ -7,6 +7,7 @@ using OpenClawTray.Chat;
 using OpenClawTray.Chat.Markdown;
 using OpenClawTray.FunctionalUI.Hosting;
 using OpenClawTray.Helpers;
+using OpenClawTray.Dialogs;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using System;
@@ -35,6 +36,7 @@ public sealed partial class CronPage : Page
     private CancellationTokenSource? _infoDismissCts = null; // auto-dismiss timer for InfoBar
     private readonly AsyncListLoadingState _cronLoading = new();
     private bool _submittingJob;
+    private bool _showingDetails;
 
     public CronPage()
     {
@@ -272,8 +274,14 @@ public sealed partial class CronPage : Page
         if (_runningJobIds.Contains(jobId)) return;
         if (CurrentApp.GatewayClient == null) { ShowDisconnected(); return; }
         _removedJobIds.Add(jobId);
-        // Gateway client's HandleKnownResponse refreshes the list automatically on cron.remove
-        _ = CurrentApp.GatewayClient.RemoveCronJobAsync(jobId);
+        var client = CurrentApp.GatewayClient;
+        var epoch = client.SessionMutationConnectionEpoch;
+        AsyncEventHandlerGuard.Run(async () =>
+        {
+            if (await client.RemoveCronJobAsync(jobId)) return;
+            _removedJobIds.Remove(jobId);
+            if (IsCurrentCronClient(client, epoch)) ShowMutationError();
+        }, new AppLogger(), nameof(OnRemoveClick));
     }
 
     private void OnEnabledToggleChanged(object sender, RoutedEventArgs e)
@@ -288,7 +296,56 @@ public sealed partial class CronPage : Page
         if (vm == null) return;
         if (_runningJobIds.Contains(jobId)) return;
         if (ts.IsOn == vm.IsEnabled) return; // no-op (e.g., programmatic init)
-        _ = CurrentApp.GatewayClient.UpdateCronJobAsync(jobId, new { enabled = ts.IsOn });
+        var client = CurrentApp.GatewayClient;
+        var epoch = client.SessionMutationConnectionEpoch;
+        var enabled = ts.IsOn;
+        AsyncEventHandlerGuard.Run(async () =>
+        {
+            if (await client.UpdateCronJobAsync(jobId, new { enabled })) return;
+            if (!IsCurrentCronClient(client, epoch)) return;
+            ts.IsOn = vm.IsEnabled;
+            ShowMutationError();
+        }, new AppLogger(), nameof(OnEnabledToggleChanged));
+    }
+
+    private bool IsCurrentCronClient(IOperatorGatewayClient client, long? epoch) =>
+        IsLoaded && ReferenceEquals(CurrentApp.GatewayClient, client) && client.SessionMutationConnectionEpoch == epoch;
+
+    private void ShowMutationError()
+    {
+        JobCompletedInfoBar.Message = LocalizationHelper.GetString("WorkspaceShell_AutomationSendFailed");
+        JobCompletedInfoBar.Severity = InfoBarSeverity.Error;
+        JobCompletedInfoBar.IsOpen = true;
+    }
+
+    private void OnDetailsClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string id } button) return;
+        var scratch = button.Name == "Scratch";
+        ShowDetails(scratch ? "CronPage_Scratch" : "CronPage_Details",
+            dialog => scratch ? dialog.ShowScratchAsync(id) : dialog.ShowJobAsync(id));
+    }
+
+    private void ShowDetails(string titleKey, Func<CronDetailsDialog, Task> show)
+    {
+        if (_showingDetails) return;
+        if (CurrentApp.GatewayClient is not { IsConnectedToGateway: true, SessionMutationConnectionEpoch: { } epoch } client)
+        {
+            ShowDisconnected();
+            return;
+        }
+        _showingDetails = true;
+        AsyncEventHandlerGuard.Run(async () =>
+        {
+            try
+            {
+                var dialog = new CronDetailsDialog(client, epoch, XamlRoot,
+                    () => IsLoaded && ReferenceEquals(CurrentApp.GatewayClient, client),
+                    LocalizationHelper.GetString(titleKey));
+                await show(dialog);
+            }
+            finally { _showingDetails = false; }
+        }, new AppLogger(), nameof(ShowDetails));
     }
 
     // --- Job creation/edit form ---
@@ -297,6 +354,7 @@ public sealed partial class CronPage : Page
 
     private void OnNewJobClick(object sender, RoutedEventArgs e)
     {
+        if (_submittingJob) return;
         if (!_cronLoading.CanEdit) return;
         if (CurrentApp.GatewayClient == null) { ShowDisconnected(); return; }
         _editingJobId = null;
@@ -309,6 +367,7 @@ public sealed partial class CronPage : Page
 
     private void OnEditJobClick(object sender, RoutedEventArgs e)
     {
+        if (_submittingJob) return;
         var jobId = (sender as Button)?.Tag as string;
         if (string.IsNullOrEmpty(jobId)) return;
         if (!_cronLoading.CanEdit) return;
@@ -377,6 +436,7 @@ public sealed partial class CronPage : Page
 
     private void OnFormCancelClick(object sender, RoutedEventArgs e)
     {
+        if (_submittingJob) return;
         RestoreFormFromInline();
         JobFormPanel.Visibility = Visibility.Collapsed;
         _editingJobId = null;
@@ -522,15 +582,18 @@ public sealed partial class CronPage : Page
         }
 
         _submittingJob = true;
-        FormSaveButton.IsEnabled = false;
+        var epoch = client.SessionMutationConnectionEpoch;
+        JobFormContent.IsEnabled = false;
+        UpdateCronLoadingVisuals();
         try
         {
             if (!await submit())
             {
-                ShowFormError(LocalizationHelper.GetString("WorkspaceShell_AutomationSendFailed"));
+                if (IsCurrentCronClient(client, epoch))
+                    ShowFormError(LocalizationHelper.GetString("WorkspaceShell_AutomationSendFailed"));
                 return;
             }
-            if (!IsLoaded) return;
+            if (!IsCurrentCronClient(client, epoch)) return;
             RestoreFormFromInline();
             JobFormPanel.Visibility = Visibility.Collapsed;
             _editingJobId = null;
@@ -543,11 +606,12 @@ public sealed partial class CronPage : Page
         catch (Exception ex)
         {
             Logger.Error($"Automation submission failed: {ex}");
-            if (IsLoaded) ShowFormError(ex.Message);
+            if (IsCurrentCronClient(client, epoch)) ShowFormError(ex.Message);
         }
         finally
         {
             _submittingJob = false;
+            JobFormContent.IsEnabled = true;
             if (IsLoaded) UpdateCronLoadingVisuals();
         }
     }
@@ -1088,7 +1152,7 @@ public sealed partial class CronPage : Page
         JobsListPanel.Visibility = _cronLoading.ShouldShowContent ? Visibility.Visible : Visibility.Collapsed;
         EmptyState.Visibility = _cronLoading.ShouldShowEmpty ? Visibility.Visible : Visibility.Collapsed;
         var canUseGateway = CurrentApp.GatewayClient is { IsConnectedToGateway: true } && _cronLoading.CanEdit;
-        NewJobButton.IsEnabled = canUseGateway;
+        NewJobButton.IsEnabled = canUseGateway && !_submittingJob;
         RefreshButton.IsEnabled = canUseGateway;
         FormSaveButton.IsEnabled = canUseGateway && !_submittingJob;
     }
@@ -1551,6 +1615,12 @@ public sealed partial class CronPage : Page
         buttonsPanel.Children.Add(removeBtn);
 
         panel.Children.Add(buttonsPanel);
+        var detailsPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        detailsPanel.Children.Add(MakeActionButton("\uE946", LocalizationHelper.GetString("CronPage_Details"),
+            vm.Id, OnDetailsClick, "Details"));
+        detailsPanel.Children.Add(MakeActionButton("\uE70F", LocalizationHelper.GetString("CronPage_Scratch"),
+            vm.Id, OnDetailsClick, "Scratch"));
+        panel.Children.Add(detailsPanel);
 
         // History panel (populated when History button is clicked)
         var historyPanel = new StackPanel
@@ -2103,6 +2173,17 @@ public sealed partial class CronPage : Page
             contentPanel.Children.Add(BuildFullResponseExpander(runEntryKey, text.FullText!, isError));
         if (!string.IsNullOrWhiteSpace(sessionKey))
             contentPanel.Children.Add(MakeRunChatButton(sessionKey));
+        var jobId = entry.TryGetProperty("jobId", out var jobEl) ? jobEl.GetString() : _historyJobId;
+        var runId = entry.TryGetProperty("runId", out var runEl) ? runEl.GetString() : null;
+        long? runAtMs = entry.TryGetProperty("runAtMs", out var runAtEl) && runAtEl.TryGetInt64(out var exactTime) ? exactTime : null;
+        if (!string.IsNullOrWhiteSpace(jobId) && (!string.IsNullOrWhiteSpace(runId) || runAtMs.HasValue))
+        {
+            var transcript = new Button { Content = LocalizationHelper.GetString("CronPage_Transcript") };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(transcript, $"CronTranscript:{jobId}");
+            transcript.Click += (_, _) => ShowDetails("CronPage_Transcript",
+                dialog => dialog.ShowTranscriptAsync(jobId, runId, runAtMs));
+            contentPanel.Children.Add(transcript);
+        }
         Grid.SetColumn(contentPanel, 1);
         grid.Children.Add(contentPanel);
 
