@@ -632,7 +632,13 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
         {
             await _nodeConnector.ConnectAsync(
                 connectUrl,
-                credential,
+                credential with
+                {
+                    ProxyBearerToken = target.Record.SshTunnel is null
+                        ? GatewayProxyBearerCredential.Reveal(target.Record) : null,
+                    ProxyBearerOrigin = target.Record.SshTunnel is null
+                        ? target.Record.ProxyBearerOrigin : null,
+                },
                 target.IdentityPath,
                 target.UseV2Signature,
                 cancellationToken).ConfigureAwait(false);

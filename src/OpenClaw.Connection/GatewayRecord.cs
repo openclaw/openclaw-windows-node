@@ -21,6 +21,12 @@ public sealed record GatewayRecord
     /// <summary>One-time bootstrap token for first-time pairing.</summary>
     public string? BootstrapToken { get; init; }
 
+    /// <summary>Current-user protected Bearer token for an authenticating reverse proxy.</summary>
+    public string? ProtectedProxyBearerToken { get; init; }
+
+    /// <summary>Exact WebSocket origin authorized to receive the proxy Bearer token.</summary>
+    public string? ProxyBearerOrigin { get; init; }
+
     /// <summary>Last successful connection time.</summary>
     public DateTime? LastConnected { get; init; }
 

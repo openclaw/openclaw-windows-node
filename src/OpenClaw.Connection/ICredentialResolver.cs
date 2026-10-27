@@ -12,6 +12,9 @@ public sealed record GatewayCredential(string Token, bool IsBootstrapToken, stri
     public bool FallbackUsed { get; init; }
     public string? ResolutionDetail { get; init; }
     public string? InteractiveHttpToken { get; init; }
+    /// <summary>Independent reverse-proxy credential for the HTTP upgrade, not the Gateway handshake.</summary>
+    public string? ProxyBearerToken { get; init; }
+    public string? ProxyBearerOrigin { get; init; }
 }
 
 /// <summary>

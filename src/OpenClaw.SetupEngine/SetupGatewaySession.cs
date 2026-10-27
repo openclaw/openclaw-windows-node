@@ -81,9 +81,17 @@ public sealed class SetupGatewaySession : IAsyncDisposable
         LocalAiOnboardingUse.RequireGateway(expectedGatewayId, record.Id);
         RequireCurrentGateway();
         var identityPath = registry.GetIdentityDirectory(record.Id);
-        var deviceToken = DeviceIdentity.TryReadStoredDeviceToken(identityPath);
-        var token = deviceToken ?? record.SharedGatewayToken ?? record.BootstrapToken
-            ?? throw new InvalidOperationException("No gateway credential found.");
+        var deviceTokenRead = DeviceIdentity.ReadStoredDeviceToken(identityPath);
+        var deviceToken = deviceTokenRead.Status == DeviceTokenReadStatus.Resolved
+            ? deviceTokenRead.Token : null;
+        var proxyBearerToken = record.SshTunnel is null
+            ? GatewayProxyBearerCredential.Reveal(record) : null;
+        var proxyBearerOnly = deviceToken is null &&
+            string.IsNullOrWhiteSpace(record.SharedGatewayToken) &&
+            string.IsNullOrWhiteSpace(record.BootstrapToken) &&
+            proxyBearerToken is not null && deviceTokenRead.Status == DeviceTokenReadStatus.Missing;
+        var token = deviceToken ?? record.SharedGatewayToken ?? record.BootstrapToken ??
+            (proxyBearerOnly ? string.Empty : throw new InvalidOperationException("No gateway credential found."));
         var gatewayUrl = binding.Endpoint;
         var provenanceService = new ManagedLocalGatewayPortProvenanceService(NullLogger.Instance);
         var needsProvenance = record.SshTunnel is null &&
@@ -97,9 +105,11 @@ public sealed class SetupGatewaySession : IAsyncDisposable
         }
         RequireCurrentGateway();
         var client = new OpenClawGatewayClient(gatewayUrl, token, logger: NullLogger.Instance, identityPath: identityPath,
-            requireExistingIdentity: expectedCompletion is not null)
+            requireExistingIdentity: expectedCompletion is not null, proxyBearerOnly: proxyBearerOnly)
         {
-            UseV2Signature = true
+            UseV2Signature = true,
+            ProxyBearerToken = proxyBearerToken,
+            ProxyBearerOrigin = proxyBearerToken is null ? null : record.ProxyBearerOrigin,
         };
         async Task<ReconnectAuthorizationResult> AuthorizeHandshakeAsync(CancellationToken cancellationToken)
         {

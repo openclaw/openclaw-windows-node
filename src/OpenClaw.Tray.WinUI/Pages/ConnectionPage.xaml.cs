@@ -1928,6 +1928,8 @@ public sealed partial class ConnectionPage : Page
         // Pre-fill the most common local gateway URL.
         DirectUrlBox.Text = "ws://127.0.0.1:18789";
         DirectTokenBox.Text = "";
+        DirectProxyBearerBox.Password = "";
+        DirectClearProxyBearerCheckBox.IsChecked = false;
         DirectNameBox.Text = "";
         AutoFillTokenForUrl(DirectUrlBox.Text);
         ShowAddPane("direct");
@@ -1940,6 +1942,8 @@ public sealed partial class ConnectionPage : Page
         _editingGatewayId = null;
         _userIntent = UserIntent.AddingGateway;
         ClearAddGatewaySshFields();
+        DirectProxyBearerBox.Password = "";
+        DirectClearProxyBearerCheckBox.IsChecked = false;
         ShowAddPane("direct");
         AddDirectItem.IsSelected = true;
         RefreshFromSnapshot(_lastSnapshot);
@@ -2465,6 +2469,8 @@ public sealed partial class ConnectionPage : Page
         _userIntent = UserIntent.AddingGateway;
         DirectUrlBox.Text = rec.Url;
         DirectTokenBox.Text = rec.SharedGatewayToken ?? "";
+        DirectProxyBearerBox.Password = "";
+        DirectClearProxyBearerCheckBox.IsChecked = false;
         DirectNameBox.Text = rec.FriendlyName ?? "";
         if (rec.SshTunnel != null)
         {
@@ -2619,6 +2625,8 @@ public sealed partial class ConnectionPage : Page
         _userIntent = UserIntent.AddingGateway;
         DirectUrlBox.Text = rec.Url;
         DirectTokenBox.Text = rec.SharedGatewayToken ?? "";
+        DirectProxyBearerBox.Password = "";
+        DirectClearProxyBearerCheckBox.IsChecked = false;
         DirectNameBox.Text = rec.FriendlyName ?? "";
         if (rec.SshTunnel != null)
         {
@@ -2679,10 +2687,21 @@ public sealed partial class ConnectionPage : Page
     // ─── Auto-test connectivity (debounced) ────────────────────────────
 
     private System.Threading.CancellationTokenSource? _connectivityTestCts;
+    private string? _proxyBearerEntryUrl;
+
+    private void OnDirectProxyBearerChanged(object sender, RoutedEventArgs e)
+    {
+        _proxyBearerEntryUrl = string.IsNullOrEmpty(DirectProxyBearerBox.Password)
+            ? null : DirectUrlBox.Text?.Trim();
+        ScheduleConnectivityTest(DirectUrlBox.Text?.Trim());
+    }
 
     private void OnDirectInputChanged(object sender, RoutedEventArgs e)
     {
         var url = DirectUrlBox.Text?.Trim();
+        if (!string.IsNullOrEmpty(DirectProxyBearerBox.Password) &&
+            !string.Equals(url, _proxyBearerEntryUrl, StringComparison.Ordinal))
+            DirectProxyBearerBox.Password = "";
         ScheduleConnectivityTest(url);
         AutoFillTokenForUrl(url);
         UpdateRemoteSetupAdvice();
@@ -2740,10 +2759,33 @@ public sealed partial class ConnectionPage : Page
             var url = GatewayUrlHelper.NormalizeForWebSocket(rawUrl);
             var httpUrl = url.Replace("ws://", "http://").Replace("wss://", "https://").TrimEnd('/');
 
-            using var httpClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var typedProxyToken = DirectProxyBearerBox.Password?.Trim();
+            var editing = _editingGatewayId is null ? null : _gatewayRegistry?.GetById(_editingGatewayId);
+            var proxyToken = !string.IsNullOrEmpty(typedProxyToken)
+                ? typedProxyToken
+                : editing is not null &&
+                  string.Equals(editing.Url, url, StringComparison.OrdinalIgnoreCase) &&
+                  DirectClearProxyBearerCheckBox.IsChecked != true
+                    ? GatewayProxyBearerCredential.Reveal(editing)
+                    : null;
+            if (proxyToken is not null)
+            {
+                _ = GatewayProxyBearerCredential.RequireOrigin(url);
+                GatewayProxyBearerCredential.ValidateToken(proxyToken);
+            }
+
+            using var handler = new System.Net.Http.HttpClientHandler { AllowAutoRedirect = false };
+            using var httpClient = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
+            async Task<System.Net.Http.HttpResponseMessage> ProbeAsync(string probeUrl)
+            {
+                using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, probeUrl);
+                if (proxyToken is not null)
+                    request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", proxyToken);
+                return await httpClient.SendAsync(request, ct);
+            }
             System.Net.Http.HttpResponseMessage? response = null;
             Exception? firstProbeError = null;
-            try { response = await httpClient.GetAsync(httpUrl, ct); }
+            try { response = await ProbeAsync(httpUrl); }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
@@ -2753,10 +2795,12 @@ public sealed partial class ConnectionPage : Page
 
             if (ct.IsCancellationRequested) return;
 
-            if (response == null || !response.IsSuccessStatusCode)
+            var authOrRedirect = response is not null &&
+                ((int)response.StatusCode is >= 300 and < 400 or 401 or 403);
+            if (!authOrRedirect && (response == null || !response.IsSuccessStatusCode))
             {
                 var healthUrl = $"{httpUrl}/health";
-                try { response = await httpClient.GetAsync(healthUrl, ct); }
+                try { response = await ProbeAsync(healthUrl); }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
                 {
@@ -2772,6 +2816,11 @@ public sealed partial class ConnectionPage : Page
                 AddTestResultText.Text = $"✓ {LocalizationHelper.GetString("ConnectionPage_GatewayReachable")}";
                 AddTestResultText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorSuccessBrush"];
             }
+            else if (response != null && (int)response.StatusCode is >= 300 and < 400)
+            {
+                AddTestResultText.Text = LocalizationHelper.GetString("ConnectionPage_ProxyLoginRedirect");
+                AddTestResultText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCautionBrush"];
+            }
             else if (response != null)
             {
                 AddTestResultText.Text = $"⚠ {string.Format(LocalizationHelper.GetString("ConnectionPage_GatewayRespondedWith"), (int)response.StatusCode)}";
@@ -2785,12 +2834,20 @@ public sealed partial class ConnectionPage : Page
         }
         // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         catch (OperationCanceledException) { /* debounce or page nav */ }
+        catch (GatewayProxyCredentialException ex)
+        {
+            if (!ct.IsCancellationRequested)
+            {
+                AddTestResultText.Text = $"✗ {ProxyCredentialErrorText(ex.Failure)}";
+                AddTestResultText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
+            }
+        }
         catch (Exception ex)
         {
             if (!ct.IsCancellationRequested)
             {
                 Logger.Warn($"ConnectionPage: Gateway connectivity test failed for {GatewayUrlHelper.SanitizeForDisplay(rawUrl)}: {ex.Message}");
-                AddTestResultText.Text = "✗ Unable to test gateway connection. Check the URL and try again.";
+                AddTestResultText.Text = $"✗ {LocalizationHelper.GetString("ConnectionPage_CannotReachGateway")}";
                 AddTestResultText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
             }
         }
@@ -2815,6 +2872,10 @@ public sealed partial class ConnectionPage : Page
                 case "scan":    AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_PickDiscoveredGateway"); break;
             }
         }
+        catch (GatewayProxyCredentialException ex)
+        {
+            AddResultText.Text = $"✗ {ProxyCredentialErrorText(ex.Failure)}";
+        }
         catch (Exception ex)
         {
             AddResultText.Text = $"✗ {ex.Message}";
@@ -2831,6 +2892,8 @@ public sealed partial class ConnectionPage : Page
 
         var url = DirectUrlBox.Text?.Trim();
         var token = DirectTokenBox.Text?.Trim();
+        var proxyBearerToken = DirectProxyBearerBox.Password?.Trim();
+        var clearProxyBearerToken = DirectClearProxyBearerCheckBox.IsChecked == true;
         var friendly = DirectNameBox.Text?.Trim();
         if (string.IsNullOrWhiteSpace(url))
         {
@@ -2874,14 +2937,18 @@ public sealed partial class ConnectionPage : Page
                         friendly,
                         sshConfig,
                         _editingGatewayId,
-                        PreserveExistingSharedTokenWhenMissing: true)
+                        PreserveExistingSharedTokenWhenMissing: true,
+                        ProxyBearerToken: proxyBearerToken,
+                        ClearProxyBearerToken: clearProxyBearerToken)
                     : new GatewayDirectConnectRequest(
                         url,
                         submittedToken,
                         friendly,
                         sshConfig,
                         _editingGatewayId,
-                        PreserveExistingSharedTokenWhenMissing: false));
+                        PreserveExistingSharedTokenWhenMissing: false,
+                        ProxyBearerToken: proxyBearerToken,
+                        ClearProxyBearerToken: clearProxyBearerToken));
             if (result.Outcome == GatewayDirectConnectOutcome.Failed)
             {
                 AddResultText.Text = $"✗ {result.Error}";
@@ -2897,6 +2964,10 @@ public sealed partial class ConnectionPage : Page
             LoadSavedGateways();
             RefreshFromSnapshot(_lastSnapshot);
         }
+        catch (GatewayProxyCredentialException ex)
+        {
+            AddResultText.Text = $"✗ {ProxyCredentialErrorText(ex.Failure)}";
+        }
         catch (Exception ex)
         {
             AddResultText.Text = $"✗ {ex.Message}";
@@ -2906,6 +2977,15 @@ public sealed partial class ConnectionPage : Page
             AddSaveButton.IsEnabled = true;
         }
     }
+
+    private static string ProxyCredentialErrorText(GatewayProxyCredentialFailure failure) =>
+        LocalizationHelper.GetString(failure switch
+        {
+            GatewayProxyCredentialFailure.Origin => "ConnectionPage_ProxyBearerOriginError",
+            GatewayProxyCredentialFailure.InvalidToken => "ConnectionPage_ProxyBearerTokenError",
+            GatewayProxyCredentialFailure.SshCombination => "ConnectionPage_ProxyBearerSshError",
+            _ => "ConnectionPage_ProxyBearerSavedError",
+        });
 
     private bool TryBuildAddSshTunnelConfig(out SshTunnelConfig? sshConfig, out string? error)
     {
@@ -3203,6 +3283,8 @@ public sealed partial class ConnectionPage : Page
         _editingGatewayId = null;
         DirectUrlBox.Text = url;
         DirectTokenBox.Text = "";
+        DirectProxyBearerBox.Password = "";
+        DirectClearProxyBearerCheckBox.IsChecked = false;
         DirectNameBox.Text = "";
         AddDirectItem.IsSelected = true;
         ShowAddPane("direct");

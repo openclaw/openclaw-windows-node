@@ -9,6 +9,8 @@ internal sealed class SetupGatewaySessionBinding(GatewayRecord record)
     public string Endpoint { get; } = GatewayClientEndpointResolver.Resolve(record);
     public string EndpointBinding { get; } = GatewayDashboardBinding.Capture(record);
     private readonly SshTunnelConfig? _sshTunnel = record.SshTunnel;
+    private readonly string? _protectedProxyBearerToken = record.ProtectedProxyBearerToken;
+    private readonly string? _proxyBearerOrigin = record.ProxyBearerOrigin;
 
     public static void RequireExpected(GatewayRecord? active, string? gatewayId, string? endpointBinding)
     {
@@ -23,7 +25,10 @@ internal sealed class SetupGatewaySessionBinding(GatewayRecord record)
     {
         if (active is null || active.Id != GatewayId ||
             GatewayDashboardBinding.Capture(active) != EndpointBinding ||
-            active.SshTunnel != _sshTunnel || GatewayClientEndpointResolver.Resolve(active) != Endpoint)
+            active.SshTunnel != _sshTunnel ||
+            active.ProtectedProxyBearerToken != _protectedProxyBearerToken ||
+            active.ProxyBearerOrigin != _proxyBearerOrigin ||
+            GatewayClientEndpointResolver.Resolve(active) != Endpoint)
             throw new InvalidOperationException("The setup Gateway changed. Reopen setup for the selected Gateway.");
     }
 

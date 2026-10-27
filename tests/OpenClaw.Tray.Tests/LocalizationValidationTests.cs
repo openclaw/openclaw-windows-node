@@ -646,6 +646,24 @@ public class LocalizationValidationTests
         || key.StartsWith("V2_", StringComparison.Ordinal);
 
     [Fact]
+    public void ProxyCredentialRecovery_HasNativeCopyInEveryLocale()
+    {
+        string[] keys = ["ConnectionPage_ProxyBearerOriginError", "ConnectionPage_ProxyBearerTokenError",
+            "ConnectionPage_ProxyBearerSavedError", "ConnectionPage_ProxyBearerSshError"];
+        var stringsDir = GetStringsDirectory();
+        var english = LoadResw(Path.Combine(stringsDir, "en-us", "Resources.resw"));
+        foreach (var directory in Directory.GetDirectories(stringsDir))
+        {
+            var resources = LoadResw(Path.Combine(directory, "Resources.resw"));
+            foreach (var key in keys)
+            {
+                Assert.True(resources.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value));
+                if (Path.GetFileName(directory) != "en-us") Assert.NotEqual(english[key], value);
+            }
+        }
+    }
+
+    [Fact]
     public void AllLocales_HaveExactlySameKeysAsEnUs()
     {
         var stringsDir = GetStringsDirectory();

@@ -8118,4 +8118,28 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>总结我最近的会话</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>帮我配置一个频道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>检查系统健康状况</value></data>
+  <data name="ConnectionPage_ProxyBearerToken.Header" xml:space="preserve">
+    <value>代理 Bearer 令牌（可选）</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerToken.PlaceholderText" xml:space="preserve">
+    <value>粘贴单独的代理令牌</value>
+  </data>
+  <data name="ConnectionPage_ClearProxyBearerToken.Content" xml:space="preserve">
+    <value>移除已保存的代理令牌</value>
+  </data>
+  <data name="ConnectionPage_ProxyLoginRedirect" xml:space="preserve">
+    <value>网关重定向到代理登录页面。请配置代理 Bearer 令牌。</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerOriginError" xml:space="preserve">
+    <value>请使用不含 URL 凭据的 wss:// 网关地址，然后重新输入代理令牌。</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerTokenError" xml:space="preserve">
+    <value>请输入有效的代理 Bearer 令牌。替换此字段中的令牌，然后重试。</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerSavedError" xml:space="preserve">
+    <value>无法使用已保存的代理令牌。请在代理令牌字段中替换它，或清除已保存的令牌。</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerSshError" xml:space="preserve">
+    <value>代理 Bearer 身份验证不能使用 SSH 隧道。请移除隧道或清除代理令牌。</value>
+  </data>
 </root>

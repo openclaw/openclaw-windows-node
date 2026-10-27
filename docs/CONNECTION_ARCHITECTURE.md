@@ -701,7 +701,7 @@ events without exposing token values.
 %APPDATA%\OpenClawTray\gateways\<id>\device-key-ed25519.json  - keypair + tokens
 ```
 
-Each `GatewayRecord` contains: `Id`, `Url`, `FriendlyName`, `SharedGatewayToken`, `BootstrapToken`, `LastConnected`, `SshTunnel` config, `IsLocal`, `RequiresV2Signature`, `SetupManagedDistroName`, and `BrowserControlPort`. The `IdentityDirName` property is computed from `Id`.
+Each `GatewayRecord` contains: `Id`, `Url`, `FriendlyName`, `SharedGatewayToken`, `BootstrapToken`, `ProtectedProxyBearerToken`, `ProxyBearerOrigin`, `LastConnected`, `SshTunnel` config, `IsLocal`, `RequiresV2Signature`, `SetupManagedDistroName`, and `BrowserControlPort`. The `IdentityDirName` property is computed from `Id`. The proxy token is encrypted with current-user Windows protection and origin-specific entropy before the record is persisted. It is separate from Gateway and device credentials.
 
 Many gateway records may be saved, but only `ActiveId` in `gateways.json` is the effective gateway. Active gateway changes must be made through `GatewayRegistry.SetActive(...)` and saved immediately by connection flows that switch or apply credentials. `SetActive(...)` raises `GatewayRegistry.Changed`, so UI and diagnostics can observe a gateway switch even before the new connection finishes. Each active gateway resolves identity from `%APPDATA%\OpenClawTray\gateways\<id>\`; old gateway events are ignored by `GatewayConnectionManager` generation + gateway-id guards after a switch.
 
@@ -771,7 +771,8 @@ Credential resolution order is intentionally strict:
 1. **Stored device token** in the per-gateway identity directory.
 2. **`GatewayRecord.SharedGatewayToken`** - shared token for HTTP/chat surfaces.
 3. **`GatewayRecord.BootstrapToken`** - one-time setup, limited scopes.
-4. **No credential** - caller logs and skips client init.
+4. **Origin-bound proxy Bearer credential only**, when no device token exists - the proxy authenticates the HTTP upgrade and the Gateway connect envelope has no token field.
+5. **No credential** - caller logs and skips client init.
 
 The invariant is that a paired device token always wins. Do not downgrade a paired operator or node to a shared/bootstrap token, because that can reduce scopes or trigger unnecessary re-pairing.
 
@@ -779,12 +780,15 @@ The invariant is that a paired device token always wins. Do not downgrade a pair
 
 Unreadable/corrupt identity fallback is a credential-resolution diagnostic, not permission to replace an existing keypair. A readable stored device token still always wins. When the per-gateway identity file cannot be read or parsed, resolution may identify a same-gateway shared/bootstrap credential, but gateway client construction fails closed until the persisted identity is readable or the user explicitly resets pairing. OpenClaw never regenerates, overwrites, or otherwise changes the identity path on a load failure. The snapshot and diagnostics report the persisted-identity error so UI and diagnostics can prompt repair or explicit re-pair. Credential reads never fall back to another gateway's identity directory.
 
+`GatewayProxyBearerCredential` admits only a `wss://` origin without URL credentials. The Connection page probe disables redirects; the operator and node WebSocket transports attach the Bearer header only after the configured origin matches their connection URL. A corrupt protected token or changed origin fails closed. An SSH tunnel uses its owned local endpoint instead of sending the proxy token. Proxy-only resolution is unavailable when stored device identity is unreadable or corrupt. The proxy token is not copied into the Gateway handshake, assistant-media HTTP credential, or browser profile.
+
 Node credential precedence follows the same invariant with a distinct stored token:
 
 1. **Stored node device token** in the per-gateway identity directory.
 2. **`GatewayRecord.SharedGatewayToken`** - shared token fallback when no paired node token exists.
 3. **`GatewayRecord.BootstrapToken`** - one-time setup, limited scopes.
-4. **No credential** - caller logs and skips node client init.
+4. **Origin-bound proxy Bearer credential only**, when no node device token exists.
+5. **No credential** - caller logs and skips node client init.
 
 **`InteractiveGatewayCredentialResolver`** resolves credentials for HTTP surfaces (chat URL `?token=` auth). It **prefers SharedGatewayToken** over DeviceToken because HTTP endpoints expect the shared token, not the per-device WebSocket token. Browser proxy diagnostics should treat the missing shared token as a browser-control caveat, not as proof that the operator or node gateway connection is disconnected.
 

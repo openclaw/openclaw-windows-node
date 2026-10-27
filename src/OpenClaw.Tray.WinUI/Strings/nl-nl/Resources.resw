@@ -8119,4 +8119,28 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="ConnectionPage_ProxyBearerToken.Header" xml:space="preserve">
+    <value>Proxy-Bearer-token (optioneel)</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerToken.PlaceholderText" xml:space="preserve">
+    <value>Plak een afzonderlijk proxytoken</value>
+  </data>
+  <data name="ConnectionPage_ClearProxyBearerToken.Content" xml:space="preserve">
+    <value>Opgeslagen proxytoken verwijderen</value>
+  </data>
+  <data name="ConnectionPage_ProxyLoginRedirect" xml:space="preserve">
+    <value>Gateway verwijst door naar de proxy-aanmelding. Configureer een Proxy-Bearer-token.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerOriginError" xml:space="preserve">
+    <value>Gebruik een wss://-gateway-URL zonder aanmeldgegevens in de URL en voer het proxytoken opnieuw in.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerTokenError" xml:space="preserve">
+    <value>Voer een geldig Bearer-token voor de proxy in. Vervang het token in dit veld en probeer het opnieuw.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerSavedError" xml:space="preserve">
+    <value>Het opgeslagen proxytoken kan niet worden gebruikt. Vervang het in het proxytokenveld of wis het opgeslagen token.</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerSshError" xml:space="preserve">
+    <value>Bearer-verificatie voor de proxy kan geen SSH-tunnel gebruiken. Verwijder de tunnel of wis het proxytoken.</value>
+  </data>
 </root>
