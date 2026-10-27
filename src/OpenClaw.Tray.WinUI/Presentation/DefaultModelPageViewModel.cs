@@ -54,6 +54,10 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
     public event PropertyChangedEventHandler? PropertyChanged;
     internal bool IsActive { get; private set; }
 
+    /// <summary>
+    /// Replaced only when an option or the current option changes; the page keys its
+    /// ComboBox rebuild on this reference.
+    /// </summary>
     public IReadOnlyList<DefaultModelOption> Options => _options;
     public string? CurrentOptionId => _currentOptionId;
     public bool IsConnected => _state.IsConnected;
@@ -238,6 +242,7 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
         if (hasLocalAi)
             options.Add(new DefaultModelOption(LocalAiOptionId, _localAi.Snapshot.ModelId ?? string.Empty, null, true));
 
+        string? previousCurrent = _currentOptionId;
         string? primary = _state.PrimaryModel;
         if (primary is not null && IsLocalAiPrimary(primary))
         {
@@ -255,7 +260,11 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
             _currentOptionId = null;
         }
 
-        _options = options;
+        // WinUI blanks the closed selection box when a loaded ComboBox is cleared and
+        // re-selected, so keep the same instance when the options and the current option
+        // (which drives item enablement) are unchanged.
+        if (!string.Equals(previousCurrent, _currentOptionId, StringComparison.Ordinal) || !_options.SequenceEqual(options))
+            _options = options;
         if (_selectedOptionId is null || !_options.Any(option => option.Id == _selectedOptionId))
             _selectedOptionId = _currentOptionId;
         OnPropertyChanged(null);

@@ -138,6 +138,30 @@ public sealed class DefaultModelPageViewModelTests
     }
 
     [Fact]
+    public void GatewayRefreshWithUnchangedModels_KeepsOptionsInstanceSoTheSelectorIsNotRebuilt()
+    {
+        var gateway = new FakeGateway { State = State(Sonnet.SelectionId, localRoute: false) };
+        using var viewModel = Create(gateway, new RecordingRuntime(Installed(LocalAiRuntimeState.Stopped)));
+
+        var first = viewModel.Options;
+        gateway.State = State(Sonnet.SelectionId, localRoute: false);
+        gateway.RaiseChanged();
+        Assert.Same(first, viewModel.Options);
+
+        // Same options but a new current option: item enablement depends on it, so rebuild.
+        gateway.State = State(Gpt.SelectionId, localRoute: false);
+        gateway.RaiseChanged();
+        Assert.NotSame(first, viewModel.Options);
+        Assert.Equal(Gpt.SelectionId, viewModel.CurrentOptionId);
+
+        var second = viewModel.Options;
+        gateway.State = State(Gpt.SelectionId, localRoute: false, extra: new ChatModelChoice("o5", "O5", "openai"));
+        gateway.RaiseChanged();
+        Assert.NotSame(second, viewModel.Options);
+        Assert.Contains(viewModel.Options, option => option.DisplayName == "O5");
+    }
+
+    [Fact]
     public void Envelope_ReadsPrimaryAndPatchExtendsExistingAllowlistOnly()
     {
         using JsonDocument envelope = JsonDocument.Parse(
@@ -180,7 +204,8 @@ public sealed class DefaultModelPageViewModelTests
 
     private sealed class FakeGateway : IDefaultModelGatewayService
     {
-        public event EventHandler? Changed { add { } remove { } }
+        public event EventHandler? Changed;
+        public void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
         public DefaultModelGatewayState State { get; set; } = DefaultModelGatewayState.Disconnected;
         public List<string> PrimaryWrites { get; } = [];
         public DefaultModelGatewayState Current => State;

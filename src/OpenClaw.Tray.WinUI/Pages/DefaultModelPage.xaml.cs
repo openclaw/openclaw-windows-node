@@ -18,6 +18,7 @@ public sealed partial class DefaultModelPage : Page
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
 
@@ -28,6 +29,16 @@ public sealed partial class DefaultModelPage : Page
         _viewModel = args.NewValue as DefaultModelPageViewModel;
         if (_viewModel is not null)
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        RefreshFromViewModel();
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        // The view model is attached during navigation, before the ComboBox template applies,
+        // and WinUI does not render a selection made then. Re-select once loaded.
+        _suppressSelection = true;
+        DefaultModelSelector.SelectedItem = null;
+        _suppressSelection = false;
         RefreshFromViewModel();
     }
 
