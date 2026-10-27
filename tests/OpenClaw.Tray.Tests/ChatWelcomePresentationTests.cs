@@ -39,6 +39,22 @@ public sealed class ChatWelcomePresentationTests
     }
 
     [Fact]
+    public void AgentIdentity_ResolvedIdentityOverridesCatalogWithoutLeakingAbsentOrForeignFields()
+    {
+        var catalog = new ChatPlacementCatalog(1, "main", [], new("default", ""), [],
+            "Old name", "Old emoji", "https://example.com/old.png");
+        var identity = new AgentDisplayIdentity("main", "Workspace name", null, null);
+        var agent = ChatWelcomePresentation.AgentIdentity(catalog, "main", identity);
+        Assert.Equal("Workspace name", agent.Name);
+        Assert.Null(agent.Emoji);
+        Assert.Null(agent.AvatarUrl);
+        Assert.Equal("Old name", ChatWelcomePresentation.AgentIdentity(catalog, "main",
+            identity with { AgentId = "research" }).Name);
+        Assert.Equal("main", ChatWelcomePresentation.AgentIdentity(null, "main",
+            identity with { Name = null }).Name);
+    }
+
+    [Fact]
     public void RecentChats_UsesRecencyThenKeyAndCapsAtFive()
     {
         var threads = Enumerable.Range(0, 7)

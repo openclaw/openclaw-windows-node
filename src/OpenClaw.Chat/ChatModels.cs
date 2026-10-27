@@ -349,6 +349,7 @@ public interface IChatDataProvider : IAsyncDisposable
 {
     string DisplayName { get; }
     IChatPlacementGateway? PlacementGateway => null;
+    IAgentIdentityGateway? AgentIdentityGateway => null;
 
     event EventHandler<ChatDataChangedEventArgs>? Changed;
     event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;

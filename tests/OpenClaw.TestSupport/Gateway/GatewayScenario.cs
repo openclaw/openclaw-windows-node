@@ -44,6 +44,8 @@ public sealed partial class GatewayScenario
     private readonly Session[] _sessions;
     private readonly IReadOnlyDictionary<string, JsonElement> _reads;
     private readonly Func<string, JsonElement, object>? _setup;
+    private readonly Func<JsonElement, object>? _agentIdentity;
+    private readonly string[]? _operatorScopes;
     private static readonly string[] SetupMethods =
     [
         "openclaw.setup.detect", "openclaw.setup.verify", "openclaw.setup.activate.start",
@@ -76,11 +78,14 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        Func<JsonElement, object>? agentIdentity = null, string[]? operatorScopes = null)
     {
         _sessions = sessions;
         _reads = reads;
         _setup = setup;
+        _agentIdentity = agentIdentity;
+        _operatorScopes = operatorScopes;
         _allowAgentCreation = allowAgentCreation;
         _publishedModelCatalog = publishedModelCatalog;
         _allowSessionMutations = allowSessionMutations;
@@ -329,6 +334,7 @@ public sealed partial class GatewayScenario
                 role,
                 scopes = role == "node"
                     ? Array.Empty<string>()
+                    : _operatorScopes is not null ? _operatorScopes
                     : IsInteractive
                         ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
                         : _contextUsage is not null ? new[] { "operator.read", "operator.write" }
@@ -355,6 +361,14 @@ public sealed partial class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters, Func<string, bool>? containsModelSession = null)
     {
+        if (_agentIdentity is not null && method == "agent.identity.get")
+        {
+            ValidateProperties(parameters, "agentId");
+            var agent = RequiredString(parameters, "agentId");
+            if (agent is not ("main" or "research"))
+                throw new FixtureRequestException("INVALID_REQUEST", "Unknown fixture identity agent.");
+            return _agentIdentity(parameters);
+        }
         if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
             return RespondCron(method, parameters);
         if (_contextUsage is not null && method == "chat.send")

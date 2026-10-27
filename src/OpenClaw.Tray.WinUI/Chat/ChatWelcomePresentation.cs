@@ -20,9 +20,12 @@ internal static class ChatWelcomePresentation
         return value.ToLocalTime().ToString("d");
     }
 
-    internal static WorkspaceAgent AgentIdentity(ChatPlacementCatalog? catalog, string? agentId)
+    internal static WorkspaceAgent AgentIdentity(ChatPlacementCatalog? catalog, string? agentId,
+        AgentDisplayIdentity? identity = null)
     {
         var id = agentId ?? "main";
+        if (identity?.AgentId == id)
+            return new(id, identity.Name ?? id, null, identity.Emoji, identity.Avatar);
         if (catalog?.AgentId != id)
             return new(id, id, null);
         return new(id, string.IsNullOrWhiteSpace(catalog.AgentName) ? id : catalog.AgentName, null,

@@ -51,6 +51,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var vm = props.Session.ViewModel;
         var controller = props.Session.Controller;
         var placement = props.Session.Placement;
+        var identity = props.Session.Identity;
         var inputs = props.Inputs;
         var renderItemStatus = GatewayFixtureRenderObservation.Create(
             props.InputSnapshot, inputs.CurrentThread.Id, GatewayFixtureIsolation.IsEnabled);
@@ -60,7 +61,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         // The Reactor view subscribes to the view model exactly once per mount and
         // unsubscribes on unmount. This render-invalidation counter is an adapter
         // detail: it is not a second copy of composer state, only a re-render token.
-        long CurrentRevision() => vm.RenderRevision + (placement?.Revision ?? 0);
+        long CurrentRevision() => vm.RenderRevision + (placement?.Revision ?? 0) + (identity?.Revision ?? 0);
         var (renderRevision, setRenderRevision) = UseState(CurrentRevision(), threadSafe: true);
         var inputControl = UseRef<TextBox?>(null);
         var slashPopup = UseRef<Microsoft.UI.Xaml.Controls.Primitives.Popup?>(null);
@@ -85,12 +86,14 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             void OnPlacementChanged() => setRenderRevision(CurrentRevision());
             vm.PropertyChanged += OnChanged;
             if (placement is not null) placement.Changed += OnPlacementChanged;
+            if (identity is not null) identity.Changed += OnPlacementChanged;
             if (renderRevision != CurrentRevision())
                 setRenderRevision(CurrentRevision());
             return () =>
             {
                 vm.PropertyChanged -= OnChanged;
                 if (placement is not null) placement.Changed -= OnPlacementChanged;
+                if (identity is not null) identity.Changed -= OnPlacementChanged;
                 CloseSlashPopup(slashPopup);
             };
         }), Array.Empty<object>());
@@ -701,7 +704,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var catalog = placement?.State.Catalog;
         surfaces.Add(inputs.ShowPlacementPickers
             ? ReactorChatWelcome.Header(
-                ChatWelcomePresentation.AgentIdentity(catalog, agentId),
+                ChatWelcomePresentation.AgentIdentity(catalog, agentId, identity?.Identity),
                 viewportWidth)
             : Empty());
         if (inputs.ShowPlacementPickers && placement is not null)
