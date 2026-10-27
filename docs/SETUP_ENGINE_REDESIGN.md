@@ -805,6 +805,29 @@ by `CliUninstallHandler` and currently use separated syntax for values such as
 
 Exit codes: 0 = success, 1 = pipeline failure, 2 = bad arguments or setup lock/safety failure, 3 = cancelled
 
+### Headless setup from the tray executable
+
+```
+OpenClaw.Tray.WinUI.exe --headless-setup --config my-setup.json   # WSL route, no UI
+OpenClaw.Tray.WinUI.exe --headless-setup --config my-setup.json --force-setup
+.\run-app-local.ps1 -Dev -Isolated -SetupConfig .\my-setup.json   # dev: setup, then launch tray
+```
+
+`CliSetupHandler` runs `Program.Main` with `--headless --rollback-on-failure` and the
+app identity's data directories, distro name, and gateway port, the same overrides that
+interactive setup and `--uninstall` use, so the file's `DistroName` and `GatewayPort`
+are ignored. The config file is a full SetupEngine config. Start from a copy of
+`default-config.json`, because omitted fields fall back to code defaults, not to the
+bundled file. Without `--config`, the bundled file is used.
+
+Setup is skipped with exit code 0 when `StartupSetupState.RequiresSetup` reports that
+the data directory is already configured, which is the same check the tray uses to
+auto-open setup. `--force-setup` reruns the pipeline. Only `--headless-setup`,
+`--config <path>` (separated syntax), and `--force-setup` are accepted. Anything else
+exits with code 2. The native MSIX gateway route remains interactive only.
+Per-capability `Settings.Node*Enabled` values are overwritten from the `Capabilities`
+section before `settings.json` is written, so toggle capabilities there.
+
 ### UI (hosted by tray)
 
 ``` 

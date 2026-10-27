@@ -546,6 +546,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             return;
         }
 
+        // CLI headless setup: explicit dev/automation command; never shows tray or windows.
+        // Runs after the Store migration admission guard, and like --uninstall it bypasses the
+        // single-instance mutex; SetupEngine's SetupRunLock refuses concurrent setup runs.
+        if (_startupArgs.Contains(CliSetupCommandLine.HeadlessSetupFlag, StringComparer.OrdinalIgnoreCase))
+        {
+            await CliSetupHandler.RunAsync(_startupArgs);
+            return; // Environment.Exit called inside; defensive return
+        }
+
         var activation = GetLaunchActivation();
         string? protocolUri = activation.ProtocolUri;
 
