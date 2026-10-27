@@ -94,6 +94,36 @@ public sealed class LocalAiModelSwitcherTests
         Assert.Contains("disk full", error.Message);
         Assert.Empty(fixture.Runtime.Calls);
         Assert.Equal(before, await File.ReadAllBytesAsync(fixture.Paths.ManifestPath));
+        Assert.False(fixture.Switcher.IsSwitching);
+    }
+
+    [Fact]
+    public async Task SecondSwitch_IsRejectedUntilTheFirstFinishes()
+    {
+        using var fixture = await Fixture.CreateAsync();
+        var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Acquirer.Hold = hold;
+        int changes = 0;
+        fixture.Switcher.IsSwitchingChanged += (_, _) => Interlocked.Increment(ref changes);
+        LocalAiModelSwitchTarget target = await fixture.Switcher.PrepareCustomAsync(Hardware(48 * GiB), "owner/small", default);
+
+        Task<LocalAiRuntimeSnapshot> first = fixture.Switcher.SwitchAsync(target, false, null, default);
+        await fixture.Acquirer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(fixture.Switcher.IsSwitching);
+
+        LocalAiModelSwitchException rejected = await Assert.ThrowsAsync<LocalAiModelSwitchException>(
+            () => fixture.Switcher.SwitchAsync(target, false, null, default));
+        Assert.Contains("still finishing", rejected.Message);
+        Assert.Equal(1, fixture.Acquirer.Installs);
+        Assert.Empty(fixture.Runtime.Calls);
+
+        hold.SetResult();
+        await first;
+        Assert.False(fixture.Switcher.IsSwitching);
+        Assert.Equal(2, changes);
+
+        await fixture.Switcher.SwitchAsync(target, false, null, default);
+        Assert.Equal(2, fixture.Acquirer.Installs);
     }
 
     [Fact]
@@ -230,11 +260,16 @@ public sealed class LocalAiModelSwitcherTests
     {
         public int Installs { get; private set; }
         public Exception? Failure { get; set; }
+        public TaskCompletionSource? Hold { get; set; }
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public Task<HuggingFaceModelInstallResult> InstallAsync(string dir, LocalAiComponentIdentity component, LocalModelInfo model,
+        public async Task<HuggingFaceModelInstallResult> InstallAsync(string dir, LocalAiComponentIdentity component, LocalModelInfo model,
             IProgress<HuggingFaceModelInstallProgress>? progress, CancellationToken ct)
         {
             Installs++;
+            Entered.TrySetResult();
+            if (Hold is not null)
+                await Hold.Task;
             if (Failure is not null)
                 throw Failure;
             var source = (HuggingFaceRevisionSource)model.Weights.Source;
@@ -245,8 +280,8 @@ public sealed class LocalAiModelSwitcherTests
             Assert.True(LocalAiPathPolicy.TryGetModelPaths(setup, source.RepositoryId, source.RevisionSha,
                 model.Weights.RelativePath, out string legacy, out _, out error), error);
             progress?.Report(new(model.Weights.SizeBytes, model.Weights.SizeBytes));
-            return Task.FromResult(new HuggingFaceModelInstallResult(cached, cacheRoot,
-                HuggingFaceModelInstallDisposition.Downloaded, true, legacy));
+            return new HuggingFaceModelInstallResult(cached, cacheRoot,
+                HuggingFaceModelInstallDisposition.Downloaded, true, legacy);
         }
 
         public Task<HuggingFaceAdditionalAssetInstallResult> InstallAdditionalAssetAsync(string dir, PinnedArtifact artifact,

@@ -7034,6 +7034,7 @@
   <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>正在恢复之前的模型</value></data>
   <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB / {1:F1} GB</value></data>
   <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>已取消更换模型。</value></data>
+  <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>模型更换仍在进行中。完成后即可再次更换模型。</value></data>
   <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>默认模型</value></data>
   <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>网关在新对话中使用此模型。每个聊天仍可选择自己的模型。</value></data>
   <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>连接到网关以选择其模型</value></data>

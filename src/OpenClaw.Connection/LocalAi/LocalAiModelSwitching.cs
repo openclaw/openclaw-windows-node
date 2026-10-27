@@ -42,4 +42,10 @@ public interface ILocalAiModelSwitcher
         bool force,
         IProgress<LocalAiModelSwitchProgress>? progress,
         CancellationToken ct);
+
+    /// <summary>True while a <see cref="SwitchAsync"/> call is running, for any caller.</summary>
+    bool IsSwitching { get; }
+
+    /// <summary>Raised on the switching thread after <see cref="IsSwitching"/> changes.</summary>
+    event EventHandler? IsSwitchingChanged;
 }

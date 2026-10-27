@@ -144,7 +144,11 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
 
     public string? GatewayDetail => _gatewaySnapshot.GatewayName ?? _gatewaySnapshot.GatewayUrl;
     public string? ActionError => _actionError;
-    public bool IsBusy => _isBusy || _isSwitchingModel;
+    /// <summary>
+    /// A runtime action or model switch is running. Includes a switch started by another
+    /// page instance, which can outlive navigation once it can no longer be canceled.
+    /// </summary>
+    public bool IsBusy => _isBusy || _isSwitchingModel || _modelSwitcher.IsSwitching;
     public bool IsAvailabilityKnown => _isAvailabilityKnown;
     public bool IsLocalAiAvailable => _isAvailabilityKnown && _isLocalAiAvailable;
     public bool HasAvailabilityProbeError => _hasAvailabilityProbeError;
@@ -214,6 +218,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
          (_selectedModelOptionId is { } id &&
           !string.Equals(id, _installedPlan?.Model.Id ?? _runtimeSnapshot.ModelId, StringComparison.OrdinalIgnoreCase)));
     public bool IsSwitchingModel => _isSwitchingModel;
+    /// <summary>A switch started by another page instance is still running.</summary>
+    public bool IsSwitchInProgressElsewhere => !_isSwitchingModel && _modelSwitcher.IsSwitching;
     public LocalAiModelSwitchProgress? SwitchProgress => _switchProgress;
     public bool CanCancelModelSwitch => _isSwitchingModel && _switchProgress?.Phase is null
         or LocalAiModelSwitchPhase.Resolving or LocalAiModelSwitchPhase.Downloading or LocalAiModelSwitchPhase.Verifying;
@@ -238,6 +244,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
             _runtime.StateChanged += OnRuntimeStateChanged;
             _runtime.SelectionChanged += OnSelectionChanged;
             _gatewaySource.Changed += OnGatewayChanged;
+            _modelSwitcher.IsSwitchingChanged += OnModelSwitchingChanged;
             _subscribed = true;
         }
         ApplyRuntimeSnapshot(_runtime.Snapshot);
@@ -257,6 +264,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
             _runtime.StateChanged -= OnRuntimeStateChanged;
             _runtime.SelectionChanged -= OnSelectionChanged;
             _gatewaySource.Changed -= OnGatewayChanged;
+            _modelSwitcher.IsSwitchingChanged -= OnModelSwitchingChanged;
             _subscribed = false;
         }
         IsActive = false;
@@ -731,6 +739,15 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         ApplyOnUiThread(() => ApplyRuntimeSnapshot(e.Snapshot));
     private void OnSelectionChanged(object? sender, EventArgs e) =>
         ApplyOnUiThread(() => OnPropertyChanged(null));
+    private void OnModelSwitchingChanged(object? sender, EventArgs e) => ApplyOnUiThread(() =>
+    {
+        // A switch that ended (ours or another page's) may have committed a new receipt;
+        // reload the installed plan so options and "current" are not stale.
+        if (!_modelSwitcher.IsSwitching && !_isSwitchingModel)
+            StartAvailabilityRefresh();
+        else
+            OnPropertyChanged(null);
+    });
     private void OnGatewayChanged(object? sender, PermissionsRuntimeSourceChangedEventArgs e) =>
         ApplyOnUiThread(() => ApplyGatewaySnapshot(e.Snapshot.ConnectionSnapshot));
 

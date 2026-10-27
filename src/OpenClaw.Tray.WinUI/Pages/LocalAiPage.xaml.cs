@@ -236,6 +236,12 @@ public sealed partial class LocalAiPage : Page
             ModelSwitchProgressBar.IsIndeterminate = true;
             ModelSwitchProgressPanel.Visibility = Visibility.Visible;
         }
+        else if (viewModel.IsSwitchInProgressElsewhere)
+        {
+            ModelSwitchProgressText.Text = LocalizationHelper.GetString("LocalAiPage_SwitchInProgressElsewhere");
+            ModelSwitchProgressBar.IsIndeterminate = true;
+            ModelSwitchProgressPanel.Visibility = Visibility.Visible;
+        }
         else
         {
             ModelSwitchProgressPanel.Visibility = Visibility.Collapsed;

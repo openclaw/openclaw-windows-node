@@ -295,6 +295,8 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
             throw new NotSupportedException();
         public Task<LocalAiRuntimeSnapshot> SwitchAsync(LocalAiModelSwitchTarget target, bool force,
             IProgress<LocalAiModelSwitchProgress>? progress, CancellationToken ct) => throw new NotSupportedException();
+        public bool IsSwitching => false;
+        public event EventHandler? IsSwitchingChanged { add { } remove { } }
     }
 
     private sealed class InertGateway : IPermissionsPageRuntimeSource

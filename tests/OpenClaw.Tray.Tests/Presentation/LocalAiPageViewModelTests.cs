@@ -821,6 +821,37 @@ public sealed class LocalAiPageViewModelTests
         Assert.InRange(fullRefreshes, 1, 10);
     }
 
+    [Fact]
+    public async Task SwitchLeftRunningByAnotherPage_KeepsThisPageBusyAndReloadsWhenItEnds()
+    {
+        var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var switcher = new FakeLocalAiModelSwitcher { Hold = hold };
+        using var first = await CreateActivatedSwitchViewModelAsync(switcher);
+        first.CustomModelReference = "owner/model-GGUF";
+
+        Task<bool> apply = first.ApplyModelAsync();
+        await WaitForAsync(first, () => first.SwitchProgress?.Phase == LocalAiModelSwitchPhase.StartingRuntime);
+        Assert.False(first.CanCancelModelSwitch);
+        first.Deactivate();
+
+        using var second = await CreateActivatedSwitchViewModelAsync(switcher);
+        second.CustomModelReference = "owner/other-GGUF";
+        Assert.True(second.IsBusy);
+        Assert.True(second.IsSwitchInProgressElsewhere);
+        Assert.False(second.CanApplyModel);
+        Assert.False(await second.ApplyModelAsync());
+        Assert.Single(switcher.Calls, call => call.StartsWith("switch:", StringComparison.Ordinal));
+
+        int loads = switcher.LoadInstalledPlanCalls;
+        hold.SetResult();
+        Assert.True(await apply);
+        await WaitForAsync(second, () =>
+            !second.IsBusy && second.IsAvailabilityKnown && switcher.LoadInstalledPlanCalls > loads);
+
+        Assert.False(second.IsSwitchInProgressElsewhere);
+        Assert.True(second.CanApplyModel);
+    }
+
     private static async Task<LocalAiPageViewModel> CreateActivatedSwitchViewModelAsync(FakeLocalAiModelSwitcher switcher)
     {
         LocalInferencePlan installed = LocalInferenceEligibility.Evaluate(CreateQualifiedHardware(), LocalModelCatalog.Models[0].Id).Plan!;
@@ -1186,9 +1217,17 @@ public sealed class LocalAiPageViewModelTests
         public bool BlockSwitch { get; init; }
         public Exception? SwitchFailure { get; init; }
         public int VerifyReports { get; init; }
+        public TaskCompletionSource? Hold { get; init; }
         public List<string> Calls { get; } = [];
+        public int LoadInstalledPlanCalls { get; private set; }
+        public bool IsSwitching { get; private set; }
+        public event EventHandler? IsSwitchingChanged;
 
-        public Task<LocalInferencePlan?> LoadInstalledPlanAsync(CancellationToken ct) => Task.FromResult(InstalledPlan);
+        public Task<LocalInferencePlan?> LoadInstalledPlanAsync(CancellationToken ct)
+        {
+            LoadInstalledPlanCalls++;
+            return Task.FromResult(InstalledPlan);
+        }
 
         public Task<LocalAiModelSwitchTarget> PrepareCatalogAsync(HostHardwareInfo hardware, string modelId, CancellationToken ct)
         {
@@ -1206,14 +1245,29 @@ public sealed class LocalAiPageViewModelTests
             LocalAiModelSwitchTarget target, bool force, IProgress<LocalAiModelSwitchProgress>? progress, CancellationToken ct)
         {
             Calls.Add($"switch:{force}");
-            progress?.Report(new(LocalAiModelSwitchPhase.Downloading, 1, 10));
-            for (long mib = 1; mib <= VerifyReports; mib++)
-                progress?.Report(new(LocalAiModelSwitchPhase.Verifying, mib << 20, (long)VerifyReports << 20));
-            if (BlockSwitch)
-                await Task.Delay(Timeout.Infinite, ct);
-            if (SwitchFailure is not null)
-                throw SwitchFailure;
-            return CreateInstalledSnapshot() with { ModelId = target.Plan.Model.Id };
+            IsSwitching = true;
+            IsSwitchingChanged?.Invoke(this, EventArgs.Empty);
+            try
+            {
+                progress?.Report(new(LocalAiModelSwitchPhase.Downloading, 1, 10));
+                for (long mib = 1; mib <= VerifyReports; mib++)
+                    progress?.Report(new(LocalAiModelSwitchPhase.Verifying, mib << 20, (long)VerifyReports << 20));
+                if (Hold is not null)
+                {
+                    progress?.Report(new(LocalAiModelSwitchPhase.StartingRuntime));
+                    await Hold.Task;
+                }
+                if (BlockSwitch)
+                    await Task.Delay(Timeout.Infinite, ct);
+                if (SwitchFailure is not null)
+                    throw SwitchFailure;
+                return CreateInstalledSnapshot() with { ModelId = target.Plan.Model.Id };
+            }
+            finally
+            {
+                IsSwitching = false;
+                IsSwitchingChanged?.Invoke(this, EventArgs.Empty);
+            }
         }
 
         private static LocalAiModelSwitchTarget Target(HostHardwareInfo hardware)

@@ -9,7 +9,9 @@ namespace OpenClaw.SetupEngine;
 /// Changes the managed Local AI model in place: the new weights are acquired and verified
 /// while the current model keeps serving, then the runtime withdraws the old route,
 /// commits the new receipt, and restarts. A failed start restores the previous receipt.
-/// Previously used weights stay in the shared Hugging Face cache.
+/// Previously used weights stay in the shared Hugging Face cache. Only one switch runs at a
+/// time per instance; App owns the single instance, so a concurrent call from another page
+/// is rejected before it reads the receipt.
 /// </summary>
 public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
 {
@@ -36,6 +38,7 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
     private readonly IHuggingFaceModelAcquirer _modelAcquirer;
     private readonly ILlamaRuntimeAcquirer _runtimeAcquirer;
     private readonly Func<string, CancellationToken, Task<LocalCustomModelRecipe>> _resolveCustom;
+    private int _switching;
 
     public LocalAiModelSwitcher(ILocalAiRuntime runtime, string localDataDirectory)
         : this(
@@ -63,6 +66,10 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
     }
 
     private LocalAiManifestStore Store => new(new LocalAiPaths(_localDataDirectory));
+
+    public bool IsSwitching => Volatile.Read(ref _switching) != 0;
+
+    public event EventHandler? IsSwitchingChanged;
 
     public async Task<LocalInferencePlan?> LoadInstalledPlanAsync(CancellationToken ct)
     {
@@ -112,6 +119,25 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
         if (target.RequiresForce && !force)
             throw new LocalAiModelSwitchException("Confirm that you want to switch to a model that may not fit.");
 
+        if (Interlocked.CompareExchange(ref _switching, 1, 0) != 0)
+            throw new LocalAiModelSwitchException("Another model change is still finishing. Try again when it completes.");
+        IsSwitchingChanged?.Invoke(this, EventArgs.Empty);
+        try
+        {
+            return await SwitchCoreAsync(target, progress, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            Volatile.Write(ref _switching, 0);
+            IsSwitchingChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private async Task<LocalAiRuntimeSnapshot> SwitchCoreAsync(
+        LocalAiModelSwitchTarget target,
+        IProgress<LocalAiModelSwitchProgress>? progress,
+        CancellationToken ct)
+    {
         LocalAiResolvedInstall current = await Store.LoadAsync(ct).ConfigureAwait(false)
             ?? throw new LocalAiModelSwitchException("Install Local AI before changing its model.");
         if (string.Equals(current.Manifest.ModelCatalogId, target.Plan.Model.Id, StringComparison.OrdinalIgnoreCase))

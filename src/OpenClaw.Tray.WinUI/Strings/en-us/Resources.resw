@@ -7102,6 +7102,7 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>Restoring the previous model</value></data>
   <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB of {1:F1} GB</value></data>
   <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>Model change canceled.</value></data>
+  <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>A model change is still finishing. You can change the model again when it completes.</value></data>
   <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>Default model</value></data>
   <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>The Gateway uses this model for new conversations. Each chat can still pick its own model.</value></data>
   <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>Connect to a Gateway to choose its model</value></data>

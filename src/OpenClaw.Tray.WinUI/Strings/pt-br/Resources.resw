@@ -7070,6 +7070,7 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>Restaurando o modelo anterior</value></data>
   <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB de {1:F1} GB</value></data>
   <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>Troca de modelo cancelada.</value></data>
+  <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>Uma troca de modelo ainda está sendo concluída. Você poderá trocar o modelo de novo quando ela terminar.</value></data>
   <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>Modelo padrão</value></data>
   <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>O Gateway usa este modelo em novas conversas. Cada chat ainda pode escolher o próprio modelo.</value></data>
   <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>Conecte-se a um Gateway para escolher o modelo</value></data>

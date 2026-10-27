@@ -7035,6 +7035,7 @@ Controleer of de gateway actief is.</value>
   <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>Vorig model herstellen</value></data>
   <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB van {1:F1} GB</value></data>
   <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>Modelwijziging geannuleerd.</value></data>
+  <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>Een modelwijziging wordt nog afgerond. U kunt het model opnieuw wijzigen zodra deze klaar is.</value></data>
   <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>Standaardmodel</value></data>
   <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>De gateway gebruikt dit model voor nieuwe gesprekken. Elke chat kan nog steeds een eigen model kiezen.</value></data>
   <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>Maak verbinding met een gateway om het model te kiezen</value></data>
