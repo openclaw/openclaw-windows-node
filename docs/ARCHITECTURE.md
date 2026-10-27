@@ -84,6 +84,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 
 | Concern | Canonical owner | Status |
 | --- | --- | --- |
+| Channel DM-access requests | `ChannelPairingSession` owns observed rows, reconciliation and authenticated lifetime; `GatewayChannelPairingClient` validates account-scoped wire contracts; `ChannelPairingPanel` applies native controls and explicit consent. `ChannelsPage` mounts the panel and supplies native modal presentation | authoritative |
 | Test temp directories | `OpenClaw.TestSupport.TempDirectory` | authoritative |
 | Bounded audio child-process wait and disposal | `BoundedProcessWait` owns the supplied `Process`, including deferred disposal after its kill worker finishes; callers must not dispose it on bounded cancellation return | authoritative |
 | Test env var save/restore | `OpenClaw.TestSupport.EnvironmentScope` | authoritative |

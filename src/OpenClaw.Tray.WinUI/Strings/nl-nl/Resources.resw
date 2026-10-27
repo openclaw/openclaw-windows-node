@@ -8119,4 +8119,23 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="ChannelPairing_Title" xml:space="preserve"><value>Openstaande toegangsverzoeken voor privéberichten</value></data>
+  <data name="ChannelPairing_Description" xml:space="preserve"><value>Beoordeel afzenders die toegang vragen tot privéberichten van een kanaalaccount. Goedkeuring verleent toegang. Afwijzen verwijdert het verzoek zonder de afzender permanent te blokkeren.</value></data>
+  <data name="ChannelPairing_Refresh" xml:space="preserve"><value>Verzoeken vernieuwen</value></data>
+  <data name="ChannelPairing_Approve" xml:space="preserve"><value>Toegang toestaan</value></data>
+  <data name="ChannelPairing_Dismiss" xml:space="preserve"><value>Verzoek afwijzen</value></data>
+  <data name="ChannelPairing_Cancel" xml:space="preserve"><value>Annuleren</value></data>
+  <data name="ChannelPairing_ApproveConfirm" xml:space="preserve"><value>Deze afzender toestaan privéberichten naar dit kanaalaccount te sturen? Dit verleent geen opdrachtbeheerdersrechten en verstuurt geen melding.</value></data>
+  <data name="ChannelPairing_DismissConfirm" xml:space="preserve"><value>Dit openstaande verzoek verwijderen? Dit blokkeert de afzender niet permanent.</value></data>
+  <data name="ChannelPairing_Identity" xml:space="preserve"><value>{0} ({1})
+Kanaal: {2} ({3})
+Account: {4} ({5})
+Verzoek: {6}
+Verloopt: {7}</value></data>
+  <data name="ChannelPairing_Empty" xml:space="preserve"><value>Geen openstaande toegangsverzoeken voor privéberichten.</value></data>
+  <data name="ChannelPairing_Changed" xml:space="preserve"><value>Maak verbinding met de gewenste Gateway en vernieuw de verzoeken. Een gewijzigde verbinding vereist een nieuwe beoordeling en bevestiging.</value></data>
+  <data name="ChannelPairing_Unsupported" xml:space="preserve"><value>Deze Gateway biedt de gevraagde toegangsbewerking voor privéberichten niet aan.</value></data>
+  <data name="ChannelPairing_Denied" xml:space="preserve"><value>Deze verbinding heeft geen toestemming om toegangsverzoeken voor privéberichten te beheren.</value></data>
+  <data name="ChannelPairing_Failed" xml:space="preserve"><value>De Gateway heeft de bewerking niet bevestigd. Een verzonden wijziging kan zijn voltooid. Vernieuw de verzoeken voordat u verdergaat. Er wordt niets automatisch opnieuw geprobeerd.</value></data>
+  <data name="ChannelPairing_Completed" xml:space="preserve"><value>De Gateway heeft de wijziging bevestigd. De lijst met verzoeken is bijgewerkt.</value></data>
 </root>

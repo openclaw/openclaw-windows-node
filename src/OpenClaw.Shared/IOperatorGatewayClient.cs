@@ -50,6 +50,8 @@ public interface IOperatorGatewayClient
     bool HasHandshakeSnapshot { get; }
     /// <summary>Authenticated transport epoch, used to bind a mutation across an asynchronous dialog.</summary>
     long? SessionMutationConnectionEpoch => null;
+    IChannelPairingGateway CreateChannelPairingGateway(int timeoutMs = 15000) =>
+        throw new NotSupportedException("Channel pairing is not supported by this Gateway client.");
 
     // ─── Connection events (from WebSocketClientBase) ───
     event EventHandler<ConnectionStatus>? StatusChanged;

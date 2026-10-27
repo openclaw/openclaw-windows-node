@@ -8170,4 +8170,23 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Resuma minhas sessões recentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Ajude-me a configurar um canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Verifique a integridade do sistema</value></data>
+  <data name="ChannelPairing_Title" xml:space="preserve"><value>Solicitações pendentes de acesso a mensagens diretas</value></data>
+  <data name="ChannelPairing_Description" xml:space="preserve"><value>Revise os remetentes que solicitam acesso a mensagens diretas de uma conta de canal. A aprovação concede acesso. Dispensar remove a solicitação sem bloquear o remetente permanentemente.</value></data>
+  <data name="ChannelPairing_Refresh" xml:space="preserve"><value>Atualizar solicitações</value></data>
+  <data name="ChannelPairing_Approve" xml:space="preserve"><value>Aprovar acesso</value></data>
+  <data name="ChannelPairing_Dismiss" xml:space="preserve"><value>Dispensar solicitação</value></data>
+  <data name="ChannelPairing_Cancel" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="ChannelPairing_ApproveConfirm" xml:space="preserve"><value>Permitir que este remetente envie mensagens diretas para esta conta de canal? Isso não concede privilégios de proprietário de comandos nem envia uma notificação.</value></data>
+  <data name="ChannelPairing_DismissConfirm" xml:space="preserve"><value>Remover esta solicitação pendente? Isso não bloqueia o remetente permanentemente.</value></data>
+  <data name="ChannelPairing_Identity" xml:space="preserve"><value>{0} ({1})
+Canal: {2} ({3})
+Conta: {4} ({5})
+Solicitação: {6}
+Expira: {7}</value></data>
+  <data name="ChannelPairing_Empty" xml:space="preserve"><value>Nenhuma solicitação pendente de acesso a mensagens diretas.</value></data>
+  <data name="ChannelPairing_Changed" xml:space="preserve"><value>Conecte-se ao Gateway desejado e atualize as solicitações. Uma conexão alterada exige nova revisão e confirmação.</value></data>
+  <data name="ChannelPairing_Unsupported" xml:space="preserve"><value>Este Gateway não anuncia a operação de acesso a mensagens diretas solicitada.</value></data>
+  <data name="ChannelPairing_Denied" xml:space="preserve"><value>Esta conexão não tem permissão para gerenciar solicitações de acesso a mensagens diretas.</value></data>
+  <data name="ChannelPairing_Failed" xml:space="preserve"><value>O Gateway não confirmou a operação. Uma alteração enviada pode ter sido concluída. Atualize as solicitações antes de outra ação. Nada será repetido automaticamente.</value></data>
+  <data name="ChannelPairing_Completed" xml:space="preserve"><value>O Gateway confirmou a alteração. A lista de solicitações está atualizada.</value></data>
 </root>

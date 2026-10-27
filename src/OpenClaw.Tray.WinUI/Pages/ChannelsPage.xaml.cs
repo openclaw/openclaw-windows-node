@@ -223,6 +223,7 @@ public sealed partial class ChannelsPage : Page
     /// </summary>
     public void Initialize()
     {
+        PairingPanel.Initialize(() => BoundClient, async dialog => await dialog.ShowAsync());
         _appState = CurrentApp.AppState!;
         if (_appState != null)
             _appState.PropertyChanged += OnAppStateChanged;
@@ -268,6 +269,7 @@ public sealed partial class ChannelsPage : Page
     /// </summary>
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
     {
+        PairingPanel.ObserveContext();
         if (_nativeSetupRequest is not null && BoundClient is null) return;
         switch (e.PropertyName)
         {

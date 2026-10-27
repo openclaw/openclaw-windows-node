@@ -933,6 +933,53 @@ The connect handshake uses Ed25519 signatures with v3→v2 fallback:
 - If gateway rejects v3, falls back to v2 and remembers for the session
 - The `_gatewayNeedsV2Signature` flag persists across reconnects within the same `GatewayConnectionManager` lifetime
 
+## Channel DM-access requests
+
+Channels settings includes **Pending DM access requests**, separate from channel
+login, node pairing and device pairing. Refresh reads `channels.pairing.list {}`
+through the manager-owned operator client. Only Gateway-returned channel/account
+records and pending sender identities can be approved or dismissed. Both actions
+require a native confirmation showing sender, channel, account, request and expiry.
+Dismissal is not a permanent block. Approval does not request notification delivery
+or command-owner bootstrap.
+
+`ChannelPairingSession` binds the observed list to the original authenticated
+client/connection epoch and panel lifetime. Refresh invalidates old dialog consent;
+replacement, reconnect and late acknowledgements cannot confirm a different
+context. `GatewayChannelPairingClient` requires an advertised method and granted
+`operator.pairing` or `operator.admin` scope before dispatch. Requests use
+`{ channel, accountId, requestId }`, never pairing codes. Successful terminal
+responses must match both request and sender identity. An `accepted` response
+alone does not settle approval or dismissal.
+
+An unconfirmed mutation retains its row and requires an explicit fresh read before
+another action. Cancellation stops observation, not a Gateway rollback; no mutation
+is automatically retried. Pending records live only in memory, not settings or logs.
+This adapts the upstream Dashboard's pending-list and epoch-bound mutation flow at
+[`098e991`](https://github.com/openclaw/openclaw/blob/098e991549b7986bcfaebdbe427aeaaf95afb926/ui/src/lib/channels/index.ts).
+No matching native macOS dispatch was located in that pinned inventory.
+
+### Channels category dispositions
+
+The seven current methods are not all verified by adding three new calls.
+
+| Method | Production owner and contract | Coverage and remaining limit |
+| --- | --- | --- |
+| `channels.pairing.list` | `ChannelPairingPanel` refresh through `ChannelPairingSession`; `{}` | Parser/lifetime unit tests, authenticated production-client socket tests, opt-in app fixture. Native rendering proof is a separate required lane |
+| `channels.pairing.approve` | Explicit panel consent; exact Gateway-returned channel/account/request | Owner regressions and real socket success, denial, malformed/mismatched ack, accepted/final, timeout and reconnect coverage. No real provider approval claimed |
+| `channels.pairing.dismiss` | Explicit panel consent, same identity boundary | Owner regressions, socket success and accepted/final failure, opt-in app fixture reconciliation. No permanent block or real provider proof |
+| `channels.status` | Existing `ChannelsPage.RefreshAsync`; `{ probe, timeoutMs }` | Existing parser/pipeline units plus authenticated socket success/denial audit. Existing page refresh replacement-context behavior is not certified by this seam |
+| `channels.start` | Existing channel card recovery and tray toggle; `{ channel }` | Existing result units plus authenticated socket success/denial audit. Account selection and originating-client/epoch fencing need a separate lifecycle-control seam |
+| `channels.stop` | Existing channel card and tray toggle; `{ channel }` | Authenticated socket success/denial audit only. Current client ignores `stopped: false`; account selection, strict terminal outcomes and stale-context protection remain open |
+| `channels.logout` | Existing channel-card confirmation; `{ channel }` | Authenticated socket success/denial audit only. Current client ignores `cleared`/`loggedOut`; consent is not epoch-bound and account selection remains implicit |
+
+Start, stop and logout currently let the Gateway resolve its default account.
+The pinned upstream contract permits explicit `accountId`; this panel does not
+change those older controls or expand their authority. The next bounded seam is
+an account-scoped lifecycle owner shared by channel cards and tray toggles, with
+strict start/stop/logout outcomes and stale-dialog tests. No coverage policy or
+central capability inventory is changed here.
+
 ## Tests
 
 Connection tests live in `tests/OpenClaw.Connection.Tests/`:
