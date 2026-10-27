@@ -45,7 +45,12 @@ public static class InstanceMerger
         var matchByPresenceIndex = new GatewayNodeInfo?[presenceList.Count];
         var strongMatchByPresenceIndex = new bool[presenceList.Count];
 
-        for (int i = 0; i < presenceList.Count; i++)
+        // Live beacons claim nodes before disconnect beacons so a stale row from a
+        // previous connection cannot take the node from the current one.
+        var strongOrder = Enumerable.Range(0, presenceList.Count)
+            .OrderBy(i => IsDisconnected(presenceList[i]) ? 1 : 0)
+            .ToList();
+        foreach (var i in strongOrder)
         {
             var matched = TryStrongMatch(presenceList[i], nodeByIdKey);
             if (matched is not null)
@@ -230,6 +235,9 @@ public static class InstanceMerger
         InstanceMergeOptions options)
     {
         var status = ClassifyPresence(p, nowUtc, options);
+        // A disconnect beacon is terminal regardless of its fresh timestamp, but the
+        // node list stays authoritative when the node itself is still connected.
+        if (IsDisconnected(p) && node?.IsOnline != true) status = PresenceStatus.Offline;
         var isGateway = string.Equals(p.Mode?.Trim(), "gateway", StringComparison.OrdinalIgnoreCase);
         if (isGateway) status = PresenceStatus.Gateway;
 
@@ -322,6 +330,9 @@ public static class InstanceMerger
 
         return version;
     }
+
+    private static bool IsDisconnected(PresenceEntry p) =>
+        string.Equals(Normalize(p.Reason), "disconnect", StringComparison.OrdinalIgnoreCase);
 
     private static PresenceStatus ClassifyPresence(
         PresenceEntry p,

@@ -16,8 +16,6 @@ public sealed record SessionUsageSnapshot(SessionInfo[] Sessions, long? Timestam
 
 public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 {
-    private const string OperatorClientId = "cli";
-    private const string OperatorClientMode = "cli";
     private const string OperatorRole = "operator";
     private static readonly Regex s_pairingRequestIdRegex = new("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", RegexOptions.Compiled);
     private static readonly string[] s_operatorScopes =
@@ -96,6 +94,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// Headless and validation clients must not advertise an approval delivery route.
     /// </summary>
     public bool SupportsExecApprovals { get; init; }
+
+    /// <summary>Wire identity of the operator connection; only the tray's interactive client opts out of CLI.</summary>
+    public OperatorClientIdentity ClientIdentity { get; init; } = OperatorClientIdentity.Cli;
 
     internal IConnectEnvelopeSigner ConnectEnvelopeSigner
     {
@@ -2207,7 +2208,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 nonce,
                 _challengeTimestampMs,
                 _useV2Signature,
-                SupportsExecApprovals),
+                SupportsExecApprovals,
+                ClientIdentity),
             _connectEnvelopeSigner);
         var signedAt = envelope.SignedAt;
         var connectNonce = envelope.Nonce!;
@@ -2215,7 +2217,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         // Log complete handshake details for diagnostics
         _logger.Info($"[HANDSHAKE] → Sending connect:");
-        _logger.Info($"  role={role}, clientId={OperatorClientId}, mode={OperatorClientMode}");
+        _logger.Info($"  role={role}, clientId={envelope.SigningArguments.ClientId}, mode={envelope.SigningArguments.ClientMode}");
         _logger.Info($"  scopes=[{string.Join(", ", requestedScopes)}]");
         _logger.Info($"  isBootstrap={_tokenIsBootstrapToken}, hasDeviceToken={!string.IsNullOrEmpty(_deviceIdentity.DeviceToken)}");
         _logger.Info($"  deviceId={_deviceIdentity.DeviceId[..Math.Min(16, _deviceIdentity.DeviceId.Length)]}...");
