@@ -5,23 +5,23 @@ namespace OpenClaw.Tray.Tests;
 public sealed class CliSetupCommandLineTests
 {
     [Fact]
-    public void TryParse_AcceptsConfigAndForce()
+    public void TryParse_AcceptsConfigForceAndReplaceExisting()
     {
         Assert.True(CliSetupCommandLine.TryParse(
-            ["app.exe", "--headless-setup", "--config", "a.json", "--force-setup"],
+            ["app.exe", "--headless-setup", "--config", "a.json", "--force-setup", "--replace-existing"],
             out var request,
             out var error));
 
         Assert.Null(error);
-        Assert.Equal(new CliSetupRequest("a.json", Force: true), request);
+        Assert.Equal(new CliSetupRequest("a.json", Force: true, ReplaceExisting: true), request);
     }
 
     [Fact]
-    public void TryParse_ConfigIsOptionalAndForceDefaultsOff()
+    public void TryParse_ConfigIsOptionalAndFlagsDefaultOff()
     {
         Assert.True(CliSetupCommandLine.TryParse(["app.exe", "--HEADLESS-SETUP"], out var request, out _));
 
-        Assert.Equal(new CliSetupRequest(null, Force: false), request);
+        Assert.Equal(new CliSetupRequest(null, Force: false, ReplaceExisting: false), request);
     }
 
     [Theory]
@@ -35,6 +35,6 @@ public sealed class CliSetupCommandLineTests
         Assert.False(CliSetupCommandLine.TryParse(args, out var request, out var error));
 
         Assert.Equal(expectedError, error);
-        Assert.Equal(new CliSetupRequest(null, Force: false), request);
+        Assert.Equal(new CliSetupRequest(null, Force: false, ReplaceExisting: false), request);
     }
 }
