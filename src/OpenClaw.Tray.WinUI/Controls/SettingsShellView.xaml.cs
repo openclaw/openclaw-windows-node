@@ -1,8 +1,6 @@
-using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
@@ -16,14 +14,17 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.ComponentModel;
 using System.Linq;
-using WinUIEx;
 
-namespace OpenClawTray.Windows;
+namespace OpenClawTray.Controls;
 
-public sealed partial class HubWindow : WindowEx
+/// <summary>
+/// The native Settings surface hosted inside <c>WorkspaceWindow</c>. It owns the section rail,
+/// the content frame, the connection status pill and the Settings search flyout. It never mounts
+/// ChatPage and never owns history: the host's <see cref="WorkspaceNavigationHistory"/> is the
+/// only Back/Forward stack, and the frame keeps no stack of its own.
+/// </summary>
+internal sealed partial class SettingsShellView : UserControl
 {
-    public bool IsClosed { get; private set; }
-
     private static App CurrentApp => (App)Application.Current;
     private static TaskCompletionSource<bool> CreateCompletedContentReady()
     {
@@ -43,60 +44,33 @@ public sealed partial class HubWindow : WindowEx
         AppNotificationInfoBarPresentation.Hidden;
     private SettingsWriteOrigin? _commandPaletteSettingsOrigin;
     private bool _suppressAppNotificationClosed;
+    private bool _disposed;
+    private bool _active;
 
-    // Legacy compatibility alias
-    public string SelectedAgentId => _currentAgentId;
-    public Action<string?>? OpenDashboardAction { get; set; }
-    public Action? CheckForUpdatesAction { get; set; }
+    /// <summary>Raised when the rail or an in-page link requests another Settings section.</summary>
+    internal Action<string>? NavigateRequested { get; set; }
+
+    /// <summary>Raised when the rail's Chat item or a notification route leaves Settings.</summary>
+    internal Action<string>? WorkspaceRouteRequested { get; set; }
+
+    /// <summary>
+    /// Asks the host to drop unavailable Settings sections from history. The second argument is the
+    /// section to show when the current one was pruned.
+    /// </summary>
+    internal Action<Func<string, bool>, string?>? PruneRequested { get; set; }
+
     public Action? ConnectAction { get; set; }
-    public Action? DisconnectAction { get; set; }
     public Action? ReconnectAction { get; set; }
-    public Action? OpenSetupAction { get; set; }
-    public Action? OpenConnectionStatusAction { get; set; }
-    public Action? OpenVoiceAction { get; set; }
-    public OpenClaw.Connection.IGatewayConnectionManager? ConnectionManager { get; set; }
-    public OpenClaw.Connection.GatewayRegistry? GatewayRegistry { get; set; }
-
-    // Node service state (set by App.xaml.cs in ShowHub)
-    public bool NodeIsConnected { get; set; }
-    public bool NodeIsPaired { get; set; }
-    public bool NodeIsPendingApproval { get; set; }
-    public string? LastAuthError { get; set; }
-    public string? NodeShortDeviceId { get; set; }
-    public string? NodeFullDeviceId { get; set; }
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _gatewayNavHideTimer;
 
-    // Cached gateway data — pages read these on navigation
-    public SessionInfo[]? LastSessions { get; private set; }
-    public ChannelHealth[]? LastChannels { get; private set; }
-    public GatewayUsageInfo? LastUsage { get; private set; }
-    public GatewayCostUsageInfo? LastUsageCost { get; private set; }
-    public GatewayUsageStatusInfo? LastUsageStatus { get; private set; }
-    public GatewayNodeInfo[]? LastNodes { get; private set; }
-
-    public System.Text.Json.JsonElement? LastConfig { get; private set; }
-    public System.Text.Json.JsonElement? LastConfigSchema { get; private set; }
-    public System.Text.Json.JsonElement? LastSkillsData { get; private set; }
-    public string? LastSkillsAgentId { get; private set; }
-    public System.Text.Json.JsonElement? LastAgentFilesList { get; private set; }
-    public string? LastAgentFilesListAgentId { get; private set; }
-
-
-    // Event for settings saved (App.xaml.cs subscribes)
     public event EventHandler? SettingsSaved;
 
     public void RaiseSettingsSaved() => SettingsSaved?.Invoke(this, EventArgs.Empty);
 
-    public HubWindow()
+    public SettingsShellView()
     {
         InitializeComponent();
-        Title = LocalizationHelper.GetString("HubWindow_winexWindowEx_2.Title");
-        AppTitleBar.Title = Title;
-        AppTitleBar.IconSource = new BitmapIconSource
-        {
-            UriSource = new Uri(BrandAssets.RedBotMarkUri),
-            ShowAsMonochrome = false
-        };
+        ContentFrame.IsNavigationStackEnabled = false;
         var searchLabel = LocalizationHelper.GetString("TitleSearchBox.PlaceholderText");
         AutomationProperties.SetName(SettingsSearchButton, searchLabel);
         ToolTipService.SetToolTip(SettingsSearchButton, searchLabel);
@@ -104,27 +78,12 @@ public sealed partial class HubWindow : WindowEx
         UpdatePaneChrome();
         RefreshDiagnosticsNavVisibility();
         ApplyHighContrastFallbackIfNeeded();
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(AppTitleBar);
-        Closed += (s, e) =>
-        {
-            IsClosed = true;
-            _contentReady.TrySetResult(true);
-            _gatewayNavHideTimer?.Stop();
-            if (_appNotificationService != null)
-                _appNotificationService.Changed -= OnAppNotificationChanged;
-            if (AppModel != null)
-                AppModel.PropertyChanged -= OnAppModelChanged;
-        };
-
-        this.SetWindowSize(1000, 650);
-        this.CenterOnScreen();
-        ApplyWindowStatusIcon(ConnectionStatusAccent.Neutral);
-
         RootGrid.SizeChanged += OnRootGridSizeChanged;
-
         ToolTipService.SetToolTip(StatusPillButton, LocalizationHelper.GetString("HubWindow_StatusPill_Tooltip"));
     }
+
+    /// <summary>The element that opens the command search flyout for the current pane state.</summary>
+    private FrameworkElement SearchAnchor => NavView.IsPaneOpen ? SettingsSearchButton : NavPaneToggleButton;
 
     public void RefreshDiagnosticsNavVisibility()
     {
@@ -133,32 +92,23 @@ public sealed partial class HubWindow : WindowEx
         if (isVisible)
             return;
 
-        RemoveBackStackEntries("debug");
-        if (string.Equals(_currentNavTag, "debug", StringComparison.Ordinal))
-        {
-            NavigateInternal("settings");
-            RemoveBackStackEntries("debug");
-            UpdateBackButton();
-        }
-        else
-        {
-            UpdateBackButton();
-        }
+        PruneRequested?.Invoke(tag => string.Equals(tag, "debug", StringComparison.Ordinal), "settings");
     }
 
     /// <summary>
-    /// Subscribe to AppState property changes for title bar and nav updates.
-    /// Called from App.ShowHub() after setting AppModel.
+    /// Subscribe to AppState property changes for status and nav updates.
+    /// Called by the host after setting AppModel.
     /// </summary>
     internal void BindToAppState()
     {
         if (AppModel != null)
         {
+            AppModel.PropertyChanged -= OnAppModelChanged;
             AppModel.PropertyChanged += OnAppModelChanged;
-            UpdateTitleBarStatus(AppModel.Status);
+            UpdateStatus(AppModel.Status);
             ScheduleGatewayNavVisibilityForStatus(AppModel.Status, debounceDisconnected: false);
 
-            // Apply agents list that may have arrived before this window opened.
+            // Apply agents list that may have arrived before this view was created.
             if (AppModel.AgentsList.HasValue)
                 RebuildAgentNavItems(AppModel.AgentsList.Value);
         }
@@ -174,11 +124,28 @@ public sealed partial class HubWindow : WindowEx
         RenderAppNotification(service.Snapshot);
     }
 
+    /// <summary>
+    /// Releases every subscription and timer the view holds. Called when the owning window closes.
+    /// </summary>
+    internal void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        Deactivate();
+        _contentReady.TrySetResult(true);
+        _gatewayNavHideTimer?.Stop();
+        if (_appNotificationService != null)
+            _appNotificationService.Changed -= OnAppNotificationChanged;
+        if (AppModel != null)
+            AppModel.PropertyChanged -= OnAppModelChanged;
+        _appNotificationService = null;
+    }
+
     private void OnAppNotificationChanged(object? sender, AppNotificationChangedEventArgs args)
     {
         DispatcherQueue?.TryEnqueue(() =>
         {
-            if (IsClosed) return;
+            if (_disposed) return;
             RenderAppNotification(args.Snapshot);
         });
     }
@@ -305,7 +272,7 @@ public sealed partial class HubWindow : WindowEx
 
     private void OnAppModelChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (IsClosed || AppModel == null) return;
+        if (_disposed || AppModel == null) return;
         try
         {
             switch (e.PropertyName)
@@ -313,14 +280,14 @@ public sealed partial class HubWindow : WindowEx
                 case nameof(AppState.Status):
                     DispatcherQueue?.TryEnqueue(() =>
                     {
-                        if (IsClosed) return;
+                        if (_disposed) return;
                         _cachedCommands = null;
                         var status = AppModel!.Status;
-                        UpdateTitleBarStatus(status);
+                        UpdateStatus(status);
                         // Defer nav visibility to avoid stowed exceptions during NavigationView layout
                         DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
                         {
-                            if (IsClosed) return;
+                            if (_disposed) return;
                             ScheduleGatewayNavVisibilityForStatus(AppModel!.Status, debounceDisconnected: true);
                         });
                 });
@@ -328,14 +295,14 @@ public sealed partial class HubWindow : WindowEx
             case nameof(AppState.GatewaySelf):
                 DispatcherQueue?.TryEnqueue(() =>
                 {
-                    if (IsClosed) return;
-                    UpdateTitleBarStatus(AppModel!.Status);
+                    if (_disposed) return;
+                    UpdateStatus(AppModel!.Status);
                 });
                 break;
             case nameof(AppState.AgentsList):
                 DispatcherQueue?.TryEnqueue(() =>
                 {
-                    if (IsClosed) return;
+                    if (_disposed) return;
                     if (AppModel!.AgentsList.HasValue)
                         RebuildAgentNavItems(AppModel.AgentsList.Value);
                 });
@@ -344,7 +311,7 @@ public sealed partial class HubWindow : WindowEx
         }
         catch (Exception ex)
         {
-            Services.Logger.Warn($"[HubWindow] OnAppModelChanged({e.PropertyName}) failed: {ex.Message}");
+            Services.Logger.Warn($"[SettingsShellView] OnAppModelChanged({e.PropertyName}) failed: {ex.Message}");
             throw;
         }
     }
@@ -390,61 +357,13 @@ public sealed partial class HubWindow : WindowEx
         StatusPillButton.HorizontalContentAlignment = NavView.IsPaneOpen ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
     }
 
-    // ── Back navigation (title-bar back button + Alt+Left) ──────────────────
-    //
-    // Sidebar history uses ContentFrame's real stacks in both directions.
-
-    private void OnBackRequested(object sender, RoutedEventArgs e) => GoBack();
-    private void OnForwardRequested(object sender, RoutedEventArgs e) => GoForward();
-
-    /// <summary>True when the content frame's back-stack can navigate back.</summary>
-    public bool CanGoBack => ContentFrame?.CanGoBack ?? false;
-
-    /// <summary>Navigate back one entry when possible. Exposed for the navigation service.</summary>
-    public void NavigateBack() => GoBack();
-
-    private void GoBack()
-    {
-        RemoveUnavailableGatewayBackStackEntries();
-
-        if (!ContentFrame.CanGoBack)
-        {
-            UpdateBackButton();
-            return;
-        }
-
-        ContentFrame.GoBack();
-    }
-
-    private void GoForward()
-    {
-        RemoveUnavailableGatewayBackStackEntries();
-        if (ContentFrame.CanGoForward)
-            ContentFrame.GoForward();
-        else
-            UpdateBackButton();
-    }
-
-    private void UpdateBackButton()
-    {
-        RemoveUnavailableGatewayBackStackEntries();
-        NavBackButton.IsEnabled = ContentFrame.CanGoBack;
-        NavForwardButton.IsEnabled = ContentFrame.CanGoForward;
-    }
-
-    /// <summary>
-    /// Navigate to the default page. Call after setting AppModel.
-    /// </summary>
-    public void NavigateToDefault()
-    {
-        if (ContentFrame.Content == null)
-        {
-            NavigateTo("connection");
-        }
-    }
-
+    // Back/Forward live in the window-level pair driven only by WorkspaceNavigationHistory.
+    // This view keeps no navigation stack of its own.
     /// <summary>Returns the currently displayed page in the content frame.</summary>
     public object? CurrentPage => ContentFrame?.Content;
+
+    /// <summary>The canonical tag of the section currently shown, or null while deactivated.</summary>
+    internal string? CurrentSectionTag => _currentNavTag;
 
     // Canonical tag of the page currently shown in ContentFrame; tracked here
     // (rather than relying on NavView.SelectedItem) so navigation identity
@@ -457,45 +376,109 @@ public sealed partial class HubWindow : WindowEx
     // suppress the resulting SelectionChanged from re-entering NavigateInternal.
     private bool _syncingNavSelection;
 
+    // The one-shot native setup request this view is currently honoring. Waits compare against it
+    // so history replay or a later navigation can never satisfy an older request.
+    private SetupNativeNavigationRequest? _activeNativeRequest;
+
     /// <summary>
-    /// Navigate to a specific page by tag name (e.g. "connection", "sessions", "channels").
-    /// Cross-page links and the rail both flow through here; the resulting
-    /// <see cref="ContentFrame"/> back-stack entry powers the title-bar back button.
+    /// Requests a section. Rail clicks, in-page links and search all flow through here; the host
+    /// decides whether it becomes a history entry. Workspace routes leave Settings.
     /// </summary>
     public void NavigateTo(string tag)
     {
-        WorkspaceNavigation.Dispatch(tag, _ => CurrentApp.ShowHub(tag), NavigateCompanion);
+        WorkspaceNavigation.Dispatch(tag, _ => WorkspaceRouteRequested?.Invoke(tag), NavigateCompanion);
     }
 
-    private void NavigateCompanion(string tag)
+    private void NavigateCompanion(string tag) =>
+        NavigateRequested?.Invoke(WorkspaceNavigation.NormalizeSettingsTag(tag, _currentAgentId));
+
+    /// <summary>
+    /// Renders <paramref name="tag"/> without touching history. Also re-activates the view after
+    /// <see cref="Deactivate"/>, so re-entry never depends on <c>Frame.Navigated</c> alone.
+    /// </summary>
+    internal void ShowSection(string tag, SetupNativeNavigationRequest? nativeRequest = null)
     {
-        NavigateInternal(HubPageRegistry.NormalizeTag(tag, _currentAgentId));
-        if (tag is "about" or "info" && CurrentPage is SettingsPage settingsPage)
-            settingsPage.ShowAbout();
+        if (_disposed) return;
+        _active = true;
+        var showAbout = tag == "about";
+        NavigateInternal(showAbout ? "settings" : tag, nativeRequest);
+        if (ContentFrame.Content is SettingsPage settingsPage)
+        {
+            if (showAbout) settingsPage.ShowAbout();
+            else if (tag == "settings") settingsPage.ShowTop();
+        }
     }
 
-    internal void NavigateTo(SetupNativeNavigationRequest request)
+    /// <summary>
+    /// Leaves the Settings surface: stops every page, closes Settings flyouts, and
+    /// resets the activation scope so no view model or subscription stays live behind the chat.
+    /// </summary>
+    internal void Deactivate()
     {
-        if (request.WorkspaceDestination is not null)
-            throw new InvalidOperationException("Native setup chat belongs to Workspace.");
-        NavigateInternal(request.PageTag, request);
+        if (!_active && ContentFrame.Content is null) return;
+        _active = false;
+        _activeNativeRequest = null;
+        HideTransientSurfaces();
+        _currentNavTag = null;
+        // Clearing Content does not raise OnNavigatedFrom, so pages with cleanup are stopped here.
+        (ContentFrame.Content as DebugPage)?.Deactivate();
+        ContentFrame.Content = null;
+        try { CurrentApp.PageActivator?.Reset(); }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[SettingsShellView] Navigation scope reset failed: {ex.Message}");
+        }
+        _contentReady.TrySetResult(true);
+        UpdateAppNotificationActionEnabledState();
     }
 
+    /// <summary>
+    /// Policy: leaving Settings closes only the Settings flyouts. ContentDialogs are never
+    /// cancelled here; the host window defers destination changes while one is open.
+    /// </summary>
+    private void HideTransientSurfaces()
+    {
+        StatusFlyout.Hide();
+        CommandSearchFlyout.Hide();
+    }
+
+    internal void OpenCommandCenter()
+    {
+        CommandSearchFlyout.ShowAt(SearchAnchor);
+    }
+
+    /// <summary>
+    /// Waits until the requested native setup page is the one shown and ready. Fails if the view
+    /// moved to another section or request, so a stale wait can never report success.
+    /// </summary>
     internal async Task WaitForNativeSetupAsync(SetupNativeNavigationRequest request, CancellationToken ct)
     {
+        void EnsureCurrent()
+        {
+            if (!ReferenceEquals(_activeNativeRequest, request) || _currentNavTag != request.PageTag)
+                throw new InvalidOperationException("The selected setup destination changed.");
+        }
+
+        EnsureCurrent();
         await WaitForCurrentContentReadyAsync().WaitAsync(ct);
+        EnsureCurrent();
         while (ContentFrame.Content is not FrameworkElement { IsLoaded: true })
+        {
             await Task.Delay(50, ct);
+            EnsureCurrent();
+        }
         if (ContentFrame.Content is ChannelsPage channels && request.PageTag == "channels")
             await channels.WaitForNativeSetupAsync(request, ct);
         else if (ContentFrame.Content is SkillsPage skills && request.PageTag == "skills")
             await skills.WaitForNativeSetupAsync(request, ct);
         else
             throw new InvalidOperationException("The selected setup destination changed.");
+        EnsureCurrent();
     }
 
     private void NavigateInternal(string tag, SetupNativeNavigationRequest? nativeRequest = null)
     {
+        _activeNativeRequest = nativeRequest;
         if (tag == "debug" && !DiagnosticsGate.IsVisible)
             tag = "settings";
 
@@ -504,10 +487,9 @@ public sealed partial class HubWindow : WindowEx
 
         // Identity dedupe: navigation identity = (PageType, normalized tag).
         // Page-type-only dedupe would collapse distinct logical destinations
-        // that share a Page (e.g. agent switching on WorkspacePage), and
-        // would also push duplicate back-stack entries when the user
-        // re-invokes the current page.
-        if (nativeRequest is null && ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
+        // that share a Page (e.g. agent switching on WorkspacePage).
+        if (nativeRequest is null && ContentFrame.Content is not null &&
+            ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
             _contentReady = CreateCompletedContentReady();
             AccessibilityNavigationSignal.WritePageReady(pageType.Name);
@@ -518,7 +500,7 @@ public sealed partial class HubWindow : WindowEx
         SyncNavSelection(tag);
 
         // Pass the tag as the navigation parameter so OnContentFrameNavigated
-        // can recover the canonical destination on Back/Forward.
+        // can recover the canonical destination.
         var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _contentReady = ready;
         if (!ContentFrame.Navigate(pageType, (object?)nativeRequest ?? tag))
@@ -584,37 +566,21 @@ public sealed partial class HubWindow : WindowEx
         return null;
     }
 
-    private void UpdateTitleBarStatus(ConnectionStatus status)
+    private void UpdateStatus(ConnectionStatus status)
     {
         var snapshot = CurrentApp.ConnectionManager?.CurrentSnapshot;
         var (text, accent) = ComputePillState(status, snapshot);
         StatusPillText.Text = text;
         StatusPillDot.Fill = Controls.GatewayStatusContent.AccentBrush(accent);
         AutomationProperties.SetHelpText(StatusPillButton, text);
-        ApplyWindowStatusIcon(accent);
     }
 
-    internal void UpdateTitleBarStatus(GatewayConnectionSnapshot snapshot, ConnectionStatus status)
+    internal void UpdateStatus(GatewayConnectionSnapshot? snapshot, ConnectionStatus status)
     {
         var (text, accent) = ComputePillState(status, snapshot);
         StatusPillText.Text = text;
         StatusPillDot.Fill = Controls.GatewayStatusContent.AccentBrush(accent);
         AutomationProperties.SetHelpText(StatusPillButton, text);
-        ApplyWindowStatusIcon(accent);
-    }
-
-    // Mirrors the companion-app status dot onto the desktop/taskbar window icon:
-    // the lobster with a coloured dot in the bottom-right corner.
-    private void ApplyWindowStatusIcon(ConnectionStatusAccent accent)
-    {
-        try
-        {
-            this.SetIcon(StatusBadgeIconFactory.GetBadgedIconPath(accent));
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to update window status icon: {ex.Message}");
-        }
     }
 
     private static (string Text, ConnectionStatusAccent Accent) ComputePillState(
@@ -661,7 +627,7 @@ public sealed partial class HubWindow : WindowEx
     private void OnGatewayNavHideTimerTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
     {
         sender.Stop();
-        if (IsClosed || AppModel is null)
+        if (_disposed || AppModel is null)
             return;
 
         if (GatewayNavVisibilityDebouncePolicy.ShouldHideAfterDelay(AppModel.Status))
@@ -690,52 +656,28 @@ public sealed partial class HubWindow : WindowEx
                 if (keepCurrentGatewayPageVisible)
                     return;
 
-                RemoveUnavailableGatewayBackStackEntries();
+                PruneUnavailableGatewayEntries(fallbackTag: null);
                 if (HubPageRegistry.IsGatewayPageTag(currentTag))
-                {
-                    foreach (NavigationViewItem item in NavView!.MenuItems.OfType<NavigationViewItem>())
-                    {
-                        if (item.Tag as string == "connection")
-                        {
-                            NavView.SelectedItem = item;
-                            break;
-                        }
-                    }
-                }
+                    PruneRequested?.Invoke(HubPageRegistry.IsGatewayPageTag, "connection");
             }
         }
         catch (Exception ex)
         {
-            Services.Logger.Warn($"[HubWindow] UpdateGatewayNavVisibility failed: {ex.Message}");
+            Services.Logger.Warn($"[SettingsShellView] UpdateGatewayNavVisibility failed: {ex.Message}");
             throw;
         }
     }
 
-    private void RemoveUnavailableGatewayBackStackEntries()
+    /// <summary>
+    /// Drops Gateway sections from the host history while the Gateway is unavailable. Called before
+    /// the host moves Back or Forward so history never lands on a hidden section.
+    /// </summary>
+    internal void PruneUnavailableGatewayEntries(string? fallbackTag = null)
     {
         if (AppModel?.Status == ConnectionStatus.Connected)
             return;
 
-        RemoveBackStackEntries(HubPageRegistry.IsGatewayPageTag);
-    }
-
-    private void RemoveBackStackEntries(string tag) =>
-        RemoveBackStackEntries(candidate => string.Equals(candidate, tag, StringComparison.Ordinal));
-
-    private void RemoveBackStackEntries(Func<string, bool> shouldRemove)
-    {
-        for (var i = ContentFrame.BackStack.Count - 1; i >= 0; i--)
-        {
-            if (ContentFrame.BackStack[i].Parameter is string tag && shouldRemove(tag))
-                ContentFrame.BackStack.RemoveAt(i);
-        }
-        for (var i = ContentFrame.ForwardStack.Count - 1; i >= 0; i--)
-        {
-            if (ContentFrame.ForwardStack[i].Parameter is string tag && shouldRemove(tag))
-                ContentFrame.ForwardStack.RemoveAt(i);
-        }
-        NavBackButton.IsEnabled = ContentFrame.CanGoBack;
-        NavForwardButton.IsEnabled = ContentFrame.CanGoForward;
+        PruneRequested?.Invoke(HubPageRegistry.IsGatewayPageTag, fallbackTag);
     }
 
     public GatewaySelfInfo? LastGatewaySelf => AppModel?.GatewaySelf;
@@ -777,32 +719,26 @@ public sealed partial class HubWindow : WindowEx
         // NavigationView finishes focusing its item after ItemInvoked returns.
         if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
-                if (!IsClosed)
+                if (!_disposed && _active)
                     NavigateTo("chat");
             }))
-            Logger.Warn("Could not queue the Chat window activation because Settings is shutting down.");
+            Logger.Warn("Could not queue the Chat navigation because Settings is shutting down.");
     }
 
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        // Skip when the selection was set programmatically by
-        // OnContentFrameNavigated reflecting a Back/Forward — the page
-        // is already showing and re-running NavigateInternal would push
-        // a duplicate back-stack entry.
+        // Skip when the selection was set programmatically to reflect the current section;
+        // the host already owns that history entry.
         if (_syncingNavSelection) return;
 
         if (args.SelectedItem is NavigationViewItem item && item.Tag is string tag)
-        {
-            NavigateInternal(HubPageRegistry.NormalizeTag(tag, _currentAgentId));
-        }
+            NavigateCompanion(tag);
     }
 
     /// <summary>
-    /// Authoritative post-navigation hook. Runs for every successful
-    /// Frame.Navigate (including Back/Forward), so it's the single place that
-    /// rebuilds <see cref="_currentNavTag"/> / <see cref="_currentAgentId"/>,
-    /// re-syncs the rail + back button, and re-runs
-    /// <see cref="InitializeCurrentPage"/> for the page that's now visible.
+    /// Authoritative post-navigation hook. Runs for every successful Frame.Navigate, so it is the
+    /// single place that rebuilds <see cref="_currentNavTag"/> / <see cref="_currentAgentId"/>,
+    /// re-syncs the rail, and re-runs <see cref="InitializeCurrentPage"/> for the visible page.
     /// </summary>
     private void OnContentFrameNavigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
@@ -826,11 +762,7 @@ public sealed partial class HubWindow : WindowEx
             }
         }
 
-        // Reflect the restored page in the rail. Back/Forward don't route
-        // through NavigateInternal, so this is the only place the rail
-        // highlight gets re-synced for them.
         SyncNavSelection(tag);
-        UpdateBackButton();
 
         InitializeCurrentPage();
         UpdateAppNotificationActionEnabledState();
@@ -852,7 +784,7 @@ public sealed partial class HubWindow : WindowEx
             }
             catch (Exception ex)
             {
-                OpenClawTray.Services.Logger.Error($"[HubWindow] Page activation failed: {ex}");
+                OpenClawTray.Services.Logger.Error($"[SettingsShellView] Page activation failed: {ex}");
             }
         }
     }
@@ -931,7 +863,7 @@ public sealed partial class HubWindow : WindowEx
                 try { config.Initialize(); }
                 catch (Exception ex)
                 {
-                    OpenClawTray.Services.Logger.Error($"[HubWindow] ConfigPage seed failed: {ex}");
+                    OpenClawTray.Services.Logger.Error($"[SettingsShellView] ConfigPage seed failed: {ex}");
                 }
                 break;
             case InstancesPage instances: instances.Initialize(); break;
@@ -939,9 +871,9 @@ public sealed partial class HubWindow : WindowEx
             case SandboxPage sandbox: sandbox.Initialize(); break;
             case VoiceSettingsPage voice: voice.Initialize(CurrentApp.VoiceService); break;
             case AgentEventsPage agentEvents:
-                agentEvents.Initialize(this);
+                agentEvents.Initialize(GetAgentIds());
                 agentEvents.ClearCentralCache = () => AppModel?.ClearAgentEvents();
-                agentEvents.PopulateAgentFilter(this);
+                agentEvents.PopulateAgentFilter(GetAgentIds());
                 // When navigated via top-level nav (tag "agentevents") show all
                 // agents; when reached via an agent-scoped tag (e.g.
                 // "agent:main:agentevents") scope to that agent. Reading
@@ -975,45 +907,10 @@ public sealed partial class HubWindow : WindowEx
         _ = filter;
     }
 
-    // Command search retains its catalog and shortcuts in the sidebar flyout.
-
-    private void OnRootPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
-    {
-        var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(
-            global::Windows.System.VirtualKey.Control).HasFlag(
-            global::Windows.UI.Core.CoreVirtualKeyStates.Down);
-        if (ctrl && (e.Key == global::Windows.System.VirtualKey.E ||
-                     e.Key == global::Windows.System.VirtualKey.K ||
-                     e.Key == global::Windows.System.VirtualKey.F))
-        {
-            e.Handled = true;
-            OpenCommandCenter();
-            return;
-        }
-
-        // Alt+Left → back, matching the shell-wide navigation gesture and
-        // NavigationView's built-in keyboard accelerator.
-        var alt = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(
-            global::Windows.System.VirtualKey.Menu).HasFlag(
-            global::Windows.UI.Core.CoreVirtualKeyStates.Down);
-        if (alt && e.Key == global::Windows.System.VirtualKey.Left && ContentFrame.CanGoBack)
-        {
-            e.Handled = true;
-            GoBack();
-        }
-        else if (alt && e.Key == global::Windows.System.VirtualKey.Right && ContentFrame.CanGoForward)
-        {
-            e.Handled = true;
-            GoForward();
-        }
-    }
+    // Command search retains its catalog in the sidebar flyout. Keyboard shortcuts belong to the
+    // host window (Ctrl+K opens this flyout; Alt+Left/Right drive its single history).
 
     private ImmutableArray<HubCommand>? _cachedCommands;
-
-    internal void OpenCommandCenter()
-    {
-        CommandSearchFlyout.ShowAt(NavView.IsPaneOpen ? SettingsSearchButton : NavPaneToggleButton);
-    }
 
     private void OnCommandSearchOpening(object sender, object e)
     {
@@ -1094,7 +991,7 @@ public sealed partial class HubWindow : WindowEx
             }
             else
             {
-                Services.Logger.Warn($"[HubWindow] ISettingsStore unavailable for {settingName}. Falling back to SettingsManager.Save.");
+                Services.Logger.Warn($"[SettingsShellView] ISettingsStore unavailable for {settingName}. Falling back to SettingsManager.Save.");
                 ApplySettingValue(settings, toggle, nextValue);
                 settings.Save();
             }
@@ -1103,7 +1000,7 @@ public sealed partial class HubWindow : WindowEx
         }
         catch (Exception ex)
         {
-            Services.Logger.Warn($"[HubWindow] Failed to persist {settingName}: {ex.Message}");
+            Services.Logger.Warn($"[SettingsShellView] Failed to persist {settingName}: {ex.Message}");
         }
     }
 

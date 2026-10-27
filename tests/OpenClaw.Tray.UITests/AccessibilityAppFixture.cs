@@ -365,15 +365,11 @@ public sealed class AccessibilityAppFixture : IDisposable
         while (stopwatch.Elapsed < NavigationTimeout)
         {
             EnsureTargetIsAlive();
-            var workspaceRoute = pageTag is "chat" or "workspace" or "home" or "hub"
-                || pageTag.StartsWith("workspace:", StringComparison.Ordinal);
+            // Chat and Settings share one Workspace window; the marker alone identifies the visible surface.
             var windows = AutomationElement.RootElement.FindAll(TreeScope.Children,
                 new PropertyCondition(AutomationElement.ProcessIdProperty, _process.Id));
             foreach (AutomationElement window in windows)
             {
-                var isWorkspace = window.FindFirst(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNavigation")) is not null;
-                if (isWorkspace != workspaceRoute) continue;
                 if (window.FindFirst(TreeScope.Descendants, condition) is not null)
                 {
                     HubWindowHandle = new IntPtr(window.Current.NativeWindowHandle);

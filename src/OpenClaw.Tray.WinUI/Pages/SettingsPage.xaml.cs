@@ -116,6 +116,9 @@ public sealed partial class SettingsPage : Page
             sender.Visibility = Visibility.Collapsed;
     }
 
+    /// <summary>Returns to the top so history Back from About to Settings visibly changes position.</summary>
+    internal void ShowTop() => PageScroll.ChangeView(null, 0, null, disableAnimation: true);
+
     internal void ShowAbout()
     {
         if (IsLoaded)

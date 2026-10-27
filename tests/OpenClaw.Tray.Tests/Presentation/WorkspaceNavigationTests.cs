@@ -41,9 +41,10 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
-    public void Workspace_OnlyHomeAndFooterNotificationsHaveTypedDestinations()
+    public void Workspace_OnlyHomeAndFooterNotificationsHaveRoutableDestinations()
     {
-        Assert.Equal(new[] { WorkspacePageId.Home, WorkspacePageId.Notifications }, Enum.GetValues<WorkspacePageId>());
+        Assert.Equal(new[] { WorkspacePageId.Home, WorkspacePageId.Notifications, WorkspacePageId.Settings },
+            Enum.GetValues<WorkspacePageId>());
         Assert.Equal(new[] { "home", "notifications" }, WorkspaceNavigation.Routes.Keys);
         foreach (var (tag, page) in WorkspaceNavigation.Routes)
         {
@@ -72,6 +73,341 @@ public sealed class WorkspaceNavigationTests
         Assert.True(history.GoForward());
         Assert.Equal(WorkspacePageId.Home, history.Current.Page);
         Assert.False(history.CanGoForward);
+    }
+
+    [Fact]
+    public void Settings_ReturnsToExactPriorChat_AndForwardRestoresSection()
+    {
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "chat-a"));
+        history.Navigate(WorkspaceDestination.Settings("connection"));
+        history.Navigate(WorkspaceDestination.Settings("permissions"));
+        Assert.Equal(new(WorkspacePageId.Home, "chat-a"), history.ChatDestination);
+
+        Assert.True(history.GoBack());
+        Assert.Equal(WorkspaceDestination.Settings("connection"), history.Current);
+        Assert.True(history.GoBack());
+        Assert.Equal(new(WorkspacePageId.Home, "chat-a"), history.Current);
+        Assert.True(history.GoForward());
+        Assert.True(history.GoForward());
+        Assert.Equal(WorkspaceDestination.Settings("permissions"), history.Current);
+        Assert.False(history.Navigate(WorkspaceDestination.Settings("permissions")));
+    }
+
+    [Fact]
+    public void ChatSessionCompletingInSettings_DoesNotReplaceSettings()
+    {
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "chat-a"));
+        history.Navigate(WorkspaceDestination.Settings("connection"));
+        Assert.True(history.SelectChatSession("chat-b"));
+        Assert.Equal(WorkspaceDestination.Settings("connection"), history.Current);
+        Assert.Equal(new(WorkspacePageId.Home, "chat-b"), history.ChatDestination);
+    }
+
+    [Fact]
+    public void RemoveSettingsEntries_PrunesOnlyMatchingSectionsFromBothStacks()
+    {
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "chat-a"));
+        history.Navigate(WorkspaceDestination.Settings("sessions"));
+        history.Navigate(WorkspaceDestination.Settings("connection"));
+        history.Navigate(WorkspaceDestination.Settings("channels"));
+        history.GoBack();
+        history.RemoveSettingsEntries(tag => tag is "sessions" or "channels");
+        Assert.False(history.CanGoForward);
+        Assert.True(history.GoBack());
+        Assert.Equal(new(WorkspacePageId.Home, "chat-a"), history.Current);
+        Assert.True(history.GoForward());
+        Assert.Equal(WorkspaceDestination.Settings("connection"), history.Current);
+    }
+
+    [Fact]
+    public void RemovedSession_IsPrunedAroundSettingsEntries()
+    {
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "removed"));
+        history.Navigate(WorkspaceDestination.Settings("connection"));
+        Assert.False(history.RemoveSession("removed", "kept"));
+        Assert.Equal(new(WorkspacePageId.Home, "kept"), history.ChatDestination);
+        Assert.True(history.GoBack());
+        Assert.Equal(WorkspacePageId.Home, history.Current.Page);
+        Assert.NotEqual("removed", history.Current.SessionKey);
+    }
+
+    [Fact]
+    public void PruneSettings_ReplacesPrunedCurrentWithFallbackWithoutAddingHistory()
+    {
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "chat-a"));
+        history.Navigate(WorkspaceDestination.Settings("connection"));
+        history.Navigate(WorkspaceDestination.Settings("channels"));
+        Assert.True(history.PruneSettings(tag => tag == "channels", WorkspaceDestination.Settings("connection")));
+        Assert.Equal(WorkspaceDestination.Settings("connection"), history.Current);
+        // The adjacent duplicate "connection" entry collapses so Back skips to chat.
+        Assert.True(history.GoBack());
+        Assert.Equal(new(WorkspacePageId.Home, "chat-a"), history.Current);
+    }
+
+    [Fact]
+    public void PruneSettings_WithCurrentFallback_KeepsCurrentAndCollapsesAdjacentDuplicates()
+    {
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "chat-a"));
+        history.Navigate(WorkspaceDestination.Settings("settings"));
+        history.Navigate(WorkspaceDestination.Settings("channels"));
+        history.Navigate(WorkspaceDestination.Settings("settings"));
+        Assert.False(history.PruneSettings(tag => tag == "channels", history.Current));
+        Assert.Equal(WorkspaceDestination.Settings("settings"), history.Current);
+        Assert.True(history.GoBack());
+        Assert.Equal(new(WorkspacePageId.Home, "chat-a"), history.Current);
+    }
+
+    [Fact]
+    public void SettingsTags_KeepAboutAndAgentRoutesDistinct()
+    {
+        Assert.Equal("about", WorkspaceNavigation.NormalizeSettingsTag("about", "main"));
+        Assert.Equal("about", WorkspaceNavigation.NormalizeSettingsTag("info", "main"));
+        Assert.NotEqual(
+            WorkspaceNavigation.NormalizeSettingsTag("settings", "main"),
+            WorkspaceNavigation.NormalizeSettingsTag("about", "main"));
+        Assert.NotEqual(
+            WorkspaceNavigation.NormalizeSettingsTag("agent:alpha", "main"),
+            WorkspaceNavigation.NormalizeSettingsTag("agent:beta", "main"));
+    }
+
+    [Fact]
+    public void SettingsHistory_BackAndForwardWorkWithoutAnyGatewayState()
+    {
+        // The unconfigured path uses the same history: Settings opens, Back reaches chat, Forward returns.
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(WorkspaceDestination.Settings("connection"));
+        Assert.True(history.GoBack());
+        Assert.Equal(WorkspacePageId.Home, history.Current.Page);
+        Assert.True(history.GoForward());
+        Assert.Equal(WorkspaceDestination.Settings("connection"), history.Current);
+    }
+
+    [Fact]
+    public void SettingsSameWindow_HasOneKeyboardOwnerOneHistoryAndSetupBypass()
+    {
+        var view = File.ReadAllText(Source("Controls", "SettingsShellView.xaml.cs"));
+        var viewXaml = File.ReadAllText(Source("Controls", "SettingsShellView.xaml"));
+        Assert.DoesNotContain("OnRootPreviewKeyDown", view + viewXaml);
+        Assert.DoesNotContain("GoBack", view);
+        Assert.DoesNotContain("GoForward", view);
+        Assert.DoesNotContain("BackStack", view);
+        Assert.DoesNotContain("typeof(ChatPage)", view);
+        Assert.DoesNotContain("new ChatPage", view);
+        var manager = File.ReadAllText(Source("Services", "WindowManager.cs"));
+        var core = manager[manager.IndexOf("private void ShowHubCore", StringComparison.Ordinal)..];
+        core = core[..core.IndexOf("private void ShowWorkspace", StringComparison.Ordinal)];
+        var settingsRoute = core[core.IndexOf("}, tag =>", StringComparison.Ordinal)..];
+        Assert.DoesNotContain("RequiresSetup", settingsRoute);
+        Assert.Contains("settingsTag: tag", settingsRoute);
+
+        var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.DoesNotContain("ShowHub(\"command-center\")", workspace);
+        Assert.Contains("_settings?.Deactivate()", workspace);
+        Assert.Contains("settings.Dispose()", workspace);
+    }
+
+    [Fact]
+    public void ColdNativeSetup_ChannelsAndSkills_AwaitSettingsRenderInsteadOfThrowing()
+    {
+        var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var wait = workspace[workspace.IndexOf("internal async Task WaitForNativeSetupAsync", StringComparison.Ordinal)..];
+        wait = wait[..wait.IndexOf("request.RequireWorkspaceDestination(Destination);", StringComparison.Ordinal)];
+        // The Settings view does not exist until Loaded on a closed window: wait for the render, never throw on null.
+        Assert.DoesNotContain("_settings is null || !IsSettingsVisible", wait);
+        Assert.Contains("_pendingSettingsRequest.WaitForRenderAsync(request, _settingsRendered.Task, ct)", wait);
+        Assert.Contains("_settings.WaitForNativeSetupAsync(request, ct)", wait);
+        Assert.Contains("_settingsRendered.TrySetResult()", workspace);
+        Assert.Contains("_settingsRendered.TrySetCanceled()", workspace);
+        // The request is never replayed through history: it is consumed once by the first render
+        // and cleared when any non-Settings destination renders or the window closes.
+        Assert.Contains("_pendingSettingsRequest.Consume()", workspace);
+        Assert.Contains("_pendingSettingsRequest.Clear();\n        LeaveSettings();", workspace.Replace("\r\n", "\n"));
+        Assert.Equal("channels", WorkspaceNavigation.NormalizeSettingsTag("channels", "main"));
+        Assert.Equal("skills", WorkspaceNavigation.NormalizeSettingsTag("skills", "main"));
+        Assert.Contains("NormalizeNativeSetupTag(request.PageTag)", workspace);
+    }
+
+    [Fact]
+    public void PendingRequestSlot_SupersededRequestCancelsWaiterAndIsNeverConsumedLater()
+    {
+        var slot = new PendingRequestSlot<object>();
+        var a = new object();
+        var tokenA = slot.Set(a);
+        Assert.Equal(tokenA, slot.TokenFor(a));
+        // Leaving Settings before it loaded clears A: its waiter is cancelled promptly.
+        slot.Clear();
+        Assert.True(tokenA.IsCancellationRequested);
+        Assert.Null(slot.TokenFor(a));
+        // A later same-tag visit consumes nothing.
+        Assert.Null(slot.Consume());
+        // A newer request supersedes the older one.
+        var b = new object();
+        var c = new object();
+        var tokenB = slot.Set(b);
+        slot.Set(c);
+        Assert.True(tokenB.IsCancellationRequested);
+        Assert.Null(slot.TokenFor(b));
+        Assert.NotNull(slot.TokenFor(c));
+        // Consuming hands the request over once and leaves its waiter running for the render.
+        var tokenC = slot.TokenFor(c)!.Value;
+        Assert.Same(c, slot.Consume());
+        Assert.False(tokenC.IsCancellationRequested);
+        Assert.Null(slot.Consume());
+    }
+
+    [Fact]
+    public async Task PendingRequestSlot_CancellationNeverResumesWaiterInsideClear()
+    {
+        var slot = new PendingRequestSlot<object>();
+        var request = new object();
+        slot.Set(request);
+        var rendered = new TaskCompletionSource();
+        var context = new QueueingSynchronizationContext();
+        var previous = SynchronizationContext.Current;
+        Task wait;
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            wait = slot.WaitForRenderAsync(request, rendered.Task, CancellationToken.None);
+            // Clear runs in the middle of a render on the same context; the waiter must not resume
+            // (and reenter the render) inside it.
+            slot.Clear();
+            Assert.False(wait.IsCompleted);
+            Assert.Equal(0, context.Executed);
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+
+        context.RunAll();
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => wait);
+        Assert.Contains("destination changed", ex.Message);
+    }
+
+    [Fact]
+    public void DeferredNavigation_PrunedRenderRunsBeforeDeferredForwardAndOnlyOnce()
+    {
+        var steps = new List<string>();
+        var deferred = new DeferredNavigation();
+        // Forward waits behind a modal; pruning then removes the forward entry.
+        Assert.False(deferred.Defer(() => steps.Add("forward")));
+        Assert.True(deferred.Defer(() => steps.Add("latest")));
+        deferred.DeferRender();
+
+        deferred.Run(() => false, () => steps.Add("render"));
+        Assert.Equal(new[] { "render", "latest" }, steps);
+
+        // Nothing is left to replay when the dialog closes again.
+        deferred.Run(() => false, () => steps.Add("render"));
+        Assert.Equal(2, steps.Count);
+    }
+
+    [Fact]
+    public void DeferredNavigation_StillOpenModalKeepsPrunedRenderForTheNextClose()
+    {
+        var steps = new List<string>();
+        var deferred = new DeferredNavigation();
+        deferred.Defer(() => steps.Add("back"));
+        deferred.DeferRender();
+
+        // Another dialog is open: the render waits; the intent runs and re-defers itself.
+        deferred.Run(() => true, () => steps.Add("render"));
+        Assert.Equal(new[] { "back" }, steps);
+        deferred.Defer(() => steps.Add("back-again"));
+        deferred.Run(() => false, () => steps.Add("render"));
+        Assert.Equal(new[] { "back", "render", "back-again" }, steps);
+
+        deferred.Defer(() => steps.Add("dropped"));
+        deferred.DeferRender();
+        deferred.Clear();
+        deferred.Run(() => false, () => steps.Add("render"));
+        Assert.DoesNotContain("dropped", steps);
+        Assert.Equal(3, steps.Count);
+    }
+
+
+    [Fact]
+    public async Task PendingRequestSlot_WaitRejectsRequestThatIsNotPendingAndHonorsCloseCancellation()
+    {
+        var slot = new PendingRequestSlot<object>();
+        var stale = new object();
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => slot.WaitForRenderAsync(stale, new TaskCompletionSource().Task, CancellationToken.None));
+
+        var current = new object();
+        slot.Set(current);
+        using var close = new CancellationTokenSource();
+        var wait = slot.WaitForRenderAsync(current, new TaskCompletionSource().Task, close.Token);
+        close.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+        // Close cancellation is not reported as a superseded destination.
+        Assert.Same(current, slot.Current);
+
+        var rendered = new TaskCompletionSource();
+        var next = new object();
+        slot.Set(next);
+        var ok = slot.WaitForRenderAsync(next, rendered.Task, CancellationToken.None);
+        Assert.Same(next, slot.Consume());
+        rendered.SetResult();
+        await ok;
+    }
+
+    private sealed class QueueingSynchronizationContext : SynchronizationContext
+    {
+        private readonly Queue<(SendOrPostCallback Callback, object? State)> _queue = new();
+        public int Executed { get; private set; }
+
+        public override void Post(SendOrPostCallback d, object? state) => _queue.Enqueue((d, state));
+
+        public void RunAll()
+        {
+            var previous = Current;
+            SetSynchronizationContext(this);
+            try
+            {
+                while (_queue.Count > 0)
+                {
+                    var (callback, state) = _queue.Dequeue();
+                    Executed++;
+                    callback(state);
+                }
+            }
+            finally { SetSynchronizationContext(previous); }
+        }
+    }
+
+    [Fact]
+    public void ModalPolicy_DefersPrunesAndNativeSetupInsteadOfReplacingUnderDialogs()
+    {
+        var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var manager = File.ReadAllText(Source("Services", "WindowManager.cs"));
+        Assert.Contains("DeferWhileModalOpen(RenderPrunedDestination)", workspace);
+        Assert.Contains("_deferred.DeferRender()", workspace);
+        Assert.Contains("if (Destination != settingsDestination)", workspace);
+        Assert.Contains("popup.Child is ContentDialog", manager);
+    }
+
+    [Fact]
+    public void LeavingSettings_StopsDebugPage_NeverCancelsDialogs_AndNullStatusRefreshes()
+    {
+        var view = File.ReadAllText(Source("Controls", "SettingsShellView.xaml.cs"));
+        var debug = File.ReadAllText(Source("Pages", "DebugPage.xaml.cs"));
+        var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("(ContentFrame.Content as DebugPage)?.Deactivate()", view);
+        Assert.Contains("internal void Deactivate()", debug);
+        // Dialog policy: Settings never cancels a ContentDialog; the host defers navigation instead.
+        Assert.DoesNotContain("dialog.Hide()", view);
+        Assert.DoesNotContain("_foreignDialogs", view);
+        Assert.Contains("DeferWhileModalOpen(NavigateBack)", workspace);
+        Assert.Contains("DeferWhileModalOpen(NavigateForward)", workspace);
+        Assert.Contains("DeferWhileModalOpen(() => Navigate(destination, preserveConversation))", workspace);
+        Assert.DoesNotContain(".Hide()", workspace[workspace.IndexOf("private bool DeferWhileModalOpen", StringComparison.Ordinal)..][..900]);
+        Assert.Contains("GatewayConnectionSnapshot? snapshot, ConnectionStatus status", view);
+        Assert.DoesNotContain("if (snapshot is not null) _settings", workspace);
     }
 
     [Fact]
@@ -480,32 +816,46 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
-    public void WindowManager_OwnsBothWindowsWithoutSharingCompanionNavigationScope()
+    public void WindowManager_OwnsOneWorkspaceWindowForChatAndSettings_AndResetsScopeOnClose()
     {
         var code = File.ReadAllText(Source("Services", "WindowManager.cs"));
         Assert.Contains("WorkspaceNavigation.Dispatch(navigateTo", code);
         Assert.Contains("if (_workspaceWindow is null || _workspaceWindow.IsClosed)", code);
-        Assert.Contains("if (_hubWindow is null || _hubWindow.IsClosed)", code);
-        Assert.Contains("_hubWindow.NavigateTo(navigateTo)", code);
         Assert.Contains("_callbacks.ApplyTheme(_workspaceWindow)", code);
         Assert.Contains("TryClose(\"Workspace window\"", code);
+        // One HWND: Settings is a Workspace destination, never a second window.
+        Assert.DoesNotMatch(@"(?<![A-Za-z])HubWindow(?![A-Za-z_])", code);
+        Assert.DoesNotContain("_hubWindow", code);
+        Assert.DoesNotContain("ShowCompanion", code);
+        Assert.DoesNotContain("OnHubClosed", code);
+        Assert.False(File.Exists(Source("Windows", "HubWindow.xaml")));
+        Assert.False(File.Exists(Source("Windows", "HubWindow.xaml.cs")));
+        Assert.Contains("settingsTag: tag", code);
+        // The navigation scope is reset when the single Workspace window closes.
+        var closed = code[code.IndexOf("private void OnWorkspaceClosed", StringComparison.Ordinal)..];
+        Assert.Contains("_workspaceWindow = null;", closed);
+        Assert.Contains("ResetNavigationScope();", closed[..closed.IndexOf("private void ResetNavigationScope", StringComparison.Ordinal)]);
+        Assert.Contains("SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(_workspaceWindow))", code);
+
         var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.DoesNotContain("PageActivator", workspace);
         Assert.DoesNotContain("GatewayRegistry", workspace);
         Assert.DoesNotContain("new OpenClawGatewayClient", workspace);
-        var hubMarkup = File.ReadAllText(Source("Windows", "HubWindow.xaml"));
-        var chatLink = XDocument.Parse(hubMarkup).Descendants()
+        Assert.Contains("CurrentApp.PageActivator?.Reset();", workspace);
+        Assert.Contains("settings.Dispose();", workspace);
+
+        var viewMarkup = File.ReadAllText(Source("Controls", "SettingsShellView.xaml"));
+        var chatLink = XDocument.Parse(viewMarkup).Descendants()
             .Single(element => (string?)element.Attribute("Tag") == "chat");
         Assert.Equal("False", (string?)chatLink.Attribute("SelectsOnInvoked"));
         Assert.Equal("SettingsNavChat", (string?)chatLink.Attribute("AutomationProperties.AutomationId"));
-        var hub = File.ReadAllText(Source("Windows", "HubWindow.xaml.cs"));
-        var invoked = hub[hub.IndexOf("private void NavView_ItemInvoked", StringComparison.Ordinal)..
-            hub.IndexOf("private void NavView_SelectionChanged", StringComparison.Ordinal)];
+        var view = File.ReadAllText(Source("Controls", "SettingsShellView.xaml.cs"));
+        var invoked = view[view.IndexOf("private void NavView_ItemInvoked", StringComparison.Ordinal)..
+            view.IndexOf("private void NavView_SelectionChanged", StringComparison.Ordinal)];
         Assert.Contains("NavigateTo(\"chat\")", invoked);
         Assert.Contains("DispatcherQueuePriority.Low", invoked);
-        Assert.Contains("if (!IsClosed)", invoked);
+        Assert.Contains("_active", invoked);
         Assert.DoesNotContain("NavigateInternal", invoked);
-        Assert.Contains("SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(_workspaceWindow))", code);
+        Assert.DoesNotMatch(@"new\s+ChatPage\b|typeof\(ChatPage\)|\bMountReactorChat\b", view);
         var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
         Assert.Contains("Initialize(Window ownerWindow)", chat);
         Assert.Contains("ArgumentNullException.ThrowIfNull(ownerWindow);", chat);

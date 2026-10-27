@@ -20,7 +20,6 @@ public sealed partial class WorkspaceWindow : WindowEx
 {
     private static App CurrentApp => (App)Application.Current;
     private readonly AppState _state;
-    private readonly Action<string> _openCompanion;
     private readonly Action _openTimeline;
     private readonly AppNotificationService _notifications;
     private readonly WorkspaceIdentitySource _identity;
@@ -43,6 +42,15 @@ public sealed partial class WorkspaceWindow : WindowEx
     private bool _showingAgentCreation;
     private IOperatorGatewayClient? _refreshingClient;
     private string? _agentId;
+    // Settings lives in this window as a retained sibling of the chat section. Chat is only
+    // collapsed while Settings is visible, so its control identity, draft and focus survive.
+    private SettingsShellView? _settings;
+    private Microsoft.UI.Xaml.Controls.Control? _chatFocus;
+    private readonly PendingRequestSlot<SetupNativeNavigationRequest> _pendingSettingsRequest = new();
+    private readonly TaskCompletionSource _settingsRendered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Raised when a Settings page saved a user setting.</summary>
+    internal event EventHandler? SettingsSaved;
 
     public bool IsClosed { get; private set; }
     internal bool IsChatVisible => !IsClosed && ChatVisibilityPolicy.IsWorkspaceChatVisible(
@@ -57,13 +65,11 @@ public sealed partial class WorkspaceWindow : WindowEx
     internal bool CanGoBack => _navigation.CanGoBack;
 
     internal WorkspaceWindow(
-        AppState state, AppNotificationService notifications, Action<string> openCompanion,
-        Action openTimeline)
+        AppState state, AppNotificationService notifications, Action openTimeline)
     {
         InitializeComponent();
         _state = state;
         _notifications = notifications;
-        _openCompanion = openCompanion;
         _openTimeline = openTimeline;
         _identity = new WorkspaceIdentitySource(UpdateOwnerIdentity,
             category => Logger.Warn($"[Workspace] users.self unavailable ({category}); using owner fallback."));
@@ -125,10 +131,18 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (preserveConversation && destination is { Page: WorkspacePageId.Home, SessionKey: null })
             destination = _navigation.ChatDestination;
+        if (destination != Destination && DeferWhileModalOpen(() => Navigate(destination, preserveConversation)))
+            return;
         _chat.RetainNativeSetupForDestination(destination);
-        if (!_navigation.Navigate(destination) && ContentHost.Children.FirstOrDefault() is FrameworkElement current)
+        if (!_navigation.Navigate(destination))
         {
-            SignalContentReady(current);
+            // Re-rendering Settings is idempotent and also re-arms a deactivated section.
+            if (destination.Page == WorkspacePageId.Settings)
+            {
+                if (Root.XamlRoot is not null) RenderDestination();
+            }
+            else if (ContentHost.Children.FirstOrDefault() is FrameworkElement current)
+                SignalContentReady(current);
             return;
         }
         if (Root.XamlRoot is not null)
@@ -136,10 +150,47 @@ public sealed partial class WorkspaceWindow : WindowEx
     }
 
     internal void OpenCompanion(CompanionPageId page, string? agentId = null) =>
-        _openCompanion(WorkspaceNavigation.CompanionTag(page, agentId ?? _agentId ?? "main"));
+        OpenSettings(WorkspaceNavigation.CompanionTag(page, agentId ?? _agentId ?? "main"));
+
+    /// <summary>
+    /// Shows a Settings section in this window. The section becomes one history entry; the visible
+    /// chat's agent selection is never changed by Settings agent routes.
+    /// </summary>
+    internal void OpenSettings(string tag)
+    {
+        if (IsClosed) return;
+        if (tag == "command-center")
+        {
+            OpenCommandCenter();
+            return;
+        }
+        Navigate(WorkspaceDestination.Settings(
+            WorkspaceNavigation.NormalizeSettingsTag(tag, _settings?.CurrentAgentId ?? _agentId ?? "main")));
+    }
+
+    /// <summary>The Settings view while it exists; null before Settings was first opened.</summary>
+    internal SettingsShellView? SettingsView => _settings;
+    internal bool IsSettingsVisible => !IsClosed && Destination.Page == WorkspacePageId.Settings;
 
     internal void OpenTimeline() => _openTimeline();
-    internal void OpenCommandCenter() => _openCompanion("command-center");
+
+    /// <summary>
+    /// Opens the visible surface's search: Settings search while Settings is shown, otherwise the
+    /// Settings search after pushing the default section (the one search surface of this window).
+    /// </summary>
+    internal void OpenCommandCenter()
+    {
+        if (IsClosed) return;
+        if (!IsSettingsVisible)
+            Navigate(WorkspaceDestination.Settings("settings"));
+        if (_settings is null) return;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (!IsClosed && IsSettingsVisible && _settings.IsLoaded)
+                _settings.OpenCommandCenter();
+        });
+    }
+
     internal void SelectSession(string sessionKey) =>
         Navigate(new(WorkspacePageId.Home, sessionKey));
 
@@ -153,14 +204,24 @@ public sealed partial class WorkspaceWindow : WindowEx
         _agentId = SessionDisplayResolver.Resolve(session).AgentId;
         RefreshSidebar();
         UpdateNavigationSelection();
-        BackButton.IsEnabled = _navigation.CanGoBack;
-        ForwardButton.IsEnabled = _navigation.CanGoForward;
+        UpdateHistoryButtons();
     }
 
     internal void NavigateNativeSetup(SetupNativeNavigationRequest request)
     {
-        var destination = request.WorkspaceDestination
-            ?? throw new InvalidOperationException("The setup destination is not Workspace chat.");
+        if (request.WorkspaceDestination is null)
+        {
+            var settingsDestination = WorkspaceDestination.Settings(NormalizeNativeSetupTag(request.PageTag));
+            _pendingSettingsRequest.Set(request);
+            Navigate(settingsDestination);
+            // A destination deferred behind a modal dialog was not accepted: the one-shot request must
+            // never bind later, after the dialog closes.
+            if (Destination != settingsDestination)
+                _pendingSettingsRequest.Clear();
+            return;
+        }
+        _pendingSettingsRequest.Clear();
+        var destination = request.WorkspaceDestination;
         _chat.BindNativeSetupRequest(request);
         Navigate(destination, preserveConversation: false);
         // An already selected session does not render again; apply the new verified binding too.
@@ -168,9 +229,29 @@ public sealed partial class WorkspaceWindow : WindowEx
             _chat.Initialize(this);
     }
 
+    private string NormalizeNativeSetupTag(string tag) =>
+        WorkspaceNavigation.NormalizeSettingsTag(tag, _settings?.CurrentAgentId ?? _agentId ?? "main");
+
     internal async Task WaitForNativeSetupAsync(SetupNativeNavigationRequest request, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        if (request.WorkspaceDestination is null)
+        {
+            if (!IsSettingsVisible)
+                throw new InvalidOperationException("The selected setup destination changed.");
+            // A cold window renders Settings on Loaded; the request stays pending until then and
+            // the wait ends promptly if another destination supersedes it first.
+            if (_settings is null)
+                await _pendingSettingsRequest.WaitForRenderAsync(request, _settingsRendered.Task, ct);
+            ct.ThrowIfCancellationRequested();
+            if (_settings is null || IsClosed || !IsSettingsVisible)
+                throw new InvalidOperationException("The native window closed.");
+            await _settings.WaitForNativeSetupAsync(request, ct);
+            ct.ThrowIfCancellationRequested();
+            if (IsClosed || !IsSettingsVisible)
+                throw new InvalidOperationException("The native window closed.");
+            return;
+        }
         request.RequireWorkspaceDestination(Destination);
         await _chat.WaitForNativeSetupAsync(request, ct);
         ct.ThrowIfCancellationRequested();
@@ -194,6 +275,13 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         _chat.InvalidatePendingSessionNavigation();
         _chat.RetainNativeSetupForDestination(Destination);
+        if (Destination.Page == WorkspacePageId.Settings)
+        {
+            RenderSettings();
+            return;
+        }
+        _pendingSettingsRequest.Clear();
+        LeaveSettings();
         if (Destination.Page == WorkspacePageId.Home && Destination.SessionKey is { } sessionKey)
         {
             var session = _state.Sessions.FirstOrDefault(session => session.Key == sessionKey)
@@ -209,8 +297,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         {
             QueueChatApply();
             UpdateNavigationSelection();
-            BackButton.IsEnabled = _navigation.CanGoBack;
-            ForwardButton.IsEnabled = _navigation.CanGoForward;
+            UpdateHistoryButtons();
             return;
         }
         ContentHost.Children.Clear();
@@ -227,10 +314,130 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
 
         UpdateNavigationSelection();
-        BackButton.IsEnabled = _navigation.CanGoBack;
-        ForwardButton.IsEnabled = _navigation.CanGoForward;
+        UpdateHistoryButtons();
         if (ContentHost.Children.FirstOrDefault() is FrameworkElement content)
             SignalContentReady(content);
+    }
+
+    private void UpdateHistoryButtons()
+    {
+        var back = _navigation.CanGoBack;
+        var forward = _navigation.CanGoForward;
+        BackButton.IsEnabled = back;
+        ForwardButton.IsEnabled = forward;
+        SettingsBackButton.IsEnabled = back;
+        SettingsForwardButton.IsEnabled = forward;
+    }
+
+    private SettingsShellView EnsureSettings()
+    {
+        if (_settings is { } existing)
+            return existing;
+        var view = new SettingsShellView
+        {
+            AppModel = _state,
+            ConnectAction = () => ((IAppCommands)CurrentApp).Reconnect(),
+            ReconnectAction = () => ((IAppCommands)CurrentApp).Reconnect(),
+            NavigateRequested = tag => OpenSettings(tag),
+            WorkspaceRouteRequested = OnSettingsWorkspaceRoute,
+            PruneRequested = PruneSettingsHistory,
+        };
+        view.SettingsSaved += OnSettingsViewSaved;
+        view.BindAppNotifications(_notifications);
+        if (CurrentApp.Settings is { } settings)
+            view.ApplyNavPaneState(settings);
+        view.BindToAppState();
+        SettingsSection.Children.Add(view);
+        _settings = view;
+        return view;
+    }
+
+    private void OnSettingsViewSaved(object? sender, EventArgs e) => SettingsSaved?.Invoke(this, e);
+
+    private void RenderSettings()
+    {
+        var view = EnsureSettings();
+        if (SettingsSection.Visibility != Visibility.Visible)
+        {
+            _chatFocus = Root.XamlRoot is { } root
+                ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) as Microsoft.UI.Xaml.Controls.Control
+                : null;
+            NavigationSection.Visibility = Visibility.Collapsed;
+            SettingsSection.Visibility = Visibility.Visible;
+            SettingsHistoryBar.Visibility = Visibility.Visible;
+        }
+        UpdateHistoryButtons();
+        var request = _pendingSettingsRequest.Consume();
+        var tag = Destination.CompanionTag ?? "settings";
+        view.ShowSection(tag, request is not null && NormalizeNativeSetupTag(request.PageTag) == tag ? request : null);
+        _settingsRendered.TrySetResult();
+        AccessibilityNavigationSignal.WritePageReady(view.CurrentPage?.GetType().Name ?? nameof(SettingsShellView));
+    }
+
+    /// <summary>
+    /// Leaves Settings without recreating chat: deactivates every Settings page and returns focus
+    /// to the control that held it before Settings opened.
+    /// </summary>
+    private void LeaveSettings()
+    {
+        if (SettingsSection.Visibility != Visibility.Visible)
+            return;
+        _settings?.Deactivate();
+        SettingsSection.Visibility = Visibility.Collapsed;
+        SettingsHistoryBar.Visibility = Visibility.Collapsed;
+        NavigationSection.Visibility = Visibility.Visible;
+        var focus = _chatFocus;
+        _chatFocus = null;
+        if (focus is not null)
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (!IsClosed && Destination.Page != WorkspacePageId.Settings && focus.IsLoaded)
+                    focus.Focus(FocusState.Programmatic);
+            });
+    }
+
+    private void OnSettingsWorkspaceRoute(string tag)
+    {
+        WorkspaceNavigation.Dispatch(tag, destination =>
+        {
+            if (destination.Page == WorkspacePageId.Home && destination.SessionKey is null &&
+                CurrentApp.PendingChatSessionKey is { Length: > 0 } sessionKey)
+                SelectSession(sessionKey);
+            else
+                Navigate(destination);
+        }, OpenSettings);
+    }
+
+    /// <summary>
+    /// Drops unavailable Settings sections from the single history. A pruned current section is
+    /// replaced by <paramref name="fallbackTag"/> without a history entry and rendered.
+    /// </summary>
+    private void PruneSettingsHistory(Func<string, bool> shouldRemove, string? fallbackTag)
+    {
+        if (IsClosed) return;
+        var changed = _navigation.PruneSettings(
+            shouldRemove, fallbackTag is null ? _navigation.Current : WorkspaceDestination.Settings(fallbackTag));
+        UpdateHistoryButtons();
+        if (!changed || fallbackTag is null || Root.XamlRoot is null)
+            return;
+        // A pending deferred Back/Forward/Navigate runs after the pruned destination is rendered first.
+        if (_deferred.HasIntent)
+            _deferred.DeferRender();
+        else if (!DeferWhileModalOpen(RenderPrunedDestination))
+            RenderDestination();
+    }
+
+    private void RenderPrunedDestination()
+    {
+        if (!IsClosed && Root.XamlRoot is not null)
+            RenderDestination();
+    }
+
+    // Back and Forward never land on a Gateway section while the Gateway is unavailable.
+    private void PruneUnavailableGatewayHistory()
+    {
+        if (_state.Status != ConnectionStatus.Connected)
+            PruneSettingsHistory(HubPageRegistry.IsGatewayPageTag, null);
     }
 
     private void QueueChatApply()
@@ -575,8 +782,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         if (wasCurrent)
             RenderDestination();
         UpdateNavigationSelection();
-        BackButton.IsEnabled = _navigation.CanGoBack;
-        ForwardButton.IsEnabled = _navigation.CanGoForward;
+        UpdateHistoryButtons();
     }
 
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -593,6 +799,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     internal void UpdateConnectionStatus(GatewayConnectionSnapshot? snapshot, ConnectionStatus status)
     {
+        _settings?.UpdateStatus(snapshot, status);
         if (_identity.SetConnection(CurrentApp.GatewayClient, status))
             _ = _identity.RefreshAsync();
         var (labelKey, accent) = ConnectionStatusPresenter.Pill(snapshot?.OverallState, status);
@@ -723,11 +930,45 @@ public sealed partial class WorkspaceWindow : WindowEx
     }
     internal void NavigateBack()
     {
+        if (DeferWhileModalOpen(NavigateBack)) return;
+        PruneUnavailableGatewayHistory();
         if (_navigation.GoBack()) RenderDestination();
+        else UpdateHistoryButtons();
     }
     private void NavigateForward()
     {
+        if (DeferWhileModalOpen(NavigateForward)) return;
+        PruneUnavailableGatewayHistory();
         if (_navigation.GoForward()) RenderDestination();
+        else UpdateHistoryButtons();
+    }
+
+    private readonly DeferredNavigation _deferred = new();
+
+    private ContentDialog? OpenModalDialog() =>
+        Root.XamlRoot is { } xamlRoot
+            ? Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot)
+                .Select(popup => popup.Child).OfType<ContentDialog>().FirstOrDefault()
+            : null;
+
+    /// <summary>
+    /// Policy: while Settings is visible and a ContentDialog is open, destination changes wait for
+    /// that dialog to close, then the latest deferred change runs once. Dialogs are never cancelled
+    /// by navigation, so app-wide update, failure and approval dialogs keep their own outcome, and no
+    /// dialog can be left over a page that did not open it.
+    /// </summary>
+    private bool DeferWhileModalOpen(Action navigate)
+    {
+        if (!IsSettingsVisible || OpenModalDialog() is not { } dialog)
+            return false;
+        if (!_deferred.Defer(navigate))
+        {
+            dialog.Closed += (_, _) => DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!IsClosed) _deferred.Run(() => OpenModalDialog() is not null, RenderPrunedDestination);
+            });
+        }
+        return true;
     }
     private void OnKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
@@ -735,7 +976,9 @@ public sealed partial class WorkspaceWindow : WindowEx
             .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
         var alt = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(global::Windows.System.VirtualKey.Menu)
             .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
-        if (ctrl && e.Key == global::Windows.System.VirtualKey.K)
+        // Ctrl+E is the Settings search shortcut shown in its placeholder; it is inert in chat.
+        if (ctrl && (e.Key == global::Windows.System.VirtualKey.K ||
+                     (IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.E)))
         {
             e.Handled = true;
             OpenCommandCenter();
@@ -824,6 +1067,19 @@ public sealed partial class WorkspaceWindow : WindowEx
         NotificationContent.Unbind();
         _gatewayStatusFlyout.Hide();
         ContentHost.Children.Clear();
+        if (_settings is { } settings)
+        {
+            settings.SettingsSaved -= OnSettingsViewSaved;
+            settings.Dispose();
+            SettingsSection.Children.Clear();
+            _settings = null;
+        }
+        try { CurrentApp.PageActivator?.Reset(); }
+        catch (Exception ex) { Logger.Warn($"[Workspace] Navigation scope reset on close failed: {ex.Message}"); }
+        _pendingSettingsRequest.Clear();
+        _settingsRendered.TrySetCanceled();
+        _deferred.Clear();
+        _chatFocus = null;
         _chat.CloseSurface();
         _chat.SessionSelected -= OnChatSessionSelected;
     }

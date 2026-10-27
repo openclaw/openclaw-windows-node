@@ -5,7 +5,7 @@ public sealed class PermissionSettingsWriterRoutingTests
     [Fact]
     public void HubCommandPalette_PermissionToggles_UseSettingsStore_AndRaiseSettingsSaved()
     {
-        var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
+        var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
         var buildCommandList = ExtractMethodBodyBySignature(source, "internal ImmutableArray<HubCommand> BuildCommandList()");
         var toggleHelper = ExtractMethodBodyBySignature(source, "private void ToggleCommandPalettePermission(HubSettingToggle toggle)");
         var executeCommand = ExtractMethodBodyBySignature(source, "private void ExecuteCommand(HubCommand command)");
