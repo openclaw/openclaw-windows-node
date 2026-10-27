@@ -406,12 +406,16 @@ Assert-Contains -Text $classificationJob `
 $proofHeader = ($proofJob -split '(?m)^    steps:\s*$', 2)[0]
 Assert-Contains -Text $proofHeader -Expected 'needs: change-classification' -Message 'Proof allocation must wait for classification.'
 Assert-Contains -Text $proofHeader -Expected 'runs-on: windows-latest' -Message 'Malformed-contract proof must remain native Windows.'
-$admission = [regex]::Match($proofHeader, '(?m)^    if: \$\{\{ (?<condition>.+) \}\}$').Groups['condition'].Value
-$admission = $admission.Replace('!cancelled()', '-not $cancelled').
-    Replace('needs.change-classification.result', '$classificationResult').
-    Replace('needs.change-classification.outputs.proof_pool_required', '$required').
-    Replace('!=', '-ne').Replace('==', '-eq').Replace('&&', '-and').Replace('||', '-or')
-$admitProof = [scriptblock]::Create('param($cancelled,$classificationResult,$required)' + "`n($admission)")
+$proofHeaderLf = $proofHeader.Replace("`r`n", "`n")
+$admitProofBlocks = foreach ($header in @($proofHeaderLf, $proofHeaderLf.Replace("`n", "`r`n"))) {
+    $admissionMatch = [regex]::Match($header, '(?m)^    if: \$\{\{ (?<condition>.+) \}\}\r?$')
+    if (-not $admissionMatch.Success) { throw 'Missing Windows proof allocation guard.' }
+    $admission = $admissionMatch.Groups['condition'].Value.Replace('!cancelled()', '-not $cancelled').
+        Replace('needs.change-classification.result', '$classificationResult').
+        Replace('needs.change-classification.outputs.proof_pool_required', '$required').
+        Replace('!=', '-ne').Replace('==', '-eq').Replace('&&', '-and').Replace('||', '-or')
+    [scriptblock]::Create('param($cancelled,$classificationResult,$required)' + "`n($admission)")
+}
 $skipSelection = [scriptblock]::Create('param($outcome,$run)' + "`n(" +
     $effectiveSelection.Replace('steps.proof_pool_regression.outcome', '$outcome').
         Replace('steps.proof_pool_regression.outputs.run', '$run').
@@ -423,15 +427,19 @@ foreach ($outcome in @('success', 'failure', 'cancelled', 'skipped', '')) {
         if (($required -eq 'true') -ne $expected) { throw 'Effective proof selection is not fail-closed.' }
         foreach ($classificationResult in @('success', 'failure', 'cancelled', 'skipped', '')) {
             foreach ($cancelled in @($false, $true)) {
-                $admitted = & $admitProof $cancelled $classificationResult $required
-                if ($admitted -ne ($expected -and $classificationResult -eq 'success' -and -not $cancelled)) {
-                    throw 'Windows proof allocation lost classification/cancellation/selection admission.'
+                foreach ($admitProof in $admitProofBlocks) {
+                    $admitted = & $admitProof $cancelled $classificationResult $required
+                    if ($admitted -ne ($expected -and $classificationResult -eq 'success' -and -not $cancelled)) {
+                        throw 'Windows proof allocation lost classification/cancellation/selection admission.'
+                    }
                 }
             }
         }
     }
 }
-if (-not (& $admitProof $false 'success' '')) { throw 'Missing effective selection must admit proof and fail at CI Gate.' }
+foreach ($admitProof in $admitProofBlocks) {
+    if (-not (& $admitProof $false 'success' '')) { throw 'Missing effective selection must admit proof and fail at CI Gate.' }
+}
 $proofStep = Get-StepBlock -Text $proofJob -Name "Validate proof-pool regressions"
 Assert-Contains -Text $proofStep -Expected './scripts/test-proof-pool-validator.ps1' -Message 'Native proof matrix was removed.'
 foreach ($token in @('if:', 'continue-on-error:')) {
