@@ -32,8 +32,10 @@ to initialize USER32. The
 [real MXC desktop regression](../tests/OpenClaw.DesktopHarness/README.md)
 checks USER32/PowerShell execution through the current published SDK owner on
 both caller-desktop variants. The original 0.8 bridge failure proof is historical;
-the current SDK selects its own container desktop. See the regression guide for
-current policy assertions and runtime qualification requirements.
+SDK 1.0.0 can inherit the caller's task desktop. Inspect the actual assigned
+desktop rather than treating the requested UI policy as proof of a separate
+execution desktop. See the regression guide for current policy assertions and
+runtime qualification requirements.
 
 ### Isolated desktop startup
 
