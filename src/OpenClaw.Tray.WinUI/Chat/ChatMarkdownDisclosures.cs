@@ -17,8 +17,12 @@ internal static class ChatMarkdownDisclosures
     private const int MaxDepth = 16;
     private const int MaxSummaryLength = 4096;
 
-    internal static IReadOnlyList<ChatMarkdownPart> Parse(string text)
+    internal static IReadOnlyList<ChatMarkdownPart> Parse(string text) => Parse(text, out _);
+
+    // Count part-building token inspections so breadth complexity can be checked without timing.
+    internal static IReadOnlyList<ChatMarkdownPart> Parse(string text, out int partTokenVisits)
     {
+        partTokenVisits = 0;
         if (text.Length > ChatMarkdownAstBuilder.MaxInputBytes ||
             !text.Contains("<details", StringComparison.OrdinalIgnoreCase))
             return [new ChatMarkdownText(text)];
@@ -34,16 +38,20 @@ internal static class ChatMarkdownDisclosures
         }
         if (!tokens.Any(token => token.Closing >= 0))
             return [new ChatMarkdownText(text)];
-        return Parts(text, tokens, 0, text.Length, 0);
+        return Parts(text, tokens, 0, text.Length, 0, tokens.Count, 0, ref partTokenVisits);
     }
 
     private static IReadOnlyList<ChatMarkdownPart> Parts(
-        string text, List<Token> tokens, int start, int end, int depth)
+        string text, List<Token> tokens, int start, int end, int firstToken, int endToken,
+        int depth, ref int partTokenVisits)
     {
         var parts = new List<ChatMarkdownPart>();
         var position = start;
-        for (var i = 0; i < tokens.Count; i++)
+        // A body owns only the tokens between its wrappers. Parent traversal skips
+        // that range after recursion, so sibling bodies never rescan one another.
+        for (var i = firstToken; i < endToken; i++)
         {
+            partTokenVisits++;
             var token = tokens[i];
             if (token.Start < position || token.Start >= end || token.Summary is null)
                 continue;
@@ -64,7 +72,8 @@ internal static class ChatMarkdownDisclosures
             AddText(token.Start);
             parts.Add(new ChatMarkdownDisclosure(
                 token.Summary, token.Expanded,
-                Parts(text, tokens, token.End, closing.Start, depth + 1)));
+                Parts(text, tokens, token.End, closing.Start, i + 1, token.Closing,
+                    depth + 1, ref partTokenVisits)));
             position = closing.End;
             i = token.Closing;
         }
