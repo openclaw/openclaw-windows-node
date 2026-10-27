@@ -88,7 +88,10 @@ available; Windows PowerShell 5.1 remains the required fallback:
 `.\build.ps1` and CI run `validate-docs.ps1`, so inventory drift fails the
 normal build and pull request validation path. CI runs the full
 malformed-contract matrix separately so local builds keep the documentation
-gate fast.
+gate fast. Ubuntu classification runs the canonical proof-boundary selector
+before allocating that Windows job. Only a successful, explicit `false` skips
+the job; unknown selection requires the full matrix. CI Gate checks the effective
+decision against the job result. Non-PR events always require the matrix.
 
 ## Validate local execution evidence
 

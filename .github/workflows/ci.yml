@@ -45,6 +45,7 @@ jobs:
   change-classification:
     runs-on: ubuntu-latest
     outputs:
+      proof_pool_required: ${{ steps.proof_pool_regression.outcome == 'success' && steps.proof_pool_regression.outputs.run == 'false' && 'false' || 'true' }}
       classification: ${{ steps.classify.outputs.classification }}
       core_tests: ${{ steps.classify.outputs.core_tests }}
       tray_tests: ${{ steps.classify.outputs.tray_tests }}
@@ -62,6 +63,23 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+
+    - name: Select proof-pool regression scope
+      id: proof_pool_regression
+      continue-on-error: true
+      shell: pwsh
+      env:
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        $decision = ./scripts/Get-CiProofPoolRegressionDecision.ps1 `
+          -EventName $env:GITHUB_EVENT_NAME `
+          -BaseSha $env:PR_BASE_SHA `
+          -HeadSha $env:PR_HEAD_SHA
+        if ($decision -notin @("true", "false")) {
+          throw "Unexpected proof-pool regression decision '$decision'."
+        }
+        "run=$decision" >> $env:GITHUB_OUTPUT
 
     - name: Bind alpha promotion to the approved source and pipeline
       id: promotion
@@ -267,31 +285,15 @@ jobs:
 
   proof-pool-contracts:
     name: Proof-pool contracts
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.proof_pool_required != 'false' }}
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
 
-    - name: Select proof-pool regression scope
-      id: proof_pool_regression
-      continue-on-error: true
-      shell: pwsh
-      env:
-        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      run: |
-        $decision = ./scripts/Get-CiProofPoolRegressionDecision.ps1 `
-          -EventName $env:GITHUB_EVENT_NAME `
-          -BaseSha $env:PR_BASE_SHA `
-          -HeadSha $env:PR_HEAD_SHA
-        if ($decision -notin @("true", "false")) {
-          throw "Unexpected proof-pool regression decision '$decision'."
-        }
-        "run=$decision" >> $env:GITHUB_OUTPUT
-
     - name: Validate proof-pool regressions
-      if: ${{ steps.proof_pool_regression.outcome != 'success' || steps.proof_pool_regression.outputs.run != 'false' }}
       shell: pwsh
       run: ./scripts/test-proof-pool-validator.ps1
 
@@ -1361,6 +1363,7 @@ jobs:
         CLASSIFICATION: ${{ needs.change-classification.outputs.classification }}
         FULL_REQUIRED: ${{ needs.change-classification.outputs.full }}
         FAST_VALIDATION_RESULT: ${{ needs.fast-validation.result }}
+        PROOF_POOL_CONTRACTS_REQUIRED: ${{ needs.change-classification.outputs.proof_pool_required }}
         PROOF_POOL_CONTRACTS_RESULT: ${{ needs.proof-pool-contracts.result }}
         CORE_REQUIRED: ${{ needs.change-classification.outputs.core_tests }}
         CORE_RESULT: ${{ needs.core-tests.result }}
@@ -1387,6 +1390,7 @@ jobs:
           -Classification $env:CLASSIFICATION `
           -FullRequired $env:FULL_REQUIRED `
           -FastValidationResult $env:FAST_VALIDATION_RESULT `
+          -ProofPoolContractsRequired $env:PROOF_POOL_CONTRACTS_REQUIRED `
           -ProofPoolContractsResult $env:PROOF_POOL_CONTRACTS_RESULT `
           -CoreRequired $env:CORE_REQUIRED `
           -CoreResult $env:CORE_RESULT `

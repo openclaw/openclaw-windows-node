@@ -249,9 +249,11 @@ Mixed tooling and product changes retain the union of product lanes, including
 the WinNode skill's core-test requirement. Unknown paths and build, workflow,
 project, dependency, classifier, or gate infrastructure still select `full`.
 Non-PR events still require full validation including ARM64.
-`fast-validation` and `proof-pool-contracts` must both succeed even for
-`fast_only`. The proof-pool selector is unchanged: any changed proof boundary
-still runs its regression matrix, including when mixed with allowlisted tooling.
+`fast-validation` must succeed even for `fast_only`. The Ubuntu classification
+job runs the existing proof-pool selector before allocating the independent
+Windows job. Only a successful, explicit `false` skips `proof-pool-contracts`;
+selector failures or unknown decisions require its regression matrix. Any changed
+proof boundary still selects the matrix, including when mixed with allowlisted tooling.
 Hosted timing savings are not verified until a tooling-only PR exercises this path.
 
 The classifier uses conservative project boundaries:
@@ -306,8 +308,9 @@ they opt in with `-HangTimeoutSeconds`.
 `fast-validation` still runs for every invocation and owns repository hygiene,
 documentation, agent-skill, classifier, gate, workflow, and release-ordering
 contracts. The heavyweight malformed proof-pool matrix moved to the independent
-`proof-pool-contracts` job. Its existing decision helper still fails closed,
-but ordinary product code no longer waits for the matrix. The three existing
+`proof-pool-contracts` job. Its existing decision helper runs in Ubuntu
+classification and fails closed before Windows allocation. The CI Gate requires
+success when selected and an intentional skip otherwise. The three existing
 E2E shards are unchanged in scope and have separate job conditions; no E2E
 shards were added.
 
@@ -381,8 +384,9 @@ requires fork previews to read the canonical upstream reservation ledger.
 
 The always-running **CI Gate** validates every classifier output against the
 corresponding job result. A required lane must succeed, an unrequired lane must
-be skipped, and classification, fast validation, proof-contract selection,
-missing outputs, cancellation, or unexpected results fail closed.
+be skipped. The effective proof-pool decision must be a Boolean string and match
+the proof job's success or skip. Classification failures, missing outputs,
+cancellation, or unexpected results fail closed.
 
 #### Timing and runner-minute model
 

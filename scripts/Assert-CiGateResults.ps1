@@ -9,6 +9,7 @@ param(
     [Parameter(Mandatory)][string]$Classification,
     [Parameter(Mandatory)][string]$FullRequired,
     [Parameter(Mandatory)][string]$FastValidationResult,
+    [Parameter(Mandatory)][string]$ProofPoolContractsRequired,
     [Parameter(Mandatory)][string]$ProofPoolContractsResult,
     [Parameter(Mandatory)][string]$CoreRequired,
     [Parameter(Mandatory)][string]$CoreResult,
@@ -64,9 +65,8 @@ if ($ClassificationResult -ne "success") {
 if ($FastValidationResult -ne "success") {
     throw "Fast validation did not succeed: $FastValidationResult"
 }
-if ($ProofPoolContractsResult -ne "success") {
-    throw "Proof-pool contract selection or validation did not succeed: $ProofPoolContractsResult"
-}
+$proofPoolRequired = ConvertTo-RequiredBoolean "proof_pool_required" $ProofPoolContractsRequired
+Assert-LaneResult "proof-pool contracts" $proofPoolRequired $ProofPoolContractsResult
 
 $required = [ordered]@{
     core = ConvertTo-RequiredBoolean "core_tests" $CoreRequired
