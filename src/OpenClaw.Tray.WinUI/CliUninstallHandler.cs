@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Globalization;
 
 namespace OpenClawTray;
@@ -9,15 +8,9 @@ namespace OpenClawTray;
 /// </summary>
 internal static class CliUninstallHandler
 {
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AttachConsole(int dwProcessId);
-
-    private const int AttachParentProcess = -1;
-
     public static async Task RunAsync(string[] args)
     {
-        AttachConsole(AttachParentProcess);
+        ParentConsole.Attach();
 
         bool dryRun             = args.Contains("--dry-run",             StringComparer.OrdinalIgnoreCase);
         bool confirmDestructive = args.Contains("--confirm-destructive", StringComparer.OrdinalIgnoreCase);
