@@ -258,9 +258,10 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 onColor = Assert.IsType<SolidColorBrush>(icon.Foreground).Color;
                 if (Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") is not "HighContrast")
                 {
-                    var expected = Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") == "Dark"
-                        ? Windows.UI.Color.FromArgb(255, 0x60, 0xCD, 0xFF)
-                        : Windows.UI.Color.FromArgb(255, 0x00, 0x5F, 0xB8);
+                    var resource = Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") == "Dark"
+                        ? "SystemAccentColorLight2"
+                        : "SystemAccentColorDark1";
+                    var expected = Assert.IsType<Windows.UI.Color>(Application.Current.Resources[resource]);
                     Assert.Equal(expected, onColor);
                 }
                 AssertComposerBounds(surface);

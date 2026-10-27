@@ -7,8 +7,8 @@ permissions. It does not describe Gateway tools or certify an individual command
 
 - Icon: `FluentIconCatalog.Sandbox`, a Shield (U+EA18). It shares the protection
   metaphor with Permissions.
-- Available: `ChatSandboxOnBrush`, fixed blue (`#005FB8` in Light, `#60CDFF` in Dark),
-  independent of the user's Windows accent color.
+- Available: `ChatSandboxOnBrush`, the user's Windows accent color through
+  `SystemAccentColorDark1` in Light and `SystemAccentColorLight2` in Dark.
 - Other states: gray secondary text brush (`ChatSecondaryTextBrush`).
 - High contrast: system theme colors take precedence.
 - Accessible name: localized `Node Sandbox` plus the current state.

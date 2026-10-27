@@ -63,7 +63,7 @@ aliases. Other Send glyph aliases are unchanged.
 | `ChatCodeTextStyle` | Native code Foreground binding to `ChatSecondaryTextBrush` |
 | `ChatCopySuccessBrush` | `SystemFillColorSuccess`; system window text in HC |
 | `ChatPickerAccentBrush` | Light/dark system accent variants; system window text in HC |
-| `ChatSandboxOnBrush` | Fixed blue: `#005FB8` in Light, `#60CDFF` in Dark; system window text in HC |
+| `ChatSandboxOnBrush` | Light/dark system accent variants; system window text in HC |
 
 HC maps surfaces, strokes and text to system window/button/highlight colors.
 An HC resource simulation is not evidence that Windows HC mode was enabled.
@@ -206,7 +206,7 @@ chevron with a 44-pixel target, retaining the full textual automation name and
 tooltip. Attach, model, effort, Node Sandbox, voice and Send remain reachable in narrow
 layouts through actual-width observation rather than a compact-window mode.
 The [Node Sandbox icon](design/reference/concepts/states/node-sandbox.md) beside
-the microphone in the right-hand action group is blue when the latest SDK probe
+the microphone in the right-hand action group uses the Windows accent when the latest SDK probe
 supports containment and gray otherwise. It opens a compact native flyout with
 Available, Compatibility, Unavailable, Checking, or Tools off status and a Sandbox
 settings action, not a toggle. Compatibility warns about approved uncontained
