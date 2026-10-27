@@ -107,7 +107,7 @@ internal static class LocalAiSetupRoutePolicy
 ///
 /// <example>
 /// // Basic resolution with error handling
-/// var registry = new GatewayRegistry(settingsManager);
+/// var registry = new GatewayRegistry(dataDir);
 /// var resolver = new LocalAiGatewayDistroResolver(registry);
 ///
 /// LocalAiGatewayDistroResolution result = resolver.Resolve();
@@ -139,19 +139,21 @@ internal static class LocalAiSetupRoutePolicy
 ///     case LocalAiSetupRoute.Recovery:
 ///         // Use resolver to obtain the target for recovery
 ///         var resolution = resolver.Resolve();
-///         if (resolution.Success)
-///         {
-///             var target = new LocalAiRecoveryTarget(
+///         var target = resolution.Success
+///             ? new LocalAiRecoveryTarget(
 ///                 resolution.GatewayId!,
 ///                 resolution.DistroName!,
-///                 port: 1234,
-///                 modelCatalogId: null,
-///                 requestedLocalAiPort: null);
-///             // Execute recovery
+///                 GatewayPort: 1234,
+///                 ModelCatalogId: null,
+///                 RequestedLocalAiPort: null)
+///             : null;
+///         if (target is not null)
+///         {
+///             // Execute recovery against the resolved target
 ///         }
 ///         break;
 ///     case LocalAiSetupRoute.Blocked:
-///         // Show error or引导 user to fix configuration
+///         // Show error or guide user to fix configuration
 ///         break;
 /// }
 /// </example>
