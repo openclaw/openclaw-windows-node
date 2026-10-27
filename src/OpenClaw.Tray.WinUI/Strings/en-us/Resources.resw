@@ -8185,4 +8185,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Summarize my recent sessions</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me configure a channel</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Check system health</value></data>
+  <data name="UsagePage_LoadFailed.Message" xml:space="preserve">
+    <value>Usage data could not be loaded. Try reconnecting.</value>
+  </data>
 </root>

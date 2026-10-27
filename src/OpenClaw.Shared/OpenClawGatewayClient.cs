@@ -1459,14 +1459,88 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     public async Task RequestUsageStatusAsync()
     {
+        if (_operatorReadScopeUnavailable || _usageStatusUnsupported) return;
         await SendTrackedRequestAsync("usage.status");
     }
 
     public async Task RequestUsageCostAsync(int days = 30)
     {
+        if (_operatorReadScopeUnavailable || _usageCostUnsupported) return;
         if (days <= 0) days = 30;
         await SendTrackedRequestAsync("usage.cost", new { days });
     }
+
+    public async Task<GatewayUsageRefreshResult> RefreshUsageAsync(int days)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(days);
+        var epoch = GetReadyConnectionGeneration("usage.status");
+        var statusTask = ReadStatusAsync();
+        var costTask = ReadAsync("usage.cost", new { days });
+        await Task.WhenAll(statusTask, costTask).ConfigureAwait(false);
+        var status = await statusTask.ConfigureAwait(false);
+        var cost = await costTask.ConfigureAwait(false);
+        if (!TryGetReadyConnectionGeneration(out var completedEpoch) || completedEpoch != epoch)
+            throw new InvalidOperationException("The Gateway connection changed during the usage refresh.");
+        var parsedCost = cost.Payload.HasValue &&
+            cost.Payload.Value.ValueKind == JsonValueKind.Object &&
+            cost.Payload.Value.TryGetProperty("totals", out var totals) && totals.ValueKind == JsonValueKind.Object &&
+            cost.Payload.Value.TryGetProperty("daily", out var daily) && daily.ValueKind == JsonValueKind.Array
+                ? ReadUsageCost(cost.Payload.Value, publish: false) : null;
+        return new(status.Status, parsedCost, status.Legacy, status.Error,
+            cost.Error ?? (cost.Payload.HasValue && parsedCost is null ? "Invalid usage.cost response." : null));
+
+        async Task<(GatewayUsageStatusInfo? Status, GatewayUsageInfo? Legacy, string? Error)> ReadStatusAsync()
+        {
+            var response = await ReadAsync("usage.status", null).ConfigureAwait(false);
+            if (response.Payload.HasValue)
+            {
+                var payload = response.Payload.Value;
+                var parsed = payload.ValueKind == JsonValueKind.Object &&
+                    payload.TryGetProperty("providers", out var providers) && providers.ValueKind == JsonValueKind.Array
+                        ? ReadUsageStatus(payload, publish: false) : null;
+                return (parsed, null, parsed is null ? "Invalid usage.status response." : null);
+            }
+            if (!_usageStatusUnsupported || _operatorReadScopeUnavailable)
+                return (null, null, response.Error);
+
+            var legacy = await ReadAsync("usage", null).ConfigureAwait(false);
+            var parsedLegacy = legacy.Payload.HasValue ? ReadUsage(legacy.Payload.Value, publish: false) : null;
+            return (null, parsedLegacy, legacy.Error ?? response.Error);
+        }
+
+        async Task<(JsonElement? Payload, string? Error)> ReadAsync(string method, object? parameters)
+        {
+            if (_operatorReadScopeUnavailable)
+                return (null, "Gateway token lacks operator.read.");
+            if ((method == "usage.status" && _usageStatusUnsupported) ||
+                (method == "usage.cost" && _usageCostUnsupported))
+                return (null, $"{method} is unsupported by this Gateway.");
+            try
+            {
+                var payload = await SendResponseRequestAsync(
+                    method, parameters, UsageRefreshTimeoutMs, epoch).ConfigureAwait(false);
+                if (!TryGetReadyConnectionGeneration(out var responseEpoch) || responseEpoch != epoch)
+                    throw new InvalidOperationException("The Gateway connection changed during the usage refresh.");
+                return (payload, null);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or
+                System.Net.WebSockets.WebSocketException or OperationCanceledException)
+            {
+                if (!TryGetReadyConnectionGeneration(out var errorEpoch) || errorEpoch != epoch) throw;
+                if (IsMissingScopeError(ex.Message, "operator.read"))
+                    _operatorReadScopeUnavailable = true;
+                else if (IsUnknownMethodError(ex.Message))
+                {
+                    if (method == "usage.status") _usageStatusUnsupported = true;
+                    if (method == "usage.cost") _usageCostUnsupported = true;
+                }
+                _logger.Warn($"{method} refresh failed: {ex.Message}");
+                return (null, ex.Message);
+            }
+        }
+    }
+
+    private const int UsageRefreshTimeoutMs = 15000;
 
     public async Task RequestSessionPreviewAsync(string[] keys, int limit = 12, int maxChars = 240)
     {
@@ -5046,10 +5120,24 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
-    private void ParseUsage(JsonElement usage)
+    private void ParseUsage(JsonElement usage) => ReadUsage(usage, publish: true);
+
+    private GatewayUsageInfo? ReadUsage(JsonElement usage, bool publish)
     {
         try
         {
+            if (!publish)
+            {
+                return new GatewayUsageInfo
+                {
+                    InputTokens = GetLong(usage, "inputTokens"),
+                    OutputTokens = GetLong(usage, "outputTokens"),
+                    TotalTokens = GetLong(usage, "totalTokens"),
+                    CostUsd = GetDouble(usage, "cost"),
+                    RequestCount = JsonReadHelpers.GetInt(usage, "requestCount"),
+                    Model = GetString(usage, "model")
+                };
+            }
             _usage ??= new GatewayUsageInfo();
             if (usage.TryGetProperty("inputTokens", out var inp))
                 _usage.InputTokens = inp.GetInt64();
@@ -5066,14 +5154,18 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             _usage.ProviderSummary = null;
 
             UsageUpdated?.Invoke(this, _usage);
+            return _usage;
         }
         catch (Exception ex)
         {
             _logger.Warn($"Failed to parse usage: {ex.Message}");
+            return null;
         }
     }
 
-    private void ParseUsageStatus(JsonElement payload)
+    private void ParseUsageStatus(JsonElement payload) => ReadUsageStatus(payload, publish: true);
+
+    private GatewayUsageStatusInfo? ReadUsageStatus(JsonElement payload, bool publish)
     {
         try
         {
@@ -5113,20 +5205,25 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 }
             }
 
+            if (!publish) return status;
             _usageStatus = status;
             UsageStatusUpdated?.Invoke(this, status);
 
             _usage ??= new GatewayUsageInfo();
             _usage.ProviderSummary = BuildProviderSummary(status);
             UsageUpdated?.Invoke(this, _usage);
+            return status;
         }
         catch (Exception ex)
         {
             _logger.Warn($"Failed to parse usage.status: {ex.Message}");
+            return null;
         }
     }
 
-    private void ParseUsageCost(JsonElement payload)
+    private void ParseUsageCost(JsonElement payload) => ReadUsageCost(payload, publish: true);
+
+    private GatewayCostUsageInfo? ReadUsageCost(JsonElement payload, bool publish)
     {
         try
         {
@@ -5168,6 +5265,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 }
             }
 
+            if (!publish) return summary;
             _usageCost = summary;
             UsageCostUpdated?.Invoke(this, summary);
 
@@ -5175,10 +5273,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             _usage.TotalTokens = summary.Totals.TotalTokens;
             _usage.CostUsd = summary.Totals.TotalCost;
             UsageUpdated?.Invoke(this, _usage);
+            return summary;
         }
         catch (Exception ex)
         {
             _logger.Warn($"Failed to parse usage.cost: {ex.Message}");
+            return null;
         }
     }
 

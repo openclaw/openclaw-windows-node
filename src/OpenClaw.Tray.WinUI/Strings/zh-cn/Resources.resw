@@ -8118,4 +8118,7 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>总结我最近的会话</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>帮我配置一个频道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>检查系统健康状况</value></data>
+  <data name="UsagePage_LoadFailed.Message" xml:space="preserve">
+    <value>无法加载用量数据。请尝试重新连接。</value>
+  </data>
 </root>

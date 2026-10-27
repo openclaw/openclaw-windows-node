@@ -44,6 +44,7 @@ public sealed partial class GatewayScenario
     private readonly Session[] _sessions;
     private readonly IReadOnlyDictionary<string, JsonElement> _reads;
     private readonly Func<string, JsonElement, object>? _setup;
+    private readonly Func<string, JsonElement, object>? _usage;
     private static readonly string[] SetupMethods =
     [
         "openclaw.setup.detect", "openclaw.setup.verify", "openclaw.setup.activate.start",
@@ -63,7 +64,7 @@ public sealed partial class GatewayScenario
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _usage is not null ? "usage-refresh" : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -76,11 +77,13 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        Func<string, JsonElement, object>? usage = null)
     {
         _sessions = sessions;
         _reads = reads;
         _setup = setup;
+        _usage = usage;
         _allowAgentCreation = allowAgentCreation;
         _publishedModelCatalog = publishedModelCatalog;
         _allowSessionMutations = allowSessionMutations;
@@ -117,6 +120,13 @@ public sealed partial class GatewayScenario
     {
         var browse = CreateBrowse();
         return new(browse._sessions, browse._reads, interactive: true);
+    }
+
+    public static GatewayScenario CreateUsage(Func<string, JsonElement, object> responder)
+    {
+        ArgumentNullException.ThrowIfNull(responder);
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, usage: responder);
     }
 
     public static GatewayScenario CreateContextUsage(ContextUsageFixture contextUsage)
@@ -410,6 +420,8 @@ public sealed partial class GatewayScenario
                 throw new FixtureRequestException("INVALID_PARAMS", "Chat run was not issued for this fixture session.");
             return new { ok = true, runId };
         }
+        if (_usage is not null && method is "usage.status" or "usage.cost" or "usage")
+            return _usage(method, parameters);
         if (IsWrite(method))
             throw new FixtureRequestException("FIXTURE_READ_ONLY", "Fixture Gateway is read-only. This operation is not executed.");
         return method switch
@@ -740,7 +752,7 @@ public sealed partial class GatewayScenario
     private sealed record Session(string Key, string Id, string AgentId, long UpdatedAt, JsonElement Row, JsonElement[] Messages, string[] Texts);
 }
 
-internal sealed class FixtureRequestException(string code, string message, bool unexpected = false) : Exception(message)
+public sealed class FixtureRequestException(string code, string message, bool unexpected = false) : Exception(message)
 {
     public string Code { get; } = code;
     public bool Unexpected { get; } = unexpected;

@@ -486,6 +486,13 @@ public class GatewayCostUsageDayInfo
     public int MissingCostEntries { get; set; }
 }
 
+public sealed record GatewayUsageRefreshResult(
+    GatewayUsageStatusInfo? Status,
+    GatewayCostUsageInfo? Cost,
+    GatewayUsageInfo? Legacy,
+    string? StatusError,
+    string? CostError);
+
 public class GatewayCostUsageInfo
 {
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

@@ -29,7 +29,7 @@
                     <TextBlock x:Uid="UsagePage_TextBlock_21" Text="Total Cost" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="TotalCostText" Text="—"
+                    <TextBlock x:Name="TotalCostText" Text="—" AutomationProperties.AutomationId="UsageTotalCost"
                                Style="{StaticResource TitleLargeTextBlockStyle}"
                                HorizontalAlignment="Center"/>
                 </StackPanel>
@@ -139,10 +139,10 @@
                         <TextBlock x:Uid="UsagePage_TextBlock_100" Text="Daily Cost"
                                    Style="{StaticResource BodyStrongTextBlockStyle}"
                                    VerticalAlignment="Center"/>
-                        <SelectorBar Grid.Column="1" x:Name="PeriodSelector"
+                        <SelectorBar Grid.Column="1" x:Name="PeriodSelector" AutomationProperties.AutomationId="UsagePeriodSelector"
                                      SelectionChanged="OnPeriodSelectionChanged">
-                            <SelectorBarItem x:Uid="Period7DaysItem"  x:Name="Period7DaysItem"  Text="7 Days" IsSelected="True"/>
-                            <SelectorBarItem x:Uid="Period30DaysItem" x:Name="Period30DaysItem" Text="30 Days"/>
+                            <SelectorBarItem x:Uid="Period7DaysItem"  x:Name="Period7DaysItem"  Text="7 Days" IsSelected="True" AutomationProperties.AutomationId="UsagePeriod7Days"/>
+                            <SelectorBarItem x:Uid="Period30DaysItem" x:Name="Period30DaysItem" Text="30 Days" AutomationProperties.AutomationId="UsagePeriod30Days"/>
                         </SelectorBar>
                     </Grid>
                      <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
