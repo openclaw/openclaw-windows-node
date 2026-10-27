@@ -784,6 +784,9 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
 
         try
         {
+            // A receipt whose runtime or model left the catalog can never start, so status must
+            // not report it as a verified stopped install; Failed is what offers Reset Local AI.
+            _ = LlamaServerRouterConfiguration.ResolveInstalledPlan(_install!);
             ValidateInstalledFilesForStatus(_install!);
         }
         catch (InvalidDataException ex)

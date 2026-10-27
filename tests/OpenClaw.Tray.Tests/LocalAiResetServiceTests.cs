@@ -155,6 +155,86 @@ public sealed class LocalAiResetServiceTests
         Assert.True(engineStopped);
     }
 
+    [Fact]
+    public async Task Reset_UnconfirmedStop_NeverRunsEngine()
+    {
+        var order = new List<string>();
+        var initial = new OrderedRuntime([]).Snapshot;
+        var runtime = new OrderedRuntime(order)
+        {
+            HasReleasableOwnership = true,
+            StopResult = initial with
+            {
+                State = LocalAiRuntimeState.Failed,
+                Ownership = LocalAiOwnership.CompanionManaged,
+                GatewayRouteRequiresResolution = true,
+                Detail = "listener remains running",
+            },
+        };
+        var service = new LocalAiResetService(runtime, (_, _) =>
+        {
+            order.Add("engine");
+            return Task.FromResult(0);
+        }, () => "OpenClaw.Tray.WinUI.exe");
+
+        LocalAiResetResult result = await service.ResetAsync();
+
+        Assert.Equal(LocalAiResetOutcome.Failed, result.Outcome);
+        Assert.Contains("nothing was removed", result.Message);
+        Assert.Contains("listener remains running", result.Message);
+        Assert.Equal(["stop"], order);
+    }
+
+    [Fact]
+    public async Task Reset_StopWithUnreadableReceiptAndNoRoute_RunsEngine()
+    {
+        // An unbound runtime that cannot load its receipt reports Failed with no owner and no
+        // route to resolve: the exact case reset exists to repair.
+        var order = new List<string>();
+        var initial = new OrderedRuntime([]).Snapshot;
+        var runtime = new OrderedRuntime(order)
+        {
+            StopResult = initial with
+            {
+                State = LocalAiRuntimeState.Failed,
+                Ownership = LocalAiOwnership.None,
+                GatewayRouteRequiresResolution = false,
+            },
+        };
+        var service = new LocalAiResetService(runtime, (_, _) =>
+        {
+            order.Add("engine");
+            return Task.FromResult(0);
+        }, () => "OpenClaw.Tray.WinUI.exe");
+
+        await service.ResetAsync();
+
+        Assert.Equal(["stop", "engine"], order);
+    }
+
+    [Theory]
+    [InlineData("stop")]
+    [InlineData("release")]
+    public async Task Reset_PhaseTimeout_CancelsAndSettlesOperationBeforeReporting(string phase)
+    {
+        var order = new List<string>();
+        var runtime = new OrderedRuntime(order) { HasReleasableOwnership = true, BlockPhase = phase };
+        var service = new LocalAiResetService(runtime, (_, _) =>
+        {
+            lock (order) order.Add("engine");
+            return Task.FromResult(0);
+        }, () => "OpenClaw.Tray.WinUI.exe", timeout: TimeSpan.FromMilliseconds(100));
+
+        LocalAiResetResult result = await service.ResetAsync();
+
+        string[] observed;
+        lock (order) observed = [.. order];
+        Assert.Equal(LocalAiResetOutcome.Failed, result.Outcome);
+        Assert.Contains("timed out after", result.Message);
+        Assert.Contains($"{phase}-settled", observed);
+        Assert.DoesNotContain("engine", observed);
+    }
+
     private static string JsonOutputPath(ProcessStartInfo startInfo) =>
         startInfo.ArgumentList[startInfo.ArgumentList.IndexOf("--json-output") + 1];
 
@@ -162,20 +242,44 @@ public sealed class LocalAiResetServiceTests
     {
         public bool HasReleasableOwnership { get; set; }
         public Exception? ReleaseFailure { get; init; }
+        public LocalAiRuntimeSnapshot? StopResult { get; init; }
+        /// <summary>"stop" or "release": that call blocks until cancelled, then settles before rethrowing.</summary>
+        public string? BlockPhase { get; init; }
         public LocalAiRuntimeSnapshot Snapshot { get; } =
-            LocalAiRuntimeSnapshot.Initial(new Uri("http://127.0.0.1:1"), DateTimeOffset.UnixEpoch);
+            LocalAiRuntimeSnapshot.Initial(new Uri("http://127.0.0.1:1"), DateTimeOffset.UnixEpoch) with
+            {
+                GatewayRouteRequiresResolution = false,
+            };
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged { add { } remove { } }
 
-        public Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default)
+        public async Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default)
         {
-            order.Add("stop");
-            return Task.FromResult(Snapshot);
+            lock (order) order.Add("stop");
+            await BlockIfRequestedAsync("stop", cancellationToken);
+            return StopResult ?? Snapshot;
         }
 
-        public Task<LocalAiRuntimeSnapshot> ReleaseOwnershipAsync(CancellationToken cancellationToken = default)
+        public async Task<LocalAiRuntimeSnapshot> ReleaseOwnershipAsync(CancellationToken cancellationToken = default)
         {
-            order.Add("release");
-            return ReleaseFailure is null ? Task.FromResult(Snapshot) : Task.FromException<LocalAiRuntimeSnapshot>(ReleaseFailure);
+            lock (order) order.Add("release");
+            await BlockIfRequestedAsync("release", cancellationToken);
+            if (ReleaseFailure is not null) throw ReleaseFailure;
+            return Snapshot;
+        }
+
+        private async Task BlockIfRequestedAsync(string phase, CancellationToken cancellationToken)
+        {
+            if (BlockPhase != phase) return;
+            try
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                await Task.Delay(50, CancellationToken.None);
+                lock (order) order.Add($"{phase}-settled");
+                throw;
+            }
         }
 
         public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();

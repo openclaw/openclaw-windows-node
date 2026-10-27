@@ -1361,6 +1361,40 @@ public sealed class NativeLocalAiLifecycleTests
     }
 
     [Fact]
+    public async Task RetiredModelRouteCanBeWithdrawnAndReleased()
+    {
+        // Catalog ID retired by #1760 (fix(inference): rename Bolt model ID to public 24gb name).
+        const string retiredModelId = "nemotron-3.5-bolt-74b-a9b-iq2-lilicorr";
+        const string retiredRef = "llamacpp/" + retiredModelId;
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        // Recreate a route published before the catalog rename, at the same config revision.
+        var config = fixture.Rpc.Config;
+        config["models"]!["providers"]!["llamacpp"]!["models"]![0]!["id"] = retiredModelId;
+        config["agents"]!["defaults"]!["model"]!["primary"] = retiredRef;
+        var allowlist = config["agents"]!["defaults"]!["models"]!.AsObject();
+        if (allowlist[fixture.Model] is { } entry)
+        {
+            allowlist.Remove(fixture.Model);
+            allowlist[retiredRef] = entry;
+        }
+        fixture.Store.Save(fixture.Store.Load()! with { ModelRef = retiredRef });
+        var retired = fixture.Install with
+        {
+            Manifest = fixture.Install.Manifest with { ModelCatalogId = retiredModelId, ModelAlias = retiredModelId },
+        };
+        await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(false);
+
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(retired)).Success);
+
+        Assert.Null(fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]);
+        Assert.Equal("cloud/model", fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"]!.GetValue<string>());
+        await fixture.Lifecycle.ForgetWithdrawnAsync(Record.Id, default);
+        Assert.False(fixture.Store.Exists);
+    }
+
+    [Fact]
     public async Task TeardownPreservesUserAdoptedAllowlistEntryAndAllowsRelease()
     {
         using var fixture = new Fixture();

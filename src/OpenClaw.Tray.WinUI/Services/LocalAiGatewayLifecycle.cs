@@ -494,7 +494,11 @@ internal sealed class LocalAiGatewayLifecycle(
                 return reason is not null ? LocalAiEndpointLifecycleResult.Ok() :
                     LocalAiEndpointLifecycleResult.Failed("Choose Use Local AI for the selected native Gateway before publishing its endpoint.");
             var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
-            if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+            // Withdrawal must still prove a route whose model has since left the catalog.
+            string installedModelRef = reason is null
+                ? LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)
+                : LocalAiGatewayProviderDefinition.BuildOwnedPrimaryModel(install);
+            if (binding.ModelRef != installedModelRef)
                 throw new InvalidOperationException("The Local AI installation differs from its saved Gateway owner.");
             var rpc = new LocalAiGatewayRpcConfigurationTransport(target, transport);
             var current = await rpc.CaptureAsync(ct).ConfigureAwait(false);
@@ -519,7 +523,7 @@ internal sealed class LocalAiGatewayLifecycle(
                 }
                 else if (reason == LocalAiQuiesceReason.Teardown && !binding.Pending &&
                     provider is not null && primary == binding.ModelRef &&
-                    LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                    LocalAiGatewayProviderDefinition.MatchesOwnedProviderJson(
                         provider.ToJsonString(), install, _credentials.GetOrCreate()))
                 {
                     // Redacted keys alone cannot authorize deletion after an external edit.

@@ -17,6 +17,9 @@ internal sealed class LocalAiResetService
     public const string ResetLocalAiFlag = "--reset-local-ai";
     private const string ResetTimeoutEnvironmentVariable = "OPENCLAW_LOCAL_AI_RESET_TIMEOUT_SECONDS";
     private static readonly TimeSpan DefaultResetTimeout = TimeSpan.FromMinutes(2);
+    private const string UnconfirmedStopMessage =
+        "Local AI did not confirm that it stopped and withdrew its Gateway route, so nothing was removed.";
+    private const string CancelledMessage = "Local AI reset was cancelled.";
 
     private readonly ILocalAiRuntime _runtime;
     private readonly Func<ProcessStartInfo, CancellationToken, Task<int>> _runProcess;
@@ -30,7 +33,8 @@ internal sealed class LocalAiResetService
     /// continue after the reset reports a result.
     /// </param>
     /// <param name="timeout">
-    /// Per-phase reset timeout; defaults to <c>OPENCLAW_LOCAL_AI_RESET_TIMEOUT_SECONDS</c> or two minutes.
+    /// Per-phase (stop, release, engine) reset timeout; defaults to <c>OPENCLAW_LOCAL_AI_RESET_TIMEOUT_SECONDS</c>
+    /// or two minutes. On expiry the phase's operation is cancelled and awaited before reset reports.
     /// </param>
     public LocalAiResetService(
         ILocalAiRuntime runtime,
@@ -47,35 +51,29 @@ internal sealed class LocalAiResetService
     /// <summary>
     /// Stops the tray-owned listener, releases native Gateway ownership through the
     /// runtime's existing guarded path, then lets the setup engine delete the managed
-    /// tree. Any failure before the engine runs leaves every file and receipt in place.
+    /// tree. Reset fails without launching the engine unless Stop returns a confirmed stop,
+    /// and any failure before the engine runs leaves every file and receipt in place.
     /// </summary>
     public async Task<LocalAiResetResult> ResetAsync(CancellationToken cancellationToken = default)
     {
-        try
-        {
-            await _runtime.StopAsync(cancellationToken).WaitAsync(_timeout, cancellationToken).ConfigureAwait(false);
-            if (_runtime.HasReleasableOwnership)
-                await _runtime.ReleaseOwnershipAsync(cancellationToken)
-                    .WaitAsync(_timeout, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            return new(LocalAiResetOutcome.Cancelled, "Local AI reset was cancelled.");
-        }
-        catch (Exception ex)
-        {
-            return new(LocalAiResetOutcome.Failed, ex.Message);
-        }
-
-        var executablePath = _resolveExecutablePath();
-        if (string.IsNullOrWhiteSpace(executablePath))
-            return new(LocalAiResetOutcome.Failed, "OpenClaw tray executable could not be resolved for Local AI reset.");
-
         string jsonOutput = Path.Combine(Path.GetTempPath(), $"openclaw-local-ai-reset-{Guid.NewGuid():N}.json");
-        using var engineCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        engineCancellation.CancelAfter(_timeout);
         try
         {
+            LocalAiRuntimeSnapshot stopped = await RunPhaseAsync(ct => _runtime.StopAsync(ct), cancellationToken)
+                .ConfigureAwait(false);
+            if (!IsConfirmedStop(stopped))
+            {
+                return new(LocalAiResetOutcome.Failed, string.IsNullOrWhiteSpace(stopped.Detail)
+                    ? UnconfirmedStopMessage
+                    : $"{UnconfirmedStopMessage} {stopped.Detail}");
+            }
+            if (_runtime.HasReleasableOwnership)
+                await RunPhaseAsync(ct => _runtime.ReleaseOwnershipAsync(ct), cancellationToken).ConfigureAwait(false);
+
+            string? executablePath = _resolveExecutablePath();
+            if (string.IsNullOrWhiteSpace(executablePath))
+                return new(LocalAiResetOutcome.Failed, "OpenClaw tray executable could not be resolved for Local AI reset.");
+
             var startInfo = new ProcessStartInfo(executablePath)
             {
                 UseShellExecute = false,
@@ -87,18 +85,16 @@ internal sealed class LocalAiResetService
             startInfo.ArgumentList.Add(jsonOutput);
             // No WaitAsync here: abandoning the child would let it keep deleting files after
             // this method reports a result. The runner settles the child before returning.
-            int exitCode = await _runProcess(startInfo, engineCancellation.Token).ConfigureAwait(false);
+            int exitCode = await RunPhaseAsync(ct => _runProcess(startInfo, ct), cancellationToken).ConfigureAwait(false);
             return await ClassifyOutcomeAsync(exitCode, jsonOutput, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return new(LocalAiResetOutcome.Cancelled, "Local AI reset was cancelled.");
+            return new(LocalAiResetOutcome.Cancelled, CancelledMessage);
         }
         catch (OperationCanceledException)
         {
-            return new(
-                LocalAiResetOutcome.Failed,
-                $"Local AI reset timed out after {_timeout.TotalSeconds:0} seconds and was stopped. Run Reset Local AI again to finish.");
+            return new(LocalAiResetOutcome.Failed, TimedOutMessage);
         }
         catch (Exception ex)
         {
@@ -110,6 +106,25 @@ internal sealed class LocalAiResetService
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
     }
+
+    private string TimedOutMessage =>
+        $"Local AI reset timed out after {_timeout.TotalSeconds:0} seconds and was stopped. Run Reset Local AI again to finish.";
+
+    // Each phase gets its own deadline. Cancellation reaches the operation itself, and the
+    // result is reported only after that operation settles, so nothing keeps running afterward.
+    private async Task<T> RunPhaseAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken)
+    {
+        using var phase = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        phase.CancelAfter(_timeout);
+        return await operation(phase.Token).ConfigureAwait(false);
+    }
+
+    // Mirrors LocalAiPageViewModel.CanReleaseOwnership, and also admits the unbound
+    // unreadable-receipt recovery case (Failed, no owner, route resolved).
+    private static bool IsConfirmedStop(LocalAiRuntimeSnapshot snapshot) =>
+        snapshot.Ownership == LocalAiOwnership.None && snapshot.ProcessId is null &&
+        !snapshot.GatewayRouteRequiresResolution &&
+        snapshot.State is LocalAiRuntimeState.Stopped or LocalAiRuntimeState.NotInstalled or LocalAiRuntimeState.Failed;
 
     // Killing the engine is safe: SetupRunLock is a FileShare.None handle the OS releases when
     // the process dies, and reset is re-runnable because the receipt is deleted only by the

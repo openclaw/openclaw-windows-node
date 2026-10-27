@@ -2248,6 +2248,37 @@ public sealed partial class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task RetiredModelReceipt_RefreshAfterFailedStartStaysFailed()
+    {
+        using var temp = new TempDirectory("local-ai-retired-model-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall install = (await store.LoadAsync())!;
+        // Catalog ID retired by #1760 (fix(inference): rename Bolt model ID to public 24gb name).
+        const string retiredModelId = "nemotron-3.5-bolt-74b-a9b-iq2-lilicorr";
+        await store.SaveAsync(install.Manifest with { ModelCatalogId = retiredModelId, ModelAlias = retiredModelId });
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_772);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events));
+
+        Assert.Equal(LocalAiRuntimeState.Failed, (await runtime.EnsureStartedAsync()).State);
+        // Status refresh must not report an unstartable install as a healthy stopped one;
+        // Failed is what offers Reset Local AI.
+        LocalAiRuntimeSnapshot refreshed = await runtime.RefreshAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, refreshed.State);
+        Assert.Contains("no longer qualified", refreshed.Detail, StringComparison.Ordinal);
+        Assert.NotEqual(LocalAiModelAvailabilityState.Verified, refreshed.ModelEvidence.State);
+        Assert.Null(host.LastSpec);
+    }
+
+    [Fact]
     public async Task AutomaticPort_RejectsWildcardChildListenerWithoutProbing()
     {
         using var temp = new TempDirectory("local-ai-port-");
