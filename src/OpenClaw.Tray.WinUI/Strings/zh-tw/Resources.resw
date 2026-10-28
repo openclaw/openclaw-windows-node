@@ -1749,33 +1749,6 @@
   <data name="ConversationsPage_TextBlock_37.Text" xml:space="preserve">
     <value>重新整理</value>
   </data>
-  <data name="CronPage_TextBlock_10.Text" xml:space="preserve">
-    <value>⏱️ Cron 工作</value>
-  </data>
-  <data name="CronPage_TextBlock_29.Text" xml:space="preserve">
-    <value>排程器狀態</value>
-  </data>
-  <data name="SchedulerStatusText.Text" xml:space="preserve">
-    <value>已啟用</value>
-  </data>
-  <data name="StorePathText.Text" xml:space="preserve">
-    <value>Store: ~/.openclaw/cron.db</value>
-  </data>
-  <data name="NextWakeText.Text" xml:space="preserve">
-    <value>下次喚醒：…</value>
-  </data>
-  <data name="CronPage_Button_80.Content" xml:space="preserve">
-    <value>立即執行</value>
-  </data>
-  <data name="CronPage_TextBlock_90.Text" xml:space="preserve">
-    <value>上次執行：</value>
-  </data>
-  <data name="CronPage_TextBlock_104.Text" xml:space="preserve">
-    <value>下次執行：</value>
-  </data>
-  <data name="CronPage_TextBlock_120.Text" xml:space="preserve">
-    <value>未設定 Cron 工作</value>
-  </data>
   <data name="DebugPage_TextBlock_8.Text" xml:space="preserve">
     <value>🐛 偵錯</value>
   </data>
@@ -2284,7 +2257,7 @@
     <value>用量</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>排程工作</value>
+    <value>自動化</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>這部電腦</value>
@@ -3296,18 +3269,6 @@
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>此電腦上沒有可用的 MXC 沙箱基元。</value>
-  </data>
-  <data name="AppNotification_CronRunFailed_Title" xml:space="preserve">
-    <value>Cron 作業未啟動</value>
-  </data>
-  <data name="AppNotification_CronRunFailed_DefaultDetail" xml:space="preserve">
-    <value>要求失敗。</value>
-  </data>
-  <data name="AppNotification_CronRunRejectedDetail" xml:space="preserve">
-    <value>閘道拒絕了 cron.run 要求。</value>
-  </data>
-  <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
-    <value>{0}：{1}</value>
   </data>
   <data name="NotificationsPage_Title.Text" xml:space="preserve">
     <value>通知</value>
@@ -4395,180 +4356,6 @@
   <data name="ConnectionPage_Cancel.Content" xml:space="preserve">
     <value>取消</value>
   </data>
-  <data name="CronPage_CronJobs.Text" xml:space="preserve">
-    <value>⏱️ Cron 工作</value>
-  </data>
-  <data name="CronPage_Refresh.Text" xml:space="preserve">
-    <value>重新整理</value>
-  </data>
-  <data name="CronPage_NewJob.Text" xml:space="preserve">
-    <value>新增工作</value>
-  </data>
-  <data name="CronPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>閘道已中斷</value>
-  </data>
-  <data name="CronPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>請連接至閘道以載入 cron 工作。</value>
-  </data>
-  <data name="CronPage_OpenConnection.Content" xml:space="preserve">
-    <value>開啟連線</value>
-  </data>
-  <data name="CronPage_NewCronJob.Text" xml:space="preserve">
-    <value>新增 Cron 工作</value>
-  </data>
-  <data name="CronPage_NAME.Text" xml:space="preserve">
-    <value>名稱</value>
-  </data>
-  <data name="CronPage_MorningBrief.PlaceholderText" xml:space="preserve">
-    <value>晨間簡報</value>
-  </data>
-  <data name="CronPage_SCHEDULE.Text" xml:space="preserve">
-    <value>排程</value>
-  </data>
-  <data name="CronPage_ScheduleEveryOption.Content" xml:space="preserve">
-    <value>每</value>
-  </data>
-  <data name="CronPage_ScheduleAtOption.Content" xml:space="preserve">
-    <value>於</value>
-  </data>
-  <data name="CronPage_ScheduleCronOption.Content" xml:space="preserve">
-    <value>Cron</value>
-  </data>
-  <data name="CronPage_QUICKPRESETS.Text" xml:space="preserve">
-    <value>快速預設</value>
-  </data>
-  <data name="CronPage_Hourly.Content" xml:space="preserve">
-    <value>⏰ 每小時</value>
-  </data>
-  <data name="CronPage_Daily9am.Content" xml:space="preserve">
-    <value>🌅 每天上午 9 點</value>
-  </data>
-  <data name="CronPage_Daily6pm.Content" xml:space="preserve">
-    <value>🌆 每天下午 6 點</value>
-  </data>
-  <data name="CronPage_Weekdays.Content" xml:space="preserve">
-    <value>💼 平日</value>
-  </data>
-  <data name="CronPage_Weekly.Content" xml:space="preserve">
-    <value>📅 每週</value>
-  </data>
-  <data name="CronPage_EXPRESSION.Text" xml:space="preserve">
-    <value>運算式</value>
-  </data>
-  <data name="CronPage_TIMEZONE.Text" xml:space="preserve">
-    <value>時區</value>
-  </data>
-  <data name="CronPage_Optional.PlaceholderText" xml:space="preserve">
-    <value>選用</value>
-  </data>
-  <data name="CronPage_AmericaNewYork.Content" xml:space="preserve">
-    <value>America/New_York</value>
-  </data>
-  <data name="CronPage_AmericaChicago.Content" xml:space="preserve">
-    <value>America/Chicago</value>
-  </data>
-  <data name="CronPage_AmericaDenver.Content" xml:space="preserve">
-    <value>America/Denver</value>
-  </data>
-  <data name="CronPage_AmericaLosAngeles.Content" xml:space="preserve">
-    <value>America/Los_Angeles</value>
-  </data>
-  <data name="CronPage_EuropeLondon.Content" xml:space="preserve">
-    <value>Europe/London</value>
-  </data>
-  <data name="CronPage_EuropeBerlin.Content" xml:space="preserve">
-    <value>Europe/Berlin</value>
-  </data>
-  <data name="CronPage_AsiaTokyo.Content" xml:space="preserve">
-    <value>Asia/Tokyo</value>
-  </data>
-  <data name="CronPage_UTC.Content" xml:space="preserve">
-    <value>UTC</value>
-  </data>
-  <data name="CronPage_EVERY.Text" xml:space="preserve">
-    <value>每</value>
-  </data>
-  <data name="CronPage_UNIT.Text" xml:space="preserve">
-    <value>單位</value>
-  </data>
-  <data name="CronPage_Minutes.Content" xml:space="preserve">
-    <value>分鐘</value>
-  </data>
-  <data name="CronPage_Hours.Content" xml:space="preserve">
-    <value>小時</value>
-  </data>
-  <data name="CronPage_Days.Content" xml:space="preserve">
-    <value>天</value>
-  </data>
-  <data name="CronPage_RUNAT.Text" xml:space="preserve">
-    <value>執行時間</value>
-  </data>
-  <data name="CronPage_Date.PlaceholderText" xml:space="preserve">
-    <value>日期</value>
-  </data>
-  <data name="CronPage_330PM.PlaceholderText" xml:space="preserve">
-    <value>15:30</value>
-  </data>
-  <data name="CronPage_DeleteJobAfterIt.Content" xml:space="preserve">
-    <value>執行後刪除工作</value>
-  </data>
-  <data name="CronPage_PROMPTPAYLOAD.Text" xml:space="preserve">
-    <value>提示 / 內容</value>
-  </data>
-  <data name="CronPage_WhatShouldTheAgent.PlaceholderText" xml:space="preserve">
-    <value>代理應該做什麼?</value>
-  </data>
-  <data name="CronPage_DELIVERY.Text" xml:space="preserve">
-    <value>傳遞</value>
-  </data>
-  <data name="CronPage_SilentNone.Content" xml:space="preserve">
-    <value>靜默(無)</value>
-  </data>
-  <data name="CronPage_NotifyMeAnnounce.Content" xml:space="preserve">
-    <value>通知我(通告)</value>
-  </data>
-  <data name="CronPage_CHANNEL.Text" xml:space="preserve">
-    <value>通道</value>
-  </data>
-  <data name="CronPage_EGWebchat.PlaceholderText" xml:space="preserve">
-    <value>例如 webchat</value>
-  </data>
-  <data name="CronPage_AdvancedOptions.Text" xml:space="preserve">
-    <value>進階選項</value>
-  </data>
-  <data name="CronPage_SESSIONBEHAVIOR.Text" xml:space="preserve">
-    <value>工作階段行為</value>
-  </data>
-  <data name="CronPage_NewSessionEachRun.Content" xml:space="preserve">
-    <value>每次執行建立新工作階段</value>
-  </data>
-  <data name="CronPage_ResumeMainSession.Content" xml:space="preserve">
-    <value>繼續主要工作階段</value>
-  </data>
-  <data name="CronPage_WAKEMODE.Text" xml:space="preserve">
-    <value>喚醒模式</value>
-  </data>
-  <data name="CronPage_NowImmediate.Content" xml:space="preserve">
-    <value>立即(即時)</value>
-  </data>
-  <data name="CronPage_QueueWaitForIdle.Content" xml:space="preserve">
-    <value>佇列(等待閒置)</value>
-  </data>
-  <data name="CronPage_Cancel.Content" xml:space="preserve">
-    <value>取消</value>
-  </data>
-  <data name="CronPage_CreateJob.Content" xml:space="preserve">
-    <value>建立工作</value>
-  </data>
-  <data name="CronPage_LoadingCronJobs.Text" xml:space="preserve">
-    <value>正在載入 cron 工作…</value>
-  </data>
-  <data name="CronPage_NoCronJobsConfigured.Text" xml:space="preserve">
-    <value>未設定 cron 工作</value>
-  </data>
-  <data name="CronPage_CronJobsWillAppear.Text" xml:space="preserve">
-    <value>透過閘道設定 cron 工作後,它們會顯示在此處。</value>
-  </data>
   <data name="DebugPage_Status.Title" xml:space="preserve">
     <value>狀態</value>
   </data>
@@ -5274,75 +5061,6 @@
   </data>
   <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
     <value>{0} / {1} 個事件</value>
-  </data>
-  <data name="CronPage_CreateJobLabel" xml:space="preserve">
-    <value>建立任務</value>
-  </data>
-  <data name="CronPage_EditJob" xml:space="preserve">
-    <value>編輯任務</value>
-  </data>
-  <data name="CronPage_NewJobTitle" xml:space="preserve">
-    <value>新任務</value>
-  </data>
-  <data name="CronPage_Running" xml:space="preserve">
-    <value>正在執行...</value>
-  </data>
-  <data name="CronPage_CompletedOneTimeJobTooltip" xml:space="preserve">
-    <value>一次性作業已完成</value>
-  </data>
-  <data name="CronPage_EnableJobTooltip" xml:space="preserve">
-    <value>啟用作業</value>
-  </data>
-  <data name="CronPage_DisableJobTooltip" xml:space="preserve">
-    <value>停用作業</value>
-  </data>
-  <data name="CronPage_FullResponse" xml:space="preserve">
-    <value>完整回覆</value>
-  </data>
-  <data name="CronPage_OpenChat" xml:space="preserve">
-    <value>開啟聊天</value>
-  </data>
-  <data name="CronPage_RunNow" xml:space="preserve">
-    <value>立即執行</value>
-  </data>
-  <data name="CronPage_EditAction" xml:space="preserve">
-    <value>編輯</value>
-  </data>
-  <data name="CronPage_HistoryAction" xml:space="preserve">
-    <value>歷史記錄</value>
-  </data>
-  <data name="CronPage_RemoveAction" xml:space="preserve">
-    <value>移除</value>
-  </data>
-  <data name="CronPage_RunningBadge" xml:space="preserve">
-    <value>正在執行</value>
-  </data>
-  <data name="CronPage_RunHistory" xml:space="preserve">
-    <value>執行歷史記錄</value>
-  </data>
-  <data name="CronPage_RunHistoryShowing" xml:space="preserve">
-    <value>執行歷史記錄 - 正在顯示 {0}/{1}</value>
-  </data>
-  <data name="CronPage_RunHistoryCount" xml:space="preserve">
-    <value>執行歷史記錄 - {0} 次執行</value>
-  </data>
-  <data name="CronPage_LoadingRunHistory" xml:space="preserve">
-    <value>正在載入執行歷史記錄...</value>
-  </data>
-  <data name="CronPage_NoRunHistoryAvailable" xml:space="preserve">
-    <value>沒有可用的執行歷史記錄。</value>
-  </data>
-  <data name="CronPage_LoadOlderRuns" xml:space="preserve">
-    <value>載入較早的執行（還有 {0} 個）...</value>
-  </data>
-  <data name="CronPage_LoadMoreRuns" xml:space="preserve">
-    <value>載入更多執行...</value>
-  </data>
-  <data name="CronPage_Loading" xml:space="preserve">
-    <value>正在載入...</value>
-  </data>
-  <data name="CronPage_SaveChanges" xml:space="preserve">
-    <value>儲存變更</value>
   </data>
   <data name="SchemaConfigEditor_AddItem" xml:space="preserve">
     <value>新增項目</value>
@@ -6694,9 +6412,6 @@
   <data name="SettingsPage_RemovingLocalGatewayMessage" xml:space="preserve">
     <value>正在移除本機閘道。這可能需要 10–30 秒…</value>
   </data>
-  <data name="CronPage_NextWakeFormat" xml:space="preserve">
-    <value>· 下次喚醒：{0}</value>
-  </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>無法初始化 WebView2：{0}</value>
   </data>
@@ -6705,21 +6420,6 @@
   </data>
   <data name="ConnectionPage_GatewayHostControlsDescription_Format" xml:space="preserve">
     <value>Open a shell or manage the local gateway service in {0}.</value>
-  </data>
-  <data name="CronPage_JobCompleted" xml:space="preserve">
-    <value>Job completed</value>
-  </data>
-  <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
-    <value>"{0}" ran successfully and was removed.</value>
-  </data>
-  <data name="CronPage_RunNotStarted" xml:space="preserve">
-    <value>執行未啟動</value>
-  </data>
-  <data name="CronPage_RunNotStartedGeneric" xml:space="preserve">
-    <value>{0} 未啟動。</value>
-  </data>
-  <data name="CronPage_RunNotStartedWithReason" xml:space="preserve">
-    <value>{0} 未啟動：{1}</value>
   </data>
   <data name="GatewayHostAccess_NoTerminalAccess" xml:space="preserve">
     <value>This gateway does not have WSL or SSH terminal access.</value>
@@ -8118,6 +7818,1431 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>摘要我的近期工作階段</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>協助我設定頻道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>檢查系統健康狀態</value></data>
+  <data name="Automations_AgentScope" xml:space="preserve">
+    <value>代理程式：{0}</value>
+  </data>
+  <data name="Automations_AutoDisabled_Body" xml:space="preserve">
+    <value>閘道在多次失敗後暫停了此自動化。請修正原因，然後再繼續執行。</value>
+  </data>
+  <data name="Automations_Back" xml:space="preserve">
+    <value>返回</value>
+  </data>
+  <data name="Automations_Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="Automations_Clone" xml:space="preserve">
+    <value>複製</value>
+  </data>
+  <data name="Automations_CloneName" xml:space="preserve">
+    <value>{0} (複本)</value>
+  </data>
+  <data name="Automations_Condition_Every" xml:space="preserve">
+    <value>每次執行前檢查</value>
+  </data>
+  <data name="Automations_Condition_Once" xml:space="preserve">
+    <value>每次執行前檢查，第一次符合後停用</value>
+  </data>
+  <data name="Automations_Condition_Summary" xml:space="preserve">
+    <value>已檢查條件 {0} 次。上次檢查：{1}。上次觸發：{2}。</value>
+  </data>
+  <data name="Automations_ConfirmPause_Body" xml:space="preserve">
+    <value>此自動化會停止依排程執行，直到您繼續為止。其定義和執行歷史記錄會保留。</value>
+  </data>
+  <data name="Automations_ConfirmPause_Title" xml:space="preserve">
+    <value>要暫停「{0}」嗎？</value>
+  </data>
+  <data name="Automations_ConfirmRemove_Body" xml:space="preserve">
+    <value>這會永久刪除此自動化並停止所有未來的執行。此動作無法復原。</value>
+  </data>
+  <data name="Automations_ConfirmRemove_Title" xml:space="preserve">
+    <value>要移除「{0}」嗎？</value>
+  </data>
+  <data name="Automations_Conversations_Failed" xml:space="preserve">
+    <value>無法載入最近的對話：{0}</value>
+  </data>
+  <data name="Automations_Default" xml:space="preserve">
+    <value>預設</value>
+  </data>
+  <data name="Automations_Delivery_Delivered" xml:space="preserve">
+    <value>已傳遞</value>
+  </data>
+  <data name="Automations_Delivery_NotDelivered" xml:space="preserve">
+    <value>未傳遞</value>
+  </data>
+  <data name="Automations_Delivery_NotRequested" xml:space="preserve">
+    <value>未要求</value>
+  </data>
+  <data name="Automations_Delivery_Unknown" xml:space="preserve">
+    <value>傳遞狀態未知</value>
+  </data>
+  <data name="Automations_DeliveryMode_Announce" xml:space="preserve">
+    <value>通告摘要</value>
+  </data>
+  <data name="Automations_DeliveryMode_Choose" xml:space="preserve">
+    <value>選擇傳遞模式</value>
+  </data>
+  <data name="Automations_DeliveryMode_Legacy" xml:space="preserve">
+    <value>舊版設定</value>
+  </data>
+  <data name="Automations_DeliveryMode_None" xml:space="preserve">
+    <value>無 (內部)</value>
+  </data>
+  <data name="Automations_DeliveryMode_Webhook" xml:space="preserve">
+    <value>Webhook POST</value>
+  </data>
+  <data name="Automations_Destination_Channel" xml:space="preserve">
+    <value>通道目的地</value>
+  </data>
+  <data name="Automations_Destination_Owner" xml:space="preserve">
+    <value>擁有者私人訊息</value>
+  </data>
+  <data name="Automations_Detail_LoadFailed" xml:space="preserve">
+    <value>無法載入此自動化</value>
+  </data>
+  <data name="Automations_DirectPolicy_Allow" xml:space="preserve">
+    <value>允許</value>
+  </data>
+  <data name="Automations_DirectPolicy_Block" xml:space="preserve">
+    <value>封鎖</value>
+  </data>
+  <data name="Automations_DirectPolicy_Default" xml:space="preserve">
+    <value>預設原則</value>
+  </data>
+  <data name="Automations_Disconnected_BannerBody" xml:space="preserve">
+    <value>在恢復閘道連線之前，無法使用自動化。</value>
+  </data>
+  <data name="Automations_Disconnected_BannerTitle" xml:space="preserve">
+    <value>閘道已中斷連線</value>
+  </data>
+  <data name="Automations_Disconnected_Body" xml:space="preserve">
+    <value>自動化會在您的 OpenClaw 閘道上執行。請開啟連線以配對此電腦，然後回到這裡檢視及管理自動化。</value>
+  </data>
+  <data name="Automations_Disconnected_Title" xml:space="preserve">
+    <value>連線至閘道以管理自動化</value>
+  </data>
+  <data name="Automations_Duration_Hours" xml:space="preserve">
+    <value>{0} 小時 {1} 分</value>
+  </data>
+  <data name="Automations_Duration_Milliseconds" xml:space="preserve">
+    <value>{0} 毫秒</value>
+  </data>
+  <data name="Automations_Duration_Minutes" xml:space="preserve">
+    <value>{0} 分 {1} 秒</value>
+  </data>
+  <data name="Automations_Duration_Seconds" xml:space="preserve">
+    <value>{0} 秒</value>
+  </data>
+  <data name="Automations_Edit" xml:space="preserve">
+    <value>編輯</value>
+  </data>
+  <data name="Automations_Editor_CantSave" xml:space="preserve">
+    <value>目前無法儲存</value>
+  </data>
+  <data name="Automations_Editor_CloneTitle" xml:space="preserve">
+    <value>複製自動化</value>
+  </data>
+  <data name="Automations_Editor_Create" xml:space="preserve">
+    <value>建立自動化</value>
+  </data>
+  <data name="Automations_Editor_CreateAndRun" xml:space="preserve">
+    <value>建立並立即執行</value>
+  </data>
+  <data name="Automations_Editor_EditTitle" xml:space="preserve">
+    <value>編輯 {0}</value>
+  </data>
+  <data name="Automations_Editor_FixMany" xml:space="preserve">
+    <value>請修正 {0} 個欄位以繼續。</value>
+  </data>
+  <data name="Automations_Editor_FixOne" xml:space="preserve">
+    <value>請修正 1 個欄位以繼續。</value>
+  </data>
+  <data name="Automations_Editor_NewTitle" xml:space="preserve">
+    <value>新增自動化</value>
+  </data>
+  <data name="Automations_Editor_Save" xml:space="preserve">
+    <value>儲存變更</value>
+  </data>
+  <data name="Automations_Editor_SaveFailed" xml:space="preserve">
+    <value>無法儲存</value>
+  </data>
+  <data name="Automations_Editor_Saving" xml:space="preserve">
+    <value>正在儲存...</value>
+  </data>
+  <data name="Automations_Editor_Subtitle" xml:space="preserve">
+    <value>描述 OpenClaw 應該做什麼，然後選擇執行時間。</value>
+  </data>
+  <data name="Automations_Empty_Body" xml:space="preserve">
+    <value>描述 OpenClaw 應該做什麼以及何時做。即使此電腦閒置，它也會依排程執行。</value>
+  </data>
+  <data name="Automations_Empty_ReadOnlyBody" xml:space="preserve">
+    <value>此代理程式沒有自動化。請要求具有管理員存取權的操作員建立一個。</value>
+  </data>
+  <data name="Automations_Empty_Title" xml:space="preserve">
+    <value>尚無自動化</value>
+  </data>
+  <data name="Automations_Error_ActiveHoursTimeInvalid" xml:space="preserve">
+    <value>請輸入 HH:MM。24:00 僅允許用於結束時間。</value>
+  </data>
+  <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
+    <value>請輸入有效的 IANA 時區、local 或 user。</value>
+  </data>
+  <data name="Automations_Error_AgentMessageRequired" xml:space="preserve">
+    <value>提示為必填。</value>
+  </data>
+  <data name="Automations_Error_CronExprRequired" xml:space="preserve">
+    <value>Cron 運算式為必填。</value>
+  </data>
+  <data name="Automations_Error_DeliveryModeRequired" xml:space="preserve">
+    <value>請選擇傳遞模式。</value>
+  </data>
+  <data name="Automations_Error_EventAgentTurnRequired" xml:space="preserve">
+    <value>事件自動化需要助理工作。</value>
+  </data>
+  <data name="Automations_Error_EventArgumentsInvalid" xml:space="preserve">
+    <value>請輸入有效的 JSON 物件。</value>
+  </data>
+  <data name="Automations_Error_EventNameRequired" xml:space="preserve">
+    <value>請從伺服器的目錄中選擇事件。</value>
+  </data>
+  <data name="Automations_Error_EventServerRequired" xml:space="preserve">
+    <value>請選擇 MCP 伺服器。</value>
+  </data>
+  <data name="Automations_Error_EveryAmountInvalid" xml:space="preserve">
+    <value>間隔必須是大於 0 的數字。</value>
+  </data>
+  <data name="Automations_Error_FailureAlertAfterInvalid" xml:space="preserve">
+    <value>必須至少為 1。</value>
+  </data>
+  <data name="Automations_Error_FailureAlertCooldownInvalid" xml:space="preserve">
+    <value>必須為 0 或更大。</value>
+  </data>
+  <data name="Automations_Error_NameRequired" xml:space="preserve">
+    <value>名稱為必填。</value>
+  </data>
+  <data name="Automations_Error_ScheduleAtInvalid" xml:space="preserve">
+    <value>請選擇有效的日期和時間。</value>
+  </data>
+  <data name="Automations_Error_StaggerAmountInvalid" xml:space="preserve">
+    <value>錯開時間必須是大於 0 的數字。</value>
+  </data>
+  <data name="Automations_Error_SystemTextRequired" xml:space="preserve">
+    <value>時間軸訊息為必填。</value>
+  </data>
+  <data name="Automations_Error_TimeoutInvalid" xml:space="preserve">
+    <value>逾時必須為 0 或更大。</value>
+  </data>
+  <data name="Automations_Error_TimezoneInvalid" xml:space="preserve">
+    <value>請輸入有效的 IANA 時區，例如 Europe/Paris。</value>
+  </data>
+  <data name="Automations_Error_TriggerIntervalTooShort" xml:space="preserve">
+    <value>條件觸發的自動化執行間隔不得短於 30 秒。</value>
+  </data>
+  <data name="Automations_Error_TriggerScheduleUnsupported" xml:space="preserve">
+    <value>條件觸發程序需要間隔、cron 或串流排程。</value>
+  </data>
+  <data name="Automations_Error_TriggerScriptPayloadUnsupported" xml:space="preserve">
+    <value>指令碼動作無法使用條件觸發程序。</value>
+  </data>
+  <data name="Automations_Error_TriggerScriptRequired" xml:space="preserve">
+    <value>開啟條件觸發程序時，觸發指令碼為必填。</value>
+  </data>
+  <data name="Automations_Error_WebhookUrlInvalid" xml:space="preserve">
+    <value>請輸入有效的 http(s) URL，且不可內嵌認證。</value>
+  </data>
+  <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
+    <value>Webhook URL 為必填。</value>
+  </data>
+  <data name="Automations_Event_ChooseEvent" xml:space="preserve">
+    <value>選擇事件</value>
+  </data>
+  <data name="Automations_Event_ChooseServer" xml:space="preserve">
+    <value>選擇伺服器</value>
+  </data>
+  <data name="Automations_Event_DiscoveryFailed" xml:space="preserve">
+    <value>事件探索失敗：{0}</value>
+  </data>
+  <data name="Automations_Event_Help" xml:space="preserve">
+    <value>在 MCP 伺服器傳遞事件時執行。事件自動化需要助理工作。</value>
+  </data>
+  <data name="Automations_Event_Loading" xml:space="preserve">
+    <value>正在載入事件...</value>
+  </data>
+  <data name="Automations_Event_NoEvents" xml:space="preserve">
+    <value>此伺服器未公開任何支援的事件。</value>
+  </data>
+  <data name="Automations_Event_NoServers" xml:space="preserve">
+    <value>沒有已啟用的 MCP 伺服器支援事件。請先在閘道中設定一個。</value>
+  </data>
+  <data name="Automations_Event_Refresh" xml:space="preserve">
+    <value>重新整理事件</value>
+  </data>
+  <data name="Automations_Event_ViewSchema" xml:space="preserve">
+    <value>檢視輸入結構描述</value>
+  </data>
+  <data name="Automations_ExactTiming" xml:space="preserve">
+    <value>精確時間</value>
+  </data>
+  <data name="Automations_FailureAlert_Announce" xml:space="preserve">
+    <value>通告 (透過通道)</value>
+  </data>
+  <data name="Automations_FailureAlert_Custom" xml:space="preserve">
+    <value>自訂</value>
+  </data>
+  <data name="Automations_FailureAlert_CustomSummary" xml:space="preserve">
+    <value>連續 {0} 次錯誤後，每 {1} 最多一次</value>
+  </data>
+  <data name="Automations_FailureAlert_Disabled" xml:space="preserve">
+    <value>此自動化已停用</value>
+  </data>
+  <data name="Automations_FailureAlert_Inherit" xml:space="preserve">
+    <value>繼承全域設定</value>
+  </data>
+  <data name="Automations_FailureAlert_Webhook" xml:space="preserve">
+    <value>Webhook (HTTP POST)</value>
+  </data>
+  <data name="Automations_Field_Account" xml:space="preserve">
+    <value>帳戶 ID</value>
+  </data>
+  <data name="Automations_Field_ActiveHours" xml:space="preserve">
+    <value>使用時段</value>
+  </data>
+  <data name="Automations_Field_Agent" xml:space="preserve">
+    <value>代理程式</value>
+  </data>
+  <data name="Automations_Field_AlertAccount" xml:space="preserve">
+    <value>警示帳戶 ID</value>
+  </data>
+  <data name="Automations_Field_AlertAfter" xml:space="preserve">
+    <value>警示門檻</value>
+  </data>
+  <data name="Automations_Field_AlertChannel" xml:space="preserve">
+    <value>警示通道</value>
+  </data>
+  <data name="Automations_Field_AlertCooldown" xml:space="preserve">
+    <value>冷卻時間 (秒)</value>
+  </data>
+  <data name="Automations_Field_AlertMode" xml:space="preserve">
+    <value>警示模式</value>
+  </data>
+  <data name="Automations_Field_AlertTo" xml:space="preserve">
+    <value>警示收件者</value>
+  </data>
+  <data name="Automations_Field_BestEffort" xml:space="preserve">
+    <value>盡力傳遞</value>
+  </data>
+  <data name="Automations_Field_Channel" xml:space="preserve">
+    <value>通道</value>
+  </data>
+  <data name="Automations_Field_ClearAgent" xml:space="preserve">
+    <value>清除代理程式覆寫</value>
+  </data>
+  <data name="Automations_Field_Command" xml:space="preserve">
+    <value>命令</value>
+  </data>
+  <data name="Automations_Field_Condition" xml:space="preserve">
+    <value>條件觸發程序</value>
+  </data>
+  <data name="Automations_Field_Created" xml:space="preserve">
+    <value>建立時間</value>
+  </data>
+  <data name="Automations_Field_DeleteAfterRun" xml:space="preserve">
+    <value>執行後刪除</value>
+  </data>
+  <data name="Automations_Field_DeliveryError" xml:space="preserve">
+    <value>傳遞錯誤</value>
+  </data>
+  <data name="Automations_Field_DeliveryMode" xml:space="preserve">
+    <value>傳遞</value>
+  </data>
+  <data name="Automations_Field_Description" xml:space="preserve">
+    <value>描述</value>
+  </data>
+  <data name="Automations_Field_Destination" xml:space="preserve">
+    <value>目的地</value>
+  </data>
+  <data name="Automations_Field_DirectPolicy" xml:space="preserve">
+    <value>私人訊息</value>
+  </data>
+  <data name="Automations_Field_EventArguments" xml:space="preserve">
+    <value>訂閱引數 (JSON)</value>
+  </data>
+  <data name="Automations_Field_EventName" xml:space="preserve">
+    <value>事件</value>
+  </data>
+  <data name="Automations_Field_EventServer" xml:space="preserve">
+    <value>MCP 伺服器</value>
+  </data>
+  <data name="Automations_Field_Every" xml:space="preserve">
+    <value>每</value>
+  </data>
+  <data name="Automations_Field_ExactTiming" xml:space="preserve">
+    <value>精確時間 (不錯開)</value>
+  </data>
+  <data name="Automations_Field_Expression" xml:space="preserve">
+    <value>運算式</value>
+  </data>
+  <data name="Automations_Field_FailureAlerts" xml:space="preserve">
+    <value>失敗警示</value>
+  </data>
+  <data name="Automations_Field_Id" xml:space="preserve">
+    <value>ID</value>
+  </data>
+  <data name="Automations_Field_IdleOnly" xml:space="preserve">
+    <value>等候閒置</value>
+  </data>
+  <data name="Automations_Field_IncludeReasoning" xml:space="preserve">
+    <value>包含推理</value>
+  </data>
+  <data name="Automations_Field_LastDelivery" xml:space="preserve">
+    <value>上次傳遞</value>
+  </data>
+  <data name="Automations_Field_LightContext" xml:space="preserve">
+    <value>輕量內容</value>
+  </data>
+  <data name="Automations_Field_Model" xml:space="preserve">
+    <value>模型</value>
+  </data>
+  <data name="Automations_Field_Name" xml:space="preserve">
+    <value>名稱</value>
+  </data>
+  <data name="Automations_Field_Options" xml:space="preserve">
+    <value>選項</value>
+  </data>
+  <data name="Automations_Field_Preview" xml:space="preserve">
+    <value>傳遞預覽</value>
+  </data>
+  <data name="Automations_Field_Prompt" xml:space="preserve">
+    <value>提示</value>
+  </data>
+  <data name="Automations_Field_Revision" xml:space="preserve">
+    <value>修訂</value>
+  </data>
+  <data name="Automations_Field_RunDate" xml:space="preserve">
+    <value>日期</value>
+  </data>
+  <data name="Automations_Field_RunTime" xml:space="preserve">
+    <value>時間</value>
+  </data>
+  <data name="Automations_Field_Session" xml:space="preserve">
+    <value>執行位置</value>
+  </data>
+  <data name="Automations_Field_SessionKey" xml:space="preserve">
+    <value>工作階段金鑰</value>
+  </data>
+  <data name="Automations_Field_SkipEmptyScratch" xml:space="preserve">
+    <value>暫存區為空時略過</value>
+  </data>
+  <data name="Automations_Field_Stagger" xml:space="preserve">
+    <value>錯開時段</value>
+  </data>
+  <data name="Automations_Field_StartEnabled" xml:space="preserve">
+    <value>建立後啟用</value>
+  </data>
+  <data name="Automations_Field_Suppressed" xml:space="preserve">
+    <value>已略過傳遞</value>
+  </data>
+  <data name="Automations_Field_Thinking" xml:space="preserve">
+    <value>推理</value>
+  </data>
+  <data name="Automations_Field_TimelineMessage" xml:space="preserve">
+    <value>主要時間軸訊息</value>
+  </data>
+  <data name="Automations_Field_Timeout" xml:space="preserve">
+    <value>逾時</value>
+  </data>
+  <data name="Automations_Field_TimeoutSeconds" xml:space="preserve">
+    <value>逾時 (秒)</value>
+  </data>
+  <data name="Automations_Field_Timezone" xml:space="preserve">
+    <value>時區</value>
+  </data>
+  <data name="Automations_Field_To" xml:space="preserve">
+    <value>收件者</value>
+  </data>
+  <data name="Automations_Field_Tools" xml:space="preserve">
+    <value>允許的工具</value>
+  </data>
+  <data name="Automations_Field_TriggerOnce" xml:space="preserve">
+    <value>第一次符合後停用</value>
+  </data>
+  <data name="Automations_Field_TriggerScript" xml:space="preserve">
+    <value>觸發指令碼</value>
+  </data>
+  <data name="Automations_Field_Unit" xml:space="preserve">
+    <value>單位</value>
+  </data>
+  <data name="Automations_Field_Updated" xml:space="preserve">
+    <value>更新時間</value>
+  </data>
+  <data name="Automations_Field_Wake" xml:space="preserve">
+    <value>喚醒模式</value>
+  </data>
+  <data name="Automations_Field_WebhookUrl" xml:space="preserve">
+    <value>Webhook URL</value>
+  </data>
+  <data name="Automations_Field_WindowEnd" xml:space="preserve">
+    <value>時段結束</value>
+  </data>
+  <data name="Automations_Field_WindowStart" xml:space="preserve">
+    <value>時段開始</value>
+  </data>
+  <data name="Automations_Filter_Active" xml:space="preserve">
+    <value>使用中</value>
+  </data>
+  <data name="Automations_Filter_All" xml:space="preserve">
+    <value>全部</value>
+  </data>
+  <data name="Automations_Filter_Any" xml:space="preserve">
+    <value>任何</value>
+  </data>
+  <data name="Automations_Filter_Condition" xml:space="preserve">
+    <value>條件</value>
+  </data>
+  <data name="Automations_Filter_Conditional" xml:space="preserve">
+    <value>有條件</value>
+  </data>
+  <data name="Automations_Filter_LastRun" xml:space="preserve">
+    <value>上次執行</value>
+  </data>
+  <data name="Automations_Filter_NeverRun" xml:space="preserve">
+    <value>從未執行</value>
+  </data>
+  <data name="Automations_Filter_Paused" xml:space="preserve">
+    <value>已暫停</value>
+  </data>
+  <data name="Automations_Filter_Reset" xml:space="preserve">
+    <value>重設篩選</value>
+  </data>
+  <data name="Automations_Filter_ScheduleKind" xml:space="preserve">
+    <value>排程</value>
+  </data>
+  <data name="Automations_Filter_Unconditional" xml:space="preserve">
+    <value>無條件</value>
+  </data>
+  <data name="Automations_Filters" xml:space="preserve">
+    <value>篩選</value>
+  </data>
+  <data name="Automations_Filters_Active" xml:space="preserve">
+    <value>篩選 (已開啟)</value>
+  </data>
+  <data name="Automations_Flag_IdleOnly" xml:space="preserve">
+    <value>等候閒置</value>
+  </data>
+  <data name="Automations_Flag_IncludeReasoning" xml:space="preserve">
+    <value>包含推理</value>
+  </data>
+  <data name="Automations_Flag_LightContext" xml:space="preserve">
+    <value>輕量內容</value>
+  </data>
+  <data name="Automations_Flag_SkipEmptyScratch" xml:space="preserve">
+    <value>略過空白暫存區</value>
+  </data>
+  <data name="Automations_GatewayTimezone" xml:space="preserve">
+    <value>閘道主機時區</value>
+  </data>
+  <data name="Automations_Help_ActiveHours" xml:space="preserve">
+    <value>僅在此時段內執行，包括手動執行。支援跨夜時段；結束時間不包含在內。</value>
+  </data>
+  <data name="Automations_Help_Agent" xml:space="preserve">
+    <value>保留空白以使用此頁面的代理程式。</value>
+  </data>
+  <data name="Automations_Help_AgentTurn" xml:space="preserve">
+    <value>使用您的提示，在獨立的工作階段中開始助理執行。</value>
+  </data>
+  <data name="Automations_Help_AlertAfter" xml:space="preserve">
+    <value>發出警示前的連續錯誤次數。</value>
+  </data>
+  <data name="Automations_Help_AlertCooldown" xml:space="preserve">
+    <value>警示之間的最短秒數。</value>
+  </data>
+  <data name="Automations_Help_BestEffort" xml:space="preserve">
+    <value>即使傳遞本身失敗，也不要讓執行失敗。</value>
+  </data>
+  <data name="Automations_Help_Channel" xml:space="preserve">
+    <value>保留空白以使用代理程式上次交談的通道。</value>
+  </data>
+  <data name="Automations_Help_ClearAgent" xml:space="preserve">
+    <value>使用閘道預設代理程式，而非特定代理程式。</value>
+  </data>
+  <data name="Automations_Help_Condition" xml:space="preserve">
+    <value>先執行靜默檢查，只有在符合時才開始動作。</value>
+  </data>
+  <data name="Automations_Help_DeleteAfterRun" xml:space="preserve">
+    <value>適合執行後應自行清除的一次性提醒。</value>
+  </data>
+  <data name="Automations_Help_Delivery" xml:space="preserve">
+    <value>通告會將摘要張貼至聊天。無則會將結果保留在內部。</value>
+  </data>
+  <data name="Automations_Help_DeliveryNoAnnounce" xml:space="preserve">
+    <value>通告需要助理工作。時間軸訊息已會張貼至主要時間軸。</value>
+  </data>
+  <data name="Automations_Help_EventArguments" xml:space="preserve">
+    <value>訂閱時傳送的篩選條件。必須符合事件的輸入結構描述。</value>
+  </data>
+  <data name="Automations_Help_ExactTiming" xml:space="preserve">
+    <value>在 cron 時間點精確執行，不錯開。</value>
+  </data>
+  <data name="Automations_Help_Expression" xml:space="preserve">
+    <value>五個欄位：分鐘、小時、日期、月份、星期。</value>
+  </data>
+  <data name="Automations_Help_FailureAlerts" xml:space="preserve">
+    <value>控制此自動化何時回報重複失敗。</value>
+  </data>
+  <data name="Automations_Help_IdleOnly" xml:space="preserve">
+    <value>開始前先讓出給進行中的工作。</value>
+  </data>
+  <data name="Automations_Help_IncludeReasoning" xml:space="preserve">
+    <value>在傳遞的結果中包含可用的模型推理。</value>
+  </data>
+  <data name="Automations_Help_LightContext" xml:space="preserve">
+    <value>此執行使用輕量的啟動內容。</value>
+  </data>
+  <data name="Automations_Help_Model" xml:space="preserve">
+    <value>選用。例行工作通常可以使用較輕量、較便宜的模型順利執行。</value>
+  </data>
+  <data name="Automations_Help_Owner" xml:space="preserve">
+    <value>擁有者傳遞會在每次執行時解析擁有者的私人訊息，絕不會使用上次的群組對話。</value>
+  </data>
+  <data name="Automations_Help_Session" xml:space="preserve">
+    <value>主要會張貼至代理程式的時間軸。隔離會執行專用的助理回合。</value>
+  </data>
+  <data name="Automations_Help_SessionKey" xml:space="preserve">
+    <value>用於傳遞和喚醒路由的選用路由金鑰。</value>
+  </data>
+  <data name="Automations_Help_SkipEmptyScratch" xml:space="preserve">
+    <value>已儲存的暫存區為空時略過執行。沒有暫存區則不會略過。</value>
+  </data>
+  <data name="Automations_Help_Stagger" xml:space="preserve">
+    <value>將執行分散在一段時間內，避免許多自動化同時開始。保留空白以使用預設值。</value>
+  </data>
+  <data name="Automations_Help_SystemEvent" xml:space="preserve">
+    <value>將您的文字張貼至代理程式的主要時間軸。適合用於提醒。</value>
+  </data>
+  <data name="Automations_Help_Thinking" xml:space="preserve">
+    <value>選用的推理等級，例如低或高。</value>
+  </data>
+  <data name="Automations_Help_Timeout" xml:space="preserve">
+    <value>保留空白以使用閘道預設值。0 會停用逾時。</value>
+  </data>
+  <data name="Automations_Help_Timezone" xml:space="preserve">
+    <value>選用的 IANA 時區。保留空白以使用閘道主機時區。</value>
+  </data>
+  <data name="Automations_Help_To" xml:space="preserve">
+    <value>挑選最近的對話或輸入收件者。</value>
+  </data>
+  <data name="Automations_Help_TriggerOnce" xml:space="preserve">
+    <value>在條件第一次啟動執行後，關閉此自動化。</value>
+  </data>
+  <data name="Automations_Help_TriggerScript" xml:space="preserve">
+    <value>以此自動化的工具原則在無人看管下執行。傳回 json({ fire, message?, state? })。限制：30 秒、5 次工具呼叫、16 KB 狀態。</value>
+  </data>
+  <data name="Automations_Help_Webhook" xml:space="preserve">
+    <value>執行摘要會以 POST 傳送至此 http(s) URL。</value>
+  </data>
+  <data name="Automations_Kind_At" xml:space="preserve">
+    <value>一次</value>
+  </data>
+  <data name="Automations_Kind_Cron" xml:space="preserve">
+    <value>Cron</value>
+  </data>
+  <data name="Automations_Kind_Event" xml:space="preserve">
+    <value>事件</value>
+  </data>
+  <data name="Automations_Kind_Every" xml:space="preserve">
+    <value>間隔</value>
+  </data>
+  <data name="Automations_Kind_OnExit" xml:space="preserve">
+    <value>結束時</value>
+  </data>
+  <data name="Automations_Kind_Stream" xml:space="preserve">
+    <value>串流</value>
+  </data>
+  <data name="Automations_LastError_Title" xml:space="preserve">
+    <value>上次執行失敗</value>
+  </data>
+  <data name="Automations_LastRun" xml:space="preserve">
+    <value>上次執行</value>
+  </data>
+  <data name="Automations_List_Count" xml:space="preserve">
+    <value>{0}/{1}</value>
+  </data>
+  <data name="Automations_List_Empty" xml:space="preserve">
+    <value>此代理程式尚無自動化。</value>
+  </data>
+  <data name="Automations_List_NoMatch" xml:space="preserve">
+    <value>沒有符合目前篩選條件的自動化。</value>
+  </data>
+  <data name="Automations_ListError_Title" xml:space="preserve">
+    <value>無法載入自動化</value>
+  </data>
+  <data name="Automations_Loading" xml:space="preserve">
+    <value>正在載入...</value>
+  </data>
+  <data name="Automations_LoadMore" xml:space="preserve">
+    <value>載入更多</value>
+  </data>
+  <data name="Automations_MoreActions" xml:space="preserve">
+    <value>更多動作</value>
+  </data>
+  <data name="Automations_MoreActionsFor" xml:space="preserve">
+    <value>{0} 的更多動作</value>
+  </data>
+  <data name="Automations_NeverFired" xml:space="preserve">
+    <value>從未</value>
+  </data>
+  <data name="Automations_NeverRun" xml:space="preserve">
+    <value>從未</value>
+  </data>
+  <data name="Automations_NewAutomation" xml:space="preserve">
+    <value>新增自動化</value>
+  </data>
+  <data name="Automations_NextRun" xml:space="preserve">
+    <value>下次執行</value>
+  </data>
+  <data name="Automations_NextWake_None" xml:space="preserve">
+    <value>沒有排程</value>
+  </data>
+  <data name="Automations_NotChecked" xml:space="preserve">
+    <value>尚未</value>
+  </data>
+  <data name="Automations_Notice_Conflict" xml:space="preserve">
+    <value>已載入最新的定義。請先檢閱再重試。</value>
+  </data>
+  <data name="Automations_Notice_ConflictTitle" xml:space="preserve">
+    <value>自動化已在閘道上變更</value>
+  </data>
+  <data name="Automations_Notice_ConflictUnloadable" xml:space="preserve">
+    <value>無法載入最新的定義。請先重新整理再重試。</value>
+  </data>
+  <data name="Automations_Notice_Created" xml:space="preserve">
+    <value>已建立 {0}。</value>
+  </data>
+  <data name="Automations_Notice_CreatedTitle" xml:space="preserve">
+    <value>已建立</value>
+  </data>
+  <data name="Automations_Notice_FailedTitle" xml:space="preserve">
+    <value>發生錯誤</value>
+  </data>
+  <data name="Automations_Notice_JobCompleted" xml:space="preserve">
+    <value>{0} 已執行並自行移除。</value>
+  </data>
+  <data name="Automations_Notice_JobCompletedTitle" xml:space="preserve">
+    <value>自動化已完成</value>
+  </data>
+  <data name="Automations_Notice_JobMessage" xml:space="preserve">
+    <value>{0}：{1}</value>
+  </data>
+  <data name="Automations_Notice_MissingRevision" xml:space="preserve">
+    <value>此自動化缺少設定修訂。請重新整理後再試一次。</value>
+  </data>
+  <data name="Automations_Notice_Paused" xml:space="preserve">
+    <value>{0} 已暫停。</value>
+  </data>
+  <data name="Automations_Notice_PausedTitle" xml:space="preserve">
+    <value>已暫停</value>
+  </data>
+  <data name="Automations_Notice_Removed" xml:space="preserve">
+    <value>已移除 {0}。</value>
+  </data>
+  <data name="Automations_Notice_RemovedTitle" xml:space="preserve">
+    <value>已移除</value>
+  </data>
+  <data name="Automations_Notice_Resumed" xml:space="preserve">
+    <value>{0} 已重新啟用。</value>
+  </data>
+  <data name="Automations_Notice_ResumedTitle" xml:space="preserve">
+    <value>已繼續</value>
+  </data>
+  <data name="Automations_Notice_RunFailedTitle" xml:space="preserve">
+    <value>無法開始執行</value>
+  </data>
+  <data name="Automations_Notice_RunNotStartedTitle" xml:space="preserve">
+    <value>未開始執行</value>
+  </data>
+  <data name="Automations_Notice_RunQueued" xml:space="preserve">
+    <value>{0} 正在執行。</value>
+  </data>
+  <data name="Automations_Notice_RunQueuedTitle" xml:space="preserve">
+    <value>已開始執行</value>
+  </data>
+  <data name="Automations_Notice_RunQueuedWithId" xml:space="preserve">
+    <value>{0} 正在執行。執行 ID：{1}</value>
+  </data>
+  <data name="Automations_Notice_Saved" xml:space="preserve">
+    <value>已更新 {0}。</value>
+  </data>
+  <data name="Automations_Notice_SavedTitle" xml:space="preserve">
+    <value>已儲存</value>
+  </data>
+  <data name="Automations_NotScheduled" xml:space="preserve">
+    <value>未排程</value>
+  </data>
+  <data name="Automations_Off" xml:space="preserve">
+    <value>關閉</value>
+  </data>
+  <data name="Automations_On" xml:space="preserve">
+    <value>開啟</value>
+  </data>
+  <data name="Automations_OpenConnection" xml:space="preserve">
+    <value>開啟連線</value>
+  </data>
+  <data name="Automations_Pause" xml:space="preserve">
+    <value>暫停</value>
+  </data>
+  <data name="Automations_Payload_AgentTurn" xml:space="preserve">
+    <value>執行助理工作</value>
+  </data>
+  <data name="Automations_Payload_Command" xml:space="preserve">
+    <value>命令</value>
+  </data>
+  <data name="Automations_Payload_ReadOnlyHelp" xml:space="preserve">
+    <value>此動作是在此應用程式之外建立的。它會保持唯讀，並在您儲存其他變更時保留。</value>
+  </data>
+  <data name="Automations_Payload_Script" xml:space="preserve">
+    <value>指令碼</value>
+  </data>
+  <data name="Automations_Payload_SystemEvent" xml:space="preserve">
+    <value>張貼至主要時間軸</value>
+  </data>
+  <data name="Automations_Payload_Unknown" xml:space="preserve">
+    <value>自訂動作</value>
+  </data>
+  <data name="Automations_Placeholder_Body" xml:space="preserve">
+    <value>從清單中挑選一個自動化，以查看其排程、執行內容、結果傳送位置及執行歷史記錄。</value>
+  </data>
+  <data name="Automations_Placeholder_ChannelLast" xml:space="preserve">
+    <value>上次使用的通道</value>
+  </data>
+  <data name="Automations_Placeholder_Description" xml:space="preserve">
+    <value>此自動化的選用說明</value>
+  </data>
+  <data name="Automations_Placeholder_Name" xml:space="preserve">
+    <value>晨間簡報</value>
+  </data>
+  <data name="Automations_Placeholder_Optional" xml:space="preserve">
+    <value>選用</value>
+  </data>
+  <data name="Automations_Placeholder_Prompt" xml:space="preserve">
+    <value>描述 OpenClaw 應該做什麼...</value>
+  </data>
+  <data name="Automations_Placeholder_Timeout" xml:space="preserve">
+    <value>選用，例如 90</value>
+  </data>
+  <data name="Automations_Placeholder_Timezone" xml:space="preserve">
+    <value>America/Los_Angeles</value>
+  </data>
+  <data name="Automations_Placeholder_Title" xml:space="preserve">
+    <value>選取自動化</value>
+  </data>
+  <data name="Automations_Placeholder_To" xml:space="preserve">
+    <value>聊天 ID、電話或使用者</value>
+  </data>
+  <data name="Automations_Preset_Daily" xml:space="preserve">
+    <value>每天 9:00</value>
+  </data>
+  <data name="Automations_Preset_Hourly" xml:space="preserve">
+    <value>每小時</value>
+  </data>
+  <data name="Automations_Preset_Monthly" xml:space="preserve">
+    <value>每月</value>
+  </data>
+  <data name="Automations_Preset_Weekdays" xml:space="preserve">
+    <value>平日 9:00</value>
+  </data>
+  <data name="Automations_Preset_Weekly" xml:space="preserve">
+    <value>每週一 9:00</value>
+  </data>
+  <data name="Automations_ReadDenied_Title" xml:space="preserve">
+    <value>此操作員無法檢視自動化</value>
+  </data>
+  <data name="Automations_ReadOnly" xml:space="preserve">
+    <value>僅供瀏覽。變更自動化需要 operator.admin 存取權。</value>
+  </data>
+  <data name="Automations_RecentRuns" xml:space="preserve">
+    <value>最近的執行</value>
+  </data>
+  <data name="Automations_Refresh" xml:space="preserve">
+    <value>重新整理</value>
+  </data>
+  <data name="Automations_Relative_Days" xml:space="preserve">
+    <value>{0} 天</value>
+  </data>
+  <data name="Automations_Relative_Future" xml:space="preserve">
+    <value>{0}後</value>
+  </data>
+  <data name="Automations_Relative_Hours" xml:space="preserve">
+    <value>{0} 小時</value>
+  </data>
+  <data name="Automations_Relative_Minutes" xml:space="preserve">
+    <value>{0} 分鐘</value>
+  </data>
+  <data name="Automations_Relative_Now" xml:space="preserve">
+    <value>現在</value>
+  </data>
+  <data name="Automations_Relative_Past" xml:space="preserve">
+    <value>{0}前</value>
+  </data>
+  <data name="Automations_Remove" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="Automations_Resume" xml:space="preserve">
+    <value>繼續</value>
+  </data>
+  <data name="Automations_Retry" xml:space="preserve">
+    <value>重試</value>
+  </data>
+  <data name="Automations_Row_Last" xml:space="preserve">
+    <value>上次執行 {0}</value>
+  </data>
+  <data name="Automations_Row_Next" xml:space="preserve">
+    <value>下次 {0}</value>
+  </data>
+  <data name="Automations_RunHistory_Subtitle" xml:space="preserve">
+    <value>代理程式 {0} 所有自動化的每一次執行。</value>
+  </data>
+  <data name="Automations_RunHistory_Title" xml:space="preserve">
+    <value>執行歷史記錄</value>
+  </data>
+  <data name="Automations_RunIfDue" xml:space="preserve">
+    <value>到期時執行</value>
+  </data>
+  <data name="Automations_Running" xml:space="preserve">
+    <value>執行中</value>
+  </data>
+  <data name="Automations_RunNotStarted_AlreadyRunning" xml:space="preserve">
+    <value>此自動化已在執行中。</value>
+  </data>
+  <data name="Automations_RunNotStarted_InvalidSpec" xml:space="preserve">
+    <value>此自動化的排程或動作無效。</value>
+  </data>
+  <data name="Automations_RunNotStarted_NotDue" xml:space="preserve">
+    <value>此自動化尚未到期。</value>
+  </data>
+  <data name="Automations_RunNotStarted_RecoveryPending" xml:space="preserve">
+    <value>排程器仍在復原中。</value>
+  </data>
+  <data name="Automations_RunNotStarted_Stopped" xml:space="preserve">
+    <value>排程器已停止。</value>
+  </data>
+  <data name="Automations_RunNotStarted_Unknown" xml:space="preserve">
+    <value>無法啟動此自動化。</value>
+  </data>
+  <data name="Automations_RunNow" xml:space="preserve">
+    <value>立即執行</value>
+  </data>
+  <data name="Automations_Runs_AllDelivery" xml:space="preserve">
+    <value>所有傳遞</value>
+  </data>
+  <data name="Automations_Runs_AllStatuses" xml:space="preserve">
+    <value>所有狀態</value>
+  </data>
+  <data name="Automations_Runs_Clear" xml:space="preserve">
+    <value>清除</value>
+  </data>
+  <data name="Automations_Runs_ConditionChecked" xml:space="preserve">
+    <value>條件已檢查 {0} 次但未符合。執行歷史記錄會在動作執行時開始記錄。</value>
+  </data>
+  <data name="Automations_Runs_ConditionCheckedOnce" xml:space="preserve">
+    <value>條件已檢查一次但未符合。執行歷史記錄會在動作執行時開始記錄。</value>
+  </data>
+  <data name="Automations_Runs_ConditionUnchecked" xml:space="preserve">
+    <value>尚未檢查條件。執行歷史記錄會在動作執行時開始記錄。</value>
+  </data>
+  <data name="Automations_Runs_Count" xml:space="preserve">
+    <value>正在顯示 {0}/{1} 次執行</value>
+  </data>
+  <data name="Automations_Runs_DeliveryCount" xml:space="preserve">
+    <value>傳遞 ({0})</value>
+  </data>
+  <data name="Automations_Runs_DeliveryError" xml:space="preserve">
+    <value>傳遞錯誤：{0}</value>
+  </data>
+  <data name="Automations_Runs_EmptyConditionTitle" xml:space="preserve">
+    <value>尚無執行</value>
+  </data>
+  <data name="Automations_Runs_EmptyHint" xml:space="preserve">
+    <value>自動化觸發後，執行會顯示在這裡。</value>
+  </data>
+  <data name="Automations_Runs_EmptyTitle" xml:space="preserve">
+    <value>尚無執行</value>
+  </data>
+  <data name="Automations_Runs_ErrorTitle" xml:space="preserve">
+    <value>無法載入執行歷史記錄</value>
+  </data>
+  <data name="Automations_Runs_HideTranscript" xml:space="preserve">
+    <value>隱藏文字記錄</value>
+  </data>
+  <data name="Automations_Runs_Loading" xml:space="preserve">
+    <value>正在載入執行...</value>
+  </data>
+  <data name="Automations_Runs_LoadMore" xml:space="preserve">
+    <value>載入更多執行</value>
+  </data>
+  <data name="Automations_Runs_NewestFirst" xml:space="preserve">
+    <value>最新的優先</value>
+  </data>
+  <data name="Automations_Runs_NextRun" xml:space="preserve">
+    <value>下次執行 {0}</value>
+  </data>
+  <data name="Automations_Runs_NoMatch" xml:space="preserve">
+    <value>沒有符合的執行</value>
+  </data>
+  <data name="Automations_Runs_NoSummary" xml:space="preserve">
+    <value>沒有摘要。</value>
+  </data>
+  <data name="Automations_Runs_OldestFirst" xml:space="preserve">
+    <value>最舊的優先</value>
+  </data>
+  <data name="Automations_Runs_OpenChat" xml:space="preserve">
+    <value>在聊天中開啟</value>
+  </data>
+  <data name="Automations_Runs_Search" xml:space="preserve">
+    <value>搜尋執行</value>
+  </data>
+  <data name="Automations_Runs_SearchPlaceholder" xml:space="preserve">
+    <value>摘要、錯誤或自動化</value>
+  </data>
+  <data name="Automations_Runs_ShowLess" xml:space="preserve">
+    <value>顯示較少</value>
+  </data>
+  <data name="Automations_Runs_ShowMore" xml:space="preserve">
+    <value>顯示完整回覆</value>
+  </data>
+  <data name="Automations_Runs_StatusCount" xml:space="preserve">
+    <value>狀態 ({0})</value>
+  </data>
+  <data name="Automations_Runs_Suppressed" xml:space="preserve">
+    <value>已略過傳遞：{0}</value>
+  </data>
+  <data name="Automations_Runs_Tokens" xml:space="preserve">
+    <value>輸入 {0} / 輸出 {1}</value>
+  </data>
+  <data name="Automations_Runs_TriggerFired" xml:space="preserve">
+    <value>條件已符合</value>
+  </data>
+  <data name="Automations_Runs_ViewTranscript" xml:space="preserve">
+    <value>檢視文字記錄</value>
+  </data>
+  <data name="Automations_RunStatus_Error" xml:space="preserve">
+    <value>失敗</value>
+  </data>
+  <data name="Automations_RunStatus_Ok" xml:space="preserve">
+    <value>成功</value>
+  </data>
+  <data name="Automations_RunStatus_Skipped" xml:space="preserve">
+    <value>已略過</value>
+  </data>
+  <data name="Automations_RunStatus_Unknown" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="Automations_Schedule_CronLiteral" xml:space="preserve">
+    <value>Cron 排程 {0}</value>
+  </data>
+  <data name="Automations_Schedule_DailyAt" xml:space="preserve">
+    <value>每天 {0}</value>
+  </data>
+  <data name="Automations_Schedule_DaysAt" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="Automations_Schedule_Event" xml:space="preserve">
+    <value>當 {1} 傳來 {0} 時</value>
+  </data>
+  <data name="Automations_Schedule_EventSource" xml:space="preserve">
+    <value>事件來源：{0}</value>
+  </data>
+  <data name="Automations_Schedule_EveryManyDays" xml:space="preserve">
+    <value>每 {0} 天</value>
+  </data>
+  <data name="Automations_Schedule_EveryManyHours" xml:space="preserve">
+    <value>每 {0} 小時</value>
+  </data>
+  <data name="Automations_Schedule_EveryManyMinutes" xml:space="preserve">
+    <value>每 {0} 分鐘</value>
+  </data>
+  <data name="Automations_Schedule_EveryManySeconds" xml:space="preserve">
+    <value>每 {0} 秒</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneDay" xml:space="preserve">
+    <value>每天</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneHour" xml:space="preserve">
+    <value>每小時</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneMinute" xml:space="preserve">
+    <value>每分鐘</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneSecond" xml:space="preserve">
+    <value>每秒</value>
+  </data>
+  <data name="Automations_Schedule_HourlyAt" xml:space="preserve">
+    <value>每小時的第 {0} 分</value>
+  </data>
+  <data name="Automations_Schedule_Incomplete" xml:space="preserve">
+    <value>完成排程設定以查看執行時間。</value>
+  </data>
+  <data name="Automations_Schedule_MonthlyAt" xml:space="preserve">
+    <value>每月 {0} 日 {1}</value>
+  </data>
+  <data name="Automations_Schedule_Once" xml:space="preserve">
+    <value>於 {0} 執行一次</value>
+  </data>
+  <data name="Automations_Schedule_OnExit" xml:space="preserve">
+    <value>當 {0} 結束時</value>
+  </data>
+  <data name="Automations_Schedule_ReadOnlyKind" xml:space="preserve">
+    <value>此排程是在此應用程式之外管理的。當您儲存其他變更時，它會保持不變。</value>
+  </data>
+  <data name="Automations_Schedule_Stream" xml:space="preserve">
+    <value>當 {0} 產生輸出時</value>
+  </data>
+  <data name="Automations_Schedule_Unknown" xml:space="preserve">
+    <value>自訂排程</value>
+  </data>
+  <data name="Automations_Schedule_WeekdaysAt" xml:space="preserve">
+    <value>平日 {0}</value>
+  </data>
+  <data name="Automations_Schedule_WeekendsAt" xml:space="preserve">
+    <value>週末 {0}</value>
+  </data>
+  <data name="Automations_Schedule_WithTimezone" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="Automations_Scheduler_Off" xml:space="preserve">
+    <value>已停止</value>
+  </data>
+  <data name="Automations_Scheduler_On" xml:space="preserve">
+    <value>執行中</value>
+  </data>
+  <data name="Automations_SchedulerOff_Body" xml:space="preserve">
+    <value>在啟用閘道排程器之前，已排程的自動化不會執行。</value>
+  </data>
+  <data name="Automations_SchedulerOff_Title" xml:space="preserve">
+    <value>排程器已停止</value>
+  </data>
+  <data name="Automations_Scratch_Bytes" xml:space="preserve">
+    <value>{0:N0} / {1:N0} 位元組</value>
+  </data>
+  <data name="Automations_Scratch_Conflict" xml:space="preserve">
+    <value>您編輯時暫存區已變更。您的草稿已保留。請先重新載入最新版本再儲存。</value>
+  </data>
+  <data name="Automations_Scratch_Content" xml:space="preserve">
+    <value>暫存區內容</value>
+  </data>
+  <data name="Automations_Scratch_Empty" xml:space="preserve">
+    <value>尚未儲存暫存區。儲存空白編輯器會建立空白暫存區；移除則會還原為沒有暫存區。</value>
+  </data>
+  <data name="Automations_Scratch_Help" xml:space="preserve">
+    <value>此自動化可在執行之間讀取及更新的私人工作筆記。僅在您要求時載入。請勿在此儲存認證。</value>
+  </data>
+  <data name="Automations_Scratch_Load" xml:space="preserve">
+    <value>載入暫存區</value>
+  </data>
+  <data name="Automations_Scratch_Redacted" xml:space="preserve">
+    <value>已隱藏敏感內容。為保護原始內容，已停用儲存。您仍可移除此暫存區。</value>
+  </data>
+  <data name="Automations_Scratch_Reload" xml:space="preserve">
+    <value>重新載入</value>
+  </data>
+  <data name="Automations_Scratch_Remove" xml:space="preserve">
+    <value>移除暫存區</value>
+  </data>
+  <data name="Automations_Scratch_Removed" xml:space="preserve">
+    <value>已移除暫存區。</value>
+  </data>
+  <data name="Automations_Scratch_Save" xml:space="preserve">
+    <value>儲存暫存區</value>
+  </data>
+  <data name="Automations_Scratch_Saved" xml:space="preserve">
+    <value>已儲存暫存區。</value>
+  </data>
+  <data name="Automations_Scratch_Title" xml:space="preserve">
+    <value>工作暫存區</value>
+  </data>
+  <data name="Automations_Scratch_TooLarge" xml:space="preserve">
+    <value>暫存區超過大小限制。</value>
+  </data>
+  <data name="Automations_Search_Placeholder" xml:space="preserve">
+    <value>搜尋自動化</value>
+  </data>
+  <data name="Automations_Seconds" xml:space="preserve">
+    <value>{0} 秒</value>
+  </data>
+  <data name="Automations_Section_Advanced" xml:space="preserve">
+    <value>進階</value>
+  </data>
+  <data name="Automations_Section_Basics" xml:space="preserve">
+    <value>基本資訊</value>
+  </data>
+  <data name="Automations_Section_Delivery" xml:space="preserve">
+    <value>結果傳送位置</value>
+  </data>
+  <data name="Automations_Section_Details" xml:space="preserve">
+    <value>詳細資料</value>
+  </data>
+  <data name="Automations_Section_FailureAlerts" xml:space="preserve">
+    <value>失敗警示</value>
+  </data>
+  <data name="Automations_Section_What" xml:space="preserve">
+    <value>執行內容</value>
+  </data>
+  <data name="Automations_Section_When" xml:space="preserve">
+    <value>執行時間</value>
+  </data>
+  <data name="Automations_Session_Current" xml:space="preserve">
+    <value>目前工作階段</value>
+  </data>
+  <data name="Automations_Session_Isolated" xml:space="preserve">
+    <value>隔離的工作階段</value>
+  </data>
+  <data name="Automations_Session_Main" xml:space="preserve">
+    <value>主要工作階段</value>
+  </data>
+  <data name="Automations_Session_Named" xml:space="preserve">
+    <value>工作階段 {0}</value>
+  </data>
+  <data name="Automations_Sort" xml:space="preserve">
+    <value>排序</value>
+  </data>
+  <data name="Automations_Sort_Ascending" xml:space="preserve">
+    <value>遞增</value>
+  </data>
+  <data name="Automations_Sort_Descending" xml:space="preserve">
+    <value>遞減</value>
+  </data>
+  <data name="Automations_Sort_Name" xml:space="preserve">
+    <value>名稱</value>
+  </data>
+  <data name="Automations_Sort_NextRun" xml:space="preserve">
+    <value>下次執行</value>
+  </data>
+  <data name="Automations_Sort_Updated" xml:space="preserve">
+    <value>最近更新</value>
+  </data>
+  <data name="Automations_StaggerWindow" xml:space="preserve">
+    <value>最多錯開 {0}</value>
+  </data>
+  <data name="Automations_Stat_Failing" xml:space="preserve">
+    <value>失敗中</value>
+  </data>
+  <data name="Automations_Stat_NextWake" xml:space="preserve">
+    <value>下次喚醒</value>
+  </data>
+  <data name="Automations_Stat_Scheduler" xml:space="preserve">
+    <value>排程器</value>
+  </data>
+  <data name="Automations_Stat_Total" xml:space="preserve">
+    <value>自動化</value>
+  </data>
+  <data name="Automations_State_Active" xml:space="preserve">
+    <value>使用中</value>
+  </data>
+  <data name="Automations_State_AutoDisabledRuns" xml:space="preserve">
+    <value>在 {0} 次執行失敗後自動停用</value>
+  </data>
+  <data name="Automations_State_AutoDisabledSchedule" xml:space="preserve">
+    <value>在 {0} 次排程錯誤後自動停用</value>
+  </data>
+  <data name="Automations_State_Completed" xml:space="preserve">
+    <value>已完成</value>
+  </data>
+  <data name="Automations_State_Failing" xml:space="preserve">
+    <value>失敗中</value>
+  </data>
+  <data name="Automations_State_Paused" xml:space="preserve">
+    <value>已暫停</value>
+  </data>
+  <data name="Automations_State_Running" xml:space="preserve">
+    <value>執行中</value>
+  </data>
+  <data name="Automations_StreamError_Title" xml:space="preserve">
+    <value>串流來源錯誤</value>
+  </data>
+  <data name="Automations_Suggestion_dependencyRadar_Name" xml:space="preserve">
+    <value>相依性雷達</value>
+  </data>
+  <data name="Automations_Suggestion_dependencyRadar_Prompt" xml:space="preserve">
+    <value>檢查我的主要專案是否有過時或有弱點的相依性。列出值得注意的更新，每項附上一行風險說明，並草擬升級命令。</value>
+  </data>
+  <data name="Automations_Suggestion_dependencyRadar_Schedule" xml:space="preserve">
+    <value>每週一上午 9:00</value>
+  </data>
+  <data name="Automations_Suggestion_dependencyRadar_Tagline" xml:space="preserve">
+    <value>過時或有弱點的相依性，附升級說明。</value>
+  </data>
+  <data name="Automations_Suggestion_hackerNewsScout_Name" xml:space="preserve">
+    <value>Hacker News 偵察兵</value>
+  </data>
+  <data name="Automations_Suggestion_hackerNewsScout_Prompt" xml:space="preserve">
+    <value>瀏覽今天 Hacker News 首頁上關於 AI 代理程式、開發人員工具和 TypeScript 的文章。傳送給我最有趣的三個連結，每個附上一句犀利點評。</value>
+  </data>
+  <data name="Automations_Suggestion_hackerNewsScout_Schedule" xml:space="preserve">
+    <value>每天上午 8:00</value>
+  </data>
+  <data name="Automations_Suggestion_hackerNewsScout_Tagline" xml:space="preserve">
+    <value>三個值得配咖啡的連結，附上犀利點評。</value>
+  </data>
+  <data name="Automations_Suggestion_polyglotMinute_Name" xml:space="preserve">
+    <value>外語一分鐘</value>
+  </data>
+  <data name="Automations_Suggestion_polyglotMinute_Prompt" xml:space="preserve">
+    <value>教我一句實用的日文：句子本身、發音方式、字面意思，以及使用時機。內容不超過五行。</value>
+  </data>
+  <data name="Automations_Suggestion_polyglotMinute_Schedule" xml:space="preserve">
+    <value>每天上午 8:00</value>
+  </data>
+  <data name="Automations_Suggestion_polyglotMinute_Tagline" xml:space="preserve">
+    <value>配著晨間咖啡學一句實用外語。</value>
+  </data>
+  <data name="Automations_Suggestion_repoPulse_Name" xml:space="preserve">
+    <value>存放庫脈動</value>
+  </data>
+  <data name="Automations_Suggestion_repoPulse_Prompt" xml:space="preserve">
+    <value>檢閱我的存放庫隔夜的活動：新的問題、提取要求和 CI 失敗。摘要今天最需要我注意的三件事，每件附上連結和一行原因說明。</value>
+  </data>
+  <data name="Automations_Suggestion_repoPulse_Schedule" xml:space="preserve">
+    <value>平日上午 9:00</value>
+  </data>
+  <data name="Automations_Suggestion_repoPulse_Tagline" xml:space="preserve">
+    <value>依緊急程度排序的隔夜問題、提取要求和 CI 失敗。</value>
+  </data>
+  <data name="Automations_Suggestion_standupGhostwriter_Name" xml:space="preserve">
+    <value>站立會議代筆</value>
+  </data>
+  <data name="Automations_Suggestion_standupGhostwriter_Prompt" xml:space="preserve">
+    <value>根據昨天的認可、已合併的提取要求和尚未解決的審查討論串，草擬我的站立會議更新。最多三個項目：已完成、進行中、受阻。</value>
+  </data>
+  <data name="Automations_Suggestion_standupGhostwriter_Schedule" xml:space="preserve">
+    <value>平日上午 9:00</value>
+  </data>
+  <data name="Automations_Suggestion_standupGhostwriter_Tagline" xml:space="preserve">
+    <value>根據昨天的工作草擬您的站立會議更新。</value>
+  </data>
+  <data name="Automations_Suggestion_watchdog_Name" xml:space="preserve">
+    <value>夜間守望</value>
+  </data>
+  <data name="Automations_Suggestion_watchdog_Prompt" xml:space="preserve">
+    <value>檢查我的服務和閘道是否正常：掃描最近的記錄，找出新的錯誤、重新啟動或異常負載。一切正常時，只回覆一行簡短的正常訊息；如果有東西看起來故障了，請回報失敗的項目以及該從哪裡開始調查。</value>
+  </data>
+  <data name="Automations_Suggestion_watchdog_Schedule" xml:space="preserve">
+    <value>每小時</value>
+  </data>
+  <data name="Automations_Suggestion_watchdog_Tagline" xml:space="preserve">
+    <value>每小時健康檢查，附一行結論。</value>
+  </data>
+  <data name="Automations_Suggestions_Title" xml:space="preserve">
+    <value>入門自動化</value>
+  </data>
+  <data name="Automations_Tab_Overview" xml:space="preserve">
+    <value>概觀</value>
+  </data>
+  <data name="Automations_Tab_Runs" xml:space="preserve">
+    <value>執行歷史記錄</value>
+  </data>
+  <data name="Automations_Tab_Scratch" xml:space="preserve">
+    <value>暫存區</value>
+  </data>
+  <data name="Automations_Thread" xml:space="preserve">
+    <value>討論串 {0}</value>
+  </data>
+  <data name="Automations_Title" xml:space="preserve">
+    <value>自動化</value>
+  </data>
+  <data name="Automations_Transcript_Assistant" xml:space="preserve">
+    <value>助理</value>
+  </data>
+  <data name="Automations_Transcript_Empty" xml:space="preserve">
+    <value>此執行中尚無訊息。</value>
+  </data>
+  <data name="Automations_Transcript_Loading" xml:space="preserve">
+    <value>正在載入文字記錄...</value>
+  </data>
+  <data name="Automations_Transcript_LoadOlder" xml:space="preserve">
+    <value>載入較早的訊息</value>
+  </data>
+  <data name="Automations_Transcript_System" xml:space="preserve">
+    <value>系統</value>
+  </data>
+  <data name="Automations_Transcript_Title" xml:space="preserve">
+    <value>執行文字記錄</value>
+  </data>
+  <data name="Automations_Transcript_Tool" xml:space="preserve">
+    <value>工具：{0}</value>
+  </data>
+  <data name="Automations_Transcript_Unavailable" xml:space="preserve">
+    <value>無法使用執行文字記錄：{0}</value>
+  </data>
+  <data name="Automations_Transcript_User" xml:space="preserve">
+    <value>提示</value>
+  </data>
+  <data name="Automations_TriggerConfigured" xml:space="preserve">
+    <value>已設定條件觸發程序</value>
+  </data>
+  <data name="Automations_Unit_Days" xml:space="preserve">
+    <value>天</value>
+  </data>
+  <data name="Automations_Unit_Hours" xml:space="preserve">
+    <value>小時</value>
+  </data>
+  <data name="Automations_Unit_Minutes" xml:space="preserve">
+    <value>分鐘</value>
+  </data>
+  <data name="Automations_Unit_Seconds" xml:space="preserve">
+    <value>秒</value>
+  </data>
+  <data name="Automations_Unknown" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="Automations_View_Automations" xml:space="preserve">
+    <value>自動化</value>
+  </data>
+  <data name="Automations_View_RunHistory" xml:space="preserve">
+    <value>執行歷史記錄</value>
+  </data>
+  <data name="Automations_Wake_NextHeartbeat" xml:space="preserve">
+    <value>下次活動訊號</value>
+  </data>
+  <data name="Automations_Wake_Now" xml:space="preserve">
+    <value>立即</value>
+  </data>
+  <data name="Automations_Yes" xml:space="preserve">
+    <value>是</value>
+  </data>
+  <data name="Automations_Empty_Headline" xml:space="preserve">
+    <value>讓 OpenClaw 自動運作</value>
+  </data>
+  <data name="Automations_Header_AllQuiet" xml:space="preserve">
+    <value>一切平靜。目前沒有排定的工作。</value>
+  </data>
+  <data name="Automations_Header_NextUp" xml:space="preserve">
+    <value>即將執行：{0}，{1}</value>
+  </data>
+  <data name="Automations_KindHint_At" xml:space="preserve">
+    <value>在設定時間執行一次</value>
+  </data>
+  <data name="Automations_KindHint_Cron" xml:space="preserve">
+    <value>行事曆規則，例如平日 9 點</value>
+  </data>
+  <data name="Automations_KindHint_Event" xml:space="preserve">
+    <value>當 MCP 伺服器傳送事件時</value>
+  </data>
+  <data name="Automations_KindHint_Every" xml:space="preserve">
+    <value>依固定間隔重複</value>
+  </data>
+  <data name="Automations_Runs_Streak" xml:space="preserve">
+    <value>連續 {0} 次執行成功</value>
+  </data>
+  <data name="Automations_Runs_SuccessRate" xml:space="preserve">
+    <value>{0}% 成功</value>
+  </data>
+  <data name="Automations_Runs_SummaryDetail" xml:space="preserve">
+    <value>最近 {1} 次執行中成功 {0} 次，平均 {2}</value>
+  </data>
+  <data name="Automations_Stat_Healthy" xml:space="preserve">
+    <value>全部正常</value>
+  </data>
+  <data name="Automations_Selected" xml:space="preserve">
+    <value>已選取</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>節點沙箱</value>
   </data>

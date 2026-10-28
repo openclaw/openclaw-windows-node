@@ -1749,33 +1749,6 @@ Utilisez l'une de ces options :
   <data name="ConversationsPage_TextBlock_37.Text" xml:space="preserve">
     <value>Actualiser</value>
   </data>
-  <data name="CronPage_TextBlock_10.Text" xml:space="preserve">
-    <value>⏱️ Tâches cron</value>
-  </data>
-  <data name="CronPage_TextBlock_29.Text" xml:space="preserve">
-    <value>État du planificateur</value>
-  </data>
-  <data name="SchedulerStatusText.Text" xml:space="preserve">
-    <value>Activé</value>
-  </data>
-  <data name="StorePathText.Text" xml:space="preserve">
-    <value>Store: ~/.openclaw/cron.db</value>
-  </data>
-  <data name="NextWakeText.Text" xml:space="preserve">
-    <value>Prochain réveil : …</value>
-  </data>
-  <data name="CronPage_Button_80.Content" xml:space="preserve">
-    <value>Exécuter maintenant</value>
-  </data>
-  <data name="CronPage_TextBlock_90.Text" xml:space="preserve">
-    <value>Dernière exécution :</value>
-  </data>
-  <data name="CronPage_TextBlock_104.Text" xml:space="preserve">
-    <value>Prochaine exécution :</value>
-  </data>
-  <data name="CronPage_TextBlock_120.Text" xml:space="preserve">
-    <value>Aucune tâche cron configurée</value>
-  </data>
   <data name="DebugPage_TextBlock_8.Text" xml:space="preserve">
     <value>🐛 Débogage</value>
   </data>
@@ -2284,7 +2257,7 @@ Utilisez l'une de ces options :
     <value>Utilisations</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>Planification</value>
+    <value>Automatisations</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>Cet ordinateur</value>
@@ -3296,18 +3269,6 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>Les primitives de sandboxing MXC ne sont pas disponibles sur cette machine.</value>
-  </data>
-  <data name="AppNotification_CronRunFailed_Title" xml:space="preserve">
-    <value>La tâche Cron n'a pas démarré</value>
-  </data>
-  <data name="AppNotification_CronRunFailed_DefaultDetail" xml:space="preserve">
-    <value>La demande a échoué.</value>
-  </data>
-  <data name="AppNotification_CronRunRejectedDetail" xml:space="preserve">
-    <value>La passerelle a rejeté la demande cron.run.</value>
-  </data>
-  <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
-    <value>{0} : {1}</value>
   </data>
   <data name="NotificationsPage_Title.Text" xml:space="preserve">
     <value>Alertes</value>
@@ -4395,180 +4356,6 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="ConnectionPage_Cancel.Content" xml:space="preserve">
     <value>Annuler</value>
   </data>
-  <data name="CronPage_CronJobs.Text" xml:space="preserve">
-    <value>⏱️ Tâches Cron</value>
-  </data>
-  <data name="CronPage_Refresh.Text" xml:space="preserve">
-    <value>Actualiser</value>
-  </data>
-  <data name="CronPage_NewJob.Text" xml:space="preserve">
-    <value>Nouvelle tâche</value>
-  </data>
-  <data name="CronPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>Passerelle déconnectée</value>
-  </data>
-  <data name="CronPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>Connectez-vous à une passerelle pour charger les tâches cron.</value>
-  </data>
-  <data name="CronPage_OpenConnection.Content" xml:space="preserve">
-    <value>Ouvrir la connexion</value>
-  </data>
-  <data name="CronPage_NewCronJob.Text" xml:space="preserve">
-    <value>Nouvelle tâche Cron</value>
-  </data>
-  <data name="CronPage_NAME.Text" xml:space="preserve">
-    <value>NOM</value>
-  </data>
-  <data name="CronPage_MorningBrief.PlaceholderText" xml:space="preserve">
-    <value>Briefing du matin</value>
-  </data>
-  <data name="CronPage_SCHEDULE.Text" xml:space="preserve">
-    <value>PLANIFICATION</value>
-  </data>
-  <data name="CronPage_ScheduleEveryOption.Content" xml:space="preserve">
-    <value>Toutes les</value>
-  </data>
-  <data name="CronPage_ScheduleAtOption.Content" xml:space="preserve">
-    <value>À</value>
-  </data>
-  <data name="CronPage_ScheduleCronOption.Content" xml:space="preserve">
-    <value>Cron</value>
-  </data>
-  <data name="CronPage_QUICKPRESETS.Text" xml:space="preserve">
-    <value>PRÉRÉGLAGES RAPIDES</value>
-  </data>
-  <data name="CronPage_Hourly.Content" xml:space="preserve">
-    <value>⏰ Toutes les heures</value>
-  </data>
-  <data name="CronPage_Daily9am.Content" xml:space="preserve">
-    <value>🌅 Tous les jours à 9 h</value>
-  </data>
-  <data name="CronPage_Daily6pm.Content" xml:space="preserve">
-    <value>🌆 Tous les jours à 18 h</value>
-  </data>
-  <data name="CronPage_Weekdays.Content" xml:space="preserve">
-    <value>💼 Jours ouvrables</value>
-  </data>
-  <data name="CronPage_Weekly.Content" xml:space="preserve">
-    <value>📅 Hebdomadaire</value>
-  </data>
-  <data name="CronPage_EXPRESSION.Text" xml:space="preserve">
-    <value>EXPR. CRON</value>
-  </data>
-  <data name="CronPage_TIMEZONE.Text" xml:space="preserve">
-    <value>FUSEAU HORAIRE</value>
-  </data>
-  <data name="CronPage_Optional.PlaceholderText" xml:space="preserve">
-    <value>Facultatif</value>
-  </data>
-  <data name="CronPage_AmericaNewYork.Content" xml:space="preserve">
-    <value>America/New_York</value>
-  </data>
-  <data name="CronPage_AmericaChicago.Content" xml:space="preserve">
-    <value>America/Chicago</value>
-  </data>
-  <data name="CronPage_AmericaDenver.Content" xml:space="preserve">
-    <value>America/Denver</value>
-  </data>
-  <data name="CronPage_AmericaLosAngeles.Content" xml:space="preserve">
-    <value>America/Los_Angeles</value>
-  </data>
-  <data name="CronPage_EuropeLondon.Content" xml:space="preserve">
-    <value>Europe/London</value>
-  </data>
-  <data name="CronPage_EuropeBerlin.Content" xml:space="preserve">
-    <value>Europe/Berlin</value>
-  </data>
-  <data name="CronPage_AsiaTokyo.Content" xml:space="preserve">
-    <value>Asia/Tokyo</value>
-  </data>
-  <data name="CronPage_UTC.Content" xml:space="preserve">
-    <value>UTC</value>
-  </data>
-  <data name="CronPage_EVERY.Text" xml:space="preserve">
-    <value>TOUTES LES</value>
-  </data>
-  <data name="CronPage_UNIT.Text" xml:space="preserve">
-    <value>UNITÉ</value>
-  </data>
-  <data name="CronPage_Minutes.Content" xml:space="preserve">
-    <value>Min</value>
-  </data>
-  <data name="CronPage_Hours.Content" xml:space="preserve">
-    <value>Heures</value>
-  </data>
-  <data name="CronPage_Days.Content" xml:space="preserve">
-    <value>Jours</value>
-  </data>
-  <data name="CronPage_RUNAT.Text" xml:space="preserve">
-    <value>EXÉCUTER À</value>
-  </data>
-  <data name="CronPage_Date.PlaceholderText" xml:space="preserve">
-    <value>Choisir une date</value>
-  </data>
-  <data name="CronPage_330PM.PlaceholderText" xml:space="preserve">
-    <value>15:30</value>
-  </data>
-  <data name="CronPage_DeleteJobAfterIt.Content" xml:space="preserve">
-    <value>Supprimer la tâche après son exécution</value>
-  </data>
-  <data name="CronPage_PROMPTPAYLOAD.Text" xml:space="preserve">
-    <value>INVITE / CHARGE UTILE</value>
-  </data>
-  <data name="CronPage_WhatShouldTheAgent.PlaceholderText" xml:space="preserve">
-    <value>Que doit faire l'agent ?</value>
-  </data>
-  <data name="CronPage_DELIVERY.Text" xml:space="preserve">
-    <value>LIVRAISON</value>
-  </data>
-  <data name="CronPage_SilentNone.Content" xml:space="preserve">
-    <value>Silencieux (aucun)</value>
-  </data>
-  <data name="CronPage_NotifyMeAnnounce.Content" xml:space="preserve">
-    <value>M'avertir (annoncer)</value>
-  </data>
-  <data name="CronPage_CHANNEL.Text" xml:space="preserve">
-    <value>CANAL</value>
-  </data>
-  <data name="CronPage_EGWebchat.PlaceholderText" xml:space="preserve">
-    <value>ex. webchat</value>
-  </data>
-  <data name="CronPage_AdvancedOptions.Text" xml:space="preserve">
-    <value>Options avancées</value>
-  </data>
-  <data name="CronPage_SESSIONBEHAVIOR.Text" xml:space="preserve">
-    <value>COMPORTEMENT DE SESSION</value>
-  </data>
-  <data name="CronPage_NewSessionEachRun.Content" xml:space="preserve">
-    <value>Nouvelle session à chaque exécution</value>
-  </data>
-  <data name="CronPage_ResumeMainSession.Content" xml:space="preserve">
-    <value>Reprendre la session principale</value>
-  </data>
-  <data name="CronPage_WAKEMODE.Text" xml:space="preserve">
-    <value>MODE DE RÉVEIL</value>
-  </data>
-  <data name="CronPage_NowImmediate.Content" xml:space="preserve">
-    <value>Maintenant (immédiat)</value>
-  </data>
-  <data name="CronPage_QueueWaitForIdle.Content" xml:space="preserve">
-    <value>File d'attente (attendre l'inactivité)</value>
-  </data>
-  <data name="CronPage_Cancel.Content" xml:space="preserve">
-    <value>Annuler</value>
-  </data>
-  <data name="CronPage_CreateJob.Content" xml:space="preserve">
-    <value>Créer la tâche</value>
-  </data>
-  <data name="CronPage_LoadingCronJobs.Text" xml:space="preserve">
-    <value>Chargement des tâches cron…</value>
-  </data>
-  <data name="CronPage_NoCronJobsConfigured.Text" xml:space="preserve">
-    <value>Aucune tâche cron configurée</value>
-  </data>
-  <data name="CronPage_CronJobsWillAppear.Text" xml:space="preserve">
-    <value>Les tâches cron apparaîtront ici lorsqu'elles seront configurées via la passerelle.</value>
-  </data>
   <data name="DebugPage_Status.Title" xml:space="preserve">
     <value>État</value>
   </data>
@@ -5274,75 +5061,6 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   </data>
   <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
     <value>{0} sur {1} événements</value>
-  </data>
-  <data name="CronPage_CreateJobLabel" xml:space="preserve">
-    <value>Créer la tâche</value>
-  </data>
-  <data name="CronPage_EditJob" xml:space="preserve">
-    <value>Modifier la tâche</value>
-  </data>
-  <data name="CronPage_NewJobTitle" xml:space="preserve">
-    <value>Nouvelle tâche</value>
-  </data>
-  <data name="CronPage_Running" xml:space="preserve">
-    <value>Exécution...</value>
-  </data>
-  <data name="CronPage_CompletedOneTimeJobTooltip" xml:space="preserve">
-    <value>Tâche ponctuelle terminée</value>
-  </data>
-  <data name="CronPage_EnableJobTooltip" xml:space="preserve">
-    <value>Activer la tâche</value>
-  </data>
-  <data name="CronPage_DisableJobTooltip" xml:space="preserve">
-    <value>Désactiver la tâche</value>
-  </data>
-  <data name="CronPage_FullResponse" xml:space="preserve">
-    <value>Réponse complète</value>
-  </data>
-  <data name="CronPage_OpenChat" xml:space="preserve">
-    <value>Ouvrir le chat</value>
-  </data>
-  <data name="CronPage_RunNow" xml:space="preserve">
-    <value>Exécuter maintenant</value>
-  </data>
-  <data name="CronPage_EditAction" xml:space="preserve">
-    <value>Modifier</value>
-  </data>
-  <data name="CronPage_HistoryAction" xml:space="preserve">
-    <value>Historique</value>
-  </data>
-  <data name="CronPage_RemoveAction" xml:space="preserve">
-    <value>Supprimer</value>
-  </data>
-  <data name="CronPage_RunningBadge" xml:space="preserve">
-    <value>Exécution</value>
-  </data>
-  <data name="CronPage_RunHistory" xml:space="preserve">
-    <value>Historique des exécutions</value>
-  </data>
-  <data name="CronPage_RunHistoryShowing" xml:space="preserve">
-    <value>Historique des exécutions - {0} sur {1} affichées</value>
-  </data>
-  <data name="CronPage_RunHistoryCount" xml:space="preserve">
-    <value>Historique des exécutions - {0} exécutions</value>
-  </data>
-  <data name="CronPage_LoadingRunHistory" xml:space="preserve">
-    <value>Chargement de l’historique des exécutions...</value>
-  </data>
-  <data name="CronPage_NoRunHistoryAvailable" xml:space="preserve">
-    <value>Aucun historique d’exécution disponible.</value>
-  </data>
-  <data name="CronPage_LoadOlderRuns" xml:space="preserve">
-    <value>Charger les exécutions plus anciennes ({0} restantes)...</value>
-  </data>
-  <data name="CronPage_LoadMoreRuns" xml:space="preserve">
-    <value>Charger plus d’exécutions...</value>
-  </data>
-  <data name="CronPage_Loading" xml:space="preserve">
-    <value>Chargement...</value>
-  </data>
-  <data name="CronPage_SaveChanges" xml:space="preserve">
-    <value>Enregistrer les modifications</value>
   </data>
   <data name="SchemaConfigEditor_AddItem" xml:space="preserve">
     <value>Ajouter un élément</value>
@@ -6694,9 +6412,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="SettingsPage_RemovingLocalGatewayMessage" xml:space="preserve">
     <value>Suppression de la passerelle locale. Cela peut prendre 10 à 30 secondes…</value>
   </data>
-  <data name="CronPage_NextWakeFormat" xml:space="preserve">
-    <value>· Prochain réveil : {0}</value>
-  </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>Échec de l'initialisation de WebView2 : {0}</value>
   </data>
@@ -6705,21 +6420,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsDescription_Format" xml:space="preserve">
     <value>Open a shell or manage the local gateway service in {0}.</value>
-  </data>
-  <data name="CronPage_JobCompleted" xml:space="preserve">
-    <value>Job completed</value>
-  </data>
-  <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
-    <value>"{0}" ran successfully and was removed.</value>
-  </data>
-  <data name="CronPage_RunNotStarted" xml:space="preserve">
-    <value>Exécution non démarrée</value>
-  </data>
-  <data name="CronPage_RunNotStartedGeneric" xml:space="preserve">
-    <value>{0} n’a pas été démarrée.</value>
-  </data>
-  <data name="CronPage_RunNotStartedWithReason" xml:space="preserve">
-    <value>{0} n’a pas été démarrée : {1}</value>
   </data>
   <data name="GatewayHostAccess_NoTerminalAccess" xml:space="preserve">
     <value>This gateway does not have WSL or SSH terminal access.</value>
@@ -8118,6 +7818,1431 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Résumer mes sessions récentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>M’aider à configurer un canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Vérifier l’état du système</value></data>
+  <data name="Automations_AgentScope" xml:space="preserve">
+    <value>Agent : {0}</value>
+  </data>
+  <data name="Automations_AutoDisabled_Body" xml:space="preserve">
+    <value>La passerelle a suspendu cette automatisation après des échecs répétés. Corrigez la cause, puis reprenez-la.</value>
+  </data>
+  <data name="Automations_Back" xml:space="preserve">
+    <value>Retour</value>
+  </data>
+  <data name="Automations_Cancel" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
+  <data name="Automations_Clone" xml:space="preserve">
+    <value>Dupliquer</value>
+  </data>
+  <data name="Automations_CloneName" xml:space="preserve">
+    <value>{0} (copie)</value>
+  </data>
+  <data name="Automations_Condition_Every" xml:space="preserve">
+    <value>Vérifie avant chaque exécution</value>
+  </data>
+  <data name="Automations_Condition_Once" xml:space="preserve">
+    <value>Vérifie avant chaque exécution, se désactive après la première correspondance</value>
+  </data>
+  <data name="Automations_Condition_Summary" xml:space="preserve">
+    <value>Condition vérifiée {0} fois. Dernière vérification {1}. Dernier déclenchement {2}.</value>
+  </data>
+  <data name="Automations_ConfirmPause_Body" xml:space="preserve">
+    <value>L&apos;automatisation cesse de s&apos;exécuter selon sa planification jusqu&apos;à ce que vous la repreniez. Sa définition et son historique des exécutions sont conservés.</value>
+  </data>
+  <data name="Automations_ConfirmPause_Title" xml:space="preserve">
+    <value>Suspendre « {0} » ?</value>
+  </data>
+  <data name="Automations_ConfirmRemove_Body" xml:space="preserve">
+    <value>Cette action supprime définitivement l&apos;automatisation et arrête toutes les exécutions futures. Elle est irréversible.</value>
+  </data>
+  <data name="Automations_ConfirmRemove_Title" xml:space="preserve">
+    <value>Supprimer « {0} » ?</value>
+  </data>
+  <data name="Automations_Conversations_Failed" xml:space="preserve">
+    <value>Impossible de charger les conversations récentes : {0}</value>
+  </data>
+  <data name="Automations_Default" xml:space="preserve">
+    <value>Par défaut</value>
+  </data>
+  <data name="Automations_Delivery_Delivered" xml:space="preserve">
+    <value>Livré</value>
+  </data>
+  <data name="Automations_Delivery_NotDelivered" xml:space="preserve">
+    <value>Non livré</value>
+  </data>
+  <data name="Automations_Delivery_NotRequested" xml:space="preserve">
+    <value>Non demandée</value>
+  </data>
+  <data name="Automations_Delivery_Unknown" xml:space="preserve">
+    <value>Livraison inconnue</value>
+  </data>
+  <data name="Automations_DeliveryMode_Announce" xml:space="preserve">
+    <value>Annoncer un résumé</value>
+  </data>
+  <data name="Automations_DeliveryMode_Choose" xml:space="preserve">
+    <value>Choisissez un mode de livraison</value>
+  </data>
+  <data name="Automations_DeliveryMode_Legacy" xml:space="preserve">
+    <value>Paramètre hérité</value>
+  </data>
+  <data name="Automations_DeliveryMode_None" xml:space="preserve">
+    <value>Aucune (interne)</value>
+  </data>
+  <data name="Automations_DeliveryMode_Webhook" xml:space="preserve">
+    <value>Webhook POST</value>
+  </data>
+  <data name="Automations_Destination_Channel" xml:space="preserve">
+    <value>Destination de canal</value>
+  </data>
+  <data name="Automations_Destination_Owner" xml:space="preserve">
+    <value>Message direct au propriétaire</value>
+  </data>
+  <data name="Automations_Detail_LoadFailed" xml:space="preserve">
+    <value>Impossible de charger cette automatisation</value>
+  </data>
+  <data name="Automations_DirectPolicy_Allow" xml:space="preserve">
+    <value>Autoriser</value>
+  </data>
+  <data name="Automations_DirectPolicy_Block" xml:space="preserve">
+    <value>Bloquer</value>
+  </data>
+  <data name="Automations_DirectPolicy_Default" xml:space="preserve">
+    <value>Stratégie par défaut</value>
+  </data>
+  <data name="Automations_Disconnected_BannerBody" xml:space="preserve">
+    <value>Les automatisations sont indisponibles jusqu&apos;au rétablissement de la connexion à la passerelle.</value>
+  </data>
+  <data name="Automations_Disconnected_BannerTitle" xml:space="preserve">
+    <value>Passerelle déconnectée</value>
+  </data>
+  <data name="Automations_Disconnected_Body" xml:space="preserve">
+    <value>Les automatisations s&apos;exécutent sur votre passerelle OpenClaw. Ouvrez Connexion pour appairer ce PC, puis revenez ici pour les afficher et les gérer.</value>
+  </data>
+  <data name="Automations_Disconnected_Title" xml:space="preserve">
+    <value>Connectez-vous à une passerelle pour gérer les automatisations</value>
+  </data>
+  <data name="Automations_Duration_Hours" xml:space="preserve">
+    <value>{0} h {1} min</value>
+  </data>
+  <data name="Automations_Duration_Milliseconds" xml:space="preserve">
+    <value>{0} ms</value>
+  </data>
+  <data name="Automations_Duration_Minutes" xml:space="preserve">
+    <value>{0} min {1} s</value>
+  </data>
+  <data name="Automations_Duration_Seconds" xml:space="preserve">
+    <value>{0} s</value>
+  </data>
+  <data name="Automations_Edit" xml:space="preserve">
+    <value>Modifier</value>
+  </data>
+  <data name="Automations_Editor_CantSave" xml:space="preserve">
+    <value>Enregistrement impossible pour le moment</value>
+  </data>
+  <data name="Automations_Editor_CloneTitle" xml:space="preserve">
+    <value>Dupliquer l&apos;automatisation</value>
+  </data>
+  <data name="Automations_Editor_Create" xml:space="preserve">
+    <value>Créer l&apos;automatisation</value>
+  </data>
+  <data name="Automations_Editor_CreateAndRun" xml:space="preserve">
+    <value>Créer et exécuter maintenant</value>
+  </data>
+  <data name="Automations_Editor_EditTitle" xml:space="preserve">
+    <value>Modifier {0}</value>
+  </data>
+  <data name="Automations_Editor_FixMany" xml:space="preserve">
+    <value>Corrigez {0} champs pour continuer.</value>
+  </data>
+  <data name="Automations_Editor_FixOne" xml:space="preserve">
+    <value>Corrigez 1 champ pour continuer.</value>
+  </data>
+  <data name="Automations_Editor_NewTitle" xml:space="preserve">
+    <value>Nouvelle automatisation</value>
+  </data>
+  <data name="Automations_Editor_Save" xml:space="preserve">
+    <value>Enregistrer les modifications</value>
+  </data>
+  <data name="Automations_Editor_SaveFailed" xml:space="preserve">
+    <value>Impossible d&apos;enregistrer</value>
+  </data>
+  <data name="Automations_Editor_Saving" xml:space="preserve">
+    <value>Enregistrement...</value>
+  </data>
+  <data name="Automations_Editor_Subtitle" xml:space="preserve">
+    <value>Décrivez ce qu&apos;OpenClaw doit faire, puis choisissez quand l&apos;exécuter.</value>
+  </data>
+  <data name="Automations_Empty_Body" xml:space="preserve">
+    <value>Décrivez ce qu&apos;OpenClaw doit faire et quand. L&apos;automatisation s&apos;exécute selon la planification, même lorsque ce PC est inactif.</value>
+  </data>
+  <data name="Automations_Empty_ReadOnlyBody" xml:space="preserve">
+    <value>Cet agent n&apos;a aucune automatisation. Demandez à un opérateur disposant d&apos;un accès administrateur d&apos;en créer une.</value>
+  </data>
+  <data name="Automations_Empty_Title" xml:space="preserve">
+    <value>Aucune automatisation pour le moment</value>
+  </data>
+  <data name="Automations_Error_ActiveHoursTimeInvalid" xml:space="preserve">
+    <value>Saisissez HH:MM. 24:00 n&apos;est autorisé que pour la fin.</value>
+  </data>
+  <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
+    <value>Saisissez un fuseau horaire IANA valide, local ou user.</value>
+  </data>
+  <data name="Automations_Error_AgentMessageRequired" xml:space="preserve">
+    <value>L&apos;invite est obligatoire.</value>
+  </data>
+  <data name="Automations_Error_CronExprRequired" xml:space="preserve">
+    <value>L&apos;expression cron est obligatoire.</value>
+  </data>
+  <data name="Automations_Error_DeliveryModeRequired" xml:space="preserve">
+    <value>Choisissez un mode de livraison.</value>
+  </data>
+  <data name="Automations_Error_EventAgentTurnRequired" xml:space="preserve">
+    <value>Les automatisations d&apos;événement nécessitent une tâche de l&apos;assistant.</value>
+  </data>
+  <data name="Automations_Error_EventArgumentsInvalid" xml:space="preserve">
+    <value>Saisissez un objet JSON valide.</value>
+  </data>
+  <data name="Automations_Error_EventNameRequired" xml:space="preserve">
+    <value>Choisissez un événement dans le catalogue du serveur.</value>
+  </data>
+  <data name="Automations_Error_EventServerRequired" xml:space="preserve">
+    <value>Choisissez un serveur MCP.</value>
+  </data>
+  <data name="Automations_Error_EveryAmountInvalid" xml:space="preserve">
+    <value>L&apos;intervalle doit être un nombre supérieur à 0.</value>
+  </data>
+  <data name="Automations_Error_FailureAlertAfterInvalid" xml:space="preserve">
+    <value>Doit être au moins 1.</value>
+  </data>
+  <data name="Automations_Error_FailureAlertCooldownInvalid" xml:space="preserve">
+    <value>Doit être supérieur ou égal à 0.</value>
+  </data>
+  <data name="Automations_Error_NameRequired" xml:space="preserve">
+    <value>Le nom est obligatoire.</value>
+  </data>
+  <data name="Automations_Error_ScheduleAtInvalid" xml:space="preserve">
+    <value>Choisissez une date et une heure valides.</value>
+  </data>
+  <data name="Automations_Error_StaggerAmountInvalid" xml:space="preserve">
+    <value>L&apos;étalement doit être un nombre supérieur à 0.</value>
+  </data>
+  <data name="Automations_Error_SystemTextRequired" xml:space="preserve">
+    <value>Le message de chronologie est obligatoire.</value>
+  </data>
+  <data name="Automations_Error_TimeoutInvalid" xml:space="preserve">
+    <value>Le délai d&apos;expiration doit être supérieur ou égal à 0.</value>
+  </data>
+  <data name="Automations_Error_TimezoneInvalid" xml:space="preserve">
+    <value>Saisissez un fuseau horaire IANA valide, par exemple Europe/Paris.</value>
+  </data>
+  <data name="Automations_Error_TriggerIntervalTooShort" xml:space="preserve">
+    <value>L&apos;intervalle des automatisations à déclenchement conditionnel doit être d&apos;au moins 30 secondes.</value>
+  </data>
+  <data name="Automations_Error_TriggerScheduleUnsupported" xml:space="preserve">
+    <value>Les déclencheurs conditionnels nécessitent une planification par intervalle, cron ou flux.</value>
+  </data>
+  <data name="Automations_Error_TriggerScriptPayloadUnsupported" xml:space="preserve">
+    <value>Les actions de script ne peuvent pas utiliser de déclencheurs conditionnels.</value>
+  </data>
+  <data name="Automations_Error_TriggerScriptRequired" xml:space="preserve">
+    <value>Le script de déclenchement est obligatoire lorsque le déclencheur conditionnel est activé.</value>
+  </data>
+  <data name="Automations_Error_WebhookUrlInvalid" xml:space="preserve">
+    <value>Saisissez une URL http(s) valide sans identifiants intégrés.</value>
+  </data>
+  <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
+    <value>L&apos;URL du webhook est obligatoire.</value>
+  </data>
+  <data name="Automations_Event_ChooseEvent" xml:space="preserve">
+    <value>Choisissez un événement</value>
+  </data>
+  <data name="Automations_Event_ChooseServer" xml:space="preserve">
+    <value>Choisissez un serveur</value>
+  </data>
+  <data name="Automations_Event_DiscoveryFailed" xml:space="preserve">
+    <value>Échec de la découverte des événements : {0}</value>
+  </data>
+  <data name="Automations_Event_Help" xml:space="preserve">
+    <value>S&apos;exécute lorsqu&apos;un serveur MCP envoie un événement. Les automatisations d&apos;événement nécessitent une tâche de l&apos;assistant.</value>
+  </data>
+  <data name="Automations_Event_Loading" xml:space="preserve">
+    <value>Chargement des événements...</value>
+  </data>
+  <data name="Automations_Event_NoEvents" xml:space="preserve">
+    <value>Ce serveur n&apos;annonce aucun événement pris en charge.</value>
+  </data>
+  <data name="Automations_Event_NoServers" xml:space="preserve">
+    <value>Aucun serveur MCP activé ne prend en charge les événements. Configurez-en un dans la passerelle au préalable.</value>
+  </data>
+  <data name="Automations_Event_Refresh" xml:space="preserve">
+    <value>Actualiser les événements</value>
+  </data>
+  <data name="Automations_Event_ViewSchema" xml:space="preserve">
+    <value>Afficher le schéma d&apos;entrée</value>
+  </data>
+  <data name="Automations_ExactTiming" xml:space="preserve">
+    <value>Horaire exact</value>
+  </data>
+  <data name="Automations_FailureAlert_Announce" xml:space="preserve">
+    <value>Annoncer (via le canal)</value>
+  </data>
+  <data name="Automations_FailureAlert_Custom" xml:space="preserve">
+    <value>Personnalisées</value>
+  </data>
+  <data name="Automations_FailureAlert_CustomSummary" xml:space="preserve">
+    <value>Après {0} erreurs consécutives, au plus une fois par {1}</value>
+  </data>
+  <data name="Automations_FailureAlert_Disabled" xml:space="preserve">
+    <value>Désactivées pour cette automatisation</value>
+  </data>
+  <data name="Automations_FailureAlert_Inherit" xml:space="preserve">
+    <value>Hériter du paramètre global</value>
+  </data>
+  <data name="Automations_FailureAlert_Webhook" xml:space="preserve">
+    <value>Webhook (HTTP POST)</value>
+  </data>
+  <data name="Automations_Field_Account" xml:space="preserve">
+    <value>ID du compte</value>
+  </data>
+  <data name="Automations_Field_ActiveHours" xml:space="preserve">
+    <value>Heures actives</value>
+  </data>
+  <data name="Automations_Field_Agent" xml:space="preserve">
+    <value>Agent</value>
+  </data>
+  <data name="Automations_Field_AlertAccount" xml:space="preserve">
+    <value>ID du compte d&apos;alerte</value>
+  </data>
+  <data name="Automations_Field_AlertAfter" xml:space="preserve">
+    <value>Alerter après</value>
+  </data>
+  <data name="Automations_Field_AlertChannel" xml:space="preserve">
+    <value>Canal d&apos;alerte</value>
+  </data>
+  <data name="Automations_Field_AlertCooldown" xml:space="preserve">
+    <value>Délai entre alertes (secondes)</value>
+  </data>
+  <data name="Automations_Field_AlertMode" xml:space="preserve">
+    <value>Mode d&apos;alerte</value>
+  </data>
+  <data name="Automations_Field_AlertTo" xml:space="preserve">
+    <value>Destinataire de l&apos;alerte</value>
+  </data>
+  <data name="Automations_Field_BestEffort" xml:space="preserve">
+    <value>Livraison au mieux</value>
+  </data>
+  <data name="Automations_Field_Channel" xml:space="preserve">
+    <value>Canal</value>
+  </data>
+  <data name="Automations_Field_ClearAgent" xml:space="preserve">
+    <value>Effacer le remplacement d&apos;agent</value>
+  </data>
+  <data name="Automations_Field_Command" xml:space="preserve">
+    <value>Commande</value>
+  </data>
+  <data name="Automations_Field_Condition" xml:space="preserve">
+    <value>Déclencheur conditionnel</value>
+  </data>
+  <data name="Automations_Field_Created" xml:space="preserve">
+    <value>Créée</value>
+  </data>
+  <data name="Automations_Field_DeleteAfterRun" xml:space="preserve">
+    <value>Supprimer après l&apos;exécution</value>
+  </data>
+  <data name="Automations_Field_DeliveryError" xml:space="preserve">
+    <value>Erreur de livraison</value>
+  </data>
+  <data name="Automations_Field_DeliveryMode" xml:space="preserve">
+    <value>Livraison</value>
+  </data>
+  <data name="Automations_Field_Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="Automations_Field_Destination" xml:space="preserve">
+    <value>Destination</value>
+  </data>
+  <data name="Automations_Field_DirectPolicy" xml:space="preserve">
+    <value>Messages directs</value>
+  </data>
+  <data name="Automations_Field_EventArguments" xml:space="preserve">
+    <value>Arguments d&apos;abonnement (JSON)</value>
+  </data>
+  <data name="Automations_Field_EventName" xml:space="preserve">
+    <value>Événement</value>
+  </data>
+  <data name="Automations_Field_EventServer" xml:space="preserve">
+    <value>Serveur MCP</value>
+  </data>
+  <data name="Automations_Field_Every" xml:space="preserve">
+    <value>Toutes les</value>
+  </data>
+  <data name="Automations_Field_ExactTiming" xml:space="preserve">
+    <value>Horaire exact (sans étalement)</value>
+  </data>
+  <data name="Automations_Field_Expression" xml:space="preserve">
+    <value>Expression</value>
+  </data>
+  <data name="Automations_Field_FailureAlerts" xml:space="preserve">
+    <value>Alertes d&apos;échec</value>
+  </data>
+  <data name="Automations_Field_Id" xml:space="preserve">
+    <value>ID</value>
+  </data>
+  <data name="Automations_Field_IdleOnly" xml:space="preserve">
+    <value>Attendre l&apos;inactivité</value>
+  </data>
+  <data name="Automations_Field_IncludeReasoning" xml:space="preserve">
+    <value>Inclure le raisonnement</value>
+  </data>
+  <data name="Automations_Field_LastDelivery" xml:space="preserve">
+    <value>Dernière livraison</value>
+  </data>
+  <data name="Automations_Field_LightContext" xml:space="preserve">
+    <value>Contexte allégé</value>
+  </data>
+  <data name="Automations_Field_Model" xml:space="preserve">
+    <value>Modèle</value>
+  </data>
+  <data name="Automations_Field_Name" xml:space="preserve">
+    <value>Nom</value>
+  </data>
+  <data name="Automations_Field_Options" xml:space="preserve">
+    <value>Options</value>
+  </data>
+  <data name="Automations_Field_Preview" xml:space="preserve">
+    <value>Aperçu de la livraison</value>
+  </data>
+  <data name="Automations_Field_Prompt" xml:space="preserve">
+    <value>Invite</value>
+  </data>
+  <data name="Automations_Field_Revision" xml:space="preserve">
+    <value>Révision</value>
+  </data>
+  <data name="Automations_Field_RunDate" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="Automations_Field_RunTime" xml:space="preserve">
+    <value>Heure</value>
+  </data>
+  <data name="Automations_Field_Session" xml:space="preserve">
+    <value>S&apos;exécute dans</value>
+  </data>
+  <data name="Automations_Field_SessionKey" xml:space="preserve">
+    <value>Clé de session</value>
+  </data>
+  <data name="Automations_Field_SkipEmptyScratch" xml:space="preserve">
+    <value>Ignorer si le bloc-notes est vide</value>
+  </data>
+  <data name="Automations_Field_Stagger" xml:space="preserve">
+    <value>Fenêtre d&apos;étalement</value>
+  </data>
+  <data name="Automations_Field_StartEnabled" xml:space="preserve">
+    <value>Activer au démarrage</value>
+  </data>
+  <data name="Automations_Field_Suppressed" xml:space="preserve">
+    <value>Livraison supprimée</value>
+  </data>
+  <data name="Automations_Field_Thinking" xml:space="preserve">
+    <value>Raisonnement</value>
+  </data>
+  <data name="Automations_Field_TimelineMessage" xml:space="preserve">
+    <value>Message de la chronologie principale</value>
+  </data>
+  <data name="Automations_Field_Timeout" xml:space="preserve">
+    <value>Délai d&apos;expiration</value>
+  </data>
+  <data name="Automations_Field_TimeoutSeconds" xml:space="preserve">
+    <value>Délai d&apos;expiration (secondes)</value>
+  </data>
+  <data name="Automations_Field_Timezone" xml:space="preserve">
+    <value>Fuseau horaire</value>
+  </data>
+  <data name="Automations_Field_To" xml:space="preserve">
+    <value>Destinataire</value>
+  </data>
+  <data name="Automations_Field_Tools" xml:space="preserve">
+    <value>Outils autorisés</value>
+  </data>
+  <data name="Automations_Field_TriggerOnce" xml:space="preserve">
+    <value>Désactiver après la première correspondance</value>
+  </data>
+  <data name="Automations_Field_TriggerScript" xml:space="preserve">
+    <value>Script de déclenchement</value>
+  </data>
+  <data name="Automations_Field_Unit" xml:space="preserve">
+    <value>Unité</value>
+  </data>
+  <data name="Automations_Field_Updated" xml:space="preserve">
+    <value>Mise à jour</value>
+  </data>
+  <data name="Automations_Field_Wake" xml:space="preserve">
+    <value>Mode de réveil</value>
+  </data>
+  <data name="Automations_Field_WebhookUrl" xml:space="preserve">
+    <value>URL du webhook</value>
+  </data>
+  <data name="Automations_Field_WindowEnd" xml:space="preserve">
+    <value>Fin de la fenêtre</value>
+  </data>
+  <data name="Automations_Field_WindowStart" xml:space="preserve">
+    <value>Début de la fenêtre</value>
+  </data>
+  <data name="Automations_Filter_Active" xml:space="preserve">
+    <value>Actives</value>
+  </data>
+  <data name="Automations_Filter_All" xml:space="preserve">
+    <value>Toutes</value>
+  </data>
+  <data name="Automations_Filter_Any" xml:space="preserve">
+    <value>Tous</value>
+  </data>
+  <data name="Automations_Filter_Condition" xml:space="preserve">
+    <value>Condition</value>
+  </data>
+  <data name="Automations_Filter_Conditional" xml:space="preserve">
+    <value>Conditionnelle</value>
+  </data>
+  <data name="Automations_Filter_LastRun" xml:space="preserve">
+    <value>Dernière exécution</value>
+  </data>
+  <data name="Automations_Filter_NeverRun" xml:space="preserve">
+    <value>Jamais exécutée</value>
+  </data>
+  <data name="Automations_Filter_Paused" xml:space="preserve">
+    <value>En pause</value>
+  </data>
+  <data name="Automations_Filter_Reset" xml:space="preserve">
+    <value>Réinitialiser les filtres</value>
+  </data>
+  <data name="Automations_Filter_ScheduleKind" xml:space="preserve">
+    <value>Planification</value>
+  </data>
+  <data name="Automations_Filter_Unconditional" xml:space="preserve">
+    <value>Inconditionnelle</value>
+  </data>
+  <data name="Automations_Filters" xml:space="preserve">
+    <value>Filtres</value>
+  </data>
+  <data name="Automations_Filters_Active" xml:space="preserve">
+    <value>Filtres (actifs)</value>
+  </data>
+  <data name="Automations_Flag_IdleOnly" xml:space="preserve">
+    <value>Attendre l&apos;inactivité</value>
+  </data>
+  <data name="Automations_Flag_IncludeReasoning" xml:space="preserve">
+    <value>Inclure le raisonnement</value>
+  </data>
+  <data name="Automations_Flag_LightContext" xml:space="preserve">
+    <value>Contexte allégé</value>
+  </data>
+  <data name="Automations_Flag_SkipEmptyScratch" xml:space="preserve">
+    <value>Ignorer si bloc-notes vide</value>
+  </data>
+  <data name="Automations_GatewayTimezone" xml:space="preserve">
+    <value>Fuseau horaire de l&apos;hôte de la passerelle</value>
+  </data>
+  <data name="Automations_Help_ActiveHours" xml:space="preserve">
+    <value>S&apos;exécute uniquement dans cette fenêtre, y compris pour les exécutions manuelles. Les fenêtres de nuit sont prises en charge ; la fin est exclue.</value>
+  </data>
+  <data name="Automations_Help_Agent" xml:space="preserve">
+    <value>Laissez vide pour utiliser l&apos;agent de cette page.</value>
+  </data>
+  <data name="Automations_Help_AgentTurn" xml:space="preserve">
+    <value>Démarre une exécution de l&apos;assistant dans sa propre session avec votre invite.</value>
+  </data>
+  <data name="Automations_Help_AlertAfter" xml:space="preserve">
+    <value>Nombre d&apos;erreurs consécutives avant l&apos;alerte.</value>
+  </data>
+  <data name="Automations_Help_AlertCooldown" xml:space="preserve">
+    <value>Nombre minimal de secondes entre les alertes.</value>
+  </data>
+  <data name="Automations_Help_BestEffort" xml:space="preserve">
+    <value>Ne pas faire échouer l&apos;exécution si la livraison elle-même échoue.</value>
+  </data>
+  <data name="Automations_Help_Channel" xml:space="preserve">
+    <value>Laissez vide pour utiliser le dernier canal sur lequel l&apos;agent a communiqué.</value>
+  </data>
+  <data name="Automations_Help_ClearAgent" xml:space="preserve">
+    <value>Utiliser l&apos;agent par défaut de la passerelle au lieu d&apos;un agent spécifique.</value>
+  </data>
+  <data name="Automations_Help_Condition" xml:space="preserve">
+    <value>Effectuer d&apos;abord une vérification silencieuse et ne démarrer l&apos;action que si elle correspond.</value>
+  </data>
+  <data name="Automations_Help_DeleteAfterRun" xml:space="preserve">
+    <value>Idéal pour les rappels ponctuels qui doivent se supprimer d&apos;eux-mêmes.</value>
+  </data>
+  <data name="Automations_Help_Delivery" xml:space="preserve">
+    <value>Annoncer publie un résumé dans la discussion. Aucune conserve les résultats en interne.</value>
+  </data>
+  <data name="Automations_Help_DeliveryNoAnnounce" xml:space="preserve">
+    <value>Annoncer nécessite une tâche de l&apos;assistant. Les messages de chronologie sont déjà publiés dans la chronologie principale.</value>
+  </data>
+  <data name="Automations_Help_EventArguments" xml:space="preserve">
+    <value>Filtres envoyés lors de l&apos;abonnement. Ils doivent correspondre au schéma d&apos;entrée de l&apos;événement.</value>
+  </data>
+  <data name="Automations_Help_ExactTiming" xml:space="preserve">
+    <value>Exécuter exactement à l&apos;échéance cron, sans étalement.</value>
+  </data>
+  <data name="Automations_Help_Expression" xml:space="preserve">
+    <value>Cinq champs : minute, heure, jour du mois, mois, jour de la semaine.</value>
+  </data>
+  <data name="Automations_Help_FailureAlerts" xml:space="preserve">
+    <value>Définissez quand cette automatisation signale des échecs répétés.</value>
+  </data>
+  <data name="Automations_Help_IdleOnly" xml:space="preserve">
+    <value>Laisser passer le travail en cours avant de démarrer.</value>
+  </data>
+  <data name="Automations_Help_IncludeReasoning" xml:space="preserve">
+    <value>Inclure le raisonnement du modèle disponible dans le résultat livré.</value>
+  </data>
+  <data name="Automations_Help_LightContext" xml:space="preserve">
+    <value>Utiliser un contexte d&apos;amorçage allégé pour cette exécution.</value>
+  </data>
+  <data name="Automations_Help_Model" xml:space="preserve">
+    <value>Facultatif. Les tâches de routine fonctionnent souvent bien avec un modèle plus léger et moins coûteux.</value>
+  </data>
+  <data name="Automations_Help_Owner" xml:space="preserve">
+    <value>La livraison au propriétaire cible le message direct du propriétaire à chaque exécution, jamais la dernière conversation de groupe.</value>
+  </data>
+  <data name="Automations_Help_Session" xml:space="preserve">
+    <value>Principale publie dans la chronologie de l&apos;agent. Isolée exécute un tour d&apos;assistant dédié.</value>
+  </data>
+  <data name="Automations_Help_SessionKey" xml:space="preserve">
+    <value>Clé de routage facultative pour la livraison et le réveil.</value>
+  </data>
+  <data name="Automations_Help_SkipEmptyScratch" xml:space="preserve">
+    <value>Ignorer les exécutions tant que le bloc-notes enregistré est vide. Un bloc-notes absent n&apos;entraîne pas d&apos;omission.</value>
+  </data>
+  <data name="Automations_Help_Stagger" xml:space="preserve">
+    <value>Répartit les exécutions sur une fenêtre pour éviter que de nombreuses automatisations démarrent en même temps. Laissez vide pour la valeur par défaut.</value>
+  </data>
+  <data name="Automations_Help_SystemEvent" xml:space="preserve">
+    <value>Publie votre texte dans la chronologie principale de l&apos;agent. Idéal pour les rappels.</value>
+  </data>
+  <data name="Automations_Help_Thinking" xml:space="preserve">
+    <value>Niveau de raisonnement facultatif, par exemple faible ou élevé.</value>
+  </data>
+  <data name="Automations_Help_Timeout" xml:space="preserve">
+    <value>Laissez vide pour utiliser la valeur par défaut de la passerelle. 0 désactive le délai d&apos;expiration.</value>
+  </data>
+  <data name="Automations_Help_Timezone" xml:space="preserve">
+    <value>Fuseau horaire IANA facultatif. Laissez vide pour utiliser le fuseau horaire de l&apos;hôte de la passerelle.</value>
+  </data>
+  <data name="Automations_Help_To" xml:space="preserve">
+    <value>Choisissez une conversation récente ou saisissez un destinataire.</value>
+  </data>
+  <data name="Automations_Help_TriggerOnce" xml:space="preserve">
+    <value>Désactiver cette automatisation après la première exécution déclenchée par la condition.</value>
+  </data>
+  <data name="Automations_Help_TriggerScript" xml:space="preserve">
+    <value>S&apos;exécute sans surveillance avec la stratégie d&apos;outils de cette automatisation. Retournez json({ fire, message?, state? }). Limites : 30 secondes, 5 appels d&apos;outils, 16 Ko d&apos;état.</value>
+  </data>
+  <data name="Automations_Help_Webhook" xml:space="preserve">
+    <value>Les résumés d&apos;exécution sont envoyés par POST à cette URL http(s).</value>
+  </data>
+  <data name="Automations_Kind_At" xml:space="preserve">
+    <value>Une fois</value>
+  </data>
+  <data name="Automations_Kind_Cron" xml:space="preserve">
+    <value>Cron</value>
+  </data>
+  <data name="Automations_Kind_Event" xml:space="preserve">
+    <value>Événement</value>
+  </data>
+  <data name="Automations_Kind_Every" xml:space="preserve">
+    <value>Intervalle</value>
+  </data>
+  <data name="Automations_Kind_OnExit" xml:space="preserve">
+    <value>À la sortie</value>
+  </data>
+  <data name="Automations_Kind_Stream" xml:space="preserve">
+    <value>Flux</value>
+  </data>
+  <data name="Automations_LastError_Title" xml:space="preserve">
+    <value>Échec de la dernière exécution</value>
+  </data>
+  <data name="Automations_LastRun" xml:space="preserve">
+    <value>Dernière exécution</value>
+  </data>
+  <data name="Automations_List_Count" xml:space="preserve">
+    <value>{0} sur {1}</value>
+  </data>
+  <data name="Automations_List_Empty" xml:space="preserve">
+    <value>Aucune automatisation pour cet agent pour le moment.</value>
+  </data>
+  <data name="Automations_List_NoMatch" xml:space="preserve">
+    <value>Aucune automatisation ne correspond aux filtres actuels.</value>
+  </data>
+  <data name="Automations_ListError_Title" xml:space="preserve">
+    <value>Impossible de charger les automatisations</value>
+  </data>
+  <data name="Automations_Loading" xml:space="preserve">
+    <value>Chargement...</value>
+  </data>
+  <data name="Automations_LoadMore" xml:space="preserve">
+    <value>Charger plus</value>
+  </data>
+  <data name="Automations_MoreActions" xml:space="preserve">
+    <value>Plus d&apos;actions</value>
+  </data>
+  <data name="Automations_MoreActionsFor" xml:space="preserve">
+    <value>Plus d&apos;actions pour {0}</value>
+  </data>
+  <data name="Automations_NeverFired" xml:space="preserve">
+    <value>jamais</value>
+  </data>
+  <data name="Automations_NeverRun" xml:space="preserve">
+    <value>Jamais</value>
+  </data>
+  <data name="Automations_NewAutomation" xml:space="preserve">
+    <value>Nouvelle automatisation</value>
+  </data>
+  <data name="Automations_NextRun" xml:space="preserve">
+    <value>Prochaine exécution</value>
+  </data>
+  <data name="Automations_NextWake_None" xml:space="preserve">
+    <value>Rien de planifié</value>
+  </data>
+  <data name="Automations_NotChecked" xml:space="preserve">
+    <value>pas encore</value>
+  </data>
+  <data name="Automations_Notice_Conflict" xml:space="preserve">
+    <value>La dernière définition est chargée. Vérifiez-la avant de réessayer.</value>
+  </data>
+  <data name="Automations_Notice_ConflictTitle" xml:space="preserve">
+    <value>Automatisation modifiée sur la passerelle</value>
+  </data>
+  <data name="Automations_Notice_ConflictUnloadable" xml:space="preserve">
+    <value>Impossible de charger la dernière définition. Actualisez avant de réessayer.</value>
+  </data>
+  <data name="Automations_Notice_Created" xml:space="preserve">
+    <value>{0} a été créée.</value>
+  </data>
+  <data name="Automations_Notice_CreatedTitle" xml:space="preserve">
+    <value>Créée</value>
+  </data>
+  <data name="Automations_Notice_FailedTitle" xml:space="preserve">
+    <value>Un problème est survenu</value>
+  </data>
+  <data name="Automations_Notice_JobCompleted" xml:space="preserve">
+    <value>{0} s&apos;est exécutée et s&apos;est supprimée.</value>
+  </data>
+  <data name="Automations_Notice_JobCompletedTitle" xml:space="preserve">
+    <value>Automatisation terminée</value>
+  </data>
+  <data name="Automations_Notice_JobMessage" xml:space="preserve">
+    <value>{0} : {1}</value>
+  </data>
+  <data name="Automations_Notice_MissingRevision" xml:space="preserve">
+    <value>La révision de configuration de cette automatisation est manquante. Actualisez et réessayez.</value>
+  </data>
+  <data name="Automations_Notice_Paused" xml:space="preserve">
+    <value>{0} est suspendue.</value>
+  </data>
+  <data name="Automations_Notice_PausedTitle" xml:space="preserve">
+    <value>Suspendue</value>
+  </data>
+  <data name="Automations_Notice_Removed" xml:space="preserve">
+    <value>{0} a été supprimée.</value>
+  </data>
+  <data name="Automations_Notice_RemovedTitle" xml:space="preserve">
+    <value>Supprimée</value>
+  </data>
+  <data name="Automations_Notice_Resumed" xml:space="preserve">
+    <value>{0} est de nouveau active.</value>
+  </data>
+  <data name="Automations_Notice_ResumedTitle" xml:space="preserve">
+    <value>Reprise</value>
+  </data>
+  <data name="Automations_Notice_RunFailedTitle" xml:space="preserve">
+    <value>Échec du démarrage de l&apos;exécution</value>
+  </data>
+  <data name="Automations_Notice_RunNotStartedTitle" xml:space="preserve">
+    <value>Exécution non démarrée</value>
+  </data>
+  <data name="Automations_Notice_RunQueued" xml:space="preserve">
+    <value>{0} est en cours d&apos;exécution.</value>
+  </data>
+  <data name="Automations_Notice_RunQueuedTitle" xml:space="preserve">
+    <value>Exécution démarrée</value>
+  </data>
+  <data name="Automations_Notice_RunQueuedWithId" xml:space="preserve">
+    <value>{0} est en cours d&apos;exécution. ID d&apos;exécution : {1}</value>
+  </data>
+  <data name="Automations_Notice_Saved" xml:space="preserve">
+    <value>{0} a été mise à jour.</value>
+  </data>
+  <data name="Automations_Notice_SavedTitle" xml:space="preserve">
+    <value>Enregistrée</value>
+  </data>
+  <data name="Automations_NotScheduled" xml:space="preserve">
+    <value>Non planifiée</value>
+  </data>
+  <data name="Automations_Off" xml:space="preserve">
+    <value>Désactivé</value>
+  </data>
+  <data name="Automations_On" xml:space="preserve">
+    <value>Activé</value>
+  </data>
+  <data name="Automations_OpenConnection" xml:space="preserve">
+    <value>Ouvrir Connexion</value>
+  </data>
+  <data name="Automations_Pause" xml:space="preserve">
+    <value>Suspendre</value>
+  </data>
+  <data name="Automations_Payload_AgentTurn" xml:space="preserve">
+    <value>Exécuter une tâche de l&apos;assistant</value>
+  </data>
+  <data name="Automations_Payload_Command" xml:space="preserve">
+    <value>Commande</value>
+  </data>
+  <data name="Automations_Payload_ReadOnlyHelp" xml:space="preserve">
+    <value>Cette action a été créée en dehors de cette application. Elle reste en lecture seule et est conservée lorsque vous enregistrez d&apos;autres modifications.</value>
+  </data>
+  <data name="Automations_Payload_Script" xml:space="preserve">
+    <value>Script</value>
+  </data>
+  <data name="Automations_Payload_SystemEvent" xml:space="preserve">
+    <value>Publier dans la chronologie principale</value>
+  </data>
+  <data name="Automations_Payload_Unknown" xml:space="preserve">
+    <value>Action personnalisée</value>
+  </data>
+  <data name="Automations_Placeholder_Body" xml:space="preserve">
+    <value>Choisissez une automatisation dans la liste pour afficher sa planification, ce qu&apos;elle fait, où vont les résultats et son historique des exécutions.</value>
+  </data>
+  <data name="Automations_Placeholder_ChannelLast" xml:space="preserve">
+    <value>Dernier canal utilisé</value>
+  </data>
+  <data name="Automations_Placeholder_Description" xml:space="preserve">
+    <value>Contexte facultatif pour cette automatisation</value>
+  </data>
+  <data name="Automations_Placeholder_Name" xml:space="preserve">
+    <value>Briefing du matin</value>
+  </data>
+  <data name="Automations_Placeholder_Optional" xml:space="preserve">
+    <value>Facultatif</value>
+  </data>
+  <data name="Automations_Placeholder_Prompt" xml:space="preserve">
+    <value>Décrivez ce qu&apos;OpenClaw doit faire...</value>
+  </data>
+  <data name="Automations_Placeholder_Timeout" xml:space="preserve">
+    <value>Facultatif, par exemple 90</value>
+  </data>
+  <data name="Automations_Placeholder_Timezone" xml:space="preserve">
+    <value>America/Los_Angeles</value>
+  </data>
+  <data name="Automations_Placeholder_Title" xml:space="preserve">
+    <value>Sélectionnez une automatisation</value>
+  </data>
+  <data name="Automations_Placeholder_To" xml:space="preserve">
+    <value>ID de discussion, téléphone ou utilisateur</value>
+  </data>
+  <data name="Automations_Preset_Daily" xml:space="preserve">
+    <value>Tous les jours à 9:00</value>
+  </data>
+  <data name="Automations_Preset_Hourly" xml:space="preserve">
+    <value>Toutes les heures</value>
+  </data>
+  <data name="Automations_Preset_Monthly" xml:space="preserve">
+    <value>Tous les mois</value>
+  </data>
+  <data name="Automations_Preset_Weekdays" xml:space="preserve">
+    <value>En semaine à 9:00</value>
+  </data>
+  <data name="Automations_Preset_Weekly" xml:space="preserve">
+    <value>Le lundi à 9:00</value>
+  </data>
+  <data name="Automations_ReadDenied_Title" xml:space="preserve">
+    <value>Les automatisations ne sont pas visibles pour cet opérateur</value>
+  </data>
+  <data name="Automations_ReadOnly" xml:space="preserve">
+    <value>Consultation uniquement. La modification des automatisations nécessite l&apos;accès operator.admin.</value>
+  </data>
+  <data name="Automations_RecentRuns" xml:space="preserve">
+    <value>Exécutions récentes</value>
+  </data>
+  <data name="Automations_Refresh" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="Automations_Relative_Days" xml:space="preserve">
+    <value>{0} j</value>
+  </data>
+  <data name="Automations_Relative_Future" xml:space="preserve">
+    <value>dans {0}</value>
+  </data>
+  <data name="Automations_Relative_Hours" xml:space="preserve">
+    <value>{0} h</value>
+  </data>
+  <data name="Automations_Relative_Minutes" xml:space="preserve">
+    <value>{0} min</value>
+  </data>
+  <data name="Automations_Relative_Now" xml:space="preserve">
+    <value>maintenant</value>
+  </data>
+  <data name="Automations_Relative_Past" xml:space="preserve">
+    <value>il y a {0}</value>
+  </data>
+  <data name="Automations_Remove" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="Automations_Resume" xml:space="preserve">
+    <value>Reprendre</value>
+  </data>
+  <data name="Automations_Retry" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
+  <data name="Automations_Row_Last" xml:space="preserve">
+    <value>Dernière exécution {0}</value>
+  </data>
+  <data name="Automations_Row_Next" xml:space="preserve">
+    <value>Prochaine {0}</value>
+  </data>
+  <data name="Automations_RunHistory_Subtitle" xml:space="preserve">
+    <value>Toutes les exécutions de toutes les automatisations de l&apos;agent {0}.</value>
+  </data>
+  <data name="Automations_RunHistory_Title" xml:space="preserve">
+    <value>Historique des exécutions</value>
+  </data>
+  <data name="Automations_RunIfDue" xml:space="preserve">
+    <value>Exécuter si échue</value>
+  </data>
+  <data name="Automations_Running" xml:space="preserve">
+    <value>En cours</value>
+  </data>
+  <data name="Automations_RunNotStarted_AlreadyRunning" xml:space="preserve">
+    <value>Cette automatisation est déjà en cours d&apos;exécution.</value>
+  </data>
+  <data name="Automations_RunNotStarted_InvalidSpec" xml:space="preserve">
+    <value>Cette automatisation a une planification ou une action non valide.</value>
+  </data>
+  <data name="Automations_RunNotStarted_NotDue" xml:space="preserve">
+    <value>Cette automatisation n&apos;est pas encore échue.</value>
+  </data>
+  <data name="Automations_RunNotStarted_RecoveryPending" xml:space="preserve">
+    <value>La récupération du planificateur est toujours en cours.</value>
+  </data>
+  <data name="Automations_RunNotStarted_Stopped" xml:space="preserve">
+    <value>Le planificateur est arrêté.</value>
+  </data>
+  <data name="Automations_RunNotStarted_Unknown" xml:space="preserve">
+    <value>Impossible de démarrer cette automatisation.</value>
+  </data>
+  <data name="Automations_RunNow" xml:space="preserve">
+    <value>Exécuter maintenant</value>
+  </data>
+  <data name="Automations_Runs_AllDelivery" xml:space="preserve">
+    <value>Toutes les livraisons</value>
+  </data>
+  <data name="Automations_Runs_AllStatuses" xml:space="preserve">
+    <value>Tous les états</value>
+  </data>
+  <data name="Automations_Runs_Clear" xml:space="preserve">
+    <value>Effacer</value>
+  </data>
+  <data name="Automations_Runs_ConditionChecked" xml:space="preserve">
+    <value>La condition a été vérifiée {0} fois sans correspondance. L&apos;historique des exécutions commence lorsque l&apos;action s&apos;exécute.</value>
+  </data>
+  <data name="Automations_Runs_ConditionCheckedOnce" xml:space="preserve">
+    <value>La condition a été vérifiée une fois sans correspondance. L&apos;historique des exécutions commence lorsque l&apos;action s&apos;exécute.</value>
+  </data>
+  <data name="Automations_Runs_ConditionUnchecked" xml:space="preserve">
+    <value>La condition n&apos;a pas encore été vérifiée. L&apos;historique des exécutions commence lorsque l&apos;action s&apos;exécute.</value>
+  </data>
+  <data name="Automations_Runs_Count" xml:space="preserve">
+    <value>Affichage de {0} exécutions sur {1}</value>
+  </data>
+  <data name="Automations_Runs_DeliveryCount" xml:space="preserve">
+    <value>Livraison ({0})</value>
+  </data>
+  <data name="Automations_Runs_DeliveryError" xml:space="preserve">
+    <value>Erreur de livraison : {0}</value>
+  </data>
+  <data name="Automations_Runs_EmptyConditionTitle" xml:space="preserve">
+    <value>Aucune exécution pour le moment</value>
+  </data>
+  <data name="Automations_Runs_EmptyHint" xml:space="preserve">
+    <value>Les exécutions apparaissent ici dès qu&apos;une automatisation se déclenche.</value>
+  </data>
+  <data name="Automations_Runs_EmptyTitle" xml:space="preserve">
+    <value>Aucune exécution pour le moment</value>
+  </data>
+  <data name="Automations_Runs_ErrorTitle" xml:space="preserve">
+    <value>Impossible de charger l&apos;historique des exécutions</value>
+  </data>
+  <data name="Automations_Runs_HideTranscript" xml:space="preserve">
+    <value>Masquer la transcription</value>
+  </data>
+  <data name="Automations_Runs_Loading" xml:space="preserve">
+    <value>Chargement des exécutions...</value>
+  </data>
+  <data name="Automations_Runs_LoadMore" xml:space="preserve">
+    <value>Charger plus d&apos;exécutions</value>
+  </data>
+  <data name="Automations_Runs_NewestFirst" xml:space="preserve">
+    <value>Plus récentes d&apos;abord</value>
+  </data>
+  <data name="Automations_Runs_NextRun" xml:space="preserve">
+    <value>Prochaine exécution {0}</value>
+  </data>
+  <data name="Automations_Runs_NoMatch" xml:space="preserve">
+    <value>Aucune exécution correspondante</value>
+  </data>
+  <data name="Automations_Runs_NoSummary" xml:space="preserve">
+    <value>Aucun résumé.</value>
+  </data>
+  <data name="Automations_Runs_OldestFirst" xml:space="preserve">
+    <value>Plus anciennes d&apos;abord</value>
+  </data>
+  <data name="Automations_Runs_OpenChat" xml:space="preserve">
+    <value>Ouvrir dans la discussion</value>
+  </data>
+  <data name="Automations_Runs_Search" xml:space="preserve">
+    <value>Rechercher des exécutions</value>
+  </data>
+  <data name="Automations_Runs_SearchPlaceholder" xml:space="preserve">
+    <value>Résumé, erreur ou automatisation</value>
+  </data>
+  <data name="Automations_Runs_ShowLess" xml:space="preserve">
+    <value>Afficher moins</value>
+  </data>
+  <data name="Automations_Runs_ShowMore" xml:space="preserve">
+    <value>Afficher la réponse complète</value>
+  </data>
+  <data name="Automations_Runs_StatusCount" xml:space="preserve">
+    <value>État ({0})</value>
+  </data>
+  <data name="Automations_Runs_Suppressed" xml:space="preserve">
+    <value>Livraison supprimée : {0}</value>
+  </data>
+  <data name="Automations_Runs_Tokens" xml:space="preserve">
+    <value>{0} en entrée / {1} en sortie</value>
+  </data>
+  <data name="Automations_Runs_TriggerFired" xml:space="preserve">
+    <value>Condition remplie</value>
+  </data>
+  <data name="Automations_Runs_ViewTranscript" xml:space="preserve">
+    <value>Afficher la transcription</value>
+  </data>
+  <data name="Automations_RunStatus_Error" xml:space="preserve">
+    <value>Échec</value>
+  </data>
+  <data name="Automations_RunStatus_Ok" xml:space="preserve">
+    <value>Réussie</value>
+  </data>
+  <data name="Automations_RunStatus_Skipped" xml:space="preserve">
+    <value>Ignorée</value>
+  </data>
+  <data name="Automations_RunStatus_Unknown" xml:space="preserve">
+    <value>Inconnu</value>
+  </data>
+  <data name="Automations_Schedule_CronLiteral" xml:space="preserve">
+    <value>Planification cron {0}</value>
+  </data>
+  <data name="Automations_Schedule_DailyAt" xml:space="preserve">
+    <value>Tous les jours à {0}</value>
+  </data>
+  <data name="Automations_Schedule_DaysAt" xml:space="preserve">
+    <value>{0} à {1}</value>
+  </data>
+  <data name="Automations_Schedule_Event" xml:space="preserve">
+    <value>Quand {0} arrive de {1}</value>
+  </data>
+  <data name="Automations_Schedule_EventSource" xml:space="preserve">
+    <value>Source de l&apos;événement : {0}</value>
+  </data>
+  <data name="Automations_Schedule_EveryManyDays" xml:space="preserve">
+    <value>Tous les {0} jours</value>
+  </data>
+  <data name="Automations_Schedule_EveryManyHours" xml:space="preserve">
+    <value>Toutes les {0} heures</value>
+  </data>
+  <data name="Automations_Schedule_EveryManyMinutes" xml:space="preserve">
+    <value>Toutes les {0} minutes</value>
+  </data>
+  <data name="Automations_Schedule_EveryManySeconds" xml:space="preserve">
+    <value>Toutes les {0} secondes</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneDay" xml:space="preserve">
+    <value>Tous les jours</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneHour" xml:space="preserve">
+    <value>Toutes les heures</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneMinute" xml:space="preserve">
+    <value>Toutes les minutes</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneSecond" xml:space="preserve">
+    <value>Toutes les secondes</value>
+  </data>
+  <data name="Automations_Schedule_HourlyAt" xml:space="preserve">
+    <value>Toutes les heures à la minute {0}</value>
+  </data>
+  <data name="Automations_Schedule_Incomplete" xml:space="preserve">
+    <value>Terminez la planification pour voir quand elle s&apos;exécute.</value>
+  </data>
+  <data name="Automations_Schedule_MonthlyAt" xml:space="preserve">
+    <value>Tous les mois le {0} à {1}</value>
+  </data>
+  <data name="Automations_Schedule_Once" xml:space="preserve">
+    <value>Une fois le {0}</value>
+  </data>
+  <data name="Automations_Schedule_OnExit" xml:space="preserve">
+    <value>Quand {0} se termine</value>
+  </data>
+  <data name="Automations_Schedule_ReadOnlyKind" xml:space="preserve">
+    <value>Cette planification est gérée en dehors de cette application. Elle est conservée telle quelle lorsque vous enregistrez d&apos;autres modifications.</value>
+  </data>
+  <data name="Automations_Schedule_Stream" xml:space="preserve">
+    <value>À chaque sortie de {0}</value>
+  </data>
+  <data name="Automations_Schedule_Unknown" xml:space="preserve">
+    <value>Planification personnalisée</value>
+  </data>
+  <data name="Automations_Schedule_WeekdaysAt" xml:space="preserve">
+    <value>En semaine à {0}</value>
+  </data>
+  <data name="Automations_Schedule_WeekendsAt" xml:space="preserve">
+    <value>Le week-end à {0}</value>
+  </data>
+  <data name="Automations_Schedule_WithTimezone" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="Automations_Scheduler_Off" xml:space="preserve">
+    <value>Arrêté</value>
+  </data>
+  <data name="Automations_Scheduler_On" xml:space="preserve">
+    <value>En cours</value>
+  </data>
+  <data name="Automations_SchedulerOff_Body" xml:space="preserve">
+    <value>Les automatisations planifiées ne s&apos;exécuteront pas tant que le planificateur de la passerelle n&apos;est pas activé.</value>
+  </data>
+  <data name="Automations_SchedulerOff_Title" xml:space="preserve">
+    <value>Le planificateur est arrêté</value>
+  </data>
+  <data name="Automations_Scratch_Bytes" xml:space="preserve">
+    <value>{0:N0} / {1:N0} octets</value>
+  </data>
+  <data name="Automations_Scratch_Conflict" xml:space="preserve">
+    <value>Le bloc-notes a changé pendant votre modification. Votre brouillon est conservé. Rechargez la dernière version avant d&apos;enregistrer à nouveau.</value>
+  </data>
+  <data name="Automations_Scratch_Content" xml:space="preserve">
+    <value>Contenu du bloc-notes</value>
+  </data>
+  <data name="Automations_Scratch_Empty" xml:space="preserve">
+    <value>Aucun bloc-notes enregistré. Enregistrer un éditeur vide crée un bloc-notes vide ; le supprimer rétablit l&apos;absence de bloc-notes.</value>
+  </data>
+  <data name="Automations_Scratch_Help" xml:space="preserve">
+    <value>Notes de travail privées que cette automatisation peut lire et mettre à jour entre les exécutions. Chargées uniquement à votre demande. N&apos;y stockez jamais d&apos;identifiants.</value>
+  </data>
+  <data name="Automations_Scratch_Load" xml:space="preserve">
+    <value>Charger le bloc-notes</value>
+  </data>
+  <data name="Automations_Scratch_Redacted" xml:space="preserve">
+    <value>Du contenu sensible a été masqué. L&apos;enregistrement est désactivé pour protéger l&apos;original. Vous pouvez toujours supprimer ce bloc-notes.</value>
+  </data>
+  <data name="Automations_Scratch_Reload" xml:space="preserve">
+    <value>Recharger</value>
+  </data>
+  <data name="Automations_Scratch_Remove" xml:space="preserve">
+    <value>Supprimer le bloc-notes</value>
+  </data>
+  <data name="Automations_Scratch_Removed" xml:space="preserve">
+    <value>Bloc-notes supprimé.</value>
+  </data>
+  <data name="Automations_Scratch_Save" xml:space="preserve">
+    <value>Enregistrer le bloc-notes</value>
+  </data>
+  <data name="Automations_Scratch_Saved" xml:space="preserve">
+    <value>Bloc-notes enregistré.</value>
+  </data>
+  <data name="Automations_Scratch_Title" xml:space="preserve">
+    <value>Bloc-notes de la tâche</value>
+  </data>
+  <data name="Automations_Scratch_TooLarge" xml:space="preserve">
+    <value>Le bloc-notes dépasse la taille limite.</value>
+  </data>
+  <data name="Automations_Search_Placeholder" xml:space="preserve">
+    <value>Rechercher des automatisations</value>
+  </data>
+  <data name="Automations_Seconds" xml:space="preserve">
+    <value>{0} s</value>
+  </data>
+  <data name="Automations_Section_Advanced" xml:space="preserve">
+    <value>Avancé</value>
+  </data>
+  <data name="Automations_Section_Basics" xml:space="preserve">
+    <value>Informations de base</value>
+  </data>
+  <data name="Automations_Section_Delivery" xml:space="preserve">
+    <value>Où vont les résultats</value>
+  </data>
+  <data name="Automations_Section_Details" xml:space="preserve">
+    <value>Détails</value>
+  </data>
+  <data name="Automations_Section_FailureAlerts" xml:space="preserve">
+    <value>Alertes d&apos;échec</value>
+  </data>
+  <data name="Automations_Section_What" xml:space="preserve">
+    <value>Ce qu&apos;elle fait</value>
+  </data>
+  <data name="Automations_Section_When" xml:space="preserve">
+    <value>Quand elle s&apos;exécute</value>
+  </data>
+  <data name="Automations_Session_Current" xml:space="preserve">
+    <value>Session actuelle</value>
+  </data>
+  <data name="Automations_Session_Isolated" xml:space="preserve">
+    <value>Session isolée</value>
+  </data>
+  <data name="Automations_Session_Main" xml:space="preserve">
+    <value>Session principale</value>
+  </data>
+  <data name="Automations_Session_Named" xml:space="preserve">
+    <value>Session {0}</value>
+  </data>
+  <data name="Automations_Sort" xml:space="preserve">
+    <value>Trier</value>
+  </data>
+  <data name="Automations_Sort_Ascending" xml:space="preserve">
+    <value>Croissant</value>
+  </data>
+  <data name="Automations_Sort_Descending" xml:space="preserve">
+    <value>Décroissant</value>
+  </data>
+  <data name="Automations_Sort_Name" xml:space="preserve">
+    <value>Nom</value>
+  </data>
+  <data name="Automations_Sort_NextRun" xml:space="preserve">
+    <value>Prochaine exécution</value>
+  </data>
+  <data name="Automations_Sort_Updated" xml:space="preserve">
+    <value>Mises à jour récemment</value>
+  </data>
+  <data name="Automations_StaggerWindow" xml:space="preserve">
+    <value>Étalement jusqu&apos;à {0}</value>
+  </data>
+  <data name="Automations_Stat_Failing" xml:space="preserve">
+    <value>En échec</value>
+  </data>
+  <data name="Automations_Stat_NextWake" xml:space="preserve">
+    <value>Prochain réveil</value>
+  </data>
+  <data name="Automations_Stat_Scheduler" xml:space="preserve">
+    <value>Planificateur</value>
+  </data>
+  <data name="Automations_Stat_Total" xml:space="preserve">
+    <value>Automatisations</value>
+  </data>
+  <data name="Automations_State_Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Automations_State_AutoDisabledRuns" xml:space="preserve">
+    <value>Désactivée automatiquement après {0} exécutions en échec</value>
+  </data>
+  <data name="Automations_State_AutoDisabledSchedule" xml:space="preserve">
+    <value>Désactivée automatiquement après {0} erreurs de planification</value>
+  </data>
+  <data name="Automations_State_Completed" xml:space="preserve">
+    <value>Terminée</value>
+  </data>
+  <data name="Automations_State_Failing" xml:space="preserve">
+    <value>En échec</value>
+  </data>
+  <data name="Automations_State_Paused" xml:space="preserve">
+    <value>En pause</value>
+  </data>
+  <data name="Automations_State_Running" xml:space="preserve">
+    <value>En cours</value>
+  </data>
+  <data name="Automations_StreamError_Title" xml:space="preserve">
+    <value>Erreur de la source du flux</value>
+  </data>
+  <data name="Automations_Suggestion_dependencyRadar_Name" xml:space="preserve">
+    <value>Radar des dépendances</value>
+  </data>
+  <data name="Automations_Suggestion_dependencyRadar_Prompt" xml:space="preserve">
+    <value>Vérifie les dépendances obsolètes ou vulnérables de mon projet principal. Liste les mises à jour notables avec une note de risque en une ligne pour chacune, et rédige la commande de mise à niveau.</value>
+  </data>
+  <data name="Automations_Suggestion_dependencyRadar_Schedule" xml:space="preserve">
+    <value>Le lundi à 9:00</value>
+  </data>
+  <data name="Automations_Suggestion_dependencyRadar_Tagline" xml:space="preserve">
+    <value>Dépendances obsolètes ou vulnérables, avec notes de mise à niveau.</value>
+  </data>
+  <data name="Automations_Suggestion_hackerNewsScout_Name" xml:space="preserve">
+    <value>Éclaireur Hacker News</value>
+  </data>
+  <data name="Automations_Suggestion_hackerNewsScout_Prompt" xml:space="preserve">
+    <value>Parcours la page d&apos;accueil de Hacker News du jour à la recherche de publications sur les agents IA, les outils de développement et TypeScript. Envoie-moi les trois liens les plus intéressants, chacun avec un avis tranché en une ligne.</value>
+  </data>
+  <data name="Automations_Suggestion_hackerNewsScout_Schedule" xml:space="preserve">
+    <value>Tous les jours à 8:00</value>
+  </data>
+  <data name="Automations_Suggestion_hackerNewsScout_Tagline" xml:space="preserve">
+    <value>Trois liens qui valent votre café, avec un avis tranché.</value>
+  </data>
+  <data name="Automations_Suggestion_polyglotMinute_Name" xml:space="preserve">
+    <value>La minute polyglotte</value>
+  </data>
+  <data name="Automations_Suggestion_polyglotMinute_Prompt" xml:space="preserve">
+    <value>Apprends-moi une expression utile en japonais : l&apos;expression, sa prononciation, son sens littéral et quand l&apos;utiliser. Cinq lignes maximum.</value>
+  </data>
+  <data name="Automations_Suggestion_polyglotMinute_Schedule" xml:space="preserve">
+    <value>Tous les jours à 8:00</value>
+  </data>
+  <data name="Automations_Suggestion_polyglotMinute_Tagline" xml:space="preserve">
+    <value>Une expression étrangère utile avec votre café du matin.</value>
+  </data>
+  <data name="Automations_Suggestion_repoPulse_Name" xml:space="preserve">
+    <value>Pouls des dépôts</value>
+  </data>
+  <data name="Automations_Suggestion_repoPulse_Prompt" xml:space="preserve">
+    <value>Passe en revue l&apos;activité de la nuit dans mes dépôts : nouvelles issues, pull requests et échecs CI. Résume les trois points qui méritent le plus mon attention aujourd&apos;hui, chacun avec un lien et une raison en une ligne.</value>
+  </data>
+  <data name="Automations_Suggestion_repoPulse_Schedule" xml:space="preserve">
+    <value>En semaine à 9:00</value>
+  </data>
+  <data name="Automations_Suggestion_repoPulse_Tagline" xml:space="preserve">
+    <value>Issues, pull requests et échecs CI de la nuit, classés par urgence.</value>
+  </data>
+  <data name="Automations_Suggestion_standupGhostwriter_Name" xml:space="preserve">
+    <value>Rédacteur de stand-up</value>
+  </data>
+  <data name="Automations_Suggestion_standupGhostwriter_Prompt" xml:space="preserve">
+    <value>Rédige mon point de stand-up à partir des commits d&apos;hier, des pull requests fusionnées et des fils de revue ouverts. Trois puces maximum : terminé, en cours, bloqué.</value>
+  </data>
+  <data name="Automations_Suggestion_standupGhostwriter_Schedule" xml:space="preserve">
+    <value>En semaine à 9:00</value>
+  </data>
+  <data name="Automations_Suggestion_standupGhostwriter_Tagline" xml:space="preserve">
+    <value>Votre point de stand-up, rédigé à partir du travail d&apos;hier.</value>
+  </data>
+  <data name="Automations_Suggestion_watchdog_Name" xml:space="preserve">
+    <value>Veille de nuit</value>
+  </data>
+  <data name="Automations_Suggestion_watchdog_Prompt" xml:space="preserve">
+    <value>Vérifie que mes services et ma passerelle sont en bonne santé : analyse les journaux récents à la recherche de nouvelles erreurs, de redémarrages ou d&apos;une charge inhabituelle. Réponds par une seule ligne courte indiquant que tout va bien si c&apos;est le cas ; si quelque chose semble défaillant, indique ce qui a échoué et par où commencer les recherches.</value>
+  </data>
+  <data name="Automations_Suggestion_watchdog_Schedule" xml:space="preserve">
+    <value>Toutes les heures</value>
+  </data>
+  <data name="Automations_Suggestion_watchdog_Tagline" xml:space="preserve">
+    <value>Vérification d&apos;état toutes les heures avec un verdict en une ligne.</value>
+  </data>
+  <data name="Automations_Suggestions_Title" xml:space="preserve">
+    <value>Automatisations de départ</value>
+  </data>
+  <data name="Automations_Tab_Overview" xml:space="preserve">
+    <value>Vue d&apos;ensemble</value>
+  </data>
+  <data name="Automations_Tab_Runs" xml:space="preserve">
+    <value>Historique des exécutions</value>
+  </data>
+  <data name="Automations_Tab_Scratch" xml:space="preserve">
+    <value>Bloc-notes</value>
+  </data>
+  <data name="Automations_Thread" xml:space="preserve">
+    <value>Fil {0}</value>
+  </data>
+  <data name="Automations_Title" xml:space="preserve">
+    <value>Automatisations</value>
+  </data>
+  <data name="Automations_Transcript_Assistant" xml:space="preserve">
+    <value>Assistant</value>
+  </data>
+  <data name="Automations_Transcript_Empty" xml:space="preserve">
+    <value>Aucun message dans cette exécution pour le moment.</value>
+  </data>
+  <data name="Automations_Transcript_Loading" xml:space="preserve">
+    <value>Chargement de la transcription...</value>
+  </data>
+  <data name="Automations_Transcript_LoadOlder" xml:space="preserve">
+    <value>Charger les messages précédents</value>
+  </data>
+  <data name="Automations_Transcript_System" xml:space="preserve">
+    <value>Système</value>
+  </data>
+  <data name="Automations_Transcript_Title" xml:space="preserve">
+    <value>Transcription de l&apos;exécution</value>
+  </data>
+  <data name="Automations_Transcript_Tool" xml:space="preserve">
+    <value>Outil : {0}</value>
+  </data>
+  <data name="Automations_Transcript_Unavailable" xml:space="preserve">
+    <value>La transcription de l&apos;exécution est indisponible : {0}</value>
+  </data>
+  <data name="Automations_Transcript_User" xml:space="preserve">
+    <value>Invite</value>
+  </data>
+  <data name="Automations_TriggerConfigured" xml:space="preserve">
+    <value>Déclencheur conditionnel configuré</value>
+  </data>
+  <data name="Automations_Unit_Days" xml:space="preserve">
+    <value>Jours</value>
+  </data>
+  <data name="Automations_Unit_Hours" xml:space="preserve">
+    <value>Heures</value>
+  </data>
+  <data name="Automations_Unit_Minutes" xml:space="preserve">
+    <value>Minutes</value>
+  </data>
+  <data name="Automations_Unit_Seconds" xml:space="preserve">
+    <value>Secondes</value>
+  </data>
+  <data name="Automations_Unknown" xml:space="preserve">
+    <value>Inconnu</value>
+  </data>
+  <data name="Automations_View_Automations" xml:space="preserve">
+    <value>Automatisations</value>
+  </data>
+  <data name="Automations_View_RunHistory" xml:space="preserve">
+    <value>Historique des exécutions</value>
+  </data>
+  <data name="Automations_Wake_NextHeartbeat" xml:space="preserve">
+    <value>Prochain heartbeat</value>
+  </data>
+  <data name="Automations_Wake_Now" xml:space="preserve">
+    <value>Maintenant</value>
+  </data>
+  <data name="Automations_Yes" xml:space="preserve">
+    <value>Oui</value>
+  </data>
+  <data name="Automations_Empty_Headline" xml:space="preserve">
+    <value>Mettez OpenClaw en pilote automatique</value>
+  </data>
+  <data name="Automations_Header_AllQuiet" xml:space="preserve">
+    <value>Tout est calme. Rien n’est planifié pour le moment.</value>
+  </data>
+  <data name="Automations_Header_NextUp" xml:space="preserve">
+    <value>Prochaine : {0}, {1}</value>
+  </data>
+  <data name="Automations_KindHint_At" xml:space="preserve">
+    <value>Exécuter une seule fois à une heure précise</value>
+  </data>
+  <data name="Automations_KindHint_Cron" xml:space="preserve">
+    <value>Règles de calendrier, comme en semaine à 9 h</value>
+  </data>
+  <data name="Automations_KindHint_Event" xml:space="preserve">
+    <value>Quand un serveur MCP envoie un événement</value>
+  </data>
+  <data name="Automations_KindHint_Every" xml:space="preserve">
+    <value>Répéter à intervalle fixe</value>
+  </data>
+  <data name="Automations_Runs_Streak" xml:space="preserve">
+    <value>{0} exécutions réussies d’affilée</value>
+  </data>
+  <data name="Automations_Runs_SuccessRate" xml:space="preserve">
+    <value>{0} % réussies</value>
+  </data>
+  <data name="Automations_Runs_SummaryDetail" xml:space="preserve">
+    <value>{0} exécutions récentes réussies sur {1}, moyenne {2}</value>
+  </data>
+  <data name="Automations_Stat_Healthy" xml:space="preserve">
+    <value>Tout va bien</value>
+  </data>
+  <data name="Automations_Selected" xml:space="preserve">
+    <value>Sélectionné</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Sandbox du nœud</value>
   </data>

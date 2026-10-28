@@ -155,33 +155,51 @@ snapshot are retained with the run artifacts. This proves stored-history
 compatibility, not microphone capture, live voice streaming or real Gateway
 pairing, and does not use the reporter's private sessions.
 
-## Cron editor proof
+## Automations proof
 
-`GatewayScenario.CreateCronEditing()` explicitly opts into in-memory `cron.add`
-and `cron.update`, with listed, absent, unlisted, and interval schedules.
-`cron.list` returns the updated jobs; nothing is scheduled or executed.
-The normal browse scenario still rejects cron writes.
+`GatewayScenario.CreateAutomations()` (host scenario `automations`) serves an
+in-memory Automations catalog: interval, one-time, cron, MCP event, stream and
+auto-disabled jobs for agent `main`, one job owned by agent `ops`, and none for
+`research`. It answers `cron.list` filters, paging and agent scope, `cron.get`,
+revision-guarded `cron.update`/`cron.remove`, `cron.runs`, `cron.history`,
+`cron.scratch.get/set`, `mcp.events.list` and `conversations.list`. Nothing is
+scheduled or executed; `cron.run` only records a synthetic run. Browse the
+scenario with:
 
-The focused proof uses the existing isolated profile, real Gateway client and
-cron form. Its native title click verifies the owning process, foreground window,
-physical point and UIA target before sending input. Run it only with exclusive
-desktop access:
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario automations
+```
+
+The UI proof checks agent scoping, details, run history and transcript, editing,
+pause confirmation, the empty agent and the offline state in both Light and Dark
+app themes. It scans the populated states with Axe.Windows, using the fixture
+process's explicit ID. Automations remains mounted with Open Connection while
+the Gateway is offline, including during reconnect attempts. Run it only with
+exclusive desktop access:
 
 ```powershell
 $env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
 $env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
-$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = "$env:TEMP\openclaw-cron-proof"
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = "$env:TEMP\openclaw-automations-proof"
 $env:OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS = '1'
 $env:OPENCLAW_REPO_ROOT = (Get-Location).Path
-dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -r win-arm64 -p:Platform=ARM64 -p:DevBuild=false --filter 'FullyQualifiedName~GatewayFixtureUiTests.CronEditor_' --logger 'console;verbosity=normal'
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -r win-arm64 -p:Platform=ARM64 -p:DevBuild=false --filter 'FullyQualifiedName~GatewayFixtureUiTests.Automations_' --logger 'console;verbosity=normal'
 ```
 
-On x64 use `-r win-x64 -p:Platform=x64`. Keep the selected executable on the
-tested commit. The two tests must execute, not skip. They check timezone
-preservation and explicit replacement, switching jobs and schedule kinds,
-and resetting for a new job. Artifacts include owned-window editor captures
-and the exact synthetic schedules read back after accepted saves. This proves
-the app/fixture wire path, not production Gateway persistence or scheduling.
+On x64 use `-r win-x64 -p:Platform=x64`. Artifacts include owned-window
+captures of each state. This proves the app/fixture wire path, not production
+Gateway persistence or scheduling.
+
+The same filter includes editor lifetime regressions: an unsaved draft survives
+reconnect, a delayed save cannot close a newer editor, and old-route directory
+suggestions disappear while the next route's response is held. Host-side
+`HoldResponses`/`ReleaseResponses` gates delay real fixture replies; they do not
+bypass page callbacks or supply the UI behavior being asserted.
+
+The directory case also requires Reactor to apply an empty `Suggestions` array
+to the native AutoSuggestBox. Published preview.16 skips that write and retains
+old native items. Until a fixed package is available, this case needs the local
+Reactor empty-list binding fix; do not mask it with a Companion-side control reset.
 
 ## Targeted context-usage proof
 

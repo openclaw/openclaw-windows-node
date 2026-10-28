@@ -118,9 +118,6 @@ internal sealed class GatewayService
         client.SessionPreviewUpdated += OnSessionPreviewUpdated;
         client.SessionCommandCompleted += OnSessionCommandCompleted;
         client.GatewaySelfUpdated += OnGatewaySelfUpdated;
-        client.CronListUpdated += OnCronListUpdated;
-        client.CronStatusUpdated += OnCronStatusUpdated;
-        client.CronRunsUpdated += OnCronRunsUpdated;
         client.ConfigUpdated += OnConfigUpdated;
         client.ConfigSchemaUpdated += OnConfigSchemaUpdated;
         client.SkillsStatusUpdated += OnSkillsStatusUpdated;
@@ -150,9 +147,6 @@ internal sealed class GatewayService
         client.SessionPreviewUpdated -= OnSessionPreviewUpdated;
         client.SessionCommandCompleted -= OnSessionCommandCompleted;
         client.GatewaySelfUpdated -= OnGatewaySelfUpdated;
-        client.CronListUpdated -= OnCronListUpdated;
-        client.CronStatusUpdated -= OnCronStatusUpdated;
-        client.CronRunsUpdated -= OnCronRunsUpdated;
         client.ConfigUpdated -= OnConfigUpdated;
         client.ConfigSchemaUpdated -= OnConfigSchemaUpdated;
         client.SkillsStatusUpdated -= OnSkillsStatusUpdated;
@@ -429,27 +423,6 @@ internal sealed class GatewayService
     {
         if (sender != _currentClient) return;
         EnqueueModelUpdate(() => _state.UsageStatus = usageStatus);
-    }
-
-    private void OnCronListUpdated(object? sender, JsonElement data)
-    {
-        if (sender != _currentClient) return;
-        var cloned = data.Clone();
-        EnqueueModelUpdate(() => _state.CronList = cloned);
-    }
-
-    private void OnCronStatusUpdated(object? sender, JsonElement data)
-    {
-        if (sender != _currentClient) return;
-        var cloned = data.Clone();
-        EnqueueModelUpdate(() => _state.CronStatus = cloned);
-    }
-
-    private void OnCronRunsUpdated(object? sender, JsonElement data)
-    {
-        if (sender != _currentClient) return;
-        var cloned = data.Clone();
-        EnqueueModelUpdate(() => _state.CronRuns = cloned);
     }
 
     private void OnSkillsStatusUpdated(object? sender, JsonElement data)

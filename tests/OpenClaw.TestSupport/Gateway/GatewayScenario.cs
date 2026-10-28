@@ -63,7 +63,7 @@ public sealed partial class GatewayScenario
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? AutomationsName : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -95,7 +95,7 @@ public sealed partial class GatewayScenario
             "models.list", "usage.cost"
         }.Concat(reads.Keys).Concat(setup is null ? [] : advertiseSetup
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
-            .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
+            .Concat(cronJobs is null ? [] : CronMethods)
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
@@ -110,6 +110,7 @@ public sealed partial class GatewayScenario
     {
         BrowseName => CreateBrowse(),
         InteractiveName => CreateInteractive(),
+        AutomationsName => CreateAutomations(),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
 
@@ -355,7 +356,7 @@ public sealed partial class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters, Func<string, bool>? containsModelSession = null)
     {
-        if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
+        if (IsCronMethod(method))
             return RespondCron(method, parameters);
         if (_contextUsage is not null && method == "chat.send")
             return _contextUsage.Send(parameters);
@@ -740,8 +741,10 @@ public sealed partial class GatewayScenario
     private sealed record Session(string Key, string Id, string AgentId, long UpdatedAt, JsonElement Row, JsonElement[] Messages, string[] Texts);
 }
 
-internal sealed class FixtureRequestException(string code, string message, bool unexpected = false) : Exception(message)
+internal sealed class FixtureRequestException(string code, string message, bool unexpected = false, string? detailCode = null) : Exception(message)
 {
     public string Code { get; } = code;
+    /// <summary>Overrides <c>error.details.code</c>; the real Gateway often pairs INVALID_REQUEST with a specific detail.</summary>
+    public string? DetailCode { get; } = detailCode;
     public bool Unexpected { get; } = unexpected;
 }

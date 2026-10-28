@@ -14,7 +14,7 @@ internal static class Program
             return await ListenForControlAsync(int.Parse(args[1]), args[2]);
         if (args.Length == 0 || args.Contains("--help"))
         {
-            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|chat-interactive|context-usage-snapshots] [--interaction <name>] [--artifacts <directory>] [--duration-seconds <1..86400>] [--browser-proxy] [--browser-proxy-foreign]");
+            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|chat-interactive|automations|context-usage-snapshots] [--interaction <name>] [--artifacts <directory>] [--duration-seconds <1..86400>] [--browser-proxy] [--browser-proxy-foreign]");
             Console.WriteLine("Starts a synthetic Gateway and an isolated real app. Ctrl+C stops only this run.");
             return args.Length == 0 ? 2 : 0;
         }
@@ -60,7 +60,7 @@ internal static class Program
             Console.Error.WriteLine("--app is required. The installed app is never selected implicitly.");
             return 2;
         }
-        if (scenarioName is not (GatewayScenario.BrowseName or GatewayScenario.InteractiveName or ContextUsageFixture.Name))
+        if (scenarioName is not (GatewayScenario.BrowseName or GatewayScenario.InteractiveName or GatewayScenario.AutomationsName or ContextUsageFixture.Name))
         {
             Console.Error.WriteLine("Unknown fixture scenario.");
             return 2;
@@ -92,6 +92,8 @@ internal static class Program
             Console.WriteLine($"Artifacts: {run.ArtifactsDirectory}");
             Console.WriteLine(scenario.IsInteractive
                 ? "Synthetic interactive Gateway. No provider or host command executes. Type help for fixture controls."
+                : scenario.Name == GatewayScenario.AutomationsName
+                    ? "Synthetic Automations Gateway. Jobs live in memory and never execute; Run now only records a synthetic run."
                 : usage is null
                     ? "Synthetic read-only Gateway. Use Chat, Sessions, Settings and Configuration. Ctrl+C stops this run."
                 : $"Synthetic usage scenario. Select '{ContextUsageFixture.Title(ContextUsageListing.Initial)}' under Fixture Main.");

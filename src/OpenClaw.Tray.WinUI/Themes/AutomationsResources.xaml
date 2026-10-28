@@ -1,0 +1,65 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        Automations palette. Each schedule kind has a hue (glyph) and a tinted fill
+        (tile). The header wash follows the user's Windows accent. High contrast maps
+        everything to system colors. Documented in DESIGN.md (automationKind*).
+    -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="AutomationsKindEveryBrush" Color="#4FD1D6" />
+            <SolidColorBrush x:Key="AutomationsKindEveryFillBrush" Color="#334FD1D6" />
+            <SolidColorBrush x:Key="AutomationsKindAtBrush" Color="#F5C65B" />
+            <SolidColorBrush x:Key="AutomationsKindAtFillBrush" Color="#33F5C65B" />
+            <SolidColorBrush x:Key="AutomationsKindCronBrush" Color="#B9A4FF" />
+            <SolidColorBrush x:Key="AutomationsKindCronFillBrush" Color="#33B9A4FF" />
+            <SolidColorBrush x:Key="AutomationsKindEventBrush" Color="#FF9D80" />
+            <SolidColorBrush x:Key="AutomationsKindEventFillBrush" Color="#33FF9D80" />
+            <SolidColorBrush x:Key="AutomationsKindOtherBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="AutomationsKindOtherFillBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+            <LinearGradientBrush x:Key="AutomationsHeroBrush" StartPoint="0,0" EndPoint="1,1" Opacity="0.22">
+                <GradientStop Offset="0" Color="{ThemeResource SystemAccentColorLight1}" />
+                <GradientStop Offset="1" Color="{ThemeResource SystemAccentColorDark3}" />
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="AutomationsHeroStrokeBrush" Color="{ThemeResource SystemAccentColorLight2}" Opacity="0.28" />
+            <SolidColorBrush x:Key="AutomationsRailBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
+            <SolidColorBrush x:Key="AutomationsTileStrokeBrush" Color="Transparent" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="AutomationsKindEveryBrush" Color="#00747A" />
+            <SolidColorBrush x:Key="AutomationsKindEveryFillBrush" Color="#2400A3AB" />
+            <SolidColorBrush x:Key="AutomationsKindAtBrush" Color="#8A5A00" />
+            <SolidColorBrush x:Key="AutomationsKindAtFillBrush" Color="#33F2B33D" />
+            <SolidColorBrush x:Key="AutomationsKindCronBrush" Color="#6741D9" />
+            <SolidColorBrush x:Key="AutomationsKindCronFillBrush" Color="#247C5CFA" />
+            <SolidColorBrush x:Key="AutomationsKindEventBrush" Color="#B93A18" />
+            <SolidColorBrush x:Key="AutomationsKindEventFillBrush" Color="#26F06A43" />
+            <SolidColorBrush x:Key="AutomationsKindOtherBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="AutomationsKindOtherFillBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+            <LinearGradientBrush x:Key="AutomationsHeroBrush" StartPoint="0,0" EndPoint="1,1" Opacity="0.14">
+                <GradientStop Offset="0" Color="{ThemeResource SystemAccentColor}" />
+                <GradientStop Offset="1" Color="{ThemeResource SystemAccentColorLight3}" />
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="AutomationsHeroStrokeBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.18" />
+            <SolidColorBrush x:Key="AutomationsRailBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
+            <SolidColorBrush x:Key="AutomationsTileStrokeBrush" Color="Transparent" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="AutomationsKindEveryBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AutomationsKindEveryFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AutomationsKindAtBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AutomationsKindAtFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AutomationsKindCronBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AutomationsKindCronFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AutomationsKindEventBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AutomationsKindEventFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AutomationsKindOtherBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AutomationsKindOtherFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AutomationsHeroBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AutomationsHeroStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AutomationsRailBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AutomationsTileStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

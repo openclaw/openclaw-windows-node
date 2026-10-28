@@ -74,6 +74,17 @@ colors:
   chatActionPressed: "#0067c0cc"
   chatActionPressedText: "#ffffffb3"
   chatReadAloudPressed: "#f9f9f94d"
+  automationKindEvery: "#00747a"
+  automationKindEveryFill: "#2400a3ab"
+  automationKindAt: "#8a5a00"
+  automationKindAtFill: "#33f2b33d"
+  automationKindCron: "#6741d9"
+  automationKindCronFill: "#247c5cfa"
+  automationKindEvent: "#b93a18"
+  automationKindEventFill: "#26f06a43"
+  automationHero: rgba(0,103,192,0.14)
+  automationHeroStroke: rgba(0,103,192,0.18)
+  automationRail: "#0000000f"
   nativeText: "#000000e4"
   personPictureFill: "#00000018"
   personPictureStroke: "#0000000f"
@@ -387,6 +398,7 @@ x-colophon:
       - "State must be legible: connected, pairing, and error states read clearly via positive/warning/critical, never color alone."
       - No hard-coded hex in UI. Use tokens/theme resources so dark and high-contrast modes stay correct.
       - "Motion is a cue, not a garnish: 120-200ms ease-out, no bounce."
+      - "Personality lives in small places: Automations colors each schedule kind (tiles, chips, the run chart) and keeps the accent for action. Ambient loops (breathing scheduler dot, twinkles) stay opacity-only and stop under reduced motion."
     brand:
       tagline: A calm native Windows companion for your AI assistant.
       surface: product
@@ -742,6 +754,50 @@ x-colophon:
       chatReadAloudPressed:
         resource: ControlFillColorTertiaryBrush
         themes: { dark: "#ffffff08", highContrast: "#000000" }
+      automationKindEvery:
+        resource: AutomationsKindEveryBrush
+        themes: { dark: "#4fd1d6", highContrast: "#ffffff" }
+        usage: Automations interval-schedule hue (glyphs, schedule chips). Pairs with automationKindEveryFill. Defined in Themes/AutomationsResources.xaml.
+      automationKindEveryFill:
+        resource: AutomationsKindEveryFillBrush
+        themes: { dark: "#334fd1d6", highContrast: "#000000" }
+        usage: Tinted tile behind the interval glyph; never a large surface.
+      automationKindAt:
+        resource: AutomationsKindAtBrush
+        themes: { dark: "#f5c65b", highContrast: "#ffffff" }
+        usage: Automations one-time-schedule hue and empty-state sparkles.
+      automationKindAtFill:
+        resource: AutomationsKindAtFillBrush
+        themes: { dark: "#33f5c65b", highContrast: "#000000" }
+        usage: Tinted tile behind the one-time glyph.
+      automationKindCron:
+        resource: AutomationsKindCronBrush
+        themes: { dark: "#b9a4ff", highContrast: "#ffffff" }
+        usage: Automations cron-schedule hue; also the next-wake status icon.
+      automationKindCronFill:
+        resource: AutomationsKindCronFillBrush
+        themes: { dark: "#33b9a4ff", highContrast: "#000000" }
+        usage: Tinted tile behind the cron glyph.
+      automationKindEvent:
+        resource: AutomationsKindEventBrush
+        themes: { dark: "#ff9d80", highContrast: "#ffffff" }
+        usage: Automations event-triggered (MCP) hue.
+      automationKindEventFill:
+        resource: AutomationsKindEventFillBrush
+        themes: { dark: "#33ff9d80", highContrast: "#000000" }
+        usage: Tinted tile behind the event glyph.
+      automationHero:
+        resource: AutomationsHeroBrush
+        themes: { dark: "SystemAccentColorLight1 to SystemAccentColorDark3 at 22%", highContrast: "#000000" }
+        usage: Accent-following diagonal wash for the Automations header band and hero discs. Follows the user's Windows accent; never hard-coded.
+      automationHeroStroke:
+        resource: AutomationsHeroStrokeBrush
+        themes: { dark: "SystemAccentColorLight2 at 28%", highContrast: "#ffffff" }
+        usage: 1px frame of the header wash and the agent scope chip.
+      automationRail:
+        resource: AutomationsRailBrush
+        themes: { dark: "ControlStrokeColorDefault", highContrast: "#ffffff" }
+        usage: Run-history timeline rail between status nodes.
       nativeText:
         resource: TextFillColorPrimaryBrush
         themes: { dark: "#ffffff", highContrast: "#ffffff" }

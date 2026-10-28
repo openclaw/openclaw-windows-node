@@ -106,6 +106,21 @@ public sealed class AccessibilityScanTests
             new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerSessionPicker")));
     }
 
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    [Trait("Category", "Accessibility")]
+    public async Task AutomationsDisconnected_PassesAccessibilityInBothThemes(string theme)
+    {
+        using var fixture = new AccessibilityAppFixture(initializeAxe: false, theme: theme, initialRoute: "cron");
+        await fixture.NavigateAsync("cron", "CronPage", "CronPageMarker");
+        var hub = AutomationElement.FromHandle(fixture.HubWindowHandle);
+        Assert.NotNull(hub.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "AutomationsOpenConnection")));
+        AxeHelper.AssertNoAccessibilityErrors(hub.Current.ProcessId, fixture.HubWindowHandle,
+            context: $"Disconnected Automations {theme}");
+    }
+
     private static async Task<AutomationElement> WaitForOnscreenLayoutAsync(
         AutomationElement hub,
         string automationId)

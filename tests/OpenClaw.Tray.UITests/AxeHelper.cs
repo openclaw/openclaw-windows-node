@@ -70,6 +70,15 @@ public static class AxeHelper
             throw new InvalidOperationException(
                 "AxeHelper.Initialize() must be called before scanning.");
 
+        AssertNoAccessibilityErrors(processId, hubWindowHandle, pageRuleExclusions, context);
+    }
+
+    public static void AssertNoAccessibilityErrors(
+        int processId,
+        IntPtr hubWindowHandle,
+        IEnumerable<RuleId>? pageRuleExclusions = null,
+        string? context = null)
+    {
         var excludedRules = new HashSet<RuleId>(GloballyExcludedRules);
         if (pageRuleExclusions != null)
             excludedRules.UnionWith(pageRuleExclusions);

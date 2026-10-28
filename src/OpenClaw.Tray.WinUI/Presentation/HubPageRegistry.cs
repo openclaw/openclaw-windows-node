@@ -222,7 +222,7 @@ internal static class HubPageRegistry
     }
 
     public static bool ShouldKeepCurrentPageVisibleDuringDisconnect(string? currentTag) =>
-        string.Equals(currentTag, "config", StringComparison.OrdinalIgnoreCase);
+        ResolvePage(currentTag?.ToLowerInvariant()) is HubPageKind.Config or HubPageKind.Cron;
 
 #if !OPENCLAW_TRAY_TESTS
     public static Type? ResolvePageType(string? tag) => ResolvePage(tag) switch

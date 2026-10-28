@@ -925,7 +925,10 @@ public sealed partial class HubWindow : WindowEx
             case ConnectionPage connection: connection.Initialize(); break;
             case ChannelsPage channels: channels.Initialize(); break;
             case UsagePage usage: usage.Initialize(); break;
-            case CronPage cron: cron.Initialize(); break;
+            case CronPage cron:
+                cron.AgentId = _currentAgentId;
+                cron.Initialize();
+                break;
             case SkillsPage skills: skills.Initialize(); break;
             case ConfigPage config:
                 try { config.Initialize(); }

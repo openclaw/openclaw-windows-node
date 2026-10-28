@@ -79,7 +79,7 @@
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_112" x:Name="NavInstances" Tag="instances" Content="Instances">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Instances_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
-                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_124" x:Name="NavCron" Tag="cron" Content="Cron">
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_124" x:Name="NavCron" Tag="cron" Content="Automations">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Cron_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_Advanced" x:Name="NavAdvanced" Content="Advanced" SelectsOnInvoked="False">
