@@ -210,6 +210,8 @@ public sealed class PinnedPagesTests
         Assert.DoesNotContain("SettingsSaved?.Invoke", pins);
         Assert.DoesNotContain("SettingsSaved(", pins);
         Assert.DoesNotContain("Navigate(", pins);
+        Assert.Contains("_pinRows.Reconcile(", pins);
+        Assert.DoesNotContain("NavView.MenuItems.Remove(", pins);
         var xaml = ReadSource("Windows", "WorkspaceWindow.xaml");
         Assert.True(xaml.IndexOf("x:Name=\"HomeItem\"", StringComparison.Ordinal) <
                     xaml.IndexOf("x:Name=\"PagesHeader\"", StringComparison.Ordinal));
