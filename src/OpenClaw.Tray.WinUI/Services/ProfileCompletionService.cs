@@ -247,6 +247,12 @@ internal sealed class ProfileCompletionService(
                 // cancel the Gateway operation, so the outcome is unknown until the profile is read again.
                 return ProfileStep.Uncertain;
             }
+            catch (InvalidOperationException ex) when (!GatewayRequestErrors.TryGetCodes(ex, out _, out _))
+            {
+                // Uncoded means raised locally, not a Gateway reply. The send path also reports false after the
+                // frame was written when the connection generation changed, so it may have been transmitted.
+                return ProfileStep.Uncertain;
+            }
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or JsonException)
         {

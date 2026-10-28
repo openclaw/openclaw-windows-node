@@ -501,6 +501,43 @@ public class ProfileCompletionTests
         early.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.SaveAsync(prep, "Ada", Photo, false, false, early.Token));
     }
+    [Theory]
+    [InlineData("users.setDisplayName")]
+    [InlineData("users.setAvatar")]
+    public async Task Save_UncodedLocalDispatchFailureAtWrite_IsUncertain_NotDefiniteFailure(string method)
+    {
+        // Mirrors SendResponseRequestAsync: SendRawAsync returns false (even after SendAsync completed when the
+        // generation changed) and the RPC raises an uncoded InvalidOperationException.
+        var (service, proxy, prep) = await Prepared();
+        proxy.OnWrite = m => m == method
+            ? Task.FromException<JsonElement>(new InvalidOperationException($"Gateway connection changed before {m} could be sent."))
+            : Task.FromResult(JsonSerializer.SerializeToElement(new { }));
+        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        Assert.Contains(ProfileStep.Uncertain, new[] { result.Name, result.Photo });
+        Assert.DoesNotContain(ProfileStep.Failed, new[] { result.Name, result.Photo });
+        Assert.False(result.IsComplete);
+        if (method == "users.setAvatar") Assert.Equal(ProfileStep.Saved, result.Name);
+    }
+
+    [Fact]
+    public async Task Save_CodedGatewayRejectionAtWrite_StaysDefiniteFailure()
+    {
+        var (service, proxy, prep) = await Prepared();
+        proxy.OnWrite = _ => Task.FromException<JsonElement>(GatewayRequestErrors.Create("nope", "INVALID_REQUEST", null));
+        var result = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        Assert.Equal(ProfileStep.Failed, result.Name);
+    }
+
+    [Fact]
+    public async Task Save_UncodedFailureAtRead_StaysFailed_BecauseNothingWasWritten()
+    {
+        var (service, proxy, prep) = await Prepared();
+        proxy.OnSelfRead = () => throw new InvalidOperationException("Gateway connection changed before users.self could be sent.");
+        var result = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        Assert.Equal(ProfileStep.Failed, result.Name);
+        Assert.DoesNotContain(proxy.Methods, m => m.StartsWith("users.set", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Window_RechecksForOpenModalAfterPreparation_AndDoesNotConsumeAutomaticOffer()
     {
