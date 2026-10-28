@@ -71,9 +71,10 @@ public sealed partial class WorkspaceWindow
         {
             // Unchanged pins keep their row (and focus); only added, removed or moved rows change.
             var start = NavView.MenuItems.IndexOf(PagesHeader) + 1;
-            var removed = _pinRows.Reconcile(NavView.MenuItems, start,
-                visible.Select(page => page.Tag).ToList(), tag => CreatePinItem(PinnedPages.Find(tag)!));
-            RepairFocusForRemovedPins(removed);
+            var change = _pinRows.Reconcile(NavView.MenuItems, start,
+                visible.Select(page => page.Tag).ToList(), tag => CreatePinItem(PinnedPages.Find(tag)!),
+                FocusedElement, PinRowOwns);
+            RepairFocusForRemovedPins(change);
             PagesEmpty.Content = Text("PagesEmpty");
             PagesEmpty.Visibility = stored.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -96,17 +97,27 @@ public sealed partial class WorkspaceWindow
         return item;
     }
 
-    // A focus target that genuinely disappeared falls back to the customize button, the pins' owner control.
-    private void RepairFocusForRemovedPins(IReadOnlyList<object> removed)
+    private object? FocusedElement() =>
+        Root.XamlRoot is { } root ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) : null;
+
+    // Focus may sit on a descendant of the row (for example its presenter), so walk up the visual tree.
+    private static bool PinRowOwns(object row, object element)
     {
-        if (removed.Count == 0) return;
-        if (_chatFocus is not null && removed.Contains(_chatFocus))
-            _chatFocus = PagesCustomizeButton;
-        if (Root.XamlRoot is { } root &&
-            Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) is { } focused && removed.Contains(focused))
-            PagesCustomizeButton.Focus(FocusState.Programmatic);
+        for (var node = element as DependencyObject; node is not null; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
+            if (ReferenceEquals(node, row)) return true;
+        return false;
     }
 
+    // Only a focus target that genuinely disappeared falls back, to the customize button or, when the
+    // collapsed pane makes it unfocusable, to the always-present Home row. Neither navigates.
+    private void RepairFocusForRemovedPins(PinnedRowsChange change)
+    {
+        if (change.Removed.Count == 0) return;
+        if (_chatFocus is not null && change.Removed.Any(row => PinRowOwns(row, _chatFocus)))
+            _chatFocus = PagesCustomizeButton;
+        if (change.FocusedRowRemoved && !PagesCustomizeButton.Focus(FocusState.Programmatic))
+            HomeItem.Focus(FocusState.Programmatic);
+    }
     private void OnPinItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs e)
     {
         if (e.InvokedItemContainer?.Tag is not PinnedPageTag pin) return;

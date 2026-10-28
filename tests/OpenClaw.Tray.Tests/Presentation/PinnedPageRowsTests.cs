@@ -15,7 +15,7 @@ public sealed class PinnedPageRowsTests
     private sealed class Header;
 
     private static IReadOnlyList<object> Sync(PinnedPageRows rows, List<object> items, params string[] tags) =>
-        rows.Reconcile(items, 2, tags, tag => new Row(tag));
+        rows.Reconcile(items, 2, tags, tag => new Row(tag)).Removed;
 
     private static string[] PinTags(List<object> items) =>
         items.Skip(2).Take(items.Count - 3).Cast<Row>().Select(row => row.Tag).ToArray();
@@ -104,6 +104,60 @@ public sealed class PinnedPageRowsTests
 
         Assert.Contains(focused, removed);
         Assert.DoesNotContain(focused, items);
+    }
+
+    // Models WinUI moving focus synchronously the moment the focused container is detached.
+    private sealed class FocusMovingList : System.Collections.ObjectModel.Collection<object>
+    {
+        public object? Focused { get; set; }
+        protected override void RemoveItem(int index)
+        {
+            var item = this[index];
+            base.RemoveItem(index);
+            if (ReferenceEquals(Focused, item)) Focused = this[0];
+        }
+    }
+
+    private sealed record Child(Row Parent);
+
+    [Fact]
+    public void FocusIsCapturedBeforeDetach_SoSynchronousFocusMoveCannotHideTheLoss()
+    {
+        var rows = new PinnedPageRows();
+        var items = new FocusMovingList { new Row("home"), new Header(), new Row("sessions-sentinel") };
+        rows.Reconcile(items, 2, ["channels"], tag => new Row(tag));
+        items.Focused = items[2];
+
+        var change = rows.Reconcile(items, 2, [], tag => new Row(tag), () => items.Focused, (row, element) => ReferenceEquals(row, element));
+
+        Assert.NotSame(change.Removed.Single(), items.Focused);
+        Assert.True(change.FocusedRowRemoved);
+    }
+
+    [Fact]
+    public void FocusOnDescendantOfRemovedRow_CountsAsRemovedRowFocus()
+    {
+        var rows = new PinnedPageRows();
+        var items = new List<object> { new Row("home"), new Header(), new Row("sessions-sentinel") };
+        rows.Reconcile(items, 2, ["channels"], tag => new Row(tag));
+        var child = new Child((Row)items[2]);
+
+        var change = rows.Reconcile(items, 2, [], tag => new Row(tag), () => child,
+            (row, element) => element is Child c && ReferenceEquals(c.Parent, row));
+
+        Assert.True(change.FocusedRowRemoved);
+    }
+
+    [Fact]
+    public void FocusOnKeptRowOrElsewhere_IsNotReportedRemoved()
+    {
+        var rows = new PinnedPageRows();
+        var items = new List<object> { new Row("home"), new Header(), new Row("sessions-sentinel") };
+        rows.Reconcile(items, 2, ["channels", "usage"], tag => new Row(tag));
+        var kept = items[2];
+
+        Assert.False(rows.Reconcile(items, 2, ["channels"], tag => new Row(tag), () => kept).FocusedRowRemoved);
+        Assert.False(rows.Reconcile(items, 2, [], tag => new Row(tag), () => items[0]).FocusedRowRemoved);
     }
 
     private sealed class ObjectReferenceComparer : IEqualityComparer<object>
