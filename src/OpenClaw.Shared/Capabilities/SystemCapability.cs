@@ -113,7 +113,8 @@ public class SystemCapability : NodeCapabilityBase
             Logger.Info($"[system.run] rejected: 'Run system tools' is disabled (command={request.Command})");
             return ErrorWithDiagnostic(
                 "system.run is disabled by user setting (Permissions → Run system tools).",
-                NodeToolErrorCategory.PermissionDenied);
+                NodeToolErrorCategory.PermissionDenied,
+                errorCode: SystemRunDeniedErrorCode);
         }
 
         return request.Command switch

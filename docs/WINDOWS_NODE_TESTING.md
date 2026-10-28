@@ -390,6 +390,8 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   revoked approval, carries `error.code = "SYSTEM_RUN_DENIED"` in both Gateway
   `node.invoke.result` and legacy invocation responses. The message is retained.
   This lets the Gateway distinguish a definite denial from an unknown outcome.
+  Disabling Run system tools after command registration also returns this code
+  for `system.run` and `system.run.prepare`, before approval dispatch or execution.
   Handler exceptions, failed or unavailable policy revalidation, command timeouts, and
   failures after process launch do not acquire this code. The same distinction
   applies at the SDK prelaunch boundary: confirmed approval or permission

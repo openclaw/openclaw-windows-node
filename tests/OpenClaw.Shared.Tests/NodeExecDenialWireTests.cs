@@ -13,6 +13,33 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
     private static readonly TimeSpan InvocationTimeout = TimeSpan.FromSeconds(10);
 
     [Theory]
+    [InlineData(false, "system.run")]
+    [InlineData(true, "system.run")]
+    [InlineData(false, "system.run.prepare")]
+    [InlineData(true, "system.run.prepare")]
+    public async Task PermissionDisabledAfterRegistration_PreservesDefiniteRefusalOnWire(
+        bool gatewayEvent, string nodeCommand)
+    {
+        var permissionGranted = true;
+        var handler = new ApprovalHandler();
+        var runner = new RecordingRunner();
+        var response = await InvokeOverSocketAsync(
+            gatewayEvent, handler, runner,
+            nodeCommand: nodeCommand,
+            includeRunCommands: () => permissionGranted,
+            afterHandshake: () => permissionGranted = false);
+
+        Assert.False(response.GetProperty("ok").GetBoolean());
+        var error = response.GetProperty("error");
+        Assert.Contains("disabled by user setting", error.GetProperty("message").GetString());
+        Assert.True(error.TryGetProperty("code", out var code),
+            "Revoked permission must remain a definite pre-execution refusal.");
+        Assert.Equal("SYSTEM_RUN_DENIED", code.GetString());
+        Assert.Equal(0, handler.CallCount);
+        Assert.Equal(0, runner.CallCount);
+    }
+
+    [Theory]
     [InlineData(false, ExecApprovalV2Code.UserDenied)]
     [InlineData(true, ExecApprovalV2Code.UserDenied)]
     [InlineData(false, ExecApprovalV2Code.SecurityDeny)]
@@ -351,7 +378,10 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
         bool gatewayEvent,
         IExecApprovalV2Handler handler,
         ICommandRunner runner,
-        string[]? command = null)
+        string[]? command = null,
+        string nodeCommand = "system.run",
+        Func<bool>? includeRunCommands = null,
+        Action? afterHandshake = null)
     {
         using var temp = new TempDirectory();
         using var deadline = new CancellationTokenSource(InvocationTimeout);
@@ -359,7 +389,7 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
         await server.StartAsync();
         using var client = new WindowsNodeClient(
             server.WebSocketUrl, "fixture-shared-token", temp.Path, NullLogger.Instance);
-        var capability = new SystemCapability(NullLogger.Instance);
+        var capability = new SystemCapability(NullLogger.Instance, includeRunCommands ?? (() => true));
         capability.SetV2Handler(handler);
         capability.SetCommandRunner(runner);
         client.RegisterCapability(capability);
@@ -374,6 +404,8 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
         using var connect = JsonDocument.Parse(
             await server.ReceiveTextAsync(deadline.Token));
         Assert.Equal("connect", connect.RootElement.GetProperty("method").GetString());
+        Assert.Contains(nodeCommand, connect.RootElement.GetProperty("params")
+            .GetProperty("commands").EnumerateArray().Select(value => value.GetString()));
         var connectId = connect.RootElement.GetProperty("id").GetString();
         await server.SendTextAsync(
             JsonSerializer.Serialize(new
@@ -390,11 +422,12 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
             }),
             deadline.Token);
         await connected.Task.WaitAsync(deadline.Token);
+        afterHandshake?.Invoke();
 
         var parameters = new
         {
             requestId = "wire-exec",
-            command = "system.run",
+            command = nodeCommand,
             args = new { command = command ?? ["where.exe", "cmd.exe"] }
         };
         var invocation = gatewayEvent
