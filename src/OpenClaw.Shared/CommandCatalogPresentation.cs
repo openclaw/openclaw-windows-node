@@ -20,15 +20,15 @@ namespace OpenClaw.Shared;
 public static class GatewayCommandPresentation
 {
     /// <summary>
-    /// Best slash/native string to show as the command's primary label. Prefers
-    /// the native name, then the first text alias, then a slash-prefixed name.
+    /// Text-composer label and insertion token. Prefers a text alias over a
+    /// potentially different native-platform name, then falls back to the name.
     /// </summary>
     public static string DisplayName(this GatewayCommand command)
     {
         if (command is null) return "";
-        if (!string.IsNullOrWhiteSpace(command.NativeName)) return Normalize(command.NativeName!);
         var alias = command.TextAliases?.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a));
         if (!string.IsNullOrWhiteSpace(alias)) return Normalize(alias!);
+        if (!string.IsNullOrWhiteSpace(command.NativeName)) return Normalize(command.NativeName!);
         return Normalize(command.Name);
     }
 

@@ -70,6 +70,22 @@ test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
 orders work; this is deliberately not sequential packet playback.
 
+`GatewayScenario.CreateCommandCatalog()` is an opt-in read-only catalog fixture.
+It requires an explicit `main` or `research` agent, returns distinct synthetic
+skill commands, and projects different text/native names according to the wire
+scope. Argument metadata follows `includeArgs`. The provider integration test
+uses the production bridge and client over a real socket, checks the captured
+agent/scope/argument options, and switches catalogs on the same connection.
+This proves the synthetic transport and provider contract, not live Gateway
+skill discovery or visible popup rendering.
+For an authorized interactive run, use the built executable with
+`.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario command-catalog`.
+Type `/` in Fixture Main, then select the research conversation. The popup
+should replace `/main_summarize` with `/research_review` without editing the
+draft. `CommandCatalog_SwitchingAgentReplacesVisibleSlashCommandsAndPreservesDraft`
+automates the visible assertion with owned-window captures when screenshots
+are enabled.
+
 ## Run the application smoke
 
 ```powershell

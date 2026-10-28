@@ -103,6 +103,22 @@ public sealed class ChatComposerViewModelTests
         };
 
     [Fact]
+    public void CommandCatalog_SwitchWhileLoading_RequestsNewContextWithoutEditingDraft()
+    {
+        using var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), initialSpeakerMuted: false);
+        vm.ApplyInputs(MakeInputs(thread: MakeThread("agent:main:first")) with { CommandsSupported = true });
+        vm.SetDraft("/");
+        Assert.True(vm.ShouldRequestCatalogOnOpen());
+        Assert.False(vm.ShouldRequestCatalogOnOpen());
+
+        vm.ApplyInputs(MakeInputs(revision: 2, thread: MakeThread("agent:research:second")) with { CommandsSupported = true });
+        Assert.Equal("/", vm.Draft);
+        Assert.True(vm.SlashDisplay.IsLoading);
+        Assert.True(vm.ShouldRequestCatalogOnOpen());
+        Assert.False(vm.ShouldRequestCatalogOnOpen());
+    }
+
+    [Fact]
     public void SetDraft_UpdatesDraftAndBumpsRevision()
     {
         var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), initialSpeakerMuted: false);

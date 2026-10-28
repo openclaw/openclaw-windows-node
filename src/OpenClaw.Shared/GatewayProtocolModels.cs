@@ -103,13 +103,17 @@ public sealed class CommandCatalog
 }
 
 /// <summary>
-/// Client-side filter applied over a <see cref="CommandCatalog"/>. The gateway's
-/// <c>commands.list</c> only accepts <c>scope</c>/<c>includeArgs</c>/<c>provider</c>/<c>agentId</c>
-/// server-side filters (no category/source/text search), so filtering locally
-/// covers all facets and keeps the full catalog cached for cheap re-filtering.
+/// Gateway command context plus client-side category/source/search filters.
+/// Scope is sent to the Gateway because it also selects text versus native names.
 /// </summary>
 public sealed class CommandCatalogQuery
 {
+    /// <summary>Configured agent whose workspace contributes skill commands. Omitted uses Gateway selection rules.</summary>
+    public string? AgentId { get; set; }
+
+    /// <summary>Whether the Gateway should include declared command arguments. Omitted uses its default.</summary>
+    public bool? IncludeArgs { get; set; }
+
     /// <summary>Match command category (session, options, status, management, media, tools, docks).</summary>
     public string? Category { get; set; }
 

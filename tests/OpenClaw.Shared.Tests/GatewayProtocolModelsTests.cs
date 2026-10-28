@@ -333,6 +333,29 @@ public class GatewayProtocolModelsTests
     }
 
     [Fact]
+    public void CommandCatalogParameters_ForwardOnlyGatewayOptions()
+    {
+        var parameters = OpenClawGatewayClient.BuildCommandCatalogParameters(new CommandCatalogQuery
+        {
+            AgentId = "research",
+            Scope = " TEXT ",
+            IncludeArgs = false,
+            Category = "tools",
+            Source = "skill",
+            Search = "review",
+            AcceptsArgs = true,
+        });
+        Assert.Equal(3, parameters.Count);
+        Assert.Equal("research", parameters["agentId"]);
+        Assert.Equal("text", parameters["scope"]);
+        Assert.Equal(false, parameters["includeArgs"]);
+        Assert.Empty(OpenClawGatewayClient.BuildCommandCatalogParameters(null));
+        Assert.Empty(OpenClawGatewayClient.BuildCommandCatalogParameters(new CommandCatalogQuery()));
+        Assert.Equal("", OpenClawGatewayClient.BuildCommandCatalogParameters(
+            new CommandCatalogQuery { AgentId = "" })["agentId"]);
+    }
+
+    [Fact]
     public void CommandCatalogQuery_Matches_FiltersByCategorySourceScopeAndSearch()
     {
         var cmd = new GatewayCommand

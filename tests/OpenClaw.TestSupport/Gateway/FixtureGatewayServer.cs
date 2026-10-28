@@ -16,7 +16,10 @@ public sealed record GatewayFixtureRequest(
     string? ApprovalId = null,
     bool AdvertisesExecApprovals = false,
     string? ModelCatalogView = null,
-    bool? IncludeModelDetails = null);
+    bool? IncludeModelDetails = null,
+    string? CommandAgentId = null,
+    string? CommandScope = null,
+    bool? IncludeCommandArgs = null);
 
 public sealed record GatewayFixtureEvent(string Event, int DeliveredConnections);
 
@@ -620,7 +623,15 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                         method == "models.list" && parameters.ValueKind == JsonValueKind.Object
                             && parameters.TryGetProperty("includeDetails", out var details)
                             && details.ValueKind is JsonValueKind.True or JsonValueKind.False
-                                ? details.GetBoolean() : null);
+                                ? details.GetBoolean() : null,
+                         method == "commands.list" && ReadString(parameters, "agentId") is "main" or "research"
+                             ? ReadString(parameters, "agentId") : null,
+                         method == "commands.list" && ReadString(parameters, "scope") is "text" or "native" or "both"
+                             ? ReadString(parameters, "scope") : null,
+                         method == "commands.list" && parameters.ValueKind == JsonValueKind.Object
+                             && parameters.TryGetProperty("includeArgs", out var args)
+                             && args.ValueKind is JsonValueKind.True or JsonValueKind.False
+                                ? args.GetBoolean() : null);
                     if (!authenticated || method == "connect")
                     {
                         try
@@ -852,13 +863,17 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         string? approvalId = null,
         bool advertisesExecApprovals = false,
         string? modelCatalogView = null,
-        bool? includeModelDetails = null)
+        bool? includeModelDetails = null,
+        string? commandAgentId = null,
+        string? commandScope = null,
+        bool? includeCommandArgs = null)
     {
         lock (_sync)
         {
             var index = _requests.Count;
             _requests.Add(new GatewayFixtureRequest(method, key, "pending", decision, approvalId,
-                advertisesExecApprovals, modelCatalogView, includeModelDetails));
+                advertisesExecApprovals, modelCatalogView, includeModelDetails,
+                commandAgentId, commandScope, includeCommandArgs));
             SignalRequestChanged();
             return index;
         }

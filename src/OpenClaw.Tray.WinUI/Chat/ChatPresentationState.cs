@@ -26,6 +26,7 @@ internal sealed class ChatPresentationState
     private CommandCatalog? _commandCatalog;
     private bool _commandsFetchInFlight;
     private int _commandsEpoch;
+    private (string? ThreadId, string? AgentId)? _commandsContext;
     private int _keylessEventDiagnosticRaised;
     private OpenClawChatDataProvider.LastChatState? _lastChatState;
 
@@ -88,6 +89,7 @@ internal sealed class ChatPresentationState
     internal OpenClawChatDataProvider.LastChatState? RememberSelectedThread(
         string threadId)
     {
+        SetCommandCatalogContext(threadId);
         var session = FindSession(threadId);
         if (session is null)
             return null;
@@ -193,9 +195,19 @@ internal sealed class ChatPresentationState
 
     internal bool TryBeginCommandCatalogFetch(
         ConnectionStatus status,
-        out int epoch)
+        string? defaultThreadId,
+        out int epoch,
+        out CommandCatalogQuery query)
     {
+        if (_commandsContext is null)
+            SetCommandCatalogContext(defaultThreadId);
         epoch = _commandsEpoch;
+        query = new CommandCatalogQuery
+        {
+            AgentId = _commandsContext?.AgentId,
+            Scope = "text",
+            IncludeArgs = true,
+        };
         if (status != ConnectionStatus.Connected ||
             _commandsFetchInFlight ||
             _commandCatalog is not null)
@@ -204,6 +216,36 @@ internal sealed class ChatPresentationState
         }
         _commandsFetchInFlight = true;
         return true;
+    }
+
+    internal ChatDataSnapshot ProjectCommandCatalog(
+        ChatDataSnapshot snapshot,
+        string? threadId,
+        string? agentId)
+    {
+        SetCommandCatalogContext(threadId, agentId);
+        return snapshot with
+        {
+            AvailableCommands = _commandCatalog?.Commands,
+            CommandsSupported = _commandCatalog?.IsSupported ?? true,
+        };
+    }
+
+    private void SetCommandCatalogContext(string? threadId, string? agentId = null)
+    {
+        var session = threadId is null ? null : FindSession(threadId);
+        // A wrapped session key identifies the agent even before sessions.list
+        // materializes the thread. Never substitute "main" for an unknown agent.
+        var keyAgent = threadId is null ? null
+            : SessionDisplayResolver.Resolve(new SessionInfo { Key = threadId }).AgentId;
+        var fallbackAgent = string.IsNullOrWhiteSpace(agentId) ? session?.AgentId : agentId;
+        var context = (threadId, keyAgent ?? (string.IsNullOrWhiteSpace(fallbackAgent) ? null : fallbackAgent));
+        if (_commandsContext == context)
+            return;
+        _commandsContext = context;
+        _commandsEpoch++;
+        _commandCatalog = null;
+        _commandsFetchInFlight = false;
     }
 
     internal bool CompleteCommandCatalogFetch(

@@ -77,6 +77,17 @@ use the card fill above that content layer.
 
 ## Controls and states
 
+Slash completion reads `commands.list` for the selected conversation's agent
+with `scope: "text"` and `includeArgs: true`. The Gateway selects text command
+names and agent-workspace skills; local filtering is not a substitute for that
+request context. This follows the native Mac slash catalog path at upstream
+[`098e991`](https://github.com/openclaw/openclaw/blob/098e991549b7986bcfaebdbe427aeaaf95afb926/apps/shared/OpenClawKit/Sources/OpenClawChatUI/ChatGatewayRequest.swift#L677-L693).
+Like that path, Windows does not send session or provider parameters.
+`ChatPresentationState` owns the catalog and fetch epoch. Switching conversation
+or agent clears the catalog and fences both outstanding results and queued
+delivery, while preserving the composer and draft. Reopening within the same
+context reuses the catalog; reconnect invalidates it.
+
 Queued submissions leave the textbox and remain after the current turn as normal
 right-aligned user bubbles. A transparent `ChatPendingUserBrush`, subtle `ChatStrokeBrush`
 outline, and slightly faded `ChatSecondaryTextBrush` distinguish them from sent messages without
