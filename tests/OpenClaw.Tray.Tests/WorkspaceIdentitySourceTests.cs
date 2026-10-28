@@ -650,6 +650,117 @@ public sealed class WorkspaceIdentitySourceTests
         Assert.Empty(errors);
     }
 
+    private static JsonElement AvatarProfile(string? name, string revision, bool uploaded = true) =>
+        JsonSerializer.SerializeToElement(new { profile = new { id = "person", displayName = name, hasAvatar = uploaded, updatedAt = revision } });
+
+    private static async Task SpinUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "condition not reached");
+            await Task.Delay(10);
+        }
+    }
+
+    [Fact]
+    public async Task RepeatedOrdinaryRefreshDuringSlowAvatarDoesNotRestartOrStarveIt()
+    {
+        var (client, proxy) = Gateway();
+        proxy.Response = () => Task.FromResult(AvatarProfile("Ada", "1"));
+        var release = new TaskCompletionSource();
+        var image = new UserAvatarImage([5], "image/png");
+        var cancelled = 0;
+        proxy.AvatarWithToken = async (_, _, token) =>
+        {
+            using var _ = token.Register(() => Interlocked.Increment(ref cancelled));
+            await release.Task;
+            return new UserAvatarResult(UserAvatarStatus.Ready, image);
+        };
+        var source = new WorkspaceIdentitySource(() => { }, category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        var load = source.RefreshAsync();
+        await SpinUntilAsync(() => proxy.AvatarRequests.Count == 1);
+        var repeats = new List<Task>();
+        for (var i = 0; i < 25; i++)
+            repeats.Add(source.RefreshAsync());
+        await Task.Delay(50);
+        Assert.Equal(0, cancelled);
+        Assert.Single(proxy.AvatarRequests);
+        release.SetResult();
+        await Task.WhenAll(repeats.Append(load)).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Same(image, source.Avatar);
+        Assert.Single(proxy.AvatarRequests);
+        Assert.Equal("Ada", source.DisplayName);
+    }
+
+    [Fact]
+    public async Task UnchangedOrdinaryRefreshKeepsImageWithoutRefetchOrLoadingFlash()
+    {
+        var (client, proxy) = Gateway();
+        proxy.Response = () => Task.FromResult(AvatarProfile("Ada", "1"));
+        var image = new UserAvatarImage([5], "image/png");
+        proxy.Avatar = (_, _) => Task.FromResult(new UserAvatarResult(UserAvatarStatus.Ready, image));
+        var states = new List<(bool Loading, bool HasAvatar)>();
+        WorkspaceIdentitySource? source = null;
+        source = new WorkspaceIdentitySource(() => states.Add((source!.IsLoading, source.Avatar is not null)), category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        states.Clear();
+        await source.RefreshAsync();
+        await source.RefreshAsync();
+        Assert.Same(image, source.Avatar);
+        Assert.Single(proxy.AvatarRequests);
+        Assert.DoesNotContain(states, s => s.Loading || !s.HasAvatar);
+    }
+
+    [Fact]
+    public async Task KnownUnnamedProfileNeverReturnsToLoadingOnOrdinaryRefresh()
+    {
+        var (client, proxy) = Gateway();
+        proxy.Response = () => Task.FromResult(Profile(null));
+        var states = new List<(bool Loading, bool Unnamed)>();
+        WorkspaceIdentitySource? source = null;
+        source = new WorkspaceIdentitySource(() => states.Add((source!.IsLoading, source.IsUnnamedProfile)), category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        Assert.True(source.IsUnnamedProfile);
+        states.Clear();
+        await source.RefreshAsync();
+        Assert.True(source.IsUnnamedProfile);
+        Assert.DoesNotContain(states, s => s.Loading || !s.Unnamed);
+    }
+
+    [Fact]
+    public async Task ChangedRevisionAndExplicitInvalidationRefetchWhileConnectionSwitchDropsOldImage()
+    {
+        var (client, proxy) = Gateway();
+        var revision = "1";
+        proxy.Response = () => Task.FromResult(AvatarProfile("Ada", revision));
+        var counter = 0;
+        proxy.Avatar = (_, _) => Task.FromResult(new UserAvatarResult(
+            UserAvatarStatus.Ready, new UserAvatarImage([(byte)Interlocked.Increment(ref counter)], "image/png")));
+        var source = new WorkspaceIdentitySource(() => { }, category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        Assert.Equal(1, counter);
+        revision = "2";
+        await source.RefreshAsync();
+        Assert.Equal(2, counter);
+        Assert.Equal(new byte[] { 2 }, source.Avatar!.Bytes);
+        await source.RefreshAsync(invalidate: true);
+        Assert.Equal(3, counter);
+        Assert.Equal(new byte[] { 3 }, source.Avatar!.Bytes);
+
+        var (other, otherProxy) = Gateway();
+        otherProxy.Response = () => Task.FromResult(Profile("Grace"));
+        source.SetConnection(other, ConnectionStatus.Connected);
+        Assert.Null(source.Avatar);
+        await source.RefreshAsync();
+        Assert.Null(source.Avatar);
+        Assert.Equal("Grace", source.DisplayName);
+    }
+
     [Fact]
     public async Task FailedAvatarKeepsNameAndLaterInvalidationRefreshes()
     {

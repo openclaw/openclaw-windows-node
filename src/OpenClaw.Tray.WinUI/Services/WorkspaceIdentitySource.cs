@@ -12,6 +12,9 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
     private int _generation;
     private Task? _pending;
     private bool _refreshAgain;
+    private bool _invalidateAgain;
+    private bool _forceAvatar;
+    private (string ProfileId, string? Revision)? _avatarKey;
     private bool _unavailable;
 
     private const string GatewayOwnerProfileId = "gateway-owner";
@@ -54,6 +57,9 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
         _avatarCancellation.Cancel();
         _avatarCancellation = new CancellationTokenSource();
         Avatar = null;
+        _avatarKey = null;
+        _forceAvatar = false;
+        _invalidateAgain = false;
         _client = next;
         _pending = null;
         _refreshAgain = false;
@@ -91,12 +97,19 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
         if (_pending is { IsCompleted: false })
         {
             _refreshAgain = true;
-            // A stalled avatar must not delay the newer profile read: supersede it so the load loop re-reads at once.
-            CancelAvatarAttempt();
+            if (invalidate)
+            {
+                // Explicit invalidation supersedes a stalled avatar and any older read. An ordinary refresh only
+                // coalesces so repeated presence events cannot restart a valid in-flight attempt forever.
+                _invalidateAgain = true;
+                _forceAvatar = true;
+                CancelAvatarAttempt();
+            }
             return _pending;
         }
 
-        if (!_loading && DisplayName is null)
+        if (invalidate) _forceAvatar = true;
+        if (!_loading && DisplayName is null && !HasProfile)
         {
             _loading = true;
             HasProfile = false;
@@ -172,23 +185,32 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
         do
         {
             _refreshAgain = false;
+            _invalidateAgain = false;
             try
             {
                 var response = await client.SendWizardRequestAsync("users.self", new { }, timeoutMs: 12000);
                 if (!IsCurrent()) return;
-                if (_refreshAgain) continue;
+                if (_invalidateAgain) continue;
                 var profile = ReadProfile(response);
                 DisplayName = profile.DisplayName;
                 HasProfile = true;
-                Avatar = null;
                 _loading = false;
-                changed();
-                if (profile.AvatarProfileId is { } profileId)
+                var key = profile.AvatarProfileId is { } keyId ? (keyId, profile.AvatarRevision) : ((string, string?)?)null;
+                var refetch = key is not null && (_forceAvatar || Avatar is null || key != _avatarKey);
+                if (key is null || key != _avatarKey)
                 {
-                    var avatar = await LoadAvatarAttemptAsync(client, profileId, profile.AvatarRevision, token);
+                    Avatar = null;
+                    _avatarKey = null;
+                }
+                _forceAvatar = false;
+                changed();
+                if (refetch)
+                {
+                    var avatar = await LoadAvatarAttemptAsync(client, key!.Value.Item1, key.Value.Item2, token);
                     if (!IsCurrent()) return;
-                    if (_refreshAgain) continue;
+                    if (_invalidateAgain) continue;
                     Avatar = avatar;
+                    _avatarKey = avatar is null ? null : key;
                     changed();
                 }
             }
@@ -200,6 +222,7 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
                 DisplayName = null;
                 HasProfile = false;
                 Avatar = null;
+                _avatarKey = null;
                 var failure = Classify(ex);
                 _unavailable = IsTerminal(failure);
                 // Bounded category only: never the Gateway message, profile, name, email or token.
