@@ -18,7 +18,7 @@ internal sealed record PinnedPageTag(string Tag);
 // SettingsSaved so they never trigger a capability reload or node reconnect.
 public sealed partial class WorkspaceWindow
 {
-    private readonly List<NavigationViewItem> _pinItems = [];
+    private readonly PinnedPageRows _pinRows = new();
     private string? _pickerScope;
     private bool _pinsWired;
 
@@ -69,29 +69,42 @@ public sealed partial class WorkspaceWindow
         _updating = true;
         try
         {
-            foreach (var item in _pinItems) NavView.MenuItems.Remove(item);
-            _pinItems.Clear();
-            var index = NavView.MenuItems.IndexOf(PagesHeader) + 1;
-            foreach (var page in visible)
-            {
-                var label = LocalizationHelper.GetString(page.LabelKey);
-                var item = new NavigationViewItem
-                {
-                    Content = label,
-                    Tag = new PinnedPageTag(page.Tag),
-                    SelectsOnInvoked = false,
-                    Icon = new ImageIcon { Source = new SvgImageSource(new Uri($"ms-appx:///Assets/SidebarIcons/{page.IconAsset}.svg")) },
-                };
-                AutomationProperties.SetAccessibilityView(item.Icon, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
-                AutomationProperties.SetAutomationId(item, $"WorkspacePinnedPage:{page.Tag}");
-                AutomationProperties.SetName(item, label);
-                NavView.MenuItems.Insert(index++, item);
-                _pinItems.Add(item);
-            }
+            // Unchanged pins keep their row (and focus); only added, removed or moved rows change.
+            var start = NavView.MenuItems.IndexOf(PagesHeader) + 1;
+            var removed = _pinRows.Reconcile(NavView.MenuItems, start,
+                visible.Select(page => page.Tag).ToList(), tag => CreatePinItem(PinnedPages.Find(tag)!));
+            RepairFocusForRemovedPins(removed);
             PagesEmpty.Content = Text("PagesEmpty");
             PagesEmpty.Visibility = stored.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
         }
         finally { _updating = wasUpdating; }
+    }
+
+    private static NavigationViewItem CreatePinItem(PinnablePage page)
+    {
+        var label = LocalizationHelper.GetString(page.LabelKey);
+        var item = new NavigationViewItem
+        {
+            Content = label,
+            Tag = new PinnedPageTag(page.Tag),
+            SelectsOnInvoked = false,
+            Icon = new ImageIcon { Source = new SvgImageSource(new Uri($"ms-appx:///Assets/SidebarIcons/{page.IconAsset}.svg")) },
+        };
+        AutomationProperties.SetAccessibilityView(item.Icon, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+        AutomationProperties.SetAutomationId(item, $"WorkspacePinnedPage:{page.Tag}");
+        AutomationProperties.SetName(item, label);
+        return item;
+    }
+
+    // A focus target that genuinely disappeared falls back to the customize button, the pins' owner control.
+    private void RepairFocusForRemovedPins(IReadOnlyList<object> removed)
+    {
+        if (removed.Count == 0) return;
+        if (_chatFocus is not null && removed.Contains(_chatFocus))
+            _chatFocus = PagesCustomizeButton;
+        if (Root.XamlRoot is { } root &&
+            Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) is { } focused && removed.Contains(focused))
+            PagesCustomizeButton.Focus(FocusState.Programmatic);
     }
 
     private void OnPinItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs e)
