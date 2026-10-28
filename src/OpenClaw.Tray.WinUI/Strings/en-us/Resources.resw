@@ -7115,6 +7115,49 @@ Make sure the gateway is running.</value>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>Local AI: {0}</value></data>
   <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (sign in to the provider first)</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>The default model was updated.</value></data>
+  <data name="DefaultModelPage_AddProviderTitle.Text" xml:space="preserve"><value>Add a model provider</value></data>
+  <data name="DefaultModelPage_AddProviderIntro.Text" xml:space="preserve"><value>Connect one of the Gateway's providers, or add your own OpenAI- or Anthropic-compatible endpoint. New models appear in the list above.</value></data>
+  <data name="DefaultModelPage_ProviderKindGateway.Content" xml:space="preserve"><value>Gateway provider</value></data>
+  <data name="DefaultModelPage_ProviderKindCustom.Content" xml:space="preserve"><value>Custom endpoint</value></data>
+  <data name="DefaultModelPage_ProviderSelector.Header" xml:space="preserve"><value>Provider</value></data>
+  <data name="DefaultModelPage_ProviderApiKey.Header" xml:space="preserve"><value>API key</value></data>
+  <data name="DefaultModelPage_SaveApiKeyButton.Content" xml:space="preserve"><value>Save API key</value></data>
+  <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>Sign-in method</value></data>
+  <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>Sign in</value></data>
+  <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>Provider ID</value></data>
+  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>Base URL</value></data>
+  <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API type</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI-compatible (Chat Completions)</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiResponses.Content" xml:space="preserve"><value>OpenAI Responses</value></data>
+  <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
+  <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API key (optional for OpenAI-compatible)</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>Model IDs</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>Add provider</value></data>
+  <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0} (connected)</value></data>
+  <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>Loading providers...</value></data>
+  <data name="DefaultModelPage_ProviderCatalogEmpty" xml:space="preserve"><value>This Gateway has no providers to connect.</value></data>
+  <data name="DefaultModelPage_ProviderCatalogFailedFormat" xml:space="preserve"><value>Could not load providers: {0}</value></data>
+  <data name="DefaultModelPage_ProviderCatalogUnsupported" xml:space="preserve"><value>This Gateway version cannot connect providers from here. Use a custom endpoint, or update the Gateway.</value></data>
+  <data name="DefaultModelPage_ProviderApiKeySaved" xml:space="preserve"><value>API key saved for {0}. Its models appear in the list above.</value></data>
+  <data name="DefaultModelPage_CustomProviderAdded" xml:space="preserve"><value>Added {0}. Its models appear in the list above.</value></data>
+  <data name="DefaultModelPage_ProviderSignedIn" xml:space="preserve"><value>Signed in to {0}.</value></data>
+  <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>Signed in to {0}. Restart the Gateway to use its models.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>Sign-in was cancelled.</value></data>
+  <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>Sign-in did not finish.</value></data>
+  <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>The Gateway could not complete this: {0}</value></data>
+  <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>Waiting for the provider...</value></data>
+  <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>Sign-in is taking too long. Check again or cancel.</value></data>
+  <data name="DefaultModelPage_ProviderSignInUnsupported" xml:space="preserve"><value>The Gateway sent a sign-in step this app cannot show. Cancel and try again from the Gateway dashboard.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelUnconfirmed" xml:space="preserve"><value>The Gateway has not confirmed the cancellation yet. Try again.</value></data>
+  <data name="DefaultModelPage_CustomInvalidProviderId" xml:space="preserve"><value>Use lowercase letters, numbers, and hyphens for the provider ID.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdReserved" xml:space="preserve"><value>That ID belongs to a built-in provider. Choose another ID.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdInUse" xml:space="preserve"><value>A provider with that ID already exists.</value></data>
+  <data name="DefaultModelPage_CustomInvalidBaseUrl" xml:space="preserve"><value>Enter an http or https base URL.</value></data>
+  <data name="DefaultModelPage_CustomApiKeyRequired" xml:space="preserve"><value>This API type needs an API key.</value></data>
+  <data name="DefaultModelPage_CustomMissingModels" xml:space="preserve"><value>Enter at least one model ID.</value></data>
+  <data name="DefaultModelPage_CustomInvalidModelId" xml:space="preserve"><value>Model IDs cannot contain spaces.</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>See why</value></data>
   <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>Checking Local AI requirements</value></data>
   <data name="Onboarding_LocalAi_CheckingMessage" xml:space="preserve"><value>OpenClaw is checking the NVIDIA GPU, driver, CUDA, memory, and WSL requirements.</value></data>
@@ -7152,6 +7195,7 @@ Make sure the gateway is running.</value>
   <data name="Chat_Model_Other" xml:space="preserve"><value>Other models</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>No matching models</value></data>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Search models</value></data>
+  <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Add model provider...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Remove attachment</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Loading messages...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 queued message</value></data>

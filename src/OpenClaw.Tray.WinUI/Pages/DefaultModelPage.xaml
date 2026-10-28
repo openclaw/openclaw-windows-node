@@ -56,6 +56,91 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
+
+            <Border x:Name="AddProviderCard" Visibility="Collapsed"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock x:Uid="DefaultModelPage_AddProviderTitle" Text="Add a model provider"
+                               Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <TextBlock x:Uid="DefaultModelPage_AddProviderIntro"
+                               Text="Connect one of the Gateway's providers, or add your own OpenAI- or Anthropic-compatible endpoint. New models appear in the list above."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    <RadioButtons x:Name="ProviderKindSelector" SelectedIndex="0"
+                                  SelectionChanged="OnProviderKindChanged"
+                                  AutomationProperties.AutomationId="DefaultModelProviderKind">
+                        <RadioButton x:Name="GatewayProviderKindRadio" x:Uid="DefaultModelPage_ProviderKindGateway"
+                                     Content="Gateway provider"
+                                     AutomationProperties.AutomationId="DefaultModelProviderKindGateway"/>
+                        <RadioButton x:Name="CustomProviderKindRadio" x:Uid="DefaultModelPage_ProviderKindCustom"
+                                     Content="Custom endpoint"
+                                     AutomationProperties.AutomationId="DefaultModelProviderKindCustom"/>
+                    </RadioButtons>
+                    <TextBlock x:Name="ProviderCatalogStatusText" TextWrapping="Wrap" Visibility="Collapsed"
+                               AutomationProperties.AutomationId="DefaultModelProviderCatalogStatus"/>
+
+                    <StackPanel x:Name="GatewayProviderPanel" Spacing="8">
+                        <ComboBox x:Name="ProviderCatalogSelector" x:Uid="DefaultModelPage_ProviderSelector"
+                                  Header="Provider" MinWidth="360" HorizontalAlignment="Left"
+                                  SelectionChanged="OnProviderCatalogSelectionChanged"
+                                  AutomationProperties.AutomationId="DefaultModelProviderSelector"/>
+                        <StackPanel x:Name="ProviderApiKeyPanel" Orientation="Horizontal" Spacing="8">
+                            <PasswordBox x:Name="ProviderApiKeyBox" x:Uid="DefaultModelPage_ProviderApiKey"
+                                         Header="API key" MinWidth="280"
+                                         AutomationProperties.AutomationId="DefaultModelProviderApiKey"/>
+                            <Button x:Name="SaveProviderApiKeyButton" x:Uid="DefaultModelPage_SaveApiKeyButton"
+                                    Content="Save API key" VerticalAlignment="Bottom"
+                                    Click="OnSaveProviderApiKey"
+                                    AutomationProperties.AutomationId="DefaultModelSaveApiKey"/>
+                        </StackPanel>
+                        <StackPanel x:Name="ProviderSignInPanel" Orientation="Horizontal" Spacing="8">
+                            <ComboBox x:Name="ProviderLoginSelector" x:Uid="DefaultModelPage_ProviderSignInMethod"
+                                      Header="Sign-in method" MinWidth="280"
+                                      SelectionChanged="OnProviderLoginSelectionChanged"
+                                      AutomationProperties.AutomationId="DefaultModelProviderSignInMethod"/>
+                            <Button x:Name="StartProviderSignInButton" x:Uid="DefaultModelPage_SignInButton"
+                                    Content="Sign in" VerticalAlignment="Bottom"
+                                    Click="OnStartProviderSignIn"
+                                    AutomationProperties.AutomationId="DefaultModelProviderSignIn"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel x:Name="CustomProviderPanel" Spacing="8" Visibility="Collapsed">
+                        <TextBox x:Name="CustomProviderIdBox" x:Uid="DefaultModelPage_CustomProviderId"
+                                 Header="Provider ID" PlaceholderText="my-endpoint" MinWidth="360" HorizontalAlignment="Left"
+                                 AutomationProperties.AutomationId="DefaultModelCustomProviderId"/>
+                        <TextBox x:Name="CustomProviderBaseUrlBox" x:Uid="DefaultModelPage_CustomProviderBaseUrl"
+                                 Header="Base URL" PlaceholderText="http://localhost:8000/v1" MinWidth="360" HorizontalAlignment="Left"
+                                 AutomationProperties.AutomationId="DefaultModelCustomProviderBaseUrl"/>
+                        <ComboBox x:Name="CustomProviderApiSelector" x:Uid="DefaultModelPage_CustomProviderApi"
+                                  Header="API type" SelectedIndex="0" MinWidth="360"
+                                  AutomationProperties.AutomationId="DefaultModelCustomProviderApi">
+                            <ComboBoxItem x:Uid="DefaultModelPage_CustomApiOpenAiCompletions" Tag="openai-completions"
+                                          Content="OpenAI-compatible (Chat Completions)"/>
+                            <ComboBoxItem x:Uid="DefaultModelPage_CustomApiOpenAiResponses" Tag="openai-responses"
+                                          Content="OpenAI Responses"/>
+                            <ComboBoxItem x:Uid="DefaultModelPage_CustomApiAnthropic" Tag="anthropic-messages"
+                                          Content="Anthropic Messages"/>
+                        </ComboBox>
+                        <PasswordBox x:Name="CustomProviderApiKeyBox" x:Uid="DefaultModelPage_CustomProviderApiKey"
+                                     Header="API key (optional for OpenAI-compatible)" MinWidth="360" HorizontalAlignment="Left"
+                                     AutomationProperties.AutomationId="DefaultModelCustomProviderApiKey"/>
+                        <TextBox x:Name="CustomProviderModelsBox" x:Uid="DefaultModelPage_CustomProviderModels"
+                                 Header="Model IDs" PlaceholderText="model-a, model-b" MinWidth="360" HorizontalAlignment="Left"
+                                 AutomationProperties.AutomationId="DefaultModelCustomProviderModels"/>
+                        <Button x:Name="AddCustomProviderButton" x:Uid="DefaultModelPage_AddCustomProviderButton"
+                                Content="Add provider" Style="{StaticResource AccentButtonStyle}"
+                                Click="OnAddCustomProvider"
+                                AutomationProperties.AutomationId="DefaultModelAddCustomProvider"/>
+                    </StackPanel>
+
+                    <TextBlock x:Name="ProviderStatusText" TextWrapping="Wrap" Visibility="Collapsed"
+                               AutomationProperties.AutomationId="DefaultModelProviderStatus"
+                               AutomationProperties.LiveSetting="Polite"/>
+                </StackPanel>
+            </Border>
             </StackPanel>
         </Grid>
     </ScrollViewer>

@@ -41,18 +41,27 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
         IPermissionsPageRuntimeSource gatewaySource,
         ILocalAiRuntime localAi,
         IAppCommands commands,
-        IUiDispatcher dispatcher)
+        IUiDispatcher dispatcher,
+        IModelProviderGatewayService providers)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
         _gatewaySource = gatewaySource ?? throw new ArgumentNullException(nameof(gatewaySource));
         _localAi = localAi ?? throw new ArgumentNullException(nameof(localAi));
         _commands = commands ?? throw new ArgumentNullException(nameof(commands));
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        ArgumentNullException.ThrowIfNull(providers);
+        Providers = new ModelProviderSetupViewModel(
+            providers,
+            () => _state.Models.Select(model => model.Provider).OfType<string>(),
+            ModelProviderSetupViewModel.DefaultLoginPollInterval);
         Recompute();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
     internal bool IsActive { get; private set; }
+
+    /// <summary>The "Add a model provider" flow shown below the default-model selector.</summary>
+    public ModelProviderSetupViewModel Providers { get; }
 
     /// <summary>
     /// Replaced only when an option or the current option changes; the page keys its
@@ -107,10 +116,16 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
             _gatewaySource.Changed -= OnGatewaySourceChanged;
             _subscribed = false;
         }
+        Providers.Deactivate();
         IsActive = false;
     }
 
-    public void Refresh() => _ = RefreshCoreAsync();
+    public void Refresh()
+    {
+        _ = RefreshCoreAsync();
+        _ = Providers.LoadCatalogAsync();
+    }
+
     public void OpenConnection() => _commands.Navigate("connection");
     public void OpenLocalAi() => _commands.Navigate("local-ai");
 
@@ -267,6 +282,7 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
             _options = options;
         if (_selectedOptionId is null || !_options.Any(option => option.Id == _selectedOptionId))
             _selectedOptionId = _currentOptionId;
+        Providers.UpdateCapabilities();
         OnPropertyChanged(null);
     }
 

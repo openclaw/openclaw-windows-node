@@ -27,6 +27,12 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
+        // Custom model provider API types are protocol product names, and the
+        // provider/model ID placeholders are literal identifier examples.
+        "DefaultModelPage_CustomApiAnthropic.Content",
+        "DefaultModelPage_CustomApiOpenAiResponses.Content",
+        "DefaultModelPage_CustomProviderId.PlaceholderText",
+        "DefaultModelPage_CustomProviderModels.PlaceholderText",
         // Updater dependency recovery is seeded in English across every locale.
         // Translate the explanation and manual-release action together after review.
         "Update_Message_Unavailable",

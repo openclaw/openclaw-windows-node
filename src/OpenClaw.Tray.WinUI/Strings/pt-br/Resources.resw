@@ -7083,6 +7083,49 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>IA local: {0}</value></data>
   <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (entre no provedor primeiro)</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>O modelo padrão foi atualizado.</value></data>
+  <data name="DefaultModelPage_AddProviderTitle.Text" xml:space="preserve"><value>Adicionar um provedor de modelos</value></data>
+  <data name="DefaultModelPage_AddProviderIntro.Text" xml:space="preserve"><value>Conecte um dos provedores do Gateway ou adicione seu próprio endpoint compatível com OpenAI ou Anthropic. Os novos modelos aparecem na lista acima.</value></data>
+  <data name="DefaultModelPage_ProviderKindGateway.Content" xml:space="preserve"><value>Provedor do Gateway</value></data>
+  <data name="DefaultModelPage_ProviderKindCustom.Content" xml:space="preserve"><value>Endpoint personalizado</value></data>
+  <data name="DefaultModelPage_ProviderSelector.Header" xml:space="preserve"><value>Provedor</value></data>
+  <data name="DefaultModelPage_ProviderApiKey.Header" xml:space="preserve"><value>Chave de API</value></data>
+  <data name="DefaultModelPage_SaveApiKeyButton.Content" xml:space="preserve"><value>Salvar chave de API</value></data>
+  <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>Método de entrada</value></data>
+  <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>Entrar</value></data>
+  <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>ID do provedor</value></data>
+  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>URL base</value></data>
+  <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>Tipo de API</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>Compatível com OpenAI (Chat Completions)</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiResponses.Content" xml:space="preserve"><value>OpenAI Responses</value></data>
+  <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
+  <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>Chave de API (opcional para compatível com OpenAI)</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>IDs dos modelos</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>Adicionar provedor</value></data>
+  <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0} (conectado)</value></data>
+  <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>Carregando provedores...</value></data>
+  <data name="DefaultModelPage_ProviderCatalogEmpty" xml:space="preserve"><value>Este Gateway não tem provedores para conectar.</value></data>
+  <data name="DefaultModelPage_ProviderCatalogFailedFormat" xml:space="preserve"><value>Não foi possível carregar os provedores: {0}</value></data>
+  <data name="DefaultModelPage_ProviderCatalogUnsupported" xml:space="preserve"><value>Esta versão do Gateway não permite conectar provedores aqui. Use um endpoint personalizado ou atualize o Gateway.</value></data>
+  <data name="DefaultModelPage_ProviderApiKeySaved" xml:space="preserve"><value>Chave de API salva para {0}. Os modelos aparecem na lista acima.</value></data>
+  <data name="DefaultModelPage_CustomProviderAdded" xml:space="preserve"><value>{0} adicionado. Os modelos aparecem na lista acima.</value></data>
+  <data name="DefaultModelPage_ProviderSignedIn" xml:space="preserve"><value>Conectado a {0}.</value></data>
+  <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>Conectado a {0}. Reinicie o Gateway para usar os modelos.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>A entrada foi cancelada.</value></data>
+  <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>A entrada não foi concluída.</value></data>
+  <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>O Gateway não conseguiu concluir isso: {0}</value></data>
+  <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>Aguardando o provedor...</value></data>
+  <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>A entrada está demorando muito. Verifique novamente ou cancele.</value></data>
+  <data name="DefaultModelPage_ProviderSignInUnsupported" xml:space="preserve"><value>O Gateway enviou uma etapa de entrada que este aplicativo não pode exibir. Cancele e tente novamente pelo painel do Gateway.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelUnconfirmed" xml:space="preserve"><value>O Gateway ainda não confirmou o cancelamento. Tente novamente.</value></data>
+  <data name="DefaultModelPage_CustomInvalidProviderId" xml:space="preserve"><value>Use letras minúsculas, números e hifens no ID do provedor.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdReserved" xml:space="preserve"><value>Esse ID pertence a um provedor integrado. Escolha outro ID.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdInUse" xml:space="preserve"><value>Já existe um provedor com esse ID.</value></data>
+  <data name="DefaultModelPage_CustomInvalidBaseUrl" xml:space="preserve"><value>Digite uma URL base http ou https.</value></data>
+  <data name="DefaultModelPage_CustomApiKeyRequired" xml:space="preserve"><value>Este tipo de API precisa de uma chave de API.</value></data>
+  <data name="DefaultModelPage_CustomMissingModels" xml:space="preserve"><value>Digite pelo menos um ID de modelo.</value></data>
+  <data name="DefaultModelPage_CustomInvalidModelId" xml:space="preserve"><value>IDs de modelo não podem conter espaços.</value></data>
   <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>O driver NVIDIA não oferece suporte a CUDA 13. Não é necessário um CUDA Toolkit separado.</value></data>
   <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>O driver NVIDIA {0} foi detectado. A IA local requer a versão {1} ou mais recente.</value></data>
   <data name="LocalAi_Reason_Generic" xml:space="preserve"><value>O OpenClaw não conseguiu verificar os requisitos da IA local neste sistema.</value></data>
@@ -7136,6 +7179,7 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Chat_Model_Other" xml:space="preserve"><value>Outros modelos</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Nenhum modelo correspondente</value></data>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Pesquisar modelos</value></data>
+  <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Adicionar provedor de modelos...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Remover anexo</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Carregando mensagens...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 mensagem na fila</value></data>

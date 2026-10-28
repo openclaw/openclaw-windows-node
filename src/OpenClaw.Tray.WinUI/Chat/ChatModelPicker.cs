@@ -1,9 +1,11 @@
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Wrappers;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Chat;
+using OpenClawTray.Services;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Chat;
@@ -39,6 +41,11 @@ internal sealed class ChatModelPicker : Component<ChatModelPickerProps>
                     {
                         Props.Select(choice);
                         anchor.Current?.Flyout?.Hide();
+                    }, () =>
+                    {
+                        // Direct settings navigation, like the voice readiness dialogs; the composer host has no navigation callback.
+                        anchor.Current?.Flyout?.Hide();
+                        (Application.Current as IAppCommands)?.Navigate("model");
                     });
                 })
                 .OnUnmount(control =>

@@ -38,6 +38,8 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
     };
     private readonly TextBlock _current = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _empty = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly HyperlinkButton _addProvider = new() { Padding = new Thickness(0) };
+    private Action? _addProviderAction;
     private ChatModelPickerProps? _props;
     private Action<ChatModelChoice>? _select;
     private ChatModelPickerRow[] _rows = [];
@@ -63,10 +65,13 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
         });
         _current.Style = _empty.Style = (Style)resources["CaptionTextBlockStyle"];
         _empty.Text = ChatMarkdownPresentation.Localized("Chat_Model_NoMatches", "No matching models");
+        _addProvider.Content = ChatMarkdownPresentation.Localized("Chat_Model_AddProvider", "Add model provider...");
+        AutomationProperties.SetAutomationId(_addProvider, "ChatModelAddProvider");
         Layout.Children.Add(_search);
         Layout.Children.Add(_current);
         Layout.Children.Add(_list);
         Layout.Children.Add(_empty);
+        Layout.Children.Add(_addProvider);
         AttachEvents();
     }
 
@@ -84,16 +89,20 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
         _search.PreviewKeyDown += OnSearchKeyDown;
         _list.ItemClick += OnItemClick;
         _list.ContainerContentChanging += OnContainerContentChanging;
+        _addProvider.Click += OnAddProviderClick;
         _eventsAttached = true;
     }
 
-    internal void Update(ChatModelPickerProps props, Action<ChatModelChoice> select)
+    /// <param name="addProvider">Opens model-provider settings; the link is hidden when null.</param>
+    internal void Update(ChatModelPickerProps props, Action<ChatModelChoice> select, Action? addProvider)
     {
         var rebuild = _props is null || !_props.Choices.SequenceEqual(props.Choices);
         var selectionChanged = _props?.CurrentModel != props.CurrentModel
             || _props?.CurrentProvider != props.CurrentProvider;
         _props = props;
         _select = select;
+        _addProviderAction = addProvider;
+        _addProvider.Visibility = addProvider is null ? Visibility.Collapsed : Visibility.Visible;
         AttachEvents();
         Width = Math.Min(320, Math.Max(200, props.AvailableWidth - 56));
         _list.IsEnabled = props.Enabled;
@@ -160,6 +169,8 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
             Commit(row);
     }
 
+    private void OnAddProviderClick(object sender, RoutedEventArgs args) => _addProviderAction?.Invoke();
+
     private void Commit(ChatModelPickerRow row)
     {
         if (_props is null) return;
@@ -203,12 +214,14 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
     {
         _props = null;
         _select = null;
+        _addProviderAction = null;
         if (_eventsAttached)
             _search.UnregisterPropertyChangedCallback(AutoSuggestBox.TextProperty, _textChangeToken);
         _search.QuerySubmitted -= OnQuerySubmitted;
         _search.PreviewKeyDown -= OnSearchKeyDown;
         _list.ItemClick -= OnItemClick;
         _list.ContainerContentChanging -= OnContainerContentChanging;
+        _addProvider.Click -= OnAddProviderClick;
         _eventsAttached = false;
         _list.ItemsSource = null;
         _groups = null;

@@ -7047,6 +7047,49 @@
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>本機 AI：{0}</value></data>
   <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0}（請先登入提供者）</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>預設模型已更新。</value></data>
+  <data name="DefaultModelPage_AddProviderTitle.Text" xml:space="preserve"><value>新增模型提供者</value></data>
+  <data name="DefaultModelPage_AddProviderIntro.Text" xml:space="preserve"><value>連線閘道的其中一個提供者，或新增你自己的 OpenAI 或 Anthropic 相容端點。新模型會顯示在上方清單中。</value></data>
+  <data name="DefaultModelPage_ProviderKindGateway.Content" xml:space="preserve"><value>閘道提供者</value></data>
+  <data name="DefaultModelPage_ProviderKindCustom.Content" xml:space="preserve"><value>自訂端點</value></data>
+  <data name="DefaultModelPage_ProviderSelector.Header" xml:space="preserve"><value>提供者</value></data>
+  <data name="DefaultModelPage_ProviderApiKey.Header" xml:space="preserve"><value>API 金鑰</value></data>
+  <data name="DefaultModelPage_SaveApiKeyButton.Content" xml:space="preserve"><value>儲存 API 金鑰</value></data>
+  <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>登入方式</value></data>
+  <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>登入</value></data>
+  <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>提供者 ID</value></data>
+  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>基礎 URL</value></data>
+  <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API 類型</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI 相容（Chat Completions）</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiResponses.Content" xml:space="preserve"><value>OpenAI Responses</value></data>
+  <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
+  <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API 金鑰（OpenAI 相容端點可選）</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>模型 ID</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>新增提供者</value></data>
+  <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0}（已連線）</value></data>
+  <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>正在載入提供者...</value></data>
+  <data name="DefaultModelPage_ProviderCatalogEmpty" xml:space="preserve"><value>此閘道沒有可連線的提供者。</value></data>
+  <data name="DefaultModelPage_ProviderCatalogFailedFormat" xml:space="preserve"><value>無法載入提供者：{0}</value></data>
+  <data name="DefaultModelPage_ProviderCatalogUnsupported" xml:space="preserve"><value>此閘道版本無法在這裡連線提供者。請使用自訂端點，或更新閘道。</value></data>
+  <data name="DefaultModelPage_ProviderApiKeySaved" xml:space="preserve"><value>已為 {0} 儲存 API 金鑰。其模型會顯示在上方清單中。</value></data>
+  <data name="DefaultModelPage_CustomProviderAdded" xml:space="preserve"><value>已新增 {0}。其模型會顯示在上方清單中。</value></data>
+  <data name="DefaultModelPage_ProviderSignedIn" xml:space="preserve"><value>已登入 {0}。</value></data>
+  <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>已登入 {0}。請重新啟動閘道以使用其模型。</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>已取消登入。</value></data>
+  <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>登入未完成。</value></data>
+  <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>閘道無法完成此操作：{0}</value></data>
+  <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>正在等待提供者...</value></data>
+  <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>登入耗時過久。請重新檢查或取消。</value></data>
+  <data name="DefaultModelPage_ProviderSignInUnsupported" xml:space="preserve"><value>閘道傳送了此應用程式無法顯示的登入步驟。請取消，然後從閘道儀表板重試。</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelUnconfirmed" xml:space="preserve"><value>閘道尚未確認取消。請再試一次。</value></data>
+  <data name="DefaultModelPage_CustomInvalidProviderId" xml:space="preserve"><value>提供者 ID 只能使用小寫字母、數字和連字號。</value></data>
+  <data name="DefaultModelPage_CustomProviderIdReserved" xml:space="preserve"><value>此 ID 屬於內建提供者。請選擇其他 ID。</value></data>
+  <data name="DefaultModelPage_CustomProviderIdInUse" xml:space="preserve"><value>已有提供者使用此 ID。</value></data>
+  <data name="DefaultModelPage_CustomInvalidBaseUrl" xml:space="preserve"><value>請輸入 http 或 https 基礎 URL。</value></data>
+  <data name="DefaultModelPage_CustomApiKeyRequired" xml:space="preserve"><value>此 API 類型需要 API 金鑰。</value></data>
+  <data name="DefaultModelPage_CustomMissingModels" xml:space="preserve"><value>請至少輸入一個模型 ID。</value></data>
+  <data name="DefaultModelPage_CustomInvalidModelId" xml:space="preserve"><value>模型 ID 不能包含空格。</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>查看原因</value></data>
   <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>正在檢查本機 AI 要求</value></data>
   <data name="Onboarding_LocalAi_CheckingMessage" xml:space="preserve"><value>OpenClaw 正在檢查 NVIDIA GPU、驅動程式、CUDA、記憶體和 WSL 要求。</value></data>
@@ -7084,6 +7127,7 @@
   <data name="Chat_Model_Other" xml:space="preserve"><value>其他模型</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>沒有符合的模型</value></data>
   <data name="Chat_Model_Search" xml:space="preserve"><value>搜尋模型</value></data>
+  <data name="Chat_Model_AddProvider" xml:space="preserve"><value>新增模型提供者...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>移除附件</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>正在載入訊息...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 則佇列訊息</value></data>

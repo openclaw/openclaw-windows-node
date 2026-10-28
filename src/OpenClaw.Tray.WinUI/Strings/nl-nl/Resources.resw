@@ -7048,6 +7048,49 @@ Controleer of de gateway actief is.</value>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>Lokale AI: {0}</value></data>
   <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (meld u eerst aan bij de provider)</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>Het standaardmodel is bijgewerkt.</value></data>
+  <data name="DefaultModelPage_AddProviderTitle.Text" xml:space="preserve"><value>Een modelprovider toevoegen</value></data>
+  <data name="DefaultModelPage_AddProviderIntro.Text" xml:space="preserve"><value>Verbind een van de providers van de gateway, of voeg je eigen OpenAI- of Anthropic-compatibele endpoint toe. Nieuwe modellen verschijnen in de lijst hierboven.</value></data>
+  <data name="DefaultModelPage_ProviderKindGateway.Content" xml:space="preserve"><value>Gatewayprovider</value></data>
+  <data name="DefaultModelPage_ProviderKindCustom.Content" xml:space="preserve"><value>Aangepast endpoint</value></data>
+  <data name="DefaultModelPage_ProviderSelector.Header" xml:space="preserve"><value>Aanbieder</value></data>
+  <data name="DefaultModelPage_ProviderApiKey.Header" xml:space="preserve"><value>API-sleutel</value></data>
+  <data name="DefaultModelPage_SaveApiKeyButton.Content" xml:space="preserve"><value>API-sleutel opslaan</value></data>
+  <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>Aanmeldmethode</value></data>
+  <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>Aanmelden</value></data>
+  <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>Provider-ID</value></data>
+  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>Basis-URL</value></data>
+  <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API-type</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI-compatibel (Chat Completions)</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiResponses.Content" xml:space="preserve"><value>OpenAI Responses</value></data>
+  <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
+  <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API-sleutel (optioneel voor OpenAI-compatibel)</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>Model-ID's</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>Provider toevoegen</value></data>
+  <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0} (verbonden)</value></data>
+  <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>Providers laden...</value></data>
+  <data name="DefaultModelPage_ProviderCatalogEmpty" xml:space="preserve"><value>Deze gateway heeft geen providers om te verbinden.</value></data>
+  <data name="DefaultModelPage_ProviderCatalogFailedFormat" xml:space="preserve"><value>Kan providers niet laden: {0}</value></data>
+  <data name="DefaultModelPage_ProviderCatalogUnsupported" xml:space="preserve"><value>Met deze gatewayversie kun je hier geen providers verbinden. Gebruik een aangepast endpoint of werk de gateway bij.</value></data>
+  <data name="DefaultModelPage_ProviderApiKeySaved" xml:space="preserve"><value>API-sleutel opgeslagen voor {0}. De modellen verschijnen in de lijst hierboven.</value></data>
+  <data name="DefaultModelPage_CustomProviderAdded" xml:space="preserve"><value>{0} toegevoegd. De modellen verschijnen in de lijst hierboven.</value></data>
+  <data name="DefaultModelPage_ProviderSignedIn" xml:space="preserve"><value>Aangemeld bij {0}.</value></data>
+  <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>Aangemeld bij {0}. Start de gateway opnieuw om de modellen te gebruiken.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>Aanmelden is geannuleerd.</value></data>
+  <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>Aanmelden is niet voltooid.</value></data>
+  <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>De gateway kon dit niet voltooien: {0}</value></data>
+  <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>Wachten op de provider...</value></data>
+  <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>Aanmelden duurt te lang. Controleer opnieuw of annuleer.</value></data>
+  <data name="DefaultModelPage_ProviderSignInUnsupported" xml:space="preserve"><value>De gateway stuurde een aanmeldstap die deze app niet kan weergeven. Annuleer en probeer het opnieuw via het gatewaydashboard.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelUnconfirmed" xml:space="preserve"><value>De gateway heeft de annulering nog niet bevestigd. Probeer het opnieuw.</value></data>
+  <data name="DefaultModelPage_CustomInvalidProviderId" xml:space="preserve"><value>Gebruik kleine letters, cijfers en koppeltekens voor de provider-ID.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdReserved" xml:space="preserve"><value>Die ID hoort bij een ingebouwde provider. Kies een andere ID.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdInUse" xml:space="preserve"><value>Er bestaat al een provider met die ID.</value></data>
+  <data name="DefaultModelPage_CustomInvalidBaseUrl" xml:space="preserve"><value>Voer een http- of https-basis-URL in.</value></data>
+  <data name="DefaultModelPage_CustomApiKeyRequired" xml:space="preserve"><value>Voor dit API-type is een API-sleutel nodig.</value></data>
+  <data name="DefaultModelPage_CustomMissingModels" xml:space="preserve"><value>Voer minstens één model-ID in.</value></data>
+  <data name="DefaultModelPage_CustomInvalidModelId" xml:space="preserve"><value>Model-ID's mogen geen spaties bevatten.</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>Bekijk waarom</value></data>
   <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>Vereisten voor lokale AI worden gecontroleerd</value></data>
   <data name="Onboarding_LocalAi_CheckingMessage" xml:space="preserve"><value>OpenClaw controleert de NVIDIA-GPU, stuurprogramma, CUDA, geheugen en WSL-vereisten.</value></data>
@@ -7085,6 +7128,7 @@ Controleer of de gateway actief is.</value>
   <data name="Chat_Model_Other" xml:space="preserve"><value>Andere modellen</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Geen overeenkomende modellen</value></data>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Modellen zoeken</value></data>
+  <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Modelprovider toevoegen...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Bijlage verwijderen</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Berichten laden...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 bericht in wachtrij</value></data>

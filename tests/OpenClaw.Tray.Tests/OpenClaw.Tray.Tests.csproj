@@ -276,6 +276,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\CoalescingSwitchProgress.cs" Link="Presentation\CoalescingSwitchProgress.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DefaultModelGatewayContracts.cs" Link="Presentation\DefaultModelGatewayContracts.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DefaultModelPageViewModel.cs" Link="Presentation\DefaultModelPageViewModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ModelProviderContracts.cs" Link="Presentation\ModelProviderContracts.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ModelProviderSetupViewModel.cs" Link="Presentation\ModelProviderSetupViewModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ISettingsStore.cs" Link="Presentation\ISettingsStore.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsStore.cs" Link="Presentation\SettingsStore.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsPersistenceNotification.cs" Link="Presentation\SettingsPersistenceNotification.cs" />

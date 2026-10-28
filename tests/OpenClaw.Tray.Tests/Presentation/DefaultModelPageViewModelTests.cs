@@ -183,7 +183,7 @@ public sealed class DefaultModelPageViewModelTests
     {
         var viewModel = new DefaultModelPageViewModel(gateway,
             new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost()), runtime,
-            new FakeAppCommands(), new RecordingUiDispatcher());
+            new FakeAppCommands(), new RecordingUiDispatcher(), new FakeModelProviderGateway());
         viewModel.Activate(null);
         return viewModel;
     }
