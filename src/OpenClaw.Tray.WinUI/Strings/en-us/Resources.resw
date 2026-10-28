@@ -8050,6 +8050,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="ProfileCompletion_NameSavedPhotoFailed" xml:space="preserve"><value>The name was saved, but the photo was not. Choose Save to retry the photo.</value></data>
   <data name="ProfileCompletion_PhotoSavedNameFailed" xml:space="preserve"><value>The photo was saved, but the name was not. Choose Save to retry the name.</value></data>
   <data name="ProfileCompletion_Failed" xml:space="preserve"><value>The profile could not be saved. Try again.</value></data>
+  <data name="ProfileCompletion_ConnectionLost" xml:space="preserve"><value>The connection to the Gateway was lost. The change may or may not have been saved. Check your profile before trying again.</value></data>
+  <data name="ProfileCompletion_ConnectionLostPartial" xml:space="preserve"><value>Your name or photo was saved, but the connection to the Gateway was lost before everything finished. Reconnect, then check your profile.</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>

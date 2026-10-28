@@ -366,6 +366,92 @@ public class ProfileCompletionTests
         Assert.DoesNotContain("Logger", provider);
     }
 
+    private static GatewayConnectionLostException Lost() => new(1006, null);
+
+    [Fact]
+    public async Task Prepare_ConnectionLostDuringRead_IsUnavailable_NotCancellation()
+    {
+        var (service, proxy, _, _) = Create();
+        proxy.OnSelfRead = () => throw Lost();
+        Assert.Equal(ProfileOffer.Unavailable, (await service.PrepareAsync(CancellationToken.None)).Offer);
+    }
+
+    [Fact]
+    public async Task Save_ConnectionLostAtPhotoRecheck_KeepsSavedName()
+    {
+        var (service, proxy, _, _) = Create();
+        var prep = await service.PrepareAsync(CancellationToken.None);
+        proxy.Methods.Clear();
+        proxy.OnSelfRead = () => { if (proxy.Methods.Count(m => m == "users.self") == 2) throw Lost(); };
+        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.ConnectionLost), result);
+        Assert.False(result.IsComplete);
+        Assert.DoesNotContain("users.setAvatar", proxy.Methods);
+    }
+
+    [Fact]
+    public async Task Save_ConnectionLostAtNameRecheck_ReportsLost_AndWritesNothing()
+    {
+        var (service, proxy, _, _) = Create();
+        var prep = await service.PrepareAsync(CancellationToken.None);
+        proxy.Methods.Clear();
+        proxy.OnSelfRead = () => throw Lost();
+        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        Assert.Equal(new ProfileSaveResult(ProfileStep.ConnectionLost, ProfileStep.ConnectionLost), result);
+        Assert.DoesNotContain(proxy.Methods, m => m.StartsWith("users.set", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Save_ConnectionLostAtWrite_IsUncertainConnectionLost_AndNameSurvivesNothingElse()
+    {
+        var (service, proxy, _, _) = Create();
+        var prep = await service.PrepareAsync(CancellationToken.None);
+        proxy.OnWrite = _ => Task.FromException<JsonElement>(Lost());
+        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        Assert.Equal(new ProfileSaveResult(ProfileStep.ConnectionLost, ProfileStep.ConnectionLost), result);
+        Assert.DoesNotContain("users.setAvatar", proxy.Methods);
+    }
+
+    [Fact]
+    public async Task Save_ConnectionLostAtPhotoWrite_KeepsSavedName()
+    {
+        var (service, proxy, _, _) = Create();
+        var prep = await service.PrepareAsync(CancellationToken.None);
+        proxy.OnWrite = method => method == "users.setAvatar"
+            ? Task.FromException<JsonElement>(Lost())
+            : Task.FromResult(JsonSerializer.SerializeToElement(new { }));
+        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.ConnectionLost), result);
+    }
+
+    [Fact]
+    public async Task Save_CallerCancellationAfterName_KeepsSavedName_ButCancelsBeforeAnyWrite()
+    {
+        var (service, proxy, _, _) = Create();
+        var prep = await service.PrepareAsync(CancellationToken.None);
+        using var cts = new CancellationTokenSource();
+        proxy.OnWrite = _ => { cts.Cancel(); return Task.FromResult(JsonSerializer.SerializeToElement(new { })); };
+        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, cts.Token);
+        Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.NotAttempted), result);
+
+        using var early = new CancellationTokenSource();
+        early.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.SaveAsync(prep, "Ada", Photo, false, false, early.Token));
+    }
+
+    [Fact]
+    public void Window_RechecksForOpenModalAfterPreparation_AndDoesNotConsumeAutomaticOffer()
+    {
+        var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? FindRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
+        var body = source[source.IndexOf("private async Task CompleteProfileAsync", StringComparison.Ordinal)..];
+        var prepare = body.IndexOf("PrepareAsync", StringComparison.Ordinal);
+        var recheck = body.IndexOf("OpenModalDialog() is { } blocker", StringComparison.Ordinal);
+        var show = body.IndexOf("dialog.ShowAsync()", StringComparison.Ordinal);
+        Assert.True(prepare >= 0 && prepare < recheck && recheck < show);
+        Assert.Contains("if (!fallbackToDashboard) _profileOfferedGatewayId = null;", source);
+    }
+
     private static string FindRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

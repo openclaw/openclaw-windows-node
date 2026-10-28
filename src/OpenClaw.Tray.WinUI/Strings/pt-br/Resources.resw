@@ -8034,6 +8034,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="ProfileCompletion_NameSavedPhotoFailed" xml:space="preserve"><value>O nome foi salvo, mas a foto não. Escolha Salvar para tentar a foto novamente.</value></data>
   <data name="ProfileCompletion_PhotoSavedNameFailed" xml:space="preserve"><value>A foto foi salva, mas o nome não. Escolha Salvar para tentar o nome novamente.</value></data>
   <data name="ProfileCompletion_Failed" xml:space="preserve"><value>Não foi possível salvar o perfil. Tente novamente.</value></data>
+  <data name="ProfileCompletion_ConnectionLost" xml:space="preserve"><value>A conexão com o Gateway foi perdida. A alteração pode ou não ter sido salva. Verifique seu perfil antes de tentar novamente.</value></data>
+  <data name="ProfileCompletion_ConnectionLostPartial" xml:space="preserve"><value>Seu nome ou foto foi salvo, mas a conexão com o Gateway foi perdida antes de tudo terminar. Reconecte e verifique seu perfil.</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>

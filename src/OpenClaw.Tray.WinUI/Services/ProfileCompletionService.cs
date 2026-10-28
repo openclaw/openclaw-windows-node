@@ -37,6 +37,8 @@ internal enum ProfileStep
     Failed,
     /// <summary>The Gateway, profile, or user context changed while saving; nothing further was written.</summary>
     ContextChanged,
+    /// <summary>The Gateway connection dropped. If the write was already sent, whether it applied is unknown.</summary>
+    ConnectionLost,
 }
 
 internal sealed record ProfilePreparation(
@@ -111,6 +113,10 @@ internal sealed class ProfileCompletionService(
         {
             self = ReadSelf(await client.SendWizardRequestAsync("users.self", new { }, ReadTimeoutMs));
         }
+        catch (GatewayConnectionLostException)
+        {
+            return none;
+        }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or JsonException)
         {
             return none;
@@ -168,13 +174,22 @@ internal sealed class ProfileCompletionService(
 
             if (photo is not null && !retryNameOnly)
             {
-                if (nameStep == ProfileStep.ContextChanged)
-                    photoStep = ProfileStep.ContextChanged;
+                if (nameStep is ProfileStep.ContextChanged or ProfileStep.ConnectionLost)
+                    photoStep = nameStep;
                 else
-                    photoStep = await WriteFieldAsync(client, gatewayId, preparation.ProfileId,
-                        state => state.HasAvatar, "users.setAvatar",
-                        new { profileId = preparation.ProfileId, mime = photo.Mime, avatarBase64 = Convert.ToBase64String(photo.Bytes) },
-                        cancellationToken);
+                {
+                    try
+                    {
+                        photoStep = await WriteFieldAsync(client, gatewayId, preparation.ProfileId,
+                            state => state.HasAvatar, "users.setAvatar",
+                            new { profileId = preparation.ProfileId, mime = photo.Mime, avatarBase64 = Convert.ToBase64String(photo.Bytes) },
+                            cancellationToken);
+                    }
+                    catch (OperationCanceledException) when (nameStep != ProfileStep.NotAttempted)
+                    {
+                        // Caller cancellation after the name was written must not discard that completed outcome.
+                    }
+                }
             }
 
             return new ProfileSaveResult(nameStep, photoStep);
@@ -200,6 +215,10 @@ internal sealed class ProfileCompletionService(
 
             await client.SendWizardRequestAsync(method, parameters, WriteTimeoutMs);
             return ProfileStep.Saved;
+        }
+        catch (GatewayConnectionLostException)
+        {
+            return ProfileStep.ConnectionLost;
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or JsonException)
         {

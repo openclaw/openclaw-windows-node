@@ -7982,6 +7982,8 @@
   <data name="ProfileCompletion_NameSavedPhotoFailed" xml:space="preserve"><value>名稱已儲存，但相片未儲存。選擇「儲存」可重試相片。</value></data>
   <data name="ProfileCompletion_PhotoSavedNameFailed" xml:space="preserve"><value>相片已儲存，但名稱未儲存。選擇「儲存」可重試名稱。</value></data>
   <data name="ProfileCompletion_Failed" xml:space="preserve"><value>無法儲存設定檔。請重試。</value></data>
+  <data name="ProfileCompletion_ConnectionLost" xml:space="preserve"><value>與閘道的連線已中斷。變更可能已儲存，也可能未儲存。請先檢查設定檔，再重試。</value></data>
+  <data name="ProfileCompletion_ConnectionLostPartial" xml:space="preserve"><value>您的名稱或相片已儲存，但在全部完成之前與閘道的連線已中斷。請重新連線，然後檢查設定檔。</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>

@@ -998,6 +998,19 @@ public sealed partial class WorkspaceWindow : WindowEx
         AsyncEventHandlerGuard.Run(() => CompleteProfileAsync(fallbackToDashboard: false), new AppLogger(), nameof(MaybeOfferProfileCompletion));
     }
 
+    private void RetryProfileCompletionAfter(ContentDialog blocker, bool fallbackToDashboard)
+    {
+        if (!fallbackToDashboard) _profileOfferedGatewayId = null;
+        blocker.Closed += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsClosed) return;
+            if (fallbackToDashboard)
+                AsyncEventHandlerGuard.Run(() => CompleteProfileAsync(fallbackToDashboard: true), new AppLogger(), nameof(RetryProfileCompletionAfter));
+            else
+                UpdateOwnerIdentity();
+        });
+    }
+
     private async Task CompleteProfileAsync(bool fallbackToDashboard)
     {
         if (_showingProfileCompletion || Root.XamlRoot is null) return;
@@ -1010,6 +1023,14 @@ public sealed partial class WorkspaceWindow : WindowEx
             if (preparation.Offer != ProfileOffer.Offer)
             {
                 if (fallbackToDashboard) ((IAppCommands)CurrentApp).OpenDashboard("settings/profile");
+                return;
+            }
+
+            // Preparation awaited the Gateway, so another dialog may have opened meanwhile. Never stack on it:
+            // wait for it to close, then offer again, and do not consume the automatic once-per-Gateway offer.
+            if (OpenModalDialog() is { } blocker)
+            {
+                RetryProfileCompletionAfter(blocker, fallbackToDashboard);
                 return;
             }
 
