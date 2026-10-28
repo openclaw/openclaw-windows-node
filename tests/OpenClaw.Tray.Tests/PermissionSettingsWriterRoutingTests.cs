@@ -115,7 +115,7 @@ public sealed class PermissionSettingsWriterRoutingTests
         Assert.Contains("_commandExecutor.Execute(command, OnSettingsWorkspaceRoute, () => SettingsSaved?.Invoke(this, EventArgs.Empty))", submitted);
         Assert.Contains("TitleSearchBox.PlaceholderText", workspace);
         Assert.Contains("VirtualKey.E", keyDown);
-        Assert.DoesNotContain("IsSettingsVisible && e.Key", keyDown);
+        Assert.Contains("(IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)", keyDown);
         Assert.DoesNotContain("Ctrl+F", workspace);
     }
 

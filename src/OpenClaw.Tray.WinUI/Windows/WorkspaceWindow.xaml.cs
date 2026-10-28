@@ -1057,7 +1057,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         var alt = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(global::Windows.System.VirtualKey.Menu)
             .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
         // Ctrl+E is the search shortcut shown in the placeholder; Ctrl+K remains its alias.
-        // Settings keeps its existing Ctrl+F alias; Chat leaves Ctrl+F to its content.
+        // Settings keeps its existing F alias; Chat leaves F to its own content.
         if (ctrl && (e.Key == global::Windows.System.VirtualKey.K ||
                      e.Key == global::Windows.System.VirtualKey.E ||
                      (IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)))
