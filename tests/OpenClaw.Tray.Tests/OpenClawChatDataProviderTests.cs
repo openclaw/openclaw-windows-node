@@ -1156,6 +1156,7 @@ public class OpenClawChatDataProviderTests
         await using (provider)
         {
             var initialLoad = provider.LoadHistoryAsync("main", force: true);
+            await provider.LoadHistoryAsync("main", force: true);
             await provider.ExecuteLifecycleCommandAsync("main", ChatLifecycleCommandKind.Compact);
             Assert.Single(bridge.RequestedHistoryKeys);
 
@@ -1185,8 +1186,10 @@ public class OpenClawChatDataProviderTests
         }
     }
 
-    [Fact]
-    public async Task CoalescedAuthoritativeReload_DoesNotCrossResetGeneration()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CoalescedReload_DoesNotCrossResetGeneration(bool authoritative)
     {
         var (bridge, provider, _, _) = CreateProvider([MainSession()]);
         var staleHistory = new TaskCompletionSource<ChatHistoryInfo>(
@@ -1199,7 +1202,7 @@ public class OpenClawChatDataProviderTests
             await provider.LoadHistoryAsync(
                 "main",
                 force: true,
-                authoritative: true);
+                authoritative: authoritative);
             await provider.ExecuteLifecycleCommandAsync(
                 "main",
                 ChatLifecycleCommandKind.Reset);
@@ -1272,8 +1275,10 @@ public class OpenClawChatDataProviderTests
         }
     }
 
-    [Fact]
-    public async Task StaleGenerationAuthoritativeReload_DoesNotReloadInNewGeneration()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task StaleGenerationReload_DoesNotReloadInNewGeneration(bool authoritative)
     {
         var (bridge, provider, _, _) = CreateProvider([MainSession()]);
         var staleHistory = new TaskCompletionSource<ChatHistoryInfo>(
@@ -1294,7 +1299,7 @@ public class OpenClawChatDataProviderTests
         {
             bridge.RaiseStatus(ConnectionStatus.Connected);
             var staleLoad = provider.LoadHistoryAsync("main", force: true);
-            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            await provider.LoadHistoryAsync("main", force: true, authoritative: authoritative);
             Assert.Single(bridge.RequestedHistoryKeys);
 
             bridge.RaiseStatus(ConnectionStatus.Disconnected);
@@ -1314,6 +1319,188 @@ public class OpenClawChatDataProviderTests
 
             Assert.Equal(2, bridge.RequestedHistoryKeys.Count);
         }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task ForcedHistoryReload_WhileLoadIsInFlight_RunsAfterThatLoad(int reloadCount)
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        var firstHistory = new TaskCompletionSource<ChatHistoryInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.HistoryBehavior = key =>
+            bridge.RequestedHistoryKeys.Count == 1
+                ? firstHistory.Task
+                : Task.FromResult(new ChatHistoryInfo
+                {
+                    SessionKey = key ?? "",
+                    Messages =
+                    [
+                        new ChatMessageInfo { Role = "user", Text = "Fresh history" },
+                    ],
+                });
+
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            var firstLoad = provider.LoadHistoryAsync("main", force: true);
+            await WaitForConditionAsync(() => bridge.RequestedHistoryKeys.Count == 1);
+            Assert.Single(bridge.RequestedHistoryKeys);
+
+            for (var i = 0; i < reloadCount; i++)
+                await provider.LoadHistoryAsync("main", force: true);
+            Assert.Single(bridge.RequestedHistoryKeys);
+
+            firstHistory.SetResult(new ChatHistoryInfo { SessionKey = "main" });
+            await firstLoad;
+            await WaitForConditionAsync(() => bridge.RequestedHistoryKeys.Count == 2);
+
+            Assert.Equal(2, bridge.RequestedHistoryKeys.Count);
+            var timeline = (await provider.LoadAsync()).Timelines["main"];
+            Assert.Equal("Fresh history", Assert.Single(timeline.Entries).Text);
+        }
+    }
+
+    [Fact]
+    public async Task ForcedHistoryReload_ResetBeforeLoaderCleanup_DoesNotAdoptNewGeneration()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        var history = new TaskCompletionSource<ChatHistoryInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.HistoryBehavior = _ => history.Task;
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            var load = provider.LoadHistoryAsync("main", force: true);
+            await provider.LoadHistoryAsync("main", force: true);
+            var reset = GetConversationState(provider).ResetThread(
+                "main", new ChatProjectionContext("main", HasHandshakeSnapshot: true));
+
+            history.SetResult(new ChatHistoryInfo { SessionKey = "main" });
+            await load;
+
+            Assert.Single(bridge.RequestedHistoryKeys);
+            GetHistoryLoader(provider).ApplyReset("main", reset.ResetGeneration);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ForcedHistoryReload_ResetCleanupPreservesNewGenerationRequest(bool cleanupFirst)
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        var history = new TaskCompletionSource<ChatHistoryInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.HistoryBehavior = key => bridge.RequestedHistoryKeys.Count == 1
+            ? history.Task
+            : Task.FromResult(new ChatHistoryInfo { SessionKey = key ?? "" });
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            var load = provider.LoadHistoryAsync("main", force: true);
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            var reset = GetConversationState(provider).ResetThread(
+                "main", new ChatProjectionContext("main", HasHandshakeSnapshot: true));
+            await provider.LoadHistoryAsync("main", force: true);
+            if (cleanupFirst)
+                GetHistoryLoader(provider).ApplyReset("main", reset.ResetGeneration);
+
+            history.SetResult(new ChatHistoryInfo { SessionKey = "main" });
+            await load;
+
+            Assert.Equal(2, bridge.RequestedHistoryKeys.Count);
+            if (!cleanupFirst)
+                GetHistoryLoader(provider).ApplyReset("main", reset.ResetGeneration);
+        }
+    }
+
+    [Fact]
+    public async Task ForcedHistoryReload_PreservesEarlierAuthoritativeRetry()
+    {
+        var retries = new List<Func<Task>>();
+        var (bridge, provider, _, _) = CreateProvider(
+            [MainSession()],
+            historyRetryScheduler: (_, _, retry) =>
+            {
+                retries.Add(retry);
+                return Task.CompletedTask;
+            });
+        bridge.HistoryBehavior = key => bridge.RequestedHistoryKeys.Count == 1
+            ? Task.FromException<ChatHistoryInfo>(new IOException("history unavailable"))
+            : Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = key ?? "",
+                Messages = [new ChatMessageInfo { Role = "user", Text = "retained", OpenClawSeq = 2 }],
+            });
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            var retry = Assert.Single(retries);
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main", Role = "user", Text = "stale", OpenClawSeq = 1,
+                Ts = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeMilliseconds(),
+            });
+            await provider.LoadHistoryAsync("main", force: true);
+            Assert.Equal(2, (await provider.LoadAsync()).Timelines["main"].Entries.Count);
+
+            await retry();
+
+            Assert.Equal(3, bridge.RequestedHistoryKeys.Count);
+            Assert.Equal("retained", Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries).Text);
+        }
+    }
+
+    [Fact]
+    public async Task ForcedHistoryReload_AfterSuccess_RetiresEarlierDelayedRetry()
+    {
+        var retries = new List<Func<Task>>();
+        var (bridge, provider, _, _) = CreateProvider(
+            [MainSession()],
+            historyRetryScheduler: (_, _, retry) =>
+            {
+                retries.Add(retry);
+                return Task.CompletedTask;
+            });
+        var history = new TaskCompletionSource<ChatHistoryInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.HistoryBehavior = key => bridge.RequestedHistoryKeys.Count == 1
+            ? history.Task
+            : Task.FromResult(new ChatHistoryInfo { SessionKey = key ?? "" });
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            var load = provider.LoadHistoryAsync("main", force: true);
+            await provider.LoadHistoryAsync("main", force: true);
+            history.SetException(new IOException("history unavailable"));
+            await load;
+
+            Assert.Equal(2, bridge.RequestedHistoryKeys.Count);
+            Assert.Equal(0, GetHistoryRetryEntryCount(provider));
+            await Assert.Single(retries)();
+            Assert.Equal(2, bridge.RequestedHistoryKeys.Count);
+        }
+    }
+
+    [Fact]
+    public async Task ForcedHistoryReload_DisposeDiscardsPendingRequest()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        var history = new TaskCompletionSource<ChatHistoryInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.HistoryBehavior = _ => history.Task;
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        var load = provider.LoadHistoryAsync("main", force: true);
+        await provider.LoadHistoryAsync("main", force: true);
+
+        await provider.DisposeAsync();
+        history.SetResult(new ChatHistoryInfo { SessionKey = "main" });
+        await load;
+
+        Assert.Single(bridge.RequestedHistoryKeys);
     }
 
     [Fact]
@@ -3796,15 +3983,26 @@ public class OpenClawChatDataProviderTests
             e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
     }
 
-    [Fact]
-    public async Task SessionResetCompletion_ShowsPersistedSubmittedRunFromForcedHistoryReload()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SessionResetCompletion_ShowsPersistedSubmittedRunFromForcedHistoryReload(
+        bool historyInFlight)
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         var historyCalls = 0;
         var includePersisted = false;
+        var staleHistory = new TaskCompletionSource<ChatHistoryInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var holdNextHistory = false;
         bridge.HistoryBehavior = _ =>
         {
             historyCalls++;
+            if (holdNextHistory)
+            {
+                holdNextHistory = false;
+                return staleHistory.Task;
+            }
             return Task.FromResult(new ChatHistoryInfo
             {
                 SessionKey = "main",
@@ -3868,8 +4066,26 @@ public class OpenClawChatDataProviderTests
 
         Assert.Empty(snapshots[^1].Timelines["main"].Entries);
 
+        var initialLoad = Task.CompletedTask;
+        if (historyInFlight)
+        {
+            holdNextHistory = true;
+            initialLoad = provider.LoadHistoryAsync("main", force: true);
+            Assert.Equal(1, historyCalls);
+        }
+
         includePersisted = true;
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-b"));
+        if (historyInFlight)
+        {
+            Assert.Equal(1, historyCalls);
+            staleHistory.SetResult(new ChatHistoryInfo
+            {
+                SessionKey = "main",
+                Messages = Array.Empty<ChatMessageInfo>()
+            });
+        }
+        await initialLoad;
         for (var i = 0; i < 20; i++)
         {
             if (historyCalls > 0 &&
@@ -3882,6 +4098,7 @@ public class OpenClawChatDataProviderTests
             await Task.Delay(10);
         }
 
+        Assert.Equal(historyInFlight ? 2 : 1, historyCalls);
         var latest = snapshots[^1];
         Assert.Contains(latest.Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.User && e.Text == "b");

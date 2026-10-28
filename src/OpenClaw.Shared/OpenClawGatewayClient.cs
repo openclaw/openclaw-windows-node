@@ -48,6 +48,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private GatewayCostUsageInfo? _usageCost;
     private readonly PendingRequestRegistry _pendingRequests = new();
     private readonly object _sessionsLock = new();
+    private const int DefaultSessionRefreshWindowMs = 250;
+    private readonly object _sessionRefreshLock = new();
+    private CancellationTokenSource? _sessionRefreshCancellation;
+    private bool _sessionRefreshDirty;
+    private static TimeSpan SessionRefreshWindow => TimeSpan.FromMilliseconds(
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_SESSION_REFRESH_WINDOW_MS"), out var milliseconds)
+        && milliseconds is > 0 and <= 5000 ? milliseconds : DefaultSessionRefreshWindowMs);
     private readonly DeviceIdentity _deviceIdentity;
     private sealed record SigningIdentity(string RequestId, long Generation, string DeviceId);
     private SigningIdentity? _pendingSigningIdentity;
@@ -195,6 +202,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override Task OnConnectedAsync()
     {
+        CancelScheduledSessionRefresh();
         lock (_sessionsLock)
         {
             _sessionThinkingDefaults = null;
@@ -226,6 +234,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnDisconnected()
     {
+        CancelScheduledSessionRefresh();
         // Invalidate the handshake snapshot — the next hello-ok must
         // re-establish the canonical session key, scopes, etc. Without this,
         // a reconnect-after-server-restart could leave the tray sending to a
@@ -248,6 +257,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnDisposing()
     {
+        CancelScheduledSessionRefresh();
         Volatile.Write(ref _pendingSigningIdentity, null);
         Volatile.Write(ref _authenticatedSigningIdentity, null);
         _pendingRequests.Drain();
@@ -2156,7 +2166,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         catch (Exception ex)
         {
-            _logger.Warn($"web.login.start failed: {ex.Message}");
+            var error = ChannelLinkDiagnosticText.Redact(ex.Message);
+            _logger.Warn($"web.login.start failed: {error}");
             // Return a populated result with the error so the UI can surface
             // it in the diagnostic disclosure. Returning null would lose the
             // gateway's actual reason for failing.
@@ -2168,8 +2179,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             // the page pattern-matches on and shows to the user.
             return new WebLoginStartResult
             {
-                Error = ex.Message,
-                RawResponse = ex.Message,
+                Error = error,
+                RawResponse = error,
             };
         }
     }
@@ -2194,13 +2205,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         catch (Exception ex)
         {
-            _logger.Warn($"web.login.wait failed: {ex.Message}");
+            var error = ChannelLinkDiagnosticText.Redact(ex.Message, currentQrDataUrl);
+            _logger.Warn($"web.login.wait failed: {error}");
             // ex.Message, not ex.ToString(): keep the clean gateway reason and
             // avoid leaking an internal .NET stack trace into the UI (issue #957).
             return new WebLoginWaitResult
             {
-                Error = ex.Message,
-                RawResponse = ex.Message,
+                Error = error,
+                RawResponse = error,
             };
         }
     }
@@ -2357,13 +2369,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// (SendConnectMessageAsync sends via SendRawAsync directly), so protocol
     /// frames are exempt by construction.
     /// </summary>
-    private async Task<bool> SendTrackedRequestAsync(string method, object? parameters = null)
+    private async Task<bool> SendTrackedRequestAsync(string method, object? parameters = null, long? expectedGeneration = null)
     {
         if (!TryGetReadyConnectionGeneration(out var connectionGeneration))
         {
             _logger.Debug($"[GatewayClient] {method} suppressed before handshake");
             return false;
         }
+
+        if (expectedGeneration.HasValue && expectedGeneration.Value != connectionGeneration)
+            return false;
 
         var requestId = Guid.NewGuid().ToString();
         var pending = _pendingRequests.RegisterTracked(requestId, method);
@@ -3617,7 +3632,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 HandleChatEvent(root, rawMessageLength);
                 break;
             case "session":
-                HandleSessionEvent(root);
+                ScheduleSessionRefresh(sourceConnectionGeneration);
                 break;
             case "node.pair.requested":
             case "node.pair.resolved":
@@ -3657,8 +3672,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 }
                 // Gateway broadcasts this after session mutations (patch, send, etc.).
                 // Re-request the full sessions list so we pick up model/thinking changes.
-                _logger.Info("[EVENT] sessions.changed received — refreshing sessions list");
-                _ = RequestSessionsAsync();
+                ScheduleSessionRefresh(sourceConnectionGeneration);
                 break;
             case "config.changed":
                 ConfigurationChanged?.Invoke(this, EventArgs.Empty);
@@ -4537,10 +4551,74 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         NotificationReceived?.Invoke(this, notification);
     }
 
-    private void HandleSessionEvent(JsonElement root)
+    private void ScheduleSessionRefresh(long sourceConnectionGeneration)
     {
-        // Re-request sessions list when session events come through
-        _ = RequestSessionsAsync();
+        lock (_sessionRefreshLock)
+        {
+            if (IsDisposed || _operatorReadScopeUnavailable
+                || !TryGetReadyConnectionGeneration(out var generation)
+                || generation != sourceConnectionGeneration)
+                return;
+
+            if (_sessionRefreshCancellation is not null)
+            {
+                _sessionRefreshDirty = true;
+                return;
+            }
+            var cancellation = new CancellationTokenSource();
+            _sessionRefreshCancellation = cancellation;
+            _sessionRefreshDirty = false;
+            _ = RefreshSessionsAfterWindowAsync(sourceConnectionGeneration, cancellation);
+        }
+    }
+
+    private async Task RefreshSessionsAfterWindowAsync(long generation, CancellationTokenSource cancellation)
+    {
+        try
+        {
+            // A fixed window (not a sliding debounce) bounds freshness during continuous activity.
+            await Task.Delay(SessionRefreshWindow, cancellation.Token).ConfigureAwait(false);
+            lock (_sessionRefreshLock)
+            {
+                if (!ReferenceEquals(_sessionRefreshCancellation, cancellation)) return;
+                _sessionRefreshDirty = false;
+            }
+            if (_operatorReadScopeUnavailable || cancellation.IsCancellationRequested) return;
+            await SendTrackedRequestAsync("sessions.list", new { includeDerivedTitles = true }, generation)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // Disconnect/disposal canceled this connection's pending refresh.
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Session event refresh failed: {ex.GetType().Name}");
+        }
+        finally
+        {
+            lock (_sessionRefreshLock)
+            {
+                if (ReferenceEquals(_sessionRefreshCancellation, cancellation))
+                {
+                    _sessionRefreshCancellation = null;
+                    // Changes received while sending need one trailing refresh, never a send queue.
+                    if (_sessionRefreshDirty) ScheduleSessionRefresh(generation);
+                }
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    private void CancelScheduledSessionRefresh()
+    {
+        lock (_sessionRefreshLock)
+        {
+            var cancellation = _sessionRefreshCancellation;
+            _sessionRefreshCancellation = null;
+            _sessionRefreshDirty = false;
+            cancellation?.Cancel();
+        }
     }
 
     // --- State tracking ---

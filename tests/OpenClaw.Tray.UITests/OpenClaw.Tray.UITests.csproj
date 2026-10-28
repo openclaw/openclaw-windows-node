@@ -75,6 +75,8 @@
           DestinationFolder="$(TargetDir)Pages" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)Pages\LocalAiPage.xbf')"
           DestinationFolder="$(TargetDir)Pages" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)Pages\ChannelsPage.xbf')"
+          DestinationFolder="$(TargetDir)Pages" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)OpenClaw.Tray.WinUI.pri')"
           DestinationFiles="$(TargetDir)resources.pri" SkipUnchangedFiles="true" />
   </Target>
