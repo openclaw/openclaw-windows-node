@@ -794,9 +794,10 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains(assistant.Descendants(), element => (string?)element.Attribute("ResourceKey") == "SubtleFillColorSecondaryBrush");
         Assert.Contains(assistant.Descendants(), element => (string?)element.Attribute("ResourceKey") == "SubtleFillColorTertiaryBrush");
         var headers = document.Descendants().Where(element => element.Name.LocalName == "NavigationViewItemHeader").ToArray();
-        Assert.DoesNotContain(headers, element => (string?)element.Attribute(x + "Name") == "PagesHeader");
+        var pages = headers.Single(element => (string?)element.Attribute(x + "Name") == "PagesHeader");
+        Assert.Equal("home", (string?)pages.ElementsBeforeSelf().Last().Attribute("Tag"));
         var sessions = headers.Single(element => (string?)element.Attribute(x + "Name") == "SessionsHeader");
-        Assert.Equal("home", (string?)sessions.ElementsBeforeSelf().Last().Attribute("Tag"));
+        Assert.Equal("PagesEmpty", (string?)sessions.ElementsBeforeSelf().Last().Attribute(x + "Name"));
         Assert.Equal("True", (string?)sessions.Attribute("IsEnabled"));
         Assert.Contains(sessions.Descendants(), element => element.Name.LocalName == "ContentPresenter"
             && (string?)element.Attribute("Content") == "{TemplateBinding Content}");
