@@ -12,6 +12,7 @@ using OpenClaw.TestSupport;
 using OpenClaw.TestSupport.Gateway;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Adapters;
 using OpenClawTray.Services;
 using static Microsoft.UI.Reactor.Factories;
@@ -95,6 +96,8 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
     public async Task ProductionRoot_QuestionExpansionRetainsNativeComposerAndViewModelDraft()
     {
         using var temp = new TempDirectory();
+        using var settingsStore = new SettingsStore(
+            new SettingsManager(temp.Combine("settings")), new WinUIDispatcher(ui.Dispatcher));
         var token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateInteractive(), token);
         server.Interactive!.Playback.Select("question-choice");
@@ -121,7 +124,7 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
             await ui.RunOnUIAsync(() =>
             {
                 scope = new("Light");
-                session = new ChatComposerFactory(new WinUIDispatcher(ui.Dispatcher))
+                session = new ChatComposerFactory(new WinUIDispatcher(ui.Dispatcher), settingsStore, new SandboxStatusStore())
                     .Create(provider, new(null, null, null, null, null), false);
                 host = new();
                 host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(
