@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Collections.Immutable;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -41,6 +42,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private bool _chatApplyQueued;
     private bool _showingAgentCreation;
     private IOperatorGatewayClient? _refreshingClient;
+    private readonly HubCommandExecutor _commandExecutor = new();
     private string? _agentId;
     // Settings lives in this window as a retained sibling of the chat section. Chat is only
     // collapsed while Settings is visible, so its control identity, draft and focus survive.
@@ -84,6 +86,11 @@ public sealed partial class WorkspaceWindow : WindowEx
             ShowInfo,
             ReportError);
         _gatewayStatusFlyout.Content = _gatewayStatusContent;
+        var searchLabel = LocalizationHelper.GetString("TitleSearchBox.PlaceholderText");
+        AutomationProperties.SetName(WorkspaceSearchButton, searchLabel);
+        ToolTipService.SetToolTip(WorkspaceSearchButton, searchLabel);
+        WorkspaceSearchBox.PlaceholderText = searchLabel;
+        AutomationProperties.SetName(WorkspaceSearchBox, searchLabel);
         _gatewayStatusFlyout.Opening += (_, _) => _gatewayStatusContent.Initialize(
             () => _gatewayStatusFlyout.Hide(),
             () => OpenCompanion(CompanionPageId.Connection),
@@ -178,20 +185,73 @@ public sealed partial class WorkspaceWindow : WindowEx
     internal void OpenTimeline() => _openTimeline();
 
     /// <summary>
-    /// Opens the visible surface's search: Settings search while Settings is shown, otherwise the
-    /// Settings search after pushing the default section (the one search surface of this window).
+    /// Opens the search of the visible surface: the Settings flyout while Settings is shown,
+    /// otherwise the main-screen flyout. Neither changes the page, conversation or draft.
     /// </summary>
     internal void OpenCommandCenter()
     {
         if (IsClosed) return;
-        if (!IsSettingsVisible)
-            Navigate(WorkspaceDestination.Settings("settings"));
-        if (_settings is null) return;
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        if (IsSettingsVisible)
         {
-            if (!IsClosed && IsSettingsVisible && _settings.IsLoaded)
-                _settings.OpenCommandCenter();
-        });
+            if (_settings is { IsLoaded: true }) _settings.OpenCommandCenter();
+            return;
+        }
+        var anchor = WorkspaceSearchButton.IsLoaded && NavView.IsPaneOpen
+            ? (FrameworkElement)WorkspaceSearchButton
+            : ReopenPaneButton;
+        WorkspaceSearchFlyout.ShowAt(anchor);
+    }
+
+    private ImmutableArray<HubCommand>? _workspaceCommands;
+
+    private ImmutableArray<HubCommand> BuildWorkspaceCommands() =>
+        HubCommandCatalog.Build(_state, CurrentApp.SettingsOrNull, _agentId ?? "main");
+
+    private void OnWorkspaceSearchOpening(object sender, object e)
+    {
+        _workspaceCommands = BuildWorkspaceCommands();
+        WorkspaceSearchBox.Text = string.Empty;
+        WorkspaceSearchBox.ItemsSource = HubPageRegistry.SearchCommands(_workspaceCommands.Value, string.Empty);
+    }
+
+    private void OnWorkspaceSearchOpened(object sender, object e)
+    {
+        WorkspaceSearchBox.Focus(FocusState.Programmatic);
+        WorkspaceSearchBox.IsSuggestionListOpen = true;
+    }
+
+    private void OnWorkspaceSearchKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key != global::Windows.System.VirtualKey.Escape) return;
+        e.Handled = true;
+        WorkspaceSearchBox.IsSuggestionListOpen = false;
+        WorkspaceSearchFlyout.Hide();
+    }
+
+    private void OnWorkspaceSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
+        _workspaceCommands ??= BuildWorkspaceCommands();
+        sender.ItemsSource = HubPageRegistry.SearchCommands(_workspaceCommands.Value, sender.Text);
+    }
+
+    private void OnWorkspaceSearchSuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
+    {
+        if (args.SelectedItem is HubCommand cmd)
+            sender.Text = cmd.Title;
+    }
+
+    private void OnWorkspaceSearchQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        var command = args.ChosenSuggestion as HubCommand
+            ?? HubPageRegistry.SearchCommands(_workspaceCommands ?? BuildWorkspaceCommands(), args.QueryText)
+                .FirstOrDefault();
+        if (command is null) return;
+        WorkspaceSearchFlyout.Hide();
+        sender.Text = string.Empty;
+        sender.ItemsSource = null;
+        _workspaceCommands = null;
+        _commandExecutor.Execute(command, OnSettingsWorkspaceRoute, () => SettingsSaved?.Invoke(this, EventArgs.Empty));
     }
 
     internal void SelectSession(string sessionKey) =>
@@ -996,10 +1056,11 @@ public sealed partial class WorkspaceWindow : WindowEx
             .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
         var alt = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(global::Windows.System.VirtualKey.Menu)
             .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
-        // Settings keeps its E/F search aliases; Chat only shares the app-wide Ctrl+K shortcut.
+        // Ctrl+E is the search shortcut shown in the placeholder; Ctrl+K remains its alias.
+        // Settings keeps its existing Ctrl+F alias; Chat leaves Ctrl+F to its content.
         if (ctrl && (e.Key == global::Windows.System.VirtualKey.K ||
-                     (IsSettingsVisible && (e.Key == global::Windows.System.VirtualKey.E ||
-                                            e.Key == global::Windows.System.VirtualKey.F))))
+                     e.Key == global::Windows.System.VirtualKey.E ||
+                     (IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)))
         {
             e.Handled = true;
             OpenCommandCenter();

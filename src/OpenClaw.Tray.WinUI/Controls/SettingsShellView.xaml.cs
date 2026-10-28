@@ -42,7 +42,7 @@ internal sealed partial class SettingsShellView : UserControl
     private AppNotificationSnapshot? _lastAppNotificationSnapshot;
     private AppNotificationInfoBarPresentation _currentAppNotificationPresentation =
         AppNotificationInfoBarPresentation.Hidden;
-    private SettingsWriteOrigin? _commandPaletteSettingsOrigin;
+    private readonly HubCommandExecutor _commandExecutor = new();
     private bool _suppressAppNotificationClosed;
     private bool _disposed;
     private bool _active;
@@ -973,105 +973,8 @@ internal sealed partial class SettingsShellView : UserControl
         return HubCommandCatalog.Build(AppModel, CurrentApp.Settings, _currentAgentId);
     }
 
-    private void ToggleCommandPalettePermission(HubSettingToggle toggle)
-    {
-        var settings = CurrentApp.SettingsOrNull;
-        if (settings == null)
-            return;
-
-        var settingName = GetSettingName(toggle);
-        var nextValue = !GetCurrentSettingValue(settings, toggle);
-        try
-        {
-            if (CurrentApp.SettingsStore is { } store)
-            {
-                _commandPaletteSettingsOrigin ??= store.CreateOrigin();
-                store.Update(_commandPaletteSettingsOrigin, edit =>
-                    ApplySettingValue(edit, toggle, nextValue));
-            }
-            else
-            {
-                Services.Logger.Warn($"[SettingsShellView] ISettingsStore unavailable for {settingName}. Falling back to SettingsManager.Save.");
-                ApplySettingValue(settings, toggle, nextValue);
-                settings.Save();
-            }
-
-            RaiseSettingsSaved();
-        }
-        catch (Exception ex)
-        {
-            Services.Logger.Warn($"[SettingsShellView] Failed to persist {settingName}: {ex.Message}");
-        }
-    }
-
-    private static string GetSettingName(HubSettingToggle toggle) => toggle switch
-    {
-        HubSettingToggle.NodeMode => nameof(SettingsManager.EnableNodeMode),
-        HubSettingToggle.Camera => nameof(SettingsManager.NodeCameraEnabled),
-        HubSettingToggle.Canvas => nameof(SettingsManager.NodeCanvasEnabled),
-        HubSettingToggle.ScreenCapture => nameof(SettingsManager.NodeScreenEnabled),
-        HubSettingToggle.BrowserControl => nameof(SettingsManager.NodeBrowserProxyEnabled),
-        _ => throw new ArgumentOutOfRangeException(nameof(toggle))
-    };
-
-    private static bool GetCurrentSettingValue(SettingsManager settings, HubSettingToggle toggle) =>
-        toggle switch
-        {
-            HubSettingToggle.NodeMode => settings.EnableNodeMode,
-            HubSettingToggle.Camera => settings.NodeCameraEnabled,
-            HubSettingToggle.Canvas => settings.NodeCanvasEnabled,
-            HubSettingToggle.ScreenCapture => settings.NodeScreenEnabled,
-            HubSettingToggle.BrowserControl => settings.NodeBrowserProxyEnabled,
-            _ => throw new ArgumentOutOfRangeException(nameof(toggle))
-        };
-
-    private static void ApplySettingValue(
-        ISettingsEditor settings,
-        HubSettingToggle toggle,
-        bool value)
-    {
-        switch (toggle)
-        {
-            case HubSettingToggle.NodeMode: settings.EnableNodeMode = value; break;
-            case HubSettingToggle.Camera: settings.NodeCameraEnabled = value; break;
-            case HubSettingToggle.Canvas: settings.NodeCanvasEnabled = value; break;
-            case HubSettingToggle.ScreenCapture: settings.NodeScreenEnabled = value; break;
-            case HubSettingToggle.BrowserControl: settings.NodeBrowserProxyEnabled = value; break;
-            default: throw new ArgumentOutOfRangeException(nameof(toggle));
-        }
-    }
-
-    private static void ApplySettingValue(
-        SettingsManager settings,
-        HubSettingToggle toggle,
-        bool value)
-    {
-        switch (toggle)
-        {
-            case HubSettingToggle.NodeMode: settings.EnableNodeMode = value; break;
-            case HubSettingToggle.Camera: settings.NodeCameraEnabled = value; break;
-            case HubSettingToggle.Canvas: settings.NodeCanvasEnabled = value; break;
-            case HubSettingToggle.ScreenCapture: settings.NodeScreenEnabled = value; break;
-            case HubSettingToggle.BrowserControl: settings.NodeBrowserProxyEnabled = value; break;
-            default: throw new ArgumentOutOfRangeException(nameof(toggle));
-        }
-    }
-
-    private void ExecuteCommand(HubCommand command)
-    {
-        switch (command.Action.Kind)
-        {
-            case HubCommandActionKind.Navigate when command.Action.Value is { Length: > 0 } tag:
-                NavigateTo(tag);
-                break;
-            case HubCommandActionKind.OpenDashboard:
-                ((IAppCommands)Application.Current).OpenDashboard(command.Action.Value);
-                break;
-            case HubCommandActionKind.ToggleSetting when command.Action.Toggle is { } toggle:
-                ToggleCommandPalettePermission(toggle);
-                break;
-        }
-    }
+    private void ExecuteCommand(HubCommand command) =>
+        _commandExecutor.Execute(command, NavigateTo, RaiseSettingsSaved);
 
     #region High Contrast icon fallback
 
