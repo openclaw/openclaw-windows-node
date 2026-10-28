@@ -8017,6 +8017,23 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="WorkspaceShell_OwnerUnavailable.Text" xml:space="preserve"><value>Perfil indisponível</value></data>
   <data name="WorkspaceShell_OwnerUnnamed.Text" xml:space="preserve"><value>Perfil não configurado</value></data>
   <data name="WorkspaceShell_SetUpProfile" xml:space="preserve"><value>Configurar perfil no painel</value></data>
+  <data name="WorkspaceShell_CompleteProfile" xml:space="preserve"><value>Configurar perfil a partir deste PC</value></data>
+  <data name="ProfileCompletion_Title" xml:space="preserve"><value>Seu perfil</value></data>
+  <data name="ProfileCompletion_Description" xml:space="preserve"><value>Use o nome e a foto desta conta do Windows no seu perfil neste Gateway. Você pode editá-los antes. Eles ficam visíveis para todos que usam este Gateway. Nada é enviado até você escolher Salvar.</value></data>
+  <data name="ProfileCompletion_Name" xml:space="preserve"><value>Nome de exibição</value></data>
+  <data name="ProfileCompletion_UsePhoto" xml:space="preserve"><value>Usar a foto da minha conta do Windows</value></data>
+  <data name="ProfileCompletion_PhotoPreview" xml:space="preserve"><value>Pré-visualização da foto da conta do Windows</value></data>
+  <data name="ProfileCompletion_Save" xml:space="preserve"><value>Salvar</value></data>
+  <data name="ProfileCompletion_Skip" xml:space="preserve"><value>Ignorar</value></data>
+  <data name="ProfileCompletion_Saving" xml:space="preserve"><value>Salvando o perfil</value></data>
+  <data name="ProfileCompletion_AccountUnavailable" xml:space="preserve"><value>O Windows não forneceu nome nem foto. Você pode digitar um nome.</value></data>
+  <data name="ProfileCompletion_PhotoUnavailable" xml:space="preserve"><value>O Windows não forneceu uma foto. Você ainda pode salvar um nome.</value></data>
+  <data name="ProfileCompletion_NameUnavailable" xml:space="preserve"><value>O Windows não forneceu um nome. Digite um para salvar.</value></data>
+  <data name="ProfileCompletion_PermissionRequired" xml:space="preserve"><value>Esta conexão não tem permissão para alterar o perfil.</value></data>
+  <data name="ProfileCompletion_ContextChanged" xml:space="preserve"><value>O Gateway ou o perfil mudou. Feche esta janela e tente novamente.</value></data>
+  <data name="ProfileCompletion_NameSavedPhotoFailed" xml:space="preserve"><value>O nome foi salvo, mas a foto não. Escolha Salvar para tentar a foto novamente.</value></data>
+  <data name="ProfileCompletion_PhotoSavedNameFailed" xml:space="preserve"><value>A foto foi salva, mas o nome não. Escolha Salvar para tentar o nome novamente.</value></data>
+  <data name="ProfileCompletion_Failed" xml:space="preserve"><value>Não foi possível salvar o perfil. Tente novamente.</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>

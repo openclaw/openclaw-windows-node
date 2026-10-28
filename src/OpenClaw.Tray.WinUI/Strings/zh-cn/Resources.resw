@@ -7965,6 +7965,23 @@
   <data name="WorkspaceShell_OwnerUnavailable.Text" xml:space="preserve"><value>个人资料不可用</value></data>
   <data name="WorkspaceShell_OwnerUnnamed.Text" xml:space="preserve"><value>未设置个人资料</value></data>
   <data name="WorkspaceShell_SetUpProfile" xml:space="preserve"><value>在仪表板中设置个人资料</value></data>
+  <data name="WorkspaceShell_CompleteProfile" xml:space="preserve"><value>使用这台电脑设置个人资料</value></data>
+  <data name="ProfileCompletion_Title" xml:space="preserve"><value>你的个人资料</value></data>
+  <data name="ProfileCompletion_Description" xml:space="preserve"><value>将此 Windows 账户的名称和照片用作你在此 Gateway 上的个人资料。你可以先编辑。使用此 Gateway 的所有人都会看到它们。在你选择“保存”之前不会发送任何内容。</value></data>
+  <data name="ProfileCompletion_Name" xml:space="preserve"><value>显示名称</value></data>
+  <data name="ProfileCompletion_UsePhoto" xml:space="preserve"><value>使用我的 Windows 账户照片</value></data>
+  <data name="ProfileCompletion_PhotoPreview" xml:space="preserve"><value>Windows 账户照片预览</value></data>
+  <data name="ProfileCompletion_Save" xml:space="preserve"><value>保存</value></data>
+  <data name="ProfileCompletion_Skip" xml:space="preserve"><value>跳过</value></data>
+  <data name="ProfileCompletion_Saving" xml:space="preserve"><value>正在保存个人资料</value></data>
+  <data name="ProfileCompletion_AccountUnavailable" xml:space="preserve"><value>Windows 未提供名称或照片。你可以手动输入名称。</value></data>
+  <data name="ProfileCompletion_PhotoUnavailable" xml:space="preserve"><value>Windows 未提供照片。你仍可以保存名称。</value></data>
+  <data name="ProfileCompletion_NameUnavailable" xml:space="preserve"><value>Windows 未提供名称。请输入名称后保存。</value></data>
+  <data name="ProfileCompletion_PermissionRequired" xml:space="preserve"><value>此连接无权更改个人资料。</value></data>
+  <data name="ProfileCompletion_ContextChanged" xml:space="preserve"><value>Gateway 或个人资料已更改。请关闭此窗口后重试。</value></data>
+  <data name="ProfileCompletion_NameSavedPhotoFailed" xml:space="preserve"><value>名称已保存，但照片未保存。选择“保存”可重试照片。</value></data>
+  <data name="ProfileCompletion_PhotoSavedNameFailed" xml:space="preserve"><value>照片已保存，但名称未保存。选择“保存”可重试名称。</value></data>
+  <data name="ProfileCompletion_Failed" xml:space="preserve"><value>无法保存个人资料。请重试。</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>

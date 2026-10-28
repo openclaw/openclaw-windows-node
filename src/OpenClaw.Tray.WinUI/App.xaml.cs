@@ -94,6 +94,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// <summary>The persistent gateway client. Used by the onboarding wizard for RPC calls.</summary>
     public IOperatorGatewayClient? GatewayClient => _connectionManager?.OperatorClient;
     public GatewayRegistry? Registry => _gatewayRegistry;
+    /// <summary>True when this process was restarted by completed setup; gates the one-time optional profile offer.</summary>
+    internal bool IsPostSetupRestart => _isPostSetupRestart;
     public GatewayConnectionManager? ConnectionManager => _connectionManager;
     internal GatewayDirectConnectService? GatewayDirectConnectService =>
         _gatewayDirectConnectService;

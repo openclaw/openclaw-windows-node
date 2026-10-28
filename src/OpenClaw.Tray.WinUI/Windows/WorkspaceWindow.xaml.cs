@@ -42,6 +42,15 @@ public sealed partial class WorkspaceWindow : WindowEx
     // clicks coalesce onto the latest ChatPage.QueueSession value.
     private bool _chatApplyQueued;
     private bool _showingAgentCreation;
+    private readonly MenuFlyoutItem _completeProfileItem = new() { Visibility = Visibility.Collapsed };
+    private readonly ProfileCompletionService _profileCompletion = new(
+        () => CurrentApp.GatewayClient, () => CurrentApp.Registry?.ActiveGatewayId,
+        () => ProfileCompletionEligibility.IsEligible(CurrentApp.Registry?.GetActive()),
+        new WindowsAccountIdentityProvider());
+    private readonly ProfileCompletionDeclineStore _profileDeclines =
+        new(System.IO.Path.Combine(SettingsManager.SettingsDirectoryPath, "profile-completion-declined.json"));
+    private bool _showingProfileCompletion;
+    private string? _profileOfferedGatewayId;
     private IOperatorGatewayClient? _refreshingClient;
     private readonly HubCommandExecutor _commandExecutor = new();
     private string? _agentId;
@@ -903,6 +912,9 @@ public sealed partial class WorkspaceWindow : WindowEx
         OwnerName.Text = name ?? Text(_identity.IsLoading ? "OwnerLoading.Text"
             : unnamed ? "OwnerUnnamed.Text" : "OwnerUnavailable.Text");
         _setUpProfileItem.Visibility = unnamed ? Visibility.Visible : Visibility.Collapsed;
+        var canComplete = unnamed && ProfileCompletionEligibility.IsEligible(CurrentApp.Registry?.GetActive());
+        _completeProfileItem.Visibility = canComplete ? Visibility.Visible : Visibility.Collapsed;
+        if (canComplete) MaybeOfferProfileCompletion();
         OwnerPicture.DisplayName = name ?? "";
         AutomationProperties.SetName(OwnerButton, OwnerName.Text);
         var avatar = _identity.Avatar;
@@ -972,6 +984,45 @@ public sealed partial class WorkspaceWindow : WindowEx
         {
             _showingAgentCreation = false;
             if (!IsClosed) NewAgentOption.IsEnabled = true;
+        }
+    }
+
+    /// <summary>Optional, once per Gateway record and process, only right after setup; declining is remembered without any profile data.</summary>
+    private void MaybeOfferProfileCompletion()
+    {
+        var id = CurrentApp.Registry?.ActiveGatewayId;
+        if (id is null || !CurrentApp.IsPostSetupRestart || _showingProfileCompletion ||
+            _profileOfferedGatewayId == id || _profileDeclines.IsDeclined(id) || OpenModalDialog() is not null)
+            return;
+        _profileOfferedGatewayId = id;
+        AsyncEventHandlerGuard.Run(() => CompleteProfileAsync(fallbackToDashboard: false), new AppLogger(), nameof(MaybeOfferProfileCompletion));
+    }
+
+    private async Task CompleteProfileAsync(bool fallbackToDashboard)
+    {
+        if (_showingProfileCompletion || Root.XamlRoot is null) return;
+        _showingProfileCompletion = true;
+        try
+        {
+            var gatewayId = CurrentApp.Registry?.ActiveGatewayId;
+            var preparation = await _profileCompletion.PrepareAsync(CancellationToken.None);
+            if (IsClosed) return;
+            if (preparation.Offer != ProfileOffer.Offer)
+            {
+                if (fallbackToDashboard) ((IAppCommands)CurrentApp).OpenDashboard("settings/profile");
+                return;
+            }
+
+            var dialog = new ProfileCompletionDialog(Root.XamlRoot, _profileCompletion, preparation);
+            await dialog.ShowAsync();
+            if (dialog.Outcome == ProfileCompletionOutcome.Skipped && gatewayId is not null)
+                _profileDeclines.Decline(gatewayId, CurrentApp.Registry!.GetAll().Select(r => r.Id));
+            if (dialog.Outcome == ProfileCompletionOutcome.Saved && !IsClosed)
+                RefreshOwnerIdentity(invalidate: true);
+        }
+        finally
+        {
+            _showingProfileCompletion = false;
         }
     }
 
@@ -1125,6 +1176,12 @@ public sealed partial class WorkspaceWindow : WindowEx
         _setUpProfileItem.Icon = FluentIconCatalog.Build(FluentIconCatalog.OpenInBrowser);
         AutomationProperties.SetAutomationId(_setUpProfileItem, "WorkspaceOwnerSetUpProfile");
         _setUpProfileItem.Click += (_, _) => ((IAppCommands)CurrentApp).OpenDashboard("settings/profile");
+        _completeProfileItem.Text = Text("CompleteProfile");
+        _completeProfileItem.Icon = FluentIconCatalog.Build(FluentIconCatalog.Settings);
+        AutomationProperties.SetAutomationId(_completeProfileItem, "WorkspaceOwnerCompleteProfile");
+        _completeProfileItem.Click += (_, _) =>
+            AsyncEventHandlerGuard.Run(() => CompleteProfileAsync(fallbackToDashboard: true), new AppLogger(), nameof(BuildOwnerMenu));
+        menu.Items.Add(_completeProfileItem);
         menu.Items.Add(_setUpProfileItem);
         Add("Settings", () => OpenCompanion(CompanionPageId.Settings), FluentIconCatalog.Settings);
         Add("Usage", () => OpenCompanion(CompanionPageId.Usage), FluentIconCatalog.Money);

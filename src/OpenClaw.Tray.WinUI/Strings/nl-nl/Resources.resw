@@ -7966,6 +7966,23 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_OwnerUnavailable.Text" xml:space="preserve"><value>Profiel niet beschikbaar</value></data>
   <data name="WorkspaceShell_OwnerUnnamed.Text" xml:space="preserve"><value>Profiel niet ingesteld</value></data>
   <data name="WorkspaceShell_SetUpProfile" xml:space="preserve"><value>Profiel instellen in het dashboard</value></data>
+  <data name="WorkspaceShell_CompleteProfile" xml:space="preserve"><value>Profiel instellen vanaf deze pc</value></data>
+  <data name="ProfileCompletion_Title" xml:space="preserve"><value>Je profiel</value></data>
+  <data name="ProfileCompletion_Description" xml:space="preserve"><value>Gebruik de naam en foto van dit Windows-account voor je profiel op deze Gateway. Je kunt ze eerst aanpassen. Ze zijn zichtbaar voor iedereen die deze Gateway gebruikt. Er wordt niets verzonden totdat je Opslaan kiest.</value></data>
+  <data name="ProfileCompletion_Name" xml:space="preserve"><value>Weergavenaam</value></data>
+  <data name="ProfileCompletion_UsePhoto" xml:space="preserve"><value>Mijn Windows-accountfoto gebruiken</value></data>
+  <data name="ProfileCompletion_PhotoPreview" xml:space="preserve"><value>Voorbeeld van Windows-accountfoto</value></data>
+  <data name="ProfileCompletion_Save" xml:space="preserve"><value>Opslaan</value></data>
+  <data name="ProfileCompletion_Skip" xml:space="preserve"><value>Overslaan</value></data>
+  <data name="ProfileCompletion_Saving" xml:space="preserve"><value>Profiel opslaan</value></data>
+  <data name="ProfileCompletion_AccountUnavailable" xml:space="preserve"><value>Windows heeft geen naam of foto opgegeven. Je kunt zelf een naam typen.</value></data>
+  <data name="ProfileCompletion_PhotoUnavailable" xml:space="preserve"><value>Windows heeft geen foto opgegeven. Je kunt wel een naam opslaan.</value></data>
+  <data name="ProfileCompletion_NameUnavailable" xml:space="preserve"><value>Windows heeft geen naam opgegeven. Voer een naam in om op te slaan.</value></data>
+  <data name="ProfileCompletion_PermissionRequired" xml:space="preserve"><value>Deze verbinding heeft geen toestemming om het profiel te wijzigen.</value></data>
+  <data name="ProfileCompletion_ContextChanged" xml:space="preserve"><value>De Gateway of het profiel is gewijzigd. Sluit dit venster en probeer het opnieuw.</value></data>
+  <data name="ProfileCompletion_NameSavedPhotoFailed" xml:space="preserve"><value>De naam is opgeslagen, maar de foto niet. Kies Opslaan om de foto opnieuw te proberen.</value></data>
+  <data name="ProfileCompletion_PhotoSavedNameFailed" xml:space="preserve"><value>De foto is opgeslagen, maar de naam niet. Kies Opslaan om de naam opnieuw te proberen.</value></data>
+  <data name="ProfileCompletion_Failed" xml:space="preserve"><value>Het profiel kon niet worden opgeslagen. Probeer het opnieuw.</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
