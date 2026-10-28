@@ -14,6 +14,15 @@ internal sealed class DeferredNavigation
 
     public bool HasIntent => _intent is not null;
 
+    /// <summary>
+    /// True while the logical destination may be ahead of what is rendered (a waiting intent or a
+    /// pruned render), so even a request for the current destination must wait for the dialog.
+    /// </summary>
+    public bool HasPending => _intent is not null || _renderPending;
+
+    /// <summary>A navigation waits behind a modal when it changes destination or anything is already pending.</summary>
+    public bool ShouldDefer(bool destinationChanged) => destinationChanged || HasPending;
+
     /// <summary>Stores the latest intent; returns true when another intent was already waiting.</summary>
     public bool Defer(Action intent)
     {

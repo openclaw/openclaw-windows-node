@@ -131,7 +131,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (preserveConversation && destination is { Page: WorkspacePageId.Home, SessionKey: null })
             destination = _navigation.ChatDestination;
-        if (destination != Destination && DeferWhileModalOpen(() => Navigate(destination, preserveConversation)))
+        if (_deferred.ShouldDefer(destination != Destination) && DeferWhileModalOpen(() => Navigate(destination, preserveConversation)))
             return;
         _chat.RetainNativeSetupForDestination(destination);
         if (!_navigation.Navigate(destination))

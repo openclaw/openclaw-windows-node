@@ -307,6 +307,40 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void DeferredNavigation_PrunedFallbackRequestedAgainUnderDialogIsDeferredNotRendered()
+    {
+        // Prune moved the logical destination to the fallback while the dialog is open; a request for
+        // that same destination must not render under the dialog, with or without another intent.
+        var steps = new List<string>();
+        var deferred = new DeferredNavigation();
+        Assert.False(deferred.ShouldDefer(destinationChanged: false));
+
+        deferred.Defer(() => steps.Add("other"));
+        deferred.DeferRender();
+        Assert.True(deferred.ShouldDefer(destinationChanged: false));
+        deferred.Defer(() => steps.Add("fallback"));
+        deferred.Run(() => false, () => steps.Add("render"));
+        Assert.Equal(new[] { "render", "fallback" }, steps);
+        Assert.False(deferred.ShouldDefer(destinationChanged: false));
+
+        steps.Clear();
+        deferred.Defer(RenderOnly);
+        Assert.True(deferred.ShouldDefer(destinationChanged: false));
+        deferred.Defer(() => steps.Add("fallback"));
+        deferred.Run(() => false, () => steps.Add("render"));
+        Assert.Equal(new[] { "fallback" }, steps);
+
+        void RenderOnly() => steps.Add("pruned-render");
+    }
+
+    [Fact]
+    public void WorkspaceNavigate_SameDestinationDefersWhilePrunedRenderOrIntentIsPending()
+    {
+        var workspace =         File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("_deferred.ShouldDefer(destination != Destination) && DeferWhileModalOpen(", workspace);
+    }
+
+    [Fact]
     public void DeferredNavigation_StillOpenModalKeepsPrunedRenderForTheNextClose()
     {
         var steps = new List<string>();
