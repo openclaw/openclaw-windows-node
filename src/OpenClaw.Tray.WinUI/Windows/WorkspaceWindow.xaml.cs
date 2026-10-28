@@ -124,6 +124,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         Closed += OnClosed;
         Root.Loaded += OnLoaded;
         RefreshSidebar();
+        WirePins();
     }
 
     internal static string Text(string key) => LocalizationHelper.GetString($"WorkspaceShell_{key}");
@@ -862,6 +863,8 @@ public sealed partial class WorkspaceWindow : WindowEx
             RefreshOwnerIdentity(e.PropertyName == nameof(AppState.SelfProfileRevision));
         if (e.PropertyName is nameof(AppState.AgentsList) or nameof(AppState.Sessions) or nameof(AppState.Status))
             RefreshSidebar();
+        if (e.PropertyName == nameof(AppState.Status))
+            RebuildPins();
         if (e.PropertyName == nameof(AppState.Status) && _state.Status == ConnectionStatus.Connected)
             _ = RefreshAsync();
         if (e.PropertyName == nameof(AppState.Status))
@@ -1140,6 +1143,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         IsClosed = true;
         _identity.SetConnection(null, ConnectionStatus.Disconnected);
         _state.PropertyChanged -= OnStateChanged;
+        UnwirePins();
         _notifications.Changed -= OnNotificationsChanged;
         NotificationsFlyout.Hide();
         NotificationContent.Unbind();

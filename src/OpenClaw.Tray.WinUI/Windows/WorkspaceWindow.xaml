@@ -136,6 +136,45 @@
                         <TextBlock x:Name="HomeLabel" VerticalAlignment="Center"/>
                     </StackPanel>
                 </NavigationViewItem>
+                <NavigationViewItemHeader x:Name="PagesHeader" IsEnabled="True">
+                    <NavigationViewItemHeader.Resources>
+                        <Thickness x:Key="NavigationViewItemInnerHeaderMargin">16,0,4,0</Thickness>
+                    </NavigationViewItemHeader.Resources>
+                    <NavigationViewItemHeader.Template>
+                        <ControlTemplate TargetType="NavigationViewItemHeader">
+                            <Grid>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="PaneStates">
+                                        <VisualState x:Name="HeaderTextVisible"/>
+                                        <VisualState x:Name="HeaderTextCollapsed">
+                                            <VisualState.Setters>
+                                                <Setter Target="HeaderContent.Visibility" Value="Collapsed"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter x:Name="HeaderContent" Content="{TemplateBinding Content}"
+                                                  Height="40" HorizontalContentAlignment="Stretch"
+                                                  Margin="{ThemeResource NavigationViewItemInnerHeaderMargin}"/>
+                            </Grid>
+                        </ControlTemplate>
+                    </NavigationViewItemHeader.Template>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock x:Uid="WorkspaceShell_PagesLabel" Text="Pages" VerticalAlignment="Center"
+                                   Style="{StaticResource NavigationViewItemHeaderTextStyle}"/>
+                        <Button x:Name="PagesCustomizeButton" x:Uid="WorkspaceShell_PagesCustomize" Grid.Column="1"
+                                Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                Style="{StaticResource SubtleButtonStyle}" AutomationProperties.AutomationId="WorkspacePagesCustomize">
+                            <FontIcon Glyph="&#xE713;" FontSize="16"/>
+                            <Button.Flyout>
+                                <MenuFlyout x:Name="PagesFlyout" Placement="BottomEdgeAlignedRight" Opening="OnPagesFlyoutOpening" Closed="OnPagesFlyoutClosed"/>
+                            </Button.Flyout>
+                        </Button>
+                    </Grid>
+                </NavigationViewItemHeader>
+                <NavigationViewItemHeader x:Name="PagesEmpty" FontWeight="Normal"/>
                 <NavigationViewItemHeader x:Name="SessionsHeader" IsEnabled="True">
                     <NavigationViewItemHeader.Resources>
                         <Thickness x:Key="NavigationViewItemInnerHeaderMargin">16,0,4,0</Thickness>
