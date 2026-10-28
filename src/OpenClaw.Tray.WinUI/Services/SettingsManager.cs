@@ -178,6 +178,7 @@ public class SettingsManager
     /// from, and does not change, the app-managed Local AI gateway provider.
     /// </summary>
     public bool NodeOllamaInferenceEnabled { get => _data.NodeOllamaInferenceEnabled; set => _data = _data with { NodeOllamaInferenceEnabled = value }; }
+    public bool UseGatewayVoice { get => _data.UseGatewayVoice; set => _data = _data with { UseGatewayVoice = value }; }
     public string TtsProvider { get => string.IsNullOrWhiteSpace(_data.TtsProvider) ? TtsCapability.KokoroProvider : _data.TtsProvider; set => _data = _data with { TtsProvider = value }; }
     public string TtsElevenLabsApiKey
     {

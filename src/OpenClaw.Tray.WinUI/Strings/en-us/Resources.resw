@@ -8221,4 +8221,26 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
     <value>Checking Windows sandbox support.</value>
   </data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Use connected Gateway voice</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>Chat Read Aloud and automatic replies use the Gateway's configured voice. Text is sent to the Gateway and its speech provider. Keys stay on the Gateway. Local node and MCP speech are unchanged.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>No automatic local fallback. If unavailable, turn this option off to use your local provider.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceRefresh.Content" xml:space="preserve"><value>Check readiness</value></data>
+  <data name="VoiceSettingsPage_GatewayVoicePreview.Content" xml:space="preserve"><value>Preview Gateway voice</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>Stop</value></data>
+  <data name="GatewayVoice_Checking" xml:space="preserve"><value>Checking Gateway voice readiness…</value></data>
+  <data name="GatewayVoice_Ready" xml:space="preserve"><value>Gateway selection: {0}. Configured providers: {1}.</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>Generating Gateway speech…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Gateway voice: {0}.</value></data>
+  <data name="GatewayVoice_ActualFallback" xml:space="preserve"><value>Gateway voice: {0} (Gateway selection when checked: {1}).</value></data>
+  <data name="GatewayVoice_Stopped" xml:space="preserve"><value>Gateway speech stopped. Pending results will not play.</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>Connect to a Gateway in Connection settings to use its voice.</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>This Gateway does not advertise the required speech RPCs. Update the Gateway or turn off Gateway voice.</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>Gateway voice needs operator.read and operator.write authority. Review this device’s Gateway approval. Companion will not change permissions.</value></data>
+  <data name="GatewayVoice_ProviderUnavailable" xml:space="preserve"><value>No configured Gateway speech provider is ready. Configure TTS on the Gateway or turn off Gateway voice.</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>Speech text is empty or exceeds Companion’s 4096-character limit. Select a shorter message.</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>The Gateway returned empty, invalid, or oversized audio. Check its TTS configuration. Nothing was played.</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>This Gateway audio format is not supported. Configure MP3 or WAV output on the Gateway.</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway speech timed out. Synthesis may have completed. Check the Gateway before trying again; no automatic retry was made.</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway speech failed. Check its voice configuration and provider quota. No local fallback or automatic retry was made.</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows could not play the speech audio. Check your output device. No automatic retry was made.</value></data>
 </root>

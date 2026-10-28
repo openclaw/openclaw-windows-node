@@ -8206,4 +8206,26 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
     <value>Verificando o suporte do Windows a sandbox.</value>
   </data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Usar a voz da Gateway conectada</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>A leitura do chat e as respostas automáticas usam a voz configurada na Gateway. O texto é enviado à Gateway e ao provedor de voz. As chaves ficam na Gateway. A fala local do nó e do MCP não muda.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>Sem alternativa local automática. Se indisponível, desative esta opção para usar o provedor local.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceRefresh.Content" xml:space="preserve"><value>Verificar disponibilidade</value></data>
+  <data name="VoiceSettingsPage_GatewayVoicePreview.Content" xml:space="preserve"><value>Ouvir a voz da Gateway</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>Parar</value></data>
+  <data name="GatewayVoice_Checking" xml:space="preserve"><value>Verificando a voz da Gateway…</value></data>
+  <data name="GatewayVoice_Ready" xml:space="preserve"><value>Seleção da Gateway: {0}. Provedores configurados: {1}.</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>Gerando fala na Gateway…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Voz da Gateway: {0}.</value></data>
+  <data name="GatewayVoice_ActualFallback" xml:space="preserve"><value>Voz da Gateway: {0} (seleção da Gateway na verificação: {1}).</value></data>
+  <data name="GatewayVoice_Stopped" xml:space="preserve"><value>Fala da Gateway interrompida. Resultados pendentes não serão reproduzidos.</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>Conecte uma Gateway nas configurações de conexão para usar sua voz.</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>Esta Gateway não anuncia os RPCs de voz necessários. Atualize a Gateway ou desative a voz da Gateway.</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>A voz da Gateway requer operator.read e operator.write. Revise a aprovação deste dispositivo na Gateway. O Companion não altera permissões.</value></data>
+  <data name="GatewayVoice_ProviderUnavailable" xml:space="preserve"><value>Nenhum provedor de voz configurado está pronto na Gateway. Configure o TTS na Gateway ou desative a voz da Gateway.</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>O texto está vazio ou excede o limite de 4096 caracteres do Companion. Escolha uma mensagem menor.</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>A Gateway retornou áudio vazio, inválido ou grande demais. Verifique a configuração de TTS. Nada foi reproduzido.</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>Este formato de áudio não é compatível. Configure a saída MP3 ou WAV na Gateway.</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>O tempo da fala da Gateway esgotou. A síntese pode ter terminado. Verifique a Gateway antes de tentar de novo. Não houve nova tentativa automática.</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>A fala da Gateway falhou. Verifique a configuração de voz e a cota do provedor. Não houve alternativa local nem nova tentativa automática.</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>O Windows não conseguiu reproduzir o áudio. Verifique o dispositivo de saída. Não houve nova tentativa automática.</value></data>
 </root>

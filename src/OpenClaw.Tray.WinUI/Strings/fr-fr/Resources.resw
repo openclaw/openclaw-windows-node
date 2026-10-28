@@ -8154,4 +8154,26 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
     <value>Vérification de la prise en charge du sandboxing Windows.</value>
   </data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Utiliser la voix de la Gateway connectée</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>La lecture du chat et des réponses automatiques utilise la voix configurée sur la Gateway. Le texte est envoyé à la Gateway et à son fournisseur vocal. Les clés restent sur la Gateway. La synthèse locale du nœud et de MCP ne change pas.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>Aucun repli local automatique. En cas d’indisponibilité, désactivez cette option pour utiliser le fournisseur local.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceRefresh.Content" xml:space="preserve"><value>Vérifier la disponibilité</value></data>
+  <data name="VoiceSettingsPage_GatewayVoicePreview.Content" xml:space="preserve"><value>Écouter la voix de la Gateway</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>Arrêter</value></data>
+  <data name="GatewayVoice_Checking" xml:space="preserve"><value>Vérification de la voix de la Gateway…</value></data>
+  <data name="GatewayVoice_Ready" xml:space="preserve"><value>Sélection Gateway : {0}. Fournisseurs configurés : {1}.</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>Génération de la voix par la Gateway…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Voix Gateway : {0}.</value></data>
+  <data name="GatewayVoice_ActualFallback" xml:space="preserve"><value>Voix Gateway : {0} (sélection lors de la vérification : {1}).</value></data>
+  <data name="GatewayVoice_Stopped" xml:space="preserve"><value>Voix Gateway arrêtée. Les résultats en attente ne seront pas lus.</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>Connectez une Gateway dans les paramètres de connexion pour utiliser sa voix.</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>Cette Gateway n’annonce pas les RPC vocaux requis. Mettez-la à jour ou désactivez la voix Gateway.</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>La voix Gateway nécessite les droits operator.read et operator.write. Vérifiez l’approbation de cet appareil sur la Gateway. Companion ne modifie pas les autorisations.</value></data>
+  <data name="GatewayVoice_ProviderUnavailable" xml:space="preserve"><value>Aucun fournisseur vocal configuré n’est prêt sur la Gateway. Configurez sa synthèse vocale ou désactivez la voix Gateway.</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>Le texte est vide ou dépasse la limite de 4096 caractères de Companion. Choisissez un message plus court.</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>La Gateway a renvoyé un son vide, invalide ou trop volumineux. Vérifiez sa configuration vocale. Aucun son n’a été lu.</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>Ce format audio n’est pas pris en charge. Configurez une sortie MP3 ou WAV sur la Gateway.</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>La voix Gateway a expiré. La synthèse a pu aboutir. Vérifiez la Gateway avant de réessayer. Aucune nouvelle tentative automatique.</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>La voix Gateway a échoué. Vérifiez sa configuration et le quota du fournisseur. Aucun repli local ni nouvelle tentative automatique.</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows n’a pas pu lire le son. Vérifiez le périphérique de sortie. Aucune nouvelle tentative automatique.</value></data>
 </root>

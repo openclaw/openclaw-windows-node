@@ -8155,4 +8155,26 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
     <value>Windows-sandboxondersteuning controleren.</value>
   </data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Stem van verbonden Gateway gebruiken</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>Voorlezen en automatische antwoorden gebruiken de ingestelde Gateway-stem. Tekst wordt naar de Gateway en de spraakprovider gestuurd. Sleutels blijven op de Gateway. Lokale node- en MCP-spraak blijven ongewijzigd.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>Geen automatische lokale terugval. Schakel deze optie uit om bij onbeschikbaarheid uw lokale provider te gebruiken.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceRefresh.Content" xml:space="preserve"><value>Beschikbaarheid controleren</value></data>
+  <data name="VoiceSettingsPage_GatewayVoicePreview.Content" xml:space="preserve"><value>Gateway-stem beluisteren</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>Stoppen</value></data>
+  <data name="GatewayVoice_Checking" xml:space="preserve"><value>Gateway-stem controleren…</value></data>
+  <data name="GatewayVoice_Ready" xml:space="preserve"><value>Gateway-selectie: {0}. Ingestelde providers: {1}.</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>Gateway-spraak genereren…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Gateway-stem: {0}.</value></data>
+  <data name="GatewayVoice_ActualFallback" xml:space="preserve"><value>Gateway-stem: {0} (Gateway-selectie bij controle: {1}).</value></data>
+  <data name="GatewayVoice_Stopped" xml:space="preserve"><value>Gateway-spraak gestopt. Openstaande resultaten worden niet afgespeeld.</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>Verbind een Gateway in de verbindingsinstellingen om de stem te gebruiken.</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>Deze Gateway biedt de vereiste spraak-RPC’s niet aan. Werk de Gateway bij of schakel Gateway-spraak uit.</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>Gateway-spraak vereist operator.read en operator.write. Controleer de apparaatgoedkeuring op de Gateway. Companion wijzigt geen rechten.</value></data>
+  <data name="GatewayVoice_ProviderUnavailable" xml:space="preserve"><value>Geen ingestelde Gateway-spraakprovider is gereed. Configureer TTS op de Gateway of schakel Gateway-spraak uit.</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>De tekst is leeg of langer dan de limiet van 4096 tekens van Companion. Kies een korter bericht.</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>De Gateway gaf lege, ongeldige of te grote audio terug. Controleer de TTS-instellingen. Er is niets afgespeeld.</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>Dit Gateway-audioformaat wordt niet ondersteund. Configureer MP3- of WAV-uitvoer op de Gateway.</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Time-out voor Gateway-spraak. Synthese kan voltooid zijn. Controleer de Gateway voordat u opnieuw probeert. Er is niet automatisch opnieuw geprobeerd.</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway-spraak mislukt. Controleer de steminstellingen en het providerquotum. Geen lokale terugval of automatische herhaling.</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
 </root>
