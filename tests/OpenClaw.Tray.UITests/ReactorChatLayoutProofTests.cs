@@ -906,7 +906,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             }));
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
-                Assert.DoesNotContain(FindDescendants<FrameworkElement>(host), element =>
+                Assert.DoesNotContain(RealizedTimelineElements<FrameworkElement>(host), element =>
                     AutomationProperties.GetAutomationId(element).StartsWith("ChatRunProgress", StringComparison.Ordinal)));
             state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("proof-run", 125, 4));
             Assert.Equal(125, state.RunUsage!.OutputTokens);
@@ -917,7 +917,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await Task.Delay(1200);
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
-                Assert.DoesNotContain(FindDescendants<FrameworkElement>(host), element =>
+                Assert.DoesNotContain(RealizedTimelineElements<FrameworkElement>(host), element =>
                     AutomationProperties.GetAutomationId(element).StartsWith("ChatRunProgress", StringComparison.Ordinal)));
             await CaptureAsync(surface, $"Reactor-run-completed-{width}");
 
@@ -1215,8 +1215,11 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     private static IEnumerable<TextBlock> RealizedTimelineText(DependencyObject root) =>
-        FindDescendants<TextBlock>(Assert.Single(FindDescendants<ItemsView>(root)))
-            .Where(text => Ancestors(text).OfType<ItemContainer>().FirstOrDefault() is { } container
+        RealizedTimelineElements<TextBlock>(root);
+
+    private static IEnumerable<T> RealizedTimelineElements<T>(DependencyObject root) where T : DependencyObject =>
+        FindDescendants<T>(Assert.Single(FindDescendants<ItemsView>(root)))
+            .Where(element => Ancestors(element).OfType<ItemContainer>().FirstOrDefault() is { } container
                 && VisualTreeHelper.GetParent(container) is ItemsRepeater repeater
                 && repeater.GetElementIndex(container) >= 0);
 
