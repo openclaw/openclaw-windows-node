@@ -287,13 +287,14 @@ public class OpenClawChatDataProviderTests
             Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null,
             Action? historyFailureReservedForTesting = null,
             Func<Func<Task>, Task>? deferredAbortScheduler = null,
-            Action<Action>? post = null)
+            Action<Action>? post = null,
+            Func<Task?>? sendReadiness = null)
     {
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
         var provider = toolMetaCachePath is null && attachmentMetaCachePath is null && lastChatStatePath is null &&
             lastChatStateSaveDelay is null && historyRetryScheduler is null && historyFailureReservedForTesting is null &&
             lastStateSaveReservedForTesting is null && beforeSelectedStateSaveForTesting is null &&
-            deferredAbortScheduler is null && post is null
+            deferredAbortScheduler is null && post is null && sendReadiness is null
             ? new OpenClawChatDataProvider(bridge)
             : new OpenClawChatDataProvider(
                 bridge,
@@ -304,7 +305,8 @@ public class OpenClawChatDataProviderTests
                 lastChatStateSaveDelay: lastChatStateSaveDelay,
                 historyRetryScheduler: historyRetryScheduler,
                 historyFailureReservedForTesting: historyFailureReservedForTesting,
-                deferredAbortScheduler: deferredAbortScheduler);
+                deferredAbortScheduler: deferredAbortScheduler,
+                sendReadiness: sendReadiness is null ? null : (_, _) => Task.FromResult(sendReadiness()));
         provider.SetPersistenceTestHooks(
             lastStateSaveReservedForTesting,
             beforeSelectedStateSaveForTesting);
@@ -820,6 +822,179 @@ public class OpenClawChatDataProviderTests
 
             Assert.False(result.Succeeded);
             Assert.Equal(countBefore + 1, bridge.RequestSessionsCallCount);
+        }
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WhileSendReadinessHolds_QueuesAndSendsOnceReady()
+    {
+        var readiness = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            [MainSession()],
+            sendReadiness: () => readiness.Task.IsCompleted ? null : readiness.Task);
+
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+
+            await provider.SendMessageAsync("main", "hello").WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Empty(bridge.SentMessages);
+            Assert.Equal(["hello"], GetQueuedMessages(snapshots[^1], "main").Select(q => q.Text));
+
+            readiness.SetResult();
+            await WaitForConditionAsync(() => bridge.SentMessages.Count == 1);
+            Assert.Equal(["hello"], bridge.SentMessages);
+        }
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WhenSendReadinessDoesNotHold_SendsBeforeReturning()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            [MainSession()],
+            sendReadiness: () => null);
+
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+
+            await provider.SendMessageAsync("main", "hello");
+
+            Assert.Equal(["hello"], bridge.SentMessages);
+            Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        }
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WhenHeldMessageIsCanceled_DoesNotSendIt()
+    {
+        var readiness = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            [MainSession()],
+            sendReadiness: () => readiness.Task.IsCompleted ? null : readiness.Task);
+
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.SendMessageAsync("main", "stopped");
+            var held = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+
+            Assert.True(await provider.CancelQueuedMessageAsync("main", held.Id));
+            await provider.SendMessageAsync("main", "next");
+            readiness.SetResult();
+
+            await WaitForConditionAsync(() => bridge.SentMessages.Count == 1);
+            Assert.Equal(["next"], bridge.SentMessages);
+        }
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WhenHeldSendIsRejected_KeepsAFailedCardForRetry()
+    {
+        var readiness = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            [MainSession()],
+            sendReadiness: () => readiness.Task.IsCompleted ? null : readiness.Task);
+        bridge.SendResults.Enqueue(new ChatSendResult { Status = "failed", Error = "Unknown model" });
+
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.SendMessageAsync("main", "hello");
+
+            readiness.SetResult();
+
+            await WaitForConditionAsync(() => GetQueuedMessages(snapshots[^1], "main").Any(q =>
+                q.SendState == ChatQueuedMessageSendState.Failed));
+            var failed = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+            Assert.Equal("hello", failed.Text);
+            Assert.Equal(ChatQueuedMessageSendState.Failed, failed.SendState);
+            Assert.Equal(["hello"], bridge.SentMessages);
+        }
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WhileSendReadinessHolds_SendsMessagesInOrder()
+    {
+        var readiness = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            [MainSession()],
+            sendReadiness: () => readiness.Task.IsCompleted ? null : readiness.Task);
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-a", Status = "started" });
+
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.SendMessageAsync("main", "a");
+            await provider.SendMessageAsync("main", "b");
+
+            readiness.SetResult();
+
+            await WaitForConditionAsync(() => bridge.SentMessages.Count == 1);
+            Assert.Equal(["a"], bridge.SentMessages);
+            Assert.Contains(GetQueuedMessages(snapshots[^1], "main"), q => q.Text == "b");
+
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-a"));
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-a"));
+            await WaitForConditionAsync(() => bridge.SentMessages.Count == 2);
+            Assert.Equal(["a", "b"], bridge.SentMessages);
+        }
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WhenProviderIsDisposedDuringHold_DoesNotSend()
+    {
+        var readiness = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, _, _) = CreateProvider(
+            [MainSession()],
+            sendReadiness: () => readiness.Task.IsCompleted ? null : readiness.Task);
+
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.SendMessageAsync("main", "hello").WaitAsync(TimeSpan.FromSeconds(10));
+        _ = readiness.Task.ContinueWith(_ => drained.SetResult(), TaskScheduler.Default);
+        await provider.DisposeAsync();
+
+        readiness.SetResult();
+        await drained.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await Task.Delay(100);
+        Assert.Empty(bridge.SentMessages);
+    }
+
+    [Fact]
+    public async Task ComposerSend_WhileSendReadinessHolds_ClearsDraftAndStaysUsable()
+    {
+        var readiness = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            [MainSession()],
+            sendReadiness: () => readiness.Task);
+
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            using var composer = new ChatComposerFactory(new Presentation.RecordingUiDispatcher()).Create(
+                provider, new ChatComposerHostActions(null, null, null, null, null), initialSpeakerMuted: false);
+            composer.ApplyInputs(new ChatComposerInputs(
+                "connected", true, snapshots[^1].Threads.Single(thread => thread.Id == "main"),
+                [], [], null, true, [], null, false));
+            composer.ViewModel.SetDraft("hello");
+
+            Assert.True(await composer.Controller.SendAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.Empty(composer.ViewModel.Draft);
+            Assert.False(composer.ViewModel.IsSending);
+            Assert.Empty(bridge.SentMessages);
+
+            // The readiness source keeps returning its completed task: that must not hold sends.
+            readiness.SetResult();
+            await WaitForConditionAsync(() => bridge.SentMessages.Count == 1);
+            Assert.Equal(["hello"], bridge.SentMessages);
         }
     }
 
