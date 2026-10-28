@@ -945,6 +945,7 @@ public class OpenClawGatewayClientTests
         var (result, logs) = await RejectConfigPatchAsync(config, rejection);
 
         Assert.False(result.Ok);
+        Assert.False(result.TimedOut);
         Assert.Null(result.Error);
         Assert.Null(result.RawResponse);
         Assert.DoesNotContain("synthetic-transformed", logs);
@@ -1055,8 +1056,23 @@ public class OpenClawGatewayClientTests
         Assert.Null(result.Error);
         Assert.Null(result.RawResponse);
         Assert.Contains("TimeoutException", logs);
+        Assert.True(result.TimedOut);
         Assert.Contains("Gateway request failed (untracked response).", logs);
         Assert.DoesNotContain("synthetic-cred", logs);
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_RejectedSave_UsesSubmittedSnapshotAfterCallerDisposesConfig()
+    {
+        using var config = JsonDocument.Parse("""{"channels":{"telegram":{"botToken":"synthetic-baseHash"}}}""");
+
+        var (result, _) = await RejectConfigPatchAsync(
+            config.RootElement, "invalid config: synthetic-baseHash", afterRequest: config.Dispose);
+
+        Assert.False(result.Ok);
+        Assert.False(result.LooksLikeStaleBaseHash);
+        Assert.Null(result.Error);
+        Assert.Null(result.RawResponse);
     }
 
     [Fact]
@@ -1076,7 +1092,7 @@ public class OpenClawGatewayClientTests
     }
 
     private static async Task<(ConfigPatchResult Result, string Logs)> RejectConfigPatchAsync(
-        JsonElement config, string rejection, bool afterTimeout = false)
+        JsonElement config, string rejection, bool afterTimeout = false, Action? afterRequest = null)
     {
         using var server = new LoopbackWebSocketServer();
         using var identity = new TempDirectory("config-patch-");
@@ -1094,6 +1110,7 @@ public class OpenClawGatewayClientTests
         Assert.Equal("config.patch", requestDocument.RootElement.GetProperty("method").GetString());
         Assert.Equal(config.GetRawText(), requestDocument.RootElement.GetProperty("params").GetProperty("raw").GetString());
         Assert.Equal("original-hash", requestDocument.RootElement.GetProperty("params").GetProperty("baseHash").GetString());
+        afterRequest?.Invoke();
         if (afterTimeout)
             await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
         await server.SendTextAsync(JsonSerializer.Serialize(new

@@ -351,6 +351,9 @@ public sealed class ConfigPatchResult
     /// <summary>True when the gateway accepted the patch (responded ok:true).</summary>
     public bool Ok { get; init; }
 
+    /// <summary>True when the request deadline elapsed without a response.</summary>
+    public bool TimedOut { get; init; }
+
     /// <summary>Optional safe error detail. Remote rejection text is withheld; pages use localized fallback guidance.</summary>
     public string? Error { get; init; }
 

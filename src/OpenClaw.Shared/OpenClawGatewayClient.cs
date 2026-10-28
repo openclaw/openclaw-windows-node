@@ -1676,7 +1676,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// Response-aware variant of <see cref="PatchConfigAsync"/>. Uses the
     /// wizard request mechanism (<see cref="SendWizardRequestAsync"/>) so we
     /// actually await the gateway's response and return a <see cref="ConfigPatchResult"/>
-    /// with the real error message on failure. The fire-and-forget
+    /// with safe failure classification, never remote error text. The fire-and-forget
     /// <see cref="PatchConfigAsync"/> stays for legacy callers that don't
     /// care about the gateway's reply.
     /// </summary>
@@ -1698,12 +1698,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             // Remote text can echo partial or transformed credentials. Retain only
             // classification and let pages use their existing localized failure guidance.
+            using var submittedConfig = JsonDocument.Parse(raw);
             var staleBaseHash = ConfigPatchResult.IsStaleBaseHashError(
-                SanitizeConfigPatchError(ex.Message, fullConfig));
+                SanitizeConfigPatchError(ex.Message, submittedConfig.RootElement));
             _logger.Warn($"config.patch failed ({ex.GetType().Name}); staleBaseHash={staleBaseHash}");
             return new ConfigPatchResult
             {
                 Ok = false,
+                TimedOut = ex is TimeoutException,
                 HasStaleBaseHashSignal = staleBaseHash,
             };
         }

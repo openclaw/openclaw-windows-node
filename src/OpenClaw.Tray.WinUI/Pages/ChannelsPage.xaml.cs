@@ -1549,7 +1549,9 @@ public sealed partial class ChannelsPage : Page
 
                 if (!patchResult.Ok)
                 {
-                    var detail = patchResult.Error ?? LocalizationHelper.GetString("ConfigPage_StatusSaveRejectedMessage");
+                    var detail = patchResult.Error ?? LocalizationHelper.GetString(patchResult.TimedOut
+                        ? "ChannelsPage_BannerGatewayNoResponse"
+                        : "ConfigPage_StatusSaveRejectedMessage");
                     var title = string.Format(LocalizationHelper.GetString("ChannelsPage_BannerSaveFailedTitle"), record.Id);
                     if (patchResult.LooksLikeStaleBaseHash)
                     {
