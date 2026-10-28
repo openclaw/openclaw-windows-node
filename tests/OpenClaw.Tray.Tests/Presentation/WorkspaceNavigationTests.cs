@@ -288,81 +288,129 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("destination changed", ex.Message);
     }
 
+    /// <summary>Models WorkspaceWindow's modal policy over the real DeferredNavigation: Navigate, prune and dialog stack.</summary>
+    private sealed class ModalHost
+    {
+        public readonly DeferredNavigation Deferred = new();
+        public readonly List<string> Renders = new();
+        public readonly List<string> ModalRenders = new();
+        public int Modals;
+        public string Destination = "page";
+
+        public void Navigate(string destination)
+        {
+            if (Deferred.ShouldDefer(destination != Destination) && Modals > 0)
+            {
+                Deferred.Defer(() => Navigate(destination));
+                Deferred.TryArm();
+                return;
+            }
+            if (destination != Destination) Destination = destination;
+            Render();
+        }
+
+        public void Prune(string fallback)
+        {
+            Destination = fallback;
+            if (Modals > 0 || Deferred.HasPending)
+            {
+                Deferred.DeferRender();
+                if (Modals > 0) Deferred.TryArm();
+            }
+            else Render();
+        }
+
+        public void CloseDialog()
+        {
+            Modals--;
+            if (!Deferred.Run(() => Modals > 0, Render)) Deferred.TryArm();
+        }
+
+        public void Render()
+        {
+            Renders.Add(Destination);
+            if (Modals > 0) ModalRenders.Add(Destination);
+        }
+    }
+
     [Fact]
     public void DeferredNavigation_PrunedRenderRunsBeforeDeferredForwardAndOnlyOnce()
     {
-        var steps = new List<string>();
-        var deferred = new DeferredNavigation();
-        // Forward waits behind a modal; pruning then removes the forward entry.
-        Assert.False(deferred.Defer(() => steps.Add("forward")));
-        Assert.True(deferred.Defer(() => steps.Add("latest")));
-        deferred.DeferRender();
+        var host = new ModalHost { Modals = 1 };
+        host.Navigate("forward");
+        host.Prune("fallback");
+        host.Navigate("latest");
+        host.CloseDialog();
+        Assert.Equal(new[] { "fallback", "latest" }, host.Renders);
+        Assert.Empty(host.ModalRenders);
+        Assert.False(host.Deferred.HasPending);
+    }
 
-        deferred.Run(() => false, () => steps.Add("render"));
-        Assert.Equal(new[] { "render", "latest" }, steps);
-
-        // Nothing is left to replay when the dialog closes again.
-        deferred.Run(() => false, () => steps.Add("render"));
-        Assert.Equal(2, steps.Count);
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DeferredNavigation_PruneThenSameFallbackNeverRendersUnderDialog(bool withEarlierIntent)
+    {
+        var host = new ModalHost { Modals = 1 };
+        if (withEarlierIntent) host.Navigate("other");
+        host.Prune("fallback");
+        host.Navigate("fallback");
+        Assert.Empty(host.Renders);
+        host.CloseDialog();
+        Assert.Equal(new[] { "fallback", "fallback" }, host.Renders);
+        Assert.Empty(host.ModalRenders);
     }
 
     [Fact]
-    public void DeferredNavigation_PrunedFallbackRequestedAgainUnderDialogIsDeferredNotRendered()
+    public void DeferredNavigation_PruneWithoutIntentThenRepeatedFallbackWaitsForSecondDialog()
     {
-        // Prune moved the logical destination to the fallback while the dialog is open; a request for
-        // that same destination must not render under the dialog, with or without another intent.
-        var steps = new List<string>();
-        var deferred = new DeferredNavigation();
-        Assert.False(deferred.ShouldDefer(destinationChanged: false));
-
-        deferred.Defer(() => steps.Add("other"));
-        deferred.DeferRender();
-        Assert.True(deferred.ShouldDefer(destinationChanged: false));
-        deferred.Defer(() => steps.Add("fallback"));
-        deferred.Run(() => false, () => steps.Add("render"));
-        Assert.Equal(new[] { "render", "fallback" }, steps);
-        Assert.False(deferred.ShouldDefer(destinationChanged: false));
-
-        steps.Clear();
-        deferred.Defer(RenderOnly);
-        Assert.True(deferred.ShouldDefer(destinationChanged: false));
-        deferred.Defer(() => steps.Add("fallback"));
-        deferred.Run(() => false, () => steps.Add("render"));
-        Assert.Equal(new[] { "fallback" }, steps);
-
-        void RenderOnly() => steps.Add("pruned-render");
+        var host = new ModalHost { Modals = 1 };
+        host.Prune("fallback");
+        host.Navigate("fallback");
+        // Dialog A closes while dialog B is already open: nothing may be consumed or rendered.
+        host.Modals = 2;
+        host.CloseDialog();
+        Assert.Empty(host.Renders);
+        Assert.True(host.Deferred.HasPending);
+        host.CloseDialog();
+        Assert.Empty(host.ModalRenders);
+        Assert.NotEmpty(host.Renders);
+        Assert.False(host.Deferred.HasPending);
     }
 
     [Fact]
-    public void WorkspaceNavigate_SameDestinationDefersWhilePrunedRenderOrIntentIsPending()
+    public void DeferredNavigation_PruneWithoutRepeatRendersOnceAfterLastDialog()
     {
-        var workspace =         File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.Contains("_deferred.ShouldDefer(destination != Destination) && DeferWhileModalOpen(", workspace);
+        var host = new ModalHost { Modals = 1 };
+        host.Prune("fallback");
+        host.Modals = 2;
+        host.CloseDialog();
+        Assert.Empty(host.Renders);
+        host.CloseDialog();
+        Assert.Equal(new[] { "fallback" }, host.Renders);
+        Assert.Empty(host.ModalRenders);
     }
 
     [Fact]
-    public void DeferredNavigation_StillOpenModalKeepsPrunedRenderForTheNextClose()
+    public void DeferredNavigation_ClearDropsPendingWork()
     {
-        var steps = new List<string>();
         var deferred = new DeferredNavigation();
-        deferred.Defer(() => steps.Add("back"));
-        deferred.DeferRender();
-
-        // Another dialog is open: the render waits; the intent runs and re-defers itself.
-        deferred.Run(() => true, () => steps.Add("render"));
-        Assert.Equal(new[] { "back" }, steps);
-        deferred.Defer(() => steps.Add("back-again"));
-        deferred.Run(() => false, () => steps.Add("render"));
-        Assert.Equal(new[] { "back", "render", "back-again" }, steps);
-
-        deferred.Defer(() => steps.Add("dropped"));
+        var ran = false;
+        deferred.Defer(() => ran = true);
         deferred.DeferRender();
         deferred.Clear();
-        deferred.Run(() => false, () => steps.Add("render"));
-        Assert.DoesNotContain("dropped", steps);
-        Assert.Equal(3, steps.Count);
+        Assert.True(deferred.Run(() => false, () => ran = true));
+        Assert.False(ran);
     }
 
+    [Fact]
+    public void WorkspaceWindow_ModalPolicyRetainsRenderAndRejectsNativeSetupUnderDialog()
+    {
+        var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("_deferred.ShouldDefer(destination != Destination) && DeferWhileModalOpen(", workspace);
+        Assert.Contains("ArmDeferredDrain(next)", workspace);
+        Assert.Contains("if (IsSettingsVisible && OpenModalDialog() is not null)", workspace);
+    }
 
     [Fact]
     public async Task PendingRequestSlot_WaitRejectsRequestThatIsNotPendingAndHonorsCloseCancellation()
@@ -419,7 +467,7 @@ public sealed class WorkspaceNavigationTests
     {
         var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         var manager = File.ReadAllText(Source("Services", "WindowManager.cs"));
-        Assert.Contains("DeferWhileModalOpen(RenderPrunedDestination)", workspace);
+        Assert.Contains("ArmDeferredDrain(modal)", workspace);
         Assert.Contains("_deferred.DeferRender()", workspace);
         Assert.Contains("if (Destination != settingsDestination)", workspace);
         Assert.Contains("popup.Child is ContentDialog", manager);

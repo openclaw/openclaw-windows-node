@@ -212,10 +212,17 @@ public sealed partial class WorkspaceWindow : WindowEx
         if (request.WorkspaceDestination is null)
         {
             var settingsDestination = WorkspaceDestination.Settings(NormalizeNativeSetupTag(request.PageTag));
+            _pendingSettingsRequest.Clear();
+            // Under an open dialog no one-shot request is accepted, even for the current Settings
+            // destination: it would replace the page beneath the dialog. A changed destination is
+            // deferred by Navigate; the request is dropped and never binds after the dialog closes.
+            if (IsSettingsVisible && OpenModalDialog() is not null)
+            {
+                if (settingsDestination != Destination) Navigate(settingsDestination);
+                return;
+            }
             _pendingSettingsRequest.Set(request);
             Navigate(settingsDestination);
-            // A destination deferred behind a modal dialog was not accepted: the one-shot request must
-            // never bind later, after the dialog closes.
             if (Destination != settingsDestination)
                 _pendingSettingsRequest.Clear();
             return;
@@ -420,10 +427,14 @@ public sealed partial class WorkspaceWindow : WindowEx
         UpdateHistoryButtons();
         if (!changed || fallbackTag is null || Root.XamlRoot is null)
             return;
-        // A pending deferred Back/Forward/Navigate runs after the pruned destination is rendered first.
-        if (_deferred.HasIntent)
+        // The required render is retained apart from any replaceable intent and waits for every open dialog.
+        var modal = IsSettingsVisible ? OpenModalDialog() : null;
+        if (modal is not null || _deferred.HasPending)
+        {
             _deferred.DeferRender();
-        else if (!DeferWhileModalOpen(RenderPrunedDestination))
+            if (modal is not null) ArmDeferredDrain(modal);
+        }
+        else
             RenderDestination();
     }
 
@@ -961,14 +972,21 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (!IsSettingsVisible || OpenModalDialog() is not { } dialog)
             return false;
-        if (!_deferred.Defer(navigate))
-        {
-            dialog.Closed += (_, _) => DispatcherQueue.TryEnqueue(() =>
-            {
-                if (!IsClosed) _deferred.Run(() => OpenModalDialog() is not null, RenderPrunedDestination);
-            });
-        }
+        _deferred.Defer(navigate);
+        ArmDeferredDrain(dialog);
         return true;
+    }
+
+    private void ArmDeferredDrain(ContentDialog dialog)
+    {
+        if (!_deferred.TryArm()) return;
+        dialog.Closed += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsClosed) return;
+            if (!_deferred.Run(() => OpenModalDialog() is not null, RenderPrunedDestination)
+                && OpenModalDialog() is { } next && !ReferenceEquals(next, dialog))
+                ArmDeferredDrain(next);
+        });
     }
     private void OnKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
