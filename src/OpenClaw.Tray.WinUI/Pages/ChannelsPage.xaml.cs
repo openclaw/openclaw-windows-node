@@ -299,24 +299,7 @@ public sealed partial class ChannelsPage : Page
     private void CaptureConfigSnapshot(JsonElement envelope)
     {
         var snapshot = envelope.Clone();
-        var root = snapshot.TryGetProperty("parsed", out var parsed) ? parsed
-            : (snapshot.TryGetProperty("config", out var inner) ? inner : snapshot);
-
-        string? baseHash = null;
-        if (snapshot.TryGetProperty("baseHash", out var bh) && bh.ValueKind == JsonValueKind.String)
-            baseHash = bh.GetString();
-        else if (snapshot.TryGetProperty("hash", out var hashEl) && hashEl.ValueKind == JsonValueKind.String)
-            baseHash = hashEl.GetString();
-        else if (snapshot.TryGetProperty("raw", out var rawEl) && rawEl.ValueKind == JsonValueKind.String)
-        {
-            var rawContent = rawEl.GetString();
-            if (rawContent != null)
-            {
-                var bytes = System.Text.Encoding.UTF8.GetBytes(rawContent);
-                var hash = System.Security.Cryptography.SHA256.HashData(bytes);
-                baseHash = Convert.ToHexStringLower(hash);
-            }
-        }
+        GatewayConfigEnvelope.TryRead(snapshot, out var root, out var baseHash);
 
         // Atomic publish: a single field swap so readers always see a
         // consistent (root, baseHash) pair.

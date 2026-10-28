@@ -365,11 +365,16 @@ internal static class LocalAiPathPolicy
         partialPath = "";
 
         string[] repositorySegments = repositoryId?.Split('/') ?? [];
+        // Custom GGUF references may name a file inside a repository subfolder. Keep those
+        // directories under the revision so the legacy copy matches the hub-cache layout;
+        // the receipt still records only the leaf filename.
+        string[] relativeSegments = fileName?.Split('/') ?? [];
         if (repositorySegments.Length != 2 ||
             repositorySegments.Any(segment => !IsSafeWindowsPathSegment(segment)) ||
             revision is null || revision.Length != 40 || !revision.All(IsLowerHex) ||
-            !IsSafeWindowsPathSegment(fileName) ||
-            !string.Equals(Path.GetExtension(fileName), ".gguf", StringComparison.OrdinalIgnoreCase))
+            relativeSegments.Length == 0 ||
+            relativeSegments.Any(segment => !IsSafeWindowsPathSegment(segment)) ||
+            !string.Equals(Path.GetExtension(relativeSegments[^1]), ".gguf", StringComparison.OrdinalIgnoreCase))
         {
             error = "Local AI model identity contains an invalid path segment.";
             return false;
@@ -382,8 +387,8 @@ internal static class LocalAiPathPolicy
                 repositorySegments[0],
                 repositorySegments[1],
                 revision));
-            modelPath = NormalizePath(Path.Combine(modelDirectory, fileName));
-            partialPath = NormalizePath(Path.Combine(modelDirectory, fileName + ".partial"));
+            modelPath = NormalizePath(Path.Combine([modelDirectory, ..relativeSegments]));
+            partialPath = modelPath + ".partial";
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {

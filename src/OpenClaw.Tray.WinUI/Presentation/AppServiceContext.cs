@@ -18,7 +18,10 @@ internal sealed class AppServiceContext
         SettingsManager settings,
         IExecApprovalsPresentationStore execApprovalsStore,
         IPermissionsPageRuntimeHost permissionsRuntimeHost,
-        ILocalAiRuntime? localAiRuntime = null)
+        ILocalAiRuntime? localAiRuntime = null,
+        ILocalAiModelSwitcher? localAiModelSwitcher = null,
+        IDefaultModelGatewayService? defaultModelGateway = null,
+        IModelProviderGatewayService? modelProviderGateway = null)
     {
         Dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         AppCommands = appCommands ?? throw new ArgumentNullException(nameof(appCommands));
@@ -26,6 +29,9 @@ internal sealed class AppServiceContext
         ExecApprovalsStore = execApprovalsStore ?? throw new ArgumentNullException(nameof(execApprovalsStore));
         PermissionsRuntimeHost = permissionsRuntimeHost ?? throw new ArgumentNullException(nameof(permissionsRuntimeHost));
         LocalAiRuntime = localAiRuntime;
+        LocalAiModelSwitcher = localAiModelSwitcher;
+        DefaultModelGateway = defaultModelGateway;
+        ModelProviderGateway = modelProviderGateway;
     }
 
     public IUiDispatcher Dispatcher { get; }
@@ -34,4 +40,7 @@ internal sealed class AppServiceContext
     public IExecApprovalsPresentationStore ExecApprovalsStore { get; }
     public IPermissionsPageRuntimeHost PermissionsRuntimeHost { get; }
     public ILocalAiRuntime? LocalAiRuntime { get; }
+    public ILocalAiModelSwitcher? LocalAiModelSwitcher { get; }
+    public IDefaultModelGatewayService? DefaultModelGateway { get; }
+    public IModelProviderGatewayService? ModelProviderGateway { get; }
 }

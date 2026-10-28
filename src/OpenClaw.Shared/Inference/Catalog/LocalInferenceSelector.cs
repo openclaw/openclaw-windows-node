@@ -98,6 +98,29 @@ public static class LocalInferenceSelector
         return Select(hardware, installedModelId, includeRetiredInstalledModel: true);
     }
 
+    /// <summary>
+    /// Selects the best-fitting profile for a user-supplied Hugging Face model. Custom
+    /// models always use the generic runtime and are never bound to one adapter.
+    /// </summary>
+    public static LocalInferenceSelectionResult SelectCustom(HostHardwareInfo hardware, LocalModelInfo model)
+    {
+        ArgumentNullException.ThrowIfNull(hardware);
+        ArgumentNullException.ThrowIfNull(model);
+        if (model.CustomRecipe is null)
+            throw new ArgumentException("Only custom models can be selected by recipe.", nameof(model));
+
+        LlamaRuntimeVariant? runtime = LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, model.RuntimeFamily);
+        if (runtime is null)
+            return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.RuntimeUnavailable);
+        if (!hardware.HasNvidiaGpu)
+            return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.NoNvidiaGpu);
+
+        LocalInferenceRunProfile profile = SelectBestFittingProfile(hardware, runtime, model) ??
+            LocalModelCatalog.GetProfiles(model)[^1];
+        return LocalInferenceSelectionResult.Selected(
+            new LocalInferencePlan(runtime, model, profile, LocalInferenceModelSelectionOrigin.Explicit));
+    }
+
     private static LocalInferenceSelectionResult Select(
         HostHardwareInfo hardware,
         string? requestedModelId,

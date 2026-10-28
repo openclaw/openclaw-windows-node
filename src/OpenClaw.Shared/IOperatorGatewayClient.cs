@@ -48,6 +48,8 @@ public interface IOperatorGatewayClient
     string? MainSessionKey { get; }
     /// <summary>True once the hello-ok handshake has been processed.</summary>
     bool HasHandshakeSnapshot { get; }
+    /// <summary>Gateway methods advertised in hello-ok; empty before the handshake.</summary>
+    IReadOnlyList<string> AdvertisedServerMethods => [];
     /// <summary>Authenticated transport epoch, used to bind a mutation across an asynchronous dialog.</summary>
     long? SessionMutationConnectionEpoch => null;
 

@@ -11,7 +11,17 @@ public sealed record LocalAiNativeBinding(
     string ConfigHash,
     bool AddedAllowlistEntry,
     bool Pending = false,
-    bool AutomaticRecoveryEnabled = true);
+    bool AutomaticRecoveryEnabled = true,
+    LocalAiNativeModelRebind? RebindFrom = null);
+
+/// <summary>
+/// Write-ahead record of a model rebind. <c>CommitModelRebindAsync</c> writes and clears it
+/// inside one receipt-lease hold, so a journal on disk means the process stopped mid-commit;
+/// the runtime's next manifest load settles it to whichever model the manifest names.
+/// Rebinding writes nothing to the Gateway, so the binding's config hash stays valid for
+/// either outcome.
+/// </summary>
+public sealed record LocalAiNativeModelRebind(string ModelRef, bool AddedAllowlistEntry);
 
 /// <summary>
 /// Separate from the portable artifact receipt. The write-ahead pending flag survives

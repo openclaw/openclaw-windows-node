@@ -7100,8 +7100,6 @@
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>打开日志</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>模型</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>重试设置或下载</value></data>
-  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>打开设置以选择其他模型。替换现有本地网关仍需确认。</value></data>
-  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>更换模型</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>网关连接</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>修复连接</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>打开聊天</value></data>
@@ -7125,6 +7123,87 @@
   <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>{0} 上下文 · {1} KV · 首次请求时加载</value></data>
   <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>转到本地 AI</value></data>
   <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>查看 llama-server、模型和网关状态</value></data>
+  <data name="HubWindow_NavigationViewItemHeader_Model.Content" xml:space="preserve"><value>模型</value></data>
+  <data name="HubWindow_NavigationViewItem_DefaultModel.Content" xml:space="preserve"><value>默认模型</value></data>
+  <data name="Command_GoToDefaultModel_Title" xml:space="preserve"><value>转到默认模型</value></data>
+  <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>选择网关使用的模型</value></data>
+  <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>模型</value></data>
+  <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>自定义 Hugging Face 模型（可选）</value></data>
+  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>owner/repo、owner/repo:Q4_K_M 或 huggingface.co 链接</value></data>
+  <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>仅支持公开的单文件 GGUF 模型。填写后将替代上方的选择。</value></data>
+  <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>此模型可能无法装入</value></data>
+  <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>它需要约 {0:F1} GB GPU 内存，而 {1} 只有 {2:F1} GB。它可能无法启动或运行缓慢。</value></data>
+  <data name="LocalAiPage_ForceApplyButton.Content" xml:space="preserve"><value>仍然切换</value></data>
+  <data name="LocalAiPage_ApplyModelButton.Content" xml:space="preserve"><value>切换模型</value></data>
+  <data name="LocalAiPage_CancelModelSwitchButton.Content" xml:space="preserve"><value>取消</value></data>
+  <data name="LocalAiPage_ModelOptionFormat" xml:space="preserve"><value>{0}（{1}，{2} 上下文，{3} KV）</value></data>
+  <data name="LocalAiPage_ModelOptionCurrent" xml:space="preserve"><value>{0}（当前）</value></data>
+  <data name="LocalAiPage_ModelOptionRecommended" xml:space="preserve"><value>{0}（推荐）</value></data>
+  <data name="LocalAiPage_SwitchPhase_Resolving" xml:space="preserve"><value>正在检查模型...</value></data>
+  <data name="LocalAiPage_SwitchPhase_Downloading" xml:space="preserve"><value>正在下载模型</value></data>
+  <data name="LocalAiPage_SwitchPhase_Verifying" xml:space="preserve"><value>正在验证下载</value></data>
+  <data name="LocalAiPage_SwitchPhase_InstallingRuntime" xml:space="preserve"><value>正在安装 llama-server</value></data>
+  <data name="LocalAiPage_SwitchPhase_StoppingRuntime" xml:space="preserve"><value>正在停止当前模型</value></data>
+  <data name="LocalAiPage_SwitchPhase_StartingRuntime" xml:space="preserve"><value>正在启动新模型</value></data>
+  <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>正在恢复之前的模型</value></data>
+  <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB / {1:F1} GB</value></data>
+  <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>已取消更换模型。</value></data>
+  <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>模型更换仍在进行中。完成后即可再次更换模型。</value></data>
+  <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>默认模型</value></data>
+  <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>网关在新对话中使用此模型。每个聊天仍可选择自己的模型。</value></data>
+  <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>连接到网关以选择其模型</value></data>
+  <data name="DefaultModelPage_OpenConnectionButton.Content" xml:space="preserve"><value>打开连接</value></data>
+  <data name="DefaultModelPage_ReadOnly.Title" xml:space="preserve"><value>此网关连接无法更改配置</value></data>
+  <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>默认模型</value></data>
+  <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>使用此模型</value></data>
+  <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>刷新</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>管理本地 AI</value></data>
+  <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>本地 AI：{0}</value></data>
+  <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0}（请先登录提供商）</value></data>
+  <data name="DefaultModelPage_Applied" xml:space="preserve"><value>默认模型已更新。</value></data>
+  <data name="DefaultModelPage_AddProviderTitle.Text" xml:space="preserve"><value>添加模型提供商</value></data>
+  <data name="DefaultModelPage_AddProviderIntro.Text" xml:space="preserve"><value>连接网关的某个提供商，或添加你自己的 OpenAI 或 Anthropic 兼容端点。新模型会显示在上方列表中。</value></data>
+  <data name="DefaultModelPage_ProviderKindGateway.Content" xml:space="preserve"><value>网关提供商</value></data>
+  <data name="DefaultModelPage_ProviderKindCustom.Content" xml:space="preserve"><value>自定义端点</value></data>
+  <data name="DefaultModelPage_ProviderSelector.Header" xml:space="preserve"><value>提供商</value></data>
+  <data name="DefaultModelPage_ProviderApiKey.Header" xml:space="preserve"><value>API 密钥</value></data>
+  <data name="DefaultModelPage_SaveApiKeyButton.Content" xml:space="preserve"><value>保存 API 密钥</value></data>
+  <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>登录方式</value></data>
+  <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>登录</value></data>
+  <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>提供商 ID</value></data>
+  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>基础 URL</value></data>
+  <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API 类型</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI 兼容（Chat Completions）</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiResponses.Content" xml:space="preserve"><value>OpenAI Responses</value></data>
+  <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
+  <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API 密钥（OpenAI 兼容端点可选）</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>模型 ID</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>添加提供商</value></data>
+  <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0}（已连接）</value></data>
+  <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>正在加载提供商...</value></data>
+  <data name="DefaultModelPage_ProviderCatalogEmpty" xml:space="preserve"><value>此网关没有可连接的提供商。</value></data>
+  <data name="DefaultModelPage_ProviderCatalogFailedFormat" xml:space="preserve"><value>无法加载提供商：{0}</value></data>
+  <data name="DefaultModelPage_ProviderCatalogUnsupported" xml:space="preserve"><value>此网关版本无法在此处连接提供商。请使用自定义端点，或更新网关。</value></data>
+  <data name="DefaultModelPage_ProviderApiKeySaved" xml:space="preserve"><value>已为 {0} 保存 API 密钥。其模型会显示在上方列表中。</value></data>
+  <data name="DefaultModelPage_CustomProviderAdded" xml:space="preserve"><value>已添加 {0}。其模型会显示在上方列表中。</value></data>
+  <data name="DefaultModelPage_ProviderSignedIn" xml:space="preserve"><value>已登录 {0}。</value></data>
+  <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>已登录 {0}。请重启网关以使用其模型。</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>登录已取消。</value></data>
+  <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>登录未完成。</value></data>
+  <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>网关无法完成此操作：{0}</value></data>
+  <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>正在等待提供商...</value></data>
+  <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>登录耗时过长。请重新检查或取消。</value></data>
+  <data name="DefaultModelPage_ProviderSignInUnsupported" xml:space="preserve"><value>网关发送了此应用无法显示的登录步骤。请取消，然后从网关仪表板重试。</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelUnconfirmed" xml:space="preserve"><value>网关尚未确认取消。请重试。</value></data>
+  <data name="DefaultModelPage_CustomInvalidProviderId" xml:space="preserve"><value>提供商 ID 只能使用小写字母、数字和连字符。</value></data>
+  <data name="DefaultModelPage_CustomProviderIdReserved" xml:space="preserve"><value>该 ID 属于内置提供商。请选择其他 ID。</value></data>
+  <data name="DefaultModelPage_CustomProviderIdInUse" xml:space="preserve"><value>已存在使用该 ID 的提供商。</value></data>
+  <data name="DefaultModelPage_CustomInvalidBaseUrl" xml:space="preserve"><value>请输入 http 或 https 基础 URL。</value></data>
+  <data name="DefaultModelPage_CustomApiKeyRequired" xml:space="preserve"><value>此 API 类型需要 API 密钥。</value></data>
+  <data name="DefaultModelPage_CustomMissingModels" xml:space="preserve"><value>请至少输入一个模型 ID。</value></data>
+  <data name="DefaultModelPage_CustomInvalidModelId" xml:space="preserve"><value>模型 ID 不能包含空格。</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>查看原因</value></data>
   <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>正在检查本地 AI 要求</value></data>
   <data name="Onboarding_LocalAi_CheckingMessage" xml:space="preserve"><value>OpenClaw 正在检查 NVIDIA GPU、驱动、CUDA、内存和 WSL 要求。</value></data>
@@ -7162,6 +7241,7 @@
   <data name="Chat_Model_Other" xml:space="preserve"><value>其他模型</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>没有匹配的模型</value></data>
   <data name="Chat_Model_Search" xml:space="preserve"><value>搜索模型</value></data>
+  <data name="Chat_Model_AddProvider" xml:space="preserve"><value>添加模型提供商...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>移除附件</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>正在加载消息...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 条排队消息</value></data>

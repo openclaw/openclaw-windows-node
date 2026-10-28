@@ -27,6 +27,12 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
+        // Custom model provider API types are protocol product names, and the
+        // provider/model ID placeholders are literal identifier examples.
+        "DefaultModelPage_CustomApiAnthropic.Content",
+        "DefaultModelPage_CustomApiOpenAiResponses.Content",
+        "DefaultModelPage_CustomProviderId.PlaceholderText",
+        "DefaultModelPage_CustomProviderModels.PlaceholderText",
         // Updater dependency recovery is seeded in English across every locale.
         // Translate the explanation and manual-release action together after review.
         "Update_Message_Unavailable",
@@ -1109,7 +1115,8 @@ public class LocalizationValidationTests
                 // These ordinary words are spelled identically in these languages.
                 string[] naturalLoanwordLocales = key switch
                 {
-                    "Onboarding_V2_LocalAiModel.Header" => ["nl-nl"],
+                    "Onboarding_V2_LocalAiModel.Header" or "HubWindow_NavigationViewItemHeader_Model.Content" or
+                        "LocalAiPage_ModelSelector.Header" => ["nl-nl"],
                     "Onboarding_V2_ProfileReadOnlyTitle.Text" or "SandboxPage_PresetStrict.Text" => ["fr-fr"],
                     "Onboarding_V2_ProfileFullTitle.Text" or "SandboxPage_PresetOpen.Text" => ["nl-nl"],
                     "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications" => ["fr-fr"],

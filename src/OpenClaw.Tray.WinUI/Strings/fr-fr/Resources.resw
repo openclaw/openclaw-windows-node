@@ -7100,8 +7100,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Ouvrir les journaux</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>Modèle</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>Réessayer la configuration ou le téléchargement</value></data>
-  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>Ouvre la configuration pour choisir un autre modèle. Le remplacement de la passerelle locale existante nécessite toujours une confirmation.</value></data>
-  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>Changer de modèle</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>Connexion à la passerelle</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>Réparer la connexion</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>Ouvrir la discussion</value></data>
@@ -7125,6 +7123,87 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>Contexte {0} · KV {1} · Chargement à la première demande</value></data>
   <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>Accéder à l'IA locale</value></data>
   <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>Afficher l'état de llama-server, du modèle et de la passerelle</value></data>
+  <data name="HubWindow_NavigationViewItemHeader_Model.Content" xml:space="preserve"><value>Modèle</value></data>
+  <data name="HubWindow_NavigationViewItem_DefaultModel.Content" xml:space="preserve"><value>Modèle par défaut</value></data>
+  <data name="Command_GoToDefaultModel_Title" xml:space="preserve"><value>Accéder au modèle par défaut</value></data>
+  <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>Choisir le modèle utilisé par la passerelle</value></data>
+  <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>Modèle</value></data>
+  <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>Modèle Hugging Face personnalisé (facultatif)</value></data>
+  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>propriétaire/dépôt, propriétaire/dépôt:Q4_K_M ou un lien huggingface.co</value></data>
+  <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>Modèles GGUF publics en un seul fichier uniquement. Lorsque ce champ est rempli, il remplace la sélection ci-dessus.</value></data>
+  <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>Ce modèle risque de ne pas tenir</value></data>
+  <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>Il nécessite environ {0:F1} Go de mémoire GPU et {1} dispose de {2:F1} Go. Il peut ne pas démarrer ou fonctionner lentement.</value></data>
+  <data name="LocalAiPage_ForceApplyButton.Content" xml:space="preserve"><value>Changer quand même</value></data>
+  <data name="LocalAiPage_ApplyModelButton.Content" xml:space="preserve"><value>Changer de modèle</value></data>
+  <data name="LocalAiPage_CancelModelSwitchButton.Content" xml:space="preserve"><value>Annuler</value></data>
+  <data name="LocalAiPage_ModelOptionFormat" xml:space="preserve"><value>{0} ({1}, contexte {2}, KV {3})</value></data>
+  <data name="LocalAiPage_ModelOptionCurrent" xml:space="preserve"><value>{0} (actuel)</value></data>
+  <data name="LocalAiPage_ModelOptionRecommended" xml:space="preserve"><value>{0} (recommandé)</value></data>
+  <data name="LocalAiPage_SwitchPhase_Resolving" xml:space="preserve"><value>Vérification du modèle...</value></data>
+  <data name="LocalAiPage_SwitchPhase_Downloading" xml:space="preserve"><value>Téléchargement du modèle</value></data>
+  <data name="LocalAiPage_SwitchPhase_Verifying" xml:space="preserve"><value>Vérification du téléchargement</value></data>
+  <data name="LocalAiPage_SwitchPhase_InstallingRuntime" xml:space="preserve"><value>Installation de llama-server</value></data>
+  <data name="LocalAiPage_SwitchPhase_StoppingRuntime" xml:space="preserve"><value>Arrêt du modèle actuel</value></data>
+  <data name="LocalAiPage_SwitchPhase_StartingRuntime" xml:space="preserve"><value>Démarrage du nouveau modèle</value></data>
+  <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>Restauration du modèle précédent</value></data>
+  <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} Go sur {1:F1} Go</value></data>
+  <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>Changement de modèle annulé.</value></data>
+  <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>Un changement de modèle est encore en cours. Vous pourrez changer de modèle une fois qu'il sera terminé.</value></data>
+  <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>Modèle par défaut</value></data>
+  <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>La passerelle utilise ce modèle pour les nouvelles conversations. Chaque discussion peut toujours choisir son propre modèle.</value></data>
+  <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>Connectez-vous à une passerelle pour choisir son modèle</value></data>
+  <data name="DefaultModelPage_OpenConnectionButton.Content" xml:space="preserve"><value>Ouvrir Connexion</value></data>
+  <data name="DefaultModelPage_ReadOnly.Title" xml:space="preserve"><value>Cette connexion à la passerelle ne peut pas modifier la configuration</value></data>
+  <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>Modèle par défaut</value></data>
+  <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>Utiliser ce modèle</value></data>
+  <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Actualiser</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Gérer l'IA locale</value></data>
+  <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>IA locale : {0}</value></data>
+  <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (connectez-vous d'abord au fournisseur)</value></data>
+  <data name="DefaultModelPage_Applied" xml:space="preserve"><value>Le modèle par défaut a été mis à jour.</value></data>
+  <data name="DefaultModelPage_AddProviderTitle.Text" xml:space="preserve"><value>Ajouter un fournisseur de modèles</value></data>
+  <data name="DefaultModelPage_AddProviderIntro.Text" xml:space="preserve"><value>Connectez l'un des fournisseurs de la passerelle, ou ajoutez votre propre point de terminaison compatible OpenAI ou Anthropic. Les nouveaux modèles apparaissent dans la liste ci-dessus.</value></data>
+  <data name="DefaultModelPage_ProviderKindGateway.Content" xml:space="preserve"><value>Fournisseur de la passerelle</value></data>
+  <data name="DefaultModelPage_ProviderKindCustom.Content" xml:space="preserve"><value>Point de terminaison personnalisé</value></data>
+  <data name="DefaultModelPage_ProviderSelector.Header" xml:space="preserve"><value>Fournisseur</value></data>
+  <data name="DefaultModelPage_ProviderApiKey.Header" xml:space="preserve"><value>Clé API</value></data>
+  <data name="DefaultModelPage_SaveApiKeyButton.Content" xml:space="preserve"><value>Enregistrer la clé API</value></data>
+  <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>Méthode de connexion</value></data>
+  <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>Se connecter</value></data>
+  <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>ID du fournisseur</value></data>
+  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>URL de base</value></data>
+  <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>Type d'API</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>Compatible OpenAI (Chat Completions)</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiResponses.Content" xml:space="preserve"><value>OpenAI Responses</value></data>
+  <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
+  <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>Clé API (facultative pour les points compatibles OpenAI)</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>ID des modèles</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>Ajouter le fournisseur</value></data>
+  <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0} (connecté)</value></data>
+  <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>Chargement des fournisseurs...</value></data>
+  <data name="DefaultModelPage_ProviderCatalogEmpty" xml:space="preserve"><value>Cette passerelle n'a aucun fournisseur à connecter.</value></data>
+  <data name="DefaultModelPage_ProviderCatalogFailedFormat" xml:space="preserve"><value>Impossible de charger les fournisseurs : {0}</value></data>
+  <data name="DefaultModelPage_ProviderCatalogUnsupported" xml:space="preserve"><value>Cette version de la passerelle ne permet pas de connecter des fournisseurs ici. Utilisez un point de terminaison personnalisé ou mettez à jour la passerelle.</value></data>
+  <data name="DefaultModelPage_ProviderApiKeySaved" xml:space="preserve"><value>Clé API enregistrée pour {0}. Ses modèles apparaissent dans la liste ci-dessus.</value></data>
+  <data name="DefaultModelPage_CustomProviderAdded" xml:space="preserve"><value>{0} a été ajouté. Ses modèles apparaissent dans la liste ci-dessus.</value></data>
+  <data name="DefaultModelPage_ProviderSignedIn" xml:space="preserve"><value>Connecté à {0}.</value></data>
+  <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>Connecté à {0}. Redémarrez la passerelle pour utiliser ses modèles.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>La connexion a été annulée.</value></data>
+  <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>La connexion n'a pas abouti.</value></data>
+  <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>La passerelle n'a pas pu terminer l'opération : {0}</value></data>
+  <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>En attente du fournisseur...</value></data>
+  <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>La connexion prend trop de temps. Vérifiez à nouveau ou annulez.</value></data>
+  <data name="DefaultModelPage_ProviderSignInUnsupported" xml:space="preserve"><value>La passerelle a envoyé une étape de connexion que cette application ne peut pas afficher. Annulez et réessayez depuis le tableau de bord de la passerelle.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelUnconfirmed" xml:space="preserve"><value>La passerelle n'a pas encore confirmé l'annulation. Réessayez.</value></data>
+  <data name="DefaultModelPage_CustomInvalidProviderId" xml:space="preserve"><value>Utilisez des lettres minuscules, des chiffres et des traits d'union pour l'ID du fournisseur.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdReserved" xml:space="preserve"><value>Cet ID appartient à un fournisseur intégré. Choisissez un autre ID.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdInUse" xml:space="preserve"><value>Un fournisseur avec cet ID existe déjà.</value></data>
+  <data name="DefaultModelPage_CustomInvalidBaseUrl" xml:space="preserve"><value>Saisissez une URL de base http ou https.</value></data>
+  <data name="DefaultModelPage_CustomApiKeyRequired" xml:space="preserve"><value>Ce type d'API nécessite une clé API.</value></data>
+  <data name="DefaultModelPage_CustomMissingModels" xml:space="preserve"><value>Saisissez au moins un ID de modèle.</value></data>
+  <data name="DefaultModelPage_CustomInvalidModelId" xml:space="preserve"><value>Les ID de modèle ne peuvent pas contenir d'espaces.</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>Voir pourquoi</value></data>
   <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>Vérification des exigences de l'IA locale</value></data>
   <data name="Onboarding_LocalAi_CheckingMessage" xml:space="preserve"><value>OpenClaw vérifie le GPU NVIDIA, le pilote, CUDA, la mémoire et les exigences WSL.</value></data>
@@ -7162,6 +7241,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Chat_Model_Other" xml:space="preserve"><value>Autres modèles</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Aucun modèle correspondant</value></data>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Rechercher des modèles</value></data>
+  <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Ajouter un fournisseur de modèles...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Supprimer la pièce jointe</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Chargement des messages...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 message en attente</value></data>

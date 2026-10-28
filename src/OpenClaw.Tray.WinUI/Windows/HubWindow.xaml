@@ -50,6 +50,7 @@
                     <SvgImageSource x:Key="Usage_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Usage.svg"/>
                     <SvgImageSource x:Key="Cron_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Cron.svg"/>
                     <SvgImageSource x:Key="LocalAi_Icon" UriSource="ms-appx:///Assets/SidebarIcons/LocalAi.svg"/>
+                    <SvgImageSource x:Key="Model_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Model.svg"/>
                     <SvgImageSource x:Key="Voice_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Voice.svg"/>
                     <SvgImageSource x:Key="Settings_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Settings.svg"/>
                     <SvgImageSource x:Key="Permissions_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Permissions.svg"/>
@@ -108,10 +109,15 @@
                         </NavigationViewItem.MenuItems>
                     </NavigationViewItem>
                     <NavigationViewItemSeparator x:Name="NavGatewaySeparator"/>
-                    <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_129" Content="This Computer"/>
+                    <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_Model" Content="Model"/>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_DefaultModel" Tag="model" Content="Default model">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Model_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_LocalAi" Tag="local-ai" Content="Local AI">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource LocalAi_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
+                    <NavigationViewItemSeparator x:Name="NavModelSeparator"/>
+                    <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_129" Content="This Computer"/>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Voice" Tag="voice" Content="Voice &amp; Audio">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Voice_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>

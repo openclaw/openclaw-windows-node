@@ -156,6 +156,12 @@ public sealed class LocalAiConfig
     /// </summary>
     [JsonIgnore]
     internal string? InstalledReceiptModelId { get; set; }
+    /// <summary>
+    /// Runtime-only recorded plan for a pinned recovery whose model the catalog cannot
+    /// re-derive (Bolt's fixed tiers, custom Hugging Face models).
+    /// </summary>
+    [JsonIgnore]
+    internal OpenClaw.Shared.Inference.Catalog.LocalInferencePlan? PinnedPlan { get; set; }
     /// <summary>Managed llama-server port. Zero selects a free loopback port during setup.</summary>
     public int Port { get; set; }
     public bool WslMirroredNetworkingConsent { get; set; }

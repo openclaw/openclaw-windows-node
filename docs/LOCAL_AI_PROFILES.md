@@ -14,6 +14,42 @@ Existing installed receipts do not require download space again. Explicit model
 requests and installed receipts are not silently switched to another model.
 RTX Spark keeps its existing per-adapter SKU recommendations.
 
+## Changing the model
+
+The Local AI page changes the installed model in place, without the setup
+wizard. Its list shows the installed model and every catalog model this PC can
+be offered. The optional custom field accepts a public, non-gated, single-file
+GGUF from Hugging Face: `owner/repo`, `owner/repo:Q4_K_M`,
+`owner/repo/path/file.gguf`, or a `huggingface.co` / `hf.co` link.
+
+A custom reference is pinned to the commit revision and its Git LFS SHA-256 and
+size. Its block count, KV heads, head size, and trained context are read from
+the GGUF header, without downloading the weights. The same capacity rules then
+select catalog context tiers up to the trained context, with F16 before Q8_0. A
+custom model runs on the generic llama.cpp runtime with no speculative draft. It
+is stored as a schema-6 receipt that carries the recipe. When a model looks too
+large for GPU memory, the page asks before switching.
+
+The new weights are downloaded and verified while the current model keeps
+serving. The runtime then withdraws the old Gateway route, saves the new
+receipt, and restarts if it was running. If the new model does not start,
+whether the start fails or throws, the previous receipt is restored and
+restarted. Earlier weights stay in the shared Hugging Face cache, so switching
+back only verifies them.
+
+With a native Gateway, the ownership receipt (`gateway-binding.json`) records
+the previous model, the installation receipt is saved, and the record is
+cleared, all under one ownership-receipt lock. A record left on disk means the
+switch was interrupted; the runtime's next load of the installation receipt
+settles it, under that lock, to whichever model the receipt names. Setup's
+ownership check never settles it: it reports the ownership as unavailable
+until the runtime does.
+
+The Default model page changes Local AI's fallback only on the Gateway Local AI
+is bound to. On any other Gateway it writes that Gateway's default and leaves
+Local AI alone. Models whose provider still needs sign-in are listed but cannot
+be made the default.
+
 ## Experimental Bonsai 2 profile
 
 The Windows x64 profile uses **Bonsai 2 27B PTQ1_0**, derived from Qwen3.8, with
