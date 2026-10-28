@@ -1696,40 +1696,56 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         catch (Exception ex)
         {
-            // Sanitize before logging — the gateway sometimes echoes patched
-            // field values in validation errors, so logging ex.Message verbatim
-            // can leak secrets to the on-disk tray log (Hanselman review LOW-7).
-            // The full unsanitized message stays in ConfigPatchResult.Error so
-            // the UI banner can show it.
-            _logger.Warn($"config.patch failed: {SanitizeErrorForLog(ex.Message)}");
+            // Remote text can echo partial or transformed credentials. Retain only
+            // classification and let pages use their existing localized failure guidance.
+            var staleBaseHash = ConfigPatchResult.IsStaleBaseHashError(
+                SanitizeConfigPatchError(ex.Message, fullConfig));
+            _logger.Warn($"config.patch failed ({ex.GetType().Name}); staleBaseHash={staleBaseHash}");
             return new ConfigPatchResult
             {
                 Ok = false,
-                Error = ex.Message,
-                RawResponse = ex.ToString(),
+                HasStaleBaseHashSignal = staleBaseHash,
             };
         }
     }
 
     /// <summary>
-    /// Best-effort scrub of a gateway error message before it lands in the
-    /// tray log: caps length and masks token-shaped values for the channel
-    /// credential keys we know about (botToken / signingSecret / webhookUrl
-    /// / nsec / privateKey / generic token|secret|key|password fields). The
-    /// gateway may put raw field values in validation errors, and the log
-    /// is persistent on disk — see Hanselman review LOW-7.
+    /// Remove known credentials before classifying a stale-hash failure.
+    /// This text is never returned or logged, since an echo need not be verbatim.
     /// </summary>
-    private static string SanitizeErrorForLog(string? raw)
+    private static string SanitizeConfigPatchError(string raw, JsonElement config)
     {
-        if (string.IsNullOrEmpty(raw)) return raw ?? "";
-        const int MaxLen = 500;
-        var truncated = raw.Length > MaxLen ? raw[..MaxLen] + "…(truncated)" : raw;
-        // Mask JSON-style "field": "value" pairs for sensitive field names.
-        truncated = System.Text.RegularExpressions.Regex.Replace(
-            truncated,
-            @"(""(?i:botToken|signingSecret|webhookUrl|nsec|privateKey|token|secret|apiKey|password)""\s*:\s*"")[^""]+("")",
-            "$1<redacted>$2");
-        return truncated;
+        var secrets = EnumerateConfigSecrets(config)
+            .Where(value => !string.IsNullOrEmpty(value))
+            .Distinct(StringComparer.Ordinal)
+            .OrderByDescending(value => value.Length);
+        foreach (var secret in secrets)
+            raw = raw.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
+        return TokenSanitizer.SanitizeLogMessage(raw);
+    }
+
+    private static IEnumerable<string> EnumerateConfigSecrets(JsonElement value, bool sensitive = false)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in value.EnumerateObject())
+                    foreach (var secret in EnumerateConfigSecrets(
+                        property.Value, sensitive || TokenSanitizer.IsSensitiveMetadataKeyName(property.Name)))
+                        yield return secret;
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in value.EnumerateArray())
+                    foreach (var secret in EnumerateConfigSecrets(item, sensitive))
+                        yield return secret;
+                break;
+            case JsonValueKind.String when sensitive:
+                var text = value.GetString()!;
+                yield return text;
+                yield return value.GetRawText()[1..^1];
+                yield return JsonSerializer.Serialize(text)[1..^1];
+                break;
+        }
     }
 
     // Agent methods
@@ -2895,7 +2911,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         if (string.IsNullOrEmpty(method))
         {
-            _logger.Warn($"Gateway request failed: {message}");
+            _logger.Warn("Gateway request failed (untracked response).");
+            return;
+        }
+
+        if (method == "config.patch")
+        {
+            _logger.Warn("config.patch failed (gateway rejection).");
             return;
         }
 

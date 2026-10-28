@@ -207,13 +207,16 @@ public class OpenClawGatewayClientTests
                 ephemeralOperatorCredential: ephemeralOperatorCredential);
         }
 
-        public GatewayClientTestHelper(IOpenClawLogger logger)
+        public GatewayClientTestHelper(
+            IOpenClawLogger logger,
+            string gatewayUrl = "ws://localhost:18789",
+            string? identityPath = null)
         {
             _client = new OpenClawGatewayClient(
-                "ws://localhost:18789",
+                gatewayUrl,
                 "test-token",
                 logger,
-                identityPath: CreateTempIdentityPath());
+                identityPath: identityPath ?? CreateTempIdentityPath());
         }
 
         public string ClassifyNotification(string text)
@@ -929,6 +932,191 @@ public class OpenClawGatewayClientTests
 
         Assert.Equal("wizard rejected", exception.Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_RejectedSave_DoesNotDiscloseTransformedOrPartialEchoes()
+    {
+        const string secret = "synthetic-transformed-credential";
+        var config = JsonSerializer.SerializeToElement(new { channels = new { telegram = new { botToken = secret } } });
+        var rejection = "invalid config: value starts with synthetic-transformed; encoded value " +
+            Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(secret));
+
+        var (result, logs) = await RejectConfigPatchAsync(config, rejection);
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Error);
+        Assert.Null(result.RawResponse);
+        Assert.DoesNotContain("synthetic-transformed", logs);
+        Assert.DoesNotContain(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(secret)), logs);
+        Assert.Contains("InvalidOperationException", logs);
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_RejectedSave_ReturnsAndLogsOnlySafeDiagnostics()
+    {
+        const string botToken = "synthetic-bot-credential";
+        const string signingSecret = "synthetic-signing-credential";
+        const string webhookUrl = "https://hooks.example/synthetic-credential";
+        var config = JsonSerializer.SerializeToElement(new
+        {
+            channels = new
+            {
+                telegram = new { botToken },
+                slack = new { signingSecret },
+                googlechat = new { webhookUrl }
+            }
+        });
+        var rejection = $"invalid config: {config.GetRawText()}";
+
+        var (result, logs) = await RejectConfigPatchAsync(config, rejection);
+
+        Assert.False(result.Ok);
+        Assert.False(result.LooksLikeStaleBaseHash);
+        Assert.Null(result.Error);
+        Assert.Null(result.RawResponse);
+        Assert.Contains("config.patch failed (InvalidOperationException)", logs);
+        foreach (var secret in new[] { botToken, signingSecret, webhookUrl })
+        {
+            Assert.DoesNotContain(secret, result.Error ?? "");
+            Assert.DoesNotContain(secret, result.RawResponse ?? "");
+            Assert.DoesNotContain(secret, logs);
+        }
+    }
+
+    [Theory]
+    [InlineData("plain")]
+    [InlineData("escaped")]
+    [InlineData("json-escaped")]
+    [InlineData("long")]
+    public async Task PatchConfigDetailedAsync_RejectedSave_WithholdsCredentialEchoes(string format)
+    {
+        var secret = format switch
+        {
+            "escaped" or "json-escaped" => "synthetic-quote-\"-synthetic-tail",
+            "long" => "synthetic-long-" + new string('s', 600),
+            _ => "synthetic-unlabelled-credential"
+        };
+        var config = JsonSerializer.SerializeToElement(new { channels = new { telegram = new { botToken = secret } } });
+        var rejection = format switch
+        {
+            "plain" => $"invalid config: rejected value '{secret}'",
+            "json-escaped" => "invalid config: " + JsonSerializer.Serialize(config,
+                new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }),
+            _ => $"invalid config: {config.GetRawText()}"
+        };
+
+        var (result, logs) = await RejectConfigPatchAsync(config, rejection);
+
+        Assert.Null(result.Error);
+        Assert.Null(result.RawResponse);
+        Assert.DoesNotContain("synthetic-", result.Error ?? "");
+        Assert.DoesNotContain("synthetic-", result.RawResponse ?? "");
+        Assert.DoesNotContain("synthetic-", logs);
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_RejectedSave_DoesNotClassifySecretAsStaleHash()
+    {
+        var config = JsonSerializer.SerializeToElement(new { channels = new { telegram = new { botToken = "synthetic-stale-baseHash" } } });
+
+        var (result, logs) = await RejectConfigPatchAsync(config, $"invalid conflict_mode: {config.GetRawText()}");
+
+        Assert.False(result.LooksLikeStaleBaseHash);
+        Assert.Null(result.Error);
+        Assert.DoesNotContain("synthetic-stale-baseHash", logs);
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_RejectedSave_RecognizesLateStaleHashWithoutReturningRemoteText()
+    {
+        var config = JsonSerializer.SerializeToElement(new { channels = new { telegram = new { botToken = "synthetic-credential" } } });
+        var rejection = $"invalid config: {new string('x', 700)} baseHash changed {config.GetRawText()}";
+
+        var (result, logs) = await RejectConfigPatchAsync(config, rejection);
+
+        Assert.False(result.Ok);
+        Assert.True(result.LooksLikeStaleBaseHash);
+        Assert.Null(result.Error);
+        Assert.Null(result.RawResponse);
+        Assert.DoesNotContain("synthetic-credential", result.RawResponse ?? "");
+        Assert.DoesNotContain("synthetic-credential", logs);
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_RejectedSave_AfterTimeoutDoesNotLogRemoteText()
+    {
+        var config = JsonSerializer.SerializeToElement(new { channels = new { telegram = new { botToken = "synthetic-credential" } } });
+
+        var (result, logs) = await RejectConfigPatchAsync(
+            config, "invalid config: synthetic-cred", afterTimeout: true);
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Error);
+        Assert.Null(result.RawResponse);
+        Assert.Contains("TimeoutException", logs);
+        Assert.Contains("Gateway request failed (untracked response).", logs);
+        Assert.DoesNotContain("synthetic-cred", logs);
+    }
+
+    [Fact]
+    public void ProcessRawMessage_LegacyConfigPatchRejectionDoesNotLogRemoteText()
+    {
+        var logger = new TestLogger();
+        var helper = new GatewayClientTestHelper(logger);
+        using var client = helper.Client;
+        helper.TrackPendingRequest("legacy-config-patch", "config.patch");
+
+        helper.ProcessRawMessage("""
+            {"type":"res","id":"legacy-config-patch","ok":false,"error":{"message":"invalid config: synthetic-cred"}}
+            """);
+
+        Assert.Contains(logger.Logs, line => line.Contains("config.patch failed (gateway rejection)."));
+        Assert.DoesNotContain(logger.Logs, line => line.Contains("synthetic-cred"));
+    }
+
+    private static async Task<(ConfigPatchResult Result, string Logs)> RejectConfigPatchAsync(
+        JsonElement config, string rejection, bool afterTimeout = false)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("config-patch-");
+        await server.StartAsync();
+        var logger = new TestLogger();
+        var helper = new GatewayClientTestHelper(logger, server.WebSocketUrl, identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var responseTask = client.PatchConfigDetailedAsync(
+            config, "original-hash", timeoutMs: afterTimeout ? 250 : 10_000);
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        using var requestDocument = JsonDocument.Parse(request);
+        Assert.Equal("config.patch", requestDocument.RootElement.GetProperty("method").GetString());
+        Assert.Equal(config.GetRawText(), requestDocument.RootElement.GetProperty("params").GetProperty("raw").GetString());
+        Assert.Equal("original-hash", requestDocument.RootElement.GetProperty("params").GetProperty("baseHash").GetString());
+        if (afterTimeout)
+            await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = ReadRequestId(request),
+            ok = false,
+            error = new { message = rejection }
+        }));
+
+        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+        if (afterTimeout)
+        {
+            var fence = client.SendWizardRequestAsync("health", timeoutMs: 10_000);
+            var probe = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+            await server.SendTextAsync(JsonSerializer.Serialize(new
+            {
+                type = "res", id = ReadRequestId(probe), ok = true, payload = new { ok = true }
+            }));
+            await fence.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        Assert.Equal(0, helper.GetPendingRequestCount());
+        return (result, string.Join("\n", logger.Logs));
     }
 
     [Fact]
