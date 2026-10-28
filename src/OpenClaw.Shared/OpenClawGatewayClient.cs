@@ -2138,7 +2138,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         catch (Exception ex)
         {
-            _logger.Warn($"web.login.start failed: {ex.Message}");
+            var error = ChannelLinkDiagnosticText.Redact(ex.Message);
+            _logger.Warn($"web.login.start failed: {error}");
             // Return a populated result with the error so the UI can surface
             // it in the diagnostic disclosure. Returning null would lose the
             // gateway's actual reason for failing.
@@ -2150,8 +2151,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             // the page pattern-matches on and shows to the user.
             return new WebLoginStartResult
             {
-                Error = ex.Message,
-                RawResponse = ex.Message,
+                Error = error,
+                RawResponse = error,
             };
         }
     }
@@ -2176,13 +2177,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         catch (Exception ex)
         {
-            _logger.Warn($"web.login.wait failed: {ex.Message}");
+            var error = ChannelLinkDiagnosticText.Redact(ex.Message, currentQrDataUrl);
+            _logger.Warn($"web.login.wait failed: {error}");
             // ex.Message, not ex.ToString(): keep the clean gateway reason and
             // avoid leaking an internal .NET stack trace into the UI (issue #957).
             return new WebLoginWaitResult
             {
-                Error = ex.Message,
-                RawResponse = ex.Message,
+                Error = error,
+                RawResponse = error,
             };
         }
     }
@@ -2895,7 +2897,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         if (string.IsNullOrEmpty(method))
         {
-            _logger.Warn($"Gateway request failed: {message}");
+            _logger.Warn("Gateway request failed (untracked response).");
             return;
         }
 
