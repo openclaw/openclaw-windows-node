@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using OpenClaw.Chat;
 using OpenClawTray.Helpers;
+using OpenClawTray.Chat.Markdown;
 using System.Text.Json.Nodes;
 using Windows.UI;
 using static Microsoft.UI.Reactor.Factories;
@@ -603,6 +604,16 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
     internal static Element BuildSafeMarkdown(string? text, Func<string, bool>? tryCopy = null)
     {
+        var parts = ChatMarkdownDisclosures.Parse(ChatMarkdownSanitizer.Sanitize(text));
+        var body = ChatMarkdownPresentation.Disclosures(parts, markdown => BuildInertMarkdown(markdown, tryCopy));
+        return NativeChatMessageTextElement.NativeChatMessageText(body)
+            .Set(control => control.Update(tryCopy))
+            .OnUnmount(control => ((NativeChatMessageText)control).Dispose())
+            .HAlign(HorizontalAlignment.Stretch);
+    }
+
+    private static Element BuildInertMarkdown(string text, Func<string, bool>? tryCopy)
+    {
         var options = new MarkdownOptions
         {
             Heading = ChatMarkdownPresentation.Heading,
@@ -626,7 +637,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         };
 
         return ChatMarkdownPresentation.MessageBlocks(
-            Microsoft.UI.Reactor.Factories.Markdown(ChatMarkdownSanitizer.Sanitize(text), options));
+            Microsoft.UI.Reactor.Factories.Markdown(text, options));
     }
 
     private static Element BuildWrappingMarkdownListItem(Element defaultElement)
@@ -636,9 +647,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         if (defaultElement is not StackElement { Orientation: Orientation.Horizontal, Children.Length: 2 } row)
             throw new InvalidOperationException("Unexpected Reactor Markdown list item shape. Review the preview.12 workaround.");
 
-        return Grid([GridSize.Auto, GridSize.Star()], [],
+        return (Grid([GridSize.Auto, GridSize.Star()], [],
             row.Children[0],
-            row.Children[1].Grid(column: 1)) with { ColumnSpacing = row.Spacing };
+            row.Children[1].Grid(column: 1)) with { ColumnSpacing = row.Spacing })
+            .Set(grid => grid.SetValue(NativeChatMessageText.ListRowProperty, true));
     }
 
     private static Element BuildAssistantFooter(

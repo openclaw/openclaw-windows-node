@@ -106,6 +106,123 @@ shared thread-pool scheduling latency.
 
 ### Additional projects
 
+Native Markdown selection proofs (`Category=NativeMarkdownSelectionProof`) also
+run in fresh processes, one case at a time, in both Debug and Release.
+The shared UI lane excludes this category. CI enumerates both
+`VisibleMessage_PointerKeyboardCopyAndTextProviderShareOneRange` and
+`MessageBoundary_DragScrollAndRealizationReuse`, plus
+`NativeUnits_RespectWrappingParagraphsAndTransientReload` in Light, plus the rendered pixel comparison
+`SelectionPaint_PartialBlocksSurviveInactiveFocusAndReconcile`. Each invocation selects exactly one required case, and the proof
+runner rejects zero-test and zero-pass results.
+
+`DisclosureSelection_VisibleSummaryAndExpandedBody` verifies that the visible
+summary participates in the native range and copy, including partial title
+endpoints, expanded bodies and nested disclosure order. Collapsed bodies are
+excluded. The rendered paint proof selects part of a summary and checks system
+selection color plus its unselected title prefix. The opt-in
+`RoutedInput_SelectsAcrossNativeMarkdownChildren` proof drives actual pointer
+drag from summary to following text, paragraph to summary, shift-click, title
+click versus drag, and native Space toggling. It requires an isolated foreground
+desktop and an injected copy sink; UIA range selection is not physical input proof.
+
+```powershell
+foreach ($configuration in @('Debug', 'Release')) {
+    foreach ($case in @('VisibleMessage_PointerKeyboardCopyAndTextProviderShareOneRange', 'MessageBoundary_DragScrollAndRealizationReuse', 'NativeUnits_RespectWrappingParagraphsAndTransientReload', 'SelectionPaint_PartialBlocksSurviveInactiveFocusAndReconcile', 'DisclosureSelection_VisibleSummaryAndExpandedBody')) {
+        foreach ($theme in @('Light')) {
+            .\scripts\run-proof-tests.ps1 `
+                -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
+                -Filter "Category=NativeMarkdownSelectionProof&FullyQualifiedName~$case&DisplayName~$theme" `
+                -ResultName "selection-$($configuration.ToLowerInvariant())-$($case.Split('_')[0].ToLowerInvariant())-$($theme.ToLowerInvariant())" `
+                -Configuration $configuration -RuntimeIdentifier win-x64 `
+                -ResultsDirectory TestResults\MarkdownSelection
+        }
+    }
+}
+```
+
+These exercise actual native text/highlight geometry, the selection owner input
+pipeline with an injected clipboard, live copy-failure status, UIA range
+operations and native widget peers, disclosure removal, streaming/resize,
+message isolation, render-frame drag autoscroll and realized-owner reuse.
+They do not inject physical input into the desktop, switch Windows High Contrast,
+or prove Narrator speech. `ChatTextSelectionDocumentTests` adds seven fast pure
+behavioral cases; it contains no source-marker assertions.
+
+Selection theory data always includes Light. Dark and simulated HighContrast
+are available only with `OPENCLAW_VISUAL_TEST=1` for screenshot review, not as
+additional CI rows or skipped tests. System `UISettings` owns selection highlight
+colors; changing the application theme does not change those system colors.
+The five non-input methods therefore run five cases per configuration in CI.
+The sixth method is the separately opt-in physical-input proof. The unit suite
+merges middle-content removal into streaming rebasing and explicitly guards
+out-of-range endpoint clamping and word selection at the document end.
+
+`RoutedInput_SelectsAcrossNativeMarkdownChildren` is an additional opt-in real
+SendInput proof. It mounts production Markdown with an injected clipboard,
+drags from paragraph through list and code to heading, shift-clicks a native
+text child, then checks Ctrl+A, Ctrl+C and keyboard extension. UIA supplies
+geometry only. The helper refuses input unless the fixture owns the foreground
+HWND, and pointer coordinates must hit that window. Child-handled routed
+presses must reach the message selection owner; buttons and scrollbars retain
+their native interaction. Each gesture can be captured with
+`OPENCLAW_VISUAL_TEST=1` and a repository-local `OPENCLAW_VISUAL_TEST_DIR`.
+The routed proof now captures foreground desktop pixels, not RenderTargetBitmap,
+and checks system highlight-colored fill in every selected native text rectangle.
+Run the Light case in a separate process. Set `OPENCLAW_VISUAL_TEST=1` to
+include Dark and synthetic HighContrast capture rows, each in its own process.
+
+`SelectionPaint_PartialBlocksSurviveInactiveFocusAndReconcile` compares rendered
+pixels against an unselected frame in Light (and optional theme capture rows). It checks partial first
+and last blocks, every intervening bullet/code block, unselected prefix/suffix,
+inactive focus and Reactor reconciliation. Native text range updates are
+published through the owning TextHighlighters collection so cached text drawing
+is invalidated. Losing focus outside the message retains visible selection;
+transferring focus to another message still clears the old message's selection.
+This rendered proof does not substitute for foreground desktop input proof.
+
+```powershell
+$env:OPENCLAW_RUN_KEYBOARD_PROOF = '1'
+foreach ($configuration in @('Debug', 'Release')) {
+    foreach ($theme in @('Light', 'Dark', 'HighContrast')) {
+        .\scripts\run-proof-tests.ps1 `
+            -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
+            -Filter "FullyQualifiedName~RoutedInput_SelectsAcrossNativeMarkdownChildren&DisplayName~$theme" `
+            -ResultName "routed-selection-$($configuration.ToLowerInvariant())-$($theme.ToLowerInvariant())" `
+            -Configuration $configuration -RuntimeIdentifier win-x64
+    }
+}
+```
+
+Native Markdown disclosure proofs use a fresh WinUI test process for each
+theme and the inert-content case. Attached native `Expander` templates can
+crash the shared testhost when a later fixture replaces application theme
+resources. The ordinary UI lane excludes `Category=NativeMarkdownProof`;
+CI runs all four cases separately through the existing proof runner instead.
+These are mandatory rendering proofs, not optional or skipped tests:
+
+```powershell
+foreach ($theme in @('Light', 'Dark', 'HighContrast')) {
+    .\scripts\run-proof-tests.ps1 `
+        -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
+        -Filter "Category=NativeMarkdownProof&DisplayName~$theme" `
+        -ResultName "markdown-$($theme.ToLowerInvariant())" `
+        -RuntimeIdentifier win-x64
+}
+.\scripts\run-proof-tests.ps1 `
+    -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
+    -Filter 'FullyQualifiedName~ReactorMarkdownDisclosureProofTests.AssistantMarkdown_UntrustedContentRemainsInertInsideDisclosure' `
+    -ResultName markdown-inert-content `
+    -RuntimeIdentifier win-x64
+```
+
+The proofs exercise accessible expansion/collapse, ordered Markdown body content,
+nested and initially open disclosures, inert untrusted content, and expansion
+state across rerendering and resizing. They wait for native animation state and
+assert nonzero rendered text geometry instead of using sleeps. Set
+`OPENCLAW_VISUAL_TEST=1` and `OPENCLAW_VISUAL_TEST_DIR` to a dedicated artifact
+directory for collapsed and expanded captures. HighContrast is a resource
+simulation, not a claim that Windows High Contrast was enabled.
+
 The chat composer's real keyboard regression is opt-in because it uses Windows
 `SendInput` on a visible, focused proof window. Run it only on an isolated
 interactive desktop with no concurrent computer-use or human input, Caps Lock
