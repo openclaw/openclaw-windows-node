@@ -538,6 +538,48 @@ public class ProfileCompletionTests
         Assert.DoesNotContain(proxy.Methods, m => m.StartsWith("users.set", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("UNAVAILABLE")]
+    [InlineData("UNKNOWN")]
+    public async Task Save_CodedUnavailableOrUnknownAfterAppliedWrite_IsUncertain_AndRetrySeesExistingValue(string code)
+    {
+        var (service, proxy, prep) = await Prepared();
+        proxy.OnWrite = _ =>
+        {
+            proxy.SelfProfile = new { profile = new { id = "gateway-owner", displayName = "Ada", hasAvatar = false } };
+            return Task.FromException<JsonElement>(GatewayRequestErrors.Create("post-write check failed", code, null));
+        };
+        var first = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        Assert.Equal(ProfileStep.Uncertain, first.Name);
+        Assert.False(first.IsComplete);
+
+        proxy.OnWrite = null;
+        proxy.Methods.Clear();
+        var retry = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        Assert.Equal(ProfileStep.ExistingValue, retry.Name);
+        Assert.Equal(["users.self"], proxy.Methods);
+    }
+
+    [Fact]
+    public async Task Save_CodedForbiddenAndInvalidRequestAtWrite_StayDefinite()
+    {
+        var (service, proxy, prep) = await Prepared();
+        proxy.OnWrite = _ => Task.FromException<JsonElement>(GatewayRequestErrors.Create("x", "FORBIDDEN", null));
+        Assert.Equal(ProfileStep.Denied, (await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None)).Name);
+        proxy.OnWrite = _ => Task.FromException<JsonElement>(GatewayRequestErrors.Create("x", "INVALID_REQUEST", null));
+        Assert.Equal(ProfileStep.Failed, (await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None)).Name);
+    }
+
+    [Fact]
+    public async Task Save_CodedUnavailableAtRead_StaysFailed_BecauseNothingWasWritten()
+    {
+        var (service, proxy, prep) = await Prepared();
+        proxy.OnSelfRead = () => throw GatewayRequestErrors.Create("down", "UNAVAILABLE", null);
+        var result = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        Assert.Equal(ProfileStep.Failed, result.Name);
+        Assert.DoesNotContain(proxy.Methods, m => m.StartsWith("users.set", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Window_RechecksForOpenModalAfterPreparation_AndDoesNotConsumeAutomaticOffer()
     {

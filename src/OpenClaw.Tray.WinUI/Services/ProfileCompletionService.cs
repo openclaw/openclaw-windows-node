@@ -253,6 +253,13 @@ internal sealed class ProfileCompletionService(
                 // frame was written when the connection generation changed, so it may have been transmitted.
                 return ProfileStep.Uncertain;
             }
+            catch (InvalidOperationException ex) when (
+                GatewayRequestErrors.TryGetCodes(ex, out var writeCode, out _) && writeCode is "UNAVAILABLE" or "UNKNOWN")
+            {
+                // Newer upstream Gateways can raise UNAVAILABLE after the store write when a post-write currency
+                // check fails, and UNKNOWN is an unrecognized code. Neither proves nothing was written.
+                return ProfileStep.Uncertain;
+            }
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or JsonException)
         {
