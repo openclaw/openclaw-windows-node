@@ -295,6 +295,8 @@ public class SessionInfo
     public string? OriginLabel { get; set; }
     public SessionWorktreeInfo? Worktree { get; set; }
     public string? ExecNode { get; set; }
+    /// <summary>Gateway execution placement (worker/device). Null for local sessions or older Gateways.</summary>
+    public OpenClaw.Shared.Systems.SessionPlacementInfo? Placement { get; set; }
     public string? ParentSessionKey { get; set; }
     public int? SpawnDepth { get; set; }
     public string? SessionId { get; set; }
@@ -571,6 +573,9 @@ public class GatewayNodeInfo
     public string? ModelIdentifier { get; set; }
     public string? RemoteIp { get; set; }
     public string? PathEnv { get; set; }
+
+    /// <summary>Latest host statistics the node reported (<c>node.list</c> <c>hostStats</c>).</summary>
+    public OpenClaw.Shared.Systems.NodeHostStats? HostStats { get; set; }
 
     // Timestamps and state
     public DateTime? ConnectedAt { get; set; }

@@ -542,6 +542,7 @@ public sealed partial class GatewayFixtureProtocolTests
             .LoadAsync("main", CancellationToken.None).WaitAsync(Deadline);
         Assert.Equal("Fixture Main", placement.AgentName);
         Assert.Empty(placement.Workspaces);
+        Assert.Equal("default", placement.DefaultWorkspace.Id);
         var environment = Assert.Single(placement.Environments);
         Assert.Equal("gateway:fixture", environment.Id);
         Assert.Equal("Fixture Gateway", environment.Label);

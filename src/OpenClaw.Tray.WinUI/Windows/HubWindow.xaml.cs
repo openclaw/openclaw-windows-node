@@ -110,6 +110,8 @@ public sealed partial class HubWindow : WindowEx
         {
             IsClosed = true;
             _contentReady.TrySetResult(true);
+            // Closing does not navigate the frame, so pages that own native trees are disposed here.
+            (ContentFrame.Content as IDisposable)?.Dispose();
             _gatewayNavHideTimer?.Stop();
             if (_appNotificationService != null)
                 _appNotificationService.Changed -= OnAppNotificationChanged;
@@ -534,6 +536,7 @@ public sealed partial class HubWindow : WindowEx
     private void SyncNavSelection(string? tag)
     {
         if (tag == null) return;
+        tag = HubPageRegistry.NavigationTag(tag);
         var item = FindNavItemForTag(NavView.MenuItems, tag)
                 ?? FindNavItemForTag(NavView.FooterMenuItems, tag);
         if (item != null && !ReferenceEquals(NavView.SelectedItem, item))
@@ -680,9 +683,13 @@ public sealed partial class HubWindow : WindowEx
             NavSessions.Visibility = vis;
             NavSkills.Visibility = vis;
             NavChannels.Visibility = vis;
-            NavInstances.Visibility = vis;
+            NavInstances.Visibility = keepCurrentGatewayPageVisible && HubPageRegistry.IsSystemsTag(currentTag)
+                ? Visibility.Visible
+                : vis;
             NavCron.Visibility = vis;
-            NavAdvanced.Visibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
+            NavAdvanced.Visibility = keepCurrentGatewayPageVisible && !HubPageRegistry.IsSystemsTag(currentTag)
+                ? Visibility.Visible
+                : vis;
             NavGatewaySeparator.Visibility = vis;
 
             if (!connected)
@@ -934,7 +941,7 @@ public sealed partial class HubWindow : WindowEx
                     OpenClawTray.Services.Logger.Error($"[HubWindow] ConfigPage seed failed: {ex}");
                 }
                 break;
-            case InstancesPage instances: instances.Initialize(); break;
+            case SystemsPage systems: systems.Initialize(); break;
             case PermissionsPage: break;
             case SandboxPage sandbox: sandbox.Initialize(); break;
             case VoiceSettingsPage voice: voice.Initialize(CurrentApp.VoiceService); break;
@@ -1188,7 +1195,7 @@ public sealed partial class HubWindow : WindowEx
         { "sessions",    "\uE8F2" },
         { "skills",      "\uE945" },
         { "channels",    "\uEC05" },
-        { "instances",   "\uE977" },
+        { "systems",     "\uE977" },
         { "agentevents", "\uE943" },
         { "bindings",    "\uE8AD" },
         { "config",      "\uE90F" },

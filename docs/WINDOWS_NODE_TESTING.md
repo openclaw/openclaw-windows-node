@@ -28,7 +28,7 @@ For changes touching tray UX, Settings, onboarding, chat/canvas, Command Center,
 
 Short version: run required tests, collect a closeout proof pass with `.\run-app-local.ps1 -Isolated` when UI is involved, use computer-use or developer-provided screenshots/output for the active changed UI state, prove MCP with `winnode` or raw JSON-RPC, prove gateway paths when available, and include current-head concrete output under `## Real behavior proof`. Mid-development computer-use/MCP/rubber-duck validation is fine when explicitly requested or needed to unblock work.
 
-### Reactor preview.12 compatibility proof
+### Reactor compatibility proof
 
 The [fixture Gateway harness](GATEWAY_FIXTURE_TESTING.md) can populate the real
 app without a running WSL Gateway or AI provider. Run
@@ -39,28 +39,33 @@ non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
 equivalent to visible native history proof. Streaming still needs separate
 coverage.
 
-Both Reactor packages are temporarily pinned to `0.1.0-preview.12` while
+Both Reactor packages use `0.1.0-preview.16`. Its ItemsView row eviction
+(introduced in preview.13) depends on
 [microsoft/microsoft-ui-xaml#11865](https://github.com/microsoft/microsoft-ui-xaml/issues/11865)
-awaits a released and validated fix. `ReactorChatTimeline.BuildSafeMarkdown`
-uses `MarkdownOptions.ListItem` to replace the default horizontal list row with
-an Auto-marker/Star-content Grid, preserving the existing marker, content and
-spacing. This locally supplies the wrapping fix from
-[microsoft/microsoft-ui-reactor#1197](https://github.com/microsoft/microsoft-ui-reactor/pull/1197)
-without adopting preview.13's row eviction behavior.
+for reliable Chat scrolling, and that fix has not been released and validated yet.
+Markdown list content wraps by default since preview.15
+([microsoft/microsoft-ui-reactor#1197](https://github.com/microsoft/microsoft-ui-reactor/pull/1197)),
+so Chat no longer overrides `MarkdownOptions.ListItem`.
 
 Run `ReactorMarkdownListProofTests` in `OpenClaw.Tray.UITests` on the host's
 native architecture. These mounted tests check ordered/unordered wrapping at
 240 DIPs, reflow at 600 DIPs, and nested/loose list content and formatting.
 Keep the existing table and disposal proof in the focused run.
 
-Before release or removing the pin, also exercise repeated session switching
-while a bring-into-view request is pending, using 240 mixed-height messages.
-Verify that message 240 is actually visible, not just that the current scroll
-extent was reached. Verify streaming tail-follow and arrivals while scrolled
-up. Do not substitute extent-only scrolling: the alternative workaround
-stopped near message 233 in the reported scenario.
+Before release, exercise repeated session switching while a bring-into-view
+request is pending, using 240 mixed-height messages. Verify that message 240 is
+actually visible, not just that the current scroll extent was reached. Verify
+streaming tail-follow and arrivals while scrolled up. Do not substitute
+extent-only scrolling: the alternative workaround stopped near message 233 in
+the reported scenario.
+
+The Systems page relies on two preview.13 fixes: reconciling a ContentDialog
+while it is open (microsoft/microsoft-ui-reactor#1073) and clearing pooled Border
+backgrounds so `Theme.Ref` fills survive reuse (microsoft/microsoft-ui-reactor#952).
+On the `systems-inventory` fixture, switch between machines and confirm that every
+statistics tile keeps its fill and every sparkline sample bar is visible.
 [Tracking issue #1424](https://github.com/openclaw/openclaw-windows-node/issues/1424)
-owns the package upgrade and removal gates.
+owns the Chat validation gates.
 
 ### New command MCP contract
 

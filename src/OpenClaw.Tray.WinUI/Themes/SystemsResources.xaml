@@ -1,0 +1,68 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        Systems page palette (DESIGN.md "Systems page"). Load follows the user's accent; memory
+        and disk use fixed violet and teal hues so the three metrics stay distinguishable.
+        Every brush is paired with a glyph and a text label, so color is never the only signal.
+        High contrast maps every hue to system colors and drops the decorative washes.
+    -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="SystemsLoadBrush" Color="{ThemeResource SystemAccentColorLight2}" />
+            <SolidColorBrush x:Key="SystemsMemoryBrush" Color="#B9A4FF" />
+            <SolidColorBrush x:Key="SystemsDiskBrush" Color="#5FD4D9" />
+            <SolidColorBrush x:Key="SystemsNeutralBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="SystemsLoadTintBrush" Color="{ThemeResource SystemAccentColorLight2}" Opacity="0.16" />
+            <SolidColorBrush x:Key="SystemsMemoryTintBrush" Color="#B9A4FF" Opacity="0.16" />
+            <SolidColorBrush x:Key="SystemsDiskTintBrush" Color="#5FD4D9" Opacity="0.16" />
+            <SolidColorBrush x:Key="SystemsNeutralTintBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+            <SolidColorBrush x:Key="SystemsSuccessTintBrush" Color="{ThemeResource SystemFillColorSuccess}" Opacity="0.16" />
+            <SolidColorBrush x:Key="SystemsCautionTintBrush" Color="{ThemeResource SystemFillColorCaution}" Opacity="0.16" />
+            <SolidColorBrush x:Key="SystemsCriticalTintBrush" Color="{ThemeResource SystemFillColorCritical}" Opacity="0.16" />
+            <SolidColorBrush x:Key="SystemsMeterTrackBrush" Color="{ThemeResource ControlStrongFillColorDisabled}" Opacity="0.35" />
+            <LinearGradientBrush x:Key="SystemsHeroBrush" StartPoint="0,0" EndPoint="1,1" Opacity="0.18">
+                <GradientStop Offset="0" Color="{ThemeResource SystemAccentColorLight2}" />
+                <GradientStop Offset="0.55" Color="#B9A4FF" />
+                <GradientStop Offset="1" Color="#5FD4D9" />
+            </LinearGradientBrush>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="SystemsLoadBrush" Color="{ThemeResource SystemAccentColorDark1}" />
+            <SolidColorBrush x:Key="SystemsMemoryBrush" Color="#6B4FBB" />
+            <SolidColorBrush x:Key="SystemsDiskBrush" Color="#00747A" />
+            <SolidColorBrush x:Key="SystemsNeutralBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="SystemsLoadTintBrush" Color="{ThemeResource SystemAccentColorDark1}" Opacity="0.10" />
+            <SolidColorBrush x:Key="SystemsMemoryTintBrush" Color="#6B4FBB" Opacity="0.10" />
+            <SolidColorBrush x:Key="SystemsDiskTintBrush" Color="#00747A" Opacity="0.10" />
+            <SolidColorBrush x:Key="SystemsNeutralTintBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+            <SolidColorBrush x:Key="SystemsSuccessTintBrush" Color="{ThemeResource SystemFillColorSuccess}" Opacity="0.10" />
+            <SolidColorBrush x:Key="SystemsCautionTintBrush" Color="{ThemeResource SystemFillColorCaution}" Opacity="0.12" />
+            <SolidColorBrush x:Key="SystemsCriticalTintBrush" Color="{ThemeResource SystemFillColorCritical}" Opacity="0.10" />
+            <SolidColorBrush x:Key="SystemsMeterTrackBrush" Color="{ThemeResource ControlStrongFillColorDisabled}" Opacity="0.25" />
+            <LinearGradientBrush x:Key="SystemsHeroBrush" StartPoint="0,0" EndPoint="1,1" Opacity="0.12">
+                <GradientStop Offset="0" Color="{ThemeResource SystemAccentColorLight1}" />
+                <GradientStop Offset="0.55" Color="#9C82F0" />
+                <GradientStop Offset="1" Color="#2EC4C9" />
+            </LinearGradientBrush>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="SystemsLoadBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SystemsMemoryBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SystemsDiskBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SystemsNeutralBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="SystemsLoadTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SystemsMemoryTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SystemsDiskTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SystemsNeutralTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SystemsSuccessTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SystemsCautionTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SystemsCriticalTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SystemsMeterTrackBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="SystemsHeroBrush" Color="{ThemeResource SystemColorWindowColor}" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+    <ControlTemplate x:Key="SystemsSparklineTemplate" TargetType="Control">
+        <Grid x:Name="Root" Background="Transparent" />
+    </ControlTemplate>
+</ResourceDictionary>

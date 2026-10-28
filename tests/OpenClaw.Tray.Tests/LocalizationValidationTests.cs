@@ -290,8 +290,6 @@ public class LocalizationValidationTests
         "Command_GoToWorkspace_Subtitle",
         "Command_GoToChannels_Title",
         "Command_GoToChannels_Subtitle",
-        "Command_GoToInstances_Title",
-        "Command_GoToInstances_Subtitle",
         "Command_GoToConfig_Title",
         "Command_GoToConfig_Subtitle",
         "Command_GoToUsage_Title",

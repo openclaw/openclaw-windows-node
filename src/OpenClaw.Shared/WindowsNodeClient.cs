@@ -1010,6 +1010,35 @@ public class WindowsNodeClient : WebSocketClientBase
 
             RaiseStatusChanged(ConnectionStatus.Connected);
             HandshakeSucceeded?.Invoke(this, EventArgs.Empty);
+            if (_isPaired)
+                StartHostStatsPublishing();
+        }
+    }
+
+    private Timer? _hostStatsTimer;
+
+    /// <summary>Publishes host statistics so the Gateway's Systems inventory can show this machine's resources.</summary>
+    private void StartHostStatsPublishing()
+    {
+        StopHostStatsPublishing();
+        var timer = new Timer(_ => _ = PublishHostStatsAsync(), null, TimeSpan.Zero, Systems.HostStatsSampler.Interval);
+        if (Interlocked.CompareExchange(ref _hostStatsTimer, timer, null) is not null)
+            timer.Dispose();
+    }
+
+    private void StopHostStatsPublishing() => Interlocked.Exchange(ref _hostStatsTimer, null)?.Dispose();
+
+    private async Task PublishHostStatsAsync()
+    {
+        try
+        {
+            if (!_isConnected || !_isPaired || Systems.HostStatsSampler.Sample() is not { } payload)
+                return;
+            await SendNodeEventAsync(Systems.HostStatsSampler.EventName, payload).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Host statistics publish failed: {ex.Message}");
         }
     }
 
@@ -1947,6 +1976,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
     protected override void OnDisconnected()
     {
+        StopHostStatsPublishing();
         _activeInvocations.CancelAll();
         _isConnected = false;
         Volatile.Write(ref _pendingConnectRequestId, null);
@@ -1961,6 +1991,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
     protected override void OnError(Exception ex)
     {
+        StopHostStatsPublishing();
         _activeInvocations.CancelAll();
         _isConnected = false;
         if (!_pairingBlocked)
@@ -1972,6 +2003,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
     protected override void OnDisposing()
     {
+        StopHostStatsPublishing();
         _activeInvocations.CancelAll();
     }
 }

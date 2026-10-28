@@ -34,6 +34,10 @@ public interface IOperatorGatewayClient
     event EventHandler<PresenceEntry[]>? PresenceUpdated;
     /// <summary>The authenticated profile changed; consumers should reload users.self.</summary>
     event EventHandler? SelfProfileChanged { add { } remove { } }
+    /// <summary>Machine inventory may have changed (presence, pairing, runner inventory or config).</summary>
+    event EventHandler<string>? SystemsInventoryChanged { add { } remove { } }
+    /// <summary>A node published new host statistics.</summary>
+    event EventHandler<Systems.NodeHostStatsEvent>? NodeHostStatsReceived { add { } remove { } }
     event EventHandler<JsonElement>? AgentsListUpdated;
     event EventHandler<JsonElement>? AgentFilesListUpdated;
     event EventHandler<JsonElement>? AgentFileContentUpdated;

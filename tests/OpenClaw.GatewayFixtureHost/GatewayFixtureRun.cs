@@ -64,7 +64,8 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         bool foreignBrowserControl = false,
         bool allowSessionMutations = false,
         GatewayScenario? scenario = null,
-        Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null)
+        Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null,
+        string appTheme = "Light")
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("The fixture app requires a Windows desktop.");
@@ -76,7 +77,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         GatewayFixtureProfile profile;
         try
         {
-            profile = new GatewayFixtureProfile(gateway.Endpoint, token, enableNodeBrowserProxy);
+            profile = new GatewayFixtureProfile(gateway.Endpoint, token, enableNodeBrowserProxy, appTheme);
         }
         catch
         {

@@ -11,7 +11,7 @@ internal enum HubPageKind
     Connection,
     LocalAi,
     Channels,
-    Instances,
+    Systems,
     Config,
     Usage,
     Bindings,
@@ -113,8 +113,8 @@ internal static class HubPageRegistry
         "Command_GoToWorkspace_Subtitle",
         "Command_GoToChannels_Title",
         "Command_GoToChannels_Subtitle",
-        "Command_GoToInstances_Title",
-        "Command_GoToInstances_Subtitle",
+        "Command_GoToSystems_Title",
+        "Command_GoToSystems_Subtitle",
         "Command_GoToConfig_Title",
         "Command_GoToConfig_Subtitle",
         "Command_GoToUsage_Title",
@@ -144,7 +144,7 @@ internal static class HubPageRegistry
     {
         "home" or "general" => "connection",
         "about" or "info" => "settings",
-        "nodes" => "instances",
+        "nodes" or "instances" => "systems",
         "cron" => $"agent:{currentAgentId}:cron",
         "workspace" => $"agent:{currentAgentId}:workspace",
         _ => tag
@@ -155,7 +155,7 @@ internal static class HubPageRegistry
         "connection" => HubPageKind.Connection,
         "local-ai" => HubPageKind.LocalAi,
         "channels" => HubPageKind.Channels,
-        "nodes" or "instances" => HubPageKind.Instances,
+        "systems" or "nodes" or "instances" => HubPageKind.Systems,
         "config" => HubPageKind.Config,
         "usage" => HubPageKind.Usage,
         "bindings" => HubPageKind.Bindings,
@@ -172,9 +172,21 @@ internal static class HubPageRegistry
         "skills" => HubPageKind.Skills,
         "cron" => HubPageKind.Cron,
         "workspace" => HubPageKind.Workspace,
+        _ when SystemsMachine(tag) is not null => HubPageKind.Systems,
         _ when tag?.StartsWith("agent:", StringComparison.Ordinal) == true => ResolveAgentPage(tag),
         _ => null
     };
+
+    private const string SystemsMachinePrefix = "systems:";
+
+    /// <summary>Machine id from a <c>systems:&lt;environment id&gt;</c> deep link, or null.</summary>
+    public static string? SystemsMachine(string? tag) =>
+        tag is { Length: > 8 } && tag.StartsWith(SystemsMachinePrefix, StringComparison.Ordinal)
+            ? tag[SystemsMachinePrefix.Length..]
+            : null;
+
+    /// <summary>The rail item tag for a destination; machine deep links highlight Systems.</summary>
+    public static string NavigationTag(string tag) => SystemsMachine(tag) is null ? tag : "systems";
 
     private static HubPageKind? ResolveAgentPage(string tag)
     {
@@ -212,7 +224,9 @@ internal static class HubPageRegistry
             tag.Equals("sessions", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("skills", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("channels", StringComparison.OrdinalIgnoreCase) ||
+            tag.Equals("systems", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("instances", StringComparison.OrdinalIgnoreCase) ||
+            SystemsMachine(tag) is not null ||
             tag.Equals("agentevents", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("bindings", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("config", StringComparison.OrdinalIgnoreCase) ||
@@ -221,8 +235,15 @@ internal static class HubPageRegistry
             tag.Equals("workspace", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Pages that stay open when the Gateway disconnects. Systems keeps showing
+    /// last-known machines with its own disconnected state instead of bouncing to Connection.
+    /// </summary>
     public static bool ShouldKeepCurrentPageVisibleDuringDisconnect(string? currentTag) =>
-        string.Equals(currentTag, "config", StringComparison.OrdinalIgnoreCase);
+        string.Equals(currentTag, "config", StringComparison.OrdinalIgnoreCase) || IsSystemsTag(currentTag);
+
+    /// <summary>True for the Systems page, its legacy aliases and machine deep links.</summary>
+    public static bool IsSystemsTag(string? tag) => ResolvePage(tag) == HubPageKind.Systems;
 
 #if !OPENCLAW_TRAY_TESTS
     public static Type? ResolvePageType(string? tag) => ResolvePage(tag) switch
@@ -230,7 +251,7 @@ internal static class HubPageRegistry
         HubPageKind.Connection => typeof(ConnectionPage),
         HubPageKind.LocalAi => typeof(LocalAiPage),
         HubPageKind.Channels => typeof(ChannelsPage),
-        HubPageKind.Instances => typeof(InstancesPage),
+        HubPageKind.Systems => typeof(SystemsPage),
         HubPageKind.Config => typeof(ConfigPage),
         HubPageKind.Usage => typeof(UsagePage),
         HubPageKind.Bindings => typeof(BindingsPage),
@@ -270,7 +291,7 @@ internal static class HubPageRegistry
             Get(context, "Command_GoToWorkspace_Subtitle"),
             HubCommandAction.Navigate($"agent:{context.CurrentAgentId}")));
         AddNavigation(commands, context, "📡", "Command_GoToChannels", "channels");
-        AddNavigation(commands, context, "📡", "Command_GoToInstances", "instances");
+        AddNavigation(commands, context, "📡", "Command_GoToSystems", "systems");
         AddNavigation(commands, context, "📡", "Command_GoToConfig", "config");
         AddNavigation(commands, context, "📡", "Command_GoToUsage", "usage");
         AddNavigation(commands, context, "📡", "Command_GoToBindings", "bindings");

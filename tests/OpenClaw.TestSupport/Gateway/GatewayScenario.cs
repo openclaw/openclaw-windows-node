@@ -57,13 +57,14 @@ public sealed partial class GatewayScenario
     private readonly bool _allowChatSend;
     public bool IsInteractive { get; }
     private readonly ContextUsageFixture? _contextUsage;
+    private readonly SystemsFixture? _systems;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Session> _createdSessions = new(StringComparer.Ordinal);
     private readonly List<object> _createdAgents = [];
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _systems is not null ? _systems.Name : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -76,7 +77,8 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        SystemsFixture? systems = null)
     {
         _sessions = sessions;
         _reads = reads;
@@ -88,6 +90,7 @@ public sealed partial class GatewayScenario
         _allowChatSend = allowChatSend;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         _contextUsage = contextUsage;
+        _systems = systems;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
@@ -97,6 +100,8 @@ public sealed partial class GatewayScenario
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
+            .Concat(systems is null ? [] : SystemsFixture.Methods)
+            .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
@@ -110,8 +115,22 @@ public sealed partial class GatewayScenario
     {
         BrowseName => CreateBrowse(),
         InteractiveName => CreateInteractive(),
+        SystemsFixture.InventoryName => CreateSystems(empty: false),
+        SystemsFixture.EmptyName => CreateSystems(empty: true),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
+
+    /// <summary>Systems inventory: machines, pairings, statistics and backups. Mutations remain rejected.</summary>
+    public static GatewayScenario CreateSystems(bool empty)
+    {
+        var browse = CreateBrowse();
+        var sessions = empty
+            ? browse._sessions
+            : browse._sessions.Select(s => s with { Row = SystemsFixture.DecorateSession(s.Key, s.Row) }).ToArray();
+        var reads = browse._reads.Where(read => !SystemsFixture.Methods.Contains(read.Key, StringComparer.Ordinal))
+            .ToDictionary(read => read.Key, read => read.Value, StringComparer.Ordinal);
+        return new(sessions, reads, systems: new SystemsFixture(empty));
+    }
 
     public static GatewayScenario CreateInteractive()
     {
@@ -322,6 +341,7 @@ public sealed partial class GatewayScenario
                 events = IsInteractive
                     ? new[] { "connect.challenge", "sessions.changed", "agent", "chat", "question.requested", "question.resolved", "exec.approval.requested", "exec.approval.resolved" }
                     : _contextUsage is not null ? new[] { "connect.challenge", "sessions.changed", "agent", "chat" }
+                    : _systems is not null ? new[] { "connect.challenge", "sessions.changed", "agent" }.Concat(SystemsFixture.Events).ToArray()
                     : new[] { "connect.challenge", "sessions.changed", "agent" },
                 capabilities = _publishedModelCatalog
                     ? new[] { "session-scoped-model-catalog", "published-model-catalog" }
@@ -329,7 +349,7 @@ public sealed partial class GatewayScenario
             },
             snapshot = new
             {
-                presence = Array.Empty<object>(), health = _reads["health"],
+                presence = _systems?.Presence() ?? Array.Empty<object>(), health = _reads["health"],
                 sessionDefaults = new { defaultAgentId = "main", mainKey = "main", mainSessionKey = MainSessionKey, scope = "per-sender" }
             },
             auth = new
@@ -340,6 +360,7 @@ public sealed partial class GatewayScenario
                     : IsInteractive
                         ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
                         : _contextUsage is not null ? new[] { "operator.read", "operator.write" }
+                        : _systems is not null ? new[] { "operator.admin", "operator.read", "operator.pairing" }
                         : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null
                             ? new[] { "operator.admin", "operator.read" }
                             : new[] { _setup is null ? "operator.read" : "operator.admin" }
@@ -395,6 +416,8 @@ public sealed partial class GatewayScenario
         }
         if (method == "exec.approval.resolve")
             return ResolveApproval(parameters);
+        if (_systems is not null && _systems.Handles(method))
+            return _systems.Respond(method, parameters);
         if (_allowSessionMutations && method == "sessions.create")
             return CreateConversation(parameters);
         if (_allowSessionMutations && method is "sessions.patch" or "sessions.delete")

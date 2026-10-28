@@ -12,6 +12,20 @@ dotnet test tests\OpenClaw.Tray.UITests --no-build -c Debug -r win-x64 --filter 
 
 Those tests launch the app in a real Windows desktop process and scan pages for WCAG violations through Axe.Windows. Failures are summarized in the GitHub Actions step summary and written to `Accessibility.trx`.
 
+The preceding framework UI lane preserves failed test exit codes and writes
+`native-failure.json` with allowlisted Application Error module/exception metadata
+and installed Windows App Runtime versions. It does not collect memory dumps,
+event messages, command lines, paths or environment values. Missing event access
+is reported as unavailable, not successful native diagnosis. Testhost phase logs
+distinguish COM-wrapper initialization from Windows App SDK bootstrap.
+Watchdog-terminated hangs may have no Application Error event; use the phase logs
+and interrupted-test sequence in that case. An instrumented passing run does not
+erase an earlier crash or establish its cause.
+The test application writes unhandled exception types, HRESULTs and managed method
+names directly to the standard error stream. This bypasses per-test console
+buffering that can lose the last diagnostic on native fail-fast. Exception messages,
+data, file paths and locals are not included, and exceptions remain unhandled.
+
 ## Running locally
 
 From the repository root:

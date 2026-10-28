@@ -126,7 +126,7 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
 | SessionsPage | Sessions, ModelsList |
 | ChannelsPage | Channels |
 | UsagePage | Usage, UsageCost, UsageStatus |
-| InstancesPage | Nodes, Presence |
+| SystemsPage | Status, Nodes, Presence, Sessions, Config, NodePairList, DevicePairList (plus `SystemsInventoryChanged` and `NodeHostStatsReceived` client events) |
 | ConfigPage | Config, ConfigSchema |
 | BindingsPage | Config |
 | CronPage | CronList, CronStatus, CronRuns |

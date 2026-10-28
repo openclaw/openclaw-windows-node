@@ -10,7 +10,8 @@ param(
     [Parameter(Mandatory)][string]$TrxFileName,
     [string]$Runtime,
     [string]$Filter,
-    [ValidateRange(0, 3600)][int]$HangTimeoutSeconds = 0
+    [ValidateRange(0, 3600)][int]$HangTimeoutSeconds = 0,
+    [switch]$CollectNativeFailureMetadata
 )
 
 Set-StrictMode -Version Latest
@@ -69,8 +70,20 @@ if ($collectCoverage) {
     & dotnet @testArguments
 }
 
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+$testExitCode = $LASTEXITCODE
+if ($testExitCode -ne 0) {
+    if ($CollectNativeFailureMetadata) {
+        try {
+            . (Join-Path $PSScriptRoot "NativeTestFailureMetadata.ps1")
+            Write-CiNativeFailureMetadata -StartedUtc $invocation.startedUtc `
+                -TestCommandExitCode $testExitCode `
+                -OutputPath (Join-Path $ResultsDirectory "native-failure.json")
+        } catch {
+            Write-Warning ("Secondary native diagnostic failure ({0}); preserving test exit code {1}." -f
+                $_.Exception.GetType().Name, $testExitCode)
+        }
+    }
+    exit $testExitCode
 }
 $result = Read-TestResultContract -Path $invocation.report -StartedUtc $invocation.startedUtc -ExitCode 0 -AllowSkipped
 Write-Host ("CI test results: " + ($result | ConvertTo-Json -Compress))

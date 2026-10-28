@@ -564,9 +564,10 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var startupOccurrence = server.Requests.Count(request => request.Method == "agents.list") + 1;
         await manager.ConnectAsync(preparation.Verification.GatewayId, deadline.Token);
-        // The handshake precedes the normal client's initial reads. Drain them before
-        // asserting that Ready observation and invalidation issue no new requests.
-        await server.WaitForRequestAsync("agents.list", null, startupOccurrence, deadline.Token);
+        // Connect completes before the client's initial background reads. Drain their final request
+        // before asserting that Ready invalidation and navigation issue no new requests.
+        await server.WaitForCompletedRequestAsync("agents.list", occurrence: startupOccurrence,
+            cancellationToken: deadline.Token);
         Task<SetupVerifiedNativeRoute> VerifyAsync(CancellationToken ct) =>
             SetupNativeCompletionVerifier.VerifyAsync(data, preparation.Verification, ct, manager, captureReadiness: true);
         var store = new SetupDashboardHandoffStore(data);

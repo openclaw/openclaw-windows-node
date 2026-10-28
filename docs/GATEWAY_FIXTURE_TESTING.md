@@ -186,6 +186,34 @@ and resetting for a new job. Artifacts include owned-window editor captures
 and the exact synthetic schedules read back after accepted saves. This proves
 the app/fixture wire path, not production Gateway persistence or scheduling.
 
+## Systems inventory proof
+
+The `systems-inventory` and `systems-empty` scenarios back the native Systems
+page. `systems-inventory` serves `environments.list`, `system.info`, `node.list`
+with host statistics, pending node and device pairings, `backup.status` and
+`storage.locations.probe`, and presence beacons for connected apps. Session
+rows carry placement and exec bindings so machines show related sessions.
+Timestamps are relative to the current time, and host statistics move between
+reads so sparklines collect history. Pairing decisions, node removal and
+enabling desktop access still receive the read-only protocol error.
+`systems-empty` returns an empty inventory.
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario systems-inventory
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario systems-inventory -Theme Dark
+```
+
+Navigate with local MCP `app.navigate` and `{"page":"systems"}`, or open one
+machine with `{"page":"systems:node:fixture-studio"}`. `-Theme` (Light by
+default, or Dark) sets the isolated profile's app theme, because local MCP cannot
+change it.
+
+The page polls the selected machine every `OPENCLAW_SYSTEMS_POLL_SECONDS`
+(default 15, minimum 5) and reloads the inventory once per burst of Gateway
+events, `OPENCLAW_SYSTEMS_EVENT_REFRESH_MS` (default 1500) after the first one.
+Windows nodes publish host statistics every
+`OPENCLAW_NODE_HOST_STATS_INTERVAL_SECONDS` (default 60).
+
 ## Targeted context-usage proof
 
 `ContextFooterReconcilesLiveReplayHistoryAndAuthoritativeUsage` opts into

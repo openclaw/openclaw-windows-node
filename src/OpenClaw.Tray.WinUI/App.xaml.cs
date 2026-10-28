@@ -109,6 +109,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     internal VoiceService? VoiceService => _nodeService?.VoiceService ?? _standaloneVoiceService;
     /// <summary>The full device ID of the local node service (if running).</summary>
     internal string? NodeFullDeviceId => _nodeService?.FullDeviceId;
+    internal IReadOnlyCollection<string> OwnNodeIds => BuildOwnNodeIds();
     /// <summary>Live node service instance used by settings surfaces for MCP status.</summary>
     internal NodeService? ActiveNodeService => _nodeService;
     internal ExecApprovalsStore ExecApprovalsStore =>
@@ -203,6 +204,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private UpdateCoordinator? _updateCoordinator;
     private GatewayService? _gatewayService;
     private PairingApprovalCoordinator? _pairingApprovalCoordinator;
+    /// <summary>Inbound pairing approvals, surfaced inline by the Systems page.</summary>
+    internal PairingApprovalCoordinator? PairingApprovals => _pairingApprovalCoordinator;
     private OpenClawTray.Dialogs.PairingApprovalDialog? _pairingApprovalDialog;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _pairingApprovalPollTimer;
     

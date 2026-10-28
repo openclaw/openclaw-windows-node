@@ -6189,4 +6189,77 @@ public class OpenClawGatewayClientTests
         Assert.Single(authEvents);
         Assert.Contains("device signature", authEvents[0], StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void ParseNodeList_AttachesHostStatsToTheirNode()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+
+        var nodes = helper.ParseNodeListPayload("""
+        {"nodes":[
+          {"nodeId":"studio","displayName":"Studio","connected":true,
+           "hostStats":{"cpuCount":16,"loadAverage":[1.5,1.2,1.0],"memoryTotalBytes":1000,"memoryFreeBytes":400,
+                        "diskTotalBytes":5000,"diskAvailableBytes":2000,"updatedAtMs":1700000000000}},
+          {"nodeId":"bare","connected":false,"hostStats":{"cpuCount":"bad"}}
+        ]}
+        """);
+
+        var studio = Assert.Single(nodes, node => node.NodeId == "studio");
+        Assert.Equal(16, studio.HostStats?.Measurements.CpuCount);
+        Assert.Null(Assert.Single(nodes, node => node.NodeId == "bare").HostStats);
+    }
+
+    [Fact]
+    public void ParseSessions_ReadsPlacementAndClearsItWhenAnAuthoritativeRowOmitsIt()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        helper.ParseSessionsPayload("""
+        [{"key":"agent:main:main","execNode":"mac",
+          "placement":{"state":"active","environmentId":"node:studio","runner":{"kind":"device","status":"available","deviceId":"studio"}}}]
+        """);
+
+        var placement = Assert.Single(helper.GetSessionList()).Placement;
+        Assert.Equal(new OpenClaw.Shared.Systems.SessionPlacementInfo(
+            OpenClaw.Shared.Systems.SessionPlacementState.Active, "node:studio", "studio"), placement);
+
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"}]""");
+        Assert.Null(Assert.Single(helper.GetSessionList()).Placement);
+    }
+
+    [Theory]
+    [InlineData("node.runnerInventory.changed")]
+    [InlineData("config.changed")]
+    [InlineData("presence")]
+    public void ProcessRawMessage_InventoryEventsRaiseSystemsInventoryChanged(string eventName)
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        var raised = new List<string>();
+        client.SystemsInventoryChanged += (_, name) => raised.Add(name);
+
+        helper.ProcessRawMessage($$$"""{"type":"event","event":"{{{eventName}}}","payload":{"presence":[]}}""");
+
+        Assert.Equal([eventName], raised);
+    }
+
+    [Fact]
+    public void ProcessRawMessage_NodeHostStatsEventCarriesNodeAndStats()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        OpenClaw.Shared.Systems.NodeHostStatsEvent? received = null;
+        client.NodeHostStatsReceived += (_, update) => received = update;
+
+        helper.ProcessRawMessage("""
+        {"type":"event","event":"node.hostStats","payload":{"nodeId":"studio",
+          "hostStats":{"cpuCount":4,"memoryTotalBytes":100,"memoryFreeBytes":25,"updatedAtMs":1700000000000}}}
+        """);
+        helper.ProcessRawMessage("""{"type":"event","event":"node.hostStats","payload":{"nodeId":"studio","hostStats":{}}}""");
+
+        Assert.NotNull(received);
+        Assert.Equal("studio", received!.NodeId);
+        Assert.Equal(75, received.Stats.Measurements.MemoryUsedBytes);
+    }
 }

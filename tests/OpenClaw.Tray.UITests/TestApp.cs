@@ -56,8 +56,7 @@ internal sealed class TestApp : Application, IXamlMetadataProvider
         var resourceCache = localization.GetField("s_resourceManager", BindingFlags.NonPublic | BindingFlags.Static)
             ?? throw new MissingFieldException(localization.FullName, "s_resourceManager");
         resourceCache.SetValue(null, productResources);
-        UnhandledException += (_, args) =>
-            Console.Error.WriteLine($"WinUI test host unhandled exception: {args.Exception}");
+        UnhandledException += (_, args) => OpenClaw.TestSupport.NativeTestFailureTrace.Write(args.Exception);
     }
 
     private static readonly (string Key, Windows.UI.Color Color)[] FluentBrushFallbacks =

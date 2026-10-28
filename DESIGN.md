@@ -1027,6 +1027,24 @@ The [120-DPI comparison](.agents/design/reference/chat-comparison.png) preserves
 
 The Colophon catalog now uses the actual geometry, semantic alpha brushes and Fluent glyphs. It is **not a verified pixel-identical native renderer**: Mica is wallpaper/activation-dependent; this host's native UI Automation reports Segoe UI Variable while Chromium resolves the requested family to Segoe UI; and text rasterization/layout rounding differ. The installed schema also lacks responsive breakpoints, row-hover opacity, gradient elevation borders and native input/flyout behavior. Fixed-size references must not become production layout code. High-contrast preview swatches are resource simulations, not evidence of Windows HC mode.
 
+## Systems page
+
+The Systems page (`Systems/SystemsPageView.cs`, Reactor) has more personality than the calm settings surfaces, because it is a fleet dashboard. Its palette lives in `Themes/SystemsResources.xaml`, with Default, Light and HighContrast dictionaries:
+
+| Role | Resource | Dark | Light |
+| --- | --- | --- | --- |
+| Load, Gateway host | `SystemsLoadBrush` | `SystemAccentColorLight2` | `SystemAccentColorDark1` |
+| Memory, paired nodes, sessions | `SystemsMemoryBrush` | #B9A4FF violet | #6B4FBB violet |
+| Disk, workers, storage | `SystemsDiskBrush` | #5FD4D9 teal | #00747A teal |
+| Neutral, connected apps | `SystemsNeutralBrush` | `TextFillColorSecondary` | `TextFillColorSecondary` |
+
+- **Usage.** Each hue has a `*TintBrush` (same color at 10-16% opacity) for glyph chips, pills and meter tracks. Success, caution and critical states use the native `SystemFillColor*` brushes with matching `Systems*TintBrush` tints. `SystemsHeroBrush` is a soft accent, violet and teal diagonal wash behind the selected machine.
+- **Rules.**
+  - Load follows the user's accent. Violet and teal are fixed so the three metrics stay distinguishable.
+  - Every hue appears with a glyph and a text label, so status never relies on color alone.
+  - In high contrast, every hue maps to `SystemColorHighlightColor` or window colors. The hero wash and the sparkline gradient are removed.
+- **Motion.** `SystemsSparkline` is a native area chart. Its "now" dot pulses only while data is live and Windows animation effects are on. Switching machines plays a short fade and slide unless reduced motion is requested.
+
 ## Workspace shell
 
 The landing window is the native Home and Sessions workspace (`Windows/WorkspaceWindow.xaml`, shipped in #1541). The reference is reconciled against production commit `dc9f6345821075362580bd598cc32e4f2aa6a18a` and the supplied 125%-scale screenshot. It shows that screenshot's expanded, no-agent/no-session state, Owner / Error footer and one notification, not invented connected conversations. It is a Mica window with a 32px title bar, a 256px left `NavigationView` pane, and a content host that mounts the Reactor chat when connected. Settings remains an independent native companion window.

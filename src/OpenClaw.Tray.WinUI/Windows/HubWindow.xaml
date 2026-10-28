@@ -76,7 +76,7 @@
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_109" x:Name="NavChannels" Tag="channels" Content="Channels">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Channels_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
-                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_112" x:Name="NavInstances" Tag="instances" Content="Instances">
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_112" x:Name="NavInstances" Tag="systems" Content="Systems">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Instances_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_124" x:Name="NavCron" Tag="cron" Content="Cron">

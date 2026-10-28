@@ -10,7 +10,8 @@ public sealed class HubPageRegistryTests
     [InlineData("general", "connection")]
     [InlineData("about", "settings")]
     [InlineData("info", "settings")]
-    [InlineData("nodes", "instances")]
+    [InlineData("nodes", "systems")]
+    [InlineData("instances", "systems")]
     [InlineData("cron", "agent:alpha:cron")]
     [InlineData("workspace", "agent:alpha:workspace")]
     [InlineData("HOME", "HOME")]
@@ -22,7 +23,10 @@ public sealed class HubPageRegistryTests
 
     [Theory]
     [InlineData("local-ai", (int)HubPageKind.LocalAi)]
-    [InlineData("nodes", (int)HubPageKind.Instances)]
+    [InlineData("nodes", (int)HubPageKind.Systems)]
+    [InlineData("instances", (int)HubPageKind.Systems)]
+    [InlineData("systems", (int)HubPageKind.Systems)]
+    [InlineData("systems:node:studio", (int)HubPageKind.Systems)]
     [InlineData("capabilities", (int)HubPageKind.Permissions)]
     [InlineData("permissions", (int)HubPageKind.Permissions)]
     [InlineData("activity", (int)HubPageKind.Channels)]
@@ -37,6 +41,18 @@ public sealed class HubPageRegistryTests
     public void ResolvePage_OwnsDirectLegacyAndAgentMappings(string tag, int expected)
     {
         Assert.Equal((HubPageKind)expected, HubPageRegistry.ResolvePage(tag));
+    }
+
+    [Theory]
+    [InlineData("systems:node:studio", "node:studio", "systems")]
+    [InlineData("systems:gateway", "gateway", "systems")]
+    [InlineData("systems:", null, "systems:")]
+    [InlineData("systems", null, "systems")]
+    [InlineData("SYSTEMS:gateway", null, "SYSTEMS:gateway")]
+    public void SystemsMachineDeepLink_SelectsAMachineAndHighlightsSystems(string tag, string? machine, string navTag)
+    {
+        Assert.Equal(machine, HubPageRegistry.SystemsMachine(tag));
+        Assert.Equal(navTag, HubPageRegistry.NavigationTag(tag));
     }
 
     [Theory]
@@ -60,6 +76,7 @@ public sealed class HubPageRegistryTests
     [InlineData("skills")]
     [InlineData("channels")]
     [InlineData("instances")]
+    [InlineData("systems")]
     [InlineData("agentevents")]
     [InlineData("bindings")]
     [InlineData("config")]
@@ -85,9 +102,13 @@ public sealed class HubPageRegistryTests
     [Theory]
     [InlineData("config", true)]
     [InlineData("CONFIG", true)]
+    [InlineData("systems", true)]
+    [InlineData("instances", true)]
+    [InlineData("nodes", true)]
+    [InlineData("systems:node:studio", true)]
     [InlineData("channels", false)]
     [InlineData(null, false)]
-    public void KeepVisibleDuringDisconnect_OnlyAppliesToConfig(string? tag, bool expected)
+    public void KeepVisibleDuringDisconnect_AppliesToConfigAndSystems(string? tag, bool expected)
     {
         Assert.Equal(expected, HubPageRegistry.ShouldKeepCurrentPageVisibleDuringDisconnect(tag));
     }
@@ -101,7 +122,7 @@ public sealed class HubPageRegistryTests
             new string?[]
             {
                 "connection", "local-ai", "chat", "sessions", "agentevents", "skills",
-                "agent:alpha:cron", "agent:alpha", "channels", "instances", "config",
+                "agent:alpha:cron", "agent:alpha", "channels", "systems", "config",
                 "usage", "bindings", "permissions", "settings", "notifications", null
             },
             commands.Select(CommandValue).ToArray());
