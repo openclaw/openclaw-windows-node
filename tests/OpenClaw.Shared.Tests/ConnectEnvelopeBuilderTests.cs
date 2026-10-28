@@ -40,6 +40,18 @@ public sealed class ConnectEnvelopeBuilderTests
             new BootstrapTokenConnectCredential("handoff-token"),
             "node",
             [])],
+        [Operator(
+            "operator with approval handler",
+            new DeviceTokenConnectCredential("paired-device"),
+            "operator",
+            ["operator.admin", "operator.pairing"],
+            supportsExecApprovals: true)],
+        [Operator(
+            "bootstrap node ignores approval handler opt-in",
+            new BootstrapTokenConnectCredential("handoff-token"),
+            "node",
+            [],
+            supportsExecApprovals: true)],
         [Node("node paired over other credentials", new DeviceTokenConnectCredential("node-device"))],
         [Node("node bootstrap", new BootstrapTokenConnectCredential("node-bootstrap"))],
         [Node("node shared", new TokenConnectCredential("node-shared"))],
@@ -62,6 +74,26 @@ public sealed class ConnectEnvelopeBuilderTests
             AssertSigningCall(testCase, useV2, signer);
             AssertEnvelopeJson(testCase, json);
         }
+    }
+
+    [Theory]
+    [InlineData("operator", true, new[] { "exec-approvals", "model-selection-policy" })]
+    [InlineData("operator", false, new[] { "model-selection-policy" })]
+    [InlineData("node", true, new string[] { })]
+    [InlineData("node", false, new string[] { })]
+    public void OperatorCapabilities_ComposeModelPolicyWithoutMakingHeadlessOrNodeClientsApprovalHandlers(
+        string role, bool supportsExecApprovals, string[] expected)
+    {
+        var testCase = Assert.IsType<EnvelopeCase>(Operator(
+            "capability composition",
+            new DeviceTokenConnectCredential("paired-device"),
+            role,
+            [],
+            supportsExecApprovals));
+        var envelope = Prepare(testCase, new CaptureSigner(), useV2: false);
+        using var json = JsonDocument.Parse(envelope.Serialize(envelope.Sign()));
+
+        Assert.Equal(expected, StringValues(json.RootElement.GetProperty("params").GetProperty("caps")));
     }
 
     [Fact]
@@ -306,7 +338,8 @@ public sealed class ConnectEnvelopeBuilderTests
                     testCase.Credential,
                     Nonce,
                     ChallengeTimestamp,
-                    useV2),
+                    useV2,
+                    testCase.SupportsExecApprovals),
                 signer);
         }
 
@@ -342,8 +375,9 @@ public sealed class ConnectEnvelopeBuilderTests
         string name,
         ConnectCredential credential,
         string role,
-        IReadOnlyList<string> scopes) =>
-        new(name, ConnectEnvelopeProfile.Operator, credential, role, scopes);
+        IReadOnlyList<string> scopes,
+        bool supportsExecApprovals = false) =>
+        new(name, ConnectEnvelopeProfile.Operator, credential, role, scopes, supportsExecApprovals);
 
     private static EnvelopeCase Node(string name, ConnectCredential credential) =>
         new(name, ConnectEnvelopeProfile.Node, credential, "node", []);
@@ -397,7 +431,7 @@ public sealed class ConnectEnvelopeBuilderTests
             PropertyNames(parameters.GetProperty("device")));
         Assert.Equal(testCase.Scopes, StringValues(parameters.GetProperty("scopes")));
         Assert.Equal(
-            testCase.Profile == ConnectEnvelopeProfile.Operator ? [] : ["screen", "system"],
+            ExpectedCapabilities(testCase),
             StringValues(parameters.GetProperty("caps")));
         Assert.Equal(
             testCase.Profile == ConnectEnvelopeProfile.Operator ? [] : ["screen.capture", "system.run"],
@@ -444,7 +478,7 @@ public sealed class ConnectEnvelopeBuilderTests
                 },
                 ["role"] = testCase.Role,
                 ["scopes"] = ToJsonArray(testCase.Scopes),
-                ["caps"] = ToJsonArray(isOperator ? [] : ["screen", "system"]),
+                ["caps"] = ToJsonArray(ExpectedCapabilities(testCase)),
                 ["commands"] = ToJsonArray(isOperator ? [] : ["screen.capture", "system.run"]),
                 ["permissions"] = permissions,
                 ["auth"] = auth,
@@ -463,6 +497,11 @@ public sealed class ConnectEnvelopeBuilderTests
             },
         };
     }
+
+    private static string[] ExpectedCapabilities(EnvelopeCase testCase) =>
+        testCase.Profile == ConnectEnvelopeProfile.Node ? ["screen", "system"] :
+        testCase.Role != "operator" ? [] :
+        testCase.SupportsExecApprovals ? ["exec-approvals", "model-selection-policy"] : ["model-selection-policy"];
 
     private static JsonArray ToJsonArray(IEnumerable<string> values) =>
         new(values.Select(value => (JsonNode?)JsonValue.Create(value)).ToArray());
@@ -510,7 +549,8 @@ public sealed class ConnectEnvelopeBuilderTests
         ConnectEnvelopeProfile Profile,
         ConnectCredential Credential,
         string Role,
-        IReadOnlyList<string> Scopes)
+        IReadOnlyList<string> Scopes,
+        bool SupportsExecApprovals = false)
     {
         public override string ToString() => Name;
     }

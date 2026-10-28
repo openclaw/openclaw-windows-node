@@ -12,7 +12,16 @@ public sealed class KokoroDownloadOwnershipTests
     [InlineData("preview-failure")]
     [InlineData("storage-failure")]
     [InlineData("storage-refresh-after-success")]
-    public async Task PreviewCompletion_PreservesPendingDownloadAndTerminalState(string scenario)
+    public async Task PreviewCompletion_PreservesPendingDownloadAndTerminalState(string scenario) =>
+        await RunHarnessScenarioAsync(scenario);
+
+    [Theory]
+    [InlineData("prefetch-join-provider-change")]
+    [InlineData("prefetch-join-tts-enable")]
+    public async Task SettingsChangeThatStartsPrefetch_AttachesOpenVoiceSettingsPage(string scenario) =>
+        await RunHarnessScenarioAsync(scenario);
+
+    private static async Task RunHarnessScenarioAsync(string scenario)
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var start = new ProcessStartInfo("pwsh")

@@ -23,11 +23,34 @@ separate and does not claim or restore Companion management.
 
 After setup restarts Companion, destination handoff waits for native connection
 startup and any already-admitted Local AI recovery before fresh model verification.
-An unused receipt must still be acquired within five minutes. First exclusive
-acquisition persists one 13.5-minute execution window for the bounded phases below;
-neither restart nor retry renews it. A failed attempt remains available for explicit Retry,
+New preparation receipts start one execution window when issued, 27 minutes at
+the default startup budget and longer with `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`,
+before restarting Companion. This includes old-process Local AI teardown, whose
+guarded WSL Gateway restart may exceed five minutes. First acquisition and retry
+retain that original deadline; neither can renew it. Destination receipts and
+older `preparation-v1` receipts retain five-minute unused admission and start their
+execution window at first exclusive acquisition. Existing 13.5-minute execution
+deadlines from earlier versions also remain unchanged. A restart with a different
+startup override retains the stored deadline within supported bounds: 27 to 141
+minutes for new preparations, and 13.5 to 141 minutes for destination and legacy
+receipts.
+A failed attempt remains available for explicit Retry,
 but automatic reactivation does not show the same failure dialog again. Successful
 runtime checks alone do not prove that a full, potentially longer chat turn has finished.
+
+Readiness is withdrawn when the live Gateway reports configuration changes,
+without replaying setup or model activation. Unrelated chat usage and metadata
+updates do not withdraw readiness. Finishing failures retain
+localized timeout-phase guidance. If safe retry or Back is unavailable, Close
+remains available. Once a restart process has launched, failed shutdown scheduling
+cannot launch another restart through Retry.
+
+WSL Local AI withdrawal confirms a Gateway restart even when the saved provider
+is already absent. A previous Companion process may have removed the saved route
+without confirming that the running Gateway adopted it. An in-memory flag cannot
+prove that uncertainty cleared across Companion restarts. A completed managed
+startup that remains stopped or uninstalled fails
+readiness promptly instead of waiting for the full recovery deadline.
 
 Native installation keeps Back at the left and Cancel setup (or Retry setup) at
 the right, using the same content-sized, 100 px minimum buttons as earlier setup
@@ -458,6 +481,23 @@ If a listener appears between a pending status and the host snapshot, one immedi
 status recheck may admit only a fresh `running` attestation. The full selected-port,
 listener and process-sequence checks still run; another pending status or failed
 attribution rejects the start.
+The startup budget defaults to three minutes. Set `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`
+to whole seconds (30 to 3600) before starting Companion to change it; the published
+connection phase and credential handoff budgets grow with a longer value.
+
+When native setup fails after the package is installed, the setup page keeps the
+failed step, shows the typed failure (for a startup timeout: the phase, budget and
+last package status) and offers recovery actions:
+
+- **Collect Gateway diagnostics** runs `clawctl collect-logs --json` and reveals the
+  package's redacted diagnostics ZIP.
+- **Open terminal** opens `clawctl pwsh` inside the isolated Gateway.
+- **View setup log** reveals `Logs\Setup\native-setup-<utc>.jsonl` under the Companion
+  data folder. It records setup steps, sanitized package commands and the runtime's
+  startup timeline, and the Debug page diagnostics bundle includes it.
+
+The timeout guidance names the override variable. **Retry setup** reruns the full flow.
+
 The published native connection borrow gets up to 210 seconds for startup,
 authenticated handshake and authorization before exact-model verification.
 Preflight and final inspection also consume that outer budget; the confirmation
@@ -470,11 +510,13 @@ Page drain, selection
 verification, runtime startup and published-owner handoff are distinct lifetimes.
 
 `SetupNativeCompletionTiming` defines the published path's enforced phase ceilings:
-210 seconds for the first borrow, 210 seconds to join already-admitted Local AI
+210 seconds for the first borrow, 1,020 seconds to join already-admitted Local AI
 recovery, 210 seconds for a fresh post-recovery borrow, 150 seconds for exact-model
 verification (including the existing 120-second RPC and authorization), and
-30 seconds for navigation. Their 810-second total bounds the exclusive execution
-lease. A phase can fail earlier due to its underlying owner or caller cancellation;
+30 seconds for navigation. Their 1,620-second total bounds the execution window.
+New preparation receipts also charge old-process teardown against this same
+window, so acquisition receives only the remaining time, not a fresh 27 minutes.
+A phase can fail earlier due to its underlying owner or caller cancellation;
 unused phase time is not a guarantee that a different phase may overrun its ceiling.
 Recovery waits never initiate or replay a provider mutation.
 Timeouts retain a typed, finite phase (page drain, connection, Local AI recovery,
@@ -485,9 +527,11 @@ The chooser displays localized phase-specific
 guidance and local diagnostics record only the phase/type, never raw package output,
 model content or credentials.
 
-The five-minute unused-handle admission window is unchanged. The first acquisition
-atomically stores its execution start and deadline under the existing file lock. Retries,
-reacquisition by another process and app restarts use that same absolute deadline.
+Destination and `preparation-v1` receipts retain five-minute unused-handle
+admission. Their first acquisition atomically stores the execution start and
+deadline under the existing file lock. New `preparation-v2` receipts persist both
+at issuance, before old-process teardown. Retries, reacquisition by another process
+and app restarts use that same absolute deadline.
 Expired, malformed, abandoned in-flight and legacy retry records lacking execution
 provenance cannot grant a new window. Legacy unused records retain their original
 five-minute admission deadline. No Gateway credential lifetime changes.
@@ -584,7 +628,8 @@ enabled executable/action, principal, task path and logon trigger. A definite
 rejection with confirmed absence retains the legitimate Run-key fallback.
 
 The trusted profile-local handoff retains exclusive leasing, five-minute unused
-admission and a non-renewable bounded execution deadline,
+admission for destinations and legacy preparations, and a non-renewable bounded
+execution deadline (including teardown for new preparations),
 consumption on successful native presentation and explicit failure retry. New
 `ai-v3:` opaque handles carry a typed native destination and exact verified
 session in the protected record, not in public activation JSON. The experimental
@@ -805,9 +850,20 @@ outside the disabled native option so the Windows Update action stays usable.
 The support card is hidden when native capability is available.
 
 When capability is unavailable, **Open Windows Update** opens
-`ms-settings:windowsupdate`. Guidance names Insider build **26340.9212**, the
-baseline documented by the pinned MXC SDK, or a newer supported build. Reopening
-the page reruns the check; the Welcome page has no **Check again** button.
+`ms-settings:windowsupdate`. Guidance tells users to update to a Windows version
+that supports the native Gateway. It says support is coming soon to all devices
+and, until broad availability, directs users to join the Windows Insider
+Program, select the Beta or Experimental channel, and choose Windows 11, version
+26H1 under **Advanced options** during enrollment. The guidance warns that
+returning to Windows 11, version 25H2/26H2 requires a clean reinstall, as described
+in [Microsoft's Windows core version guidance](https://learn.microsoft.com/en-us/windows-insider/flighting#understanding-windows-core-versions).
+After enrolling, users return to **Settings > Windows Update**, check for
+updates, and may need to wait a few minutes for the update to appear. The copy
+notes that feature availability can vary by device and tells users to reopen
+the page after updating to check support again. The Welcome page has no
+**Check again** button. `NativeGatewayEligibilityTextTests` exercises the production
+rich-text renderer, complete automation name, and repeated rich/plain transitions
+on real WinUI `TextBlock` controls; the gallery also uses that renderer.
 Feature rollout varies; a negative native API result is not proof
 that the build alone is the cause. Probe failures or missing/invalid metadata
 offer retry/Companion repair rather than misleading update advice. Windows Server
@@ -1150,9 +1206,9 @@ does not replay a mutation. Insufficient operator scopes remain an explicit
 error, not a reason to fall back or use node credentials.
 
 After verification, the native chooser finalizes Windows-node workspace guidance
-and the reviewed startup preference before restart. Native Chat and the flyout
-retain their independent Dashboard action. Windows capability consent remains
-in native Permissions, not in the web dashboard.
+and the reviewed startup preference before restart. Dashboard management remains
+in Connection settings and the tray menu, not above Workspace chat. Windows
+capability consent remains in native Permissions, not in the web dashboard.
 
 ### Classic OpenClaw onboard (compatibility)
 

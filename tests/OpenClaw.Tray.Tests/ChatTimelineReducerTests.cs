@@ -5,6 +5,32 @@ namespace OpenClaw.Tray.Tests;
 
 public class ChatTimelineReducerTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BackgroundFinal_PreservesActiveTurnAndCannotReconcileIntoItsAnswer(bool hasStream)
+    {
+        var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "New question", "nonce");
+        if (hasStream)
+            state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("Shared opening"));
+        var updated = ChatTimelineReducer.Apply(state, new ChatBackgroundFinalEvent("Shared opening"));
+        Assert.Equal(state with { Entries = updated.Entries, NextId = updated.NextId }, updated);
+        var background = Assert.Single(updated.Entries, entry => entry.IsBackgroundFinal);
+        Assert.False(background.IsStreaming);
+        Assert.Equal("Shared opening", background.Text);
+        if (hasStream)
+        {
+            updated = ChatTimelineReducer.Apply(updated, new ChatMessageDeltaEvent(" continues"));
+            Assert.Contains(updated.Entries, entry => entry.Id == state.ActiveAssistantId &&
+                entry.Text == "Shared opening continues" && entry.IsStreaming);
+        }
+        updated = ChatTimelineReducer.Apply(updated,
+            new ChatMessageEvent("Shared opening finished", ReconcilePrevious: true));
+        Assert.Contains(updated.Entries, entry => !entry.IsBackgroundFinal && entry.Text == "Shared opening finished");
+        Assert.Contains(background, updated.Entries);
+        Assert.True(updated.TurnActive);
+    }
+
     [Fact]
     public void ChatPermissionDecision_ExistingNumericValuesRemainStable()
     {

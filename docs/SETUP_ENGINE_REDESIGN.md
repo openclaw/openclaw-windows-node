@@ -179,9 +179,17 @@ substitute.
 The [Welcome recommendation policy](ONBOARDING_WIZARD.md#welcome) now checks
 `wxc-exec --probe` session capability before recommending the existing native
 Gateway. `NativeGatewaySetupEligibility` owns admission and selection policy.
-Unavailable capability offers Windows Update with the pinned SDK's Insider
-baseline (26340.9212); failed probes offer retry/repair instead. WSL is always
-visible as the second option after native, with existing-gateway connection third.
+Unavailable capability offers Windows Update guidance. It says native Gateway
+support is coming soon to all devices and, until broad availability, directs
+users to join the Windows Insider Program, select the Beta or Experimental
+channel, and choose Windows 11, version 26H1 under **Advanced options** during
+enrollment. It warns that returning to Windows 11, version 25H2/26H2 requires
+a clean reinstall. After enrolling, users return to
+**Settings > Windows Update** and check for updates. The copy notes that feature
+availability can vary by device and tells users to reopen the page after
+updating to check support again. The live probe remains
+authoritative; failed probes offer retry/repair instead. WSL is always visible
+as the second option after native, with existing-gateway connection third.
 Explicit WSL and existing-gateway choices survive late native probe results. Welcome has no
 manual recheck button; reopening the page checks again. The separate isolation warning/checkbox is removed by the
 2026-09-18 product decision; general security consent remains. This is not
@@ -295,6 +303,14 @@ child. It also preserves the VHD directory unless WSL confirms the distro is
 absent or unregister succeeds. To replace such a legacy distro, uninstall it
 first, using `--uninstall --confirm-destructive` and the same distro name, then
 rerun setup with a supported new name.
+
+Automatic rollback of the WSL-create step has cleanup authority only after that
+execution starts creating the distro. If creation refuses pre-existing state,
+rollback preserves the distro, install directory, ownership marker, and empty
+parent directory. A reused step starts with no authority from an earlier attempt.
+Once creation starts, the existing live-registration ownership and
+unregister-failure preservation gates still apply. Explicit uninstall remains a
+separate, destructive-consent path.
 
 ```json
 {
@@ -642,6 +658,19 @@ Structured JSONL logger. Records sanitized entries for:
 - Errors with stack traces
 
 Log path defaults to `%APPDATA%\OpenClawTray\Logs\Setup\setup-engine-<yyyyMMdd-HHmmss>.jsonl` for setup and `uninstall-engine-<yyyyMMdd-HHmmss>.jsonl` for uninstall.
+
+### Uninstall onboarding reset
+
+The Inno uninstaller invokes `scripts\Uninstall-LocalGateway.ps1` directly,
+not the C# uninstall engine. Both onboarding reset paths remove `GatewayUrl`
+and legacy `Token` / `BootstrapToken` properties from `settings.json`, even
+when node mode and autostart settings are preserved for remaining gateways.
+Other preferences and external gateway records are preserved. The focused
+`UninstallOnboardingSettingsTests` execute only the production PowerShell
+reset and its JSON/logging helpers under Windows PowerShell 5.1 with temporary
+files; they do not prove the full signed-installer uninstall path.
+On a later launch, a URL-less legacy root identity is not migrated or used
+against the default loopback URL. The profile must be reconnected explicitly.
 
 ---
 

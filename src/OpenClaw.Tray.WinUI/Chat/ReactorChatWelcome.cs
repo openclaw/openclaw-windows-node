@@ -20,7 +20,15 @@ internal partial record NativeChatWelcomeAvatarElement;
 /// <summary>Native welcome content. The composer owns its header; the root places secondary content below it.</summary>
 internal static class ReactorChatWelcome
 {
-    internal static Element Header(WorkspaceAgent agent, ChatWelcomeContent? content, double viewportWidth) =>
+    private static readonly (string Id, string ResourceKey)[] Suggestions =
+    [
+        ("whatCanYouDo", "Chat_Welcome_WhatCanYouDo"),
+        ("summarizeRecentSessions", "Chat_Welcome_SummarizeRecentSessions"),
+        ("configureChannel", "Chat_Welcome_ConfigureChannel"),
+        ("checkSystemHealth", "Chat_Welcome_CheckSystemHealth")
+    ];
+
+    internal static Element Header(WorkspaceAgent agent, double viewportWidth) =>
         VStack(8,
             NativeChatWelcomeAvatarElement.NativeChatWelcomeAvatar()
                 .Set(avatar => avatar.Update(agent, ChatVisuals.WelcomeAvatarSize(viewportWidth)))
@@ -33,14 +41,7 @@ internal static class ReactorChatWelcome
                 .TextWrapping(TextWrapping.Wrap)
                 .TextAlignment(TextAlignment.Center).HAlign(HorizontalAlignment.Stretch)
                 .AutomationId("ChatWelcomeAgent"),
-            TextBlock(content is { Status: ChatWelcomeContentStatus.Available, Catalog: { } catalog }
-                    ? catalog.Hint
-                    : LocalizationHelper.GetString(content?.Status switch
-                    {
-                        ChatWelcomeContentStatus.Loading => "Chat_Welcome_Loading",
-                        ChatWelcomeContentStatus.Failed => "Chat_Welcome_Failed",
-                        _ => "Chat_Welcome_Unsupported"
-                    }))
+            TextBlock(LocalizationHelper.GetString("Chat_ZeroState_WelcomeSubtitle"))
                 .FontSize(14).Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                 .TextWrapping(TextWrapping.Wrap)
                 .TextAlignment(TextAlignment.Center).HAlign(HorizontalAlignment.Stretch)
@@ -52,25 +53,24 @@ internal static class ReactorChatWelcome
         IReadOnlyList<ChatThread> recents,
         Action<string>? onRecentPicked,
         Action<string>? onSuggestionPicked,
-        bool disabled,
-        ChatWelcomeContent? content)
+        bool disabled)
     {
-        var catalog = content?.Status == ChatWelcomeContentStatus.Available ? content.Catalog : null;
         var children = new List<Element>();
         if (recents.Count > 0)
         {
-            children.Add(TextBlock(catalog?.RecentChatsLabel ?? LocalizationHelper.GetString("Chat_ZeroState_RecentChats"))
+            children.Add(TextBlock(LocalizationHelper.GetString("Chat_ZeroState_RecentChats"))
                 .FontWeight(FontWeights.SemiBold).FontSize(14)
                 .Margin(0, 0, 0, 4));
             children.AddRange(recents.Select(thread => RecentChat(thread, onRecentPicked, disabled)));
         }
-        else if (catalog is not null)
+        else
         {
-            foreach (var suggestion in catalog.Suggestions)
+            foreach (var (id, resourceKey) in Suggestions)
             {
-                children.Add(Choice(suggestion.Label, "ChatSuggestion_" + suggestion.Id,
-                    () => onSuggestionPicked?.Invoke(suggestion.Prompt), !disabled && onSuggestionPicked is not null)
-                    .WithKey(suggestion.Id));
+                var prompt = LocalizationHelper.GetString(resourceKey);
+                children.Add(Choice(prompt, "ChatSuggestion_" + id,
+                    () => onSuggestionPicked?.Invoke(prompt), !disabled && onSuggestionPicked is not null)
+                    .WithKey(id));
             }
         }
         return VStack(8, children.ToArray())

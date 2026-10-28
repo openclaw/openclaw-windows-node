@@ -49,6 +49,25 @@ fields, returns a server-assigned ID, and exposes it through subsequent
 remain rejected. The test verifies the refreshed selector while retaining the
 existing session and unsent draft. Normal interactive browse runs remain read-only.
 
+Chat cancellation tests explicitly opt into the `chat-send` scenario. It issues
+synthetic run IDs and accepts `chat.abort` only for a run belonging to the supplied
+fixture session. The server can hold send acknowledgements and abort replies,
+then release an abort successfully or with a protocol error. Run-correlated
+lifecycle, assistant-delta, tool-outcome and structured-content chat events exercise the real client and provider
+without contacting an AI provider. These controls do not enable writes in the
+normal browse scenario.
+
+The opt-in `session-mutations` scenario accepts in-memory `sessions.patch`,
+`sessions.delete`, and parallel `sessions.create` requests. Creation uses a known
+parent, returns a distinct server-assigned key/session ID, and exposes the empty
+conversation through session-list and history reads without replacing its parent.
+The response gate can hold creation while the UI navigates elsewhere. Composer
+`/new` tests use this path to check initial Home -> new conversation -> Back/Forward
+and delayed completion on Notifications. A newer page navigation fences the
+pending selection: returning Home retains the original conversation, while the
+created session remains available for explicit sidebar selection. No provider, transcript file, or real
+Gateway is involved; other mutations and unsupported creation parameters still fail.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
@@ -71,6 +90,13 @@ tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
+`GatewayFixtureStartupTests` exercise parent and foreign browser-control startup
+without launching the app. Cancellation and readiness failures must reap the
+owned child, remove its readiness file, and release both listener ports.
+The Shared browser-proxy regression runs the production client and a default-handler
+control in separate test-host processes with explicit proxy settings. It does not
+change the test runner's environment or cached default proxy.
+
 The tests use local MCP for discovery, startup state and page navigation, and
 UI Automation for the actual agent selector, Workspace session sidebar, scrolling and settings
 controls. They verify:
@@ -79,12 +105,31 @@ controls. They verify:
 - Independent profiles, endpoints, tokens and preferences in two concurrent
   application instances. Stopping one must leave the other usable.
 - Repeated A/B session selection and session-specific visible histories.
+- Session-scoped configured model reads retain a current model outside the manual
+  selection policy. Its label and catalog-only reasoning remain available while
+  its picker row stays disabled. The fixture's omitted view uses `default`, like
+  the Gateway, so omitting `view: "configured"` cannot accidentally pass this case.
 - Natural initial-tail visibility of message 240 before any explicit scroll
   command, plus final-message visibility after scrolling at two window sizes.
 - Sessions/Settings/Configuration/Chat navigation, profile-only preference
   persistence, and the Sessions-page Open in chat action.
 - A deliberately held history response arriving after a different session is
   selected, without replacing the visible transcript.
+- Cancelling A through the native Stop action, then streaming and completing B
+  despite A's late terminal and final events.
+- A deferred abort failing after its run has ended, restoring the legitimate
+  trailing final both during and after a newer streaming turn without ending
+  or corrupting that turn. Replayed starts and deltas from the old run remain
+  unable to resume over the new turn.
+- A terminal run's late tool completion repairs only its retained tool while
+  a newer run reuses the tool ID. Repeated background finals render once, with
+  media kept separate from the newer streaming entry. Synthetic audio cards
+  exercise metadata/rendering without playback, resolution or downloads.
+
+The cancellation cases use process-scoped UI Automation, not global keyboard or
+pointer input. They assert visible text and the native Stop/Send action as well
+as supporting MCP state. Notifications and audio remain disabled in the fixture;
+these cases do not prove toast presentation or TTS playback.
 
 `app.chat.snapshot` is supporting evidence, not a rendering assertion. It
 returns only the last 30 entries and does not prove the mounted UI selection.
@@ -100,6 +145,18 @@ call cannot prevent failure reporting and owned-process cleanup.
 
 Inspect the captured PNGs when claiming visual proof. UI Automation alone does
 not detect every overlap, clipping or theme defect.
+
+`HistoricalFractionalVoiceConversationRendersWithoutLoadingPlaceholder` uses
+the opt-in `GatewayScenario.CreateFractionalVoiceHistory()` scenario. It adds
+30 synthetic historical messages, including 18 fractional-millisecond Talk
+rows with realtime voice provenance, block-array user text and no usage fields.
+The real Gateway client protocol test checks every message's content, ID,
+sequence and truncated timestamp. The native UI test checks all 30 projected
+texts, visible final voice content, no loading placeholder, and switching to an
+integer-timestamp typed control and back. Screenshots and the synthetic MCP
+snapshot are retained with the run artifacts. This proves stored-history
+compatibility, not microphone capture, live voice streaming or real Gateway
+pairing, and does not use the reporter's private sessions.
 
 ## Cron editor proof
 
@@ -229,7 +286,7 @@ $releaseApp = '.\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0
 ```
 
 An explicitly selected unpackaged publish executable is also supported. This
-does not prove installer/MSIX behavior, real Gateway pairing, streaming,
+does not prove installer/MSIX behavior, real Gateway pairing, live provider streaming,
 provider behavior, or MXC. Keep the existing full E2E proof for those changes.
 
 ## Isolation contract

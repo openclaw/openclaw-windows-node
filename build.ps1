@@ -326,29 +326,6 @@ if (-not $git) {
     Ensure-GitVersionRepositoryHistory
 }
 
-# Check Node.js + npm (WinUI build runs `npm ci` to restore @microsoft/mxc-sdk
-# so it can copy wxc-exec.exe into the build output)
-$nodeVersion = $null
-try { $nodeVersion = & node --version 2>$null } catch {}
-if (-not $nodeVersion) {
-    Write-Error "Node.js not found (required by WinUI build to restore @microsoft/mxc-sdk)"
-    Write-Info "Install via: winget install OpenJS.NodeJS.LTS"
-    Write-Info "Or download from: https://nodejs.org/"
-    $issues += "Missing Node.js"
-} else {
-    Write-Success "Node.js: $nodeVersion"
-
-    $npmVersion = $null
-    try { $npmVersion = & npm --version 2>$null } catch {}
-    if (-not $npmVersion) {
-        Write-Error "npm not found on PATH (WinUI build invokes `npm ci`)"
-        Write-Info "npm normally ships with Node.js - reinstall Node.js or repair the install"
-        $issues += "Missing npm"
-    } else {
-        Write-Success "npm: $npmVersion"
-    }
-}
-
 # Check Windows SDK (for WinUI)
 $windowsSdkPath = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
 if (Test-Path $windowsSdkPath) {
@@ -396,6 +373,21 @@ $arch = $env:PROCESSOR_ARCHITECTURE
 Write-Success "Architecture: $arch"
 if ($arch -eq "ARM64") {
     Write-Info "ARM64 detected - builds will target ARM64 by default"
+}
+
+# Use the same resolver as the app output. A system-installed redistributable
+# cannot repair the older app-local fallback that shadows it in x64 builds.
+if ($dotnet -and $hasNet10 -and $arch -ne "ARM64" -and $Project -in @("All", "Tray", "WinUI")) {
+    & dotnet msbuild (Join-Path $repoRoot "src\Directory.Build.targets") `
+        -target:ResolveOpenClawVCRuntimeFromVSInstall `
+        -property:OpenClawVCRuntimeArch=x64 -nologo -verbosity:minimal
+    if ($LASTEXITCODE -eq 0) {
+        Write-Success "Compatible app-local Visual C++ runtime detected"
+    } else {
+        Write-Error "Compatible app-local Visual C++ runtime not found"
+        Write-Info "Install or update 'C++ Redistributable Update' (Microsoft.VisualStudio.Component.VC.Redist.14.Latest) in the Visual Studio Installer."
+        $issues += "Missing compatible Visual Studio C++ Redistributable"
+    }
 }
 
 if ($buildStoreMsix) {
@@ -454,14 +446,14 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-if ($CheckOnly) {
-    Write-Host "`nRun without -CheckOnly to build.`n"
-    exit 0
-}
-
 if ($issues.Count -gt 0) {
     Write-Host "`nFix the prerequisite issue(s) above, then rerun .\build.ps1.`n" -ForegroundColor Yellow
     exit 1
+}
+
+if ($CheckOnly) {
+    Write-Host "`nRun without -CheckOnly to build.`n"
+    exit 0
 }
 
 # =============================================================================

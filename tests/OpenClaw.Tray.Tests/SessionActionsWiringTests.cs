@@ -87,7 +87,6 @@ public sealed class SessionActionsWiringTests
         var host = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatHostExtensions.cs");
         var timeline = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
         var chatPage = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ChatPage.xaml.cs");
-        var chatWindow = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml.cs");
         var sessions = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml.cs");
         var checkpoints = ReadSource(
             "src",
@@ -99,12 +98,10 @@ public sealed class SessionActionsWiringTests
         Assert.Contains("Action<string>? onOpenCheckpoints", host);
         Assert.Contains("row.Props.OnOpenCheckpoints!(sessionKey!)", timeline);
         Assert.Contains("onOpenCheckpoints: OpenSessionCheckpoints", chatPage);
-        Assert.Contains("onOpenCheckpoints: OpenSessionCheckpoints", chatWindow);
         Assert.Contains("SessionCheckpointDialogCoordinator.ShowAsync", chatPage);
-        Assert.Contains("SessionCheckpointDialogCoordinator.ShowAsync", chatWindow);
         Assert.Contains("SessionCheckpointDialogCoordinator.ShowAsync", sessions);
         Assert.Contains("XamlRoot = _xamlRoot", checkpoints);
-        Assert.DoesNotContain("ShowHub(\"sessions\")", chatWindow);
+        Assert.DoesNotContain("ShowHub(\"sessions\")", chatPage);
     }
 
     [Fact]

@@ -18,6 +18,12 @@ description: Invoke and troubleshoot OpenClaw Windows-node commands through the 
 `winnode.exe` invokes OpenClaw Windows-node commands on the local tray over a
 loopback MCP HTTP endpoint (default `http://127.0.0.1:8765/`). Enable
 **Local MCP Server** in Settings > Permissions > Integrations before calling.
+A connection refused on that port means the tray is not listening. Do not
+reinstall the CLI. Start the tray with `EnableMcpServer` true, then point
+`OPENCLAW_TRAY_DATA_DIR` at that tray's data directory so the CLI loads
+`mcp-token.txt`. `browser.proxy` stays off `tools/list` until the app has a
+gateway client, a shared token, and a verified browser endpoint. The call
+then returns `Unknown tool: browser.proxy`.
 
 This document is the agent-facing reference: every supported command, its
 argument shape, and the A2UI v0.8 JSONL grammar. It is shipped alongside
@@ -95,6 +101,26 @@ Returns `{ "sent": true }`. All fields optional except `body` in practice.
 ### system.run
 Execute canonical argv. Subject to the local exec approval policy at
 `%APPDATA%\OpenClawTray\exec-approvals.json`.
+
+Supported Windows uses `Microsoft.Mxc.Sdk` 1.0.0 containment. There is no Off
+setting. Positively unsupported Windows instead runs approved argv uncontained,
+with a persistent Node Sandbox warning and disabled sandbox permission controls.
+File/network/clipboard/UI restrictions are not enforced there; approvals,
+deadline, bounded output and revalidation remain active. Missing SDK components,
+unknown/failed probes or native execution failures never downgrade. On supported
+Windows, unsupported/unavailable policy and stale
+authorization are tool errors (`isError=true`). Balanced reads the OS user profile
+and resolved personal/redirected folders; Open reads/writes the same scope.
+Neither grants a whole drive or other users. Projects outside that scope need
+explicit Custom grants. Readonly profile plus selected write children is
+supported. Volume roots are never granted, even readonly. Missing required
+locations block with diagnostics; optional unavailable OneDrive is not included.
+Protected OpenClaw settings,
+SSH, browser-profile and PSReadLine roots remain excluded in every scope.
+Explicit cwd must already be granted; omitted cwd uses private scratch.
+Settings affect new commands only. Pending requests revalidate before spawn.
+Cancellation dismisses approval, releases the prompt lock, and explicitly
+terminates the owned SDK process, including a late native launch.
 ```
 {
   "command": ["executable", "arg", ...], // required
@@ -127,7 +153,10 @@ PowerShell callers must likewise name `powershell.exe` or `pwsh.exe` and its
 `-Command` arguments explicitly. Remove custom `env` from the request; V2 rejects
 non-empty environments rather than approving an executable under hidden process
 configuration.
-Returns `{ stdout, stderr, exitCode, timedOut, durationMs }`.
+Exited commands return `{ stdout, stderr, exitCode, timedOut, success, durationMs }`.
+Retained output is bounded by UTF-8 bytes per stream, including any truncation
+marker, while discarded output continues to drain. Removing policy on exit
+does not undo writes to granted folders.
 
 ### system.run.prepare
 Pre-flight a `system.run` invocation. Same args as `system.run`. Returns the
@@ -330,6 +359,9 @@ where `readiness` ∈ `"ready" | "initializing" | "model-downloading" | "model-n
 Five providers - Kokoro (local neural via kokoro.cpp, default), Piper (local
 neural via Sherpa-ONNX), Windows built-in speech, ElevenLabs (cloud), and
 MiniMax (cloud). Provider + per-provider voice are configured in tray Settings.
+While Kokoro is the provider and TTS is enabled, the tray downloads the selected
+Kokoro voice pack in the background on unmetered connections; until it is ready,
+`tts.status` reports `voice-not-downloaded` and speech falls back to Windows.
 
 ### tts.speak
 Speak text aloud on the Windows node.
@@ -682,6 +714,12 @@ Returns `{ result, files? }` - `files` is an array of `{ path, base64, mimeType 
 
 Requires the gateway URL to have an explicit port (e.g. `ws://localhost:8080`).
 The browser control host must be running locally on `127.0.0.1:<gatewayPort + 2>`.
+
+Listed only when `BrowserProxyActivation` is `RegistrationBlock.None`: the
+toggle is on, a gateway client is attached, the shared gateway token is set,
+and the browser endpoint is verified. MCP-only startup (`EnableMcpServer`
+true, `EnableNodeMode` false) does not attach a gateway client, so this
+command stays off `tools/list` and the call returns `Unknown tool: browser.proxy`.
 
 ---
 

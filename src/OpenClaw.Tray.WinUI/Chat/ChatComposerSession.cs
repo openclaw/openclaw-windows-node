@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using OpenClawTray.Presentation;
 
 namespace OpenClawTray.Chat;
 
@@ -8,9 +9,8 @@ namespace OpenClawTray.Chat;
 /// <see cref="ChatComposerController"/>, and their shared
 /// <see cref="ChatComposerHostActions"/>. Created by the stateless
 /// <see cref="IChatComposerFactory"/> and owned/disposed exactly once by
-/// <see cref="MountedReactorChat"/>. <see cref="ChatPage"/> and <see cref="ChatWindow"/>
-/// each hold a separate session over the same provider, so draft, attachment, focus,
-/// popup, and voice state stay host-local while provider/runtime state is shared.
+/// <see cref="MountedReactorChat"/>. Draft, attachment, focus, popup and voice state
+/// stay mount-local while provider/runtime state survives the Workspace window.
 /// Public only because it is a property type on the pre-existing public
 /// <see cref="OpenClawReactorChatRootProps"/> and a constructor parameter of the
 /// pre-existing public <see cref="MountedReactorChat"/>; every other member (and the
@@ -21,17 +21,27 @@ public sealed class ChatComposerSession : IDisposable
 {
     private int _disposed;
     private long _inputRevision;
+    private readonly ISettingsStore _settingsStore;
+    private readonly SandboxStatusStore _sandboxStatus;
 
     internal ChatComposerSession(
         ChatComposerViewModel viewModel,
         ChatComposerController controller,
         ChatComposerHostActions hostActions,
+        ISettingsStore settingsStore,
+        SandboxStatusStore sandboxStatus,
         ChatPlacementController? placement = null)
     {
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         Controller = controller ?? throw new ArgumentNullException(nameof(controller));
         HostActions = hostActions ?? throw new ArgumentNullException(nameof(hostActions));
         Placement = placement;
+        _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+        _sandboxStatus = sandboxStatus ?? throw new ArgumentNullException(nameof(sandboxStatus));
+        _settingsStore.Changed += OnSettingsChanged;
+        _sandboxStatus.Changed += OnSandboxStatusChanged;
+        ViewModel.ApplySandboxSettings(_settingsStore.Current);
+        ViewModel.ApplySandboxStatus(_sandboxStatus.Current);
     }
 
     internal ChatComposerViewModel ViewModel { get; }
@@ -40,6 +50,12 @@ public sealed class ChatComposerSession : IDisposable
 
     internal ChatComposerHostActions HostActions { get; }
     internal ChatPlacementController? Placement { get; }
+
+    private void OnSettingsChanged(object? sender, SettingsChangedEventArgs args) =>
+        ViewModel.ApplySandboxSettings(args.Snapshot);
+
+    private void OnSandboxStatusChanged(object? sender, SandboxStatusSnapshot snapshot) =>
+        ViewModel.ApplySandboxStatus(snapshot);
 
     /// <summary>Applies the latest committed immutable projection with a
     /// session-monotonic revision that survives composer view remounts.</summary>
@@ -59,6 +75,8 @@ public sealed class ChatComposerSession : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
 
+        _settingsStore.Changed -= OnSettingsChanged;
+        _sandboxStatus.Changed -= OnSandboxStatusChanged;
         Controller.Dispose();
         Placement?.Dispose();
         ViewModel.Dispose();

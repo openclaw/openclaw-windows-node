@@ -49,17 +49,27 @@ public static partial class LocalModelCatalog
             // exceed the KV cache itself when agent conversations switch.
             promptCacheMiB: 0,
             maximumContextCheckpoints: 2,
-            draftGpuLayers: 99),
+            draftGpuLayers: 99,
+            // The prerelease pins never shipped a projector, so their receipts stay text-only.
+            visionProjector: prerelease ? null : new PinnedArtifact(
+                "nemotron-3.5-bolt-vision-projector",
+                ArtifactRole.ModelWeights,
+                new HuggingFaceRevisionSource(
+                    "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF",
+                    "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246"),
+                "mmproj-NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf",
+                1_733_692_736,
+                new Sha256Digest("0ee891eadc7bf0cae6289b249c74eb1ef420534351f6ef8b64d49f0ca6a926b0"))),
         IsDefault: false,
         IsExplicitAlternative: true,
-        SupportsVision: false,
+        SupportsVision: !prerelease,
         RecommendationPriority: 0,
         RuntimeFamily: LlamaRuntimeCatalog.NemotronBoltRuntimeFamily);
 
     private static LocalInferenceRunProfile[] CreateNemotronBoltProfiles() =>
     [
-        NemotronBoltProfile(NativeContextTokens, 12L * 1024 * 1024 * 1024),
-        NemotronBoltProfile(ReducedContextTokens, 8L * 1024 * 1024 * 1024),
+        NemotronBoltProfile(NativeContextTokens, 5L * 512 * 1024 * 1024),
+        NemotronBoltProfile(ReducedContextTokens, 2L * 1024 * 1024 * 1024),
     ];
 
     private static LocalInferenceRunProfile NemotronBoltProfile(int contextTokens, long workspaceBytes) => new(
@@ -69,9 +79,6 @@ public static partial class LocalModelCatalog
         KvCachePrecision.Q8_0,
         KvCachePrecision.F16,
         KvCachePrecision.F16,
-        // RTX Spark N1X near-full prefill, generation, and tool/stream trials
-        // peaked at 30.30 GB (128K) and 34.94 GB (256K) of Windows commit.
-        // These reserves cover recurrent/compute/checkpoint state and retain
-        // at least 2 GiB above the larger measured peak at each context.
+        // Reserve for compute buffers and checkpoints above files and KV: 128K with vision needs about 28 GB.
         workspaceBytes);
 }

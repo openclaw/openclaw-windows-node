@@ -5,7 +5,8 @@ namespace OpenClawTray.Chat;
 /// <summary>
 /// Stateless factory for a per-host-mount <see cref="ChatComposerSession"/>.
 /// Registered as a singleton in the existing DI root; the factory itself starts no
-/// background work and holds only the app-owned <c>IUiDispatcher</c> singleton.
+/// background work and borrows app-owned dispatcher, settings and sandbox status
+/// services. Each session owns its subscriptions to those services.
 /// Internal: only <see cref="ReactorChatHostExtensions.CreateComposerSession"/> (same
 /// assembly) resolves and calls it. It is not part of the pre-existing public host
 /// API (<see cref="ReactorChatHostExtensions.MountReactorChat"/>,

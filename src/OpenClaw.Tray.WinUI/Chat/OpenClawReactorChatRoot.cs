@@ -28,9 +28,7 @@ public sealed record OpenClawReactorChatRootProps(
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
     Action<string>? OnOpenCheckpoints = null,
-    bool IsCompact = false,
     Func<string, bool>? TryCopyText = null,
-    bool ShowSessionPicker = true,
     bool InitialThreadIsExplicitSelection = true);
 
 /// <summary>
@@ -165,9 +163,10 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
 
         var connectionState = ToConnectionState(snapshot.ConnectionStatus);
         var isGatewayConnected = string.Equals(connectionState, "connected", StringComparison.Ordinal);
+        var nativeProvider = props.Provider as OpenClawChatDataProvider;
         if (isGatewayConnected
             && selectedMaterializedThread is not null
-            && props.Provider is OpenClawChatDataProvider nativeProvider)
+            && nativeProvider is not null)
         {
             RunFireAndForget(ct => nativeProvider.LoadHistoryAsync(selectedMaterializedThread.Id, force: false, ct));
         }
@@ -253,10 +252,11 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             : isEmptyConversation
                 ? ReactorChatTimelineMode.Empty
                 : ReactorChatTimelineMode.Timeline;
+        var dataProvider = props.Provider as OpenClawChatDataProvider;
         Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantMediaResolutionResult>>?
-            mediaResolver = props.Provider is OpenClawChatDataProvider dataProvider
-                ? dataProvider.ResolveAssistantMediaAsync
-                : null;
+            mediaResolver = dataProvider is null ? null : dataProvider.ResolveAssistantMediaAsync;
+        Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>>?
+            fileDownloader = dataProvider is null ? null : dataProvider.DownloadAssistantFileAsync;
 
         var timelineProps = new ChatTimelinePresentationContext(
             effectiveThread?.Id,
@@ -286,7 +286,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             ChatRunProgressProjection.Project(timeline,
                 effectiveThread is not null && questionSnapshot?.Prompts.Any(prompt =>
                     prompt.Request.Status == "pending" && ChatQuestionCoordinator.Matches(
-                        prompt.Request, effectiveThread.Id, effectiveThread.AgentId)) == true));
+                        prompt.Request, effectiveThread.Id, effectiveThread.AgentId)) == true),
+            fileDownloader);
 
         void SelectThread(string threadId)
         {
@@ -298,7 +299,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         }
 
         // Bound once (idempotent) so the composer controller can hand a freshly
-        // created "/new" session, or a session-picker selection, back to the root's
+        // created "/new" session or Workspace selection back to the root's
         // selection state without the controller depending on Reactor state directly.
         props.ComposerSession.Controller.BindSelectionHandoff(SelectThread);
 
@@ -346,13 +347,15 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 ConnectionState: connectionState,
                 TurnActive: timeline.TurnActive,
                 CurrentThread: effectiveThread,
-                AvailableChannels: VisibleChannels(snapshot.Threads, effectiveThread),
                 AvailableModels: snapshot.AvailableModels,
                 ModelChoices: snapshot.ModelChoices,
                 MessageOptionsDisabled: timeline.TurnActive || hasPendingQueuedSend,
                 QueuedMessages: queuedMessages,
                 AvailableCommands: snapshot.AvailableCommands,
-                CommandsSupported: snapshot.CommandsSupported)
+                CommandsSupported: snapshot.CommandsSupported,
+                SessionModelCatalogEligible: selectedMaterializedThread is not null
+                    && nativeProvider?.SupportsSessionScopedModelCatalog == true,
+                ModelCatalogRevision: nativeProvider?.ModelCatalogRevision ?? 0)
             {
                 ShowPlacementPickers = placementHistoryReady && mode == ReactorChatTimelineMode.Empty,
                 PlacementTargetIsEmpty = isEmptyConversation,
@@ -363,9 +366,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 props.ComposerSession,
                 composerInputs,
                 snapshot,
-                () => setScrollToBottomToken(scrollToBottomToken + 1),
-                props.IsCompact,
-                props.ShowSessionPicker));
+                () => setScrollToBottomToken(scrollToBottomToken + 1)));
         }
 
         var pendingQuestion = effectiveThread is null ? null : questionSnapshot?.Prompts.FirstOrDefault(prompt =>
@@ -387,8 +388,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 showWelcome
                     ? ReactorChatWelcome.Secondary(
                             ChatWelcomePresentation.RecentChats(snapshot.Threads, effectiveThread?.Id, effectiveThread?.AgentId),
-                            props.ComposerSession.Controller.SelectChannel, onSuggestionPicked, firstSendInFlight,
-                            snapshot.WelcomeContent)
+                            key => props.ComposerSession.Controller.TrySelectSession(key), onSuggestionPicked, firstSendInFlight)
                         .Margin(ChatVisuals.Gutter(viewportWidth), 12, ChatVisuals.Gutter(viewportWidth), 24)
                         .Grid(row: 1)
                     : Empty().Grid(row: 1))
@@ -452,17 +452,6 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             Status = ChatThreadStatus.Running,
             Activity = ChatActivity.Idle,
         };
-    }
-
-    private static IReadOnlyList<ChatThread> VisibleChannels(ChatThread[] threads, ChatThread effectiveThread)
-    {
-        var visible = SessionVisibilityFilter.VisibleChatPickerThreads(threads, effectiveThread.Id)
-            .Where(thread => !string.IsNullOrWhiteSpace(thread.Title)
-                && thread.IsVisibleInSessionPicker(effectiveThread.Id))
-            .ToList();
-        if (!visible.Any(thread => string.Equals(thread.Id, effectiveThread.Id, StringComparison.Ordinal)))
-            visible.Insert(0, effectiveThread);
-        return visible;
     }
 
     private void OnPermission(string threadId, string requestId, string action) =>

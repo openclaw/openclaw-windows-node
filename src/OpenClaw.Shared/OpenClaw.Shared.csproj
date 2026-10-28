@@ -11,10 +11,12 @@
     <InternalsVisibleTo Include="OpenClaw.SetupEngine" />
     <InternalsVisibleTo Include="OpenClaw.Shared.Tests" />
     <InternalsVisibleTo Include="OpenClaw.Tray.WinUI" />
+    <InternalsVisibleTo Include="OpenClaw.Tray.Tests" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+    <PackageReference Include="Microsoft.Mxc.Sdk" Version="1.0.0" />
   </ItemGroup>
 
   <!-- Audio / Speech-to-Text (platform-agnostic components) -->
@@ -25,4 +27,3 @@
   </ItemGroup>
 
 </Project>
-

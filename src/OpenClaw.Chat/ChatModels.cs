@@ -116,8 +116,6 @@ public record ChatThread
     public bool IsBackground { get; init; }
     public bool IsArchived { get; init; }
     public bool IsChannelSession { get; init; }
-    public bool IsVisibleInSessionPicker(string? activeThreadId) =>
-        !IsBackground || string.Equals(Id, activeThreadId, StringComparison.Ordinal);
     public ChatThreadStatus Status { get; init; }
     public ChatActivity Activity { get; init; }
     public string? Cwd { get; init; }
@@ -164,7 +162,8 @@ public record ChatTimelineItem(
     string? ToolRunId = null,
     long ToolLegacyTurn = 0,
     ChatToolErrorTextQuality ToolErrorTextQuality = ChatToolErrorTextQuality.Unspecified,
-    int ToolProgressSequence = 0);
+    int ToolProgressSequence = 0,
+    bool IsBackgroundFinal = false);
 
 public readonly record struct ChatToolCorrelationKey(
     string? RunId,
@@ -254,6 +253,7 @@ public record ChatReasoningDeltaEvent(string Text) : ChatEvent;
 public record ChatReasoningEndEvent() : ChatEvent;
 public record ChatMessageEvent(string Text, string? ReasoningText = null, bool ReconcilePrevious = false, bool IsStreaming = false) : ChatEvent;
 public record ChatMessageDeltaEvent(string Text) : ChatEvent;
+public record ChatBackgroundFinalEvent(string Text) : ChatEvent;
 public record ChatTurnEndEvent(bool RetainToolCorrelations = true) : ChatEvent;
 public record ChatIntentEvent(string Intent) : ChatEvent;
 public record ChatToolStartEvent(
@@ -295,23 +295,6 @@ public record ChatPermissionRequestEvent(string RequestId, string PermissionKind
 public record ChatModelChangedEvent(string Model) : ChatEvent;
 public record ChatRawEvent(string EventType, string? Text = null) : ChatEvent;
 
-public enum ChatWelcomeContentStatus
-{
-    Loading,
-    Available,
-    Unsupported,
-    Failed
-}
-
-public sealed record ChatWelcomeContent(
-    ChatWelcomeContentStatus Status,
-    ChatWelcomeCatalog? Catalog = null)
-{
-    public static ChatWelcomeContent Loading { get; } = new(ChatWelcomeContentStatus.Loading);
-    public static ChatWelcomeContent Unsupported { get; } = new(ChatWelcomeContentStatus.Unsupported);
-    public static ChatWelcomeContent Failed { get; } = new(ChatWelcomeContentStatus.Failed);
-}
-
 /// <remarks>
 /// <see cref="CurrentHistoryThreads"/> contains session keys whose history is authoritative for the current connection.
 /// Null means freshness is unknown, even when a cached timeline has HistoryLoaded.
@@ -329,7 +312,6 @@ public record ChatDataSnapshot(
     IReadOnlyDictionary<string, long>? TimelineGenerations = null,
     IReadOnlyDictionary<string, long>? HistoryRevisions = null,
     IReadOnlyDictionary<string, IReadOnlyList<ChatQueuedMessage>>? QueuedMessagesByThread = null,
-    ChatWelcomeContent? WelcomeContent = null,
     IReadOnlySet<string>? CurrentHistoryThreads = null);
 
 /// <summary>

@@ -61,7 +61,8 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("SetupEngine\\OpenClaw.SetupEngine.UI.exe should not be present", verifier);
         Assert.Contains(@"(^|\\)createdump\.exe$", verifier);
         Assert.Contains(@"(^|\\)RestartAgent\.exe$", verifier);
-        Assert.Contains(@"^tools\\mxc\\[^\\]+\\wxc-exec\.exe$", verifier);
+        Assert.Contains(@"^(plm|wxc-wslc-daemon)\.exe$", verifier);
+        Assert.Contains("@(\"plm.exe\", \"wxc-wslc-daemon.exe\")", verifier);
         Assert.Contains("Unknown executable in release payload", verifier);
         Assert.Contains("Unknown OpenClaw binary in release payload", verifier);
         Assert.Contains("$OpenClawSignerSubject", verifier);
@@ -186,7 +187,11 @@ public sealed class ReleaseSigningWorkflowTests
     {
         var start = workflow.IndexOf("    - name: Create Release", StringComparison.Ordinal);
         Assert.True(start >= 0, "Could not find Create Release step.");
-        return workflow[start..];
+        var nextBoundary = System.Text.RegularExpressions.Regex.Match(
+            workflow[(start + 1)..], @"(?m)^(?:    - |  [A-Za-z0-9_-]+:)");
+        return nextBoundary.Success
+            ? workflow[start..(start + 1 + nextBoundary.Index)]
+            : workflow[start..];
     }
 
 }

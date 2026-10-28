@@ -62,17 +62,6 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
-    public void ChatRequest_RejectsMissingCredentialsAndRetainsValues()
-    {
-        var request = new ChatWindowRequest("ws://127.0.0.1:18789", "token");
-
-        Assert.Equal("ws://127.0.0.1:18789", request.GatewayUrl);
-        Assert.Equal("token", request.GatewayToken);
-        Assert.Throws<ArgumentException>(() => new ChatWindowRequest("", "token"));
-        Assert.Throws<ArgumentException>(() => new ChatWindowRequest("ws://127.0.0.1:18789", ""));
-    }
-
-    [Fact]
     public void LocalAiSetup_ChoosesRecoveryOnlyAfterManagedGatewayProof()
     {
         var manager = ReadManager();
@@ -231,13 +220,13 @@ public sealed class WindowManagerTests
 
         Assert.Contains("if (_hubWindow is null || _hubWindow.IsClosed)", manager);
         Assert.Contains("Show(activateWindow: false)", manager);
-        Assert.Contains("DispatcherQueuePriority.Low", manager);
-        Assert.Contains("_chatWindow.HideNearTray()", manager);
-        Assert.Contains("window.ShowNearTrayAnimated()", manager);
+        Assert.Contains("SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(_workspaceWindow))", manager);
         Assert.Contains("window.Closed -= OnConnectionStatusClosed", manager);
         Assert.Contains("await existingSetupWindow.CleanupCompleted", manager);
         Assert.Contains("_callbacks.ApplyTheme(_keepAliveWindow)", manager);
         Assert.Contains("_callbacks.ApplyTheme(_setupWindow)", manager);
+        Assert.Contains("_callbacks.ApplyTheme(_readyWindow)", manager);
+        Assert.Contains("_callbacks.ApplyTheme(_restartProgressWindow)", manager);
         Assert.Contains("_hubWindow is { IsClosed: false } hub", manager);
         Assert.Contains("(hub.Content as FrameworkElement)?.XamlRoot", manager);
         Assert.Contains("ActiveHubWindow is { } window", manager);

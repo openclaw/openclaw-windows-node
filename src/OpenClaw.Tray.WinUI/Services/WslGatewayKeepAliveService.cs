@@ -222,7 +222,7 @@ internal sealed class WslGatewayKeepAliveService(
                 !doc.RootElement.TryGetProperty("Pid", out var pidElement) ||
                 !pidElement.TryGetInt32(out var pid) ||
                 !doc.RootElement.TryGetProperty("StartTimeUtc", out var startElement) ||
-                !startElement.TryGetDateTime(out var markerStartTimeUtc))
+                !WslKeepAlivePolicy.TryReadMarkerStartTimeUtc(startElement, out var markerStartTimeUtc))
             {
                 return false;
             }

@@ -60,7 +60,7 @@ public sealed class ChatPlacementHistoryProjectionTests
     {
         var inputs = new ChatComposerInputs(
             "connected", false, new ChatThread { Id = "main", Title = "Main" },
-            [], [], null, false, [], null, false);
+            [], null, false, [], null, false);
 
         Assert.False(inputs.PlacementHistoryReady);
         Assert.False(inputs.PlacementTargetIsNew);

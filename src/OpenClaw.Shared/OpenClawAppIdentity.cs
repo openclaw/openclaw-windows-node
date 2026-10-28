@@ -13,6 +13,8 @@ public static class OpenClawAppIdentity
     public const string AppDataRootEnvironmentVariable = "OPENCLAW_TRAY_APPDATA_DIR";
     public const string ReleaseDataDirectoryName = "OpenClawTray";
     public const string DevDataDirectoryName = "OpenClawTray-Dev";
+    /// <summary>Private per-user Companion state, including host-executed package cleanup.</summary>
+    public const string CompanionHomeDirectoryName = ".openclaw-companion";
     public const string NativeGatewaySetupDraftFileName = "native-setup-draft.json";
 
     public static string NormalizeIdentity(string? identity)

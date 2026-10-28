@@ -816,6 +816,9 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             AssertNativeConnectionLabels(editor);
             Find<TextBox>(editor, "AddressInput").Text = "wss://mounted-flow.invalid";
             Find<PasswordBox>(editor, "TokenInput").Password = "synthetic-unsent-test-token";
+            // Text/password change events are queued. Settle the draft before the
+            // fake checks complete inline and cancellation first yields to them.
+            await ui.YieldToRenderAsync();
             Invoke(Find<Button>(editor, "CheckButton"));
             await WaitAsync(() => host.Checks.Count == 1 && Find<Button>(editor, "CheckButton").IsEnabled, "fake Check");
             Assert.Empty(host.Connects);

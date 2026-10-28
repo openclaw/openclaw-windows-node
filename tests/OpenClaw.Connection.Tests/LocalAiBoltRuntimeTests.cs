@@ -68,14 +68,22 @@ public sealed partial class LocalAiPortLifecycleTests
             modelFileVerifier: new AcceptingBoltVerifier(), hardwareProbe: hardware);
 
         Assert.Equal(LocalAiRuntimeState.Healthy, (await runtime.EnsureStartedAsync()).State);
-        Assert.Contains("ctx-size = 131072", (await File.ReadAllTextAsync(paths.RouterPresetPath)).Split(Environment.NewLine));
+        string[] preset = (await File.ReadAllTextAsync(paths.RouterPresetPath)).Split(Environment.NewLine);
+        Assert.Contains("ctx-size = 131072", preset);
+        Assert.Contains("cache-type-k = q8_0", preset);
+        Assert.Contains("cache-type-v = q8_0", preset);
+        // Only the public recipe has a projector (last additional asset), and only it declares image input.
+        Assert.Equal(!prerelease, preset.Contains($"mmproj = {original.AdditionalModelPathsOrEmpty[^1]}"));
+        Assert.Equal(!prerelease, LocalAiGatewayProviderDefinition.BuildProviderJson(
+            (await new LocalAiManifestStore(paths).LoadAsync())! with { Endpoint = new Uri("http://127.0.0.1:28769/v1") })
+            .Contains("\"input\":[\"text\",\"image\"]", StringComparison.Ordinal));
         Assert.Equal(LocalAiRuntimeState.Healthy, (await runtime.RestartAsync()).State);
         Assert.Equal(2, hardware.Calls);
         var current = (await new LocalAiManifestStore(paths).LoadAsync())!.Manifest;
         Assert.Equal(131072, current.ContextLength);
         Assert.Equal(original.ModelId, current.ModelId);
         Assert.Equal(original.ModelAsset, current.ModelAsset);
-        Assert.Equal(Assert.Single(original.AdditionalModelAssetsOrEmpty), Assert.Single(current.AdditionalModelAssetsOrEmpty));
+        Assert.Equal(original.AdditionalModelAssetsOrEmpty.AsEnumerable(), current.AdditionalModelAssetsOrEmpty);
     }
 
     [Fact]
@@ -106,6 +114,8 @@ public sealed partial class LocalAiPortLifecycleTests
         var model = LocalModelCatalog.Find(LocalModelCatalog.NemotronBoltModelId)!;
         var weights = prerelease ? NemotronBoltPrereleaseFixture.Weights : model.Weights;
         var draft = prerelease ? NemotronBoltPrereleaseFixture.DraftWeights : model.Recipe.DraftWeights!;
+        // Prerelease receipts predate the vision projector and stay drafter-only.
+        var additional = prerelease ? ImmutableArray.Create(draft) : LocalModelCatalog.AdditionalArtifacts(model);
         var runtime = LlamaRuntimeCatalog.Find(RuntimeArchitecture.Arm64, model.RuntimeFamily)!;
         var profile = LocalModelCatalog.GetProfiles(model).Single(p => p.ContextTokens == context);
         string cache = temp.Combine("hf");
@@ -132,8 +142,8 @@ public sealed partial class LocalAiPortLifecycleTests
             RuntimeAssets = runtime.Artifacts.Select(Receipt).ToImmutableArray(),
             ModelAsset = Receipt(weights), ModelPath = Path.Combine("models", weights.RelativePath),
             ModelCacheRoot = cache, CachedModelPath = Snapshot(weights),
-            AdditionalModelAssets = [Receipt(draft)],
-            AdditionalModelPaths = [Snapshot(draft)],
+            AdditionalModelAssets = additional.Select(Receipt).ToImmutableArray(),
+            AdditionalModelPaths = additional.Select(Snapshot).ToImmutableArray(),
             ContextLength = context, KeyCachePrecision = profile.KeyCachePrecision,
             ValueCachePrecision = profile.ValueCachePrecision, DraftKeyCachePrecision = profile.DraftKeyCachePrecision,
             DraftValueCachePrecision = profile.DraftValueCachePrecision,

@@ -1,6 +1,6 @@
 # Native chat visual system
 
-The shared ChatPage and ChatWindow use native Reactor/WinUI controls. This
+Workspace's ChatPage uses native Reactor/WinUI controls. This
 presentation follows the reading rhythm of the published 2026.9.4 web chat
 (source `3a9d69db306cd7f081e06254cb89c4bcc14a7107`) without
 replacing Windows chrome, native input, or gateway contracts.
@@ -48,7 +48,7 @@ Additional shared glyph aliases live in `FluentIconCatalog`: `ChevronDown`
 (E70D) and `Stop` (E71A).
 Glyphs do not scale with text. Text containers keep native scaling enabled.
 Chat uses dedicated `ChatSubmit` (Up, E74A) and `ChatAttach` (Add, E710)
-aliases. Global Send and Quick Send metaphors are unchanged.
+aliases. Other Send glyph aliases are unchanged.
 
 ## Theme resources
 
@@ -76,6 +76,7 @@ Windows accent colors; the web reference supplies geometry and motion, not color
 | `ChatQuestionCardStyle` | Native question Border bindings to card fill and question-specific stroke |
 | `ChatCopySuccessBrush` | `SystemFillColorSuccess`; system window text in HC |
 | `ChatPickerAccentBrush` | Light/dark system accent variants; system window text in HC |
+| `ChatSandboxOnBrush` | Light/dark system accent variants; system window text in HC |
 
 HC maps surfaces, strokes and text to system window/button/highlight colors.
 An HC resource simulation is not evidence that Windows HC mode was enabled.
@@ -83,13 +84,12 @@ Progress text and question cards use native style setters rather than copying a
 Reactor-resolved brush. This preserves element-local Light/Dark/HC theme lookup
 and avoids light-theme colors on a dark question surface.
 
-Window layering follows WinUI Gallery: the Hub title bar and expanded navigation
+Window layering follows WinUI Gallery: the Workspace title bar and expanded navigation
 pane reveal Mica, while `NavigationViewContentBackground` supplies one content
 layer (`LayerFillColorDefaultBrush` in Light/Dark, system window in HC).
-The active chat canvas remains transparent above that shell layer.
-The standalone chat window retains Mica and the navigation content resource below
-its header, including disconnected/loading states. Composer and code cards use
-the chat card fill; this does not recolor other Settings or navigation surfaces.
+The embedded chat canvas is transparent so it neither hides nor doubles that
+layer, including disconnected/loading states. The composer and code cards
+use the card fill above that content layer.
 
 ## Controls and states
 
@@ -132,8 +132,8 @@ available even when the visual footer is hidden.
 Text remains selectable and attachment chips remain visible.
 Cancel stays available until dispatch; failures keep their error and removal
 action visible without hovering. Provider promotion replaces the pending row with the normal sent message,
-without adding queue-only rows to history. This applies to both ChatPage and
-ChatWindow. See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
+without adding queue-only rows to history. This applies to Workspace's ChatPage.
+See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
 
 Chat responses are not read aloud by default. Enabling the Text-to-speech
 capability permits playback but does not enable automatic spoken replies.
@@ -149,8 +149,8 @@ occupying a row above the chat surface. Settings' Chat rail action opens Workspa
 without changing the selected Settings page or discarding the chat draft.
 
 An authoritative empty conversation shows **Recent chats** instead of quick-start
-suggestions when the active agent has eligible conversations. The list uses native
-picker visibility, excludes the current session, background, archived and channel
+suggestions when the active agent has eligible conversations. The list includes
+active or token-bearing conversations, excludes the current session, background, archived and channel
 sessions, and shows at most five chats by last update (session key breaks ties).
 `ChatWelcomePresentation` owns this pure projection. Rows retain native button
 focus/hover states and open the original session through the composer controller's
@@ -179,30 +179,13 @@ agent picker, without its adjacent labels. It is 96 pixels, or 64 pixels at view
 widths of 768 pixels and below. The existing `agents.list` response supplies the
 selected agent's image and emoji, with no new request or copied identity.
 
-Welcome copy comes from the connected Gateway's advertised, authenticated
-`controlUi.welcome.get` RPC, with `{ locale }` set to the app's UI language.
-Version 1 returns `requestedLocale`, `resolvedLocale`, `hint`,
-`recentChatsLabel`, and ordered `suggestions` containing `id`, `displayText`,
-and `sendText`. The Gateway derives this catalog from the same welcome key list
-and i18n sources as the web UI during its normal build. The native app does not
-bundle a second prompt list, pin a copy revision, fetch GitHub sources, or execute
-web assets. Unknown suggestion IDs and their supplied order work without a
-Companion update; clicking sends the exact advertised `sendText`.
-
-Content is fetched once per connection and discarded on disconnect. Reconnection
-loads the current Gateway's content, and epoch checks reject late responses and
-queued UI deliveries from the previous connection. The language is fixed for the
-provider lifetime, matching the app's startup-only language override. Missing
-method advertisement or an unknown-method response shows an explicit
-unavailable message, not stale copied prompts. Invalid catalogs and failed
-requests show a separate error with reconnect guidance. In either case the
-composer and recent-chat navigation remain usable; the native localized recent
-chat caption is used when a Gateway caption is unavailable. These compatibility
-messages are the only welcome copy maintained in native resources.
-
-The shared RPC requires the companion upstream Gateway change. Released Gateways
-without it, including the previously tested 2026.9.9 preview, use the explicit
-unavailable state until upgraded to a build containing that contract.
+Welcome guidance, the Recent chats label, and the four starter prompts are
+bundled in the app's native `.resw` resources for all six supported languages.
+They match the current web welcome copy, but Windows owns its presentation and
+updates the strings with the app. No welcome RPC, catalog download, or Gateway
+upgrade is required. Clicking a suggestion sends its displayed text through the
+normal chat send path. Copy uses the app's startup UI language and the existing
+Windows resource fallback, independently of the connected Gateway version.
 
 An authoritative empty chat also shows **Environment** and **Workspace** pickers
 above the writing surface. They use the same native toolbar chrome and searchable,
@@ -260,13 +243,23 @@ so a failed request cannot leave a stale folder selectable.
 A completed `/new` request cannot override a newer session or page navigation;
 the successful session remains discoverable without pulling the user back into chat.
 
-The footer has a leading Attach/session group, model/reasoning selectors, and
+Workspace's sidebar owns session selection; the composer has no session picker.
+The footer has a leading Attach action, model/reasoning selectors, and
 quiet secondary actions beside the primary Send/Stop action. Every control stays
 in one bottom row: model text shrinks rather than moving the selectors above
 the actions. At viewport widths of 560 pixels or less, effort uses a gauge and
 chevron with a 44-pixel target, retaining the full textual automation name and
-tooltip. Below 400 pixels the session trigger uses its existing Sessions icon,
-so Attach, session, model, effort, voice and Send all remain reachable.
+tooltip. Attach, model, effort, Node Sandbox, voice and Send remain reachable in narrow
+layouts through actual-width observation rather than a compact-window mode.
+The [Node Sandbox icon](design/reference/concepts/states/node-sandbox.md) beside
+the microphone in the right-hand action group uses the Windows accent when the latest SDK probe
+supports containment and gray otherwise. It opens a compact native flyout with
+Available, Compatibility, Unavailable, Checking, or Tools off status and a Sandbox
+settings action, not a toggle. Compatibility warns about approved uncontained
+execution on positively unsupported Windows. Failed/uncertain probes never imply
+compatibility; the runner independently admits each command. This does not describe
+Gateway tools or per-command results. Status and system-tools setting changes
+refresh the mounted native composer without replacing drafts or attachments.
 The compact effort trigger has a transparent idle background and the same
 4-pixel interaction corners as the other toolbar controls. Its gauge and
 chevron are vertically centered within the 44-pixel target. The shared toolbar
@@ -324,6 +317,13 @@ replace their navigation algorithm.
 Pending attachments use a bounded horizontal rail with 56-pixel chips, 32-pixel
 removal targets and room for focus visuals instead of growing the composer for
 every file. Video-specific previews are not invented by the native file rail.
+
+On history reload, message-wide structured user attachments appear on the first
+nonempty text part only, not again on later text parts from that same message.
+A textual media envelope retains precedence and prevents a later structured
+fallback from repeating its chips. Matching cached captions preserve internal
+line breaks and restore local filenames; already-flattened legacy captions
+fall back to Gateway filenames. Reloaded descriptors do not restore image bytes.
 
 The model flyout searches and groups only the existing catalog. Provider,
 context and availability descriptions use `ChatModelLabels`. Provider headings

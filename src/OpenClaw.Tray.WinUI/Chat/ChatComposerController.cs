@@ -25,6 +25,13 @@ namespace OpenClawTray.Chat;
 /// </remarks>
 internal sealed partial class ChatComposerController : IDisposable
 {
+    private readonly record struct ModelCatalogRequestKey(
+        string? SessionKey,
+        string? Model,
+        string? Provider,
+        string? AgentId,
+        long Revision);
+
     private readonly ChatComposerViewModel _vm;
     private readonly IChatComposerRuntimePort _port;
     private readonly ChatComposerHostActions _hostActions;
@@ -55,7 +62,8 @@ internal sealed partial class ChatComposerController : IDisposable
     private int _voiceOperation;
     private int _voiceStopOperation;
     private int _sendOperation;
-    private int _catalogOperation;
+    private int _modelCatalogOperation;
+    private ModelCatalogRequestKey? _modelCatalogRequestKey;
     private int _generation;
     private long _selectionRevision;
 
@@ -125,26 +133,22 @@ internal sealed partial class ChatComposerController : IDisposable
     /// <summary>Exposed for disposal characterization tests.</summary>
     internal bool IsDisposed => _disposed;
 
-    /// <summary>Handles a session-picker selection. Reuses the same handoff delegate
-    /// the lifecycle "/new" flow uses to select a freshly created session. No-ops
-    /// after disposal.</summary>
-    public void SelectChannel(string threadId) => TrySelectChannel(threadId);
-
     internal void InvalidatePendingSessionNavigation() => _selectionRevision++;
 
     /// <summary>Returns false until the root is ready, or after disposal, so an
     /// external host can retain its initial-selection handoff instead.</summary>
-    internal bool TrySelectChannel(string threadId)
+    internal bool TrySelectSession(string threadId)
     {
         if (_disposed || _selectedSessionHandoff is null)
             return false;
 
+        var previousThreadId = _vm.Inputs?.CurrentThread.Id;
         InvalidatePendingSessionNavigation();
         _placement?.NavigateTo(threadId);
         _selectedSessionHandoff(threadId);
         if (_disposed)
             return false;
-        _hostActions.SessionSelected?.Invoke(threadId);
+        _hostActions.SessionSelected?.Invoke(threadId, previousThreadId);
         return true;
     }
 
@@ -282,7 +286,7 @@ internal sealed partial class ChatComposerController : IDisposable
                 return false;
             if (result.Succeeded && result.NewSessionKey is { } sessionKey &&
                 selectionRevision == _selectionRevision)
-                TrySelectChannel(sessionKey);
+                TrySelectSession(sessionKey);
             return result.Succeeded;
         }
 
@@ -337,7 +341,7 @@ internal sealed partial class ChatComposerController : IDisposable
     {
         if (!TryGetSessionOptionThread(out var threadId))
             return;
-        if (_vm.Inputs?.ThinkingProfile?.Levels?.Any(option => option.Id == level) != true)
+        if (_vm.ThinkingProfile?.Levels?.Any(option => option.Id == level) != true)
         {
             System.Diagnostics.Trace.WriteLine("[chat] Thinking change ignored because the current profile does not advertise that choice.");
             return;
@@ -368,8 +372,94 @@ internal sealed partial class ChatComposerController : IDisposable
         return true;
     }
 
-    /// <summary>Requests a command-catalog refresh. Assigns a monotonic operation ID
-    /// and threads the shared lifetime token so the outstanding request is actually
+    internal Task ReconcileModelCatalogAsync(ChatComposerInputs inputs)
+    {
+        ArgumentNullException.ThrowIfNull(inputs);
+        var sessionKey = inputs.ConnectionState == "connected"
+            && inputs.SessionModelCatalogEligible
+            && _port.SupportsSessionScopedModelCatalog
+                ? inputs.CurrentThread.Id
+                : null;
+        var requestKey = new ModelCatalogRequestKey(
+            sessionKey,
+            inputs.CurrentThread.Model,
+            inputs.CurrentThread.ModelProvider,
+            inputs.CurrentThread.AgentId,
+            _port.ModelCatalogRevision);
+
+        int operation;
+        int generation;
+        lock (_operationGate)
+        {
+            if (_disposed || _modelCatalogRequestKey == requestKey)
+                return Task.CompletedTask;
+
+            _modelCatalogRequestKey = requestKey;
+            operation = ++_modelCatalogOperation;
+            generation = _generation;
+            if (sessionKey is null)
+            {
+                _vm.SetSessionModelCatalog(null);
+                return Task.CompletedTask;
+            }
+
+            _vm.SetSessionModelCatalog(new ChatSessionModelCatalog(
+                sessionKey,
+                ChatModelCatalogStatus.Loading,
+                []));
+        }
+
+        return LoadSessionModelCatalogAsync(sessionKey, requestKey, operation, generation);
+    }
+
+    private async Task LoadSessionModelCatalogAsync(
+        string sessionKey,
+        ModelCatalogRequestKey requestKey,
+        int operation,
+        int generation)
+    {
+        ModelsListInfo? models = null;
+        Exception? failure = null;
+        for (var attempt = 0; attempt < 2 && models is null; attempt++)
+        {
+            try
+            {
+                models = await _port.RequestSessionModelsListAsync(
+                    sessionKey,
+                    _lifetimeToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (_lifetimeToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+        }
+
+        if (models is null)
+            System.Diagnostics.Trace.WriteLine($"[chat] session models.list failed: {failure}");
+        var catalog = new ChatSessionModelCatalog(
+            sessionKey,
+            models is null ? ChatModelCatalogStatus.Unavailable : ChatModelCatalogStatus.Ready,
+            ChatModelChoice.FromModelsList(models));
+
+        lock (_operationGate)
+        {
+            if (_disposed
+                || generation != _generation
+                || operation != _modelCatalogOperation
+                || _modelCatalogRequestKey != requestKey)
+            {
+                return;
+            }
+            _vm.SetSessionModelCatalog(catalog);
+        }
+    }
+
+    /// <summary>Requests a command-catalog refresh using the shared lifetime token
+    /// so the outstanding request is actually
     /// canceled on dispose. Refreshed results flow back only through the root's
     /// provider-subscribed snapshot/<c>ApplyInputs</c> path (already monotonic-guarded),
     /// so this call itself owns no VM mutation to fence beyond disposal/cancellation.</summary>
@@ -378,16 +468,7 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_disposed)
             return;
 
-        ++_catalogOperation;
         FireAndForget(_ => _port.EnsureCommandCatalogAsync(_lifetimeToken));
-    }
-
-    public void AddAttachment(ChatAttachment attachment)
-    {
-        if (_disposed)
-            return;
-
-        _vm.AddAttachments(new[] { attachment });
     }
 
     /// <summary>Ingests attachments that originate outside the declarative tree (the

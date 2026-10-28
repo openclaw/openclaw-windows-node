@@ -87,6 +87,10 @@ public sealed record ChatEntryMetadata(
     IReadOnlyList<ChatAttachmentPresentation>? Attachments = null,
     ChatAssistantContentPresentation? AssistantContent = null)
 {
+    // Live-only correlation follows the entry's reset/history lifetime.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? BackgroundFinalRunId { get; init; }
+
     // Gateway timestamps fence delayed usage replies without comparing host clocks.
     [System.Text.Json.Serialization.JsonIgnore]
     public long? UsageSnapshotTimestamp { get; init; }

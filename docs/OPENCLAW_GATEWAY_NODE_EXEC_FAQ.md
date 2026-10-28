@@ -122,7 +122,7 @@ and an allow on Windows does not authorize the Mac.
 | Node Mode and locally advertised Windows capabilities | Windows app | Local, because they decide what this Windows machine offers. |
 | Windows `system.run` kill switch | Windows app | Local and enforced before local exec approval. |
 | Windows exec approvals | Windows `exec-approvals.json` | Local and authoritative for Windows process execution. |
-| Windows MXC filesystem, network, clipboard, timeout, and fallback settings | Windows app | Local and enforced by the Windows command runner. |
+| Windows MXC filesystem, network and clipboard permissions | Windows app | Enforced by MXC on supported Windows. Confirmed unsupported Windows runs uncontained with warnings; deadlines and approvals still apply. |
 | Agent sandbox backend and workspace access | Gateway agent config | Gateway-side execution concern, separate from Windows MXC. |
 
 The design rule is: gateway-owned state should be observed or changed through
@@ -345,8 +345,12 @@ The Windows path is:
 9. The approved payload contains the resolved absolute executable path and
    canonical argv. The runner must execute that payload, not reconstruct it
    from untrusted raw text.
-10. `MxcCommandRunner` either uses MXC, denies because strict no-fallback mode is
-    enabled, or uses the explicitly permitted host fallback.
+10. `MxcCommandRunner` builds a typed SDK request, admits its complete policy
+    through native BaseContainer probing, revalidates settings and approval
+    currency, then executes once through the official SDK on supported Windows.
+    Only positively unsupported Windows selects approved direct uncontained
+    compatibility execution. Unknown/failed probes and SDK/policy/execution
+    errors block, never retry on the host.
 11. The node returns stdout, stderr, exit code, timeout, duration, and diagnostic
     execution mode to the gateway.
 
@@ -521,6 +525,15 @@ a shell wrapper, interpreter, or code host, and every durable entry written by
 V2 carries an argument pattern that must match the exact argument list. A name
 catalog is not the security boundary, because renaming a binary would defeat it.
 
+Recognized inline shell commands have no reusable identity. For example,
+`pwsh -EncodedArguments <value> -c <command>` remains one-time-only: the encoded
+argument operand cannot hide the later command flag. The `-ea` alias and supported
+`-encodeda` prefixes have the same behavior. A saved rule for such an invocation
+stays on disk but does not authorize it. Explicit `-File` scripts and positional
+`pwsh` scripts can still receive argument-bound approval. Windows PowerShell
+(`powershell.exe`) treats positional text as command mode, even a lone script
+name; use explicit `-File` for the reusable script form.
+
 One narrow legacy case remains. An allowlist entry written before argument
 binding existed has neither a recorded source nor an argument pattern. Such an
 entry stays valid for an ordinary executable, but it is inert when its resolved
@@ -603,16 +616,32 @@ Windows MXC sandboxing is node-local and is not a gateway plugin.
 SystemCapability
   -> Windows V2 exec approval
   -> MxcCommandRunner
-     -> DirectAppContainerExecutor -> wxc-exec.exe -> AppContainer process
-     -> or approved LocalCommandRunner fallback
+     -> MxcRequestBuilder -> native request admission -> Microsoft.Mxc.Sdk IMxcProcess
 ```
 
 The Windows app knows:
 
 - whether MXC is available on this host;
-- whether Windows sandboxing is enabled;
-- local filesystem, network, clipboard, Windows UI API, timeout, and output policies;
-- whether uncontained host fallback is allowed when MXC is unavailable.
+- local filesystem, network, clipboard, desktop isolation, input-injection denial, timeout, and output policies;
+- whether the complete policy can run on BaseContainer with native sensitive-root
+  denial and without host ACL mutation. SDK, policy and execution failures block.
+  Only a positively unsupported-Windows verdict selects warned, approved
+  uncontained compatibility execution.
+
+Balanced/Open use the OS user profile and resolved redirected personal folders.
+They do not include a drive, every account under `C:\Users`, or projects outside
+those roots. Additional project/write grants are explicit Custom permissions.
+No volume-root entries are emitted: native testing found readonly root grants
+allowed unrelated reads. Missing required roots block with diagnostics; optional
+unavailable OneDrive is declared not included. An explicit cwd outside effective
+grants is blocked; omitted cwd uses private scratch. Existing Custom choices
+survive setup resume. Presets never alter command approvals.
+
+Cancellation reaches the prompt, prompt lock, approval revalidation and owned
+SDK process. A cancelled wait never deletes scratch underneath a late native
+launch. At most eight launch/drain/termination owners remain outstanding.
+Settings changes affect new commands, not running processes. Pending requests
+are revalidated before spawn and cannot use revoked grants or approvals.
 
 The gateway knows that it routed `system.run` to a Windows node and receives the
 result. It does not build the Windows MXC policy. The Windows node does.
@@ -653,18 +682,30 @@ explicitly rather than passing quietly, and it never tolerates any other
 nonzero exit code. See `Diagnostic_SystemRun_SpawnsChildExecutableInSandbox`
 and `AssertApprovedCommandRan` in `tests/OpenClaw.E2ETests/Setup/MxcSetupAndConnectTests.cs`.
 
-By default, Windows enables sandboxing but preserves a compatibility host
-fallback if MXC is unavailable. Enabling **block host fallback when MXC is
-unavailable** changes that case to a deny. The actual result reports whether
-execution used sandbox, host fallback, or host mode.
+Supported Windows always uses MXC. Only positively unsupported Windows uses
+uncontained compatibility execution; Node Sandbox warns and disables sandbox
+permission controls. Saved permissions are retained but are not enforced during
+host execution; command approvals still apply. SDK load,
+probe uncertainty, policy and execution failures never trigger that route.
+Diagnostic execution mode distinguishes sandbox from host. The old sandbox Off
+switch and advanced `SystemRunBlockHostFallbackWhenMxcUnavailable` JSON setting
+are retired. Automatic compatibility does not preserve that setting's old
+conditional refusal of host execution. Turn off **Run system tools** to refuse
+Windows-node `system.run` execution regardless of Windows support. This node
+permission does not disable the Gateway's separate `exec` tool.
 
-MXC also blocks Win32k system calls by default. PowerShell (all versions) and
-some console programs initialize Windows UI APIs even when they do not show a
-window. Enable **Allow Windows UI APIs** on the Node Sandbox page when those
-programs require Win32k compatibility. This keeps filesystem, network,
-clipboard, timeout, and command approval controls in force, but removes the
-Win32k syscall boundary. Clipboard policy and the input-injection denial remain
-in force.
+Windows UI API compatibility is always available inside MXC. PowerShell and
+some console programs initialize these APIs even without showing a window.
+The former **Allow Windows UI APIs** option and its Win32k syscall-blocking
+hardening mode are retired: the SDK request always uses `Ui.Disable=false`.
+Container desktop isolation, desktop/job restrictions, filesystem, network,
+clipboard, timeout, output limits and command approvals remain in force.
+Input injection remains denied. This is not host fallback and does not change
+the positively unsupported Windows compatibility route.
+
+Old `SystemRunAllowWindowsUi` values, including `false`, are ignored on load
+and removed on the next settings save. Unrelated permissions and unknown
+settings fields are preserved. No replacement toggle or confirmation is needed.
 
 Windows UI access is not a process-enumeration permission and does not provide a
 supported host-wide process inventory. In the behavior reported in
@@ -796,8 +837,9 @@ is:
 7. Windows has **Run system tools** enabled;
 8. Windows V2 policy allows or obtains local approval;
 9. Windows policy is still current at the execution boundary;
-10. MXC policy allows the operation, or an explicitly permitted host fallback is
-    used;
+10. MXC policy allows the operation, or confirmed unsupported Windows selects
+    approved uncontained execution. SDK, probe, or execution failures never
+    select uncontained execution;
 11. process launch succeeds with the approved executable, argv, cwd, timeout,
     and supported environment.
 

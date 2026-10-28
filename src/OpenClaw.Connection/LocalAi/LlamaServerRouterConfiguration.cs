@@ -44,28 +44,31 @@ public static class LlamaServerRouterConfiguration
         LocalAiPaths paths,
         LocalAiResolvedInstall install,
         int? listenPort = null) =>
-        BuildCore(paths, install, install.ModelPath, verifiedDraftModelPath: null, listenPort);
+        BuildCore(paths, install, install.ModelPath, verifiedDraftModelPath: null, listenPort, verifiedVisionProjectorPath: null);
 
     /// <param name="verifiedDraftModelPath">
     /// The draft checkpoint's handle-resolved physical path, from the same verification
     /// that opened it. Passing the persisted snapshot path instead would let a
     /// snapshot-link replacement change the file llama-server finally opens, which is
     /// exactly what resolving the primary model through its own handle prevents.
+    /// <paramref name="verifiedVisionProjectorPath"/> follows the same rule for the projector.
     /// </param>
     internal static LlamaServerRouterLaunchPlan BuildForVerifiedRuntime(
         LocalAiPaths paths,
         LocalAiResolvedInstall install,
         string verifiedModelPath,
         string? verifiedDraftModelPath,
-        int? listenPort = null) =>
-        BuildCore(paths, install, verifiedModelPath, verifiedDraftModelPath, listenPort);
+        int? listenPort = null,
+        string? verifiedVisionProjectorPath = null) =>
+        BuildCore(paths, install, verifiedModelPath, verifiedDraftModelPath, listenPort, verifiedVisionProjectorPath);
 
     private static LlamaServerRouterLaunchPlan BuildCore(
         LocalAiPaths paths,
         LocalAiResolvedInstall install,
         string modelPath,
         string? verifiedDraftModelPath,
-        int? listenPort)
+        int? listenPort,
+        string? verifiedVisionProjectorPath)
     {
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(install);
@@ -81,6 +84,10 @@ public static class LlamaServerRouterConfiguration
         LocalModelInfo model = installedPlan.Model;
         LocalInferenceRunProfile profile = installedPlan.Profile;
         string? draftModelPath = ResolveDraftModelPath(manifest, model, verifiedDraftModelPath);
+        // The projector is the last additional asset, after the draft checkpoint.
+        string? visionProjectorPath = model.Recipe.VisionProjector is null
+            ? null
+            : verifiedVisionProjectorPath ?? manifest.AdditionalModelPathsOrEmpty[^1];
 
         string presetPath = paths.ResolveContainedPath(
             Path.GetRelativePath(paths.RootDirectory, paths.RouterPresetPath),
@@ -105,7 +112,7 @@ public static class LlamaServerRouterConfiguration
                 .WithComparers(StringComparer.OrdinalIgnoreCase)
                 .Add("CUDA_VISIBLE_DEVICES", manifest.SelectedGpuId),
             presetPath,
-            BuildPreset(model, profile, modelPath, draftModelPath),
+            BuildPreset(model, profile, modelPath, draftModelPath, visionProjectorPath),
             model.Id);
     }
 
@@ -209,7 +216,7 @@ public static class LlamaServerRouterConfiguration
         if (model.Recipe.DraftWeights is null)
             return null;
         return string.IsNullOrWhiteSpace(verifiedDraftModelPath)
-            ? manifest.AdditionalModelPathsOrEmpty[^1]
+            ? manifest.AdditionalModelPathsOrEmpty[0]
             : verifiedDraftModelPath;
     }
 
@@ -217,12 +224,15 @@ public static class LlamaServerRouterConfiguration
         LocalModelInfo model,
         LocalInferenceRunProfile profile,
         string modelPath,
-        string? draftModelPath)
+        string? draftModelPath,
+        string? visionProjectorPath = null)
     {
         if (modelPath.IndexOfAny(['\r', '\n']) >= 0)
             throw new InvalidDataException("The managed model path cannot be represented safely in a llama-server preset.");
         if (draftModelPath is not null && draftModelPath.IndexOfAny(['\r', '\n']) >= 0)
             throw new InvalidDataException("The managed draft model path cannot be represented safely in a llama-server preset.");
+        if (visionProjectorPath is not null && visionProjectorPath.IndexOfAny(['\r', '\n']) >= 0)
+            throw new InvalidDataException("The managed vision projector path cannot be represented safely in a llama-server preset.");
 
         LocalModelRunRecipe recipe = model.Recipe;
         if (recipe.SpeculativeDecoding == SpeculativeDecodingMode.DraftDFlash && draftModelPath is null)
@@ -233,6 +243,8 @@ public static class LlamaServerRouterConfiguration
         preset.AppendLine();
         preset.Append('[').Append(model.Id).AppendLine("]");
         preset.Append("model = ").AppendLine(modelPath);
+        if (visionProjectorPath is not null)
+            preset.Append("mmproj = ").AppendLine(visionProjectorPath);
         preset.AppendLine("load-on-startup = false");
         preset.Append("ctx-size = ").AppendLine(Invariant(profile.ContextTokens));
         preset.Append("n-predict = ").AppendLine(Invariant(LocalAiGatewayProviderDefinition.GetMaximumOutputTokens(profile.ContextTokens)));

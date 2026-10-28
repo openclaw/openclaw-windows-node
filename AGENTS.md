@@ -16,9 +16,12 @@ requirement. A tool's successful exit is not proof that the intended work ran.
 |---|---|
 | Write, review, or restructure documentation/instructions | [Docs instructions](docs/AGENTS.md) and [technical-documentation](.agents/skills/technical-documentation/SKILL.md) |
 | Write or review a regression test | [Test authoring](docs/TEST_COVERAGE.md#writing-a-regression-test) and [test-audit](.agents/skills/test-audit/SKILL.md) |
-| Select tests and required proof | [Validation plan](docs/TEST_COVERAGE.md#explain-the-validation-plan) and [proof skill](.agents/skills/openclaw-proof-validation/SKILL.md) |
+| Select tests and required proof | [Windows testing](.agents/skills/openclaw-testing/SKILL.md); use the [proof skill](.agents/skills/openclaw-proof-validation/SKILL.md) for runtime evidence |
+| Simplify your own completed change before PR preparation | [PR simplification](.agents/skills/pr-simplify/SKILL.md); preserve distinct Windows contracts and reprove the reduced diff |
+| Prepare a local PR body and readiness handoff | [Windows PR preparation](.agents/skills/windows-pr-prepare/SKILL.md); publication needs separate authority |
 | Change a WinUI owner or its caller | [WinUI instructions](src/OpenClaw.Tray.WinUI/AGENTS.md) and the affected architecture ledger rows |
-| Debug or drive the app through local MCP | [windows-app-mcp](.agents/skills/windows-app-mcp/SKILL.md); use [winnode](.agents/skills/winnode/SKILL.md) for the shipped command contract |
+| Debug Companion, setup, Gateway connection, node capabilities, packaging, or `system.run` | [Windows debugging](.agents/skills/openclaw-debugging/SKILL.md) |
+| Drive the app through local MCP | [windows-app-mcp](.agents/skills/windows-app-mcp/SKILL.md); use [winnode](.agents/skills/winnode/SKILL.md) for the shipped command contract |
 | Review code | [Shared autoreview](.agents/skills/autoreview/SKILL.md); use [Hanselman review](.agents/skills/hanselman-code-review/SKILL.md) when adversarial review is requested |
 | Run remote native Windows proof | [Crabbox](.agents/skills/crabbox/SKILL.md), with explicit host/provider authority |
 | Test against a source-built native Gateway | [native-gateway-from-source](.agents/skills/native-gateway-from-source/SKILL.md) |
@@ -105,15 +108,15 @@ Use the [proof skill](.agents/skills/openclaw-proof-validation/SKILL.md) when a 
 
 ## User-Facing Copy
 
-Prefer one maintained source of truth for strings shared with the Gateway or web dashboard:
+Keep client presentation and Gateway data ownership distinct:
 
-- Before adding copy, find its existing owner and localization resources. Reuse the authoritative content rather than hard-coding or manually copying a second prompt/label catalog into Companion.
+- Before adding copy, find its existing owner and localization resources. Client-owned presentation belongs in native `.resw` resources; shared wording alone does not require a Gateway contract.
 - For cross-client copy that should track the installed Gateway, prefer an existing supported data contract. When a catalog is justified, generate it from the owner's translation sources at build time, package it with that owner, and serve validated, versioned data through the authenticated connection. Do not generate translations at launch or fetch repository sources at runtime.
 - Load shared catalogs asynchronously and cache them at the appropriate connection/package lifetime. Define locale fallback, unsupported-version behavior, and disconnect/update invalidation explicitly. Render strings as data, never executable UI or code.
-- Keep Windows-specific labels and loading/error/compatibility messages in native `.resw` resources. A minimal localized fallback, such as "Recent chats" when the shared catalog is unavailable, is appropriate; a duplicate starter-prompt list is not. Document any necessary duplication and its owner.
+- Keep Windows labels, welcome guidance, starter prompts, and loading/error/compatibility messages in native `.resw` resources. Update all supported languages together.
 - Use the simplest approach that fits. This is not a requirement to add an RPC or catalog for every string; existing native resources are the right home for native-only copy. Add focused coverage for source-to-catalog consistency and consumer failure/fallback behavior when introducing a shared contract.
 
-Reference pattern: welcome copy uses the web i18n sources in `openclaw/openclaw`, a build-generated `dist/control-ui-welcome.json`, and `controlUi.welcome.get`. Companion fetches once per connection; Gateway lazily reads and caches the packaged catalog on the first request. See [the native chat visual contract](docs/CHAT_VISUAL_DESIGN.md#controls-and-states). This pattern requires a Gateway build advertising that method; do not assume all released Gateways support it.
+Welcome copy is bundled with Companion and works independently of Gateway version. See [the native chat visual contract](docs/CHAT_VISUAL_DESIGN.md#controls-and-states).
 
 Do not use em dashes in user-facing prose, including UI text, error messages, CLI output, notifications, and agent-facing help. Use a period, colon, comma, parentheses, or a simple hyphen instead. A standalone em dash is allowed as an unavailable-value or status placeholder.
 
@@ -189,3 +192,27 @@ Important current facts:
 Use `--max-priority P3` with the shared autoreview helper to preserve this
 repository's existing P0–P3 review gate. Follow the
 [shared skill setup](.agents/skills/autoreview/SKILL.md) before running it.
+
+<!-- colophon:start -->
+## Design system
+
+This repository has a living design system at [`DESIGN.md`](DESIGN.md). These files are the **source of truth for design** - tokens, component intent, and principles - and are framework-agnostic. `components.jsonc` shows design intent for preview; it is **not** shipping code.
+**Read it before creating or changing any UI.** To ship, port the design into this app's implementation using the port target(s) below - don't copy `components.jsonc` verbatim.
+
+- `DESIGN.md` - design tokens and rationale: brand, colors, typography, spacing, radii, shadows, principles.
+- `.agents/design/components.jsonc` - the component patterns to reuse (structure, variants, states).
+
+Generate UI from these tokens and patterns: use token names (e.g. `accent`, `ink`, spacing step `4`, radius `md`), not raw hex or ad-hoc px; reuse the documented components instead of inventing new ones; honor the brand voice; and avoid the system's listed anti-references. If you need a value the system doesn't cover, add it to `DESIGN.md` rather than hard-coding a one-off.
+
+Use the **Colophon** tool/canvas to inspect, edit, and preview this system when available. Install the optional plugin with `copilot plugin install karkarl/colophon`. Without the extension, read and edit the files directly; Colophon is not required.
+
+**Port targets** - how a design becomes shipping code here (design stays the source of truth; these say what each surface ships as and which reference/skill to port it with):
+- Default: ships as Native WinUI 3 / C# (Windows Fluent) - port via https://github.com/microsoft/win-dev-skills (helper agent: win-dev-skills)
+- area "chat", components ChatBubble, ChatComposer, ChatThread: ships as Reactor (Microsoft.UI.Reactor) - port via https://github.com/microsoft/microsoft-ui-reactor (no helper agent yet)
+- Canonical implementation owner: OpenClaw Windows (openclaw/openclaw-windows-node)
+- Examples kept aligned via: Tokens are captured by manual inspection of the app's WinUI 3 XAML/C# Fluent resources; re-inspect and update this file when the app's ThemeResource mappings or SystemAccentColor usage change.
+
+Colors in `DESIGN.md` are **preview-only** swatches. When a color has a `resource` (e.g. a WinUI `ThemeResource` key), bind that resource in code - never hard-code the preview hex - so light, dark, and high-contrast themes stay correct. The shipping implementation is canonical; treat `components.jsonc` and the token values as derived visual examples, not a parallel upstream source.
+
+<sub>Managed by [Colophon](https://github.com/karkarl/colophon) - edit `DESIGN.md` to change the system; this block only points to it.</sub>
+<!-- colophon:end -->

@@ -283,7 +283,7 @@ Settings companion and reuses the existing native Settings pages. Its Chat rail
 item opens or focuses Workspace without selecting a Settings page or replacing
 the retained composer. Its activation is queued after NavigationView completes its
 own focus handling. WindowManager restores a minimized Workspace and explicitly
-requests foreground activation, including when the Chat window is already open.
+requests foreground activation, including when Workspace is already open.
 The Gateway dashboard action and its channels/integrations
 description live in their own Connection settings card, not above chat.
 Owner's Settings, Usage, Pair device, and About links open or focus that
@@ -356,10 +356,10 @@ initial launch and secondary-instance forwarding. Unlike a real interactive
 argument-free launch, StartupTask does not implicitly open Workspace. Existing
 first-run setup and restart guards remain in effect.
 
-Chat response notifications are suppressed only while native Workspace is
-visible, not minimized, and showing Home/chat, or the legacy compact chat is
-visible. An existing Settings companion, a hidden/minimized Workspace, or the
-Notifications destination is not evidence that chat is visible. The chat and
+Chat response notifications are suppressed only while Workspace is
+visible, not minimized, and showing Home/chat. An existing Settings companion,
+a hidden/minimized Workspace, or the Notifications destination is not evidence
+that chat is visible. The chat and
 per-type notification settings still apply.
 
 New Workspace resource keys exist in every supported locale. Non-English copy
@@ -564,6 +564,52 @@ The operator client is received through the `OperatorClientChanged` event. The a
 ### Chat timeline event routing
 
 Inbound chat and agent timeline events must include the gateway's canonical `sessionKey`. The tray client must not synthesize a literal `main` key for keyless inbound events, because that can merge unrelated events into the wrong timeline. When a keyless chat or agent event arrives, the tray drops it and raises a one-shot diagnostic so the protocol issue is visible without exposing the dropped message contents.
+
+Live `chat` and `session.message` events also retain the payload's optional
+`runId`, separately from message identity. `ChatConversationState` asks
+`ChatLifecycleState.IsCancelledRun` before admitting assistant or tool chat
+output, so a run cancelled by Stop or by a session reset cannot replace output
+or end a newer turn. A cancelled run stays fenced after its terminal arrives:
+`ChatLifecycleState` retires it into a bounded set (64 run IDs, evicted by
+arrival order) so late chat finals and agent output still cannot reach the
+timeline, and a replayed lifecycle start for an aborted run cannot replace the
+current run. A rolled-back (failed) abort is not retired, and if the run's
+terminal arrived before the abort failed, the rollback releases that abort
+retirement without clearing an independent reset fence. Deferred abort failure
+also releases the run's cancellation state when its active identity has already
+been removed or replaced, but never clears or ends a newer active turn. This
+cleanup is fenced by the original connection/reset generation and disposal.
+A final from a different run is rendered independently while a newer turn is
+active. It cannot reconcile into that turn's streaming entry, contribute a
+cumulative-text prefix, end the turn or emit its completion notification.
+Media metadata belongs only to that background entry, not to the newer streaming
+assistant. Identityless background finals are deduplicated by session, run,
+text and media content, including media-only retransmissions. Different message
+IDs, sequence numbers, runs or media references remain distinct. This live-only
+correlation follows the timeline metadata lifetime rather than a separate cache.
+Once a run's terminal has been observed, its replayed start and non-final output
+also cannot resume over a newer active turn. A normally completed run may still
+repair a tool result or error during that newer turn, but only with both the
+original run/tool identity and a retained terminal-tool correlation. Cancelled
+and reset-retired runs remain blocked, and tool starts or unmatched outcomes
+cannot create or mutate a newer turn's tool state.
+A retired run may
+still close the permission request it left pending (matched by approval ID);
+it cannot add new requests or output. Reset admission also checks
+the supplied run against ignored reset runs before using timestamp admission.
+Runs that completed normally are not fenced. Frames without a run ID retain
+legacy thread-level handling; they cannot be reliably correlated to an older
+run.
+
+Chat admission also controls notification delivery. The synchronous provider
+marks rejected `ChatMessageInfo` frames with `SuppressNotification()` before
+the gateway parser emits its separate notification event. That per-frame veto
+is monotonic and does not suppress delivery to other chat subscribers. It
+prevents rejected finals from reaching notification history, toasts or TTS
+without adding another run cache or moving notification ownership into `App`.
+Consumers that do not apply a veto retain the existing notification behavior,
+including consumers that throw before vetoing. Duplicate-frame dedupe is not
+run admission, so identified duplicate finals keep their notification.
 
 ## Startup wiring (App.xaml.cs)
 
@@ -804,6 +850,15 @@ The bootstrap token is cleared only after operator and node role tokens are both
 
 In-chat exec approval cards sanitize the gateway's command and message before rendering. If either cannot be reviewed in full because it is truncated, suppressed, or conceals command syntax, the card offers only Deny; the chat provider also rejects Allow RPCs that are not permitted by the matching pending card.
 
+The tray composition root opts its `GatewayClientFactory` into `SupportsExecApprovals`
+because it attaches the chat approval handler to each managed operator client.
+The shared client defaults to no approval capability, so standalone CLI, validation,
+pairing and setup-only connections do not keep otherwise unroutable approvals pending.
+Only an opted-in operator-role handshake advertises `exec-approvals`; node-role
+bootstrap handshakes do not. This changes routing, not credentials or granted scopes:
+when a genuine tray approval handler is available, the Gateway can wait for its
+user decision instead of immediately expiring the request as having no approval route.
+
 ## Inbound pairing approval (operator)
 
 The approval popup retains its original compact lock header, spacing, scrollable
@@ -852,7 +907,7 @@ Tray actions should never silently no-op on common pairing/configuration issues:
 
 - Chat resolves credentials from the active registry record and per-gateway identity. If no usable credential exists, it opens Connection settings instead.
 - Canvas opens only when the Windows node is initialized, paired, and the Canvas capability is enabled in settings; otherwise it opens Connection settings.
-- Quick Send uses the live operator client and surfaces scope/pairing errors from gateway calls.
+- Workspace chat uses the live operator connection and surfaces scope/pairing errors from gateway calls. There is no separate Quick Send route.
 - `system.run` and `system.run.prepare` are gated by `NodeSystemRunEnabled` (default `true` for backward compatibility). When disabled, those commands are dropped from advertised capabilities and invocations are rejected.
 
 ## Legacy migration
@@ -862,6 +917,12 @@ On first startup with a `GatewayRegistry`, if no active gateway record exists, t
 - `LegacyToken` → `GatewayRecord.SharedGatewayToken`
 - `LegacyBootstrapToken` → `GatewayRecord.BootstrapToken`
 - Old identity file copied into per-gateway identity directory
+
+Legacy credential and identity migration requires a non-empty `GatewayUrl`
+persisted in `settings.json`. The in-memory default loopback URL is not a saved
+gateway target and never receives a URL-less legacy token or root identity.
+Profiles left in that state by an older uninstaller fail closed and must be
+reconnected explicitly from the Connection page.
 
 Migration is idempotent and deduplicates by URL.
 

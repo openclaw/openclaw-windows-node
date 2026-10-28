@@ -7,6 +7,15 @@ public sealed class PermissionsPageContractTests
     private static readonly XNamespace XNs = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]
+    public void NodeService_SystemRunPermissionIsReadLiveByRetainedCapabilities()
+    {
+        var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs");
+
+        Assert.Contains("includeRunCommands: () => NodeCapabilityGating.ShouldRegisterSystemRun(_settings)", source);
+        Assert.DoesNotContain("includeRunCommands: NodeCapabilityGating.ShouldRegisterSystemRun(_settings)", source);
+    }
+
+    [Fact]
     public void PermissionsPage_Xaml_PreservesCurrentSectionOrderAndMarkers()
     {
         var xaml = ReadPermissionsXaml();

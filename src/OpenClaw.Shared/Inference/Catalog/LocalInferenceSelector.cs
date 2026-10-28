@@ -273,9 +273,7 @@ internal static class LocalInferenceQualificationPolicy
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(profile);
-        long weightsBytes = SaturatingAdd(
-            model.Weights.SizeBytes,
-            model.Recipe.DraftWeights?.SizeBytes ?? 0);
+        long weightsBytes = LocalModelCatalog.TotalDownloadSizeBytes(model);
         return SaturatingAdd(
             SaturatingAdd(
                 SaturatingAdd(weightsBytes, GetKvCacheMemoryBytes(model.Recipe, profile)),

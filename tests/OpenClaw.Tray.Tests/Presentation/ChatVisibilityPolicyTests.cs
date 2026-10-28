@@ -5,22 +5,20 @@ namespace OpenClaw.Tray.Tests.Presentation;
 public sealed class ChatVisibilityPolicyTests
 {
     [Theory]
-    [InlineData(false, true, false, true, false, false, true)] // Visible Workspace chat
-    [InlineData(false, true, true, true, false, false, false)] // Minimized Workspace
-    [InlineData(false, false, false, true, false, false, false)] // Hidden Workspace
-    [InlineData(true, true, false, true, false, false, false)] // Closed Workspace
-    [InlineData(false, true, false, false, false, false, false)] // Notifications, not chat
-    [InlineData(true, false, false, false, true, false, true)] // Compact chat only
-    [InlineData(false, true, true, true, true, false, true)] // Compact chat still visible
-    [InlineData(false, true, false, true, true, true, false)] // Shutdown
-    [InlineData(true, false, false, false, false, false, false)] // Settings companion only
-    public void OnlyVisibleChatSurfacesSuppressNotifications(
+    [InlineData(false, true, false, true, false, true)] // Visible Workspace chat
+    [InlineData(false, true, true, true, false, false)] // Minimized Workspace
+    [InlineData(false, false, false, true, false, false)] // Hidden Workspace
+    [InlineData(true, true, false, true, false, false)] // Closed Workspace
+    [InlineData(false, true, false, false, false, false)] // Notifications, not chat
+    [InlineData(false, true, false, true, true, false)] // Shutdown
+    [InlineData(true, false, false, false, false, false)] // Settings companion only
+    public void OnlyVisibleWorkspaceChatSuppressesNotifications(
         bool closed, bool visible, bool minimized, bool home,
-        bool compactVisible, bool shuttingDown, bool expected)
+        bool shuttingDown, bool expected)
     {
         var workspaceVisible = ChatVisibilityPolicy.IsWorkspaceChatVisible(
             closed, visible, minimized, home ? WorkspacePageId.Home : WorkspacePageId.Notifications);
-        Assert.Equal(expected, ChatVisibilityPolicy.IsChatVisible(shuttingDown, workspaceVisible, compactVisible));
+        Assert.Equal(expected, ChatVisibilityPolicy.IsChatVisible(shuttingDown, workspaceVisible));
     }
 
     [Fact]
@@ -35,7 +33,7 @@ public sealed class ChatVisibilityPolicyTests
         Assert.Contains("Destination.Page", workspace);
         var manager = File.ReadAllText(Path.Combine(root, "Services", "WindowManager.cs"));
         Assert.Contains("_workspaceWindow is { IsChatVisible: true }", manager);
-        Assert.Contains("_chatWindow is { IsClosed: false, Visible: true }", manager);
+        Assert.DoesNotContain("_chatWindow", manager);
         var app = File.ReadAllText(Path.Combine(root, "App.xaml.cs"));
         var method = app[app.IndexOf("private bool ShouldShowNotification(", StringComparison.Ordinal)..];
         method = method[..method.IndexOf("#endregion", StringComparison.Ordinal)];

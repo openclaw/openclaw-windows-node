@@ -24,7 +24,6 @@ internal static class ChatVisuals
     internal const double HeadingTopInset = 8;
     internal const double FooterBreakpoint = 640;
     internal const double CompactEffortBreakpoint = 560;
-    internal const double CompactSessionBreakpoint = 400;
     internal const double AvatarBreakpoint = 960;
     internal const double AvatarSlot = 44;
 
@@ -106,6 +105,11 @@ internal static class ChatVisuals
         border.ClearValue(Border.BackgroundProperty);
         border.ClearValue(Border.BorderBrushProperty);
     }
+    internal static void StyleFlyoutHeading(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"];
+
+    internal static void StyleFlyoutCaption(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"];
 
     private static readonly ConditionalWeakTable<FrameworkElement, SizeChangedEventHandler> Observers = new();
 
