@@ -1,0 +1,70 @@
+<!--
+    Sessions page palette. The eight session colors are the Gateway's named tints
+    (sessions.patch "color"); agents, groups and repositories reuse them through a
+    stable name hash. Each color has a strong brush (text, glyphs, bars; readable on
+    cards) and a translucent tint (chip and avatar fills). High contrast maps every
+    color to system colors, so meaning is always carried by text as well.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="SessionColorRedBrush" Color="#FF99A4" />
+            <SolidColorBrush x:Key="SessionColorRedTintBrush" Color="#E81123" Opacity="0.26" />
+            <SolidColorBrush x:Key="SessionColorBlueBrush" Color="#60CDFF" />
+            <SolidColorBrush x:Key="SessionColorBlueTintBrush" Color="#0078D4" Opacity="0.30" />
+            <SolidColorBrush x:Key="SessionColorGreenBrush" Color="#6CCB5F" />
+            <SolidColorBrush x:Key="SessionColorGreenTintBrush" Color="#13A10E" Opacity="0.26" />
+            <SolidColorBrush x:Key="SessionColorYellowBrush" Color="#FCE100" />
+            <SolidColorBrush x:Key="SessionColorYellowTintBrush" Color="#FFB900" Opacity="0.22" />
+            <SolidColorBrush x:Key="SessionColorPurpleBrush" Color="#C5A6FF" />
+            <SolidColorBrush x:Key="SessionColorPurpleTintBrush" Color="#8764B8" Opacity="0.32" />
+            <SolidColorBrush x:Key="SessionColorOrangeBrush" Color="#FFAB70" />
+            <SolidColorBrush x:Key="SessionColorOrangeTintBrush" Color="#F7630C" Opacity="0.26" />
+            <SolidColorBrush x:Key="SessionColorPinkBrush" Color="#FF8BCB" />
+            <SolidColorBrush x:Key="SessionColorPinkTintBrush" Color="#E3008C" Opacity="0.26" />
+            <SolidColorBrush x:Key="SessionColorCyanBrush" Color="#6EE7EF" />
+            <SolidColorBrush x:Key="SessionColorCyanTintBrush" Color="#00B7C3" Opacity="0.24" />
+            <SolidColorBrush x:Key="SessionsHubSelectedFillBrush" Color="{ThemeResource SystemAccentColorLight2}" Opacity="0.14" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="SessionColorRedBrush" Color="#B3261E" />
+            <SolidColorBrush x:Key="SessionColorRedTintBrush" Color="#E81123" Opacity="0.12" />
+            <SolidColorBrush x:Key="SessionColorBlueBrush" Color="#005FB8" />
+            <SolidColorBrush x:Key="SessionColorBlueTintBrush" Color="#0078D4" Opacity="0.12" />
+            <SolidColorBrush x:Key="SessionColorGreenBrush" Color="#0E700E" />
+            <SolidColorBrush x:Key="SessionColorGreenTintBrush" Color="#13A10E" Opacity="0.14" />
+            <SolidColorBrush x:Key="SessionColorYellowBrush" Color="#7A5200" />
+            <SolidColorBrush x:Key="SessionColorYellowTintBrush" Color="#FFB900" Opacity="0.24" />
+            <SolidColorBrush x:Key="SessionColorPurpleBrush" Color="#6B2FBA" />
+            <SolidColorBrush x:Key="SessionColorPurpleTintBrush" Color="#8764B8" Opacity="0.16" />
+            <SolidColorBrush x:Key="SessionColorOrangeBrush" Color="#A33F00" />
+            <SolidColorBrush x:Key="SessionColorOrangeTintBrush" Color="#F7630C" Opacity="0.14" />
+            <SolidColorBrush x:Key="SessionColorPinkBrush" Color="#A4166A" />
+            <SolidColorBrush x:Key="SessionColorPinkTintBrush" Color="#E3008C" Opacity="0.12" />
+            <SolidColorBrush x:Key="SessionColorCyanBrush" Color="#006777" />
+            <SolidColorBrush x:Key="SessionColorCyanTintBrush" Color="#00B7C3" Opacity="0.16" />
+            <SolidColorBrush x:Key="SessionsHubSelectedFillBrush" Color="{ThemeResource SystemAccentColorDark1}" Opacity="0.08" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="SessionColorRedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SessionColorRedTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SessionColorBlueBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SessionColorBlueTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SessionColorGreenBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SessionColorGreenTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SessionColorYellowBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SessionColorYellowTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SessionColorPurpleBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SessionColorPurpleTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SessionColorOrangeBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SessionColorOrangeTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SessionColorPinkBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SessionColorPinkTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SessionColorCyanBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="SessionColorCyanTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SessionsHubSelectedFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

@@ -10,7 +10,7 @@ param(
     [Parameter(Mandatory)]
     [string]$AppPath,
     [string]$ArtifactsDirectory,
-    [ValidateSet('multi-session-browse', 'chat-interactive', 'context-usage-snapshots')]
+    [ValidateSet('multi-session-browse', 'chat-interactive', 'context-usage-snapshots', 'sessions-hub', 'sessions-hub-readonly')]
     [string]$Scenario = 'multi-session-browse',
     [ValidateSet('streaming', 'chat-deltas', 'tools', 'tool-error', 'agent-activity', 'question-choice', 'question-text', 'question-multi', 'approval', 'approval-deny-only', 'slow', 'send-error', 'stream-error', 'disconnect')]
     [string]$Interaction,

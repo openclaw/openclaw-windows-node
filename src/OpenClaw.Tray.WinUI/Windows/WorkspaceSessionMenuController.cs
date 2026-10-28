@@ -189,6 +189,13 @@ internal sealed class WorkspaceSessionMenuController
         _ => FluentIconCatalog.Copy,
     };
 
+    /// <summary>
+    /// Runs one shared session-menu action outside this controller's own flyout
+    /// (the Settings Sessions page), so both surfaces use the same dialogs, guards and wording.
+    /// </summary>
+    internal Task ExecuteAsync(WorkspaceSessionMenuAction action, WorkspaceSession session, SessionInfo? info) =>
+        RunAsync(action, session, info);
+
     private async Task RunAsync(WorkspaceSessionMenuAction action, WorkspaceSession session, SessionInfo? info)
     {
         try

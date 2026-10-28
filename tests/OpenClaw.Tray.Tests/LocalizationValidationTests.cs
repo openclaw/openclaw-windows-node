@@ -241,17 +241,10 @@ public class LocalizationValidationTests
         // Canonical product surface name, unchanged across locales.
         "SandboxPage_Title.Text",
         "SandboxPage_OneDrive.Text",
-        // SessionsPage runtime accessibility strings — seeded English-only across
-        // all 5 locales using the deferred-translation pattern. These are
-        // tooltip / AutomationProperties.Name overrides on the OpenChat button.
-        // Same precedent as the PermissionsPage / InstancesPage / ConfigPage
-        // runtime keys above.
-        "SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip",
-        "SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         // CronPage / InfoBar / HubWindow nav / CommandCenter runtime strings —
         // seeded English-only across all 5 locales using the deferred-translation
         // pattern. Fetched at runtime via LocalizationHelper. Same precedent as
-        // the PermissionsPage / InstancesPage / SessionsPage runtime keys above.
+        // the PermissionsPage / InstancesPage runtime keys above.
         "CronPage_JobCompleted",
         "CronPage_JobCompletedRanSuccessfully",
         "BindingsPage_CouldNotLoadBindings",

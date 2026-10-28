@@ -314,10 +314,11 @@ public sealed partial class GatewayFixtureProtocolTests
         var active = await client.SendWizardRequestAsync("sessions.list");
         Assert.DoesNotContain(active.GetProperty("sessions").EnumerateArray(),
             row => row.GetProperty("key").GetString() == GatewayScenario.OtherSessionKey);
-        var archived = await client.ListArchivedSessionsAsync();
+        var archivedQuery = new OpenClaw.Shared.Sessions.SessionListQuery { Archive = OpenClaw.Shared.Sessions.SessionArchiveFilter.Archived };
+        var archived = await client.ListSessionsPageAsync(archivedQuery);
         Assert.Equal(GatewayScenario.OtherSessionKey, Assert.Single(archived.Sessions).Key);
         await client.DeleteSessionConfirmedAsync(GatewayScenario.OtherSessionKey, epoch);
-        Assert.Empty((await client.ListArchivedSessionsAsync()).Sessions);
+        Assert.Empty((await client.ListSessionsPageAsync(archivedQuery)).Sessions);
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteSessionConfirmedAsync(GatewayScenario.MainSessionKey, epoch));
         Assert.Empty(server.UnexpectedRequests);
     }

@@ -82,7 +82,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         SessionInfo session;
         if (archived)
         {
-            session = Assert.Single((await client.ListArchivedSessionsAsync()).Sessions);
+            session = Assert.Single((await client.ListSessionsPageAsync(new OpenClaw.Shared.Sessions.SessionListQuery { Archive = OpenClaw.Shared.Sessions.SessionArchiveFilter.Archived })).Sessions);
         }
         else
         {

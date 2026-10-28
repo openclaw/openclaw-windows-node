@@ -9,6 +9,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <ResourceDictionary Source="Themes/ChatResources.xaml" />
+                <ResourceDictionary Source="Themes/SessionsHubResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <!-- Setup-only indicator brushes. They must live at App scope (not just in

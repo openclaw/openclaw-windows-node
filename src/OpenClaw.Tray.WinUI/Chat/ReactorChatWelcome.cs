@@ -102,22 +102,22 @@ internal static class ReactorChatWelcome
     }
 
     private static Element Choice(string text, string id, Action action, bool enabled,
-        Element? content = null, string? lastUsed = null) =>
-        Button(content ?? TextBlock(text).TextWrapping(TextWrapping.Wrap), action)
+        Element? content = null, string? lastUsed = null)
+    {
+        var button = Button(content ?? TextBlock(text).TextWrapping(TextWrapping.Wrap), action)
             .IsEnabled(enabled).MinHeight(40).BorderThickness(0)
-            .Set(button =>
-            {
-                if (content is null) return;
-                button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-                AutomationProperties.SetHelpText(button, lastUsed ?? "");
-                Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(button,
-                    string.IsNullOrEmpty(lastUsed) ? text : $"{text}\n{lastUsed}");
-            })
+            .AutomationId(id).AutomationName(text);
+        if (content is not null)
+            button = button
+                .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+                .HelpText(lastUsed ?? "")
+                .ToolTip(string.IsNullOrEmpty(lastUsed) ? text : $"{text}\n{lastUsed}");
+        return button
             .Resources(resources =>
             {
                 ChatVisuals.ToolbarButtonResources(resources);
                 resources.Set("ButtonBackground", Theme.Ref("ControlAltFillColorSecondaryBrush"));
             })
-            .HAlign(HorizontalAlignment.Stretch)
-            .AutomationId(id).AutomationName(text);
+            .HAlign(HorizontalAlignment.Stretch);
+    }
 }

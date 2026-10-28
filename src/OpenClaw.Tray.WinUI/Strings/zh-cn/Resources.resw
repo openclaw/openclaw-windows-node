@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -2000,24 +2000,6 @@
   </data>
   <data name="PermissionsPage_Button_123.Content" xml:space="preserve">
     <value>打开 Windows 隐私设置</value>
-  </data>
-  <data name="SessionsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>💬 会话</value>
-  </data>
-  <data name="SessionsPage_Button_57.Content" xml:space="preserve">
-    <value>重置</value>
-  </data>
-  <data name="SessionsPage_Button_59.Content" xml:space="preserve">
-    <value>压缩</value>
-  </data>
-  <data name="SessionsPage_Button_61.Content" xml:space="preserve">
-    <value>删除</value>
-  </data>
-  <data name="SessionsPage_TextBlock_73.Text" xml:space="preserve">
-    <value>无活跃会话</value>
-  </data>
-  <data name="SessionsPage_TextBlock_84.Text" xml:space="preserve">
-    <value>🤖 可用模型</value>
   </data>
   <data name="SettingsPage_TextBlock_16.Text" xml:space="preserve">
     <value>⚙️ 设置</value>
@@ -4818,15 +4800,6 @@
   <data name="SandboxPage_64MiB.Content" xml:space="preserve">
     <value>64 MiB</value>
   </data>
-  <data name="SessionsPage_Sessions.Text" xml:space="preserve">
-    <value>会话</value>
-  </data>
-  <data name="SessionsPage_Refresh.Text" xml:space="preserve">
-    <value>刷新</value>
-  </data>
-  <data name="SessionsPage_All.Text" xml:space="preserve">
-    <value>全部</value>
-  </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
     <value>显示已完成的会话</value>
   </data>
@@ -4866,33 +4839,6 @@
   </data>
   <data name="SessionsPage_OpenConnection.Content" xml:space="preserve">
     <value>打开连接</value>
-  </data>
-  <data name="SessionsPage_LoadingSessions.Text" xml:space="preserve">
-    <value>正在加载会话…</value>
-  </data>
-  <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>没有会话</value>
-  </data>
-  <data name="SessionsPage_Reset.Text" xml:space="preserve">
-    <value>重置</value>
-  </data>
-  <data name="SessionsPage_Compact.Text" xml:space="preserve">
-    <value>压缩</value>
-  </data>
-  <data name="SessionsPage_Checkpoints.Text" xml:space="preserve">
-    <value>检查点</value>
-  </data>
-  <data name="SessionsPage_Checkpoints.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>查看、分支或还原压缩检查点</value>
-  </data>
-  <data name="SessionsPage_ExportTranscript.Text" xml:space="preserve">
-    <value>导出转录</value>
-  </data>
-  <data name="SessionsPage_ExportTranscript.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>将对话转录保存到文本文件</value>
-  </data>
-  <data name="SessionsPage_Delete.Text" xml:space="preserve">
-    <value>删除</value>
   </data>
   <data name="SessionActionPrompt_Reset_Title" xml:space="preserve">
     <value>重置会话？</value>
@@ -5244,15 +5190,6 @@
   </data>
   <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
     <value>清除</value>
-  </data>
-  <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
-    <value>此网关当前正在处理的对话，按频道分组。</value>
-  </data>
-  <data name="SessionsPage_EmptyHint.Text" xml:space="preserve">
-    <value>当频道已连接且有流量时，会话将显示在此处。</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
-    <value>打开聊天</value>
   </data>
   <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
     <value>已启用</value>
@@ -6739,12 +6676,6 @@
   <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
     <value>Open terminal</value>
   </data>
-  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Open in chat</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Open this session in Chat</value>
-  </data>
   <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
     <value>已禁用</value>
   </data>
@@ -7047,9 +6978,6 @@
   </data>
   <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
     <value>需要注意</value>
-  </data>
-  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
-    <value>上次运行已停止</value>
   </data>
   <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
     <value>需要更新 Gateway</value>
@@ -7930,10 +7858,6 @@
   <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
   <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
   <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
-  <data name="SessionsPage_Archived" xml:space="preserve"><value>已归档</value></data>
-  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>没有已归档的会话。</value></data>
-  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>无法获取此网关的已归档会话。</value></data>
-  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>取消归档会话</value></data>
   <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
   <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
   <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>
@@ -8118,6 +8042,1086 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>总结我最近的会话</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>帮我配置一个频道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>检查系统健康状况</value></data>
+  <data name="SessionsHub_ActionFailed" xml:space="preserve">
+    <value>操作失败</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutes" xml:space="preserve">
+    <value>活动时间范围（分钟）</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutesDisabled" xml:space="preserve">
+    <value>仅适用于“活动”视图。</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutesHelp" xml:space="preserve">
+    <value>仅显示在此分钟数内更新的会话。</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutesPlaceholder" xml:space="preserve">
+    <value>任何时间</value>
+  </data>
+  <data name="SessionsHub_AdminOnly" xml:space="preserve">
+    <value>需要管理员权限</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredBody" xml:space="preserve">
+    <value>你可以查看工作树。创建、删除、还原和清理工作树需要此 Gateway 的管理员权限。</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredTip" xml:space="preserve">
+    <value>需要此 Gateway 的管理员权限</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredTitle" xml:space="preserve">
+    <value>需要管理员权限</value>
+  </data>
+  <data name="SessionsHub_AgentFilter" xml:space="preserve">
+    <value>智能体</value>
+  </data>
+  <data name="SessionsHub_AgentOwner" xml:space="preserve">
+    <value>智能体：{0}</value>
+  </data>
+  <data name="SessionsHub_AllAgents" xml:space="preserve">
+    <value>所有智能体</value>
+  </data>
+  <data name="SessionsHub_Archive" xml:space="preserve">
+    <value>存档</value>
+  </data>
+  <data name="SessionsHub_Archived" xml:space="preserve">
+    <value>已存档</value>
+  </data>
+  <data name="SessionsHub_ArchivedFormat" xml:space="preserve">
+    <value>已存档“{0}”。</value>
+  </data>
+  <data name="SessionsHub_ArchiveFailed" xml:space="preserve">
+    <value>无法存档会话</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonAge" xml:space="preserve">
+    <value>因一段时间不活动而自动存档</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonCap" xml:space="preserve">
+    <value>为保持在活动会话数量限制内而自动存档</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonManual" xml:space="preserve">
+    <value>由用户手动存档</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonRestart" xml:space="preserve">
+    <value>在 Gateway 重启后的恢复过程中存档</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonStaleDashboard" xml:space="preserve">
+    <value>因其仪表板已不再使用而存档</value>
+  </data>
+  <data name="SessionsHub_Assign" xml:space="preserve">
+    <value>分配</value>
+  </data>
+  <data name="SessionsHub_AssignFailed" xml:space="preserve">
+    <value>无法分配所有者</value>
+  </data>
+  <data name="SessionsHub_AssignOwner" xml:space="preserve">
+    <value>分配所有者</value>
+  </data>
+  <data name="SessionsHub_AssignOwnerNamed" xml:space="preserve">
+    <value>为 {0} 分配所有者</value>
+  </data>
+  <data name="SessionsHub_AssignToMe" xml:space="preserve">
+    <value>分配给我</value>
+  </data>
+  <data name="SessionsHub_ChannelWebchat" xml:space="preserve">
+    <value>网页聊天</value>
+  </data>
+  <data name="SessionsHub_Checkpoints" xml:space="preserve">
+    <value>检查点</value>
+  </data>
+  <data name="SessionsHub_CleanDone" xml:space="preserve">
+    <value>清理完成。已删除 {0} 个工作树和 {1} 个孤立签出，并清除了 {2} 个快照。</value>
+  </data>
+  <data name="SessionsHub_CleanFailed" xml:space="preserve">
+    <value>清理未完成</value>
+  </data>
+  <data name="SessionsHub_Cleaning" xml:space="preserve">
+    <value>正在清理...</value>
+  </data>
+  <data name="SessionsHub_CleanIssues" xml:space="preserve">
+    <value>已跳过部分项目：{0}</value>
+  </data>
+  <data name="SessionsHub_CleanNow" xml:space="preserve">
+    <value>立即清理</value>
+  </data>
+  <data name="SessionsHub_CleanNowTip" xml:space="preserve">
+    <value>删除空闲的工作树、孤立的签出和过期的快照</value>
+  </data>
+  <data name="SessionsHub_CleanStillRunning" xml:space="preserve">
+    <value>Gateway 上的清理仍在进行。请稍后刷新以查看结果。</value>
+  </data>
+  <data name="SessionsHub_ClearSelection" xml:space="preserve">
+    <value>清除选择</value>
+  </data>
+  <data name="SessionsHub_CloseDetails" xml:space="preserve">
+    <value>关闭详细信息</value>
+  </data>
+  <data name="SessionsHub_CloseSearch" xml:space="preserve">
+    <value>关闭搜索</value>
+  </data>
+  <data name="SessionsHub_CloudWorker" xml:space="preserve">
+    <value>云端工作机</value>
+  </data>
+  <data name="SessionsHub_CountMany" xml:space="preserve">
+    <value>{0} 个会话</value>
+  </data>
+  <data name="SessionsHub_CountOne" xml:space="preserve">
+    <value>1 个会话</value>
+  </data>
+  <data name="SessionsHub_Create" xml:space="preserve">
+    <value>创建</value>
+  </data>
+  <data name="SessionsHub_DateNoActivity" xml:space="preserve">
+    <value>无活动</value>
+  </data>
+  <data name="SessionsHub_DateOlder" xml:space="preserve">
+    <value>更早</value>
+  </data>
+  <data name="SessionsHub_DateThisWeek" xml:space="preserve">
+    <value>本周早些时候</value>
+  </data>
+  <data name="SessionsHub_DateToday" xml:space="preserve">
+    <value>今天</value>
+  </data>
+  <data name="SessionsHub_DateYesterday" xml:space="preserve">
+    <value>昨天</value>
+  </data>
+  <data name="SessionsHub_Delete" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="SessionsHub_DeleteAll" xml:space="preserve">
+    <value>全部删除</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchived" xml:space="preserve">
+    <value>删除所有已存档会话</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedBody" xml:space="preserve">
+    <value>要永久删除 {0} 个已存档会话及其对话记录吗？此操作无法撤消。</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedTip" xml:space="preserve">
+    <value>永久删除所有已存档会话</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedTitle" xml:space="preserve">
+    <value>删除所有已存档会话？</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedWorktrees" xml:space="preserve">
+    <value>其中 {0} 个会话有托管工作树。仍在使用或有未保存工作的工作树将被保留，并在删除后列出。</value>
+  </data>
+  <data name="SessionsHub_DeleteBlocked" xml:space="preserve">
+    <value>无法删除此会话。</value>
+  </data>
+  <data name="SessionsHub_DeletedMany" xml:space="preserve">
+    <value>已删除 {0} 个会话。</value>
+  </data>
+  <data name="SessionsHub_DeletedOne" xml:space="preserve">
+    <value>已删除 1 个会话。</value>
+  </data>
+  <data name="SessionsHub_DeleteFailed" xml:space="preserve">
+    <value>无法删除</value>
+  </data>
+  <data name="SessionsHub_DeleteFailures" xml:space="preserve">
+    <value>{0} 个项目无法删除。第一个错误：{1}</value>
+  </data>
+  <data name="SessionsHub_DeleteGroup" xml:space="preserve">
+    <value>删除组</value>
+  </data>
+  <data name="SessionsHub_DeleteGroupBody" xml:space="preserve">
+    <value>要删除组“{0}”吗？其中的会话不会被删除，而是变为未分组。</value>
+  </data>
+  <data name="SessionsHub_DeleteGroupTitle" xml:space="preserve">
+    <value>删除组？</value>
+  </data>
+  <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
+    <value>删除未存档的会话需要管理员权限。请先将其存档，或联系管理员。</value>
+  </data>
+  <data name="SessionsHub_DeleteSelected" xml:space="preserve">
+    <value>删除所选项</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedBodyMany" xml:space="preserve">
+    <value>要永久删除 {0} 个会话及其对话记录吗？此操作无法撤消。</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedBodyOne" xml:space="preserve">
+    <value>要永久删除所选会话及其对话记录吗？此操作无法撤消。</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedNoneAllowed" xml:space="preserve">
+    <value>以你的权限无法删除任何所选会话。主会话无法删除，删除活动会话需要管理员权限。</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedSkipped" xml:space="preserve">
+    <value>将跳过 {0} 个所选会话，因为以你的权限无法删除它们。</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedTitle" xml:space="preserve">
+    <value>删除所选会话？</value>
+  </data>
+  <data name="SessionsHub_Details" xml:space="preserve">
+    <value>详细信息</value>
+  </data>
+  <data name="SessionsHub_DetailsFor" xml:space="preserve">
+    <value>{0} 的详细信息</value>
+  </data>
+  <data name="SessionsHub_DisconnectedBody" xml:space="preserve">
+    <value>连接到 Gateway 以查看和管理其会话。</value>
+  </data>
+  <data name="SessionsHub_DisconnectedTitle" xml:space="preserve">
+    <value>未连接</value>
+  </data>
+  <data name="SessionsHub_EmptyActiveBody" xml:space="preserve">
+    <value>当你或某个渠道开始对话时，会话将显示在此处。</value>
+  </data>
+  <data name="SessionsHub_EmptyActiveTitle" xml:space="preserve">
+    <value>没有活动会话</value>
+  </data>
+  <data name="SessionsHub_EmptyAllBody" xml:space="preserve">
+    <value>此 Gateway 还没有任何会话。</value>
+  </data>
+  <data name="SessionsHub_EmptyAllTitle" xml:space="preserve">
+    <value>暂无会话</value>
+  </data>
+  <data name="SessionsHub_EmptyArchivedBody" xml:space="preserve">
+    <value>你存档的会话会保留在此处，直到你还原或删除它们。</value>
+  </data>
+  <data name="SessionsHub_EmptyArchivedTitle" xml:space="preserve">
+    <value>没有已存档的会话</value>
+  </data>
+  <data name="SessionsHub_EmptyFilteredBody" xml:space="preserve">
+    <value>请尝试其他搜索或重置筛选器。</value>
+  </data>
+  <data name="SessionsHub_EmptyFilteredTitle" xml:space="preserve">
+    <value>没有与这些筛选器匹配的会话</value>
+  </data>
+  <data name="SessionsHub_EmptyGroup" xml:space="preserve">
+    <value>此组中没有会话</value>
+  </data>
+  <data name="SessionsHub_FactAgent" xml:space="preserve">
+    <value>智能体</value>
+  </data>
+  <data name="SessionsHub_FactArchivedAt" xml:space="preserve">
+    <value>存档时间</value>
+  </data>
+  <data name="SessionsHub_FactArchiveReason" xml:space="preserve">
+    <value>存档原因</value>
+  </data>
+  <data name="SessionsHub_FactChannel" xml:space="preserve">
+    <value>渠道</value>
+  </data>
+  <data name="SessionsHub_FactCreated" xml:space="preserve">
+    <value>创建时间</value>
+  </data>
+  <data name="SessionsHub_FactKey" xml:space="preserve">
+    <value>会话键</value>
+  </data>
+  <data name="SessionsHub_FactModel" xml:space="preserve">
+    <value>模型</value>
+  </data>
+  <data name="SessionsHub_FactPinned" xml:space="preserve">
+    <value>已固定</value>
+  </data>
+  <data name="SessionsHub_FactProvider" xml:space="preserve">
+    <value>提供商</value>
+  </data>
+  <data name="SessionsHub_FactSessionId" xml:space="preserve">
+    <value>会话 ID</value>
+  </data>
+  <data name="SessionsHub_FactTokens" xml:space="preserve">
+    <value>已用令牌数</value>
+  </data>
+  <data name="SessionsHub_FactUpdated" xml:space="preserve">
+    <value>上次更新时间</value>
+  </data>
+  <data name="SessionsHub_FactWorktree" xml:space="preserve">
+    <value>工作树</value>
+  </data>
+  <data name="SessionsHub_Fast" xml:space="preserve">
+    <value>快速模式</value>
+  </data>
+  <data name="SessionsHub_Filters" xml:space="preserve">
+    <value>筛选器</value>
+  </data>
+  <data name="SessionsHub_FiltersCount" xml:space="preserve">
+    <value>筛选器（{0}）</value>
+  </data>
+  <data name="SessionsHub_ForceRemove" xml:space="preserve">
+    <value>仍然删除</value>
+  </data>
+  <data name="SessionsHub_ForceRemoveBody" xml:space="preserve">
+    <value>Gateway 无法安全删除“{0}”：{1}&#x0A;&#x0A;仍然删除将丢弃工作树中所有未提交的更改。此操作无法撤消。</value>
+  </data>
+  <data name="SessionsHub_ForceRemoveTitle" xml:space="preserve">
+    <value>仍要删除工作树吗？</value>
+  </data>
+  <data name="SessionsHub_Group" xml:space="preserve">
+    <value>组</value>
+  </data>
+  <data name="SessionsHub_GroupBy" xml:space="preserve">
+    <value>分组依据</value>
+  </data>
+  <data name="SessionsHub_GroupByAgent" xml:space="preserve">
+    <value>按智能体分组</value>
+  </data>
+  <data name="SessionsHub_GroupByCategory" xml:space="preserve">
+    <value>按自定义组分组</value>
+  </data>
+  <data name="SessionsHub_GroupByChannel" xml:space="preserve">
+    <value>按渠道分组</value>
+  </data>
+  <data name="SessionsHub_GroupByDate" xml:space="preserve">
+    <value>按日期分组</value>
+  </data>
+  <data name="SessionsHub_GroupByKind" xml:space="preserve">
+    <value>按类型分组</value>
+  </data>
+  <data name="SessionsHub_GroupByNone" xml:space="preserve">
+    <value>不分组</value>
+  </data>
+  <data name="SessionsHub_GroupByPerson" xml:space="preserve">
+    <value>按所有者分组</value>
+  </data>
+  <data name="SessionsHub_GroupFailed" xml:space="preserve">
+    <value>无法更新组</value>
+  </data>
+  <data name="SessionsHub_GroupOptions" xml:space="preserve">
+    <value>组 {0} 的选项</value>
+  </data>
+  <data name="SessionsHub_GroupOther" xml:space="preserve">
+    <value>其他</value>
+  </data>
+  <data name="SessionsHub_IncludeGlobal" xml:space="preserve">
+    <value>包括全局会话</value>
+  </data>
+  <data name="SessionsHub_IncludeUnknown" xml:space="preserve">
+    <value>包括没有路由信息的会话</value>
+  </data>
+  <data name="SessionsHub_Inherit" xml:space="preserve">
+    <value>使用默认值</value>
+  </data>
+  <data name="SessionsHub_KindChannel" xml:space="preserve">
+    <value>渠道对话</value>
+  </data>
+  <data name="SessionsHub_KindCron" xml:space="preserve">
+    <value>计划任务</value>
+  </data>
+  <data name="SessionsHub_KindDirect" xml:space="preserve">
+    <value>直接对话</value>
+  </data>
+  <data name="SessionsHub_KindGlobal" xml:space="preserve">
+    <value>全局会话</value>
+  </data>
+  <data name="SessionsHub_KindGroup" xml:space="preserve">
+    <value>群组对话</value>
+  </data>
+  <data name="SessionsHub_KindMain" xml:space="preserve">
+    <value>主会话</value>
+  </data>
+  <data name="SessionsHub_KindOther" xml:space="preserve">
+    <value>其他会话</value>
+  </data>
+  <data name="SessionsHub_KindSubagent" xml:space="preserve">
+    <value>子智能体</value>
+  </data>
+  <data name="SessionsHub_KindThread" xml:space="preserve">
+    <value>讨论串</value>
+  </data>
+  <data name="SessionsHub_KindUnknown" xml:space="preserve">
+    <value>未路由的会话</value>
+  </data>
+  <data name="SessionsHub_Label" xml:space="preserve">
+    <value>名称</value>
+  </data>
+  <data name="SessionsHub_LabelPlaceholder" xml:space="preserve">
+    <value>使用生成的标题</value>
+  </data>
+  <data name="SessionsHub_LastRunError" xml:space="preserve">
+    <value>上次运行失败</value>
+  </data>
+  <data name="SessionsHub_LevelAuto" xml:space="preserve">
+    <value>自动</value>
+  </data>
+  <data name="SessionsHub_LevelFull" xml:space="preserve">
+    <value>完整详细信息</value>
+  </data>
+  <data name="SessionsHub_LevelOff" xml:space="preserve">
+    <value>关</value>
+  </data>
+  <data name="SessionsHub_LevelOn" xml:space="preserve">
+    <value>开</value>
+  </data>
+  <data name="SessionsHub_LevelStream" xml:space="preserve">
+    <value>思考时实时显示</value>
+  </data>
+  <data name="SessionsHub_LevelUltrafast" xml:space="preserve">
+    <value>超快</value>
+  </data>
+  <data name="SessionsHub_Limit" xml:space="preserve">
+    <value>要加载的会话数</value>
+  </data>
+  <data name="SessionsHub_LimitHelp" xml:space="preserve">
+    <value>每次从 Gateway 请求的会话数量。</value>
+  </data>
+  <data name="SessionsHub_ListLabel" xml:space="preserve">
+    <value>会话</value>
+  </data>
+  <data name="SessionsHub_LoadFailedTitle" xml:space="preserve">
+    <value>无法加载会话</value>
+  </data>
+  <data name="SessionsHub_Loading" xml:space="preserve">
+    <value>正在加载会话...</value>
+  </data>
+  <data name="SessionsHub_LoadMore" xml:space="preserve">
+    <value>加载更多</value>
+  </data>
+  <data name="SessionsHub_MainCannotArchive" xml:space="preserve">
+    <value>无法存档主会话。可改为重置该会话以重新开始。</value>
+  </data>
+  <data name="SessionsHub_MoreNamed" xml:space="preserve">
+    <value>{0} 的更多操作</value>
+  </data>
+  <data name="SessionsHub_Move" xml:space="preserve">
+    <value>移动</value>
+  </data>
+  <data name="SessionsHub_MoveToGroup" xml:space="preserve">
+    <value>移到组</value>
+  </data>
+  <data name="SessionsHub_MoveToGroupNamed" xml:space="preserve">
+    <value>将 {0} 移到组</value>
+  </data>
+  <data name="SessionsHub_NeedsWrite" xml:space="preserve">
+    <value>需要此 Gateway 的写入权限</value>
+  </data>
+  <data name="SessionsHub_NewGroup" xml:space="preserve">
+    <value>新建组</value>
+  </data>
+  <data name="SessionsHub_NewGroupBody" xml:space="preserve">
+    <value>组可为使用此 Gateway 的所有人整理会话。</value>
+  </data>
+  <data name="SessionsHub_NewGroupEllipsis" xml:space="preserve">
+    <value>新建组...</value>
+  </data>
+  <data name="SessionsHub_NewGroupPlaceholder" xml:space="preserve">
+    <value>组名称</value>
+  </data>
+  <data name="SessionsHub_NewGroupTitle" xml:space="preserve">
+    <value>创建组</value>
+  </data>
+  <data name="SessionsHub_NewWorktree" xml:space="preserve">
+    <value>新建工作树</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBase" xml:space="preserve">
+    <value>基础分支</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBasePlaceholder" xml:space="preserve">
+    <value>存储库默认分支</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBranchesLoading" xml:space="preserve">
+    <value>正在加载分支...</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBranchesUnavailable" xml:space="preserve">
+    <value>此存储库的分支不可用。你可以输入分支名称。</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeCreate" xml:space="preserve">
+    <value>创建工作树</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeName" xml:space="preserve">
+    <value>名称（可选）</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNameInvalid" xml:space="preserve">
+    <value>请使用小写字母、数字和连字符，并以字母或数字开头。</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNamePlaceholder" xml:space="preserve">
+    <value>留空则自动生成</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNotGit" xml:space="preserve">
+    <value>此文件夹不是 Git 存储库。</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeRepo" xml:space="preserve">
+    <value>存储库文件夹</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeRepoPlaceholder" xml:space="preserve">
+    <value>Gateway 主机上 Git 存储库的路径</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
+    <value>创建工作树</value>
+  </data>
+  <data name="SessionsHub_NextPage" xml:space="preserve">
+    <value>下一页</value>
+  </data>
+  <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
+    <value>没有你可以删除的已存档会话。</value>
+  </data>
+  <data name="SessionsHub_NoOwners" xml:space="preserve">
+    <value>没有可用的人员或智能体</value>
+  </data>
+  <data name="SessionsHub_NotAvailable" xml:space="preserve">
+    <value>不可用</value>
+  </data>
+  <data name="SessionsHub_OpenInChat" xml:space="preserve">
+    <value>在聊天中打开</value>
+  </data>
+  <data name="SessionsHub_OpenInChatNamed" xml:space="preserve">
+    <value>在聊天中打开 {0}</value>
+  </data>
+  <data name="SessionsHub_Organization" xml:space="preserve">
+    <value>所有权和分组</value>
+  </data>
+  <data name="SessionsHub_Overrides" xml:space="preserve">
+    <value>会话设置</value>
+  </data>
+  <data name="SessionsHub_OwnedBy" xml:space="preserve">
+    <value>所有者：{0}</value>
+  </data>
+  <data name="SessionsHub_Owner" xml:space="preserve">
+    <value>所有者</value>
+  </data>
+  <data name="SessionsHub_PageOf" xml:space="preserve">
+    <value>第 {0} 页，共 {1} 页</value>
+  </data>
+  <data name="SessionsHub_PageRange" xml:space="preserve">
+    <value>显示第 {0} 到 {1} 项，共 {2} 项</value>
+  </data>
+  <data name="SessionsHub_PageRangeOfServer" xml:space="preserve">
+    <value>显示第 {0} 到 {1} 项，已加载 {2} 项（Gateway 上共 {3} 项）</value>
+  </data>
+  <data name="SessionsHub_PageSize" xml:space="preserve">
+    <value>每页会话数</value>
+  </data>
+  <data name="SessionsHub_PlacementActive" xml:space="preserve">
+    <value>正在云端工作机上运行</value>
+  </data>
+  <data name="SessionsHub_PlacementFailed" xml:space="preserve">
+    <value>云端工作机出现故障</value>
+  </data>
+  <data name="SessionsHub_PlacementLocal" xml:space="preserve">
+    <value>正在 Gateway 上运行</value>
+  </data>
+  <data name="SessionsHub_PlacementReclaimed" xml:space="preserve">
+    <value>已返回 Gateway</value>
+  </data>
+  <data name="SessionsHub_PlacementStarting" xml:space="preserve">
+    <value>云端工作机正在启动</value>
+  </data>
+  <data name="SessionsHub_PlacementStopping" xml:space="preserve">
+    <value>云端工作机正在停止</value>
+  </data>
+  <data name="SessionsHub_PreservedBusy" xml:space="preserve">
+    <value>仍在使用中</value>
+  </data>
+  <data name="SessionsHub_PreservedCleanupFailed" xml:space="preserve">
+    <value>清理失败</value>
+  </data>
+  <data name="SessionsHub_PreservedLocked" xml:space="preserve">
+    <value>已被其他进程锁定</value>
+  </data>
+  <data name="SessionsHub_PreservedOwnerMismatch" xml:space="preserve">
+    <value>属于其他会话</value>
+  </data>
+  <data name="SessionsHub_PreservedSnapshotFailed" xml:space="preserve">
+    <value>安全快照失败</value>
+  </data>
+  <data name="SessionsHub_PreservedWorktrees" xml:space="preserve">
+    <value>已保留的工作树：{0}。</value>
+  </data>
+  <data name="SessionsHub_PreviousPage" xml:space="preserve">
+    <value>上一页</value>
+  </data>
+  <data name="SessionsHub_ReadOnlyBody" xml:space="preserve">
+    <value>你可以浏览和搜索会话。更改、存档或删除会话需要此 Gateway 的写入权限。</value>
+  </data>
+  <data name="SessionsHub_ReadOnlyTitle" xml:space="preserve">
+    <value>只读访问权限</value>
+  </data>
+  <data name="SessionsHub_Reasoning" xml:space="preserve">
+    <value>显示推理过程</value>
+  </data>
+  <data name="SessionsHub_Refresh" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="SessionsHub_Remove" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="SessionsHub_RemoveFromGroup" xml:space="preserve">
+    <value>从组中移除</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeBody" xml:space="preserve">
+    <value>要删除工作树“{0}”吗？Gateway 会先创建安全快照，以便你以后还原。</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeFailed" xml:space="preserve">
+    <value>无法删除工作树</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeRefused" xml:space="preserve">
+    <value>Gateway 拒绝删除，因为无法安全执行。</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeTitle" xml:space="preserve">
+    <value>删除工作树？</value>
+  </data>
+  <data name="SessionsHub_RenameGroup" xml:space="preserve">
+    <value>重命名组</value>
+  </data>
+  <data name="SessionsHub_RenameGroupBody" xml:space="preserve">
+    <value>此组中的会话将移到新名称下。</value>
+  </data>
+  <data name="SessionsHub_RenameGroupTitle" xml:space="preserve">
+    <value>重命名组</value>
+  </data>
+  <data name="SessionsHub_ResetFilters" xml:space="preserve">
+    <value>重置筛选器</value>
+  </data>
+  <data name="SessionsHub_Restore" xml:space="preserve">
+    <value>还原</value>
+  </data>
+  <data name="SessionsHub_RestoreWorktreeFailed" xml:space="preserve">
+    <value>无法还原工作树</value>
+  </data>
+  <data name="SessionsHub_Retry" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="SessionsHub_RoleAssistant" xml:space="preserve">
+    <value>助手</value>
+  </data>
+  <data name="SessionsHub_RoleUser" xml:space="preserve">
+    <value>你</value>
+  </data>
+  <data name="SessionsHub_RowHelp" xml:space="preserve">
+    <value>显示会话的详细信息</value>
+  </data>
+  <data name="SessionsHub_RowsPerPage" xml:space="preserve">
+    <value>每页 {0} 项</value>
+  </data>
+  <data name="SessionsHub_Save" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="SessionsHub_Search" xml:space="preserve">
+    <value>搜索</value>
+  </data>
+  <data name="SessionsHub_Searching" xml:space="preserve">
+    <value>正在搜索对话记录...</value>
+  </data>
+  <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
+    <value>按名称或键筛选</value>
+  </data>
+  <data name="SessionsHub_SearchTranscripts" xml:space="preserve">
+    <value>搜索对话记录</value>
+  </data>
+  <data name="SessionsHub_SearchTranscriptsTip" xml:space="preserve">
+    <value>在当前筛选器显示的会话消息中查找文本</value>
+  </data>
+  <data name="SessionsHub_Select" xml:space="preserve">
+    <value>选择</value>
+  </data>
+  <data name="SessionsHub_SelectedMany" xml:space="preserve">
+    <value>已选择 {0} 项</value>
+  </data>
+  <data name="SessionsHub_SelectedOne" xml:space="preserve">
+    <value>已选择 1 项</value>
+  </data>
+  <data name="SessionsHub_SelectNamed" xml:space="preserve">
+    <value>选择 {0}</value>
+  </data>
+  <data name="SessionsHub_SelectPage" xml:space="preserve">
+    <value>选择此页</value>
+  </data>
+  <data name="SessionsHub_SelectTip" xml:space="preserve">
+    <value>选择多个会话以一次性删除</value>
+  </data>
+  <data name="SessionsHub_ShowAll" xml:space="preserve">
+    <value>显示所有会话</value>
+  </data>
+  <data name="SessionsHub_ShowDetails" xml:space="preserve">
+    <value>显示详细信息</value>
+  </data>
+  <data name="SessionsHub_ShowDetailsNamed" xml:space="preserve">
+    <value>显示 {0} 的详细信息</value>
+  </data>
+  <data name="SessionsHub_Sort" xml:space="preserve">
+    <value>排序</value>
+  </data>
+  <data name="SessionsHub_SortNameAsc" xml:space="preserve">
+    <value>名称，A 到 Z</value>
+  </data>
+  <data name="SessionsHub_SortNameDesc" xml:space="preserve">
+    <value>名称，Z 到 A</value>
+  </data>
+  <data name="SessionsHub_SortNewest" xml:space="preserve">
+    <value>最近更新</value>
+  </data>
+  <data name="SessionsHub_SortOldest" xml:space="preserve">
+    <value>最早更新</value>
+  </data>
+  <data name="SessionsHub_StatusActive" xml:space="preserve">
+    <value>活动</value>
+  </data>
+  <data name="SessionsHub_StatusAll" xml:space="preserve">
+    <value>全部</value>
+  </data>
+  <data name="SessionsHub_StatusArchived" xml:space="preserve">
+    <value>已存档</value>
+  </data>
+  <data name="SessionsHub_StatusFilter" xml:space="preserve">
+    <value>会话状态</value>
+  </data>
+  <data name="SessionsHub_StatusQueued" xml:space="preserve">
+    <value>已排队</value>
+  </data>
+  <data name="SessionsHub_StopWorker" xml:space="preserve">
+    <value>停止云端工作机</value>
+  </data>
+  <data name="SessionsHub_StopWorkerBody" xml:space="preserve">
+    <value>要停止“{0}”的云端工作机并将会话返回 Gateway 吗？工作机上正在进行的工作会在停止前保存。</value>
+  </data>
+  <data name="SessionsHub_StopWorkerBusy" xml:space="preserve">
+    <value>请等待当前轮次完成后再停止工作机。</value>
+  </data>
+  <data name="SessionsHub_StopWorkerDone" xml:space="preserve">
+    <value>已停止“{0}”的云端工作机。</value>
+  </data>
+  <data name="SessionsHub_StopWorkerFailed" xml:space="preserve">
+    <value>无法停止云端工作机</value>
+  </data>
+  <data name="SessionsHub_StopWorkerHelp" xml:space="preserve">
+    <value>停止后，会话将返回 Gateway。</value>
+  </data>
+  <data name="SessionsHub_StopWorkerTitle" xml:space="preserve">
+    <value>停止云端工作机？</value>
+  </data>
+  <data name="SessionsHub_StopWorkerUnavailable" xml:space="preserve">
+    <value>目前无法停止此工作机。</value>
+  </data>
+  <data name="SessionsHub_Subtitle" xml:space="preserve">
+    <value>浏览、整理和清理此 Gateway 上的对话。</value>
+  </data>
+  <data name="SessionsHub_TabSessions" xml:space="preserve">
+    <value>会话</value>
+  </data>
+  <data name="SessionsHub_TabsLabel" xml:space="preserve">
+    <value>会话页面的各个部分</value>
+  </data>
+  <data name="SessionsHub_TabWorktrees" xml:space="preserve">
+    <value>工作树</value>
+  </data>
+  <data name="SessionsHub_Thinking" xml:space="preserve">
+    <value>思考级别</value>
+  </data>
+  <data name="SessionsHub_ThinkingHigh" xml:space="preserve">
+    <value>高</value>
+  </data>
+  <data name="SessionsHub_ThinkingLow" xml:space="preserve">
+    <value>低</value>
+  </data>
+  <data name="SessionsHub_ThinkingMedium" xml:space="preserve">
+    <value>中</value>
+  </data>
+  <data name="SessionsHub_ThinkingMinimal" xml:space="preserve">
+    <value>最低</value>
+  </data>
+  <data name="SessionsHub_ThinkingXHigh" xml:space="preserve">
+    <value>超高</value>
+  </data>
+  <data name="SessionsHub_TimeDays" xml:space="preserve">
+    <value>{0} 天前</value>
+  </data>
+  <data name="SessionsHub_TimeHours" xml:space="preserve">
+    <value>{0} 小时前</value>
+  </data>
+  <data name="SessionsHub_TimeJustNow" xml:space="preserve">
+    <value>刚刚</value>
+  </data>
+  <data name="SessionsHub_TimeMinutes" xml:space="preserve">
+    <value>{0} 分钟前</value>
+  </data>
+  <data name="SessionsHub_TimeNever" xml:space="preserve">
+    <value>从不</value>
+  </data>
+  <data name="SessionsHub_Title" xml:space="preserve">
+    <value>会话</value>
+  </data>
+  <data name="SessionsHub_TokensWithContext" xml:space="preserve">
+    <value>已用 {0}，上下文共 {1}</value>
+  </data>
+  <data name="SessionsHub_TranscriptArchivedExcludedMany" xml:space="preserve">
+    <value>还有 {0} 个已存档会话也匹配。选择“全部”或“已存档”以包含它们。</value>
+  </data>
+  <data name="SessionsHub_TranscriptArchivedExcludedOne" xml:space="preserve">
+    <value>还有 1 个已存档会话也匹配。选择“全部”或“已存档”以包含它。</value>
+  </data>
+  <data name="SessionsHub_TranscriptFailed" xml:space="preserve">
+    <value>搜索未完成</value>
+  </data>
+  <data name="SessionsHub_TranscriptHint" xml:space="preserve">
+    <value>在与当前智能体和状态筛选器匹配的会话中搜索消息。</value>
+  </data>
+  <data name="SessionsHub_TranscriptIndexingBody" xml:space="preserve">
+    <value>Gateway 仍在构建搜索索引，因此可能缺少部分匹配项。请稍后重试。</value>
+  </data>
+  <data name="SessionsHub_TranscriptIndexingTitle" xml:space="preserve">
+    <value>正在为对话记录编制索引</value>
+  </data>
+  <data name="SessionsHub_TranscriptLabel" xml:space="preserve">
+    <value>搜索会话对话记录</value>
+  </data>
+  <data name="SessionsHub_TranscriptMatchMany" xml:space="preserve">
+    <value>{0} 个匹配项</value>
+  </data>
+  <data name="SessionsHub_TranscriptMatchOne" xml:space="preserve">
+    <value>1 个匹配项</value>
+  </data>
+  <data name="SessionsHub_TranscriptNeedsConnection" xml:space="preserve">
+    <value>连接到 Gateway 以搜索对话记录。</value>
+  </data>
+  <data name="SessionsHub_TranscriptNoMatchesBody" xml:space="preserve">
+    <value>没有消息包含“{0}”。</value>
+  </data>
+  <data name="SessionsHub_TranscriptNoMatchesTitle" xml:space="preserve">
+    <value>无匹配项</value>
+  </data>
+  <data name="SessionsHub_TranscriptPlaceholder" xml:space="preserve">
+    <value>搜索消息</value>
+  </data>
+  <data name="SessionsHub_TranscriptScope" xml:space="preserve">
+    <value>搜索范围：{0}</value>
+  </data>
+  <data name="SessionsHub_TranscriptTitle" xml:space="preserve">
+    <value>搜索对话记录</value>
+  </data>
+  <data name="SessionsHub_TranscriptTruncated" xml:space="preserve">
+    <value>仅显示最佳匹配项。请优化搜索以查看其他结果。</value>
+  </data>
+  <data name="SessionsHub_TranscriptUnsupported" xml:space="preserve">
+    <value>此 Gateway 不支持搜索对话记录。请更新 Gateway 以使用此功能。</value>
+  </data>
+  <data name="SessionsHub_Unarchive" xml:space="preserve">
+    <value>取消存档</value>
+  </data>
+  <data name="SessionsHub_UnarchivedFormat" xml:space="preserve">
+    <value>已将“{0}”还原到活动会话。</value>
+  </data>
+  <data name="SessionsHub_UnarchiveFailed" xml:space="preserve">
+    <value>无法取消存档会话</value>
+  </data>
+  <data name="SessionsHub_UnarchiveNamed" xml:space="preserve">
+    <value>取消存档 {0}</value>
+  </data>
+  <data name="SessionsHub_Unassigned" xml:space="preserve">
+    <value>未分配</value>
+  </data>
+  <data name="SessionsHub_Undo" xml:space="preserve">
+    <value>撤消</value>
+  </data>
+  <data name="SessionsHub_UndoFailed" xml:space="preserve">
+    <value>无法撤消</value>
+  </data>
+  <data name="SessionsHub_Ungrouped" xml:space="preserve">
+    <value>未分组</value>
+  </data>
+  <data name="SessionsHub_Unread" xml:space="preserve">
+    <value>未读</value>
+  </data>
+  <data name="SessionsHub_Unsupported" xml:space="preserve">
+    <value>此 Gateway 不支持此操作。请更新 Gateway 以使用此功能。</value>
+  </data>
+  <data name="SessionsHub_UnsupportedTitle" xml:space="preserve">
+    <value>会话不可用</value>
+  </data>
+  <data name="SessionsHub_UpdateFailed" xml:space="preserve">
+    <value>无法更新会话</value>
+  </data>
+  <data name="SessionsHub_Verbose" xml:space="preserve">
+    <value>工具输出详细程度</value>
+  </data>
+  <data name="SessionsHub_WorktreeActive" xml:space="preserve">
+    <value>活动</value>
+  </data>
+  <data name="SessionsHub_WorktreeColActive" xml:space="preserve">
+    <value>上次活动时间</value>
+  </data>
+  <data name="SessionsHub_WorktreeColName" xml:space="preserve">
+    <value>工作树</value>
+  </data>
+  <data name="SessionsHub_WorktreeColOwner" xml:space="preserve">
+    <value>所有者</value>
+  </data>
+  <data name="SessionsHub_WorktreeColRepo" xml:space="preserve">
+    <value>存储库</value>
+  </data>
+  <data name="SessionsHub_WorktreeColStatus" xml:space="preserve">
+    <value>状态</value>
+  </data>
+  <data name="SessionsHub_WorktreeCreated" xml:space="preserve">
+    <value>已创建工作树。</value>
+  </data>
+  <data name="SessionsHub_WorktreeCreateFailed" xml:space="preserve">
+    <value>无法创建工作树</value>
+  </data>
+  <data name="SessionsHub_WorktreeFromBase" xml:space="preserve">
+    <value>{0}，基于 {1}</value>
+  </data>
+  <data name="SessionsHub_WorktreeOpenOwner" xml:space="preserve">
+    <value>在聊天中打开所属会话 {0}</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerManual" xml:space="preserve">
+    <value>手动创建</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerSession" xml:space="preserve">
+    <value>会话</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerWorkboard" xml:space="preserve">
+    <value>工作看板</value>
+  </data>
+  <data name="SessionsHub_WorktreeRemoved" xml:space="preserve">
+    <value>已删除“{0}”。你可以从此列表中还原它。</value>
+  </data>
+  <data name="SessionsHub_WorktreeRestorable" xml:space="preserve">
+    <value>可还原</value>
+  </data>
+  <data name="SessionsHub_WorktreeRestored" xml:space="preserve">
+    <value>已还原“{0}”。</value>
+  </data>
+  <data name="SessionsHub_WorktreeRowName" xml:space="preserve">
+    <value>{0}，分支 {1}，所有者 {2}，{3}</value>
+  </data>
+  <data name="SessionsHub_WorktreesDisconnected" xml:space="preserve">
+    <value>连接到 Gateway 以查看其托管的工作树。</value>
+  </data>
+  <data name="SessionsHub_WorktreesEmptyBody" xml:space="preserve">
+    <value>为会话、工作看板创建或手动创建的工作树将显示在此处。</value>
+  </data>
+  <data name="SessionsHub_WorktreesEmptyTitle" xml:space="preserve">
+    <value>没有工作树</value>
+  </data>
+  <data name="SessionsHub_WorktreesFailed" xml:space="preserve">
+    <value>无法加载工作树</value>
+  </data>
+  <data name="SessionsHub_WorktreesLoading" xml:space="preserve">
+    <value>正在加载工作树...</value>
+  </data>
+  <data name="SessionsHub_WorktreesUnsupported" xml:space="preserve">
+    <value>此 Gateway 不管理工作树。请更新 Gateway 以使用此功能。</value>
+  </data>
+  <data name="SessionsHub_WorktreesUnsupportedTitle" xml:space="preserve">
+    <value>工作树不可用</value>
+  </data>
+  <data name="SessionsHub_Yes" xml:space="preserve">
+    <value>是</value>
+  </data>
+  <data name="SessionsHub_DeleteInterrupted" xml:space="preserve">
+    <value>已提前停止：剩余 {0} 个会话未确认已删除。请刷新以检查。</value>
+  </data>
+  <data name="SessionsHub_DeleteRefused" xml:space="preserve">
+    <value>网关未删除其中 {0} 个。</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectionChanged" xml:space="preserve">
+    <value>确认期间列表已更改，因此未删除任何内容。请检查所选内容后重试。</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedWorktreesOne" xml:space="preserve">
+    <value>其中 1 个会话有托管工作树。仍在使用或有未保存工作的工作树将被保留，并在删除后列出。</value>
+  </data>
+  <data name="SessionsHub_Appearance" xml:space="preserve">
+    <value>外观</value>
+  </data>
+  <data name="SessionsHub_ColorBlue" xml:space="preserve">
+    <value>蓝色</value>
+  </data>
+  <data name="SessionsHub_ColorCyan" xml:space="preserve">
+    <value>青色</value>
+  </data>
+  <data name="SessionsHub_ColorFor" xml:space="preserve">
+    <value>{0} 的颜色</value>
+  </data>
+  <data name="SessionsHub_ColorGreen" xml:space="preserve">
+    <value>绿色</value>
+  </data>
+  <data name="SessionsHub_ColorHeader" xml:space="preserve">
+    <value>颜色</value>
+  </data>
+  <data name="SessionsHub_ColorMenu" xml:space="preserve">
+    <value>颜色</value>
+  </data>
+  <data name="SessionsHub_ColorNone" xml:space="preserve">
+    <value>无颜色</value>
+  </data>
+  <data name="SessionsHub_ColorOrange" xml:space="preserve">
+    <value>橙色</value>
+  </data>
+  <data name="SessionsHub_ColorPink" xml:space="preserve">
+    <value>粉色</value>
+  </data>
+  <data name="SessionsHub_ColorPurple" xml:space="preserve">
+    <value>紫色</value>
+  </data>
+  <data name="SessionsHub_ColorRed" xml:space="preserve">
+    <value>红色</value>
+  </data>
+  <data name="SessionsHub_ColorYellow" xml:space="preserve">
+    <value>黄色</value>
+  </data>
+  <data name="SessionsHub_IconBook" xml:space="preserve">
+    <value>书籍</value>
+  </data>
+  <data name="SessionsHub_IconBot" xml:space="preserve">
+    <value>机器人</value>
+  </data>
+  <data name="SessionsHub_IconBraces" xml:space="preserve">
+    <value>代码</value>
+  </data>
+  <data name="SessionsHub_IconCoins" xml:space="preserve">
+    <value>硬币</value>
+  </data>
+  <data name="SessionsHub_IconDefault" xml:space="preserve">
+    <value>默认图标</value>
+  </data>
+  <data name="SessionsHub_IconFor" xml:space="preserve">
+    <value>{0} 的图标</value>
+  </data>
+  <data name="SessionsHub_IconHeader" xml:space="preserve">
+    <value>图标</value>
+  </data>
+  <data name="SessionsHub_IconKanban" xml:space="preserve">
+    <value>看板</value>
+  </data>
+  <data name="SessionsHub_IconMenu" xml:space="preserve">
+    <value>图标</value>
+  </data>
+  <data name="SessionsHub_IconMonitor" xml:space="preserve">
+    <value>显示器</value>
+  </data>
+  <data name="SessionsHub_Selected" xml:space="preserve">
+    <value>已选择</value>
+  </data>
+  <data name="SessionsHub_StatActive" xml:space="preserve">
+    <value>活动会话</value>
+  </data>
+  <data name="SessionsHub_StatAll" xml:space="preserve">
+    <value>所有会话</value>
+  </data>
+  <data name="SessionsHub_StatArchived" xml:space="preserve">
+    <value>已存档会话</value>
+  </data>
+  <data name="SessionsHub_StatAttention" xml:space="preserve">
+    <value>需要关注</value>
+  </data>
+  <data name="SessionsHub_StatPinned" xml:space="preserve">
+    <value>已固定</value>
+  </data>
+  <data name="SessionsHub_StatsLabel" xml:space="preserve">
+    <value>会话摘要</value>
+  </data>
+  <data name="SessionsHub_StatUnread" xml:space="preserve">
+    <value>未读</value>
+  </data>
+  <data name="SessionsHub_StatWorking" xml:space="preserve">
+    <value>正在运行</value>
+  </data>
+  <data name="SessionsHub_ScopeActiveWithin" xml:space="preserve">
+    <value>最近 {0} 分钟内更新</value>
+  </data>
+  <data name="SessionsHub_ScopeNameContains" xml:space="preserve">
+    <value>名称包含“{0}”</value>
+  </data>
+  <data name="SessionsHub_ScopeGlobalIncluded" xml:space="preserve">
+    <value>包含全局会话</value>
+  </data>
+  <data name="SessionsHub_ScopeGlobalExcluded" xml:space="preserve">
+    <value>排除全局会话</value>
+  </data>
+  <data name="SessionsHub_ScopeUnknownIncluded" xml:space="preserve">
+    <value>包含没有路由信息的会话</value>
+  </data>
+  <data name="SessionsHub_ScopeUnknownExcluded" xml:space="preserve">
+    <value>排除没有路由信息的会话</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>节点沙盒</value>
   </data>

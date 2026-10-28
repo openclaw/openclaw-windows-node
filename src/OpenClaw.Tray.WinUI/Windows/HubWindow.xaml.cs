@@ -921,7 +921,10 @@ public sealed partial class HubWindow : WindowEx
     {
         switch (ContentFrame.Content)
         {
-            case SessionsPage sessions: sessions.Initialize(); break;
+            case SessionsPage sessions:
+                // "agent:{id}:sessions" scopes the roster; the plain "sessions" route keeps the user's choice.
+                sessions.Initialize(_currentNavTag?.StartsWith("agent:", StringComparison.Ordinal) == true ? _currentAgentId : null);
+                break;
             case ConnectionPage connection: connection.Initialize(); break;
             case ChannelsPage channels: channels.Initialize(); break;
             case UsagePage usage: usage.Initialize(); break;

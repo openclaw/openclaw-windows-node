@@ -434,6 +434,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 vm.SetDraft,
                 PlaceholderFor(inputs.ConnectionState))
             .AutomationId("ChatComposerInput")
+            .ItemStatus(renderItemStatus ?? string.Empty)
             .AutomationName(PlaceholderFor(inputs.ConnectionState))
             // Multiline TextBox consumes Enter before bubbling KeyDown. Handle
             // composer shortcuts in preview so only Shift+Enter inserts a newline.
@@ -513,7 +514,6 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .Set(control =>
             {
                 inputControl.Current = control;
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(control, renderItemStatus);
                 control.Resources["TextControlBorderThemeThickness"] = new Thickness(0);
                 control.Resources["TextControlBorderThemeThicknessFocused"] = new Thickness(0);
                 control.Resources["TextControlBackground"] = transparentInputBrush;

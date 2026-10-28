@@ -62,7 +62,8 @@
       "method": "sessions.list",
       "kind": "request",
       "windowsUsage": "used",
-      "requestFields": ["agentId", "archived", "includeDerivedTitles"],
+      "requestFields": ["agentId", "includeDerivedTitles"],
+      "_note": "Tracked-roster dispatch only. The Sessions page pages with SessionListQuery.ToParameters (Shared/Sessions), which this guard does not scan; the fixture validates those params strictly (GatewayScenario.SessionsHub).",
       "responseEnvelope": ["sessions"],
       "responseEnvelopeSource": "TryGetSessionsPayload(JsonElement payload",
       "responseFields": [
@@ -108,7 +109,7 @@
       "requestFields": [
         "key", "model", "thinkingLevel", "fastMode", "verboseLevel", "traceLevel",
         "reasoningLevel", "responseUsage", "elevatedLevel", "execHost", "execSecurity",
-        "execAsk", "execNode", "sendPolicy", "groupActivation", "label", "pinned",
+        "execAsk", "execNode", "sendPolicy", "groupActivation", "label", "category", "color", "icon", "pinned",
         "unread", "archived", "expectedMarkedUnreadAt"
       ],
       "requestFieldsSource": "ToPayload(string key",
@@ -151,7 +152,61 @@
       "method": "sessions.delete",
       "kind": "request",
       "windowsUsage": "used",
-      "requestFields": ["key", "deleteTranscript"]
+      "requestFields": ["key", "deleteTranscript", "agentId", "expectedSessionId", "archivedOnly"],
+      "_note": "archivedOnly restricts the delete to archived rows (operator.write); without it upstream requires operator.admin. expectedSessionId is the compare-and-delete guard."
+    },
+    {
+      "method": "sessions.search",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["query", "limit", "scope"],
+      "_note": "Upstream SessionsSearchParamsSchema; scope reuses the sessions.list membership filters. Result: results[], sessions[], indexing, truncated, archivedTranscriptsExcluded."
+    },
+    {
+      "method": "sessions.groups.list",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": []
+    },
+    {
+      "method": "sessions.groups.put",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["names"]
+    },
+    {
+      "method": "sessions.groups.create",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["name"],
+      "_note": "Additive catalog creation requires an explicit Gateway advertisement. Newer contract implemented in the separate local Gateway change; never fall back to replacing a cached catalog."
+    },
+    {
+      "method": "sessions.groups.rename",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["name", "to"]
+    },
+    {
+      "method": "sessions.groups.delete",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["name"]
+    },
+    {
+      "method": "sessions.assignOwner",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["key", "agentId", "owner"],
+      "allowedExtraRequestFields": ["type", "id"],
+      "_note": "owner is { type: agent|human, id }; type and id are the nested owner object keys."
+    },
+    {
+      "method": "sessions.reclaim",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["key", "agentId"],
+      "_note": "Stops a cloud worker and returns the session to the Gateway (upstream SessionsReclaimParamsSchema)."
     },
     {
       "method": "sessions.compact",

@@ -210,55 +210,32 @@ public sealed class SessionTitleFormatterTests
     [Fact]
     public void SessionsPage_UsesSharedSessionTitleFormatter()
     {
-        var source = File.ReadAllText(Path.Combine(
-            TestRepositoryPaths.GetRepositoryRoot(),
-            "src",
-            "OpenClaw.Tray.WinUI",
-            "Pages",
-            "SessionsPage.xaml.cs"));
+        string Read(string file) => File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Sessions", file));
+        var presentation = Read("SessionsHubPresentation.cs");
+        var state = Read("SessionsHubState.cs");
+        var view = Read("SessionsHubSessionsView.cs");
 
-        var formatIndex = source.IndexOf("SessionTitleFormatter.FormatUnique(visibleSessions)", StringComparison.Ordinal);
-        var channelFilterIndex = source.IndexOf("if (_activeChannel != \"all\")", StringComparison.Ordinal);
-
-        Assert.True(formatIndex >= 0);
-        Assert.True(channelFilterIndex > formatIndex);
-        Assert.Contains("ToViewModel(item.Session, item.Title)", source, StringComparison.Ordinal);
-        Assert.Contains("DisplayName = displayName", source, StringComparison.Ordinal);
-        Assert.Contains("Key = s.Key", source, StringComparison.Ordinal);
-        Assert.Contains("SessionsForCurrentBackgroundScope()", source, StringComparison.Ordinal);
-        Assert.Contains("SessionDisplayResolver.IsVisible(session, _showBackgroundSessions)", source, StringComparison.Ordinal);
-
-        var xaml = File.ReadAllText(Path.Combine(
-            TestRepositoryPaths.GetRepositoryRoot(),
-            "src",
-            "OpenClaw.Tray.WinUI",
-            "Pages",
-            "SessionsPage.xaml"));
-        Assert.Contains("Tag=\"{Binding Key}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("SessionsPageShowBackground", xaml, StringComparison.Ordinal);
-
+        // Titles are disambiguated across the whole loaded roster and keyed by the original session key.
+        Assert.Contains("SessionTitleFormatter.FormatUnique(rows)", presentation, StringComparison.Ordinal);
+        // Background sessions use the shared resolver; the toggle keeps its automation ID.
+        Assert.Contains("SessionDisplayResolver.IsVisible(row, ShowBackground)", state, StringComparison.Ordinal);
+        Assert.Contains("AutomationId(\"SessionsPageShowBackground\")", view, StringComparison.Ordinal);
+        // Open in chat hands off the original key, never the display title.
+        Assert.Contains("controller.OpenInChat(row.Key)", view, StringComparison.Ordinal);
     }
 
     [Fact]
     public void SessionsPage_UsesCanonicalCompactSessionPresentation()
     {
-        var source = File.ReadAllText(Path.Combine(
-            TestRepositoryPaths.GetRepositoryRoot(),
-            "src",
-            "OpenClaw.Tray.WinUI",
-            "Pages",
-            "SessionsPage.xaml.cs"));
+        string Read(string file) => File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Sessions", file));
+        var presentation = Read("SessionsHubPresentation.cs");
+        var state = Read("SessionsHubState.cs");
 
-        Assert.Contains("SessionRunState.GetDisplaySortOrder(item.Session)", source, StringComparison.Ordinal);
-        Assert.Contains("StatusText = ResolveStatusText(s)", source, StringComparison.Ordinal);
-        Assert.Contains("SessionRunState.HasStoppedLastRun(s)", source, StringComparison.Ordinal);
-
-        var xaml = File.ReadAllText(Path.Combine(
-            TestRepositoryPaths.GetRepositoryRoot(),
-            "src",
-            "OpenClaw.Tray.WinUI",
-            "Pages",
-            "SessionsPage.xaml"));
-        Assert.Contains("Text=\"{Binding StatusText}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SessionRunState.GetDisplayState(row)", presentation, StringComparison.Ordinal);
+        Assert.Contains("SessionsPage_Status_Working", presentation, StringComparison.Ordinal);
+        Assert.Contains("SessionsPage_Status_NeedsAttention", presentation, StringComparison.Ordinal);
+        Assert.Contains("SessionRunState.IsCompleted(row)", state, StringComparison.Ordinal);
     }
 }

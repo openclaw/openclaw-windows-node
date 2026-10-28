@@ -520,19 +520,6 @@ public partial class OpenClawGatewayClient
 
     // ── sessions.list (archived) ──
 
-    /// <summary>
-    /// Fetches only the archived sessions (<c>sessions.list</c> with
-    /// <c>archived:true</c>). Rows are detached: they never touch the live
-    /// session tracking, so they must be consumed as a snapshot. Unsupported or
-    /// pre-handshake gateways return <c>IsSupported = false</c>; other request
-    /// failures propagate.
-    /// </summary>
-    public async Task<SessionListResult> ListArchivedSessionsAsync(int timeoutMs = 15000)
-    {
-        var payload = await TryRequestPayloadAsync("sessions.list", new { archived = true, includeDerivedTitles = true }, timeoutMs).ConfigureAwait(false);
-        if (payload is null) return new SessionListResult { IsSupported = false };
-        return new SessionListResult { Sessions = ParseDetachedSessionRows(payload.Value) };
-    }
 
     internal IReadOnlyList<SessionInfo> ParseDetachedSessionRows(JsonElement payload)
     {

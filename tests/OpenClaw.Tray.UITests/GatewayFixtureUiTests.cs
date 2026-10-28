@@ -69,13 +69,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 "archived conversation hidden from sidebar");
 
             await run.InvokeAsync("app.navigate", new { page = "sessions" });
-            await WaitUiAsync(run, () => FindById(run, "SessionsPageArchived") is not null, "Settings archive section");
-            var section = FindById(run, "SessionsPageArchived")!;
-            ScrollAncestorToBottom(section);
-            ((ExpandCollapsePattern)section.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            await WaitUiAsync(run, () => FindById(run, "SessionsPageStatusArchived") is not null, "Settings archived status filter");
+            ((SelectionItemPattern)FindById(run, "SessionsPageStatusArchived")!.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
             var restoreId = $"SessionsPageUnarchive:{GatewayScenario.OtherSessionKey}";
             await WaitUiAsync(run, () => FindById(run, restoreId) is not null, "archived conversation in Settings");
-            ScrollAncestorToBottom(FindById(run, restoreId)!);
             await WaitUiAsync(run, () => FindById(run, restoreId)?.Current.IsOffscreen == false, "visible unarchive action");
             await CaptureIfRequestedAsync(run, "settings-archived-conversation.png");
             Invoke(FindById(run, restoreId)!);
@@ -87,19 +84,6 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.Null(FindById(run, "WorkspaceArchivedToggle"));
             Assert.True(SessionSelected(run, GatewayScenario.OtherTitle));
         }, allowSessionMutations: true);
-    }
-
-    private static void ScrollAncestorToBottom(AutomationElement element)
-    {
-        for (AutomationElement? parent = element; parent is not null; parent = TreeWalker.ControlViewWalker.GetParent(parent))
-        {
-            if (parent.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern)
-                && ((ScrollPattern)pattern).Current.VerticallyScrollable)
-            {
-                ((ScrollPattern)pattern).SetScrollPercent(ScrollPattern.NoScroll, 100);
-                return;
-            }
-        }
     }
 
     [GatewayFixtureUiFact]
@@ -417,9 +401,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             for (var depth = 0; depth < 15 && row.Current.ControlType != ControlType.ListItem; depth++)
                 row = TreeWalker.ControlViewWalker.GetParent(row)
                     ?? throw new InvalidOperationException("Session title has no list-item ancestor.");
-            var openChat = row.FindFirst(TreeScope.Descendants, new AndCondition(
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-                new PropertyCondition(AutomationElement.NameProperty, "Open in chat")));
+            var openChat = row.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button))
+                .Cast<AutomationElement>()
+                .FirstOrDefault(button => button.Current.AutomationId.StartsWith("SessionsHubOpen:", StringComparison.Ordinal));
             Assert.NotNull(openChat);
             Invoke(openChat);
             await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle)

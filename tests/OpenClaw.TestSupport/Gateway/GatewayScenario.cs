@@ -63,7 +63,10 @@ public sealed partial class GatewayScenario
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    private readonly string[]? _hubMethods;
+    private readonly bool _hubReadOnly;
+
+    public string Name => _hubMethods is not null ? (_hubReadOnly ? SessionsHubReadOnlyName : SessionsHubName) : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -76,8 +79,11 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        string[]? hubMethods = null, bool hubReadOnly = false)
     {
+        _hubMethods = hubMethods;
+        _hubReadOnly = hubReadOnly;
         _sessions = sessions;
         _reads = reads;
         _setup = setup;
@@ -97,6 +103,8 @@ public sealed partial class GatewayScenario
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
+            .Concat(hubMethods ?? [])
+            .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
@@ -110,6 +118,8 @@ public sealed partial class GatewayScenario
     {
         BrowseName => CreateBrowse(),
         InteractiveName => CreateInteractive(),
+        SessionsHubName => CreateSessionsHub(),
+        SessionsHubReadOnlyName => CreateSessionsHub(readOnly: true),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
 
@@ -331,6 +341,7 @@ public sealed partial class GatewayScenario
                     ? Array.Empty<string>()
                     : IsInteractive
                         ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
+                        : _hubMethods is not null ? (_hubReadOnly ? new[] { "operator.read" } : new[] { "operator.admin", "operator.write", "operator.read" })
                         : _contextUsage is not null ? new[] { "operator.read", "operator.write" }
                         : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null
                             ? new[] { "operator.admin", "operator.read" }
@@ -355,6 +366,8 @@ public sealed partial class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters, Func<string, bool>? containsModelSession = null)
     {
+        if (RespondSessionsHub(method, parameters) is { } hubReply)
+            return hubReply;
         if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
             return RespondCron(method, parameters);
         if (_contextUsage is not null && method == "chat.send")
@@ -437,14 +450,24 @@ public sealed partial class GatewayScenario
 
     private object ListSessions(JsonElement p)
     {
-        ValidateProperties(p, "agentId", "limit", "activeMinutes", "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage", "archived");
+        ValidateProperties(p, "agentId", "limit", "offset", "activeMinutes", "includeGlobal", "includeUnknown", "includeDerivedTitles",
+            "includeLastMessage", "archived", "search", "source", "excludeDock");
         var agent = OptionalString(p, "agentId");
         if (agent is not null && agent is not ("main" or "research"))
             throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agentId.");
         var limit = PositiveInt(p, "limit", int.MaxValue);
+        var offset = p.TryGetProperty("offset", out var offsetValue)
+            ? offsetValue.ValueKind == JsonValueKind.Number && offsetValue.TryGetInt32(out var parsedOffset) && parsedOffset >= 0
+                ? parsedOffset : throw new FixtureRequestException("INVALID_PARAMS", "offset must be a nonnegative integer.")
+            : 0;
         var activeMinutes = PositiveInt(p, "activeMinutes", int.MaxValue);
-        foreach (var flag in new[] { "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage" })
+        foreach (var flag in new[] { "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage", "excludeDock" })
             OptionalBoolean(p, flag);
+        var search = p.TryGetProperty("search", out var searchValue) && searchValue.ValueKind == JsonValueKind.String
+            ? searchValue.GetString()?.Trim() : null;
+        bool? archived = p.TryGetProperty("archived", out var archivedValue)
+            && archivedValue.ValueKind == JsonValueKind.String && archivedValue.GetString() == "all"
+                ? null : OptionalBoolean(p, "archived") ?? false;
         JsonObject[] rows;
         lock (_sessionChanges)
         {
@@ -453,8 +476,11 @@ public sealed partial class GatewayScenario
                 .Select(s => _sessionChanges.TryGetValue(s.Key, out var changed)
                     ? changed?.DeepClone().AsObject() : JsonSerializer.SerializeToNode(s.Row)!.AsObject())
                 .OfType<JsonObject>()
-                .Where(row => (row["archived"]?.GetValue<bool>() ?? false) == (OptionalBoolean(p, "archived") ?? false))
-                .Take(limit).ToArray();
+                .Where(row => archived is null || (row["archived"]?.GetValue<bool>() ?? false) == archived)
+                .Where(row => string.IsNullOrEmpty(search)
+                    || row["label"]?.GetValue<string>().Contains(search, StringComparison.OrdinalIgnoreCase) == true
+                    || row["key"]!.GetValue<string>().Contains(search, StringComparison.OrdinalIgnoreCase))
+                .Skip(offset).Take(limit).ToArray();
         }
         var listing = JsonSerializer.SerializeToElement(new
         {

@@ -258,6 +258,12 @@ public sealed class SessionWorktreeInfo
     public string? RepoRoot { get; set; }
 }
 
+/// <summary>A <c>sessions.changed</c> push: its <c>reason</c> and <c>sessionKey</c>, each null when absent.</summary>
+public sealed record SessionListChange(string? Reason, string? SessionKey);
+
+/// <summary>Assignable session owner projected by the Gateway (<c>owner.actor</c>).</summary>
+public sealed record SessionOwnerInfo(string Type, string? Id, string? Label);
+
 public class SessionInfo
 {
     /// <summary>Defensive copy so a snapshot handed to a SessionsUpdated subscriber does not
@@ -302,6 +308,25 @@ public class SessionInfo
     public ThinkingContext? ThinkingContext { get; set; }
     public ThinkingContext? ThinkingDefaults { get; set; }
     public string? VerboseLevel { get; set; }
+    /// <summary>Session reasoning override (<c>off</c>, <c>on</c>, <c>stream</c>); null inherits.</summary>
+    public string? ReasoningLevel { get; set; }
+    /// <summary>Session fast-mode override as a wire word (<c>on</c>, <c>off</c>, <c>auto</c>); null inherits.</summary>
+    public string? FastMode { get; set; }
+    /// <summary>Gateway row kind: <c>direct</c>, <c>group</c>, <c>global</c> or <c>unknown</c>.</summary>
+    public string? Kind { get; set; }
+    /// <summary>User-defined organization group (gateway <c>category</c>); null is ungrouped.</summary>
+    public string? Category { get; set; }
+    /// <summary>Named session tint (<c>red</c> ... <c>cyan</c>); null or unknown has no tint.</summary>
+    public string? Color { get; set; }
+    /// <summary>Session icon: a named glyph id or a self-contained SVG data URL; null uses the default.</summary>
+    public string? Icon { get; set; }
+    public SessionOwnerInfo? Owner { get; set; }
+    /// <summary>Cloud-worker placement state; null or <c>local</c> means the session runs on the Gateway.</summary>
+    public string? PlacementState { get; set; }
+    public string? PlacementRecoveryAction { get; set; }
+    public long? ArchivedAt { get; set; }
+    public string? ArchiveReason { get; set; }
+    public string? LastRunError { get; set; }
     public bool SystemSent { get; set; }
     public bool AbortedLastRun { get; set; }
     /// <summary>

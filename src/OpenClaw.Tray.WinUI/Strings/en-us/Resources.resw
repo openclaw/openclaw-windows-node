@@ -2048,24 +2048,6 @@ Use one of these options:
   <data name="PermissionsPage_Button_123.Content" xml:space="preserve">
     <value>Open Windows Privacy Settings</value>
   </data>
-  <data name="SessionsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>💬 Sessions</value>
-  </data>
-  <data name="SessionsPage_Button_57.Content" xml:space="preserve">
-    <value>Reset</value>
-  </data>
-  <data name="SessionsPage_Button_59.Content" xml:space="preserve">
-    <value>Compact</value>
-  </data>
-  <data name="SessionsPage_Button_61.Content" xml:space="preserve">
-    <value>Delete</value>
-  </data>
-  <data name="SessionsPage_TextBlock_73.Text" xml:space="preserve">
-    <value>No active sessions</value>
-  </data>
-  <data name="SessionsPage_TextBlock_84.Text" xml:space="preserve">
-    <value>🤖 Available Models</value>
-  </data>
   <data name="SettingsPage_TextBlock_16.Text" xml:space="preserve">
     <value>⚙️ Settings</value>
   </data>
@@ -4865,15 +4847,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SandboxPage_64MiB.Content" xml:space="preserve">
     <value>64 MiB</value>
   </data>
-  <data name="SessionsPage_Sessions.Text" xml:space="preserve">
-    <value>Sessions</value>
-  </data>
-  <data name="SessionsPage_Refresh.Text" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
-  <data name="SessionsPage_All.Text" xml:space="preserve">
-    <value>All</value>
-  </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
     <value>Show completed</value>
   </data>
@@ -4913,33 +4886,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="SessionsPage_OpenConnection.Content" xml:space="preserve">
     <value>Open Connection</value>
-  </data>
-  <data name="SessionsPage_LoadingSessions.Text" xml:space="preserve">
-    <value>Loading sessions...</value>
-  </data>
-  <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>No sessions</value>
-  </data>
-  <data name="SessionsPage_Reset.Text" xml:space="preserve">
-    <value>Reset</value>
-  </data>
-  <data name="SessionsPage_Compact.Text" xml:space="preserve">
-    <value>Compact</value>
-  </data>
-  <data name="SessionsPage_Checkpoints.Text" xml:space="preserve">
-    <value>Checkpoints</value>
-  </data>
-  <data name="SessionsPage_Checkpoints.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>View, branch or restore compaction checkpoints</value>
-  </data>
-  <data name="SessionsPage_ExportTranscript.Text" xml:space="preserve">
-    <value>Export transcript</value>
-  </data>
-  <data name="SessionsPage_ExportTranscript.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Save the conversation transcript to a text file</value>
-  </data>
-  <data name="SessionsPage_Delete.Text" xml:space="preserve">
-    <value>Delete</value>
   </data>
   <data name="SessionActionPrompt_Reset_Title" xml:space="preserve">
     <value>Reset session?</value>
@@ -5249,15 +5195,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
     <value>Clear</value>
-  </data>
-  <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
-    <value>Conversations this gateway is currently handling, grouped by channel.</value>
-  </data>
-  <data name="SessionsPage_EmptyHint.Text" xml:space="preserve">
-    <value>Sessions appear here when a channel is connected and traffic is flowing.</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
-    <value>Open chat</value>
   </data>
   <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
     <value>Enabled</value>
@@ -6741,12 +6678,6 @@ Make sure the gateway is running.</value>
   <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
     <value>Open terminal</value>
   </data>
-  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Open in chat</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Open this session in Chat</value>
-  </data>
   <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
     <value>Disabled</value>
   </data>
@@ -7091,9 +7022,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
     <value>Needs attention</value>
-  </data>
-  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
-    <value>Last run stopped</value>
   </data>
   <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
     <value>Gateway update required</value>
@@ -7998,10 +7926,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
   <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
   <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
-  <data name="SessionsPage_Archived" xml:space="preserve"><value>Archived</value></data>
-  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>No archived sessions.</value></data>
-  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>Archived sessions are unavailable on this gateway.</value></data>
-  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>Unarchive session</value></data>
   <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
   <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
   <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>
@@ -8185,6 +8109,1086 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Summarize my recent sessions</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me configure a channel</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Check system health</value></data>
+  <data name="SessionsHub_ActionFailed" xml:space="preserve">
+    <value>Action failed</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutes" xml:space="preserve">
+    <value>Active within (minutes)</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutesDisabled" xml:space="preserve">
+    <value>Applies to the Active view only.</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutesHelp" xml:space="preserve">
+    <value>Only show sessions updated within this many minutes.</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutesPlaceholder" xml:space="preserve">
+    <value>Any time</value>
+  </data>
+  <data name="SessionsHub_AdminOnly" xml:space="preserve">
+    <value>Requires administrator access</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredBody" xml:space="preserve">
+    <value>You can view worktrees. Creating, removing, restoring, and cleaning them requires administrator access on this Gateway.</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredTip" xml:space="preserve">
+    <value>Requires administrator access on this Gateway</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredTitle" xml:space="preserve">
+    <value>Administrator access required</value>
+  </data>
+  <data name="SessionsHub_AgentFilter" xml:space="preserve">
+    <value>Agent</value>
+  </data>
+  <data name="SessionsHub_AgentOwner" xml:space="preserve">
+    <value>Agent: {0}</value>
+  </data>
+  <data name="SessionsHub_AllAgents" xml:space="preserve">
+    <value>All agents</value>
+  </data>
+  <data name="SessionsHub_Archive" xml:space="preserve">
+    <value>Archive</value>
+  </data>
+  <data name="SessionsHub_Archived" xml:space="preserve">
+    <value>Archived</value>
+  </data>
+  <data name="SessionsHub_ArchivedFormat" xml:space="preserve">
+    <value>Archived &quot;{0}&quot;.</value>
+  </data>
+  <data name="SessionsHub_ArchiveFailed" xml:space="preserve">
+    <value>Couldn't archive the session</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonAge" xml:space="preserve">
+    <value>Archived automatically after a period of inactivity</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonCap" xml:space="preserve">
+    <value>Archived automatically to stay within the active session limit</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonManual" xml:space="preserve">
+    <value>Archived by a person</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonRestart" xml:space="preserve">
+    <value>Archived while recovering from a Gateway restart</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonStaleDashboard" xml:space="preserve">
+    <value>Archived because its dashboard was no longer used</value>
+  </data>
+  <data name="SessionsHub_Assign" xml:space="preserve">
+    <value>Assign</value>
+  </data>
+  <data name="SessionsHub_AssignFailed" xml:space="preserve">
+    <value>Couldn't assign the owner</value>
+  </data>
+  <data name="SessionsHub_AssignOwner" xml:space="preserve">
+    <value>Assign owner</value>
+  </data>
+  <data name="SessionsHub_AssignOwnerNamed" xml:space="preserve">
+    <value>Assign an owner for {0}</value>
+  </data>
+  <data name="SessionsHub_AssignToMe" xml:space="preserve">
+    <value>Assign to me</value>
+  </data>
+  <data name="SessionsHub_ChannelWebchat" xml:space="preserve">
+    <value>Web chat</value>
+  </data>
+  <data name="SessionsHub_Checkpoints" xml:space="preserve">
+    <value>Checkpoints</value>
+  </data>
+  <data name="SessionsHub_CleanDone" xml:space="preserve">
+    <value>Cleanup finished. Removed {0} worktrees, deleted {1} orphaned checkouts, and pruned {2} snapshots.</value>
+  </data>
+  <data name="SessionsHub_CleanFailed" xml:space="preserve">
+    <value>Cleanup didn't finish</value>
+  </data>
+  <data name="SessionsHub_Cleaning" xml:space="preserve">
+    <value>Cleaning up...</value>
+  </data>
+  <data name="SessionsHub_CleanIssues" xml:space="preserve">
+    <value>Some items were skipped: {0}</value>
+  </data>
+  <data name="SessionsHub_CleanNow" xml:space="preserve">
+    <value>Clean up now</value>
+  </data>
+  <data name="SessionsHub_CleanNowTip" xml:space="preserve">
+    <value>Remove idle worktrees, orphaned checkouts, and expired snapshots</value>
+  </data>
+  <data name="SessionsHub_CleanStillRunning" xml:space="preserve">
+    <value>Cleanup is still running on the Gateway. Refresh later to see the result.</value>
+  </data>
+  <data name="SessionsHub_ClearSelection" xml:space="preserve">
+    <value>Clear selection</value>
+  </data>
+  <data name="SessionsHub_CloseDetails" xml:space="preserve">
+    <value>Close details</value>
+  </data>
+  <data name="SessionsHub_CloseSearch" xml:space="preserve">
+    <value>Close search</value>
+  </data>
+  <data name="SessionsHub_CloudWorker" xml:space="preserve">
+    <value>Cloud worker</value>
+  </data>
+  <data name="SessionsHub_CountMany" xml:space="preserve">
+    <value>{0} sessions</value>
+  </data>
+  <data name="SessionsHub_CountOne" xml:space="preserve">
+    <value>1 session</value>
+  </data>
+  <data name="SessionsHub_Create" xml:space="preserve">
+    <value>Create</value>
+  </data>
+  <data name="SessionsHub_DateNoActivity" xml:space="preserve">
+    <value>No activity</value>
+  </data>
+  <data name="SessionsHub_DateOlder" xml:space="preserve">
+    <value>Older</value>
+  </data>
+  <data name="SessionsHub_DateThisWeek" xml:space="preserve">
+    <value>Earlier this week</value>
+  </data>
+  <data name="SessionsHub_DateToday" xml:space="preserve">
+    <value>Today</value>
+  </data>
+  <data name="SessionsHub_DateYesterday" xml:space="preserve">
+    <value>Yesterday</value>
+  </data>
+  <data name="SessionsHub_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="SessionsHub_DeleteAll" xml:space="preserve">
+    <value>Delete all</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchived" xml:space="preserve">
+    <value>Delete all archived</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedBody" xml:space="preserve">
+    <value>Permanently delete {0} archived sessions and their transcripts? This can't be undone.</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedTip" xml:space="preserve">
+    <value>Permanently delete every archived session</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedTitle" xml:space="preserve">
+    <value>Delete all archived sessions?</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedWorktrees" xml:space="preserve">
+    <value>{0} of these sessions have managed worktrees. A worktree that is still in use or has unsaved work is preserved and listed after deletion.</value>
+  </data>
+  <data name="SessionsHub_DeleteBlocked" xml:space="preserve">
+    <value>This session can't be deleted.</value>
+  </data>
+  <data name="SessionsHub_DeletedMany" xml:space="preserve">
+    <value>Deleted {0} sessions.</value>
+  </data>
+  <data name="SessionsHub_DeletedOne" xml:space="preserve">
+    <value>Deleted 1 session.</value>
+  </data>
+  <data name="SessionsHub_DeleteFailed" xml:space="preserve">
+    <value>Couldn't delete</value>
+  </data>
+  <data name="SessionsHub_DeleteFailures" xml:space="preserve">
+    <value>{0} couldn't be deleted. First error: {1}</value>
+  </data>
+  <data name="SessionsHub_DeleteGroup" xml:space="preserve">
+    <value>Delete group</value>
+  </data>
+  <data name="SessionsHub_DeleteGroupBody" xml:space="preserve">
+    <value>Delete the group &quot;{0}&quot;? Its sessions aren't deleted; they become ungrouped.</value>
+  </data>
+  <data name="SessionsHub_DeleteGroupTitle" xml:space="preserve">
+    <value>Delete group?</value>
+  </data>
+  <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
+    <value>Deleting a session that isn't archived requires administrator access. Archive it first, or ask an administrator.</value>
+  </data>
+  <data name="SessionsHub_DeleteSelected" xml:space="preserve">
+    <value>Delete selected</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedBodyMany" xml:space="preserve">
+    <value>Permanently delete {0} sessions and their transcripts? This can't be undone.</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedBodyOne" xml:space="preserve">
+    <value>Permanently delete the selected session and its transcript? This can't be undone.</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedNoneAllowed" xml:space="preserve">
+    <value>None of the selected sessions can be deleted with your access. Main sessions can't be deleted, and active sessions need administrator access.</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedSkipped" xml:space="preserve">
+    <value>{0} selected sessions will be skipped because they can't be deleted with your access.</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedTitle" xml:space="preserve">
+    <value>Delete selected sessions?</value>
+  </data>
+  <data name="SessionsHub_Details" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="SessionsHub_DetailsFor" xml:space="preserve">
+    <value>Details for {0}</value>
+  </data>
+  <data name="SessionsHub_DisconnectedBody" xml:space="preserve">
+    <value>Connect to a Gateway to see and manage its sessions.</value>
+  </data>
+  <data name="SessionsHub_DisconnectedTitle" xml:space="preserve">
+    <value>Not connected</value>
+  </data>
+  <data name="SessionsHub_EmptyActiveBody" xml:space="preserve">
+    <value>Sessions appear here when you or a channel start a conversation.</value>
+  </data>
+  <data name="SessionsHub_EmptyActiveTitle" xml:space="preserve">
+    <value>No active sessions</value>
+  </data>
+  <data name="SessionsHub_EmptyAllBody" xml:space="preserve">
+    <value>This Gateway doesn't have any sessions yet.</value>
+  </data>
+  <data name="SessionsHub_EmptyAllTitle" xml:space="preserve">
+    <value>No sessions yet</value>
+  </data>
+  <data name="SessionsHub_EmptyArchivedBody" xml:space="preserve">
+    <value>Sessions you archive are kept here until you restore or delete them.</value>
+  </data>
+  <data name="SessionsHub_EmptyArchivedTitle" xml:space="preserve">
+    <value>No archived sessions</value>
+  </data>
+  <data name="SessionsHub_EmptyFilteredBody" xml:space="preserve">
+    <value>Try a different search or reset the filters.</value>
+  </data>
+  <data name="SessionsHub_EmptyFilteredTitle" xml:space="preserve">
+    <value>No sessions match these filters</value>
+  </data>
+  <data name="SessionsHub_EmptyGroup" xml:space="preserve">
+    <value>No sessions in this group</value>
+  </data>
+  <data name="SessionsHub_FactAgent" xml:space="preserve">
+    <value>Agent</value>
+  </data>
+  <data name="SessionsHub_FactArchivedAt" xml:space="preserve">
+    <value>Archived on</value>
+  </data>
+  <data name="SessionsHub_FactArchiveReason" xml:space="preserve">
+    <value>Archive reason</value>
+  </data>
+  <data name="SessionsHub_FactChannel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="SessionsHub_FactCreated" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="SessionsHub_FactKey" xml:space="preserve">
+    <value>Session key</value>
+  </data>
+  <data name="SessionsHub_FactModel" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="SessionsHub_FactPinned" xml:space="preserve">
+    <value>Pinned</value>
+  </data>
+  <data name="SessionsHub_FactProvider" xml:space="preserve">
+    <value>Provider</value>
+  </data>
+  <data name="SessionsHub_FactSessionId" xml:space="preserve">
+    <value>Session ID</value>
+  </data>
+  <data name="SessionsHub_FactTokens" xml:space="preserve">
+    <value>Tokens used</value>
+  </data>
+  <data name="SessionsHub_FactUpdated" xml:space="preserve">
+    <value>Last updated</value>
+  </data>
+  <data name="SessionsHub_FactWorktree" xml:space="preserve">
+    <value>Worktree</value>
+  </data>
+  <data name="SessionsHub_Fast" xml:space="preserve">
+    <value>Fast mode</value>
+  </data>
+  <data name="SessionsHub_Filters" xml:space="preserve">
+    <value>Filters</value>
+  </data>
+  <data name="SessionsHub_FiltersCount" xml:space="preserve">
+    <value>Filters ({0})</value>
+  </data>
+  <data name="SessionsHub_ForceRemove" xml:space="preserve">
+    <value>Remove anyway</value>
+  </data>
+  <data name="SessionsHub_ForceRemoveBody" xml:space="preserve">
+    <value>The Gateway couldn't safely remove &quot;{0}&quot;: {1}&#x0A;&#x0A;Removing it anyway discards any uncommitted changes in the worktree. This can't be undone.</value>
+  </data>
+  <data name="SessionsHub_ForceRemoveTitle" xml:space="preserve">
+    <value>Remove the worktree anyway?</value>
+  </data>
+  <data name="SessionsHub_Group" xml:space="preserve">
+    <value>Group</value>
+  </data>
+  <data name="SessionsHub_GroupBy" xml:space="preserve">
+    <value>Group by</value>
+  </data>
+  <data name="SessionsHub_GroupByAgent" xml:space="preserve">
+    <value>Group by agent</value>
+  </data>
+  <data name="SessionsHub_GroupByCategory" xml:space="preserve">
+    <value>Group by custom group</value>
+  </data>
+  <data name="SessionsHub_GroupByChannel" xml:space="preserve">
+    <value>Group by channel</value>
+  </data>
+  <data name="SessionsHub_GroupByDate" xml:space="preserve">
+    <value>Group by date</value>
+  </data>
+  <data name="SessionsHub_GroupByKind" xml:space="preserve">
+    <value>Group by kind</value>
+  </data>
+  <data name="SessionsHub_GroupByNone" xml:space="preserve">
+    <value>No grouping</value>
+  </data>
+  <data name="SessionsHub_GroupByPerson" xml:space="preserve">
+    <value>Group by owner</value>
+  </data>
+  <data name="SessionsHub_GroupFailed" xml:space="preserve">
+    <value>Couldn't update groups</value>
+  </data>
+  <data name="SessionsHub_GroupOptions" xml:space="preserve">
+    <value>Options for group {0}</value>
+  </data>
+  <data name="SessionsHub_GroupOther" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="SessionsHub_IncludeGlobal" xml:space="preserve">
+    <value>Include global sessions</value>
+  </data>
+  <data name="SessionsHub_IncludeUnknown" xml:space="preserve">
+    <value>Include sessions without routing information</value>
+  </data>
+  <data name="SessionsHub_Inherit" xml:space="preserve">
+    <value>Use default</value>
+  </data>
+  <data name="SessionsHub_KindChannel" xml:space="preserve">
+    <value>Channel conversation</value>
+  </data>
+  <data name="SessionsHub_KindCron" xml:space="preserve">
+    <value>Scheduled task</value>
+  </data>
+  <data name="SessionsHub_KindDirect" xml:space="preserve">
+    <value>Direct conversation</value>
+  </data>
+  <data name="SessionsHub_KindGlobal" xml:space="preserve">
+    <value>Global session</value>
+  </data>
+  <data name="SessionsHub_KindGroup" xml:space="preserve">
+    <value>Group conversation</value>
+  </data>
+  <data name="SessionsHub_KindMain" xml:space="preserve">
+    <value>Main session</value>
+  </data>
+  <data name="SessionsHub_KindOther" xml:space="preserve">
+    <value>Other session</value>
+  </data>
+  <data name="SessionsHub_KindSubagent" xml:space="preserve">
+    <value>Subagent</value>
+  </data>
+  <data name="SessionsHub_KindThread" xml:space="preserve">
+    <value>Thread</value>
+  </data>
+  <data name="SessionsHub_KindUnknown" xml:space="preserve">
+    <value>Unrouted session</value>
+  </data>
+  <data name="SessionsHub_Label" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="SessionsHub_LabelPlaceholder" xml:space="preserve">
+    <value>Use the generated title</value>
+  </data>
+  <data name="SessionsHub_LastRunError" xml:space="preserve">
+    <value>The last run failed</value>
+  </data>
+  <data name="SessionsHub_LevelAuto" xml:space="preserve">
+    <value>Automatic</value>
+  </data>
+  <data name="SessionsHub_LevelFull" xml:space="preserve">
+    <value>Full detail</value>
+  </data>
+  <data name="SessionsHub_LevelOff" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="SessionsHub_LevelOn" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="SessionsHub_LevelStream" xml:space="preserve">
+    <value>Stream as it thinks</value>
+  </data>
+  <data name="SessionsHub_LevelUltrafast" xml:space="preserve">
+    <value>Ultra fast</value>
+  </data>
+  <data name="SessionsHub_Limit" xml:space="preserve">
+    <value>Sessions to load</value>
+  </data>
+  <data name="SessionsHub_LimitHelp" xml:space="preserve">
+    <value>How many sessions to request from the Gateway at a time.</value>
+  </data>
+  <data name="SessionsHub_ListLabel" xml:space="preserve">
+    <value>Sessions</value>
+  </data>
+  <data name="SessionsHub_LoadFailedTitle" xml:space="preserve">
+    <value>Couldn't load sessions</value>
+  </data>
+  <data name="SessionsHub_Loading" xml:space="preserve">
+    <value>Loading sessions...</value>
+  </data>
+  <data name="SessionsHub_LoadMore" xml:space="preserve">
+    <value>Load more</value>
+  </data>
+  <data name="SessionsHub_MainCannotArchive" xml:space="preserve">
+    <value>The main session can't be archived. Reset it instead to start fresh.</value>
+  </data>
+  <data name="SessionsHub_MoreNamed" xml:space="preserve">
+    <value>More actions for {0}</value>
+  </data>
+  <data name="SessionsHub_Move" xml:space="preserve">
+    <value>Move</value>
+  </data>
+  <data name="SessionsHub_MoveToGroup" xml:space="preserve">
+    <value>Move to group</value>
+  </data>
+  <data name="SessionsHub_MoveToGroupNamed" xml:space="preserve">
+    <value>Move {0} to a group</value>
+  </data>
+  <data name="SessionsHub_NeedsWrite" xml:space="preserve">
+    <value>Requires write access on this Gateway</value>
+  </data>
+  <data name="SessionsHub_NewGroup" xml:space="preserve">
+    <value>New group</value>
+  </data>
+  <data name="SessionsHub_NewGroupBody" xml:space="preserve">
+    <value>Groups organize sessions for everyone using this Gateway.</value>
+  </data>
+  <data name="SessionsHub_NewGroupEllipsis" xml:space="preserve">
+    <value>New group...</value>
+  </data>
+  <data name="SessionsHub_NewGroupPlaceholder" xml:space="preserve">
+    <value>Group name</value>
+  </data>
+  <data name="SessionsHub_NewGroupTitle" xml:space="preserve">
+    <value>Create a group</value>
+  </data>
+  <data name="SessionsHub_NewWorktree" xml:space="preserve">
+    <value>New worktree</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBase" xml:space="preserve">
+    <value>Base branch</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBasePlaceholder" xml:space="preserve">
+    <value>Repository default</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBranchesLoading" xml:space="preserve">
+    <value>Loading branches...</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBranchesUnavailable" xml:space="preserve">
+    <value>Branches aren't available for this repository. You can type a branch name.</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeCreate" xml:space="preserve">
+    <value>Create worktree</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeName" xml:space="preserve">
+    <value>Name (optional)</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNameInvalid" xml:space="preserve">
+    <value>Use lowercase letters, numbers, and hyphens, starting with a letter or number.</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNamePlaceholder" xml:space="preserve">
+    <value>Generated if empty</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNotGit" xml:space="preserve">
+    <value>This folder isn't a Git repository.</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeRepo" xml:space="preserve">
+    <value>Repository folder</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeRepoPlaceholder" xml:space="preserve">
+    <value>Path to a Git repository on the Gateway host</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
+    <value>Create a worktree</value>
+  </data>
+  <data name="SessionsHub_NextPage" xml:space="preserve">
+    <value>Next page</value>
+  </data>
+  <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
+    <value>There are no archived sessions you can delete.</value>
+  </data>
+  <data name="SessionsHub_NoOwners" xml:space="preserve">
+    <value>No people or agents available</value>
+  </data>
+  <data name="SessionsHub_NotAvailable" xml:space="preserve">
+    <value>Not available</value>
+  </data>
+  <data name="SessionsHub_OpenInChat" xml:space="preserve">
+    <value>Open in chat</value>
+  </data>
+  <data name="SessionsHub_OpenInChatNamed" xml:space="preserve">
+    <value>Open {0} in chat</value>
+  </data>
+  <data name="SessionsHub_Organization" xml:space="preserve">
+    <value>Ownership and grouping</value>
+  </data>
+  <data name="SessionsHub_Overrides" xml:space="preserve">
+    <value>Session settings</value>
+  </data>
+  <data name="SessionsHub_OwnedBy" xml:space="preserve">
+    <value>Owner: {0}</value>
+  </data>
+  <data name="SessionsHub_Owner" xml:space="preserve">
+    <value>Owner</value>
+  </data>
+  <data name="SessionsHub_PageOf" xml:space="preserve">
+    <value>Page {0} of {1}</value>
+  </data>
+  <data name="SessionsHub_PageRange" xml:space="preserve">
+    <value>Showing {0} to {1} of {2}</value>
+  </data>
+  <data name="SessionsHub_PageRangeOfServer" xml:space="preserve">
+    <value>Showing {0} to {1} of {2} loaded ({3} on the Gateway)</value>
+  </data>
+  <data name="SessionsHub_PageSize" xml:space="preserve">
+    <value>Sessions per page</value>
+  </data>
+  <data name="SessionsHub_PlacementActive" xml:space="preserve">
+    <value>Running on a cloud worker</value>
+  </data>
+  <data name="SessionsHub_PlacementFailed" xml:space="preserve">
+    <value>Cloud worker failed</value>
+  </data>
+  <data name="SessionsHub_PlacementLocal" xml:space="preserve">
+    <value>Running on the Gateway</value>
+  </data>
+  <data name="SessionsHub_PlacementReclaimed" xml:space="preserve">
+    <value>Returned to the Gateway</value>
+  </data>
+  <data name="SessionsHub_PlacementStarting" xml:space="preserve">
+    <value>Cloud worker starting</value>
+  </data>
+  <data name="SessionsHub_PlacementStopping" xml:space="preserve">
+    <value>Cloud worker stopping</value>
+  </data>
+  <data name="SessionsHub_PreservedBusy" xml:space="preserve">
+    <value>still in use</value>
+  </data>
+  <data name="SessionsHub_PreservedCleanupFailed" xml:space="preserve">
+    <value>cleanup failed</value>
+  </data>
+  <data name="SessionsHub_PreservedLocked" xml:space="preserve">
+    <value>locked by another process</value>
+  </data>
+  <data name="SessionsHub_PreservedOwnerMismatch" xml:space="preserve">
+    <value>owned by another session</value>
+  </data>
+  <data name="SessionsHub_PreservedSnapshotFailed" xml:space="preserve">
+    <value>safety snapshot failed</value>
+  </data>
+  <data name="SessionsHub_PreservedWorktrees" xml:space="preserve">
+    <value>Kept worktrees: {0}.</value>
+  </data>
+  <data name="SessionsHub_PreviousPage" xml:space="preserve">
+    <value>Previous page</value>
+  </data>
+  <data name="SessionsHub_ReadOnlyBody" xml:space="preserve">
+    <value>You can browse and search sessions. Changing, archiving, or deleting them requires write access on this Gateway.</value>
+  </data>
+  <data name="SessionsHub_ReadOnlyTitle" xml:space="preserve">
+    <value>View-only access</value>
+  </data>
+  <data name="SessionsHub_Reasoning" xml:space="preserve">
+    <value>Show reasoning</value>
+  </data>
+  <data name="SessionsHub_Refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="SessionsHub_Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="SessionsHub_RemoveFromGroup" xml:space="preserve">
+    <value>Remove from group</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeBody" xml:space="preserve">
+    <value>Remove the worktree &quot;{0}&quot;? The Gateway takes a safety snapshot first, so you can restore it later.</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeFailed" xml:space="preserve">
+    <value>Couldn't remove the worktree</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeRefused" xml:space="preserve">
+    <value>The Gateway declined to remove it safely.</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeTitle" xml:space="preserve">
+    <value>Remove worktree?</value>
+  </data>
+  <data name="SessionsHub_RenameGroup" xml:space="preserve">
+    <value>Rename group</value>
+  </data>
+  <data name="SessionsHub_RenameGroupBody" xml:space="preserve">
+    <value>Sessions in this group move to the new name.</value>
+  </data>
+  <data name="SessionsHub_RenameGroupTitle" xml:space="preserve">
+    <value>Rename group</value>
+  </data>
+  <data name="SessionsHub_ResetFilters" xml:space="preserve">
+    <value>Reset filters</value>
+  </data>
+  <data name="SessionsHub_Restore" xml:space="preserve">
+    <value>Restore</value>
+  </data>
+  <data name="SessionsHub_RestoreWorktreeFailed" xml:space="preserve">
+    <value>Couldn't restore the worktree</value>
+  </data>
+  <data name="SessionsHub_Retry" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="SessionsHub_RoleAssistant" xml:space="preserve">
+    <value>Assistant</value>
+  </data>
+  <data name="SessionsHub_RoleUser" xml:space="preserve">
+    <value>You</value>
+  </data>
+  <data name="SessionsHub_RowHelp" xml:space="preserve">
+    <value>Shows the session's details</value>
+  </data>
+  <data name="SessionsHub_RowsPerPage" xml:space="preserve">
+    <value>{0} per page</value>
+  </data>
+  <data name="SessionsHub_Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="SessionsHub_Search" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="SessionsHub_Searching" xml:space="preserve">
+    <value>Searching transcripts...</value>
+  </data>
+  <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
+    <value>Filter by name or key</value>
+  </data>
+  <data name="SessionsHub_SearchTranscripts" xml:space="preserve">
+    <value>Search transcripts</value>
+  </data>
+  <data name="SessionsHub_SearchTranscriptsTip" xml:space="preserve">
+    <value>Find text in the messages of the sessions shown by the current filters</value>
+  </data>
+  <data name="SessionsHub_Select" xml:space="preserve">
+    <value>Select</value>
+  </data>
+  <data name="SessionsHub_SelectedMany" xml:space="preserve">
+    <value>{0} selected</value>
+  </data>
+  <data name="SessionsHub_SelectedOne" xml:space="preserve">
+    <value>1 selected</value>
+  </data>
+  <data name="SessionsHub_SelectNamed" xml:space="preserve">
+    <value>Select {0}</value>
+  </data>
+  <data name="SessionsHub_SelectPage" xml:space="preserve">
+    <value>Select this page</value>
+  </data>
+  <data name="SessionsHub_SelectTip" xml:space="preserve">
+    <value>Choose several sessions to delete at once</value>
+  </data>
+  <data name="SessionsHub_ShowAll" xml:space="preserve">
+    <value>Show all sessions</value>
+  </data>
+  <data name="SessionsHub_ShowDetails" xml:space="preserve">
+    <value>Show details</value>
+  </data>
+  <data name="SessionsHub_ShowDetailsNamed" xml:space="preserve">
+    <value>Show details for {0}</value>
+  </data>
+  <data name="SessionsHub_Sort" xml:space="preserve">
+    <value>Sort</value>
+  </data>
+  <data name="SessionsHub_SortNameAsc" xml:space="preserve">
+    <value>Name, A to Z</value>
+  </data>
+  <data name="SessionsHub_SortNameDesc" xml:space="preserve">
+    <value>Name, Z to A</value>
+  </data>
+  <data name="SessionsHub_SortNewest" xml:space="preserve">
+    <value>Recently updated</value>
+  </data>
+  <data name="SessionsHub_SortOldest" xml:space="preserve">
+    <value>Least recently updated</value>
+  </data>
+  <data name="SessionsHub_StatusActive" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="SessionsHub_StatusAll" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="SessionsHub_StatusArchived" xml:space="preserve">
+    <value>Archived</value>
+  </data>
+  <data name="SessionsHub_StatusFilter" xml:space="preserve">
+    <value>Session status</value>
+  </data>
+  <data name="SessionsHub_StatusQueued" xml:space="preserve">
+    <value>Queued</value>
+  </data>
+  <data name="SessionsHub_StopWorker" xml:space="preserve">
+    <value>Stop cloud worker</value>
+  </data>
+  <data name="SessionsHub_StopWorkerBody" xml:space="preserve">
+    <value>Stop the cloud worker for &quot;{0}&quot; and return the session to the Gateway? Work in progress on the worker is captured before it stops.</value>
+  </data>
+  <data name="SessionsHub_StopWorkerBusy" xml:space="preserve">
+    <value>Wait for the current turn to finish before stopping the worker.</value>
+  </data>
+  <data name="SessionsHub_StopWorkerDone" xml:space="preserve">
+    <value>Stopped the cloud worker for &quot;{0}&quot;.</value>
+  </data>
+  <data name="SessionsHub_StopWorkerFailed" xml:space="preserve">
+    <value>Couldn't stop the cloud worker</value>
+  </data>
+  <data name="SessionsHub_StopWorkerHelp" xml:space="preserve">
+    <value>Stopping returns the session to the Gateway.</value>
+  </data>
+  <data name="SessionsHub_StopWorkerTitle" xml:space="preserve">
+    <value>Stop cloud worker?</value>
+  </data>
+  <data name="SessionsHub_StopWorkerUnavailable" xml:space="preserve">
+    <value>This worker can't be stopped right now.</value>
+  </data>
+  <data name="SessionsHub_Subtitle" xml:space="preserve">
+    <value>Browse, organize, and clean up the conversations on this Gateway.</value>
+  </data>
+  <data name="SessionsHub_TabSessions" xml:space="preserve">
+    <value>Sessions</value>
+  </data>
+  <data name="SessionsHub_TabsLabel" xml:space="preserve">
+    <value>Sessions page sections</value>
+  </data>
+  <data name="SessionsHub_TabWorktrees" xml:space="preserve">
+    <value>Worktrees</value>
+  </data>
+  <data name="SessionsHub_Thinking" xml:space="preserve">
+    <value>Thinking level</value>
+  </data>
+  <data name="SessionsHub_ThinkingHigh" xml:space="preserve">
+    <value>High</value>
+  </data>
+  <data name="SessionsHub_ThinkingLow" xml:space="preserve">
+    <value>Low</value>
+  </data>
+  <data name="SessionsHub_ThinkingMedium" xml:space="preserve">
+    <value>Medium</value>
+  </data>
+  <data name="SessionsHub_ThinkingMinimal" xml:space="preserve">
+    <value>Minimal</value>
+  </data>
+  <data name="SessionsHub_ThinkingXHigh" xml:space="preserve">
+    <value>Extra high</value>
+  </data>
+  <data name="SessionsHub_TimeDays" xml:space="preserve">
+    <value>{0} d ago</value>
+  </data>
+  <data name="SessionsHub_TimeHours" xml:space="preserve">
+    <value>{0} h ago</value>
+  </data>
+  <data name="SessionsHub_TimeJustNow" xml:space="preserve">
+    <value>Just now</value>
+  </data>
+  <data name="SessionsHub_TimeMinutes" xml:space="preserve">
+    <value>{0} min ago</value>
+  </data>
+  <data name="SessionsHub_TimeNever" xml:space="preserve">
+    <value>Never</value>
+  </data>
+  <data name="SessionsHub_Title" xml:space="preserve">
+    <value>Sessions</value>
+  </data>
+  <data name="SessionsHub_TokensWithContext" xml:space="preserve">
+    <value>{0} of {1} context</value>
+  </data>
+  <data name="SessionsHub_TranscriptArchivedExcludedMany" xml:space="preserve">
+    <value>{0} archived sessions also match. Choose All or Archived to include them.</value>
+  </data>
+  <data name="SessionsHub_TranscriptArchivedExcludedOne" xml:space="preserve">
+    <value>1 archived session also matches. Choose All or Archived to include it.</value>
+  </data>
+  <data name="SessionsHub_TranscriptFailed" xml:space="preserve">
+    <value>Search didn't complete</value>
+  </data>
+  <data name="SessionsHub_TranscriptHint" xml:space="preserve">
+    <value>Search the messages of the sessions that match the current agent and status filters.</value>
+  </data>
+  <data name="SessionsHub_TranscriptIndexingBody" xml:space="preserve">
+    <value>The Gateway is still building its search index, so some matches may be missing. Try again in a moment.</value>
+  </data>
+  <data name="SessionsHub_TranscriptIndexingTitle" xml:space="preserve">
+    <value>Indexing transcripts</value>
+  </data>
+  <data name="SessionsHub_TranscriptLabel" xml:space="preserve">
+    <value>Search session transcripts</value>
+  </data>
+  <data name="SessionsHub_TranscriptMatchMany" xml:space="preserve">
+    <value>{0} matches</value>
+  </data>
+  <data name="SessionsHub_TranscriptMatchOne" xml:space="preserve">
+    <value>1 match</value>
+  </data>
+  <data name="SessionsHub_TranscriptNeedsConnection" xml:space="preserve">
+    <value>Connect to the Gateway to search transcripts.</value>
+  </data>
+  <data name="SessionsHub_TranscriptNoMatchesBody" xml:space="preserve">
+    <value>No messages contain &quot;{0}&quot;.</value>
+  </data>
+  <data name="SessionsHub_TranscriptNoMatchesTitle" xml:space="preserve">
+    <value>No matches</value>
+  </data>
+  <data name="SessionsHub_TranscriptPlaceholder" xml:space="preserve">
+    <value>Search messages</value>
+  </data>
+  <data name="SessionsHub_TranscriptScope" xml:space="preserve">
+    <value>Searching: {0}</value>
+  </data>
+  <data name="SessionsHub_TranscriptTitle" xml:space="preserve">
+    <value>Search transcripts</value>
+  </data>
+  <data name="SessionsHub_TranscriptTruncated" xml:space="preserve">
+    <value>Showing the best matches. Refine the search to see others.</value>
+  </data>
+  <data name="SessionsHub_TranscriptUnsupported" xml:space="preserve">
+    <value>This Gateway doesn't support transcript search. Update the Gateway to use it.</value>
+  </data>
+  <data name="SessionsHub_Unarchive" xml:space="preserve">
+    <value>Unarchive</value>
+  </data>
+  <data name="SessionsHub_UnarchivedFormat" xml:space="preserve">
+    <value>Restored &quot;{0}&quot; to active sessions.</value>
+  </data>
+  <data name="SessionsHub_UnarchiveFailed" xml:space="preserve">
+    <value>Couldn't unarchive the session</value>
+  </data>
+  <data name="SessionsHub_UnarchiveNamed" xml:space="preserve">
+    <value>Unarchive {0}</value>
+  </data>
+  <data name="SessionsHub_Unassigned" xml:space="preserve">
+    <value>Unassigned</value>
+  </data>
+  <data name="SessionsHub_Undo" xml:space="preserve">
+    <value>Undo</value>
+  </data>
+  <data name="SessionsHub_UndoFailed" xml:space="preserve">
+    <value>Couldn't undo</value>
+  </data>
+  <data name="SessionsHub_Ungrouped" xml:space="preserve">
+    <value>Ungrouped</value>
+  </data>
+  <data name="SessionsHub_Unread" xml:space="preserve">
+    <value>Unread</value>
+  </data>
+  <data name="SessionsHub_Unsupported" xml:space="preserve">
+    <value>This Gateway doesn't support this action. Update the Gateway to use it.</value>
+  </data>
+  <data name="SessionsHub_UnsupportedTitle" xml:space="preserve">
+    <value>Sessions aren't available</value>
+  </data>
+  <data name="SessionsHub_UpdateFailed" xml:space="preserve">
+    <value>Couldn't update the session</value>
+  </data>
+  <data name="SessionsHub_Verbose" xml:space="preserve">
+    <value>Tool output detail</value>
+  </data>
+  <data name="SessionsHub_WorktreeActive" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="SessionsHub_WorktreeColActive" xml:space="preserve">
+    <value>Last active</value>
+  </data>
+  <data name="SessionsHub_WorktreeColName" xml:space="preserve">
+    <value>Worktree</value>
+  </data>
+  <data name="SessionsHub_WorktreeColOwner" xml:space="preserve">
+    <value>Owner</value>
+  </data>
+  <data name="SessionsHub_WorktreeColRepo" xml:space="preserve">
+    <value>Repository</value>
+  </data>
+  <data name="SessionsHub_WorktreeColStatus" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="SessionsHub_WorktreeCreated" xml:space="preserve">
+    <value>Created the worktree.</value>
+  </data>
+  <data name="SessionsHub_WorktreeCreateFailed" xml:space="preserve">
+    <value>Couldn't create the worktree</value>
+  </data>
+  <data name="SessionsHub_WorktreeFromBase" xml:space="preserve">
+    <value>{0}, based on {1}</value>
+  </data>
+  <data name="SessionsHub_WorktreeOpenOwner" xml:space="preserve">
+    <value>Open the owning session {0} in chat</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerManual" xml:space="preserve">
+    <value>Created manually</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerSession" xml:space="preserve">
+    <value>Session</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerWorkboard" xml:space="preserve">
+    <value>Workboard</value>
+  </data>
+  <data name="SessionsHub_WorktreeRemoved" xml:space="preserve">
+    <value>Removed &quot;{0}&quot;. You can restore it from this list.</value>
+  </data>
+  <data name="SessionsHub_WorktreeRestorable" xml:space="preserve">
+    <value>Can be restored</value>
+  </data>
+  <data name="SessionsHub_WorktreeRestored" xml:space="preserve">
+    <value>Restored &quot;{0}&quot;.</value>
+  </data>
+  <data name="SessionsHub_WorktreeRowName" xml:space="preserve">
+    <value>{0}, branch {1}, owner {2}, {3}</value>
+  </data>
+  <data name="SessionsHub_WorktreesDisconnected" xml:space="preserve">
+    <value>Connect to a Gateway to see its managed worktrees.</value>
+  </data>
+  <data name="SessionsHub_WorktreesEmptyBody" xml:space="preserve">
+    <value>Worktrees created for sessions, workboards, or by hand appear here.</value>
+  </data>
+  <data name="SessionsHub_WorktreesEmptyTitle" xml:space="preserve">
+    <value>No worktrees</value>
+  </data>
+  <data name="SessionsHub_WorktreesFailed" xml:space="preserve">
+    <value>Couldn't load worktrees</value>
+  </data>
+  <data name="SessionsHub_WorktreesLoading" xml:space="preserve">
+    <value>Loading worktrees...</value>
+  </data>
+  <data name="SessionsHub_WorktreesUnsupported" xml:space="preserve">
+    <value>This Gateway doesn't manage worktrees. Update the Gateway to use them.</value>
+  </data>
+  <data name="SessionsHub_WorktreesUnsupportedTitle" xml:space="preserve">
+    <value>Worktrees aren't available</value>
+  </data>
+  <data name="SessionsHub_Yes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="SessionsHub_DeleteInterrupted" xml:space="preserve">
+    <value>Stopped early: {0} remaining sessions weren't confirmed as deleted. Refresh to check.</value>
+  </data>
+  <data name="SessionsHub_DeleteRefused" xml:space="preserve">
+    <value>The Gateway didn't delete {0} of them.</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectionChanged" xml:space="preserve">
+    <value>The list changed while you were confirming, so nothing was deleted. Review your selection and try again.</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedWorktreesOne" xml:space="preserve">
+    <value>One of these sessions has a managed worktree. A worktree that is still in use or has unsaved work is preserved and listed after deletion.</value>
+  </data>
+  <data name="SessionsHub_Appearance" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="SessionsHub_ColorBlue" xml:space="preserve">
+    <value>Blue</value>
+  </data>
+  <data name="SessionsHub_ColorCyan" xml:space="preserve">
+    <value>Cyan</value>
+  </data>
+  <data name="SessionsHub_ColorFor" xml:space="preserve">
+    <value>Color for {0}</value>
+  </data>
+  <data name="SessionsHub_ColorGreen" xml:space="preserve">
+    <value>Green</value>
+  </data>
+  <data name="SessionsHub_ColorHeader" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="SessionsHub_ColorMenu" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="SessionsHub_ColorNone" xml:space="preserve">
+    <value>No color</value>
+  </data>
+  <data name="SessionsHub_ColorOrange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="SessionsHub_ColorPink" xml:space="preserve">
+    <value>Pink</value>
+  </data>
+  <data name="SessionsHub_ColorPurple" xml:space="preserve">
+    <value>Purple</value>
+  </data>
+  <data name="SessionsHub_ColorRed" xml:space="preserve">
+    <value>Red</value>
+  </data>
+  <data name="SessionsHub_ColorYellow" xml:space="preserve">
+    <value>Yellow</value>
+  </data>
+  <data name="SessionsHub_IconBook" xml:space="preserve">
+    <value>Book</value>
+  </data>
+  <data name="SessionsHub_IconBot" xml:space="preserve">
+    <value>Bot</value>
+  </data>
+  <data name="SessionsHub_IconBraces" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="SessionsHub_IconCoins" xml:space="preserve">
+    <value>Coins</value>
+  </data>
+  <data name="SessionsHub_IconDefault" xml:space="preserve">
+    <value>Default icon</value>
+  </data>
+  <data name="SessionsHub_IconFor" xml:space="preserve">
+    <value>Icon for {0}</value>
+  </data>
+  <data name="SessionsHub_IconHeader" xml:space="preserve">
+    <value>Icon</value>
+  </data>
+  <data name="SessionsHub_IconKanban" xml:space="preserve">
+    <value>Board</value>
+  </data>
+  <data name="SessionsHub_IconMenu" xml:space="preserve">
+    <value>Icon</value>
+  </data>
+  <data name="SessionsHub_IconMonitor" xml:space="preserve">
+    <value>Monitor</value>
+  </data>
+  <data name="SessionsHub_Selected" xml:space="preserve">
+    <value>Selected</value>
+  </data>
+  <data name="SessionsHub_StatActive" xml:space="preserve">
+    <value>Active sessions</value>
+  </data>
+  <data name="SessionsHub_StatAll" xml:space="preserve">
+    <value>All sessions</value>
+  </data>
+  <data name="SessionsHub_StatArchived" xml:space="preserve">
+    <value>Archived sessions</value>
+  </data>
+  <data name="SessionsHub_StatAttention" xml:space="preserve">
+    <value>Need attention</value>
+  </data>
+  <data name="SessionsHub_StatPinned" xml:space="preserve">
+    <value>Pinned</value>
+  </data>
+  <data name="SessionsHub_StatsLabel" xml:space="preserve">
+    <value>Session summary</value>
+  </data>
+  <data name="SessionsHub_StatUnread" xml:space="preserve">
+    <value>Unread</value>
+  </data>
+  <data name="SessionsHub_StatWorking" xml:space="preserve">
+    <value>Working now</value>
+  </data>
+  <data name="SessionsHub_ScopeActiveWithin" xml:space="preserve">
+    <value>updated in the last {0} min</value>
+  </data>
+  <data name="SessionsHub_ScopeNameContains" xml:space="preserve">
+    <value>name contains &quot;{0}&quot;</value>
+  </data>
+  <data name="SessionsHub_ScopeGlobalIncluded" xml:space="preserve">
+    <value>global sessions included</value>
+  </data>
+  <data name="SessionsHub_ScopeGlobalExcluded" xml:space="preserve">
+    <value>global sessions excluded</value>
+  </data>
+  <data name="SessionsHub_ScopeUnknownIncluded" xml:space="preserve">
+    <value>sessions without routing information included</value>
+  </data>
+  <data name="SessionsHub_ScopeUnknownExcluded" xml:space="preserve">
+    <value>sessions without routing information excluded</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node Sandbox</value>
   </data>

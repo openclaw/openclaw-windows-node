@@ -46,10 +46,11 @@ Archived**, with an Unarchive action that waits for Gateway acceptance before
 refreshing both lists. Restore a conversation there to use its normal chat and
 context-menu actions again.
 
-`ArchivedSessionsSource` now belongs to the Settings Sessions page. It loads only
-when the section is expanded and drops snapshots from an old Gateway, transport
-epoch, or page lifetime. The removed Workspace responsibility is marked closed
-in the architecture ledger.
+The Settings Sessions page lists archived conversations through its Archived
+status filter, using the same paged `sessions.list` roster as active rows
+(`SessionsHubController`). Requests bind to the current Gateway connection and
+drop results from an older one. The removed Workspace responsibility is marked
+closed in the architecture ledger.
 
 ## Scope delivered
 
@@ -68,7 +69,7 @@ Out of scope (unchanged, per plan): Icon & color, Move to group, Assign to, Open
 |---|---|
 | Pure menu entries, patch payloads, fork request | `Presentation/WorkspaceSessionMenu.cs` |
 | Flyout population, dialogs, gateway dispatch, read acknowledgement | `Windows/WorkspaceSessionMenuController.cs` |
-| Archived session list snapshot and Settings rendering | `Services/ArchivedSessionsSource.cs` and `Pages/SessionsPage.xaml.cs` |
+| Archived session listing and Settings rendering | `Sessions/SessionsHubController.cs` and the Reactor views in `Sessions/` |
 | Active sidebar row application and navigation/leave | `Windows/WorkspaceWindow.xaml.cs` |
 | Row ordering, archived/agent filtering, titles | `Presentation/WorkspaceProjection.cs` |
 | Icon glyph constants | `Helpers/FluentIconCatalog.cs` |
@@ -78,18 +79,17 @@ Out of scope (unchanged, per plan): Icon & color, Move to group, Assign to, Open
 
 - `SessionInfo`: `Pinned`, `PinnedAt`, `Unread`, `MarkedUnreadAt`, `Archived`.
 - `PopulateSessionFromObject` parses `pinned`, `pinnedAt`, `unread`, `markedUnreadAt`, `archived` with authoritative-list reset semantics (mirrors the `thinkingLevel` reset pattern; explicit `TryGetProperty` shape so the drift guard sees each field).
-- `SessionPatch`: `Label`, `Pinned`, `Unread`, `Archived`, `ExpectedMarkedUnreadAt` (documented as a guard, excluded from `HasChanges`). `SessionListResult` added.
+- `SessionPatch`: `Label`, `Pinned`, `Unread`, `Archived`, `ExpectedMarkedUnreadAt` (documented as a guard, excluded from `HasChanges`).
 - `SessionCreateRequest`: `Fork`, `ForkFrom`; `BuildSessionCreateParameters` emits `fork`/`forkFrom` only when `Fork` is set.
-- `ListArchivedSessionsAsync(timeoutMs = 15000)` sends `sessions.list` with `archived:true`; `ParseDetachedSessionRows` returns detached rows that never touch live `_sessions` tracking or raise `SessionsUpdated` (wizard-response early return already bypasses `ParseSessions`).
-- `IOperatorGatewayClient`: default `ListArchivedSessionsAsync` returns `IsSupported = false` so fakes stay compiling.
+- Archived rows are read with `ListSessionsPageAsync(new SessionListQuery { Archive = SessionArchiveFilter.Archived })`; `ParseDetachedSessionRows` returns detached rows that never touch live `_sessions` tracking or raise `SessionsUpdated`.
 - `SessionTranscriptFormatter.FormatMarkdown(history, title)`: mirrors the web `buildChatMarkdown` (`## User`/`## Assistant`/`## Tool`, ISO-8601 UTC timestamps, blank-message skip, `null` when empty).
-- Drift-guard snapshot (`gateway-protocol-snapshot.json`): `sessions.list` request `archived` + response `pinned/pinnedAt/unread/markedUnreadAt/archived`; `sessions.create` `fork`/`forkFrom`; `sessions.patch` `label/pinned/unread/archived/expectedMarkedUnreadAt`; `label` removed from the upstream not-yet-implemented list.
+- Drift-guard snapshot (`gateway-protocol-snapshot.json`): `sessions.list` response `pinned/pinnedAt/unread/markedUnreadAt/archived`; `sessions.create` `fork`/`forkFrom`; `sessions.patch` `label/pinned/unread/archived/expectedMarkedUnreadAt`; `label` removed from the upstream not-yet-implemented list.
 
 ### Tray.WinUI wiring
 
 - `RefreshSidebar` reconciles active rows in place: `SyncSessionItems` keeps one `NavigationViewItem` per session key, refreshes a reused row through `ApplySessionItem` only when its `WorkspaceSession` changed, removes stale rows, and orders rows after `SessionsEmpty` via `WorkspaceItemsSync.Arrange`. The selected container is never destroyed during `SelectionChanged`. There is no sidebar archive header, archived row cache, or archive-list fetch.
 - `CreateSessionItem(session, automationPrefix)` sets the stable AutomationId and delegates to `ApplySessionItem`: pin glyph column, unread accent dot or busy ring, item status (`Pinned`, `Working`, `Unread`; always reset so reused rows drop stale status), per-row context flyout.
-- Settings `SessionsPage` refreshes its archived snapshot on Sessions changes, manual refresh, and reconnect while expanded; it clears the snapshot on disconnect and unload.
+- The Settings Sessions page reloads its roster on `sessions.changed`, manual refresh, and reconnect; it clears it on disconnect. Its row menu reuses `WorkspaceSessionMenu` entries so both surfaces behave the same.
 - `RenderDestination`: fires `AcknowledgeReadAsync` for unread sessions on navigation (list refresh does not re-trigger it, so "Mark as unread" on the open session persists until re-navigation).
 - Session switch is asynchronous: `RenderDestination` commits history, sidebar, `_chat.QueueSession(key)` and selection synchronously, then `QueueChatApply` schedules one Low-priority `ApplyQueuedChat` (coalesced, latest queued key wins) that calls `_chat.Initialize` and `SignalContentReady`. `ChatPage` no longer resolves gateway credentials on the UI thread: the native surface skips resolution entirely; the legacy WebView surface resolves through `ApplyWebViewSurfaceAsync` on the thread pool. The static `s_chatCredentialGate` still serializes overlapping applies and recreated Workspace pages (concurrent `NativeGatewayRuntime.Inspect` calls deny each other); `_surfaceGeneration` drops stale work after a newer apply or unload.
 - Session creation split into `CreateAndSelectSessionAsync` shared by `NewSessionAsync` and `ForkSessionAsync`; `LeaveSession(key)` selects the next non-key session or returns to Home; `ShowInfo(message, severity)` added, `ShowError` now sets `InfoBarSeverity.Error` explicitly.

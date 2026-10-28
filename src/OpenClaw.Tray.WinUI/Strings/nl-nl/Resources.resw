@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -2001,24 +2001,6 @@ Gebruik een van deze opties:
   </data>
   <data name="PermissionsPage_Button_123.Content" xml:space="preserve">
     <value>Windows-privacyinstellingen openen</value>
-  </data>
-  <data name="SessionsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>💬 Sessies</value>
-  </data>
-  <data name="SessionsPage_Button_57.Content" xml:space="preserve">
-    <value>Resetten</value>
-  </data>
-  <data name="SessionsPage_Button_59.Content" xml:space="preserve">
-    <value>Comprimeren</value>
-  </data>
-  <data name="SessionsPage_Button_61.Content" xml:space="preserve">
-    <value>Verwijderen</value>
-  </data>
-  <data name="SessionsPage_TextBlock_73.Text" xml:space="preserve">
-    <value>Geen actieve sessies</value>
-  </data>
-  <data name="SessionsPage_TextBlock_84.Text" xml:space="preserve">
-    <value>🤖 Beschikbare modellen</value>
   </data>
   <data name="SettingsPage_TextBlock_16.Text" xml:space="preserve">
     <value>⚙️ Instellingen</value>
@@ -4819,15 +4801,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SandboxPage_64MiB.Content" xml:space="preserve">
     <value>64 MiB</value>
   </data>
-  <data name="SessionsPage_Sessions.Text" xml:space="preserve">
-    <value>Sessies</value>
-  </data>
-  <data name="SessionsPage_Refresh.Text" xml:space="preserve">
-    <value>Vernieuwen</value>
-  </data>
-  <data name="SessionsPage_All.Text" xml:space="preserve">
-    <value>Alle</value>
-  </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
     <value>Voltooide sessies weergeven</value>
   </data>
@@ -4867,33 +4840,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="SessionsPage_OpenConnection.Content" xml:space="preserve">
     <value>Verbinding openen</value>
-  </data>
-  <data name="SessionsPage_LoadingSessions.Text" xml:space="preserve">
-    <value>Sessies worden geladen…</value>
-  </data>
-  <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>Geen sessies</value>
-  </data>
-  <data name="SessionsPage_Reset.Text" xml:space="preserve">
-    <value>Resetten</value>
-  </data>
-  <data name="SessionsPage_Compact.Text" xml:space="preserve">
-    <value>Compact maken</value>
-  </data>
-  <data name="SessionsPage_Checkpoints.Text" xml:space="preserve">
-    <value>Controlepunten</value>
-  </data>
-  <data name="SessionsPage_Checkpoints.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Compactiecontrolepunten bekijken, vertakken of herstellen</value>
-  </data>
-  <data name="SessionsPage_ExportTranscript.Text" xml:space="preserve">
-    <value>Transcript exporteren</value>
-  </data>
-  <data name="SessionsPage_ExportTranscript.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Het gesprekstranscript opslaan als tekstbestand</value>
-  </data>
-  <data name="SessionsPage_Delete.Text" xml:space="preserve">
-    <value>Verwijderen</value>
   </data>
   <data name="SessionActionPrompt_Reset_Title" xml:space="preserve">
     <value>Sessie resetten?</value>
@@ -5245,15 +5191,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
     <value>Wissen</value>
-  </data>
-  <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
-    <value>Gesprekken die deze gateway momenteel afhandelt, gegroepeerd per kanaal.</value>
-  </data>
-  <data name="SessionsPage_EmptyHint.Text" xml:space="preserve">
-    <value>Sessies verschijnen hier wanneer een kanaal is verbonden en er verkeer loopt.</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
-    <value>Chat openen</value>
   </data>
   <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
     <value>Ingeschakeld</value>
@@ -6740,12 +6677,6 @@ Controleer of de gateway actief is.</value>
   <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
     <value>Open terminal</value>
   </data>
-  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Open in chat</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Open this session in Chat</value>
-  </data>
   <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
     <value>Uitgeschakeld</value>
   </data>
@@ -7048,9 +6979,6 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
     <value>Heeft aandacht nodig</value>
-  </data>
-  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
-    <value>Laatste uitvoering gestopt</value>
   </data>
   <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
     <value>Gateway-update vereist</value>
@@ -7931,10 +7859,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
   <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
   <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
-  <data name="SessionsPage_Archived" xml:space="preserve"><value>Gearchiveerd</value></data>
-  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>Geen gearchiveerde sessies.</value></data>
-  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>Gearchiveerde sessies zijn niet beschikbaar op deze gateway.</value></data>
-  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>Sessie uit archief halen</value></data>
   <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
   <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
   <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>
@@ -8119,6 +8043,1086 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="SessionsHub_ActionFailed" xml:space="preserve">
+    <value>Actie mislukt</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutes" xml:space="preserve">
+    <value>Actief binnen (minuten)</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutesDisabled" xml:space="preserve">
+    <value>Alleen van toepassing op de weergave Actief.</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutesHelp" xml:space="preserve">
+    <value>Alleen sessies weergeven die binnen dit aantal minuten zijn bijgewerkt.</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutesPlaceholder" xml:space="preserve">
+    <value>Altijd</value>
+  </data>
+  <data name="SessionsHub_AdminOnly" xml:space="preserve">
+    <value>Vereist beheerderstoegang</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredBody" xml:space="preserve">
+    <value>U kunt worktrees bekijken. Voor het maken, verwijderen, herstellen en opschonen ervan is beheerderstoegang tot deze Gateway vereist.</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredTip" xml:space="preserve">
+    <value>Vereist beheerderstoegang tot deze Gateway</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredTitle" xml:space="preserve">
+    <value>Beheerderstoegang vereist</value>
+  </data>
+  <data name="SessionsHub_AgentFilter" xml:space="preserve">
+    <value>AI-agent</value>
+  </data>
+  <data name="SessionsHub_AgentOwner" xml:space="preserve">
+    <value>AI-agent: {0}</value>
+  </data>
+  <data name="SessionsHub_AllAgents" xml:space="preserve">
+    <value>Alle agents</value>
+  </data>
+  <data name="SessionsHub_Archive" xml:space="preserve">
+    <value>Archiveren</value>
+  </data>
+  <data name="SessionsHub_Archived" xml:space="preserve">
+    <value>Gearchiveerd</value>
+  </data>
+  <data name="SessionsHub_ArchivedFormat" xml:space="preserve">
+    <value>&quot;{0}&quot; gearchiveerd.</value>
+  </data>
+  <data name="SessionsHub_ArchiveFailed" xml:space="preserve">
+    <value>Kan de sessie niet archiveren</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonAge" xml:space="preserve">
+    <value>Automatisch gearchiveerd na een periode van inactiviteit</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonCap" xml:space="preserve">
+    <value>Automatisch gearchiveerd om binnen de limiet voor actieve sessies te blijven</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonManual" xml:space="preserve">
+    <value>Gearchiveerd door een persoon</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonRestart" xml:space="preserve">
+    <value>Gearchiveerd tijdens herstel na een herstart van de Gateway</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonStaleDashboard" xml:space="preserve">
+    <value>Gearchiveerd omdat het dashboard niet meer werd gebruikt</value>
+  </data>
+  <data name="SessionsHub_Assign" xml:space="preserve">
+    <value>Toewijzen</value>
+  </data>
+  <data name="SessionsHub_AssignFailed" xml:space="preserve">
+    <value>Kan de eigenaar niet toewijzen</value>
+  </data>
+  <data name="SessionsHub_AssignOwner" xml:space="preserve">
+    <value>Eigenaar toewijzen</value>
+  </data>
+  <data name="SessionsHub_AssignOwnerNamed" xml:space="preserve">
+    <value>Een eigenaar toewijzen voor {0}</value>
+  </data>
+  <data name="SessionsHub_AssignToMe" xml:space="preserve">
+    <value>Aan mij toewijzen</value>
+  </data>
+  <data name="SessionsHub_ChannelWebchat" xml:space="preserve">
+    <value>Webchat</value>
+  </data>
+  <data name="SessionsHub_Checkpoints" xml:space="preserve">
+    <value>Controlepunten</value>
+  </data>
+  <data name="SessionsHub_CleanDone" xml:space="preserve">
+    <value>Opschonen voltooid. {0} worktrees verwijderd, {1} verweesde checkouts verwijderd en {2} momentopnamen opgeschoond.</value>
+  </data>
+  <data name="SessionsHub_CleanFailed" xml:space="preserve">
+    <value>Opschonen is niet voltooid</value>
+  </data>
+  <data name="SessionsHub_Cleaning" xml:space="preserve">
+    <value>Opschonen...</value>
+  </data>
+  <data name="SessionsHub_CleanIssues" xml:space="preserve">
+    <value>Sommige items zijn overgeslagen: {0}</value>
+  </data>
+  <data name="SessionsHub_CleanNow" xml:space="preserve">
+    <value>Nu opschonen</value>
+  </data>
+  <data name="SessionsHub_CleanNowTip" xml:space="preserve">
+    <value>Niet-actieve worktrees, verweesde checkouts en verlopen momentopnamen verwijderen</value>
+  </data>
+  <data name="SessionsHub_CleanStillRunning" xml:space="preserve">
+    <value>Opschonen wordt nog uitgevoerd op de Gateway. Vernieuw later om het resultaat te zien.</value>
+  </data>
+  <data name="SessionsHub_ClearSelection" xml:space="preserve">
+    <value>Selectie wissen</value>
+  </data>
+  <data name="SessionsHub_CloseDetails" xml:space="preserve">
+    <value>Details sluiten</value>
+  </data>
+  <data name="SessionsHub_CloseSearch" xml:space="preserve">
+    <value>Zoeken sluiten</value>
+  </data>
+  <data name="SessionsHub_CloudWorker" xml:space="preserve">
+    <value>Cloudworker</value>
+  </data>
+  <data name="SessionsHub_CountMany" xml:space="preserve">
+    <value>{0} sessies</value>
+  </data>
+  <data name="SessionsHub_CountOne" xml:space="preserve">
+    <value>1 sessie</value>
+  </data>
+  <data name="SessionsHub_Create" xml:space="preserve">
+    <value>Maken</value>
+  </data>
+  <data name="SessionsHub_DateNoActivity" xml:space="preserve">
+    <value>Geen activiteit</value>
+  </data>
+  <data name="SessionsHub_DateOlder" xml:space="preserve">
+    <value>Ouder</value>
+  </data>
+  <data name="SessionsHub_DateThisWeek" xml:space="preserve">
+    <value>Eerder deze week</value>
+  </data>
+  <data name="SessionsHub_DateToday" xml:space="preserve">
+    <value>Vandaag</value>
+  </data>
+  <data name="SessionsHub_DateYesterday" xml:space="preserve">
+    <value>Gisteren</value>
+  </data>
+  <data name="SessionsHub_Delete" xml:space="preserve">
+    <value>Verwijderen</value>
+  </data>
+  <data name="SessionsHub_DeleteAll" xml:space="preserve">
+    <value>Alles verwijderen</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchived" xml:space="preserve">
+    <value>Alle gearchiveerde verwijderen</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedBody" xml:space="preserve">
+    <value>{0} gearchiveerde sessies en hun transcripties definitief verwijderen? Dit kan niet ongedaan worden gemaakt.</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedTip" xml:space="preserve">
+    <value>Alle gearchiveerde sessies definitief verwijderen</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedTitle" xml:space="preserve">
+    <value>Alle gearchiveerde sessies verwijderen?</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedWorktrees" xml:space="preserve">
+    <value>{0} van deze sessies hebben beheerde worktrees. Een worktree die nog in gebruik is of niet-opgeslagen werk bevat, blijft behouden en wordt na het verwijderen weergegeven.</value>
+  </data>
+  <data name="SessionsHub_DeleteBlocked" xml:space="preserve">
+    <value>Deze sessie kan niet worden verwijderd.</value>
+  </data>
+  <data name="SessionsHub_DeletedMany" xml:space="preserve">
+    <value>{0} sessies verwijderd.</value>
+  </data>
+  <data name="SessionsHub_DeletedOne" xml:space="preserve">
+    <value>1 sessie verwijderd.</value>
+  </data>
+  <data name="SessionsHub_DeleteFailed" xml:space="preserve">
+    <value>Kan niet verwijderen</value>
+  </data>
+  <data name="SessionsHub_DeleteFailures" xml:space="preserve">
+    <value>Kan {0} niet verwijderen. Eerste fout: {1}</value>
+  </data>
+  <data name="SessionsHub_DeleteGroup" xml:space="preserve">
+    <value>Groep verwijderen</value>
+  </data>
+  <data name="SessionsHub_DeleteGroupBody" xml:space="preserve">
+    <value>De groep &quot;{0}&quot; verwijderen? De sessies worden niet verwijderd, maar zijn daarna niet meer gegroepeerd.</value>
+  </data>
+  <data name="SessionsHub_DeleteGroupTitle" xml:space="preserve">
+    <value>Groep verwijderen?</value>
+  </data>
+  <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
+    <value>Voor het verwijderen van een niet-gearchiveerde sessie is beheerderstoegang vereist. Archiveer de sessie eerst of vraag het een beheerder.</value>
+  </data>
+  <data name="SessionsHub_DeleteSelected" xml:space="preserve">
+    <value>Selectie verwijderen</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedBodyMany" xml:space="preserve">
+    <value>{0} sessies en hun transcripties definitief verwijderen? Dit kan niet ongedaan worden gemaakt.</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedBodyOne" xml:space="preserve">
+    <value>De geselecteerde sessie en de transcriptie ervan definitief verwijderen? Dit kan niet ongedaan worden gemaakt.</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedNoneAllowed" xml:space="preserve">
+    <value>Geen van de geselecteerde sessies kan met uw toegang worden verwijderd. Hoofdsessies kunnen niet worden verwijderd en voor actieve sessies is beheerderstoegang vereist.</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedSkipped" xml:space="preserve">
+    <value>{0} geselecteerde sessies worden overgeslagen omdat ze niet met uw toegang kunnen worden verwijderd.</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedTitle" xml:space="preserve">
+    <value>Geselecteerde sessies verwijderen?</value>
+  </data>
+  <data name="SessionsHub_Details" xml:space="preserve">
+    <value>Gegevens</value>
+  </data>
+  <data name="SessionsHub_DetailsFor" xml:space="preserve">
+    <value>Details van {0}</value>
+  </data>
+  <data name="SessionsHub_DisconnectedBody" xml:space="preserve">
+    <value>Maak verbinding met een Gateway om de sessies ervan te bekijken en te beheren.</value>
+  </data>
+  <data name="SessionsHub_DisconnectedTitle" xml:space="preserve">
+    <value>Niet verbonden</value>
+  </data>
+  <data name="SessionsHub_EmptyActiveBody" xml:space="preserve">
+    <value>Sessies worden hier weergegeven wanneer u of een kanaal een gesprek begint.</value>
+  </data>
+  <data name="SessionsHub_EmptyActiveTitle" xml:space="preserve">
+    <value>Geen actieve sessies</value>
+  </data>
+  <data name="SessionsHub_EmptyAllBody" xml:space="preserve">
+    <value>Deze Gateway heeft nog geen sessies.</value>
+  </data>
+  <data name="SessionsHub_EmptyAllTitle" xml:space="preserve">
+    <value>Nog geen sessies</value>
+  </data>
+  <data name="SessionsHub_EmptyArchivedBody" xml:space="preserve">
+    <value>Sessies die u archiveert, worden hier bewaard totdat u ze herstelt of verwijdert.</value>
+  </data>
+  <data name="SessionsHub_EmptyArchivedTitle" xml:space="preserve">
+    <value>Geen gearchiveerde sessies</value>
+  </data>
+  <data name="SessionsHub_EmptyFilteredBody" xml:space="preserve">
+    <value>Probeer een andere zoekopdracht of stel de filters opnieuw in.</value>
+  </data>
+  <data name="SessionsHub_EmptyFilteredTitle" xml:space="preserve">
+    <value>Geen sessies die aan deze filters voldoen</value>
+  </data>
+  <data name="SessionsHub_EmptyGroup" xml:space="preserve">
+    <value>Geen sessies in deze groep</value>
+  </data>
+  <data name="SessionsHub_FactAgent" xml:space="preserve">
+    <value>AI-agent</value>
+  </data>
+  <data name="SessionsHub_FactArchivedAt" xml:space="preserve">
+    <value>Gearchiveerd op</value>
+  </data>
+  <data name="SessionsHub_FactArchiveReason" xml:space="preserve">
+    <value>Reden voor archiveren</value>
+  </data>
+  <data name="SessionsHub_FactChannel" xml:space="preserve">
+    <value>Kanaal</value>
+  </data>
+  <data name="SessionsHub_FactCreated" xml:space="preserve">
+    <value>Gemaakt</value>
+  </data>
+  <data name="SessionsHub_FactKey" xml:space="preserve">
+    <value>Sessiesleutel</value>
+  </data>
+  <data name="SessionsHub_FactModel" xml:space="preserve">
+    <value>AI-model</value>
+  </data>
+  <data name="SessionsHub_FactPinned" xml:space="preserve">
+    <value>Vastgemaakt</value>
+  </data>
+  <data name="SessionsHub_FactProvider" xml:space="preserve">
+    <value>Aanbieder</value>
+  </data>
+  <data name="SessionsHub_FactSessionId" xml:space="preserve">
+    <value>Sessie-id</value>
+  </data>
+  <data name="SessionsHub_FactTokens" xml:space="preserve">
+    <value>Gebruikte tokens</value>
+  </data>
+  <data name="SessionsHub_FactUpdated" xml:space="preserve">
+    <value>Laatst bijgewerkt</value>
+  </data>
+  <data name="SessionsHub_FactWorktree" xml:space="preserve">
+    <value>Git-worktree</value>
+  </data>
+  <data name="SessionsHub_Fast" xml:space="preserve">
+    <value>Snelle modus</value>
+  </data>
+  <data name="SessionsHub_Filters" xml:space="preserve">
+    <value>Filteropties</value>
+  </data>
+  <data name="SessionsHub_FiltersCount" xml:space="preserve">
+    <value>Filteropties ({0})</value>
+  </data>
+  <data name="SessionsHub_ForceRemove" xml:space="preserve">
+    <value>Toch verwijderen</value>
+  </data>
+  <data name="SessionsHub_ForceRemoveBody" xml:space="preserve">
+    <value>De Gateway kan &quot;{0}&quot; niet veilig verwijderen: {1}&#x0A;&#x0A;Als u de worktree toch verwijdert, gaan alle niet-doorgevoerde wijzigingen erin verloren. Dit kan niet ongedaan worden gemaakt.</value>
+  </data>
+  <data name="SessionsHub_ForceRemoveTitle" xml:space="preserve">
+    <value>De worktree toch verwijderen?</value>
+  </data>
+  <data name="SessionsHub_Group" xml:space="preserve">
+    <value>Groep</value>
+  </data>
+  <data name="SessionsHub_GroupBy" xml:space="preserve">
+    <value>Groeperen op</value>
+  </data>
+  <data name="SessionsHub_GroupByAgent" xml:space="preserve">
+    <value>Groeperen op agent</value>
+  </data>
+  <data name="SessionsHub_GroupByCategory" xml:space="preserve">
+    <value>Groeperen op aangepaste groep</value>
+  </data>
+  <data name="SessionsHub_GroupByChannel" xml:space="preserve">
+    <value>Groeperen op kanaal</value>
+  </data>
+  <data name="SessionsHub_GroupByDate" xml:space="preserve">
+    <value>Groeperen op datum</value>
+  </data>
+  <data name="SessionsHub_GroupByKind" xml:space="preserve">
+    <value>Groeperen op soort</value>
+  </data>
+  <data name="SessionsHub_GroupByNone" xml:space="preserve">
+    <value>Niet groeperen</value>
+  </data>
+  <data name="SessionsHub_GroupByPerson" xml:space="preserve">
+    <value>Groeperen op eigenaar</value>
+  </data>
+  <data name="SessionsHub_GroupFailed" xml:space="preserve">
+    <value>Kan groepen niet bijwerken</value>
+  </data>
+  <data name="SessionsHub_GroupOptions" xml:space="preserve">
+    <value>Opties voor groep {0}</value>
+  </data>
+  <data name="SessionsHub_GroupOther" xml:space="preserve">
+    <value>Overig</value>
+  </data>
+  <data name="SessionsHub_IncludeGlobal" xml:space="preserve">
+    <value>Globale sessies opnemen</value>
+  </data>
+  <data name="SessionsHub_IncludeUnknown" xml:space="preserve">
+    <value>Sessies zonder routeringsgegevens opnemen</value>
+  </data>
+  <data name="SessionsHub_Inherit" xml:space="preserve">
+    <value>Standaard gebruiken</value>
+  </data>
+  <data name="SessionsHub_KindChannel" xml:space="preserve">
+    <value>Kanaalgesprek</value>
+  </data>
+  <data name="SessionsHub_KindCron" xml:space="preserve">
+    <value>Geplande taak</value>
+  </data>
+  <data name="SessionsHub_KindDirect" xml:space="preserve">
+    <value>Direct gesprek</value>
+  </data>
+  <data name="SessionsHub_KindGlobal" xml:space="preserve">
+    <value>Globale sessie</value>
+  </data>
+  <data name="SessionsHub_KindGroup" xml:space="preserve">
+    <value>Groepsgesprek</value>
+  </data>
+  <data name="SessionsHub_KindMain" xml:space="preserve">
+    <value>Hoofdsessie</value>
+  </data>
+  <data name="SessionsHub_KindOther" xml:space="preserve">
+    <value>Andere sessie</value>
+  </data>
+  <data name="SessionsHub_KindSubagent" xml:space="preserve">
+    <value>Onderliggende agent</value>
+  </data>
+  <data name="SessionsHub_KindThread" xml:space="preserve">
+    <value>Gespreksdraad</value>
+  </data>
+  <data name="SessionsHub_KindUnknown" xml:space="preserve">
+    <value>Niet-gerouteerde sessie</value>
+  </data>
+  <data name="SessionsHub_Label" xml:space="preserve">
+    <value>Naam</value>
+  </data>
+  <data name="SessionsHub_LabelPlaceholder" xml:space="preserve">
+    <value>Gegenereerde titel gebruiken</value>
+  </data>
+  <data name="SessionsHub_LastRunError" xml:space="preserve">
+    <value>De laatste uitvoering is mislukt</value>
+  </data>
+  <data name="SessionsHub_LevelAuto" xml:space="preserve">
+    <value>Automatisch</value>
+  </data>
+  <data name="SessionsHub_LevelFull" xml:space="preserve">
+    <value>Volledig detail</value>
+  </data>
+  <data name="SessionsHub_LevelOff" xml:space="preserve">
+    <value>Uit</value>
+  </data>
+  <data name="SessionsHub_LevelOn" xml:space="preserve">
+    <value>Aan</value>
+  </data>
+  <data name="SessionsHub_LevelStream" xml:space="preserve">
+    <value>Streamen tijdens het denken</value>
+  </data>
+  <data name="SessionsHub_LevelUltrafast" xml:space="preserve">
+    <value>Ultrasnel</value>
+  </data>
+  <data name="SessionsHub_Limit" xml:space="preserve">
+    <value>Te laden sessies</value>
+  </data>
+  <data name="SessionsHub_LimitHelp" xml:space="preserve">
+    <value>Hoeveel sessies per keer bij de Gateway worden opgevraagd.</value>
+  </data>
+  <data name="SessionsHub_ListLabel" xml:space="preserve">
+    <value>Sessies</value>
+  </data>
+  <data name="SessionsHub_LoadFailedTitle" xml:space="preserve">
+    <value>Kan sessies niet laden</value>
+  </data>
+  <data name="SessionsHub_Loading" xml:space="preserve">
+    <value>Sessies laden...</value>
+  </data>
+  <data name="SessionsHub_LoadMore" xml:space="preserve">
+    <value>Meer laden</value>
+  </data>
+  <data name="SessionsHub_MainCannotArchive" xml:space="preserve">
+    <value>De hoofdsessie kan niet worden gearchiveerd. Stel deze in plaats daarvan opnieuw in om opnieuw te beginnen.</value>
+  </data>
+  <data name="SessionsHub_MoreNamed" xml:space="preserve">
+    <value>Meer acties voor {0}</value>
+  </data>
+  <data name="SessionsHub_Move" xml:space="preserve">
+    <value>Verplaatsen</value>
+  </data>
+  <data name="SessionsHub_MoveToGroup" xml:space="preserve">
+    <value>Naar groep verplaatsen</value>
+  </data>
+  <data name="SessionsHub_MoveToGroupNamed" xml:space="preserve">
+    <value>{0} naar een groep verplaatsen</value>
+  </data>
+  <data name="SessionsHub_NeedsWrite" xml:space="preserve">
+    <value>Vereist schrijftoegang tot deze Gateway</value>
+  </data>
+  <data name="SessionsHub_NewGroup" xml:space="preserve">
+    <value>Nieuwe groep</value>
+  </data>
+  <data name="SessionsHub_NewGroupBody" xml:space="preserve">
+    <value>Groepen ordenen sessies voor iedereen die deze Gateway gebruikt.</value>
+  </data>
+  <data name="SessionsHub_NewGroupEllipsis" xml:space="preserve">
+    <value>Nieuwe groep...</value>
+  </data>
+  <data name="SessionsHub_NewGroupPlaceholder" xml:space="preserve">
+    <value>Groepsnaam</value>
+  </data>
+  <data name="SessionsHub_NewGroupTitle" xml:space="preserve">
+    <value>Een groep maken</value>
+  </data>
+  <data name="SessionsHub_NewWorktree" xml:space="preserve">
+    <value>Nieuwe worktree</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBase" xml:space="preserve">
+    <value>Basisbranch</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBasePlaceholder" xml:space="preserve">
+    <value>Standaard van opslagplaats</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBranchesLoading" xml:space="preserve">
+    <value>Branches laden...</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBranchesUnavailable" xml:space="preserve">
+    <value>Er zijn geen branches beschikbaar voor deze opslagplaats. U kunt een branchnaam typen.</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeCreate" xml:space="preserve">
+    <value>Worktree maken</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeName" xml:space="preserve">
+    <value>Naam (optioneel)</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNameInvalid" xml:space="preserve">
+    <value>Gebruik kleine letters, cijfers en koppeltekens, beginnend met een letter of cijfer.</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNamePlaceholder" xml:space="preserve">
+    <value>Gegenereerd indien leeg</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNotGit" xml:space="preserve">
+    <value>Deze map is geen Git-opslagplaats.</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeRepo" xml:space="preserve">
+    <value>Map van opslagplaats</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeRepoPlaceholder" xml:space="preserve">
+    <value>Pad naar een Git-opslagplaats op de Gateway-host</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
+    <value>Een worktree maken</value>
+  </data>
+  <data name="SessionsHub_NextPage" xml:space="preserve">
+    <value>Volgende pagina</value>
+  </data>
+  <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
+    <value>Er zijn geen gearchiveerde sessies die u kunt verwijderen.</value>
+  </data>
+  <data name="SessionsHub_NoOwners" xml:space="preserve">
+    <value>Geen personen of agents beschikbaar</value>
+  </data>
+  <data name="SessionsHub_NotAvailable" xml:space="preserve">
+    <value>Niet beschikbaar</value>
+  </data>
+  <data name="SessionsHub_OpenInChat" xml:space="preserve">
+    <value>Openen in chat</value>
+  </data>
+  <data name="SessionsHub_OpenInChatNamed" xml:space="preserve">
+    <value>{0} openen in chat</value>
+  </data>
+  <data name="SessionsHub_Organization" xml:space="preserve">
+    <value>Eigendom en groepering</value>
+  </data>
+  <data name="SessionsHub_Overrides" xml:space="preserve">
+    <value>Sessie-instellingen</value>
+  </data>
+  <data name="SessionsHub_OwnedBy" xml:space="preserve">
+    <value>Eigenaar: {0}</value>
+  </data>
+  <data name="SessionsHub_Owner" xml:space="preserve">
+    <value>Eigenaar</value>
+  </data>
+  <data name="SessionsHub_PageOf" xml:space="preserve">
+    <value>Pagina {0} van {1}</value>
+  </data>
+  <data name="SessionsHub_PageRange" xml:space="preserve">
+    <value>{0} tot {1} van {2} weergegeven</value>
+  </data>
+  <data name="SessionsHub_PageRangeOfServer" xml:space="preserve">
+    <value>{0} tot {1} van {2} geladen ({3} op de Gateway)</value>
+  </data>
+  <data name="SessionsHub_PageSize" xml:space="preserve">
+    <value>Sessies per pagina</value>
+  </data>
+  <data name="SessionsHub_PlacementActive" xml:space="preserve">
+    <value>Wordt uitgevoerd op een cloudworker</value>
+  </data>
+  <data name="SessionsHub_PlacementFailed" xml:space="preserve">
+    <value>Cloudworker mislukt</value>
+  </data>
+  <data name="SessionsHub_PlacementLocal" xml:space="preserve">
+    <value>Wordt uitgevoerd op de Gateway</value>
+  </data>
+  <data name="SessionsHub_PlacementReclaimed" xml:space="preserve">
+    <value>Teruggezet naar de Gateway</value>
+  </data>
+  <data name="SessionsHub_PlacementStarting" xml:space="preserve">
+    <value>Cloudworker wordt gestart</value>
+  </data>
+  <data name="SessionsHub_PlacementStopping" xml:space="preserve">
+    <value>Cloudworker wordt gestopt</value>
+  </data>
+  <data name="SessionsHub_PreservedBusy" xml:space="preserve">
+    <value>nog in gebruik</value>
+  </data>
+  <data name="SessionsHub_PreservedCleanupFailed" xml:space="preserve">
+    <value>opschonen mislukt</value>
+  </data>
+  <data name="SessionsHub_PreservedLocked" xml:space="preserve">
+    <value>vergrendeld door een ander proces</value>
+  </data>
+  <data name="SessionsHub_PreservedOwnerMismatch" xml:space="preserve">
+    <value>eigendom van een andere sessie</value>
+  </data>
+  <data name="SessionsHub_PreservedSnapshotFailed" xml:space="preserve">
+    <value>veiligheidsmomentopname mislukt</value>
+  </data>
+  <data name="SessionsHub_PreservedWorktrees" xml:space="preserve">
+    <value>Behouden worktrees: {0}.</value>
+  </data>
+  <data name="SessionsHub_PreviousPage" xml:space="preserve">
+    <value>Vorige pagina</value>
+  </data>
+  <data name="SessionsHub_ReadOnlyBody" xml:space="preserve">
+    <value>U kunt sessies bekijken en doorzoeken. Voor het wijzigen, archiveren of verwijderen ervan is schrijftoegang tot deze Gateway vereist.</value>
+  </data>
+  <data name="SessionsHub_ReadOnlyTitle" xml:space="preserve">
+    <value>Alleen-lezentoegang</value>
+  </data>
+  <data name="SessionsHub_Reasoning" xml:space="preserve">
+    <value>Redenering weergeven</value>
+  </data>
+  <data name="SessionsHub_Refresh" xml:space="preserve">
+    <value>Vernieuwen</value>
+  </data>
+  <data name="SessionsHub_Remove" xml:space="preserve">
+    <value>Verwijderen</value>
+  </data>
+  <data name="SessionsHub_RemoveFromGroup" xml:space="preserve">
+    <value>Uit groep verwijderen</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeBody" xml:space="preserve">
+    <value>De worktree &quot;{0}&quot; verwijderen? De Gateway maakt eerst een veiligheidsmomentopname, zodat u deze later kunt herstellen.</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeFailed" xml:space="preserve">
+    <value>Kan de worktree niet verwijderen</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeRefused" xml:space="preserve">
+    <value>De Gateway heeft geweigerd omdat verwijderen niet veilig was.</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeTitle" xml:space="preserve">
+    <value>Worktree verwijderen?</value>
+  </data>
+  <data name="SessionsHub_RenameGroup" xml:space="preserve">
+    <value>Naam van groep wijzigen</value>
+  </data>
+  <data name="SessionsHub_RenameGroupBody" xml:space="preserve">
+    <value>Sessies in deze groep krijgen de nieuwe naam.</value>
+  </data>
+  <data name="SessionsHub_RenameGroupTitle" xml:space="preserve">
+    <value>Naam van groep wijzigen</value>
+  </data>
+  <data name="SessionsHub_ResetFilters" xml:space="preserve">
+    <value>Filters opnieuw instellen</value>
+  </data>
+  <data name="SessionsHub_Restore" xml:space="preserve">
+    <value>Herstellen</value>
+  </data>
+  <data name="SessionsHub_RestoreWorktreeFailed" xml:space="preserve">
+    <value>Kan de worktree niet herstellen</value>
+  </data>
+  <data name="SessionsHub_Retry" xml:space="preserve">
+    <value>Opnieuw proberen</value>
+  </data>
+  <data name="SessionsHub_RoleAssistant" xml:space="preserve">
+    <value>Assistent</value>
+  </data>
+  <data name="SessionsHub_RoleUser" xml:space="preserve">
+    <value>U</value>
+  </data>
+  <data name="SessionsHub_RowHelp" xml:space="preserve">
+    <value>Geeft de details van de sessie weer</value>
+  </data>
+  <data name="SessionsHub_RowsPerPage" xml:space="preserve">
+    <value>{0} per pagina</value>
+  </data>
+  <data name="SessionsHub_Save" xml:space="preserve">
+    <value>Opslaan</value>
+  </data>
+  <data name="SessionsHub_Search" xml:space="preserve">
+    <value>Zoeken</value>
+  </data>
+  <data name="SessionsHub_Searching" xml:space="preserve">
+    <value>Transcripties doorzoeken...</value>
+  </data>
+  <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
+    <value>Filteren op naam of sleutel</value>
+  </data>
+  <data name="SessionsHub_SearchTranscripts" xml:space="preserve">
+    <value>Transcripties doorzoeken</value>
+  </data>
+  <data name="SessionsHub_SearchTranscriptsTip" xml:space="preserve">
+    <value>Tekst zoeken in de berichten van de sessies die door de huidige filters worden weergegeven</value>
+  </data>
+  <data name="SessionsHub_Select" xml:space="preserve">
+    <value>Selecteren</value>
+  </data>
+  <data name="SessionsHub_SelectedMany" xml:space="preserve">
+    <value>{0} geselecteerd</value>
+  </data>
+  <data name="SessionsHub_SelectedOne" xml:space="preserve">
+    <value>1 geselecteerd</value>
+  </data>
+  <data name="SessionsHub_SelectNamed" xml:space="preserve">
+    <value>{0} selecteren</value>
+  </data>
+  <data name="SessionsHub_SelectPage" xml:space="preserve">
+    <value>Deze pagina selecteren</value>
+  </data>
+  <data name="SessionsHub_SelectTip" xml:space="preserve">
+    <value>Meerdere sessies kiezen om in één keer te verwijderen</value>
+  </data>
+  <data name="SessionsHub_ShowAll" xml:space="preserve">
+    <value>Alle sessies weergeven</value>
+  </data>
+  <data name="SessionsHub_ShowDetails" xml:space="preserve">
+    <value>Details weergeven</value>
+  </data>
+  <data name="SessionsHub_ShowDetailsNamed" xml:space="preserve">
+    <value>Details weergeven voor {0}</value>
+  </data>
+  <data name="SessionsHub_Sort" xml:space="preserve">
+    <value>Sorteren</value>
+  </data>
+  <data name="SessionsHub_SortNameAsc" xml:space="preserve">
+    <value>Naam, A tot Z</value>
+  </data>
+  <data name="SessionsHub_SortNameDesc" xml:space="preserve">
+    <value>Naam, Z tot A</value>
+  </data>
+  <data name="SessionsHub_SortNewest" xml:space="preserve">
+    <value>Onlangs bijgewerkt</value>
+  </data>
+  <data name="SessionsHub_SortOldest" xml:space="preserve">
+    <value>Minst recent bijgewerkt</value>
+  </data>
+  <data name="SessionsHub_StatusActive" xml:space="preserve">
+    <value>Actief</value>
+  </data>
+  <data name="SessionsHub_StatusAll" xml:space="preserve">
+    <value>Alle</value>
+  </data>
+  <data name="SessionsHub_StatusArchived" xml:space="preserve">
+    <value>Gearchiveerd</value>
+  </data>
+  <data name="SessionsHub_StatusFilter" xml:space="preserve">
+    <value>Sessiestatus</value>
+  </data>
+  <data name="SessionsHub_StatusQueued" xml:space="preserve">
+    <value>In wachtrij</value>
+  </data>
+  <data name="SessionsHub_StopWorker" xml:space="preserve">
+    <value>Cloudworker stoppen</value>
+  </data>
+  <data name="SessionsHub_StopWorkerBody" xml:space="preserve">
+    <value>De cloudworker voor &quot;{0}&quot; stoppen en de sessie terugzetten naar de Gateway? Lopend werk op de worker wordt vastgelegd voordat deze stopt.</value>
+  </data>
+  <data name="SessionsHub_StopWorkerBusy" xml:space="preserve">
+    <value>Wacht tot de huidige beurt is voltooid voordat u de worker stopt.</value>
+  </data>
+  <data name="SessionsHub_StopWorkerDone" xml:space="preserve">
+    <value>De cloudworker voor &quot;{0}&quot; is gestopt.</value>
+  </data>
+  <data name="SessionsHub_StopWorkerFailed" xml:space="preserve">
+    <value>Kan de cloudworker niet stoppen</value>
+  </data>
+  <data name="SessionsHub_StopWorkerHelp" xml:space="preserve">
+    <value>Door te stoppen wordt de sessie teruggezet naar de Gateway.</value>
+  </data>
+  <data name="SessionsHub_StopWorkerTitle" xml:space="preserve">
+    <value>Cloudworker stoppen?</value>
+  </data>
+  <data name="SessionsHub_StopWorkerUnavailable" xml:space="preserve">
+    <value>Deze worker kan nu niet worden gestopt.</value>
+  </data>
+  <data name="SessionsHub_Subtitle" xml:space="preserve">
+    <value>De gesprekken op deze Gateway bekijken, ordenen en opschonen.</value>
+  </data>
+  <data name="SessionsHub_TabSessions" xml:space="preserve">
+    <value>Sessies</value>
+  </data>
+  <data name="SessionsHub_TabsLabel" xml:space="preserve">
+    <value>Secties van de pagina Sessies</value>
+  </data>
+  <data name="SessionsHub_TabWorktrees" xml:space="preserve">
+    <value>Git-worktrees</value>
+  </data>
+  <data name="SessionsHub_Thinking" xml:space="preserve">
+    <value>Denkniveau</value>
+  </data>
+  <data name="SessionsHub_ThinkingHigh" xml:space="preserve">
+    <value>Hoog</value>
+  </data>
+  <data name="SessionsHub_ThinkingLow" xml:space="preserve">
+    <value>Laag</value>
+  </data>
+  <data name="SessionsHub_ThinkingMedium" xml:space="preserve">
+    <value>Gemiddeld</value>
+  </data>
+  <data name="SessionsHub_ThinkingMinimal" xml:space="preserve">
+    <value>Minimaal</value>
+  </data>
+  <data name="SessionsHub_ThinkingXHigh" xml:space="preserve">
+    <value>Extra hoog</value>
+  </data>
+  <data name="SessionsHub_TimeDays" xml:space="preserve">
+    <value>{0} d geleden</value>
+  </data>
+  <data name="SessionsHub_TimeHours" xml:space="preserve">
+    <value>{0} u geleden</value>
+  </data>
+  <data name="SessionsHub_TimeJustNow" xml:space="preserve">
+    <value>Zojuist</value>
+  </data>
+  <data name="SessionsHub_TimeMinutes" xml:space="preserve">
+    <value>{0} min geleden</value>
+  </data>
+  <data name="SessionsHub_TimeNever" xml:space="preserve">
+    <value>Nooit</value>
+  </data>
+  <data name="SessionsHub_Title" xml:space="preserve">
+    <value>Sessies</value>
+  </data>
+  <data name="SessionsHub_TokensWithContext" xml:space="preserve">
+    <value>{0} van {1} context</value>
+  </data>
+  <data name="SessionsHub_TranscriptArchivedExcludedMany" xml:space="preserve">
+    <value>{0} gearchiveerde sessies komen ook overeen. Kies Alle of Gearchiveerd om ze op te nemen.</value>
+  </data>
+  <data name="SessionsHub_TranscriptArchivedExcludedOne" xml:space="preserve">
+    <value>1 gearchiveerde sessie komt ook overeen. Kies Alle of Gearchiveerd om deze op te nemen.</value>
+  </data>
+  <data name="SessionsHub_TranscriptFailed" xml:space="preserve">
+    <value>Zoeken is niet voltooid</value>
+  </data>
+  <data name="SessionsHub_TranscriptHint" xml:space="preserve">
+    <value>Doorzoek de berichten van de sessies die voldoen aan de huidige filters voor agent en status.</value>
+  </data>
+  <data name="SessionsHub_TranscriptIndexingBody" xml:space="preserve">
+    <value>De Gateway bouwt de zoekindex nog op, dus sommige resultaten ontbreken mogelijk. Probeer het zo meteen opnieuw.</value>
+  </data>
+  <data name="SessionsHub_TranscriptIndexingTitle" xml:space="preserve">
+    <value>Transcripties indexeren</value>
+  </data>
+  <data name="SessionsHub_TranscriptLabel" xml:space="preserve">
+    <value>Sessietranscripties doorzoeken</value>
+  </data>
+  <data name="SessionsHub_TranscriptMatchMany" xml:space="preserve">
+    <value>{0} resultaten</value>
+  </data>
+  <data name="SessionsHub_TranscriptMatchOne" xml:space="preserve">
+    <value>1 resultaat</value>
+  </data>
+  <data name="SessionsHub_TranscriptNeedsConnection" xml:space="preserve">
+    <value>Maak verbinding met de Gateway om transcripties te doorzoeken.</value>
+  </data>
+  <data name="SessionsHub_TranscriptNoMatchesBody" xml:space="preserve">
+    <value>Geen berichten bevatten &quot;{0}&quot;.</value>
+  </data>
+  <data name="SessionsHub_TranscriptNoMatchesTitle" xml:space="preserve">
+    <value>Geen resultaten</value>
+  </data>
+  <data name="SessionsHub_TranscriptPlaceholder" xml:space="preserve">
+    <value>Berichten zoeken</value>
+  </data>
+  <data name="SessionsHub_TranscriptScope" xml:space="preserve">
+    <value>Zoeken in: {0}</value>
+  </data>
+  <data name="SessionsHub_TranscriptTitle" xml:space="preserve">
+    <value>Transcripties doorzoeken</value>
+  </data>
+  <data name="SessionsHub_TranscriptTruncated" xml:space="preserve">
+    <value>De beste resultaten worden weergegeven. Verfijn de zoekopdracht om andere te zien.</value>
+  </data>
+  <data name="SessionsHub_TranscriptUnsupported" xml:space="preserve">
+    <value>Deze Gateway ondersteunt het doorzoeken van transcripties niet. Werk de Gateway bij om dit te gebruiken.</value>
+  </data>
+  <data name="SessionsHub_Unarchive" xml:space="preserve">
+    <value>Uit archief halen</value>
+  </data>
+  <data name="SessionsHub_UnarchivedFormat" xml:space="preserve">
+    <value>&quot;{0}&quot; teruggezet naar actieve sessies.</value>
+  </data>
+  <data name="SessionsHub_UnarchiveFailed" xml:space="preserve">
+    <value>Kan de sessie niet uit het archief halen</value>
+  </data>
+  <data name="SessionsHub_UnarchiveNamed" xml:space="preserve">
+    <value>{0} uit archief halen</value>
+  </data>
+  <data name="SessionsHub_Unassigned" xml:space="preserve">
+    <value>Niet toegewezen</value>
+  </data>
+  <data name="SessionsHub_Undo" xml:space="preserve">
+    <value>Ongedaan maken</value>
+  </data>
+  <data name="SessionsHub_UndoFailed" xml:space="preserve">
+    <value>Kan niet ongedaan maken</value>
+  </data>
+  <data name="SessionsHub_Ungrouped" xml:space="preserve">
+    <value>Niet gegroepeerd</value>
+  </data>
+  <data name="SessionsHub_Unread" xml:space="preserve">
+    <value>Ongelezen</value>
+  </data>
+  <data name="SessionsHub_Unsupported" xml:space="preserve">
+    <value>Deze Gateway ondersteunt deze actie niet. Werk de Gateway bij om deze te gebruiken.</value>
+  </data>
+  <data name="SessionsHub_UnsupportedTitle" xml:space="preserve">
+    <value>Sessies zijn niet beschikbaar</value>
+  </data>
+  <data name="SessionsHub_UpdateFailed" xml:space="preserve">
+    <value>Kan de sessie niet bijwerken</value>
+  </data>
+  <data name="SessionsHub_Verbose" xml:space="preserve">
+    <value>Detail van hulpprogramma-uitvoer</value>
+  </data>
+  <data name="SessionsHub_WorktreeActive" xml:space="preserve">
+    <value>Actief</value>
+  </data>
+  <data name="SessionsHub_WorktreeColActive" xml:space="preserve">
+    <value>Laatst actief</value>
+  </data>
+  <data name="SessionsHub_WorktreeColName" xml:space="preserve">
+    <value>Git-worktree</value>
+  </data>
+  <data name="SessionsHub_WorktreeColOwner" xml:space="preserve">
+    <value>Eigenaar</value>
+  </data>
+  <data name="SessionsHub_WorktreeColRepo" xml:space="preserve">
+    <value>Opslagplaats</value>
+  </data>
+  <data name="SessionsHub_WorktreeColStatus" xml:space="preserve">
+    <value>Toestand</value>
+  </data>
+  <data name="SessionsHub_WorktreeCreated" xml:space="preserve">
+    <value>De worktree is gemaakt.</value>
+  </data>
+  <data name="SessionsHub_WorktreeCreateFailed" xml:space="preserve">
+    <value>Kan de worktree niet maken</value>
+  </data>
+  <data name="SessionsHub_WorktreeFromBase" xml:space="preserve">
+    <value>{0}, gebaseerd op {1}</value>
+  </data>
+  <data name="SessionsHub_WorktreeOpenOwner" xml:space="preserve">
+    <value>De eigenaarsessie {0} openen in chat</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerManual" xml:space="preserve">
+    <value>Handmatig gemaakt</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerSession" xml:space="preserve">
+    <value>Sessie</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerWorkboard" xml:space="preserve">
+    <value>Werkbord</value>
+  </data>
+  <data name="SessionsHub_WorktreeRemoved" xml:space="preserve">
+    <value>&quot;{0}&quot; verwijderd. U kunt deze herstellen vanuit deze lijst.</value>
+  </data>
+  <data name="SessionsHub_WorktreeRestorable" xml:space="preserve">
+    <value>Kan worden hersteld</value>
+  </data>
+  <data name="SessionsHub_WorktreeRestored" xml:space="preserve">
+    <value>&quot;{0}&quot; hersteld.</value>
+  </data>
+  <data name="SessionsHub_WorktreeRowName" xml:space="preserve">
+    <value>{0}, branch {1}, eigenaar {2}, {3}</value>
+  </data>
+  <data name="SessionsHub_WorktreesDisconnected" xml:space="preserve">
+    <value>Maak verbinding met een Gateway om de beheerde worktrees ervan te bekijken.</value>
+  </data>
+  <data name="SessionsHub_WorktreesEmptyBody" xml:space="preserve">
+    <value>Worktrees die voor sessies, werkborden of handmatig zijn gemaakt, worden hier weergegeven.</value>
+  </data>
+  <data name="SessionsHub_WorktreesEmptyTitle" xml:space="preserve">
+    <value>Geen worktrees</value>
+  </data>
+  <data name="SessionsHub_WorktreesFailed" xml:space="preserve">
+    <value>Kan worktrees niet laden</value>
+  </data>
+  <data name="SessionsHub_WorktreesLoading" xml:space="preserve">
+    <value>Worktrees laden...</value>
+  </data>
+  <data name="SessionsHub_WorktreesUnsupported" xml:space="preserve">
+    <value>Deze Gateway beheert geen worktrees. Werk de Gateway bij om ze te gebruiken.</value>
+  </data>
+  <data name="SessionsHub_WorktreesUnsupportedTitle" xml:space="preserve">
+    <value>Worktrees zijn niet beschikbaar</value>
+  </data>
+  <data name="SessionsHub_Yes" xml:space="preserve">
+    <value>Ja</value>
+  </data>
+  <data name="SessionsHub_DeleteInterrupted" xml:space="preserve">
+    <value>Vroegtijdig gestopt: het verwijderen van {0} resterende sessie(s) is niet bevestigd. Vernieuw om te controleren.</value>
+  </data>
+  <data name="SessionsHub_DeleteRefused" xml:space="preserve">
+    <value>De gateway heeft er {0} niet verwijderd.</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectionChanged" xml:space="preserve">
+    <value>De lijst is gewijzigd tijdens het bevestigen, dus er is niets verwijderd. Controleer je selectie en probeer het opnieuw.</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedWorktreesOne" xml:space="preserve">
+    <value>Een van deze sessies heeft een beheerde worktree. Een worktree die nog in gebruik is of niet-opgeslagen werk bevat, blijft behouden en wordt na het verwijderen weergegeven.</value>
+  </data>
+  <data name="SessionsHub_Appearance" xml:space="preserve">
+    <value>Weergave</value>
+  </data>
+  <data name="SessionsHub_ColorBlue" xml:space="preserve">
+    <value>Blauw</value>
+  </data>
+  <data name="SessionsHub_ColorCyan" xml:space="preserve">
+    <value>Cyaan</value>
+  </data>
+  <data name="SessionsHub_ColorFor" xml:space="preserve">
+    <value>Kleur voor {0}</value>
+  </data>
+  <data name="SessionsHub_ColorGreen" xml:space="preserve">
+    <value>Groen</value>
+  </data>
+  <data name="SessionsHub_ColorHeader" xml:space="preserve">
+    <value>Kleur</value>
+  </data>
+  <data name="SessionsHub_ColorMenu" xml:space="preserve">
+    <value>Kleur</value>
+  </data>
+  <data name="SessionsHub_ColorNone" xml:space="preserve">
+    <value>Geen kleur</value>
+  </data>
+  <data name="SessionsHub_ColorOrange" xml:space="preserve">
+    <value>Oranje</value>
+  </data>
+  <data name="SessionsHub_ColorPink" xml:space="preserve">
+    <value>Roze</value>
+  </data>
+  <data name="SessionsHub_ColorPurple" xml:space="preserve">
+    <value>Paars</value>
+  </data>
+  <data name="SessionsHub_ColorRed" xml:space="preserve">
+    <value>Rood</value>
+  </data>
+  <data name="SessionsHub_ColorYellow" xml:space="preserve">
+    <value>Geel</value>
+  </data>
+  <data name="SessionsHub_IconBook" xml:space="preserve">
+    <value>Boek</value>
+  </data>
+  <data name="SessionsHub_IconBot" xml:space="preserve">
+    <value>Robot</value>
+  </data>
+  <data name="SessionsHub_IconBraces" xml:space="preserve">
+    <value>Broncode</value>
+  </data>
+  <data name="SessionsHub_IconCoins" xml:space="preserve">
+    <value>Munten</value>
+  </data>
+  <data name="SessionsHub_IconDefault" xml:space="preserve">
+    <value>Standaardpictogram</value>
+  </data>
+  <data name="SessionsHub_IconFor" xml:space="preserve">
+    <value>Pictogram voor {0}</value>
+  </data>
+  <data name="SessionsHub_IconHeader" xml:space="preserve">
+    <value>Pictogram</value>
+  </data>
+  <data name="SessionsHub_IconKanban" xml:space="preserve">
+    <value>Bord</value>
+  </data>
+  <data name="SessionsHub_IconMenu" xml:space="preserve">
+    <value>Pictogram</value>
+  </data>
+  <data name="SessionsHub_IconMonitor" xml:space="preserve">
+    <value>Beeldscherm</value>
+  </data>
+  <data name="SessionsHub_Selected" xml:space="preserve">
+    <value>Geselecteerd</value>
+  </data>
+  <data name="SessionsHub_StatActive" xml:space="preserve">
+    <value>Actieve sessies</value>
+  </data>
+  <data name="SessionsHub_StatAll" xml:space="preserve">
+    <value>Alle sessies</value>
+  </data>
+  <data name="SessionsHub_StatArchived" xml:space="preserve">
+    <value>Gearchiveerde sessies</value>
+  </data>
+  <data name="SessionsHub_StatAttention" xml:space="preserve">
+    <value>Vragen aandacht</value>
+  </data>
+  <data name="SessionsHub_StatPinned" xml:space="preserve">
+    <value>Vastgemaakt</value>
+  </data>
+  <data name="SessionsHub_StatsLabel" xml:space="preserve">
+    <value>Sessieoverzicht</value>
+  </data>
+  <data name="SessionsHub_StatUnread" xml:space="preserve">
+    <value>Ongelezen</value>
+  </data>
+  <data name="SessionsHub_StatWorking" xml:space="preserve">
+    <value>Nu bezig</value>
+  </data>
+  <data name="SessionsHub_ScopeActiveWithin" xml:space="preserve">
+    <value>bijgewerkt in de laatste {0} min</value>
+  </data>
+  <data name="SessionsHub_ScopeNameContains" xml:space="preserve">
+    <value>naam bevat &quot;{0}&quot;</value>
+  </data>
+  <data name="SessionsHub_ScopeGlobalIncluded" xml:space="preserve">
+    <value>globale sessies inbegrepen</value>
+  </data>
+  <data name="SessionsHub_ScopeGlobalExcluded" xml:space="preserve">
+    <value>globale sessies uitgesloten</value>
+  </data>
+  <data name="SessionsHub_ScopeUnknownIncluded" xml:space="preserve">
+    <value>sessies zonder routeringsgegevens inbegrepen</value>
+  </data>
+  <data name="SessionsHub_ScopeUnknownExcluded" xml:space="preserve">
+    <value>sessies zonder routeringsgegevens uitgesloten</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node-sandbox</value>
   </data>

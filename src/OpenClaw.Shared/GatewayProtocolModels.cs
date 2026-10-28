@@ -290,6 +290,12 @@ public sealed class SessionPatch
     public PatchField<SessionSendPolicy> SendPolicy { get; set; }
     public PatchField<SessionGroupActivation> GroupActivation { get; set; }
     public PatchField<string> Label { get; set; }
+    /// <summary>User-defined organization group (<c>category</c>); Clear ungroups the session.</summary>
+    public PatchField<string> Category { get; set; }
+    /// <summary>Named session tint from <c>SessionAppearance.ColorIds</c>; Clear removes it.</summary>
+    public PatchField<string> Color { get; set; }
+    /// <summary>Session icon glyph id from <c>SessionAppearance.IconIds</c>; Clear restores the default.</summary>
+    public PatchField<string> Icon { get; set; }
     public PatchField<bool> Pinned { get; set; }
     public PatchField<bool> Unread { get; set; }
     public PatchField<bool> Archived { get; set; }
@@ -308,7 +314,7 @@ public sealed class SessionPatch
         ProducesString(VerboseLevel) || ProducesString(TraceLevel) || ProducesString(ReasoningLevel) ||
         ResponseUsage.IsSpecified || ProducesString(ElevatedLevel) || ProducesString(ExecHost) ||
         ProducesString(ExecSecurity) || ProducesString(ExecAsk) || ProducesString(ExecNode) ||
-        SendPolicy.IsSpecified || GroupActivation.IsSpecified || ProducesString(Label) ||
+        SendPolicy.IsSpecified || GroupActivation.IsSpecified || ProducesString(Label) || ProducesString(Category) || ProducesString(Color) || ProducesString(Icon) ||
         Pinned.IsSpecified || Unread.IsSpecified || Archived.IsSpecified;
 
     /// <summary>
@@ -337,6 +343,9 @@ public sealed class SessionPatch
         AddEncoded(payload, "sendPolicy", SendPolicy, p => p == SessionSendPolicy.Allow ? "allow" : "deny");
         AddEncoded(payload, "groupActivation", GroupActivation, g => g == SessionGroupActivation.Mention ? "mention" : "always");
         AddString(payload, "label", Label);
+        AddString(payload, "category", Category);
+        AddString(payload, "color", Color);
+        AddString(payload, "icon", Icon);
         AddEncoded(payload, "pinned", Pinned, v => v);
         AddEncoded(payload, "unread", Unread, v => v);
         AddEncoded(payload, "archived", Archived, v => v);
@@ -383,17 +392,6 @@ public sealed class SessionPatch
     };
 }
 
-/// <summary>
-/// Typed result of <c>sessions.list</c> with <c>archived:true</c>: archived-only
-/// rows that are kept out of the client's live session tracking.
-/// </summary>
-public sealed class SessionListResult
-{
-    public IReadOnlyList<SessionInfo> Sessions { get; init; } = Array.Empty<SessionInfo>();
-
-    /// <summary>False when the connected gateway does not support the archived list filter.</summary>
-    public bool IsSupported { get; init; } = true;
-}
 
 // ── Session files (sessions.files.list / sessions.files.get) ──
 

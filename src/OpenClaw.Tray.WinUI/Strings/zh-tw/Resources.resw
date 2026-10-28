@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -2000,24 +2000,6 @@
   </data>
   <data name="PermissionsPage_Button_123.Content" xml:space="preserve">
     <value>開啟 Windows 隱私權設定</value>
-  </data>
-  <data name="SessionsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>💬 工作階段</value>
-  </data>
-  <data name="SessionsPage_Button_57.Content" xml:space="preserve">
-    <value>重設</value>
-  </data>
-  <data name="SessionsPage_Button_59.Content" xml:space="preserve">
-    <value>壓縮</value>
-  </data>
-  <data name="SessionsPage_Button_61.Content" xml:space="preserve">
-    <value>刪除</value>
-  </data>
-  <data name="SessionsPage_TextBlock_73.Text" xml:space="preserve">
-    <value>無活躍會話</value>
-  </data>
-  <data name="SessionsPage_TextBlock_84.Text" xml:space="preserve">
-    <value>🤖 可用模型</value>
   </data>
   <data name="SettingsPage_TextBlock_16.Text" xml:space="preserve">
     <value>⚙️ 設定</value>
@@ -4818,15 +4800,6 @@
   <data name="SandboxPage_64MiB.Content" xml:space="preserve">
     <value>64 MiB</value>
   </data>
-  <data name="SessionsPage_Sessions.Text" xml:space="preserve">
-    <value>工作階段</value>
-  </data>
-  <data name="SessionsPage_Refresh.Text" xml:space="preserve">
-    <value>重新整理</value>
-  </data>
-  <data name="SessionsPage_All.Text" xml:space="preserve">
-    <value>全部</value>
-  </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
     <value>顯示已完成的工作階段</value>
   </data>
@@ -4866,33 +4839,6 @@
   </data>
   <data name="SessionsPage_OpenConnection.Content" xml:space="preserve">
     <value>開啟連線</value>
-  </data>
-  <data name="SessionsPage_LoadingSessions.Text" xml:space="preserve">
-    <value>正在載入工作階段…</value>
-  </data>
-  <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>沒有工作階段</value>
-  </data>
-  <data name="SessionsPage_Reset.Text" xml:space="preserve">
-    <value>重設</value>
-  </data>
-  <data name="SessionsPage_Compact.Text" xml:space="preserve">
-    <value>壓縮</value>
-  </data>
-  <data name="SessionsPage_Checkpoints.Text" xml:space="preserve">
-    <value>檢查點</value>
-  </data>
-  <data name="SessionsPage_Checkpoints.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>檢視、分支或還原壓縮檢查點</value>
-  </data>
-  <data name="SessionsPage_ExportTranscript.Text" xml:space="preserve">
-    <value>匯出逐字稿</value>
-  </data>
-  <data name="SessionsPage_ExportTranscript.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>將對話逐字稿儲存為文字檔</value>
-  </data>
-  <data name="SessionsPage_Delete.Text" xml:space="preserve">
-    <value>刪除</value>
   </data>
   <data name="SessionActionPrompt_Reset_Title" xml:space="preserve">
     <value>重設工作階段？</value>
@@ -5244,15 +5190,6 @@
   </data>
   <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
     <value>清除</value>
-  </data>
-  <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
-    <value>此閘道目前正在處理的對話，依頻道分組。</value>
-  </data>
-  <data name="SessionsPage_EmptyHint.Text" xml:space="preserve">
-    <value>當頻道已連線且有流量時，工作階段將顯示在此處。</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
-    <value>開啟聊天</value>
   </data>
   <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
     <value>已啟用</value>
@@ -6739,12 +6676,6 @@
   <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
     <value>Open terminal</value>
   </data>
-  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Open in chat</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Open this session in Chat</value>
-  </data>
   <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
     <value>已停用</value>
   </data>
@@ -7047,9 +6978,6 @@
   </data>
   <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
     <value>需要注意</value>
-  </data>
-  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
-    <value>上次執行已停止</value>
   </data>
   <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
     <value>需要更新 Gateway</value>
@@ -7930,10 +7858,6 @@
   <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
   <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
   <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
-  <data name="SessionsPage_Archived" xml:space="preserve"><value>已封存</value></data>
-  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>沒有已封存的工作階段。</value></data>
-  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>無法取得此閘道的已封存工作階段。</value></data>
-  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>取消封存工作階段</value></data>
   <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
   <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
   <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>
@@ -8118,6 +8042,1086 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>摘要我的近期工作階段</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>協助我設定頻道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>檢查系統健康狀態</value></data>
+  <data name="SessionsHub_ActionFailed" xml:space="preserve">
+    <value>動作失敗</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutes" xml:space="preserve">
+    <value>活動時間範圍（分鐘）</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutesDisabled" xml:space="preserve">
+    <value>僅適用於「使用中」檢視。</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutesHelp" xml:space="preserve">
+    <value>僅顯示在此分鐘數內更新的工作階段。</value>
+  </data>
+  <data name="SessionsHub_ActiveMinutesPlaceholder" xml:space="preserve">
+    <value>任何時間</value>
+  </data>
+  <data name="SessionsHub_AdminOnly" xml:space="preserve">
+    <value>需要系統管理員存取權</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredBody" xml:space="preserve">
+    <value>您可以檢視工作樹。建立、移除、還原及清理工作樹需要此 Gateway 的系統管理員存取權。</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredTip" xml:space="preserve">
+    <value>需要此 Gateway 的系統管理員存取權</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredTitle" xml:space="preserve">
+    <value>需要系統管理員存取權</value>
+  </data>
+  <data name="SessionsHub_AgentFilter" xml:space="preserve">
+    <value>代理程式</value>
+  </data>
+  <data name="SessionsHub_AgentOwner" xml:space="preserve">
+    <value>代理程式：{0}</value>
+  </data>
+  <data name="SessionsHub_AllAgents" xml:space="preserve">
+    <value>所有代理程式</value>
+  </data>
+  <data name="SessionsHub_Archive" xml:space="preserve">
+    <value>封存</value>
+  </data>
+  <data name="SessionsHub_Archived" xml:space="preserve">
+    <value>已封存</value>
+  </data>
+  <data name="SessionsHub_ArchivedFormat" xml:space="preserve">
+    <value>已封存「{0}」。</value>
+  </data>
+  <data name="SessionsHub_ArchiveFailed" xml:space="preserve">
+    <value>無法封存工作階段</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonAge" xml:space="preserve">
+    <value>因一段時間未活動而自動封存</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonCap" xml:space="preserve">
+    <value>為維持在使用中工作階段的上限內而自動封存</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonManual" xml:space="preserve">
+    <value>由使用者手動封存</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonRestart" xml:space="preserve">
+    <value>在 Gateway 重新啟動後的復原過程中封存</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonStaleDashboard" xml:space="preserve">
+    <value>因其儀表板已不再使用而封存</value>
+  </data>
+  <data name="SessionsHub_Assign" xml:space="preserve">
+    <value>指派</value>
+  </data>
+  <data name="SessionsHub_AssignFailed" xml:space="preserve">
+    <value>無法指派擁有者</value>
+  </data>
+  <data name="SessionsHub_AssignOwner" xml:space="preserve">
+    <value>指派擁有者</value>
+  </data>
+  <data name="SessionsHub_AssignOwnerNamed" xml:space="preserve">
+    <value>為 {0} 指派擁有者</value>
+  </data>
+  <data name="SessionsHub_AssignToMe" xml:space="preserve">
+    <value>指派給我</value>
+  </data>
+  <data name="SessionsHub_ChannelWebchat" xml:space="preserve">
+    <value>網頁聊天</value>
+  </data>
+  <data name="SessionsHub_Checkpoints" xml:space="preserve">
+    <value>檢查點</value>
+  </data>
+  <data name="SessionsHub_CleanDone" xml:space="preserve">
+    <value>清理完成。已移除 {0} 個工作樹和 {1} 個孤立的簽出，並清除 {2} 個快照。</value>
+  </data>
+  <data name="SessionsHub_CleanFailed" xml:space="preserve">
+    <value>清理未完成</value>
+  </data>
+  <data name="SessionsHub_Cleaning" xml:space="preserve">
+    <value>正在清理...</value>
+  </data>
+  <data name="SessionsHub_CleanIssues" xml:space="preserve">
+    <value>已略過部分項目：{0}</value>
+  </data>
+  <data name="SessionsHub_CleanNow" xml:space="preserve">
+    <value>立即清理</value>
+  </data>
+  <data name="SessionsHub_CleanNowTip" xml:space="preserve">
+    <value>移除閒置的工作樹、孤立的簽出及過期的快照</value>
+  </data>
+  <data name="SessionsHub_CleanStillRunning" xml:space="preserve">
+    <value>Gateway 上的清理仍在進行中。請稍後重新整理以查看結果。</value>
+  </data>
+  <data name="SessionsHub_ClearSelection" xml:space="preserve">
+    <value>清除選取範圍</value>
+  </data>
+  <data name="SessionsHub_CloseDetails" xml:space="preserve">
+    <value>關閉詳細資料</value>
+  </data>
+  <data name="SessionsHub_CloseSearch" xml:space="preserve">
+    <value>關閉搜尋</value>
+  </data>
+  <data name="SessionsHub_CloudWorker" xml:space="preserve">
+    <value>雲端工作節點</value>
+  </data>
+  <data name="SessionsHub_CountMany" xml:space="preserve">
+    <value>{0} 個工作階段</value>
+  </data>
+  <data name="SessionsHub_CountOne" xml:space="preserve">
+    <value>1 個工作階段</value>
+  </data>
+  <data name="SessionsHub_Create" xml:space="preserve">
+    <value>建立</value>
+  </data>
+  <data name="SessionsHub_DateNoActivity" xml:space="preserve">
+    <value>沒有活動</value>
+  </data>
+  <data name="SessionsHub_DateOlder" xml:space="preserve">
+    <value>較舊</value>
+  </data>
+  <data name="SessionsHub_DateThisWeek" xml:space="preserve">
+    <value>本週稍早</value>
+  </data>
+  <data name="SessionsHub_DateToday" xml:space="preserve">
+    <value>今天</value>
+  </data>
+  <data name="SessionsHub_DateYesterday" xml:space="preserve">
+    <value>昨天</value>
+  </data>
+  <data name="SessionsHub_Delete" xml:space="preserve">
+    <value>刪除</value>
+  </data>
+  <data name="SessionsHub_DeleteAll" xml:space="preserve">
+    <value>全部刪除</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchived" xml:space="preserve">
+    <value>刪除所有已封存項目</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedBody" xml:space="preserve">
+    <value>要永久刪除 {0} 個已封存的工作階段及其對話記錄嗎？此動作無法復原。</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedTip" xml:space="preserve">
+    <value>永久刪除所有已封存的工作階段</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedTitle" xml:space="preserve">
+    <value>刪除所有已封存的工作階段？</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedWorktrees" xml:space="preserve">
+    <value>其中 {0} 個工作階段有受管理的工作樹。仍在使用中或有未儲存工作的工作樹會予以保留，並在刪除後列出。</value>
+  </data>
+  <data name="SessionsHub_DeleteBlocked" xml:space="preserve">
+    <value>無法刪除此工作階段。</value>
+  </data>
+  <data name="SessionsHub_DeletedMany" xml:space="preserve">
+    <value>已刪除 {0} 個工作階段。</value>
+  </data>
+  <data name="SessionsHub_DeletedOne" xml:space="preserve">
+    <value>已刪除 1 個工作階段。</value>
+  </data>
+  <data name="SessionsHub_DeleteFailed" xml:space="preserve">
+    <value>無法刪除</value>
+  </data>
+  <data name="SessionsHub_DeleteFailures" xml:space="preserve">
+    <value>{0} 個項目無法刪除。第一個錯誤：{1}</value>
+  </data>
+  <data name="SessionsHub_DeleteGroup" xml:space="preserve">
+    <value>刪除群組</value>
+  </data>
+  <data name="SessionsHub_DeleteGroupBody" xml:space="preserve">
+    <value>要刪除群組「{0}」嗎？其中的工作階段不會被刪除，而是變成未分組。</value>
+  </data>
+  <data name="SessionsHub_DeleteGroupTitle" xml:space="preserve">
+    <value>刪除群組？</value>
+  </data>
+  <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
+    <value>刪除未封存的工作階段需要系統管理員存取權。請先封存，或洽詢系統管理員。</value>
+  </data>
+  <data name="SessionsHub_DeleteSelected" xml:space="preserve">
+    <value>刪除選取項目</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedBodyMany" xml:space="preserve">
+    <value>要永久刪除 {0} 個工作階段及其對話記錄嗎？此動作無法復原。</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedBodyOne" xml:space="preserve">
+    <value>要永久刪除選取的工作階段及其對話記錄嗎？此動作無法復原。</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedNoneAllowed" xml:space="preserve">
+    <value>以您的存取權無法刪除任何選取的工作階段。主要工作階段無法刪除，而使用中的工作階段需要系統管理員存取權。</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedSkipped" xml:space="preserve">
+    <value>將略過 {0} 個選取的工作階段，因為以您的存取權無法刪除它們。</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectedTitle" xml:space="preserve">
+    <value>刪除選取的工作階段？</value>
+  </data>
+  <data name="SessionsHub_Details" xml:space="preserve">
+    <value>詳細資料</value>
+  </data>
+  <data name="SessionsHub_DetailsFor" xml:space="preserve">
+    <value>{0} 的詳細資料</value>
+  </data>
+  <data name="SessionsHub_DisconnectedBody" xml:space="preserve">
+    <value>連線到 Gateway 以查看及管理其工作階段。</value>
+  </data>
+  <data name="SessionsHub_DisconnectedTitle" xml:space="preserve">
+    <value>未連線</value>
+  </data>
+  <data name="SessionsHub_EmptyActiveBody" xml:space="preserve">
+    <value>當您或某個頻道開始對話時，工作階段會顯示在這裡。</value>
+  </data>
+  <data name="SessionsHub_EmptyActiveTitle" xml:space="preserve">
+    <value>沒有使用中的工作階段</value>
+  </data>
+  <data name="SessionsHub_EmptyAllBody" xml:space="preserve">
+    <value>此 Gateway 尚無任何工作階段。</value>
+  </data>
+  <data name="SessionsHub_EmptyAllTitle" xml:space="preserve">
+    <value>尚無工作階段</value>
+  </data>
+  <data name="SessionsHub_EmptyArchivedBody" xml:space="preserve">
+    <value>您封存的工作階段會保留在這裡，直到您還原或刪除為止。</value>
+  </data>
+  <data name="SessionsHub_EmptyArchivedTitle" xml:space="preserve">
+    <value>沒有已封存的工作階段</value>
+  </data>
+  <data name="SessionsHub_EmptyFilteredBody" xml:space="preserve">
+    <value>請嘗試其他搜尋，或重設篩選。</value>
+  </data>
+  <data name="SessionsHub_EmptyFilteredTitle" xml:space="preserve">
+    <value>沒有符合這些篩選的工作階段</value>
+  </data>
+  <data name="SessionsHub_EmptyGroup" xml:space="preserve">
+    <value>此群組中沒有工作階段</value>
+  </data>
+  <data name="SessionsHub_FactAgent" xml:space="preserve">
+    <value>代理程式</value>
+  </data>
+  <data name="SessionsHub_FactArchivedAt" xml:space="preserve">
+    <value>封存時間</value>
+  </data>
+  <data name="SessionsHub_FactArchiveReason" xml:space="preserve">
+    <value>封存原因</value>
+  </data>
+  <data name="SessionsHub_FactChannel" xml:space="preserve">
+    <value>頻道</value>
+  </data>
+  <data name="SessionsHub_FactCreated" xml:space="preserve">
+    <value>建立時間</value>
+  </data>
+  <data name="SessionsHub_FactKey" xml:space="preserve">
+    <value>工作階段索引鍵</value>
+  </data>
+  <data name="SessionsHub_FactModel" xml:space="preserve">
+    <value>模型</value>
+  </data>
+  <data name="SessionsHub_FactPinned" xml:space="preserve">
+    <value>已釘選</value>
+  </data>
+  <data name="SessionsHub_FactProvider" xml:space="preserve">
+    <value>提供者</value>
+  </data>
+  <data name="SessionsHub_FactSessionId" xml:space="preserve">
+    <value>工作階段識別碼</value>
+  </data>
+  <data name="SessionsHub_FactTokens" xml:space="preserve">
+    <value>已使用的權杖</value>
+  </data>
+  <data name="SessionsHub_FactUpdated" xml:space="preserve">
+    <value>上次更新時間</value>
+  </data>
+  <data name="SessionsHub_FactWorktree" xml:space="preserve">
+    <value>工作樹</value>
+  </data>
+  <data name="SessionsHub_Fast" xml:space="preserve">
+    <value>快速模式</value>
+  </data>
+  <data name="SessionsHub_Filters" xml:space="preserve">
+    <value>篩選</value>
+  </data>
+  <data name="SessionsHub_FiltersCount" xml:space="preserve">
+    <value>篩選（{0}）</value>
+  </data>
+  <data name="SessionsHub_ForceRemove" xml:space="preserve">
+    <value>仍要移除</value>
+  </data>
+  <data name="SessionsHub_ForceRemoveBody" xml:space="preserve">
+    <value>Gateway 無法安全地移除「{0}」：{1}&#x0A;&#x0A;仍要移除會捨棄工作樹中所有未認可的變更。此動作無法復原。</value>
+  </data>
+  <data name="SessionsHub_ForceRemoveTitle" xml:space="preserve">
+    <value>仍要移除工作樹嗎？</value>
+  </data>
+  <data name="SessionsHub_Group" xml:space="preserve">
+    <value>群組</value>
+  </data>
+  <data name="SessionsHub_GroupBy" xml:space="preserve">
+    <value>分組依據</value>
+  </data>
+  <data name="SessionsHub_GroupByAgent" xml:space="preserve">
+    <value>依代理程式分組</value>
+  </data>
+  <data name="SessionsHub_GroupByCategory" xml:space="preserve">
+    <value>依自訂群組分組</value>
+  </data>
+  <data name="SessionsHub_GroupByChannel" xml:space="preserve">
+    <value>依頻道分組</value>
+  </data>
+  <data name="SessionsHub_GroupByDate" xml:space="preserve">
+    <value>依日期分組</value>
+  </data>
+  <data name="SessionsHub_GroupByKind" xml:space="preserve">
+    <value>依類型分組</value>
+  </data>
+  <data name="SessionsHub_GroupByNone" xml:space="preserve">
+    <value>不分組</value>
+  </data>
+  <data name="SessionsHub_GroupByPerson" xml:space="preserve">
+    <value>依擁有者分組</value>
+  </data>
+  <data name="SessionsHub_GroupFailed" xml:space="preserve">
+    <value>無法更新群組</value>
+  </data>
+  <data name="SessionsHub_GroupOptions" xml:space="preserve">
+    <value>群組 {0} 的選項</value>
+  </data>
+  <data name="SessionsHub_GroupOther" xml:space="preserve">
+    <value>其他</value>
+  </data>
+  <data name="SessionsHub_IncludeGlobal" xml:space="preserve">
+    <value>包含全域工作階段</value>
+  </data>
+  <data name="SessionsHub_IncludeUnknown" xml:space="preserve">
+    <value>包含沒有路由資訊的工作階段</value>
+  </data>
+  <data name="SessionsHub_Inherit" xml:space="preserve">
+    <value>使用預設值</value>
+  </data>
+  <data name="SessionsHub_KindChannel" xml:space="preserve">
+    <value>頻道對話</value>
+  </data>
+  <data name="SessionsHub_KindCron" xml:space="preserve">
+    <value>排程工作</value>
+  </data>
+  <data name="SessionsHub_KindDirect" xml:space="preserve">
+    <value>直接對話</value>
+  </data>
+  <data name="SessionsHub_KindGlobal" xml:space="preserve">
+    <value>全域工作階段</value>
+  </data>
+  <data name="SessionsHub_KindGroup" xml:space="preserve">
+    <value>群組對話</value>
+  </data>
+  <data name="SessionsHub_KindMain" xml:space="preserve">
+    <value>主要工作階段</value>
+  </data>
+  <data name="SessionsHub_KindOther" xml:space="preserve">
+    <value>其他工作階段</value>
+  </data>
+  <data name="SessionsHub_KindSubagent" xml:space="preserve">
+    <value>子代理程式</value>
+  </data>
+  <data name="SessionsHub_KindThread" xml:space="preserve">
+    <value>討論串</value>
+  </data>
+  <data name="SessionsHub_KindUnknown" xml:space="preserve">
+    <value>未路由的工作階段</value>
+  </data>
+  <data name="SessionsHub_Label" xml:space="preserve">
+    <value>名稱</value>
+  </data>
+  <data name="SessionsHub_LabelPlaceholder" xml:space="preserve">
+    <value>使用產生的標題</value>
+  </data>
+  <data name="SessionsHub_LastRunError" xml:space="preserve">
+    <value>上次執行失敗</value>
+  </data>
+  <data name="SessionsHub_LevelAuto" xml:space="preserve">
+    <value>自動</value>
+  </data>
+  <data name="SessionsHub_LevelFull" xml:space="preserve">
+    <value>完整詳細資料</value>
+  </data>
+  <data name="SessionsHub_LevelOff" xml:space="preserve">
+    <value>關閉</value>
+  </data>
+  <data name="SessionsHub_LevelOn" xml:space="preserve">
+    <value>開啟</value>
+  </data>
+  <data name="SessionsHub_LevelStream" xml:space="preserve">
+    <value>思考時即時串流</value>
+  </data>
+  <data name="SessionsHub_LevelUltrafast" xml:space="preserve">
+    <value>超快速</value>
+  </data>
+  <data name="SessionsHub_Limit" xml:space="preserve">
+    <value>要載入的工作階段</value>
+  </data>
+  <data name="SessionsHub_LimitHelp" xml:space="preserve">
+    <value>每次從 Gateway 要求的工作階段數量。</value>
+  </data>
+  <data name="SessionsHub_ListLabel" xml:space="preserve">
+    <value>工作階段</value>
+  </data>
+  <data name="SessionsHub_LoadFailedTitle" xml:space="preserve">
+    <value>無法載入工作階段</value>
+  </data>
+  <data name="SessionsHub_Loading" xml:space="preserve">
+    <value>正在載入工作階段...</value>
+  </data>
+  <data name="SessionsHub_LoadMore" xml:space="preserve">
+    <value>載入更多</value>
+  </data>
+  <data name="SessionsHub_MainCannotArchive" xml:space="preserve">
+    <value>無法封存主要工作階段。請改為重設它以重新開始。</value>
+  </data>
+  <data name="SessionsHub_MoreNamed" xml:space="preserve">
+    <value>{0} 的更多動作</value>
+  </data>
+  <data name="SessionsHub_Move" xml:space="preserve">
+    <value>移動</value>
+  </data>
+  <data name="SessionsHub_MoveToGroup" xml:space="preserve">
+    <value>移至群組</value>
+  </data>
+  <data name="SessionsHub_MoveToGroupNamed" xml:space="preserve">
+    <value>將 {0} 移至群組</value>
+  </data>
+  <data name="SessionsHub_NeedsWrite" xml:space="preserve">
+    <value>需要此 Gateway 的寫入存取權</value>
+  </data>
+  <data name="SessionsHub_NewGroup" xml:space="preserve">
+    <value>新增群組</value>
+  </data>
+  <data name="SessionsHub_NewGroupBody" xml:space="preserve">
+    <value>群組可為使用此 Gateway 的所有人整理工作階段。</value>
+  </data>
+  <data name="SessionsHub_NewGroupEllipsis" xml:space="preserve">
+    <value>新增群組...</value>
+  </data>
+  <data name="SessionsHub_NewGroupPlaceholder" xml:space="preserve">
+    <value>群組名稱</value>
+  </data>
+  <data name="SessionsHub_NewGroupTitle" xml:space="preserve">
+    <value>建立群組</value>
+  </data>
+  <data name="SessionsHub_NewWorktree" xml:space="preserve">
+    <value>新增工作樹</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBase" xml:space="preserve">
+    <value>基底分支</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBasePlaceholder" xml:space="preserve">
+    <value>存放庫預設分支</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBranchesLoading" xml:space="preserve">
+    <value>正在載入分支...</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBranchesUnavailable" xml:space="preserve">
+    <value>此存放庫沒有可用的分支。您可以輸入分支名稱。</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeCreate" xml:space="preserve">
+    <value>建立工作樹</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeName" xml:space="preserve">
+    <value>名稱（選用）</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNameInvalid" xml:space="preserve">
+    <value>請使用小寫字母、數字和連字號，並以字母或數字開頭。</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNamePlaceholder" xml:space="preserve">
+    <value>若留空則自動產生</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNotGit" xml:space="preserve">
+    <value>此資料夾不是 Git 存放庫。</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeRepo" xml:space="preserve">
+    <value>存放庫資料夾</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeRepoPlaceholder" xml:space="preserve">
+    <value>Gateway 主機上 Git 存放庫的路徑</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
+    <value>建立工作樹</value>
+  </data>
+  <data name="SessionsHub_NextPage" xml:space="preserve">
+    <value>下一頁</value>
+  </data>
+  <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
+    <value>沒有您可以刪除的已封存工作階段。</value>
+  </data>
+  <data name="SessionsHub_NoOwners" xml:space="preserve">
+    <value>沒有可用的人員或代理程式</value>
+  </data>
+  <data name="SessionsHub_NotAvailable" xml:space="preserve">
+    <value>無法使用</value>
+  </data>
+  <data name="SessionsHub_OpenInChat" xml:space="preserve">
+    <value>在聊天中開啟</value>
+  </data>
+  <data name="SessionsHub_OpenInChatNamed" xml:space="preserve">
+    <value>在聊天中開啟 {0}</value>
+  </data>
+  <data name="SessionsHub_Organization" xml:space="preserve">
+    <value>擁有權和分組</value>
+  </data>
+  <data name="SessionsHub_Overrides" xml:space="preserve">
+    <value>工作階段設定</value>
+  </data>
+  <data name="SessionsHub_OwnedBy" xml:space="preserve">
+    <value>擁有者：{0}</value>
+  </data>
+  <data name="SessionsHub_Owner" xml:space="preserve">
+    <value>擁有者</value>
+  </data>
+  <data name="SessionsHub_PageOf" xml:space="preserve">
+    <value>第 {0} 頁，共 {1} 頁</value>
+  </data>
+  <data name="SessionsHub_PageRange" xml:space="preserve">
+    <value>顯示第 {0} 到 {1} 項，共 {2} 項</value>
+  </data>
+  <data name="SessionsHub_PageRangeOfServer" xml:space="preserve">
+    <value>顯示第 {0} 到 {1} 項，已載入 {2} 項（Gateway 上共 {3} 項）</value>
+  </data>
+  <data name="SessionsHub_PageSize" xml:space="preserve">
+    <value>每頁工作階段數</value>
+  </data>
+  <data name="SessionsHub_PlacementActive" xml:space="preserve">
+    <value>正在雲端工作節點上執行</value>
+  </data>
+  <data name="SessionsHub_PlacementFailed" xml:space="preserve">
+    <value>雲端工作節點失敗</value>
+  </data>
+  <data name="SessionsHub_PlacementLocal" xml:space="preserve">
+    <value>正在 Gateway 上執行</value>
+  </data>
+  <data name="SessionsHub_PlacementReclaimed" xml:space="preserve">
+    <value>已傳回 Gateway</value>
+  </data>
+  <data name="SessionsHub_PlacementStarting" xml:space="preserve">
+    <value>雲端工作節點正在啟動</value>
+  </data>
+  <data name="SessionsHub_PlacementStopping" xml:space="preserve">
+    <value>雲端工作節點正在停止</value>
+  </data>
+  <data name="SessionsHub_PreservedBusy" xml:space="preserve">
+    <value>仍在使用中</value>
+  </data>
+  <data name="SessionsHub_PreservedCleanupFailed" xml:space="preserve">
+    <value>清理失敗</value>
+  </data>
+  <data name="SessionsHub_PreservedLocked" xml:space="preserve">
+    <value>已被其他處理程序鎖定</value>
+  </data>
+  <data name="SessionsHub_PreservedOwnerMismatch" xml:space="preserve">
+    <value>屬於其他工作階段</value>
+  </data>
+  <data name="SessionsHub_PreservedSnapshotFailed" xml:space="preserve">
+    <value>安全快照失敗</value>
+  </data>
+  <data name="SessionsHub_PreservedWorktrees" xml:space="preserve">
+    <value>保留的工作樹：{0}。</value>
+  </data>
+  <data name="SessionsHub_PreviousPage" xml:space="preserve">
+    <value>上一頁</value>
+  </data>
+  <data name="SessionsHub_ReadOnlyBody" xml:space="preserve">
+    <value>您可以瀏覽及搜尋工作階段。變更、封存或刪除工作階段需要此 Gateway 的寫入存取權。</value>
+  </data>
+  <data name="SessionsHub_ReadOnlyTitle" xml:space="preserve">
+    <value>唯讀存取權</value>
+  </data>
+  <data name="SessionsHub_Reasoning" xml:space="preserve">
+    <value>顯示推理過程</value>
+  </data>
+  <data name="SessionsHub_Refresh" xml:space="preserve">
+    <value>重新整理</value>
+  </data>
+  <data name="SessionsHub_Remove" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="SessionsHub_RemoveFromGroup" xml:space="preserve">
+    <value>從群組移除</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeBody" xml:space="preserve">
+    <value>要移除工作樹「{0}」嗎？Gateway 會先建立安全快照，讓您之後可以還原。</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeFailed" xml:space="preserve">
+    <value>無法移除工作樹</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeRefused" xml:space="preserve">
+    <value>Gateway 拒絕移除，因為無法安全執行。</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeTitle" xml:space="preserve">
+    <value>移除工作樹？</value>
+  </data>
+  <data name="SessionsHub_RenameGroup" xml:space="preserve">
+    <value>重新命名群組</value>
+  </data>
+  <data name="SessionsHub_RenameGroupBody" xml:space="preserve">
+    <value>此群組中的工作階段會移至新名稱下。</value>
+  </data>
+  <data name="SessionsHub_RenameGroupTitle" xml:space="preserve">
+    <value>重新命名群組</value>
+  </data>
+  <data name="SessionsHub_ResetFilters" xml:space="preserve">
+    <value>重設篩選</value>
+  </data>
+  <data name="SessionsHub_Restore" xml:space="preserve">
+    <value>還原</value>
+  </data>
+  <data name="SessionsHub_RestoreWorktreeFailed" xml:space="preserve">
+    <value>無法還原工作樹</value>
+  </data>
+  <data name="SessionsHub_Retry" xml:space="preserve">
+    <value>重試</value>
+  </data>
+  <data name="SessionsHub_RoleAssistant" xml:space="preserve">
+    <value>助理</value>
+  </data>
+  <data name="SessionsHub_RoleUser" xml:space="preserve">
+    <value>您</value>
+  </data>
+  <data name="SessionsHub_RowHelp" xml:space="preserve">
+    <value>顯示工作階段的詳細資料</value>
+  </data>
+  <data name="SessionsHub_RowsPerPage" xml:space="preserve">
+    <value>每頁 {0} 項</value>
+  </data>
+  <data name="SessionsHub_Save" xml:space="preserve">
+    <value>儲存</value>
+  </data>
+  <data name="SessionsHub_Search" xml:space="preserve">
+    <value>搜尋</value>
+  </data>
+  <data name="SessionsHub_Searching" xml:space="preserve">
+    <value>正在搜尋對話記錄...</value>
+  </data>
+  <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
+    <value>依名稱或索引鍵篩選</value>
+  </data>
+  <data name="SessionsHub_SearchTranscripts" xml:space="preserve">
+    <value>搜尋對話記錄</value>
+  </data>
+  <data name="SessionsHub_SearchTranscriptsTip" xml:space="preserve">
+    <value>在目前篩選所顯示工作階段的訊息中尋找文字</value>
+  </data>
+  <data name="SessionsHub_Select" xml:space="preserve">
+    <value>選取</value>
+  </data>
+  <data name="SessionsHub_SelectedMany" xml:space="preserve">
+    <value>已選取 {0} 項</value>
+  </data>
+  <data name="SessionsHub_SelectedOne" xml:space="preserve">
+    <value>已選取 1 項</value>
+  </data>
+  <data name="SessionsHub_SelectNamed" xml:space="preserve">
+    <value>選取 {0}</value>
+  </data>
+  <data name="SessionsHub_SelectPage" xml:space="preserve">
+    <value>選取此頁</value>
+  </data>
+  <data name="SessionsHub_SelectTip" xml:space="preserve">
+    <value>選擇多個工作階段以一次刪除</value>
+  </data>
+  <data name="SessionsHub_ShowAll" xml:space="preserve">
+    <value>顯示所有工作階段</value>
+  </data>
+  <data name="SessionsHub_ShowDetails" xml:space="preserve">
+    <value>顯示詳細資料</value>
+  </data>
+  <data name="SessionsHub_ShowDetailsNamed" xml:space="preserve">
+    <value>顯示 {0} 的詳細資料</value>
+  </data>
+  <data name="SessionsHub_Sort" xml:space="preserve">
+    <value>排序</value>
+  </data>
+  <data name="SessionsHub_SortNameAsc" xml:space="preserve">
+    <value>名稱，A 到 Z</value>
+  </data>
+  <data name="SessionsHub_SortNameDesc" xml:space="preserve">
+    <value>名稱，Z 到 A</value>
+  </data>
+  <data name="SessionsHub_SortNewest" xml:space="preserve">
+    <value>最近更新</value>
+  </data>
+  <data name="SessionsHub_SortOldest" xml:space="preserve">
+    <value>最早更新</value>
+  </data>
+  <data name="SessionsHub_StatusActive" xml:space="preserve">
+    <value>使用中</value>
+  </data>
+  <data name="SessionsHub_StatusAll" xml:space="preserve">
+    <value>全部</value>
+  </data>
+  <data name="SessionsHub_StatusArchived" xml:space="preserve">
+    <value>已封存</value>
+  </data>
+  <data name="SessionsHub_StatusFilter" xml:space="preserve">
+    <value>工作階段狀態</value>
+  </data>
+  <data name="SessionsHub_StatusQueued" xml:space="preserve">
+    <value>已排入佇列</value>
+  </data>
+  <data name="SessionsHub_StopWorker" xml:space="preserve">
+    <value>停止雲端工作節點</value>
+  </data>
+  <data name="SessionsHub_StopWorkerBody" xml:space="preserve">
+    <value>要停止「{0}」的雲端工作節點，並將工作階段傳回 Gateway 嗎？工作節點上進行中的工作會在停止前保存。</value>
+  </data>
+  <data name="SessionsHub_StopWorkerBusy" xml:space="preserve">
+    <value>請等候目前回合完成後，再停止工作節點。</value>
+  </data>
+  <data name="SessionsHub_StopWorkerDone" xml:space="preserve">
+    <value>已停止「{0}」的雲端工作節點。</value>
+  </data>
+  <data name="SessionsHub_StopWorkerFailed" xml:space="preserve">
+    <value>無法停止雲端工作節點</value>
+  </data>
+  <data name="SessionsHub_StopWorkerHelp" xml:space="preserve">
+    <value>停止後，工作階段會傳回 Gateway。</value>
+  </data>
+  <data name="SessionsHub_StopWorkerTitle" xml:space="preserve">
+    <value>停止雲端工作節點？</value>
+  </data>
+  <data name="SessionsHub_StopWorkerUnavailable" xml:space="preserve">
+    <value>目前無法停止此工作節點。</value>
+  </data>
+  <data name="SessionsHub_Subtitle" xml:space="preserve">
+    <value>瀏覽、整理及清理此 Gateway 上的對話。</value>
+  </data>
+  <data name="SessionsHub_TabSessions" xml:space="preserve">
+    <value>工作階段</value>
+  </data>
+  <data name="SessionsHub_TabsLabel" xml:space="preserve">
+    <value>工作階段頁面區段</value>
+  </data>
+  <data name="SessionsHub_TabWorktrees" xml:space="preserve">
+    <value>工作樹</value>
+  </data>
+  <data name="SessionsHub_Thinking" xml:space="preserve">
+    <value>思考層級</value>
+  </data>
+  <data name="SessionsHub_ThinkingHigh" xml:space="preserve">
+    <value>高</value>
+  </data>
+  <data name="SessionsHub_ThinkingLow" xml:space="preserve">
+    <value>低</value>
+  </data>
+  <data name="SessionsHub_ThinkingMedium" xml:space="preserve">
+    <value>中</value>
+  </data>
+  <data name="SessionsHub_ThinkingMinimal" xml:space="preserve">
+    <value>最低</value>
+  </data>
+  <data name="SessionsHub_ThinkingXHigh" xml:space="preserve">
+    <value>極高</value>
+  </data>
+  <data name="SessionsHub_TimeDays" xml:space="preserve">
+    <value>{0} 天前</value>
+  </data>
+  <data name="SessionsHub_TimeHours" xml:space="preserve">
+    <value>{0} 小時前</value>
+  </data>
+  <data name="SessionsHub_TimeJustNow" xml:space="preserve">
+    <value>剛剛</value>
+  </data>
+  <data name="SessionsHub_TimeMinutes" xml:space="preserve">
+    <value>{0} 分鐘前</value>
+  </data>
+  <data name="SessionsHub_TimeNever" xml:space="preserve">
+    <value>從未</value>
+  </data>
+  <data name="SessionsHub_Title" xml:space="preserve">
+    <value>工作階段</value>
+  </data>
+  <data name="SessionsHub_TokensWithContext" xml:space="preserve">
+    <value>已用 {0}，內容共 {1}</value>
+  </data>
+  <data name="SessionsHub_TranscriptArchivedExcludedMany" xml:space="preserve">
+    <value>另有 {0} 個已封存的工作階段也符合。選擇「全部」或「已封存」即可納入。</value>
+  </data>
+  <data name="SessionsHub_TranscriptArchivedExcludedOne" xml:space="preserve">
+    <value>另有 1 個已封存的工作階段也符合。選擇「全部」或「已封存」即可納入。</value>
+  </data>
+  <data name="SessionsHub_TranscriptFailed" xml:space="preserve">
+    <value>搜尋未完成</value>
+  </data>
+  <data name="SessionsHub_TranscriptHint" xml:space="preserve">
+    <value>在符合目前代理程式和狀態篩選的工作階段中搜尋訊息。</value>
+  </data>
+  <data name="SessionsHub_TranscriptIndexingBody" xml:space="preserve">
+    <value>Gateway 仍在建立搜尋索引，因此可能缺少部分相符項目。請稍後再試一次。</value>
+  </data>
+  <data name="SessionsHub_TranscriptIndexingTitle" xml:space="preserve">
+    <value>正在為對話記錄建立索引</value>
+  </data>
+  <data name="SessionsHub_TranscriptLabel" xml:space="preserve">
+    <value>搜尋工作階段對話記錄</value>
+  </data>
+  <data name="SessionsHub_TranscriptMatchMany" xml:space="preserve">
+    <value>{0} 個相符項目</value>
+  </data>
+  <data name="SessionsHub_TranscriptMatchOne" xml:space="preserve">
+    <value>1 個相符項目</value>
+  </data>
+  <data name="SessionsHub_TranscriptNeedsConnection" xml:space="preserve">
+    <value>連線到 Gateway 以搜尋對話記錄。</value>
+  </data>
+  <data name="SessionsHub_TranscriptNoMatchesBody" xml:space="preserve">
+    <value>沒有任何訊息包含「{0}」。</value>
+  </data>
+  <data name="SessionsHub_TranscriptNoMatchesTitle" xml:space="preserve">
+    <value>沒有相符項目</value>
+  </data>
+  <data name="SessionsHub_TranscriptPlaceholder" xml:space="preserve">
+    <value>搜尋訊息</value>
+  </data>
+  <data name="SessionsHub_TranscriptScope" xml:space="preserve">
+    <value>搜尋範圍：{0}</value>
+  </data>
+  <data name="SessionsHub_TranscriptTitle" xml:space="preserve">
+    <value>搜尋對話記錄</value>
+  </data>
+  <data name="SessionsHub_TranscriptTruncated" xml:space="preserve">
+    <value>僅顯示最佳相符項目。請縮小搜尋範圍以查看其他結果。</value>
+  </data>
+  <data name="SessionsHub_TranscriptUnsupported" xml:space="preserve">
+    <value>此 Gateway 不支援搜尋對話記錄。請更新 Gateway 以使用此功能。</value>
+  </data>
+  <data name="SessionsHub_Unarchive" xml:space="preserve">
+    <value>取消封存</value>
+  </data>
+  <data name="SessionsHub_UnarchivedFormat" xml:space="preserve">
+    <value>已將「{0}」還原至使用中的工作階段。</value>
+  </data>
+  <data name="SessionsHub_UnarchiveFailed" xml:space="preserve">
+    <value>無法取消封存工作階段</value>
+  </data>
+  <data name="SessionsHub_UnarchiveNamed" xml:space="preserve">
+    <value>取消封存 {0}</value>
+  </data>
+  <data name="SessionsHub_Unassigned" xml:space="preserve">
+    <value>未指派</value>
+  </data>
+  <data name="SessionsHub_Undo" xml:space="preserve">
+    <value>復原</value>
+  </data>
+  <data name="SessionsHub_UndoFailed" xml:space="preserve">
+    <value>無法復原</value>
+  </data>
+  <data name="SessionsHub_Ungrouped" xml:space="preserve">
+    <value>未分組</value>
+  </data>
+  <data name="SessionsHub_Unread" xml:space="preserve">
+    <value>未讀取</value>
+  </data>
+  <data name="SessionsHub_Unsupported" xml:space="preserve">
+    <value>此 Gateway 不支援此動作。請更新 Gateway 以使用此功能。</value>
+  </data>
+  <data name="SessionsHub_UnsupportedTitle" xml:space="preserve">
+    <value>無法使用工作階段</value>
+  </data>
+  <data name="SessionsHub_UpdateFailed" xml:space="preserve">
+    <value>無法更新工作階段</value>
+  </data>
+  <data name="SessionsHub_Verbose" xml:space="preserve">
+    <value>工具輸出詳細程度</value>
+  </data>
+  <data name="SessionsHub_WorktreeActive" xml:space="preserve">
+    <value>使用中</value>
+  </data>
+  <data name="SessionsHub_WorktreeColActive" xml:space="preserve">
+    <value>上次活動時間</value>
+  </data>
+  <data name="SessionsHub_WorktreeColName" xml:space="preserve">
+    <value>工作樹</value>
+  </data>
+  <data name="SessionsHub_WorktreeColOwner" xml:space="preserve">
+    <value>擁有者</value>
+  </data>
+  <data name="SessionsHub_WorktreeColRepo" xml:space="preserve">
+    <value>存放庫</value>
+  </data>
+  <data name="SessionsHub_WorktreeColStatus" xml:space="preserve">
+    <value>狀態</value>
+  </data>
+  <data name="SessionsHub_WorktreeCreated" xml:space="preserve">
+    <value>已建立工作樹。</value>
+  </data>
+  <data name="SessionsHub_WorktreeCreateFailed" xml:space="preserve">
+    <value>無法建立工作樹</value>
+  </data>
+  <data name="SessionsHub_WorktreeFromBase" xml:space="preserve">
+    <value>{0}，以 {1} 為基礎</value>
+  </data>
+  <data name="SessionsHub_WorktreeOpenOwner" xml:space="preserve">
+    <value>在聊天中開啟所屬的工作階段 {0}</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerManual" xml:space="preserve">
+    <value>手動建立</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerSession" xml:space="preserve">
+    <value>工作階段</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerWorkboard" xml:space="preserve">
+    <value>工作看板</value>
+  </data>
+  <data name="SessionsHub_WorktreeRemoved" xml:space="preserve">
+    <value>已移除「{0}」。您可以從此清單還原它。</value>
+  </data>
+  <data name="SessionsHub_WorktreeRestorable" xml:space="preserve">
+    <value>可還原</value>
+  </data>
+  <data name="SessionsHub_WorktreeRestored" xml:space="preserve">
+    <value>已還原「{0}」。</value>
+  </data>
+  <data name="SessionsHub_WorktreeRowName" xml:space="preserve">
+    <value>{0}，分支 {1}，擁有者 {2}，{3}</value>
+  </data>
+  <data name="SessionsHub_WorktreesDisconnected" xml:space="preserve">
+    <value>連線到 Gateway 以查看其受管理的工作樹。</value>
+  </data>
+  <data name="SessionsHub_WorktreesEmptyBody" xml:space="preserve">
+    <value>為工作階段、工作看板建立或手動建立的工作樹會顯示在這裡。</value>
+  </data>
+  <data name="SessionsHub_WorktreesEmptyTitle" xml:space="preserve">
+    <value>沒有工作樹</value>
+  </data>
+  <data name="SessionsHub_WorktreesFailed" xml:space="preserve">
+    <value>無法載入工作樹</value>
+  </data>
+  <data name="SessionsHub_WorktreesLoading" xml:space="preserve">
+    <value>正在載入工作樹...</value>
+  </data>
+  <data name="SessionsHub_WorktreesUnsupported" xml:space="preserve">
+    <value>此 Gateway 不管理工作樹。請更新 Gateway 以使用此功能。</value>
+  </data>
+  <data name="SessionsHub_WorktreesUnsupportedTitle" xml:space="preserve">
+    <value>無法使用工作樹</value>
+  </data>
+  <data name="SessionsHub_Yes" xml:space="preserve">
+    <value>是</value>
+  </data>
+  <data name="SessionsHub_DeleteInterrupted" xml:space="preserve">
+    <value>已提前停止：剩餘 {0} 個工作階段未確認已刪除。請重新整理以檢查。</value>
+  </data>
+  <data name="SessionsHub_DeleteRefused" xml:space="preserve">
+    <value>閘道未刪除其中 {0} 個。</value>
+  </data>
+  <data name="SessionsHub_DeleteSelectionChanged" xml:space="preserve">
+    <value>確認期間清單已變更，因此未刪除任何項目。請檢查選取內容後再試一次。</value>
+  </data>
+  <data name="SessionsHub_DeleteAllArchivedWorktreesOne" xml:space="preserve">
+    <value>其中 1 個工作階段有受管理的工作樹。仍在使用中或有未儲存工作的工作樹會予以保留，並在刪除後列出。</value>
+  </data>
+  <data name="SessionsHub_Appearance" xml:space="preserve">
+    <value>外觀</value>
+  </data>
+  <data name="SessionsHub_ColorBlue" xml:space="preserve">
+    <value>藍色</value>
+  </data>
+  <data name="SessionsHub_ColorCyan" xml:space="preserve">
+    <value>青色</value>
+  </data>
+  <data name="SessionsHub_ColorFor" xml:space="preserve">
+    <value>{0} 的色彩</value>
+  </data>
+  <data name="SessionsHub_ColorGreen" xml:space="preserve">
+    <value>綠色</value>
+  </data>
+  <data name="SessionsHub_ColorHeader" xml:space="preserve">
+    <value>色彩</value>
+  </data>
+  <data name="SessionsHub_ColorMenu" xml:space="preserve">
+    <value>色彩</value>
+  </data>
+  <data name="SessionsHub_ColorNone" xml:space="preserve">
+    <value>無色彩</value>
+  </data>
+  <data name="SessionsHub_ColorOrange" xml:space="preserve">
+    <value>橙色</value>
+  </data>
+  <data name="SessionsHub_ColorPink" xml:space="preserve">
+    <value>粉紅色</value>
+  </data>
+  <data name="SessionsHub_ColorPurple" xml:space="preserve">
+    <value>紫色</value>
+  </data>
+  <data name="SessionsHub_ColorRed" xml:space="preserve">
+    <value>紅色</value>
+  </data>
+  <data name="SessionsHub_ColorYellow" xml:space="preserve">
+    <value>黃色</value>
+  </data>
+  <data name="SessionsHub_IconBook" xml:space="preserve">
+    <value>書籍</value>
+  </data>
+  <data name="SessionsHub_IconBot" xml:space="preserve">
+    <value>機器人</value>
+  </data>
+  <data name="SessionsHub_IconBraces" xml:space="preserve">
+    <value>程式碼</value>
+  </data>
+  <data name="SessionsHub_IconCoins" xml:space="preserve">
+    <value>硬幣</value>
+  </data>
+  <data name="SessionsHub_IconDefault" xml:space="preserve">
+    <value>預設圖示</value>
+  </data>
+  <data name="SessionsHub_IconFor" xml:space="preserve">
+    <value>{0} 的圖示</value>
+  </data>
+  <data name="SessionsHub_IconHeader" xml:space="preserve">
+    <value>圖示</value>
+  </data>
+  <data name="SessionsHub_IconKanban" xml:space="preserve">
+    <value>看板</value>
+  </data>
+  <data name="SessionsHub_IconMenu" xml:space="preserve">
+    <value>圖示</value>
+  </data>
+  <data name="SessionsHub_IconMonitor" xml:space="preserve">
+    <value>監視器</value>
+  </data>
+  <data name="SessionsHub_Selected" xml:space="preserve">
+    <value>已選取</value>
+  </data>
+  <data name="SessionsHub_StatActive" xml:space="preserve">
+    <value>使用中的工作階段</value>
+  </data>
+  <data name="SessionsHub_StatAll" xml:space="preserve">
+    <value>所有工作階段</value>
+  </data>
+  <data name="SessionsHub_StatArchived" xml:space="preserve">
+    <value>已封存的工作階段</value>
+  </data>
+  <data name="SessionsHub_StatAttention" xml:space="preserve">
+    <value>需要注意</value>
+  </data>
+  <data name="SessionsHub_StatPinned" xml:space="preserve">
+    <value>已釘選</value>
+  </data>
+  <data name="SessionsHub_StatsLabel" xml:space="preserve">
+    <value>工作階段摘要</value>
+  </data>
+  <data name="SessionsHub_StatUnread" xml:space="preserve">
+    <value>未讀</value>
+  </data>
+  <data name="SessionsHub_StatWorking" xml:space="preserve">
+    <value>正在執行</value>
+  </data>
+  <data name="SessionsHub_ScopeActiveWithin" xml:space="preserve">
+    <value>最近 {0} 分鐘內更新</value>
+  </data>
+  <data name="SessionsHub_ScopeNameContains" xml:space="preserve">
+    <value>名稱包含「{0}」</value>
+  </data>
+  <data name="SessionsHub_ScopeGlobalIncluded" xml:space="preserve">
+    <value>包含全域工作階段</value>
+  </data>
+  <data name="SessionsHub_ScopeGlobalExcluded" xml:space="preserve">
+    <value>排除全域工作階段</value>
+  </data>
+  <data name="SessionsHub_ScopeUnknownIncluded" xml:space="preserve">
+    <value>包含沒有路由資訊的工作階段</value>
+  </data>
+  <data name="SessionsHub_ScopeUnknownExcluded" xml:space="preserve">
+    <value>排除沒有路由資訊的工作階段</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>節點沙箱</value>
   </data>
