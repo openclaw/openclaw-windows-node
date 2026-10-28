@@ -203,6 +203,9 @@ public interface IOperatorGatewayClient
     /// <summary>List only the archived sessions (<c>sessions.list</c> with <c>archived:true</c>). Rows are detached snapshots.</summary>
     Task<SessionListResult> ListArchivedSessionsAsync(int timeoutMs = 15000)
         => Task.FromResult(new SessionListResult { IsSupported = false });
+    /// <summary>Fetches the authenticated user's avatar from the Gateway route. Older clients report Unsupported.</summary>
+    Task<UserAvatarResult> ResolveUserAvatarAsync(string profileId, string? revision, CancellationToken cancellationToken = default)
+        => Task.FromResult(UserAvatarResult.Of(UserAvatarStatus.Unsupported));
 }
 
 public sealed record CronRunRequestResult(

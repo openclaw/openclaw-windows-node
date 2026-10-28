@@ -769,6 +769,48 @@ public class OpenClawGatewayClientTests
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
+    [Theory]
+    [InlineData("FORBIDDEN", null, "FORBIDDEN", null)]
+    [InlineData("UNAVAILABLE", "AUTHENTICATED_PROFILE_UNAVAILABLE", "UNAVAILABLE", "AUTHENTICATED_PROFILE_UNAVAILABLE")]
+    [InlineData("FORBIDDEN", "MISSING_SCOPE", "FORBIDDEN", "MISSING_SCOPE")]
+    [InlineData("please leak this message", "lower case", null, null)]
+    public async Task SendWizardRequestAsync_GatewayError_ExposesOnlyAllowlistedCodes(
+        string code, string? detail, string? expectedCode, string? expectedDetail)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("wizard-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var responseTask = client.SendWizardRequestAsync("users.self", timeoutMs: 10_000);
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await server.SendTextAsync(
+            JsonSerializer.Serialize(new
+            {
+                type = "res",
+                id = ReadRequestId(request),
+                ok = false,
+                error = new { code, message = "secret text", details = detail is null ? null : new { code = detail } }
+            }));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+
+        Assert.True(GatewayRequestErrors.TryGetCodes(exception, out var actualCode, out var actualDetail));
+        Assert.Equal(expectedCode ?? "UNKNOWN", actualCode);
+        Assert.Equal(expectedDetail, actualDetail);
+        Assert.DoesNotContain("secret", actualCode + actualDetail);
+    }
+
+    [Fact]
+    public void LocalRefusalCarriesNoGatewayCodes() =>
+        Assert.False(GatewayRequestErrors.TryGetCodes(new InvalidOperationException("hello-ok pending"), out _, out _));
+
     [Fact]
     public async Task SendWizardRequestAsync_DeadlineExpires_ThrowsTimeoutAndCleansTracking()
     {

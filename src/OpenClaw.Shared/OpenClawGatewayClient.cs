@@ -2490,7 +2490,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     okWiz.ValueKind == JsonValueKind.False)
                 {
                     var message = TryGetErrorMessage(root) ?? "wizard request failed";
-                    wizardCompletion.TryFault(new InvalidOperationException(message));
+                    wizardCompletion.TryFault(GatewayRequestErrors.Create(
+                        message,
+                        TryGetErrorTopLevelCode(root),
+                        TryGetErrorDetailCode(root)));
                 }
                 else if (root.TryGetProperty("payload", out var wizPayload))
                 {
