@@ -198,6 +198,8 @@ internal sealed class ProfileCompletionDialog : ContentDialog
             return L("ContextChanged");
         var nameOk = result.Name is ProfileStep.Saved or ProfileStep.ExistingValue;
         var photoOk = result.Photo is ProfileStep.Saved or ProfileStep.ExistingValue;
+        if (result.Name == ProfileStep.Uncertain || result.Photo == ProfileStep.Uncertain)
+            return nameOk || photoOk ? L("ConnectionLostPartial") : L("Uncertain");
         if (result.Name == ProfileStep.ConnectionLost || result.Photo == ProfileStep.ConnectionLost)
             return nameOk || photoOk ? L("ConnectionLostPartial") : L("ConnectionLost");
         if (nameOk && !photoOk) return L("NameSavedPhotoFailed");

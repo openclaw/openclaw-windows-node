@@ -1023,6 +1023,8 @@ public sealed partial class WorkspaceWindow : WindowEx
             if (preparation.Offer != ProfileOffer.Offer)
             {
                 if (fallbackToDashboard) ((IAppCommands)CurrentApp).OpenDashboard("settings/profile");
+                // A transient failure (connection lost, timeout) must not consume the once-per-Gateway automatic offer.
+                else if (preparation.Offer == ProfileOffer.Unavailable) _profileOfferedGatewayId = null;
                 return;
             }
 

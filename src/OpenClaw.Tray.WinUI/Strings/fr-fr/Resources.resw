@@ -7982,8 +7982,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="ProfileCompletion_NameSavedPhotoFailed" xml:space="preserve"><value>Le nom a été enregistré, mais pas la photo. Choisissez Enregistrer pour réessayer la photo.</value></data>
   <data name="ProfileCompletion_PhotoSavedNameFailed" xml:space="preserve"><value>La photo a été enregistrée, mais pas le nom. Choisissez Enregistrer pour réessayer le nom.</value></data>
   <data name="ProfileCompletion_Failed" xml:space="preserve"><value>Le profil n'a pas pu être enregistré. Réessayez.</value></data>
-  <data name="ProfileCompletion_ConnectionLost" xml:space="preserve"><value>La connexion à la passerelle a été perdue. La modification a peut-être été enregistrée. Vérifiez votre profil avant de réessayer.</value></data>
-  <data name="ProfileCompletion_ConnectionLostPartial" xml:space="preserve"><value>Votre nom ou votre photo a été enregistré, mais la connexion à la passerelle a été perdue avant la fin. Reconnectez-vous, puis vérifiez votre profil.</value></data>
+  <data name="ProfileCompletion_ConnectionLost" xml:space="preserve"><value>La connexion à la passerelle a été perdue avant l'envoi de cette modification. Reconnectez-vous, puis réessayez.</value></data>
+  <data name="ProfileCompletion_ConnectionLostPartial" xml:space="preserve"><value>Une partie de votre profil a été enregistrée, mais le reste n'a pas été confirmé car la connexion ou la réponse a été perdue. Vérifiez votre profil avant de réessayer.</value></data>
+  <data name="ProfileCompletion_Uncertain" xml:space="preserve"><value>La passerelle n'a pas confirmé la modification ; elle a peut-être été enregistrée. Vérifiez votre profil avant de réessayer.</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>

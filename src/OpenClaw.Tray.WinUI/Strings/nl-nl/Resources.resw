@@ -7983,8 +7983,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="ProfileCompletion_NameSavedPhotoFailed" xml:space="preserve"><value>De naam is opgeslagen, maar de foto niet. Kies Opslaan om de foto opnieuw te proberen.</value></data>
   <data name="ProfileCompletion_PhotoSavedNameFailed" xml:space="preserve"><value>De foto is opgeslagen, maar de naam niet. Kies Opslaan om de naam opnieuw te proberen.</value></data>
   <data name="ProfileCompletion_Failed" xml:space="preserve"><value>Het profiel kon niet worden opgeslagen. Probeer het opnieuw.</value></data>
-  <data name="ProfileCompletion_ConnectionLost" xml:space="preserve"><value>De verbinding met de Gateway is verbroken. De wijziging is mogelijk wel of niet opgeslagen. Controleer uw profiel voordat u het opnieuw probeert.</value></data>
-  <data name="ProfileCompletion_ConnectionLostPartial" xml:space="preserve"><value>Uw naam of foto is opgeslagen, maar de verbinding met de Gateway is verbroken voordat alles klaar was. Maak opnieuw verbinding en controleer uw profiel.</value></data>
+  <data name="ProfileCompletion_ConnectionLost" xml:space="preserve"><value>De verbinding met de Gateway is verbroken voordat deze wijziging is verzonden. Maak opnieuw verbinding en probeer het opnieuw.</value></data>
+  <data name="ProfileCompletion_ConnectionLostPartial" xml:space="preserve"><value>Een deel van uw profiel is opgeslagen, maar de rest is niet bevestigd omdat de verbinding of het antwoord verloren is gegaan. Controleer uw profiel voordat u het opnieuw probeert.</value></data>
+  <data name="ProfileCompletion_Uncertain" xml:space="preserve"><value>De Gateway heeft de wijziging niet bevestigd, dus deze is mogelijk wel of niet opgeslagen. Controleer uw profiel voordat u het opnieuw probeert.</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>

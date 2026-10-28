@@ -7982,8 +7982,9 @@
   <data name="ProfileCompletion_NameSavedPhotoFailed" xml:space="preserve"><value>名称已保存，但照片未保存。选择“保存”可重试照片。</value></data>
   <data name="ProfileCompletion_PhotoSavedNameFailed" xml:space="preserve"><value>照片已保存，但名称未保存。选择“保存”可重试名称。</value></data>
   <data name="ProfileCompletion_Failed" xml:space="preserve"><value>无法保存个人资料。请重试。</value></data>
-  <data name="ProfileCompletion_ConnectionLost" xml:space="preserve"><value>与网关的连接已断开。更改可能已保存，也可能未保存。请先检查个人资料，再重试。</value></data>
-  <data name="ProfileCompletion_ConnectionLostPartial" xml:space="preserve"><value>您的姓名或照片已保存，但在全部完成之前与网关的连接已断开。请重新连接，然后检查个人资料。</value></data>
+  <data name="ProfileCompletion_ConnectionLost" xml:space="preserve"><value>在发送此更改之前，与网关的连接已断开。请重新连接后重试。</value></data>
+  <data name="ProfileCompletion_ConnectionLostPartial" xml:space="preserve"><value>个人资料的一部分已保存，但由于连接或回复丢失，其余部分未得到确认。请先检查个人资料，再重试。</value></data>
+  <data name="ProfileCompletion_Uncertain" xml:space="preserve"><value>网关未确认此更改，因此它可能已保存，也可能未保存。请先检查个人资料，再重试。</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>

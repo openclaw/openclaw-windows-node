@@ -368,77 +368,139 @@ public class ProfileCompletionTests
 
     private static GatewayConnectionLostException Lost() => new(1006, null);
 
-    [Fact]
-    public async Task Prepare_ConnectionLostDuringRead_IsUnavailable_NotCancellation()
+    // Production paths: Drain(wizardDisconnect) yields GatewayConnectionLostException; parameterless Drain and
+    // connection-lifetime WaitAsync yield a plain OperationCanceledException or TaskCanceledException.
+    public static TheoryData<Exception> TransportLosses => new()
     {
-        var (service, proxy, _, _) = Create();
-        proxy.OnSelfRead = () => throw Lost();
-        Assert.Equal(ProfileOffer.Unavailable, (await service.PrepareAsync(CancellationToken.None)).Offer);
-    }
+        Lost(),
+        new OperationCanceledException("Request canceled"),
+        new TaskCanceledException(),
+    };
 
-    [Fact]
-    public async Task Save_ConnectionLostAtPhotoRecheck_KeepsSavedName()
+    private static async Task<(ProfileCompletionService Service, Proxy Proxy, ProfilePreparation Prep)> Prepared()
     {
         var (service, proxy, _, _) = Create();
         var prep = await service.PrepareAsync(CancellationToken.None);
         proxy.Methods.Clear();
-        proxy.OnSelfRead = () => { if (proxy.Methods.Count(m => m == "users.self") == 2) throw Lost(); };
+        return (service, proxy, prep);
+    }
+
+    [Theory]
+    [MemberData(nameof(TransportLosses))]
+    public async Task Prepare_TransportLossDuringRead_IsUnavailable_NotCancellation(Exception loss)
+    {
+        var (service, proxy, _, _) = Create();
+        proxy.OnSelfRead = () => throw loss;
+        Assert.Equal(ProfileOffer.Unavailable, (await service.PrepareAsync(CancellationToken.None)).Offer);
+    }
+
+    [Theory]
+    [MemberData(nameof(TransportLosses))]
+    public async Task Save_TransportLossAtPhotoRecheck_KeepsSavedName_AndIsIncomplete(Exception loss)
+    {
+        var (service, proxy, prep) = await Prepared();
+        proxy.OnSelfRead = () => { if (proxy.Methods.Count(m => m == "users.self") == 2) throw loss; };
         var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
         Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.ConnectionLost), result);
         Assert.False(result.IsComplete);
         Assert.DoesNotContain("users.setAvatar", proxy.Methods);
     }
 
-    [Fact]
-    public async Task Save_ConnectionLostAtNameRecheck_ReportsLost_AndWritesNothing()
+    [Theory]
+    [MemberData(nameof(TransportLosses))]
+    public async Task Save_TransportLossAtNameRecheck_ReportsLost_AndWritesNothing(Exception loss)
     {
-        var (service, proxy, _, _) = Create();
-        var prep = await service.PrepareAsync(CancellationToken.None);
-        proxy.Methods.Clear();
-        proxy.OnSelfRead = () => throw Lost();
+        var (service, proxy, prep) = await Prepared();
+        proxy.OnSelfRead = () => throw loss;
         var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
         Assert.Equal(new ProfileSaveResult(ProfileStep.ConnectionLost, ProfileStep.ConnectionLost), result);
         Assert.DoesNotContain(proxy.Methods, m => m.StartsWith("users.set", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task Save_ConnectionLostAtWrite_IsUncertainConnectionLost_AndNameSurvivesNothingElse()
+    [Theory]
+    [MemberData(nameof(TransportLosses))]
+    public async Task Save_TransportLossAtNameWrite_IsUncertain_AndPhotoIsNotSent(Exception loss)
     {
-        var (service, proxy, _, _) = Create();
-        var prep = await service.PrepareAsync(CancellationToken.None);
-        proxy.OnWrite = _ => Task.FromException<JsonElement>(Lost());
+        var (service, proxy, prep) = await Prepared();
+        proxy.OnWrite = _ => Task.FromException<JsonElement>(loss);
         var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
-        Assert.Equal(new ProfileSaveResult(ProfileStep.ConnectionLost, ProfileStep.ConnectionLost), result);
+        Assert.Equal(ProfileStep.Uncertain, result.Name);
+        Assert.False(result.IsComplete);
         Assert.DoesNotContain("users.setAvatar", proxy.Methods);
     }
 
-    [Fact]
-    public async Task Save_ConnectionLostAtPhotoWrite_KeepsSavedName()
+    [Theory]
+    [MemberData(nameof(TransportLosses))]
+    public async Task Save_TransportLossAtPhotoWrite_KeepsSavedName_PhotoUncertain(Exception loss)
     {
-        var (service, proxy, _, _) = Create();
-        var prep = await service.PrepareAsync(CancellationToken.None);
+        var (service, proxy, prep) = await Prepared();
         proxy.OnWrite = method => method == "users.setAvatar"
-            ? Task.FromException<JsonElement>(Lost())
+            ? Task.FromException<JsonElement>(loss)
             : Task.FromResult(JsonSerializer.SerializeToElement(new { }));
         var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
-        Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.ConnectionLost), result);
+        Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.Uncertain), result);
+        Assert.False(result.IsComplete);
+    }
+
+    [Theory]
+    [InlineData("users.setDisplayName")]
+    [InlineData("users.setAvatar")]
+    public async Task Save_WriteReplyTimeout_IsUncertain_NotDefiniteFailure(string timedOut)
+    {
+        var (service, proxy, prep) = await Prepared();
+        proxy.OnWrite = method => method == timedOut
+            ? Task.FromException<JsonElement>(new TimeoutException("Timed out waiting for response"))
+            : Task.FromResult(JsonSerializer.SerializeToElement(new { }));
+        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        Assert.Contains(ProfileStep.Uncertain, new[] { result.Name, result.Photo });
+        Assert.DoesNotContain(ProfileStep.Failed, new[] { result.Name, result.Photo });
+        Assert.False(result.IsComplete);
+        if (timedOut == "users.setAvatar") Assert.Equal(ProfileStep.Saved, result.Name);
     }
 
     [Fact]
-    public async Task Save_CallerCancellationAfterName_KeepsSavedName_ButCancelsBeforeAnyWrite()
+    public async Task Save_RetryAfterUncertain_RereadsAndReportsAppliedValueAsExisting_WithoutRewriting()
     {
-        var (service, proxy, _, _) = Create();
-        var prep = await service.PrepareAsync(CancellationToken.None);
+        var (service, proxy, prep) = await Prepared();
+        proxy.OnWrite = _ => Task.FromException<JsonElement>(new TimeoutException("late"));
+        Assert.Equal(ProfileStep.Uncertain, (await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None)).Name);
+
+        proxy.OnWrite = null;
+        proxy.SelfProfile = new { profile = new { id = "gateway-owner", displayName = "Ada" } };
+        proxy.Methods.Clear();
+        var retry = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        Assert.Equal(ProfileStep.ExistingValue, retry.Name);
+        Assert.Equal(["users.self"], proxy.Methods);
+    }
+
+    [Fact]
+    public async Task Save_RetryAfterUncertain_IsFencedToConsentedContext()
+    {
+        var (service, proxy, prep) = await Prepared();
+        proxy.OnWrite = _ => Task.FromException<JsonElement>(new TimeoutException("late"));
+        await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        proxy.Connected = false;
+        proxy.Methods.Clear();
+        var retry = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        Assert.Equal(ProfileStep.ContextChanged, retry.Name);
+        Assert.Empty(proxy.Methods);
+    }
+
+    [Fact]
+    public async Task Save_CallerCancellationAfterName_KeepsSavedName_AndRequestedPhotoIsNeverComplete()
+    {
+        var (service, proxy, prep) = await Prepared();
         using var cts = new CancellationTokenSource();
         proxy.OnWrite = _ => { cts.Cancel(); return Task.FromResult(JsonSerializer.SerializeToElement(new { })); };
         var result = await service.SaveAsync(prep, "Ada", Photo, false, false, cts.Token);
-        Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.NotAttempted), result);
+        Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.Uncertain), result);
+        Assert.False(result.IsComplete);
+        Assert.DoesNotContain("users.setAvatar", proxy.Methods);
 
         using var early = new CancellationTokenSource();
         early.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.SaveAsync(prep, "Ada", Photo, false, false, early.Token));
     }
-
     [Fact]
     public void Window_RechecksForOpenModalAfterPreparation_AndDoesNotConsumeAutomaticOffer()
     {

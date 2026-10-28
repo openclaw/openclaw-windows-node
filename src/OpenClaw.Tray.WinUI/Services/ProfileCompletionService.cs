@@ -37,8 +37,10 @@ internal enum ProfileStep
     Failed,
     /// <summary>The Gateway, profile, or user context changed while saving; nothing further was written.</summary>
     ContextChanged,
-    /// <summary>The Gateway connection dropped. If the write was already sent, whether it applied is unknown.</summary>
+    /// <summary>The Gateway connection dropped before this change was sent; nothing was written for this field.</summary>
     ConnectionLost,
+    /// <summary>The request was sent but no reply confirmed it (reply timeout, lost connection, or cancellation); it may or may not have been applied.</summary>
+    Uncertain,
 }
 
 internal sealed record ProfilePreparation(
@@ -113,8 +115,9 @@ internal sealed class ProfileCompletionService(
         {
             self = ReadSelf(await client.SendWizardRequestAsync("users.self", new { }, ReadTimeoutMs));
         }
-        catch (GatewayConnectionLostException)
+        catch (Exception ex) when (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested)
         {
+            // Connection lifetime or drain cancellation, including the parameterless Drain's plain cancellation.
             return none;
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or JsonException)
@@ -176,6 +179,8 @@ internal sealed class ProfileCompletionService(
             {
                 if (nameStep is ProfileStep.ContextChanged or ProfileStep.ConnectionLost)
                     photoStep = nameStep;
+                else if (nameStep == ProfileStep.Uncertain)
+                    photoStep = ProfileStep.NotAttempted;
                 else
                 {
                     try
@@ -185,9 +190,11 @@ internal sealed class ProfileCompletionService(
                             new { profileId = preparation.ProfileId, mime = photo.Mime, avatarBase64 = Convert.ToBase64String(photo.Bytes) },
                             cancellationToken);
                     }
-                    catch (OperationCanceledException) when (nameStep != ProfileStep.NotAttempted)
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && nameStep != ProfileStep.NotAttempted)
                     {
-                        // Caller cancellation after the name was written must not discard that completed outcome.
+                        // Caller cancellation during the photo recheck: keep the name outcome and never report the
+                        // requested photo as complete.
+                        photoStep = ProfileStep.Uncertain;
                     }
                 }
             }
@@ -200,25 +207,46 @@ internal sealed class ProfileCompletionService(
         }
     }
 
+    /// <summary>
+    /// A transport cancellation (connection drained or disposed, or the connection-lifetime token firing) is a
+    /// plain OperationCanceledException/TaskCanceledException as well as GatewayConnectionLostException. It is
+    /// only treated as caller cancellation when the caller's own token is cancelled.
+    /// </summary>
+    private static bool IsTransportLoss(Exception ex, CancellationToken callerToken) =>
+        ex is OperationCanceledException && !callerToken.IsCancellationRequested;
+
     private async Task<ProfileStep> WriteFieldAsync(
         IOperatorGatewayClient client, string gatewayId, string profileId,
         Func<SelfState, bool> alreadySet, string method, object parameters, CancellationToken cancellationToken)
     {
         try
         {
-            var self = ReadSelf(await client.SendWizardRequestAsync("users.self", new { }, ReadTimeoutMs));
+            SelfState self;
+            try
+            {
+                self = ReadSelf(await client.SendWizardRequestAsync("users.self", new { }, ReadTimeoutMs));
+            }
+            catch (Exception ex) when (IsTransportLoss(ex, cancellationToken))
+            {
+                return ProfileStep.ConnectionLost;
+            }
             cancellationToken.ThrowIfCancellationRequested();
             if (!IsSame(client, gatewayId) || self.Id != profileId)
                 return ProfileStep.ContextChanged;
             if (alreadySet(self))
                 return ProfileStep.ExistingValue;
 
-            await client.SendWizardRequestAsync(method, parameters, WriteTimeoutMs);
-            return ProfileStep.Saved;
-        }
-        catch (GatewayConnectionLostException)
-        {
-            return ProfileStep.ConnectionLost;
+            try
+            {
+                await client.SendWizardRequestAsync(method, parameters, WriteTimeoutMs);
+                return ProfileStep.Saved;
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
+            {
+                // The request was sent. A lost connection, caller cancellation, or reply timeout does not
+                // cancel the Gateway operation, so the outcome is unknown until the profile is read again.
+                return ProfileStep.Uncertain;
+            }
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or JsonException)
         {
@@ -228,7 +256,6 @@ internal sealed class ProfileCompletionService(
         }
     }
 }
-
 /// <summary>
 /// Remembers, per Gateway record id, that the user declined the optional profile offer. Holds no name, photo, or
 /// account data; entries for records that no longer exist are pruned lazily the next time a decline is recorded.
