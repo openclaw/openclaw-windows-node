@@ -1246,6 +1246,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             case "connection": ShowHub("connection"); break;
             case "permissions": ShowHub("permissions"); break;
             case "dashboard": OpenDashboard(); break;
+            case "updategateway": OpenDashboard(GatewayDashboardUrlBuilder.UpdatesPath); break;
             case "diagnostics": ShowHub("debug"); break;
             case "canvas": ShowCanvasWindow(); break;
             case "openchat": ShowHub("chat"); break;
@@ -1732,6 +1733,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     _settings.NodeTtsEnabled,
                     _settings.NodeSttEnabled,
                     _settings.NodeOllamaInferenceEnabled),
+            UpdateGatewayLabel = LocalizationHelper.GetString("HubWindow_UpdateGateway.Content"),
             SetupMenuLabel = setupMenuLabel,
             ShowSetupMenuEntry = !hasSetupManagedLocalWslGateway,
             LastUpdated = _appState?.LastCheckTime,
@@ -4041,7 +4043,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     () => _windowManager?.ShowDashboardLaunchFailureAsync(
                         () => OpenDashboard(path))
                         ?? Task.CompletedTask, new AppLogger(), "Dashboard launch error"),
-                () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId));
+                () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId),
+                getActiveGateway: () => _gatewayRegistry?.GetActive(),
+                inspectWslOwner: (record, ct) => _managedLocalPortProvenance?.InspectAsync(record, ct)
+                    ?? Task.FromResult(new GatewayEndpointProvenance(GatewayEndpointProvenanceKind.UnknownListener, 0)),
+                wslCommands: new WslExeCommandRunner(new AppLogger()));
             await launcher.OpenAsync(path);
         }, new AppLogger(), nameof(OpenDashboard));
     }

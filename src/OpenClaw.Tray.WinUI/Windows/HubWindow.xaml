@@ -158,6 +158,11 @@
 
             </Grid>
                     </NavigationViewItemHeader>
+            <NavigationViewItem x:Uid="HubWindow_UpdateGateway" Tag="updategateway" Content="Update Gateway…"
+                                SelectsOnInvoked="False"
+                                AutomationProperties.AutomationId="SettingsNavUpdateGateway">
+                <NavigationViewItem.Icon><SymbolIcon Symbol="Refresh"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_145" x:Name="NavDiagnostics" Tag="debug" Content="Debug"
                                 AutomationProperties.AutomationId="SettingsNavDiagnostics">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Debug_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>

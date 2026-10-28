@@ -2298,6 +2298,9 @@ Utilisez l'une de ces options :
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Autorisations</value>
   </data>
+  <data name="HubWindow_UpdateGateway.Content" xml:space="preserve">
+    <value>Mettre à jour la passerelle…</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Débogage</value>
   </data>

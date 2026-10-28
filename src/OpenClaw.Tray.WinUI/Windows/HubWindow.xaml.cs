@@ -771,7 +771,16 @@ public sealed partial class HubWindow : WindowEx
 
     private void NavView_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
-        if (args.InvokedItemContainer is not NavigationViewItem { Tag: "chat" })
+        if (args.InvokedItemContainer is not NavigationViewItem { Tag: string tag })
+            return;
+
+        if (HubPageRegistry.GetSidebarAction(tag) is { } action)
+        {
+            ExecuteAction(action);
+            return;
+        }
+
+        if (tag != "chat")
             return;
 
         // NavigationView finishes focusing its item after ItemInvoked returns.
@@ -1057,7 +1066,7 @@ public sealed partial class HubWindow : WindowEx
             sender.Text = "";
             sender.ItemsSource = null;
             _cachedCommands = null;
-            ExecuteCommand(cmd);
+            ExecuteAction(cmd.Action);
         }
         else if (HubPageRegistry.SearchCommands(_cachedCommands ?? BuildCommandList(), args.QueryText)
             .FirstOrDefault() is { } first)
@@ -1067,7 +1076,7 @@ public sealed partial class HubWindow : WindowEx
             sender.Text = "";
             sender.ItemsSource = null;
             _cachedCommands = null;
-            ExecuteCommand(first);
+            ExecuteAction(first.Action);
         }
     }
 
@@ -1160,17 +1169,17 @@ public sealed partial class HubWindow : WindowEx
         }
     }
 
-    private void ExecuteCommand(HubCommand command)
+    private void ExecuteAction(HubCommandAction action)
     {
-        switch (command.Action.Kind)
+        switch (action.Kind)
         {
-            case HubCommandActionKind.Navigate when command.Action.Value is { Length: > 0 } tag:
+            case HubCommandActionKind.Navigate when action.Value is { Length: > 0 } tag:
                 NavigateTo(tag);
                 break;
             case HubCommandActionKind.OpenDashboard:
-                ((IAppCommands)Application.Current).OpenDashboard(command.Action.Value);
+                ((IAppCommands)Application.Current).OpenDashboard(action.Value);
                 break;
-            case HubCommandActionKind.ToggleSetting when command.Action.Toggle is { } toggle:
+            case HubCommandActionKind.ToggleSetting when action.Toggle is { } toggle:
                 ToggleCommandPalettePermission(toggle);
                 break;
         }

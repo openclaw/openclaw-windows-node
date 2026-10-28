@@ -240,6 +240,7 @@ internal sealed record TrayMenuSnapshot
     internal TrayUsageStatusSnapshot? UsageStatus { get; init; }
     internal TrayUsageCostSnapshot? UsageCost { get; init; }
     internal TrayMenuSettingsSnapshot? Settings { get; init; }
+    internal required string UpdateGatewayLabel { get; init; }
     internal required string SetupMenuLabel { get; init; }
     internal required bool ShowSetupMenuEntry { get; init; }
     internal DateTime? LastUpdated { get; init; }

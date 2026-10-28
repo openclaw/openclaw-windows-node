@@ -905,6 +905,33 @@ The `EnableMcpServer=true`, `EnableNodeMode=false` path creates a local-only `No
 
 Tray actions should never silently no-op on common pairing/configuration issues:
 
+- **Update Gateway…** is available in the tray and in the Settings sidebar footer,
+  immediately above Diagnostics. It opens the selected Gateway Dashboard at
+  `settings/updates` through the existing credential and SSH-tunnel resolver.
+  The action only navigates and remains available while the native connection is
+  disconnected or awaiting pairing. It does not start an update or invoke the
+  Companion updater; Settings **Check for updates** still updates Companion only.
+
+  Browser authentication is separate from the native connection. For a positively
+  proven app-managed WSL Gateway without a genuine shared browser credential,
+  such as device-token-only native pairing, the launcher may request the canonical
+  host-issued, single-use owner browser handoff through `openclaw dashboard --json`
+  in the verified service's environment. It rechecks the selected target and WSL
+  ownership before browser delivery. It never exports native device or bootstrap
+  credentials into the browser URL. Genuine shared-token navigation, remote/SSH
+  Gateways, and packaged native Gateways retain their existing authentication paths.
+
+  Handoff is an enhancement, not a prerequisite for an already-authorized browser.
+  An unavailable or incompatible issuer, or a positively empty endpoint
+  (`NoListener`) during stop/restart, can open the clean Updates URL for the
+  browser's own sign-in, pairing, or reconnect flow. Unknown/foreign ownership,
+  changed or mismatched targets, cancellation, invalid modern handoff responses,
+  missing credentials, and browser-launch failures retain visible failure handling
+  instead of falling back to another target or exporting credentials.
+
+  The Control UI owns live `operator.admin` and `update.run` availability checks,
+  target confirmation, update progress/results, and restart reconciliation.
+  A connected Windows node does not by itself grant browser administrator access.
 - Chat resolves credentials from the active registry record and per-gateway identity. If no usable credential exists, it opens Connection settings instead.
 - Canvas opens only when the Windows node is initialized, paired, and the Canvas capability is enabled in settings; otherwise it opens Connection settings.
 - Workspace chat uses the live operator connection and surfaces scope/pairing errors from gateway calls. There is no separate Quick Send route.

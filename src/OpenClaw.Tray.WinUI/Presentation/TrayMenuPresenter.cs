@@ -68,6 +68,7 @@ internal sealed class TrayMenuPresenter
             items.Add(BuildPermissions(settings));
 
         items.Add(Action("Dashboard", TrayMenuIconIdentity.Dashboard, "dashboard"));
+        items.Add(Action(_snapshot.UpdateGatewayLabel, TrayMenuIconIdentity.Dashboard, "updategateway"));
         items.Add(Action("Chat", TrayMenuIconIdentity.Chat, "openchat"));
         items.Add(Action("Canvas", TrayMenuIconIdentity.Canvas, "canvas"));
         items.Add(Action("Diagnostics", TrayMenuIconIdentity.Diagnostics, "diagnostics"));

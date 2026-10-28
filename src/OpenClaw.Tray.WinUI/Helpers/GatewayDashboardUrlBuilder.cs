@@ -2,6 +2,10 @@ namespace OpenClawTray.Helpers;
 
 public static class GatewayDashboardUrlBuilder
 {
+    // The Gateway Control UI owns update confirmation, authorization, progress,
+    // and restart reconciliation. Native clients only open that flow.
+    public const string UpdatesPath = "settings/updates";
+
     public static string Build(
         string gatewayUrl,
         string? path,

@@ -55,6 +55,7 @@ public sealed class TrayMenuPresenterTests
                 "Separator:",
                 "Flyout:Permissions",
                 "Action:Dashboard",
+                "Action:Update Gateway…",
                 "Action:Chat",
                 "Action:Canvas",
                 "Action:Diagnostics",
@@ -145,6 +146,7 @@ public sealed class TrayMenuPresenterTests
                 "Separator:",
                 "Flyout:Permissions",
                 "Action:Dashboard",
+                "Action:Update Gateway…",
                 "Action:Chat",
                 "Action:Canvas",
                 "Action:Diagnostics",
@@ -157,6 +159,41 @@ public sealed class TrayMenuPresenterTests
             presentation.Items.Select(Key));
         Assert.DoesNotContain(presentation.Items, item => item.Kind == TrayMenuElementKind.DeviceCard);
         Assert.DoesNotContain(presentation.Items, item => item.Kind == TrayMenuElementKind.UsageSummary);
+    }
+
+    [Theory]
+    [InlineData(ConnectionStatus.Connected, OverallConnectionState.Ready)]
+    [InlineData(ConnectionStatus.Disconnected, OverallConnectionState.Idle)]
+    [InlineData(ConnectionStatus.Error, OverallConnectionState.Error)]
+    [InlineData(ConnectionStatus.Connecting, OverallConnectionState.PairingRequired)]
+    public void UpdateGateway_IsDistinctNavigationAvailableForDashboardRecovery(
+        ConnectionStatus status,
+        OverallConnectionState overall)
+    {
+        var presentation = Present(DetailedSnapshot() with
+        {
+            CurrentStatus = status,
+            OverallState = overall,
+        });
+
+        var action = Find(presentation, "updategateway");
+        Assert.Equal("Update Gateway…", action.Text);
+        Assert.Equal(TrayMenuElementKind.Action, action.Kind);
+        // This only navigates. The browser's live Gateway connection owns
+        // disconnected, missing-admin, busy, failed, and started update states.
+        Assert.True(action.IsEnabled);
+        Assert.NotEqual(Find(presentation, "dashboard").ActionId, action.ActionId);
+        Assert.DoesNotContain(presentation.Items, item => item.ActionId == "checkupdates");
+    }
+
+    [Fact]
+    public void UpdateGateway_UsesLocalizedSnapshotLabelForTextAndAutomation()
+    {
+        var presentation = Present(DetailedSnapshot() with { UpdateGatewayLabel = "Mettre à jour la passerelle…" });
+        var action = Find(presentation, "updategateway");
+
+        Assert.Equal("Mettre à jour la passerelle…", action.Text);
+        Assert.Equal(action.Text, action.AutomationName);
     }
 
     [Fact]
@@ -401,6 +438,7 @@ public sealed class TrayMenuPresenterTests
             false,
             true,
             false),
+        UpdateGatewayLabel = "Update Gateway…",
         SetupMenuLabel = "Reconfigure...",
         ShowSetupMenuEntry = true,
         LastUpdated = NowUtc.AddSeconds(-10),

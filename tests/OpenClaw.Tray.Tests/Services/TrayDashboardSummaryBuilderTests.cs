@@ -56,6 +56,7 @@ public sealed class TrayDashboardSummaryBuilderTests
                 settings.NodeTtsEnabled,
                 settings.NodeSttEnabled,
                 settings.NodeOllamaInferenceEnabled),
+        UpdateGatewayLabel = "Update Gateway…",
         SetupMenuLabel = "Reconfigure...",
         ShowSetupMenuEntry = true,
         LastUpdated = lastUpdated,

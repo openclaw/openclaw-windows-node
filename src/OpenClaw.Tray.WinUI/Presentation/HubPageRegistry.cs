@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using OpenClawTray.Helpers;
 #if !OPENCLAW_TRAY_TESTS
 using OpenClawTray.Pages;
 #endif
@@ -84,6 +85,12 @@ internal sealed record HubCommandContext(
 
 internal static class HubPageRegistry
 {
+    public static HubCommandAction? GetSidebarAction(string? tag) => tag switch
+    {
+        "updategateway" => HubCommandAction.OpenDashboard(GatewayDashboardUrlBuilder.UpdatesPath),
+        _ => null
+    };
+
     internal static string GetNativeSetupPage(OpenClaw.SetupEngine.SetupNativeDestination destination) => destination switch
     {
         OpenClaw.SetupEngine.SetupNativeDestination.Chat => "chat",

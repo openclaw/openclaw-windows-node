@@ -124,6 +124,22 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("GetUpdateStatusAsync", source);
     }
 
+    // Adapter wiring guard. Retire when tray action dispatch is directly
+    // behavior-testable without loading the WinUI App composition root.
+    [Fact]
+    public void UpdateGateway_OpensCanonicalDashboardFlow_NotCompanionUpdater()
+    {
+        var source = ReadAppSources();
+        var dispatch = ExtractMethod(source, "OnTrayMenuItemClicked");
+
+        Assert.Contains(
+            "case \"updategateway\": OpenDashboard(GatewayDashboardUrlBuilder.UpdatesPath); break;", dispatch);
+        Assert.Contains(
+            "case \"checkupdates\": _ = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync(); break;", dispatch);
+        Assert.Contains(
+            "void IAppCommands.CheckForUpdates() => _ = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync();", source);
+    }
+
     [Fact]
     public void Startup_WslKeepAlive_IsOwnedByDedicatedService()
     {
@@ -854,6 +870,7 @@ public sealed class AppRefactorContractTests
         Assert.Contains("ShowTransientConnectionError(ex.Message)", captureMethod);
         Assert.Contains("hasExistingConfig = true", captureMethod);
         Assert.Contains("return new TrayMenuSnapshot", captureMethod);
+        Assert.Contains("UpdateGatewayLabel = LocalizationHelper.GetString(\"HubWindow_UpdateGateway.Content\")", captureMethod);
     }
 
     [Fact]

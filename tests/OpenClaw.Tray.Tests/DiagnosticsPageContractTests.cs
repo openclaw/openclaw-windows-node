@@ -515,9 +515,10 @@ public sealed class DiagnosticsPageContractTests
         var document = System.Xml.Linq.XDocument.Parse(Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml"));
         System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var footer = document.Descendants().Single(element => element.Name.LocalName == "NavigationView.FooterMenuItems");
-        Assert.Equal(new[] { "NavigationViewItemHeader", "NavigationViewItem", "NavigationViewItem" },
+        Assert.Equal(new[] { "NavigationViewItemHeader", "NavigationViewItem", "NavigationViewItem", "NavigationViewItem" },
             footer.Elements().Select(element => element.Name.LocalName));
-        Assert.Equal(new[] { "debug", "settings" }, footer.Elements().Skip(1).Select(element => (string?)element.Attribute("Tag")));
+        Assert.Equal(new[] { "updategateway", "debug", "settings" }, footer.Elements().Skip(1).Select(element => (string?)element.Attribute("Tag")));
+        Assert.Equal("False", (string?)footer.Elements().ElementAt(1).Attribute("SelectsOnInvoked"));
         var header = footer.Elements().First();
         Assert.Equal("True", (string?)header.Attribute("IsEnabled"));
         foreach (var name in new[] { "StatusPillButton" })

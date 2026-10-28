@@ -2298,6 +2298,9 @@
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>權限</value>
   </data>
+  <data name="HubWindow_UpdateGateway.Content" xml:space="preserve">
+    <value>更新閘道…</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>偵錯</value>
   </data>

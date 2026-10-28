@@ -93,6 +93,29 @@ public sealed class HubPageRegistryTests
     }
 
     [Fact]
+    public void SidebarUpdateGateway_OpensCanonicalDashboardWithoutBecomingAPage()
+    {
+        var action = Assert.IsType<HubCommandAction>(HubPageRegistry.GetSidebarAction("updategateway"));
+
+        Assert.Equal(HubCommandActionKind.OpenDashboard, action.Kind);
+        Assert.Equal("settings/updates", action.Value);
+        Assert.Null(action.Toggle);
+        Assert.Null(HubPageRegistry.ResolvePage("updategateway"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("chat")]
+    [InlineData("debug")]
+    [InlineData("settings")]
+    [InlineData("UPDATEGATEWAY")]
+    public void SidebarAction_DoesNotInterceptOtherNavigation(string? tag)
+    {
+        Assert.Null(HubPageRegistry.GetSidebarAction(tag));
+    }
+
+    [Fact]
     public void BuildCommands_PreservesBaseOrderActionsIconsAndResourceKeys()
     {
         var commands = HubPageRegistry.BuildCommands(Context());

@@ -2344,6 +2344,9 @@ Use uma destas opções:
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Permissões</value>
   </data>
+  <data name="HubWindow_UpdateGateway.Content" xml:space="preserve">
+    <value>Atualizar Gateway…</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Diagnóstico</value>
   </data>

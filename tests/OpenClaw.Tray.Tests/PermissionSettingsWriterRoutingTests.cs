@@ -8,14 +8,14 @@ public sealed class PermissionSettingsWriterRoutingTests
         var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
         var buildCommandList = ExtractMethodBodyBySignature(source, "internal ImmutableArray<HubCommand> BuildCommandList()");
         var toggleHelper = ExtractMethodBodyBySignature(source, "private void ToggleCommandPalettePermission(HubSettingToggle toggle)");
-        var executeCommand = ExtractMethodBodyBySignature(source, "private void ExecuteCommand(HubCommand command)");
+        var executeAction = ExtractMethodBodyBySignature(source, "private void ExecuteAction(HubCommandAction action)");
 
         Assert.Contains("HubCommandCatalog.Build", buildCommandList);
         var catalog = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "HubCommandCatalog.cs");
         Assert.Contains("HubPageRegistry.BuildCommands", catalog);
         Assert.DoesNotContain("settings.Save();", catalog);
         Assert.DoesNotContain("settings.Save();", buildCommandList);
-        Assert.Contains("ToggleCommandPalettePermission(toggle);", executeCommand);
+        Assert.Contains("ToggleCommandPalettePermission(toggle);", executeAction);
 
         Assert.Contains("CurrentApp.SettingsStore", toggleHelper);
         Assert.Contains("_commandPaletteSettingsOrigin ??= store.CreateOrigin();", toggleHelper);

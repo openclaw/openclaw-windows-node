@@ -7,7 +7,9 @@ public sealed class ConnectionRegressionSourceTests
     {
         var launcherSource = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "GatewayDashboardLauncher.cs");
 
-        Assert.Contains("!credential.IsBootstrapToken && credential.Source == CredentialResolver.SourceSharedGatewayToken", launcherSource);
+        var normalized = System.Text.RegularExpressions.Regex.Replace(launcherSource, @"\s+", " ");
+        Assert.Contains("var appendSharedToken = !credential.IsBootstrapToken && credential.Source == CredentialResolver.SourceSharedGatewayToken;", normalized);
+        Assert.Contains("GatewayDashboardUrlBuilder.Build(credential.GatewayUrl, path, credential.Token, appendSharedToken)", normalized);
         Assert.DoesNotContain("if (!isBootstrapToken && !string.IsNullOrEmpty(token))", launcherSource);
     }
 
