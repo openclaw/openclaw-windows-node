@@ -61,6 +61,7 @@ public sealed class ChatComposerSession : IDisposable
     /// session-monotonic revision that survives composer view remounts.</summary>
     internal void ApplyInputs(ChatComposerInputs inputs)
     {
+        Controller.SetComposerVisible(inputs.IsVisible);
         ViewModel.ApplyInputs(inputs with
         {
             Revision = Interlocked.Increment(ref _inputRevision),

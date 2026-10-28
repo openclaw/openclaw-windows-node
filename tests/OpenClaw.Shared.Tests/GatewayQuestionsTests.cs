@@ -88,6 +88,7 @@ public sealed class GatewayQuestionsTests
         var json = Request.Replace("\"isOther\":false",
             "\"presentation\":\"form\",\"answerFormat\":\"lines\",\"allowEmpty\":true,\"defaultAnswers\":[\"win\"]");
         var question = Assert.Single(GatewayQuestions.ParseRequest(JsonDocument.Parse(json).RootElement).Questions);
+        Assert.True(question.IsForm);
         Assert.True(question.AnswerAsLines);
         Assert.True(question.AllowEmpty);
         Assert.Equal("win", Assert.Single(question.DefaultAnswers));

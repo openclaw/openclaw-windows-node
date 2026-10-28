@@ -154,17 +154,28 @@ have been ported. They remain explicit follow-up scope, not silent checkmarks.
 ## Ownership and invariants
 
 - `OpenClawGatewayClient.Questions` owns protocol IO. `GatewayQuestions` rejects
-  malformed records. Errors do not log question answers.
+  malformed records and retains form presentation. Form and secret answers keep
+  their whitespace and repeated values; lines answers accept CR, LF and CRLF.
+  Errors do not log question answers. Limited bootstrap handoff requests
+  `operator.questions` without adding admin authority or widening stored device
+  scopes, matching the pinned
+  [upstream bootstrap profile](https://github.com/openclaw/openclaw/blob/1fe2aa03fe4fb4f53ac11290562f9b60acc45e91/src/shared/device-bootstrap-profile.ts).
 - `ChatQuestionCoordinator` owns transient prompts, recovery and submission for
   one bridge. Questions may outlive a run. Unscoped operator questions can appear
   in any selected conversation; scoped questions require exact session/agent
   identity. No question drafts or answers are written into chat history.
   Retry timers stop on disconnect/dispose. Old-generation results cannot clear
   a replacement refresh. A failed or slow get does not withhold another
-  question's confirmed state.
+  question's confirmed state. Structured invalid-answer replies allow correction
+  without an uncertain-outcome warning. Already-terminal replies trigger bounded
+  status reads, never answer resubmission: a pending read can still represent an
+  in-flight or unknown commit and cannot release the submission fence. A known
+  terminal event wins over late submission replies and recovery.
 - `GatewayChatStreamProjection` owns append baselines only. Connection changes
   and terminal frames retire them; retained baselines are bounded to 16 runs
-  and 2 MiB characters per reconstructed message.
+  and 2 MiB characters per reconstructed message. Legacy text-only frames still
+  use the existing handler without creating an append baseline; modern appends
+  without a baseline still trigger stream recovery.
 - `ChatConversationState` continues to own transcript transactions. The root
   only subscribes, selects and composes. `ReactorRunProgress` owns its UI timer
   and animation, never a second gateway connection.

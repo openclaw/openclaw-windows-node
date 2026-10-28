@@ -5,7 +5,7 @@ namespace OpenClawTray.Chat;
 
 internal sealed record ChatQuestionPrompt(
     GatewayQuestionRequest Request, bool Submitting = false, string? Error = null,
-    bool NeedsRefresh = false, long Revision = 0);
+    bool NeedsRefresh = false, long Revision = 0, bool AwaitingResolution = false);
 internal sealed record ChatQuestionSnapshot(IReadOnlyList<ChatQuestionPrompt> Prompts, bool Connected, string? Error);
 
 /// <summary>
@@ -262,7 +262,8 @@ internal sealed class ChatQuestionCoordinator : IDisposable
             {
                 if (!Current(generation))
                     return;
-                Resolve(id, status);
+                if (!_resolved.ContainsKey(id))
+                    Resolve(id, status);
             }
         }
         catch (GatewayQuestionUnavailableException)
@@ -270,6 +271,40 @@ internal sealed class ChatQuestionCoordinator : IDisposable
             lock (_gate)
                 if (Current(generation) && !_resolved.ContainsKey(id))
                     Resolve(id, "unavailable");
+        }
+        catch (GatewayQuestionAlreadyTerminalException)
+        {
+            long revision;
+            lock (_gate)
+            {
+                if (!Current(generation) || _resolved.ContainsKey(id) || !_prompts.TryGetValue(id, out var prompt))
+                    return;
+                revision = ++_revision;
+                _prompts[id] = prompt with
+                {
+                    Submitting = false, NeedsRefresh = true, AwaitingResolution = true, Revision = revision,
+                    Error = "This question is being resolved. Refresh to check its status.",
+                };
+            }
+            Notify();
+            await RecoverQuestionAsync(id, generation, revision).ConfigureAwait(false);
+            lock (_gate)
+                if (Current(generation) && _prompts.TryGetValue(id, out var prompt) && prompt.NeedsRefresh)
+                {
+                    _retryAttempt = 0;
+                    ScheduleRetryLocked(generation);
+                }
+        }
+        catch (GatewayQuestionInvalidAnswerException)
+        {
+            lock (_gate)
+                if (Current(generation) && !_resolved.ContainsKey(id)
+                    && _prompts.TryGetValue(id, out var prompt) && prompt.Request.Status == "pending")
+                    _prompts[id] = prompt with
+                    {
+                        Submitting = false, NeedsRefresh = false, Revision = ++_revision,
+                        Error = "Choose a valid answer for each question.",
+                    };
         }
         catch (Exception ex)
         {
@@ -320,14 +355,17 @@ internal sealed class ChatQuestionCoordinator : IDisposable
             request = request with { Status = terminal.Status };
         else if (request.Status != "pending")
             _resolved[request.Id] = (request.Status, _revision + 1);
+        // ALREADY_TERMINAL also covers in-flight or unknown Gateway commits.
+        // A pending read cannot make that answer safe to submit again.
+        var awaitingResolution = request.Status == "pending" && previous?.AwaitingResolution == true;
         if (request.ExpiresAtMs <= _clock.GetUtcNow().ToUnixTimeMilliseconds() && request.Status == "pending")
             request = request with { Status = "expired" };
         var pending = request.Status == "pending";
         _prompts[request.Id] = new(request,
             Submitting: pending && previous?.Submitting == true,
-            Error: pending && !recovered ? previous?.Error : null,
-            NeedsRefresh: pending && !recovered && previous?.NeedsRefresh == true,
-            Revision: ++_revision);
+            Error: pending && (!recovered || awaitingResolution) ? previous?.Error : null,
+            NeedsRefresh: awaitingResolution || (pending && !recovered && previous?.NeedsRefresh == true),
+            Revision: ++_revision, AwaitingResolution: awaitingResolution);
         Trim();
     }
 
@@ -339,7 +377,7 @@ internal sealed class ChatQuestionCoordinator : IDisposable
             _prompts[id] = prompt with
             {
                 Request = prompt.Request with { Status = status }, Submitting = false,
-                NeedsRefresh = false, Error = null, Revision = _revision,
+                NeedsRefresh = false, AwaitingResolution = false, Error = null, Revision = _revision,
             };
         Trim();
     }

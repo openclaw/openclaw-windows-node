@@ -99,6 +99,8 @@ internal sealed class ReactorQuestionPanel : Component<ReactorQuestionPanelProps
         "Questions could not be refreshed. Retry or open web chat." => L("Chat_Questions_RefreshFailed", error),
         "This question is expired or disconnected. Refresh before answering." => L("Chat_Questions_Unavailable", error),
         "The answer was not confirmed. Refresh to check its status before retrying." => L("Chat_Questions_Unconfirmed", error),
+        "This question is being resolved. Refresh to check its status." => L("Chat_Questions_Resolving", error),
+        "Choose a valid answer for each question." => L("Chat_Questions_InvalidAnswer", error),
         "An agent question could not be read. Refresh or open web chat to respond." => L("Chat_Questions_Invalid", error),
         _ => error,
     };

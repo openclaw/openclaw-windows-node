@@ -160,6 +160,209 @@ public sealed class ChatQuestionCoordinatorTests
         Assert.Equal("answered", Assert.Single(owner.Snapshot().Prompts).Request.Status);
     }
 
+    [Theory]
+    [InlineData("answered")]
+    [InlineData("cancelled")]
+    [InlineData("expired")]
+    public async Task AlreadyTerminalSubmit_ReadsActualStatusWithoutResubmitting(string status)
+    {
+        var gateway = new Gateway
+        {
+            Resolve = (_, _) => Task.FromException<string>(new GatewayQuestionAlreadyTerminalException()),
+            Get = id => Task.FromResult(Request(id) with { Status = status }),
+        };
+        using var owner = new ChatQuestionCoordinator(gateway);
+        owner.Start();
+        gateway.Request(Request());
+        await owner.SubmitAsync("session-a", "main", "request-1", null);
+        var prompt = Assert.Single(owner.Snapshot().Prompts);
+        Assert.Equal(status, prompt.Request.Status);
+        Assert.False(prompt.Submitting);
+        Assert.False(prompt.NeedsRefresh);
+        Assert.Null(prompt.Error);
+        Assert.Equal(1, gateway.Reads);
+        Assert.Equal(1, gateway.Resolutions);
+    }
+
+    [Fact]
+    public async Task AlreadyTerminalSubmit_PendingCommitKeepsFenceThroughBoundedReadsAndReconnect()
+    {
+        var clock = new ManualTimeProvider();
+        var gateway = new Gateway
+        {
+            Resolve = (_, _) => Task.FromException<string>(new GatewayQuestionAlreadyTerminalException()),
+            Get = id => Task.FromResult(Request(id)),
+        };
+        using var owner = new ChatQuestionCoordinator(gateway, clock);
+        owner.Start();
+        gateway.Request(Request());
+        await owner.SubmitAsync("session-a", "main", "request-1", null);
+        Assert.True(Assert.Single(owner.Snapshot().Prompts).NeedsRefresh);
+        Assert.False(Assert.Single(owner.Snapshot().Prompts).Submitting);
+        Assert.DoesNotContain("not confirmed", Assert.Single(owner.Snapshot().Prompts).Error!);
+        foreach (var seconds in new[] { 1, 2, 4 })
+            clock.Advance(TimeSpan.FromSeconds(seconds));
+        Assert.Equal(4, gateway.Reads);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Equal(4, gateway.Reads);
+        await owner.SubmitAsync("session-a", "main", "request-1", null);
+        await owner.RefreshAsync();
+        await owner.SubmitAsync("session-a", "main", "request-1", null);
+        gateway.Status(false);
+        gateway.List = () => Task.FromResult(new GatewayQuestionList(true, [Request()]));
+        gateway.Status(true);
+        await owner.SubmitAsync("session-a", "main", "request-1", null);
+        Assert.True(Assert.Single(owner.Snapshot().Prompts).NeedsRefresh);
+        Assert.Equal(1, gateway.Resolutions);
+        gateway.ResolveEvent("request-1", "answered");
+        Assert.Equal("answered", Assert.Single(owner.Snapshot().Prompts).Request.Status);
+        Assert.False(Assert.Single(owner.Snapshot().Prompts).NeedsRefresh);
+    }
+
+    [Fact]
+    public async Task AlreadyTerminalSubmit_FailedReadRetriesRecoveryOnly()
+    {
+        var clock = new ManualTimeProvider();
+        var gateway = new Gateway
+        {
+            Resolve = (_, _) => Task.FromException<string>(new GatewayQuestionAlreadyTerminalException()),
+            Get = _ => Task.FromException<GatewayQuestionRequest>(new TimeoutException("private server content")),
+        };
+        using var owner = new ChatQuestionCoordinator(gateway, clock);
+        owner.Start();
+        gateway.Request(Request());
+        await owner.SubmitAsync("session-a", "main", "request-1", null);
+        Assert.True(Assert.Single(owner.Snapshot().Prompts).NeedsRefresh);
+        Assert.DoesNotContain("private", Assert.Single(owner.Snapshot().Prompts).Error!);
+        gateway.Get = _ => Task.FromException<GatewayQuestionRequest>(new GatewayQuestionUnavailableException());
+        clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal("unavailable", Assert.Single(owner.Snapshot().Prompts).Request.Status);
+        Assert.Equal(2, gateway.Reads);
+        Assert.Equal(1, gateway.Resolutions);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AlreadyTerminalSubmit_LiveResolutionWinsReplyAndRecoveryRaces(bool duringRecovery)
+    {
+        var response = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var recovery = new TaskCompletionSource<GatewayQuestionRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var readStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gateway = new Gateway
+        {
+            Resolve = (_, _) => response.Task,
+            Get = _ => { readStarted.SetResult(); return recovery.Task; },
+        };
+        using var owner = new ChatQuestionCoordinator(gateway);
+        owner.Start();
+        gateway.Request(Request());
+        var sending = owner.SubmitAsync("session-a", "main", "request-1", null);
+        if (duringRecovery)
+        {
+            response.SetException(new GatewayQuestionAlreadyTerminalException());
+            await readStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        gateway.ResolveEvent("request-1", "answered");
+        if (duringRecovery)
+            recovery.SetResult(Request() with { Status = "cancelled" });
+        else
+            response.SetException(new GatewayQuestionAlreadyTerminalException());
+        await sending;
+        Assert.Equal("answered", Assert.Single(owner.Snapshot().Prompts).Request.Status);
+        Assert.Equal(duringRecovery ? 1 : 0, gateway.Reads);
+        Assert.Equal(1, gateway.Resolutions);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AlreadyTerminalSubmit_LateRecoveryIsFencedOnReconnectOrDispose(bool dispose)
+    {
+        var recovery = new TaskCompletionSource<GatewayQuestionRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gateway = new Gateway
+        {
+            Resolve = (_, _) => Task.FromException<string>(new GatewayQuestionAlreadyTerminalException()),
+            Get = _ => recovery.Task,
+        };
+        using var owner = new ChatQuestionCoordinator(gateway);
+        owner.Start();
+        gateway.Request(Request());
+        var sending = owner.SubmitAsync("session-a", "main", "request-1", null);
+        Assert.Equal(1, gateway.Reads);
+        if (dispose)
+            owner.Dispose();
+        else
+        {
+            gateway.Status(false);
+            gateway.List = () => Task.FromResult(new GatewayQuestionList(true, [Request()]));
+            gateway.Status(true);
+        }
+        recovery.SetResult(Request() with { Status = "cancelled" });
+        await sending;
+        if (dispose)
+            Assert.Empty(owner.Snapshot().Prompts);
+        else
+        {
+            var prompt = Assert.Single(owner.Snapshot().Prompts);
+            Assert.Equal("pending", prompt.Request.Status);
+            Assert.True(prompt.NeedsRefresh);
+        }
+        Assert.Equal(1, gateway.Resolutions);
+    }
+
+    [Fact]
+    public async Task InvalidAnswerSubmit_AllowsCorrectionWithoutUnknownOutcomeOrRecovery()
+    {
+        var clock = new ManualTimeProvider();
+        var gateway = new Gateway
+        {
+            Resolve = (_, _) => Task.FromException<string>(new GatewayQuestionInvalidAnswerException()),
+        };
+        using var owner = new ChatQuestionCoordinator(gateway, clock);
+        owner.Start();
+        gateway.Request(Request());
+        await owner.SubmitAsync("session-a", "main", "request-1",
+            new Dictionary<string, string[]> { ["choice"] = ["win"] });
+        var prompt = Assert.Single(owner.Snapshot().Prompts);
+        Assert.Equal("pending", prompt.Request.Status);
+        Assert.False(prompt.Submitting);
+        Assert.False(prompt.NeedsRefresh);
+        Assert.Equal("Choose a valid answer for each question.", prompt.Error);
+        clock.Advance(TimeSpan.FromSeconds(10));
+        Assert.Equal(1, gateway.Lists);
+        Assert.Equal(0, gateway.Reads);
+        gateway.Resolve = (_, _) => Task.FromResult("answered");
+        await owner.SubmitAsync("session-a", "main", "request-1",
+            new Dictionary<string, string[]> { ["choice"] = ["linux"] });
+        Assert.Equal("answered", Assert.Single(owner.Snapshot().Prompts).Request.Status);
+        Assert.Equal("linux", Assert.Single(gateway.Sent!["choice"]));
+        Assert.Equal(2, gateway.Resolutions);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task KnownTerminalEvent_IsNotOverwrittenByLateValidationOrAcknowledgement(bool invalid)
+    {
+        var reply = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gateway = new Gateway { Resolve = (_, _) => reply.Task };
+        using var owner = new ChatQuestionCoordinator(gateway);
+        owner.Start();
+        gateway.Request(Request());
+        var sending = owner.SubmitAsync("session-a", "main", "request-1", null);
+        gateway.ResolveEvent("request-1", "answered");
+        if (invalid)
+            reply.SetException(new GatewayQuestionInvalidAnswerException());
+        else
+            reply.SetResult("cancelled");
+        await sending;
+        var prompt = Assert.Single(owner.Snapshot().Prompts);
+        Assert.Equal("answered", prompt.Request.Status);
+        Assert.Null(prompt.Error);
+        Assert.False(prompt.NeedsRefresh);
+    }
+
     [Fact]
     public async Task LateUnavailableRecovery_CannotOverwriteLiveResolution()
     {
@@ -398,14 +601,100 @@ public sealed class ChatQuestionCoordinatorTests
             new Dictionary<string, string[]> { ["choice"] = ["win", "linux"] }));
     }
 
-    [Fact]
-    public void Draft_MultiselectFreeTextAndLines_PreserveOrder()
+    [Theory]
+    [InlineData("\r")]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void Draft_MultiselectFreeTextAndLines_PreserveOrder(string newline)
     {
         var question = Request().Questions[0] with { MultiSelect = true, AllowOther = true, AnswerAsLines = true };
-        var draft = new ChatQuestionDraft { FreeText = "custom\nsecond" };
+        var draft = new ChatQuestionDraft { FreeText = $"custom{newline}second" };
         draft.Selected.Add("linux");
         draft.Selected.Add("win");
         Assert.Equal(new[] { "win", "linux", "custom", "second" }, draft.Answers(question));
+    }
+
+    [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    public void FormAndSecretDrafts_PreserveAnswerBytesAndRepeatedValues(bool secret, bool lines, bool form)
+    {
+        var request = GatewayQuestions.ParseRequest(System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            id = "form", status = "pending", createdAtMs = 1000, expiresAtMs = 9999999999999,
+            questions = new[]
+            {
+                new
+                {
+                    questionId = "value", question = "Value", presentation = form ? "form" : null, isSecret = secret,
+                    multiSelect = true, isOther = true, answerFormat = lines ? "lines" : null,
+                    options = new[] { new { label = "Padded", value = " value " }, new { label = "Plain", value = "value" } },
+                },
+            },
+        }, new System.Text.Json.JsonSerializerOptions
+        {
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        }));
+        var question = Assert.Single(request.Questions);
+        var draft = new ChatQuestionDraft { FreeText = lines ? " value \r\nvalue\rvalue" : " value " };
+        draft.Selected.UnionWith([" value ", "value"]);
+        var answers = draft.Answers(question);
+        Assert.Equal(lines
+            ? new[] { " value ", "value", " value ", "value", "value" }
+            : new[] { " value ", "value", " value " }, answers);
+        ChatQuestionDraft.Validate(request, new Dictionary<string, string[]> { ["value"] = answers });
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    public void FormAndSecretDrafts_AcceptNonemptyWhitespace(bool secret, bool form)
+    {
+        var request = GatewayQuestions.ParseRequest(System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            id = "form", status = "pending", createdAtMs = 1000, expiresAtMs = 9999999999999,
+            questions = new[] { new
+            {
+                questionId = "value", question = "Value", options = Array.Empty<object>(),
+                presentation = form ? "form" : null, isSecret = secret, isOther = true,
+            }},
+        }, new System.Text.Json.JsonSerializerOptions
+        {
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        }));
+        var draft = new ChatQuestionDraft { FreeText = " \t " };
+        var answers = draft.Answers(Assert.Single(request.Questions));
+        Assert.Equal(new[] { " \t " }, answers);
+        ChatQuestionDraft.Validate(request, new Dictionary<string, string[]> { ["value"] = answers });
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Draft_LinesDoNotSilentlyDropEmptyValuesOrAllowMultipleForSingleSelect(bool form, bool allowEmpty)
+    {
+        var request = Request();
+        var question = request.Questions[0] with
+        {
+            Options = [], AllowOther = true, AnswerAsLines = true, MultiSelect = true,
+            IsForm = form, AllowEmpty = allowEmpty,
+        };
+        request = request with { Questions = [question] };
+        var draft = new ChatQuestionDraft { FreeText = "first\r\rsecond" };
+        var answers = draft.Answers(question);
+        Assert.Equal(new[] { "first", "", "second" }, answers);
+        Assert.Throws<ArgumentException>(() => ChatQuestionDraft.Validate(request,
+            new Dictionary<string, string[]> { ["choice"] = answers }));
+        request = request with { Questions = [question with { MultiSelect = false }] };
+        Assert.Throws<ArgumentException>(() => ChatQuestionDraft.Validate(request,
+            new Dictionary<string, string[]> { ["choice"] = ["first", "second"] }));
     }
 
     [Fact]
@@ -428,9 +717,19 @@ public sealed class ChatQuestionCoordinatorTests
         internal Func<string, Task<GatewayQuestionRequest>> Get = id =>
             Task.FromResult(ChatQuestionCoordinatorTests.Request(id) with { Status = "expired" });
         internal int Resolutions;
+        internal int Reads;
+        internal int Lists;
         internal IReadOnlyDictionary<string, string[]>? Sent;
-        public Task<GatewayQuestionList> ListQuestionsAsync() => List();
-        public Task<GatewayQuestionRequest> GetQuestionAsync(string id) => Get(id);
+        public Task<GatewayQuestionList> ListQuestionsAsync()
+        {
+            Lists++;
+            return List();
+        }
+        public Task<GatewayQuestionRequest> GetQuestionAsync(string id)
+        {
+            Reads++;
+            return Get(id);
+        }
         public Task<string> ResolveQuestionAsync(string id, IReadOnlyDictionary<string, string[]>? answers)
         {
             Resolutions++;

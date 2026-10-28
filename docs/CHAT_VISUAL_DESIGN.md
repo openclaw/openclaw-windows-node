@@ -95,7 +95,9 @@ use the card fill above that content layer.
 
 Pending agent questions replace the writing surface visually, not structurally.
 The same mounted composer and unsent draft return when the question is collapsed
-or resolved. The dock uses a 20-pixel radius, 14-pixel padding, numbered full-width
+or resolved. Expanding the dock cancels voice capture and rejects late transcripts
+without changing the unsent draft or attachments. Hidden composers cannot start
+voice capture, including through host shortcuts. The dock uses a 20-pixel radius, 14-pixel padding, numbered full-width
 native radio/checkbox options with descriptions, inline free text, a question
 counter, collapse, request navigation, and right-aligned Skip/Submit actions.
 One question is shown at a time. Single-choice selection advances, Back preserves
@@ -116,7 +118,10 @@ All twelve seeded one-shot surprise motions retain their upstream order,
 motion table; `NativeWorkingClaw` owns native rendering and its unload cleanup.
 The row enters over 200 milliseconds and displays elapsed time plus known output
 tokens. Phase remains in its accessible name without a per-second live-region
-announcement. Completed turns dismiss the working row; observed timing and usage
+announcement. Elapsed units, fallback-model status and incomplete-stream recovery
+copy use native localized resources. Shared recovery events carry a stable reason
+code so the native mapper does not translate arbitrary Gateway messages.
+Completed turns dismiss the working row; observed timing and usage
 remain in timeline state, and late usage updates do not bring the row back.
 Pending questions or approvals keep their waiting indicator until resolved.
 OS reduced motion disables the moving presentation.

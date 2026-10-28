@@ -8195,4 +8195,13 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
     <value>Windows-sandboxondersteuning controleren.</value>
   </data>
+  <data name="Chat_Status_PrimaryRestored" xml:space="preserve"><value>Primair model hersteld</value></data>
+  <data name="Chat_Status_FallbackSwitching" xml:space="preserve"><value>Overschakelen naar een reservemodel</value></data>
+  <data name="Chat_Status_FallbackModel" xml:space="preserve"><value>Reservemodel in gebruik: {0}</value></data>
+  <data name="Chat_Status_StreamIncomplete" xml:space="preserve"><value>De live reactie is onvolledig. Maak opnieuw verbinding of laad de gespreksgeschiedenis opnieuw om deze te herstellen.</value></data>
+  <data name="Chat_Run_ElapsedHours" xml:space="preserve"><value>{0} u {1} min {2} s</value></data>
+  <data name="Chat_Run_ElapsedMinutes" xml:space="preserve"><value>{1} min {2} s</value></data>
+  <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
+  <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Deze vraag wordt afgehandeld. Vernieuw om de status te controleren.</value></data>
+  <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Kies een geldig antwoord voor elke vraag.</value></data>
 </root>

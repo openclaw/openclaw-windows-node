@@ -60,7 +60,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
     {
         var props = Props;
         var (snapshot, setSnapshot) = UseState<ChatDataSnapshot?>(null, threadSafe: true);
-        var (viewportWidth, setViewportWidth) = UseState(props.IsCompact ? 480d : 800d);
+        var (viewportWidth, setViewportWidth) = UseState(800d);
         var (viewportHeight, setViewportHeight) = UseState(620d);
         var (collapsedQuestionId, setCollapsedQuestionId) = UseState<string?>(null);
         var questionsOwner = (props.Provider as OpenClawChatDataProvider)?.Questions;
@@ -336,6 +336,11 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             HistoryRevision: historyRevision,
             TryCopyText: props.TryCopyText));
 
+        var pendingQuestion = effectiveThread is null ? null : questionSnapshot?.Prompts.FirstOrDefault(prompt =>
+            prompt.Request.Status == "pending"
+            && ChatQuestionCoordinator.Matches(prompt.Request, effectiveThread.Id, effectiveThread.AgentId));
+        var questionCollapsed = pendingQuestion is not null && collapsedQuestionId == pendingQuestion.Request.Id;
+        var composerVisible = pendingQuestion is null || questionCollapsed;
         Element composerElement;
         if (effectiveThread is null)
         {
@@ -357,6 +362,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                     && nativeProvider?.SupportsSessionScopedModelCatalog == true,
                 ModelCatalogRevision: nativeProvider?.ModelCatalogRevision ?? 0)
             {
+                IsVisible = composerVisible,
                 ShowPlacementPickers = placementHistoryReady && mode == ReactorChatTimelineMode.Empty,
                 PlacementTargetIsEmpty = isEmptyConversation,
                 PlacementHistoryReady = placementHistoryReady,
@@ -369,10 +375,6 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 () => setScrollToBottomToken(scrollToBottomToken + 1)));
         }
 
-        var pendingQuestion = effectiveThread is null ? null : questionSnapshot?.Prompts.FirstOrDefault(prompt =>
-            prompt.Request.Status == "pending"
-            && ChatQuestionCoordinator.Matches(prompt.Request, effectiveThread.Id, effectiveThread.AgentId));
-        var questionCollapsed = pendingQuestion is not null && collapsedQuestionId == pendingQuestion.Request.Id;
         var questions = props.Provider is OpenClawChatDataProvider { Questions: { } questionCoordinator }
             && effectiveThread is not null
                 ? Component<ReactorQuestionPanel, ReactorQuestionPanelProps>(
@@ -401,7 +403,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 scroll.HorizontalContentAlignment = HorizontalAlignment.Stretch;
                 scroll.VerticalContentAlignment = showWelcome ? VerticalAlignment.Center : VerticalAlignment.Top;
             })
-            .IsVisible(pendingQuestion is null || questionCollapsed)
+            .IsVisible(composerVisible)
             .AutomationId("ChatComposerArea")
             .WithKey("chat-composer-area");
         return Grid(

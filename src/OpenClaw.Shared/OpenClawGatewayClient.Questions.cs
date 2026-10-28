@@ -7,12 +7,19 @@ public partial class OpenClawGatewayClient
     public event EventHandler<GatewayQuestionEvent>? QuestionReceived;
     public event EventHandler? QuestionProtocolError;
 
-    private static Exception? QuestionRequestError(string method, JsonElement root) =>
-        method is "question.get" or "question.resolve"
-        && root.TryGetProperty("error", out var error)
-        && error.ValueKind == JsonValueKind.Object
-        && TryGetErrorDetailString(error, "reason") == "QUESTION_NOT_FOUND"
-            ? new GatewayQuestionUnavailableException() : null;
+    private static Exception? QuestionRequestError(string method, JsonElement root)
+    {
+        if (method is not ("question.get" or "question.resolve")
+            || !root.TryGetProperty("error", out var error) || error.ValueKind != JsonValueKind.Object)
+            return null;
+        return TryGetErrorDetailString(error, "reason") switch
+        {
+            "QUESTION_NOT_FOUND" => new GatewayQuestionUnavailableException(),
+            "QUESTION_ALREADY_TERMINAL" when method == "question.resolve" => new GatewayQuestionAlreadyTerminalException(),
+            "QUESTION_INVALID_ANSWER" when method == "question.resolve" => new GatewayQuestionInvalidAnswerException(),
+            _ => null,
+        };
+    }
 
     public async Task<GatewayQuestionList> ListQuestionsAsync()
     {

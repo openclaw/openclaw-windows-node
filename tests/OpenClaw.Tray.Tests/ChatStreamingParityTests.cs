@@ -197,6 +197,47 @@ public sealed class ChatStreamingParityTests
     }
 
     [Fact]
+    public void FallbackAndRecoveryNotices_UseNativeResources_AndPreserveUnknownGatewayNotices()
+    {
+        var resources = new Dictionary<string, string>
+        {
+            ["Chat_Status_PrimaryRestored"] = "Restored (localized)",
+            ["Chat_Status_FallbackSwitching"] = "Switching (localized)",
+            ["Chat_Status_FallbackModel"] = "Fallback (localized): {0}",
+            ["Chat_Status_StreamIncomplete"] = "Reload (localized)",
+        };
+        string Text(string stream, string data) => Assert.IsType<ChatStatusEvent>(
+            ChatEventMapper.Map(Event(stream, data), key => resources[key]).Event).Text;
+        Assert.Equal("Restored (localized)", Text("fallback", """{"phase":"fallback_cleared"}"""));
+        Assert.Equal("Restored (localized)", Text("lifecycle", """{"phase":"fallback_cleared"}"""));
+        Assert.Equal("Switching (localized)", Text("fallback", "{}"));
+        Assert.Equal("Fallback (localized): provider/model", Text("fallback", """{"activeModel":"provider/model"}"""));
+        Assert.Equal("Reload (localized)", Text("notice", """{"reason":"chat_stream_incomplete","message":"English fallback"}"""));
+        Assert.Equal("Gateway message", Text("notice", """{"message":"Gateway message"}"""));
+        Assert.Equal("Using fallback model: provider/model", Assert.IsType<ChatStatusEvent>(
+            ChatEventMapper.Map(Event("fallback", """{"toModel":"provider/model"}"""), key => key).Event).Text);
+    }
+
+    [Theory]
+    [InlineData(9, "Chat_Run_ElapsedSeconds", "9 sec")]
+    [InlineData(65, "Chat_Run_ElapsedMinutes", "1 min 5 sec")]
+    [InlineData(3661, "Chat_Run_ElapsedHours", "1 hr 1 min 1 sec")]
+    public void Elapsed_UsesLocalizedUnits(int seconds, string expectedKey, string expected)
+    {
+        string Lookup(string key)
+        {
+            Assert.Equal(expectedKey, key);
+            return key switch
+            {
+                "Chat_Run_ElapsedHours" => "{0} hr {1} min {2} sec",
+                "Chat_Run_ElapsedMinutes" => "{1} min {2} sec",
+                _ => "{2} sec",
+            };
+        }
+        Assert.Equal(expected, ChatRunProgressProjection.Elapsed(Start, Start.AddSeconds(seconds), Lookup));
+    }
+
+    [Fact]
     public void ClockSkew_ClampsNegativeElapsedTime()
     {
         Assert.Equal("0s", ChatRunProgressProjection.Elapsed(Start, Start.AddSeconds(-10)));

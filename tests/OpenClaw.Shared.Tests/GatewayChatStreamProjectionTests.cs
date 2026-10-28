@@ -11,6 +11,19 @@ public sealed class GatewayChatStreamProjectionTests
         .GetProperty("message").GetProperty("content")[0].GetProperty("text").GetString()!;
 
     [Fact]
+    public void LegacyTextDelta_PassesThroughWithoutCreatingAnAppendBaseline()
+    {
+        var owner = new GatewayChatStreamProjection();
+        var legacy = Frame("""{"sessionKey":"s","runId":"r","state":"delta","text":"legacy"}""");
+        var projected = owner.Project(legacy, 1, out var missing);
+        Assert.False(missing);
+        Assert.Equal(legacy.GetRawText(), projected!.Value.GetRawText());
+        Assert.Null(owner.Project(Frame("""{"sessionKey":"s","runId":"r","state":"delta","deltaText":"append"}"""),
+            1, out missing));
+        Assert.True(missing);
+    }
+
+    [Fact]
     public void SnapshotIncludesItsDelta_AppendAndReplacePreserveNonTextBlocks()
     {
         var owner = new GatewayChatStreamProjection();

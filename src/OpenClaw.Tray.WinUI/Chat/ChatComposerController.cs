@@ -61,6 +61,7 @@ internal sealed partial class ChatComposerController : IDisposable
 #pragma warning restore CS0169
     private int _voiceOperation;
     private int _voiceStopOperation;
+    private bool _composerVisible = true;
     private int _sendOperation;
     private int _modelCatalogOperation;
     private ModelCatalogRequestKey? _modelCatalogRequestKey;
@@ -521,7 +522,7 @@ internal sealed partial class ChatComposerController : IDisposable
 
         lock (_operationGate)
         {
-            if (_disposed || _vm.IsRecording)
+            if (_disposed || !_composerVisible || _vm.IsRecording)
                 return;
 
             cancellation = new CancellationTokenSource();
@@ -582,13 +583,33 @@ internal sealed partial class ChatComposerController : IDisposable
         {
             if (_disposed)
                 return;
-            cancellation = _voiceCancellation;
-            _voiceCancellation = null;
-            _voiceOperation++;
-            _voiceStopOperation = 0;
-            _vm.SetRecording(false);
+            cancellation = InvalidateVoiceRecordingLocked();
         }
         TryCancel(cancellation);
+    }
+
+    internal void SetComposerVisible(bool visible)
+    {
+        CancellationTokenSource? cancellation = null;
+        lock (_operationGate)
+        {
+            if (_disposed || _composerVisible == visible)
+                return;
+            _composerVisible = visible;
+            if (!visible)
+                cancellation = InvalidateVoiceRecordingLocked();
+        }
+        TryCancel(cancellation);
+    }
+
+    private CancellationTokenSource? InvalidateVoiceRecordingLocked()
+    {
+        var cancellation = _voiceCancellation;
+        _voiceCancellation = null;
+        _voiceOperation++;
+        _voiceStopOperation = 0;
+        _vm.SetRecording(false);
+        return cancellation;
     }
 
     private void SetVoiceRecordingStartedIfCurrent(

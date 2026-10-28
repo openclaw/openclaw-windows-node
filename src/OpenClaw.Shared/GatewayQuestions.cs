@@ -18,7 +18,8 @@ public sealed record GatewayQuestion(
     IReadOnlyList<string> DefaultAnswers,
     string? Url,
     bool RequiresWebControl,
-    bool HasUnavailableLink = false);
+    bool HasUnavailableLink = false,
+    bool IsForm = false);
 
 public sealed record GatewayQuestionRequest(
     string Id,
@@ -39,6 +40,12 @@ public sealed record GatewayQuestionList(bool IsSupported, IReadOnlyList<Gateway
 
 public sealed class GatewayQuestionUnavailableException()
     : InvalidOperationException("The question is no longer available.");
+
+public sealed class GatewayQuestionAlreadyTerminalException()
+    : InvalidOperationException("The question is already resolved or being resolved.");
+
+public sealed class GatewayQuestionInvalidAnswerException()
+    : InvalidOperationException("Choose a valid answer for each question.");
 
 /// <summary>Transient question protocol. Answers never travel through chat.send or transcript storage.</summary>
 public static class GatewayQuestions
@@ -124,7 +131,7 @@ public static class GatewayQuestions
             Boolean(value, "allowEmpty"), answerFormat == "lines", secret,
             Array.AsReadOnly(secret ? Array.Empty<string>() : defaults), unavailableLink ? null : url,
             value.TryGetProperty("secretStore", out _) || value.TryGetProperty("resource", out _),
-            unavailableLink);
+            unavailableLink, IsForm: form == "form");
     }
 
     private static bool Boolean(JsonElement value, string name, bool fallback = false)

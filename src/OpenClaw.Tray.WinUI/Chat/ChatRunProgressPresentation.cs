@@ -1,4 +1,7 @@
 using OpenClaw.Chat;
+#if !OPENCLAW_TRAY_TESTS
+using OpenClawTray.Helpers;
+#endif
 
 namespace OpenClawTray.Chat;
 
@@ -26,13 +29,19 @@ internal static class ChatRunProgressProjection
             timeline.RunUsage?.OutputTokens);
     }
 
-    internal static string Elapsed(DateTimeOffset? start, DateTimeOffset now)
+    internal static string Elapsed(DateTimeOffset? start, DateTimeOffset now, Func<string, string>? getString = null)
     {
         if (start is null)
             return "";
         var elapsed = TimeSpan.FromSeconds(Math.Max(0, Math.Floor((now - start.Value).TotalSeconds)));
-        return elapsed.TotalHours >= 1 ? $"{(int)elapsed.TotalHours}h {elapsed.Minutes}m {elapsed.Seconds}s"
-            : elapsed.TotalMinutes >= 1 ? $"{(int)elapsed.TotalMinutes}m {elapsed.Seconds}s"
-            : $"{elapsed.Seconds}s";
+        var (key, fallback) = elapsed.TotalHours >= 1
+            ? ("Chat_Run_ElapsedHours", "{0}h {1}m {2}s")
+            : elapsed.TotalMinutes >= 1
+                ? ("Chat_Run_ElapsedMinutes", "{1}m {2}s")
+                : ("Chat_Run_ElapsedSeconds", "{2}s");
+        var format = (getString ?? LocalizationHelper.GetString)(key);
+        if (string.IsNullOrEmpty(format) || format == key)
+            format = fallback;
+        return string.Format(format, (int)elapsed.TotalHours, elapsed.Minutes, elapsed.Seconds);
     }
 }

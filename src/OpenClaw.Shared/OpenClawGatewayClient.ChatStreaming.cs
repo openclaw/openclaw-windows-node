@@ -23,6 +23,7 @@ public partial class OpenClawGatewayClient
                 RunId = payload.GetProperty("runId").GetString() ?? "",
                 Data = JsonSerializer.SerializeToElement(new
                 {
+                    reason = "chat_stream_incomplete",
                     message = "Live response is incomplete. Reconnect or reload conversation history to recover.",
                 }),
             });

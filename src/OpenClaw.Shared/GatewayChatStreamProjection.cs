@@ -45,6 +45,9 @@ internal sealed class GatewayChatStreamProjection
         }
         else
         {
+            // Legacy snapshots still belong to HandleChatEvent's payload.text path.
+            if (!payload.TryGetProperty("deltaText", out _) && ReadString(payload, "text") is not null)
+                return root;
             var replace = payload.TryGetProperty("replace", out var flag) && flag.ValueKind == JsonValueKind.True;
             _messages.TryGetValue(key, out var baseline);
             message = baseline?.Message;

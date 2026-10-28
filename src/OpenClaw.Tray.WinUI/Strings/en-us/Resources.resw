@@ -8261,4 +8261,13 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
     <value>Checking Windows sandbox support.</value>
   </data>
+  <data name="Chat_Status_PrimaryRestored" xml:space="preserve"><value>Primary model restored</value></data>
+  <data name="Chat_Status_FallbackSwitching" xml:space="preserve"><value>Switching to a fallback model</value></data>
+  <data name="Chat_Status_FallbackModel" xml:space="preserve"><value>Using fallback model: {0}</value></data>
+  <data name="Chat_Status_StreamIncomplete" xml:space="preserve"><value>Live response is incomplete. Reconnect or reload conversation history to recover.</value></data>
+  <data name="Chat_Run_ElapsedHours" xml:space="preserve"><value>{0}h {1}m {2}s</value></data>
+  <data name="Chat_Run_ElapsedMinutes" xml:space="preserve"><value>{1}m {2}s</value></data>
+  <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}s</value></data>
+  <data name="Chat_Questions_Resolving" xml:space="preserve"><value>This question is being resolved. Refresh to check its status.</value></data>
+  <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choose a valid answer for each question.</value></data>
 </root>

@@ -8194,4 +8194,13 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
     <value>Vérification de la prise en charge du sandboxing Windows.</value>
   </data>
+  <data name="Chat_Status_PrimaryRestored" xml:space="preserve"><value>Modèle principal rétabli</value></data>
+  <data name="Chat_Status_FallbackSwitching" xml:space="preserve"><value>Passage à un modèle de secours</value></data>
+  <data name="Chat_Status_FallbackModel" xml:space="preserve"><value>Modèle de secours utilisé : {0}</value></data>
+  <data name="Chat_Status_StreamIncomplete" xml:space="preserve"><value>La réponse en direct est incomplète. Reconnectez-vous ou rechargez l'historique de la conversation pour la récupérer.</value></data>
+  <data name="Chat_Run_ElapsedHours" xml:space="preserve"><value>{0} h {1} min {2} s</value></data>
+  <data name="Chat_Run_ElapsedMinutes" xml:space="preserve"><value>{1} min {2} s</value></data>
+  <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
+  <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Cette question est en cours de résolution. Actualisez pour vérifier son état.</value></data>
+  <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choisissez une réponse valide pour chaque question.</value></data>
 </root>

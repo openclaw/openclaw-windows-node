@@ -36,6 +36,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private static readonly string[] s_operatorBoundedBootstrapScopes =
     [
         "operator.approvals",
+        "operator.questions",
         "operator.read",
         "operator.talk.secrets",
         "operator.write"

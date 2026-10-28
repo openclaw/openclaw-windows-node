@@ -8194,4 +8194,13 @@
   <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
     <value>正在檢查 Windows 沙箱支援。</value>
   </data>
+  <data name="Chat_Status_PrimaryRestored" xml:space="preserve"><value>已還原主要模型</value></data>
+  <data name="Chat_Status_FallbackSwitching" xml:space="preserve"><value>正在切換至備用模型</value></data>
+  <data name="Chat_Status_FallbackModel" xml:space="preserve"><value>正在使用備用模型：{0}</value></data>
+  <data name="Chat_Status_StreamIncomplete" xml:space="preserve"><value>即時回應不完整。請重新連線或重新載入對話記錄以還原。</value></data>
+  <data name="Chat_Run_ElapsedHours" xml:space="preserve"><value>{0}小時 {1}分 {2}秒</value></data>
+  <data name="Chat_Run_ElapsedMinutes" xml:space="preserve"><value>{1}分 {2}秒</value></data>
+  <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
+  <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在處理此問題。請重新整理以查看其狀態。</value></data>
+  <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>請為每個問題選擇有效的答案。</value></data>
 </root>

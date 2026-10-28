@@ -102,7 +102,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             props.Session.ApplyInputs(inputs);
             _ = controller.ReconcileModelCatalogAsync(inputs);
             return static () => { };
-        }), props.InputSnapshot, inputs.CurrentThread, inputs.ModelCatalogRevision, inputs.ShowPlacementPickers, inputs.PlacementTargetIsEmpty);
+        }), props.InputSnapshot, inputs.CurrentThread, inputs.ModelCatalogRevision, inputs.ShowPlacementPickers, inputs.PlacementTargetIsEmpty, inputs.IsVisible);
 
         var text = vm.Draft;
         var isSending = vm.IsSending;

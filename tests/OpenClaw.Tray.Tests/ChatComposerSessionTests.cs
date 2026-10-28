@@ -87,6 +87,49 @@ public sealed class ChatComposerSessionTests
     }
 
     [Fact]
+    public async Task QuestionHidesComposer_CancelsCaptureAndBlocksHiddenStarts_WithoutLosingDraft()
+    {
+        var capture = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanedUp = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken captureToken = default;
+        var calls = 0;
+        var dispatcher = new RecordingUiDispatcher();
+        using var temp = new TempDirectory();
+        using var store = new SettingsStore(new SettingsManager(temp.Path), dispatcher);
+        var factory = new ChatComposerFactory(dispatcher, store, new SandboxStatusStore());
+        using var session = factory.Create(new FakeChatDataProviderForComposerTests(),
+            new ChatComposerHostActions(null, null, (token, _) =>
+            {
+                calls++;
+                captureToken = token;
+                return calls == 1 ? capture.Task : Task.FromResult<string?>("New capture");
+            }, null, null), initialSpeakerMuted: false);
+        session.ApplyInputs(MakeInputs("first"));
+        session.ViewModel.SetDraft("Keep my draft");
+        var attachment = new ChatAttachment { FileName = "keep.png" };
+        session.ViewModel.AddAttachments([attachment]);
+        session.Controller.TestOnlyVoiceOperationCleanedUp = () => cleanedUp.TrySetResult();
+        session.Controller.StartVoiceRecording();
+        Assert.True(session.ViewModel.IsRecording);
+
+        session.ApplyInputs(MakeInputs("first") with { IsVisible = false });
+
+        Assert.True(captureToken.IsCancellationRequested);
+        Assert.False(session.ViewModel.IsRecording);
+        session.Controller.StartVoiceRecording();
+        Assert.Equal(1, calls);
+        capture.SetResult("Late hidden transcript");
+        await cleanedUp.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("Keep my draft", session.ViewModel.Draft);
+        Assert.Same(attachment, Assert.Single(session.ViewModel.PendingAttachments));
+
+        session.ApplyInputs(MakeInputs("first"));
+        session.Controller.StartVoiceRecording();
+        Assert.Equal(2, calls);
+        Assert.Equal("Keep my draft New capture", session.ViewModel.Draft);
+    }
+
+    [Fact]
     public void ApplyInputs_AssignsSessionMonotonicRevisionsAcrossViewRemounts()
     {
         var dispatcher = new RecordingUiDispatcher();
