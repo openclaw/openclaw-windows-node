@@ -8168,6 +8168,279 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="Dashboards_Title" xml:space="preserve">
+    <value>Dashboards</value>
+  </data>
+  <data name="Dashboards_LearnMore" xml:space="preserve">
+    <value>Meer informatie</value>
+  </data>
+  <data name="Dashboards_Refresh" xml:space="preserve">
+    <value>Vernieuwen</value>
+  </data>
+  <data name="Dashboards_AgentLabel" xml:space="preserve">
+    <value>Agent</value>
+  </data>
+  <data name="Dashboards_AllAuthors" xml:space="preserve">
+    <value>Alle auteurs</value>
+  </data>
+  <data name="Dashboards_AuthorLabel" xml:space="preserve">
+    <value>Auteur</value>
+  </data>
+  <data name="Dashboards_SortLabel" xml:space="preserve">
+    <value>Sorteren</value>
+  </data>
+  <data name="Dashboards_SortUpdated" xml:space="preserve">
+    <value>Onlangs bijgewerkt</value>
+  </data>
+  <data name="Dashboards_SortTitle" xml:space="preserve">
+    <value>Titel A tot Z</value>
+  </data>
+  <data name="Dashboards_SearchLabel" xml:space="preserve">
+    <value>Dashboards zoeken</value>
+  </data>
+  <data name="Dashboards_SearchPlaceholder" xml:space="preserve">
+    <value>Dashboards zoeken</value>
+  </data>
+  <data name="Dashboards_ResultCountFormat" xml:space="preserve">
+    <value>Aantal dashboards: {0}</value>
+  </data>
+  <data name="Dashboards_GalleryLabel" xml:space="preserve">
+    <value>Dashboardgalerij</value>
+  </data>
+  <data name="Dashboards_NoResults_Title" xml:space="preserve">
+    <value>Geen overeenkomende dashboards</value>
+  </data>
+  <data name="Dashboards_NoResults_Detail" xml:space="preserve">
+    <value>Probeer een andere zoekopdracht of auteur.</value>
+  </data>
+  <data name="Dashboards_Empty_Title" xml:space="preserve">
+    <value>Nog geen dashboards</value>
+  </data>
+  <data name="Dashboards_Empty_Detail" xml:space="preserve">
+    <value>Dashboards die in je sessies worden gemaakt, worden hier weergegeven.</value>
+  </data>
+  <data name="Dashboards_LoadError_Title" xml:space="preserve">
+    <value>Kan dashboards niet laden</value>
+  </data>
+  <data name="Dashboards_LoadErrorFormat" xml:space="preserve">
+    <value>Foutdetails: {0}</value>
+  </data>
+  <data name="Dashboards_Retry" xml:space="preserve">
+    <value>Opnieuw proberen</value>
+  </data>
+  <data name="Dashboards_Loading" xml:space="preserve">
+    <value>Dashboards laden</value>
+  </data>
+  <data name="Dashboards_Live" xml:space="preserve">
+    <value>Live</value>
+  </data>
+  <data name="Dashboards_ByAuthorFormat" xml:space="preserve">
+    <value>Door {0}</value>
+  </data>
+  <data name="Dashboards_UpdatedFormat" xml:space="preserve">
+    <value>Bijgewerkt: {0}</value>
+  </data>
+  <data name="Dashboards_UpdatedUnknown" xml:space="preserve">
+    <value>Bijwerktijd onbekend</value>
+  </data>
+  <data name="Dashboards_PreviewErrorFormat" xml:space="preserve">
+    <value>Voorbeeld niet beschikbaar: {0}</value>
+  </data>
+  <data name="Dashboards_Disconnected_Title" xml:space="preserve">
+    <value>Niet verbonden met een gateway</value>
+  </data>
+  <data name="Dashboards_Disconnected_Detail" xml:space="preserve">
+    <value>Dashboards komen van je gateway. Ze komen terug zodra de verbinding is hersteld.</value>
+  </data>
+  <data name="Dashboards_Disconnected_Action" xml:space="preserve">
+    <value>Verbindingsinstellingen openen</value>
+  </data>
+  <data name="Dashboards_Unavailable_Title" xml:space="preserve">
+    <value>Dashboards zijn niet beschikbaar</value>
+  </data>
+  <data name="Dashboards_Unavailable_Detail" xml:space="preserve">
+    <value>Deze gatewayverbinding kan geen sessiedashboards lezen. Vraag de eigenaar van de gateway om leestoegang of werk de gateway bij.</value>
+  </data>
+  <data name="Dashboards_Back" xml:space="preserve">
+    <value>Terug naar dashboards</value>
+  </data>
+  <data name="Dashboards_OpenChat" xml:space="preserve">
+    <value>Chat openen</value>
+  </data>
+  <data name="Dashboards_BoardLabel" xml:space="preserve">
+    <value>Sessiedashboard</value>
+  </data>
+  <data name="Dashboards_BoardLoadError_Title" xml:space="preserve">
+    <value>Kan dit dashboard niet laden</value>
+  </data>
+  <data name="Dashboards_BoardEmpty_Title" xml:space="preserve">
+    <value>Een leeg bord, klaar voor gebruik</value>
+  </data>
+  <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
+    <value>Je agent kan hier widgets vastmaken. Vraag bijvoorbeeld om een statuskaart.</value>
+  </data>
+  <data name="Dashboards_GridLabel" xml:space="preserve">
+    <value>Dashboardwidgets</value>
+  </data>
+  <data name="Dashboards_TabsLabel" xml:space="preserve">
+    <value>Dashboardtabbladen</value>
+  </data>
+  <data name="Dashboards_MoreTabs" xml:space="preserve">
+    <value>Meer tabbladen</value>
+  </data>
+  <data name="Dashboards_Widget_CellFormat" xml:space="preserve">
+    <value>Dashboardwidget: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_KindHtml" xml:space="preserve">
+    <value>HTML</value>
+  </data>
+  <data name="Dashboards_Widget_KindMcp" xml:space="preserve">
+    <value>MCP</value>
+  </data>
+  <data name="Dashboards_Widget_KindPlugin" xml:space="preserve">
+    <value>Invoegtoepassing</value>
+  </data>
+  <data name="Dashboards_Widget_Granted" xml:space="preserve">
+    <value>Toegestaan</value>
+  </data>
+  <data name="Dashboards_Widget_ActiveCapabilities" xml:space="preserve">
+    <value>Actieve widgetmogelijkheden</value>
+  </data>
+  <data name="Dashboards_Widget_NetworkCapability" xml:space="preserve">
+    <value>Netwerk: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_ToolCapability" xml:space="preserve">
+    <value>Hulpprogramma: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_Loading" xml:space="preserve">
+    <value>Widget laden</value>
+  </data>
+  <data name="Dashboards_Widget_Slow" xml:space="preserve">
+    <value>Deze widget doet er langer dan normaal over om te laden.</value>
+  </data>
+  <data name="Dashboards_Widget_ErrorTitle" xml:space="preserve">
+    <value>Deze widget kan niet worden geladen</value>
+  </data>
+  <data name="Dashboards_Widget_ErrorDetail" xml:space="preserve">
+    <value>Het probleem blijft beperkt tot deze kaart.</value>
+  </data>
+  <data name="Dashboards_Widget_ShowDetails" xml:space="preserve">
+    <value>Details weergeven</value>
+  </data>
+  <data name="Dashboards_Widget_ContentUnavailable" xml:space="preserve">
+    <value>Widgetinhoud is niet beschikbaar.</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxUnavailable" xml:space="preserve">
+    <value>De sandboxhost van de widget is niet beschikbaar.</value>
+  </data>
+  <data name="Dashboards_Widget_WebViewUnavailable" xml:space="preserve">
+    <value>Widgetinhoud vereist de Microsoft Edge WebView2 Runtime.</value>
+  </data>
+  <data name="Dashboards_Widget_RenderTimeout" xml:space="preserve">
+    <value>De widgetinhoud is niet volledig geladen. Selecteer Opnieuw proberen.</value>
+  </data>
+  <data name="Dashboards_Widget_StoppedResponding" xml:space="preserve">
+    <value>De widgetinhoud reageert herhaaldelijk niet meer. Selecteer Opnieuw proberen.</value>
+  </data>
+  <data name="Dashboards_Widget_AuthorizationFailed" xml:space="preserve">
+    <value>Widgetautorisatie is mislukt na herhaalde vernieuwingspogingen.</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxOriginRequired" xml:space="preserve">
+    <value>Widgetautorisatie is mislukt na herhaalde vernieuwingspogingen. Als de gateway achter een reverse proxy of tunnel draait die de sandboxpoort van de widget niet doorstuurt, stel mcp.apps.sandboxOrigin dan in op een aparte openbare oorsprong die naar de sandboxlistener wordt gerouteerd.</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxUnreachableHint" xml:space="preserve">
+    <value>De sandbox van de widget reageerde niet. Als de gateway achter een reverse proxy of tunnel draait die de sandboxpoort van de widget niet doorstuurt, stel mcp.apps.sandboxOrigin dan in op een aparte openbare oorsprong die naar de sandboxlistener wordt gerouteerd.</value>
+  </data>
+  <data name="Dashboards_Widget_NeedsApproval" xml:space="preserve">
+    <value>Goedkeuring vereist</value>
+  </data>
+  <data name="Dashboards_Widget_NeedsApprovalDetail" xml:space="preserve">
+    <value>Deze widget heeft om extra toegang gevraagd.</value>
+  </data>
+  <data name="Dashboards_Widget_NetworkAccess" xml:space="preserve">
+    <value>Netwerkoorsprongen</value>
+  </data>
+  <data name="Dashboards_Widget_HostTools" xml:space="preserve">
+    <value>Hosthulpprogramma's en -gegevens</value>
+  </data>
+  <data name="Dashboards_Widget_Rejected" xml:space="preserve">
+    <value>Toegang geweigerd</value>
+  </data>
+  <data name="Dashboards_Widget_RejectedDetail" xml:space="preserve">
+    <value>Deze widget blijft inactief totdat deze wordt verwijderd of vervangen.</value>
+  </data>
+  <data name="Dashboards_Widget_McpAppTitle" xml:space="preserve">
+    <value>MCP-app</value>
+  </data>
+  <data name="Dashboards_Widget_McpAppDetail" xml:space="preserve">
+    <value>MCP-appwidgets zijn nog niet beschikbaar in Windows.</value>
+  </data>
+  <data name="Dashboards_Widget_DisabledPluginFormat" xml:space="preserve">
+    <value>Widget van uitgeschakelde invoegtoepassing {0}</value>
+  </data>
+  <data name="Dashboards_Widget_UnsupportedTitle" xml:space="preserve">
+    <value>Widget nog niet beschikbaar in Windows</value>
+  </data>
+  <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
+    <value>{0}-widgets zijn nog niet beschikbaar in Windows.</value>
+  </data>
+  <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
+    <value>Dit rapport bevat ongeldige gegevens.</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteInvalid" xml:space="preserve">
+    <value>Deze websitewidget heeft een geldig HTTPS-adres nodig.</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteFailed" xml:space="preserve">
+    <value>Deze website kan niet worden geladen. Controleer je verbinding en selecteer daarna Opnieuw proberen.</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteOpen" xml:space="preserve">
+    <value>Website openen</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteEmbedHint" xml:space="preserve">
+    <value>Als deze site hier niet laadt, open je deze in je browser.</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteSameOrigin" xml:space="preserve">
+    <value>Open deze website in je browser. Gatewaypagina's kunnen niet in een websitewidget worden ingesloten.</value>
+  </data>
+  <data name="Command_GoToDashboards_Title" xml:space="preserve">
+    <value>Naar dashboards gaan</value>
+  </data>
+  <data name="Command_GoToDashboards_Subtitle" xml:space="preserve">
+    <value>Live borden uit je sessies</value>
+  </data>
+  <data name="Command_OpenSessionDashboard_TitleFormat" xml:space="preserve">
+    <value>Dashboard openen: {0}</value>
+  </data>
+  <data name="Command_OpenSessionDashboard_Subtitle" xml:space="preserve">
+    <value>Sessiedashboard</value>
+  </data>
+  <data name="HubWindow_NavDashboards.Content" xml:space="preserve">
+    <value>Dashboards</value>
+  </data>
+  <data name="SessionsPage_OpenDashboard.Text" xml:space="preserve">
+    <value>Dashboard openen</value>
+  </data>
+  <data name="Dashboards_Tagline" xml:space="preserve">
+    <value>Live borden die je agents bouwen en up-to-date houden.</value>
+  </data>
+  <data name="Dashboards_StatTotal" xml:space="preserve">
+    <value>Dashboards</value>
+  </data>
+  <data name="Dashboards_StatLive" xml:space="preserve">
+    <value>Nu live</value>
+  </data>
+  <data name="Dashboards_StatAuthors" xml:space="preserve">
+    <value>Auteurs</value>
+  </data>
+  <data name="Dashboards_PreviewEmpty" xml:space="preserve">
+    <value>Nog niets vastgemaakt</value>
+  </data>
+  <data name="Dashboards_OpenAction" xml:space="preserve">
+    <value>Openen</value>
+  </data>
+  <data name="Dashboards_AskInChat" xml:space="preserve">
+    <value>Vragen in chat</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node-sandbox</value>
   </data>

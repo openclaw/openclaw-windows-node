@@ -380,6 +380,57 @@ serialized on a shared desktop; focus-dependent GUI workers need separate
 Windows sessions or VMs. Interactive streaming uses the same per-instance
 server/profile ownership described below.
 
+## Dashboards without a real Gateway
+
+The opt-in `dashboards` scenario serves synthetic boards for the Dashboards
+page: a multi-tab board with HTML, report, website, pending, rejected,
+broken, MCP app and disabled-plugin widgets, plus release, research and empty
+boards. Widget documents and the sandbox proxy are served from loopback, so
+no real board or capability grant is touched:
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario dashboards
+```
+
+Set `OPENCLAW_FIXTURE_APP_THEME` to `Dark` (or `Light`, the default) in the
+calling shell to seed the disposable profile's app theme for theme proof.
+
+The focused native regression runs both themes, captures the gallery, HTML and
+report widgets, approval/error states, tabs and an empty board, and scans the
+populated gallery and board with Axe.Windows. English Windows OCR verifies
+visible widget text in owned-window captures because UI Automation on some
+hosts stops at the WebView pane. A pixel guard also requires the deployment
+curve's plot area to have a luminance range of at least 64; a blank SVG cannot
+pass merely because its heading rendered. The companion mounted test verifies that two
+same-origin website widgets do not share cookies or local storage. Retrying one
+widget must load a fresh synthetic page without clearing its neighbor's cookie,
+storage value or in-memory document marker.
+The integrations-tab capture loads the reserved public `https://example.com/`
+page and therefore needs outbound HTTPS. It uses no production Gateway or
+browser credentials.
+
+On an authorized Windows desktop, after building the explicit app:
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = '<dedicated-artifact-directory>'
+$env:OPENCLAW_TRAY_DATA_DIR = '<dedicated-test-profile>'
+$env:OPENCLAW_TRAY_LOCAL_DATA_DIR = '<dedicated-test-local-directory>'
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -c Debug -r win-arm64 -p:Platform=ARM64 -p:DevBuild=false --filter 'FullyQualifiedName~DashboardsRenderNativeReports|FullyQualifiedName~DashboardWebsiteIsolationTests'
+```
+
+For x64 use `-r win-x64 -p:Platform=x64`. Inspect the saved PNGs as well as the
+test results. This is synthetic Gateway/UI and browser-state proof, not real
+Gateway pairing or a working MCP app host, which remains a later delivery step.
+
+Fixture teardown retains handles to WebView browser children whose parent ID
+and start time match the owned app, and stops only those processes. A sharing
+violation while their Crashpad files close is retried for at most 10 seconds.
+Set `OPENCLAW_FIXTURE_CLEANUP_TIMEOUT_SECONDS` before starting the test host to
+override that bound. Other cleanup errors and expired sharing violations fail.
+
 ## Interactive chat without a real Gateway
 
 The opt-in `chat-interactive` scenario runs a memory-only chat runtime behind

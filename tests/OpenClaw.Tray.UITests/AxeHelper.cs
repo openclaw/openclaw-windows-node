@@ -64,9 +64,10 @@ public static class AxeHelper
     public static void AssertNoAccessibilityErrors(
         IntPtr hubWindowHandle,
         IEnumerable<RuleId>? pageRuleExclusions = null,
-        string? context = null)
+        string? context = null,
+        int? targetProcessId = null)
     {
-        if (_processId is not { } processId)
+        if ((targetProcessId ?? _processId) is not { } processId)
             throw new InvalidOperationException(
                 "AxeHelper.Initialize() must be called before scanning.");
 

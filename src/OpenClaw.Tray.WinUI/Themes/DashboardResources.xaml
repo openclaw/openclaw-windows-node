@@ -1,0 +1,117 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        Dashboards palette (DESIGN.md "Dashboards expressive extension").
+        Six categorical hues give each dashboard an identity and each widget kind
+        a recognizable chip, while actions keep the system accent. Strong brushes
+        meet 4.5:1 on cards in light and dark; Subtle brushes are tinted washes
+        for tiles and previews. High contrast maps every hue to system colors so
+        identity never carries meaning on its own.
+    -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="DashboardHue0Brush" Color="#0F6CBD"/>
+            <SolidColorBrush x:Key="DashboardHue1Brush" Color="#03787C"/>
+            <SolidColorBrush x:Key="DashboardHue2Brush" Color="#6B3FA0"/>
+            <SolidColorBrush x:Key="DashboardHue3Brush" Color="#B6491B"/>
+            <SolidColorBrush x:Key="DashboardHue4Brush" Color="#A23295"/>
+            <SolidColorBrush x:Key="DashboardHue5Brush" Color="#0E7A3D"/>
+            <SolidColorBrush x:Key="DashboardHue0SubtleBrush" Color="#1F0F6CBD"/>
+            <SolidColorBrush x:Key="DashboardHue1SubtleBrush" Color="#1F03787C"/>
+            <SolidColorBrush x:Key="DashboardHue2SubtleBrush" Color="#1F6B3FA0"/>
+            <SolidColorBrush x:Key="DashboardHue3SubtleBrush" Color="#1FB6491B"/>
+            <SolidColorBrush x:Key="DashboardHue4SubtleBrush" Color="#1FA23295"/>
+            <SolidColorBrush x:Key="DashboardHue5SubtleBrush" Color="#1F0E7A3D"/>
+            <SolidColorBrush x:Key="DashboardHue0WashBrush" Color="#0D0F6CBD"/>
+            <SolidColorBrush x:Key="DashboardHue1WashBrush" Color="#0D03787C"/>
+            <SolidColorBrush x:Key="DashboardHue2WashBrush" Color="#0D6B3FA0"/>
+            <SolidColorBrush x:Key="DashboardHue3WashBrush" Color="#0DB6491B"/>
+            <SolidColorBrush x:Key="DashboardHue4WashBrush" Color="#0DA23295"/>
+            <SolidColorBrush x:Key="DashboardHue5WashBrush" Color="#0D0E7A3D"/>
+            <SolidColorBrush x:Key="DashboardOnHueBrush" Color="#FFFFFF"/>
+            <LinearGradientBrush x:Key="DashboardHeroBrush" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#330F6CBD" Offset="0"/>
+                <GradientStop Color="#1F6B3FA0" Offset="0.55"/>
+                <GradientStop Color="#1403787C" Offset="1"/>
+            </LinearGradientBrush>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="DashboardHue0Brush" Color="#62ABF5"/>
+            <SolidColorBrush x:Key="DashboardHue1Brush" Color="#4BC5C8"/>
+            <SolidColorBrush x:Key="DashboardHue2Brush" Color="#B69CEB"/>
+            <SolidColorBrush x:Key="DashboardHue3Brush" Color="#F49A62"/>
+            <SolidColorBrush x:Key="DashboardHue4Brush" Color="#E68FDC"/>
+            <SolidColorBrush x:Key="DashboardHue5Brush" Color="#5CC97E"/>
+            <SolidColorBrush x:Key="DashboardHue0SubtleBrush" Color="#3362ABF5"/>
+            <SolidColorBrush x:Key="DashboardHue1SubtleBrush" Color="#334BC5C8"/>
+            <SolidColorBrush x:Key="DashboardHue2SubtleBrush" Color="#33B69CEB"/>
+            <SolidColorBrush x:Key="DashboardHue3SubtleBrush" Color="#33F49A62"/>
+            <SolidColorBrush x:Key="DashboardHue4SubtleBrush" Color="#33E68FDC"/>
+            <SolidColorBrush x:Key="DashboardHue5SubtleBrush" Color="#335CC97E"/>
+            <SolidColorBrush x:Key="DashboardHue0WashBrush" Color="#1462ABF5"/>
+            <SolidColorBrush x:Key="DashboardHue1WashBrush" Color="#144BC5C8"/>
+            <SolidColorBrush x:Key="DashboardHue2WashBrush" Color="#14B69CEB"/>
+            <SolidColorBrush x:Key="DashboardHue3WashBrush" Color="#14F49A62"/>
+            <SolidColorBrush x:Key="DashboardHue4WashBrush" Color="#14E68FDC"/>
+            <SolidColorBrush x:Key="DashboardHue5WashBrush" Color="#145CC97E"/>
+            <SolidColorBrush x:Key="DashboardOnHueBrush" Color="#1C1C1C"/>
+            <LinearGradientBrush x:Key="DashboardHeroBrush" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#3D62ABF5" Offset="0"/>
+                <GradientStop Color="#26B69CEB" Offset="0.55"/>
+                <GradientStop Color="#0F4BC5C8" Offset="1"/>
+            </LinearGradientBrush>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="DashboardHue0Brush" Color="{ThemeResource SystemColorHighlightColor}"/>
+            <SolidColorBrush x:Key="DashboardHue1Brush" Color="{ThemeResource SystemColorHighlightColor}"/>
+            <SolidColorBrush x:Key="DashboardHue2Brush" Color="{ThemeResource SystemColorHighlightColor}"/>
+            <SolidColorBrush x:Key="DashboardHue3Brush" Color="{ThemeResource SystemColorHighlightColor}"/>
+            <SolidColorBrush x:Key="DashboardHue4Brush" Color="{ThemeResource SystemColorHighlightColor}"/>
+            <SolidColorBrush x:Key="DashboardHue5Brush" Color="{ThemeResource SystemColorHighlightColor}"/>
+            <SolidColorBrush x:Key="DashboardHue0SubtleBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="DashboardHue1SubtleBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="DashboardHue2SubtleBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="DashboardHue3SubtleBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="DashboardHue4SubtleBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="DashboardHue5SubtleBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="DashboardHue0WashBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="DashboardHue1WashBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="DashboardHue2WashBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="DashboardHue3WashBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="DashboardHue4WashBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="DashboardHue5WashBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="DashboardOnHueBrush" Color="{ThemeResource SystemColorHighlightTextColor}"/>
+            <SolidColorBrush x:Key="DashboardHeroBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <!--
+        Native host shell for isolated board widget content. The WebView2 is
+        created in code and placed in ContentRoot. ThemeTokens are never shown:
+        their ThemeResource fills are read to theme widget documents, so light,
+        dark, and high contrast follow the app without hard-coded colors.
+    -->
+    <ControlTemplate x:Key="BoardWidgetWebHostTemplate" TargetType="Control">
+        <Grid>
+            <ContentPresenter x:Name="ContentRoot"/>
+            <StackPanel x:Name="ThemeTokens" Visibility="Collapsed">
+                <Rectangle Tag="surface" Fill="{ThemeResource SolidBackgroundFillColorBaseBrush}"/>
+                <Rectangle Tag="card" Fill="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"/>
+                <Rectangle Tag="elevated" Fill="{ThemeResource SolidBackgroundFillColorTertiaryBrush}"/>
+                <Rectangle Tag="text" Fill="{ThemeResource TextFillColorPrimaryBrush}"/>
+                <Rectangle Tag="text-strong" Fill="{ThemeResource TextFillColorPrimaryBrush}"/>
+                <Rectangle Tag="muted" Fill="{ThemeResource TextFillColorSecondaryBrush}"/>
+                <Rectangle Tag="border" Fill="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                <Rectangle Tag="border-strong" Fill="{ThemeResource ControlStrongStrokeColorDefaultBrush}"/>
+                <Rectangle Tag="accent" Fill="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                <Rectangle Tag="accent-fill" Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
+                <Rectangle Tag="accent-fg" Fill="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                <Rectangle Tag="ok" Fill="{ThemeResource SystemFillColorSuccessBrush}"/>
+                <Rectangle Tag="warn" Fill="{ThemeResource SystemFillColorCautionBrush}"/>
+                <Rectangle Tag="danger" Fill="{ThemeResource SystemFillColorCriticalBrush}"/>
+                <Rectangle Tag="info" Fill="{ThemeResource SystemFillColorAttentionBrush}"/>
+            </StackPanel>
+        </Grid>
+    </ControlTemplate>
+</ResourceDictionary>

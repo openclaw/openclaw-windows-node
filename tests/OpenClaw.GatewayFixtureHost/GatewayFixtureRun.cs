@@ -112,10 +112,25 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            try { await run.WriteReportAsync("startup-failed", ex); }
-            finally { await run.DisposeAsync(); }
+            await HandleStartupFailureAsync(ex,
+                () => run.WriteReportAsync("startup-failed", ex),
+                () => run.DisposeAsync().AsTask());
             throw;
         }
+    }
+
+    internal static async Task HandleStartupFailureAsync(
+        Exception startupFailure,
+        Func<Task> writeReport,
+        Func<Task> cleanup)
+    {
+        var failures = new List<Exception> { startupFailure };
+        try { await writeReport(); }
+        catch (Exception ex) { failures.Add(ex); }
+        try { await cleanup(); }
+        catch (Exception ex) { failures.Add(ex); }
+        if (failures.Count > 1)
+            throw new AggregateException("Fixture startup failed, and failure reporting or cleanup also failed.", failures);
     }
 
     private async Task StartAppAsync(CancellationToken cancellationToken)
@@ -500,14 +515,103 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         _client?.Dispose();
         _client = null;
         if (_process is null) return;
-        if (!_process.HasExited)
+        // Retain direct WebView children before killing the app. A browser can
+        // outlive its parent during tree termination and keep Crashpad files open.
+        var browsers = FindOwnedBrowsers(_process);
+        var owned = new List<Process> { _process };
+        owned.AddRange(browsers);
+        try
         {
-            _process.Kill(entireProcessTree: true);
-            await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await StopOwnedProcessesAsync(owned, async process =>
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            });
         }
-        _process.Dispose();
-        _process = null;
+        finally { _process = null; }
     }
+
+    internal static async Task StopOwnedProcessesAsync(
+        IReadOnlyCollection<Process> owned,
+        Func<Process, Task> stopProcess)
+    {
+        var failures = new List<Exception>();
+        try
+        {
+            foreach (var process in owned)
+            {
+                try
+                {
+                    await stopProcess(process);
+                }
+                catch (Exception ex) when (ex is TimeoutException or System.ComponentModel.Win32Exception
+                    or InvalidOperationException or AggregateException)
+                {
+                    // Still attempt every retained child. Preserve failures rather than
+                    // masking them or leaving later browser handles unprocessed.
+                    failures.Add(new InvalidOperationException($"Could not stop fixture process {process.Id}.", ex));
+                }
+            }
+        }
+        finally
+        {
+            foreach (var process in owned)
+                process.Dispose();
+        }
+        if (failures.Count > 0)
+            throw new AggregateException("Fixture process cleanup failed.", failures);
+    }
+
+    private static List<Process> FindOwnedBrowsers(Process app)
+    {
+        var owned = new List<Process>();
+        var appStarted = app.StartTime.ToUniversalTime();
+        var latestChildStart = app.HasExited ? app.ExitTime.ToUniversalTime() : DateTime.UtcNow;
+        foreach (var candidate in Process.GetProcessesByName("msedgewebview2"))
+        {
+            var keep = false;
+            try
+            {
+                if (!candidate.HasExited && candidate.StartTime.ToUniversalTime() >= appStarted
+                    && candidate.StartTime.ToUniversalTime() <= latestChildStart
+                    && NtQueryInformationProcess(candidate.Handle, 0, out var info,
+                        Marshal.SizeOf<ProcessBasicInformation>(), out _) == 0
+                    && info.ParentProcessId == (nuint)app.Id)
+                {
+                    // The retained process handle, parent ID and start time bind this
+                    // to the fixture app, never another session's browser.
+                    keep = true;
+                    owned.Add(candidate);
+                }
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                // An inaccessible process cannot be established as ours; leave it alone.
+            }
+            catch (InvalidOperationException)
+            {
+                // The candidate exited during discovery.
+            }
+            finally
+            {
+                if (!keep)
+                    candidate.Dispose();
+            }
+        }
+        return owned;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessBasicInformation
+    {
+        public nint Reserved1, PebBaseAddress, Reserved2, Reserved3;
+        public nuint ProcessId, ParentProcessId;
+    }
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtQueryInformationProcess(nint process, int informationClass,
+        out ProcessBasicInformation information, int informationLength, out int returnLength);
 
     public async ValueTask DisposeAsync()
     {

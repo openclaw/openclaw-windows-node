@@ -45,6 +45,7 @@ public sealed class AccessibilityScanTests
         yield return ["ConfigPage", "config", "ConfigPageMarker"];
         yield return ["ConnectionPage", "connection", "ConnectionPageMarker"];
         yield return ["CronPage", "cron", "CronPageMarker"];
+        yield return ["DashboardsPage", "dashboards", "DashboardsOpenConnection"];
         yield return ["DebugPage", "debug", "DebugPageMarker"];
         yield return ["InstancesPage", "instances", "InstancesPageMarker"];
         yield return ["NotificationsPage", "notifications", "NotificationsPageMarker"];

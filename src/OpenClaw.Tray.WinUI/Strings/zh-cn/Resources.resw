@@ -8167,6 +8167,279 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>总结我最近的会话</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>帮我配置一个频道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>检查系统健康状况</value></data>
+  <data name="Dashboards_Title" xml:space="preserve">
+    <value>仪表板</value>
+  </data>
+  <data name="Dashboards_LearnMore" xml:space="preserve">
+    <value>了解详细信息</value>
+  </data>
+  <data name="Dashboards_Refresh" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="Dashboards_AgentLabel" xml:space="preserve">
+    <value>代理</value>
+  </data>
+  <data name="Dashboards_AllAuthors" xml:space="preserve">
+    <value>所有作者</value>
+  </data>
+  <data name="Dashboards_AuthorLabel" xml:space="preserve">
+    <value>作者</value>
+  </data>
+  <data name="Dashboards_SortLabel" xml:space="preserve">
+    <value>排序</value>
+  </data>
+  <data name="Dashboards_SortUpdated" xml:space="preserve">
+    <value>最近更新</value>
+  </data>
+  <data name="Dashboards_SortTitle" xml:space="preserve">
+    <value>标题 A 到 Z</value>
+  </data>
+  <data name="Dashboards_SearchLabel" xml:space="preserve">
+    <value>搜索仪表板</value>
+  </data>
+  <data name="Dashboards_SearchPlaceholder" xml:space="preserve">
+    <value>搜索仪表板</value>
+  </data>
+  <data name="Dashboards_ResultCountFormat" xml:space="preserve">
+    <value>仪表板: {0}</value>
+  </data>
+  <data name="Dashboards_GalleryLabel" xml:space="preserve">
+    <value>仪表板库</value>
+  </data>
+  <data name="Dashboards_NoResults_Title" xml:space="preserve">
+    <value>没有匹配的仪表板</value>
+  </data>
+  <data name="Dashboards_NoResults_Detail" xml:space="preserve">
+    <value>请尝试其他搜索词或作者。</value>
+  </data>
+  <data name="Dashboards_Empty_Title" xml:space="preserve">
+    <value>尚无仪表板</value>
+  </data>
+  <data name="Dashboards_Empty_Detail" xml:space="preserve">
+    <value>在会话中创建的仪表板将显示在此处。</value>
+  </data>
+  <data name="Dashboards_LoadError_Title" xml:space="preserve">
+    <value>无法加载仪表板</value>
+  </data>
+  <data name="Dashboards_LoadErrorFormat" xml:space="preserve">
+    <value>详细信息: {0}</value>
+  </data>
+  <data name="Dashboards_Retry" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="Dashboards_Loading" xml:space="preserve">
+    <value>正在加载仪表板</value>
+  </data>
+  <data name="Dashboards_Live" xml:space="preserve">
+    <value>实时</value>
+  </data>
+  <data name="Dashboards_ByAuthorFormat" xml:space="preserve">
+    <value>作者: {0}</value>
+  </data>
+  <data name="Dashboards_UpdatedFormat" xml:space="preserve">
+    <value>更新时间: {0}</value>
+  </data>
+  <data name="Dashboards_UpdatedUnknown" xml:space="preserve">
+    <value>更新时间未知</value>
+  </data>
+  <data name="Dashboards_PreviewErrorFormat" xml:space="preserve">
+    <value>预览不可用: {0}</value>
+  </data>
+  <data name="Dashboards_Disconnected_Title" xml:space="preserve">
+    <value>未连接到网关</value>
+  </data>
+  <data name="Dashboards_Disconnected_Detail" xml:space="preserve">
+    <value>仪表板来自网关。连接恢复后会重新显示。</value>
+  </data>
+  <data name="Dashboards_Disconnected_Action" xml:space="preserve">
+    <value>打开连接设置</value>
+  </data>
+  <data name="Dashboards_Unavailable_Title" xml:space="preserve">
+    <value>仪表板不可用</value>
+  </data>
+  <data name="Dashboards_Unavailable_Detail" xml:space="preserve">
+    <value>此网关连接无法读取会话仪表板。请向网关所有者申请读取权限或更新网关。</value>
+  </data>
+  <data name="Dashboards_Back" xml:space="preserve">
+    <value>返回仪表板</value>
+  </data>
+  <data name="Dashboards_OpenChat" xml:space="preserve">
+    <value>打开聊天</value>
+  </data>
+  <data name="Dashboards_BoardLabel" xml:space="preserve">
+    <value>会话仪表板</value>
+  </data>
+  <data name="Dashboards_BoardLoadError_Title" xml:space="preserve">
+    <value>无法加载此仪表板</value>
+  </data>
+  <data name="Dashboards_BoardEmpty_Title" xml:space="preserve">
+    <value>空白看板，随时可用</value>
+  </data>
+  <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
+    <value>代理可以在此固定小组件。试试请求一张状态卡。</value>
+  </data>
+  <data name="Dashboards_GridLabel" xml:space="preserve">
+    <value>仪表板小组件</value>
+  </data>
+  <data name="Dashboards_TabsLabel" xml:space="preserve">
+    <value>仪表板选项卡</value>
+  </data>
+  <data name="Dashboards_MoreTabs" xml:space="preserve">
+    <value>更多选项卡</value>
+  </data>
+  <data name="Dashboards_Widget_CellFormat" xml:space="preserve">
+    <value>仪表板小组件: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_KindHtml" xml:space="preserve">
+    <value>HTML</value>
+  </data>
+  <data name="Dashboards_Widget_KindMcp" xml:space="preserve">
+    <value>MCP</value>
+  </data>
+  <data name="Dashboards_Widget_KindPlugin" xml:space="preserve">
+    <value>插件</value>
+  </data>
+  <data name="Dashboards_Widget_Granted" xml:space="preserve">
+    <value>已授权</value>
+  </data>
+  <data name="Dashboards_Widget_ActiveCapabilities" xml:space="preserve">
+    <value>小组件的活动功能</value>
+  </data>
+  <data name="Dashboards_Widget_NetworkCapability" xml:space="preserve">
+    <value>网络: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_ToolCapability" xml:space="preserve">
+    <value>工具: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_Loading" xml:space="preserve">
+    <value>正在加载小组件</value>
+  </data>
+  <data name="Dashboards_Widget_Slow" xml:space="preserve">
+    <value>此小组件的加载时间比平常长。</value>
+  </data>
+  <data name="Dashboards_Widget_ErrorTitle" xml:space="preserve">
+    <value>无法加载此小组件</value>
+  </data>
+  <data name="Dashboards_Widget_ErrorDetail" xml:space="preserve">
+    <value>问题仅限于此卡片。</value>
+  </data>
+  <data name="Dashboards_Widget_ShowDetails" xml:space="preserve">
+    <value>显示详细信息</value>
+  </data>
+  <data name="Dashboards_Widget_ContentUnavailable" xml:space="preserve">
+    <value>小组件内容不可用。</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxUnavailable" xml:space="preserve">
+    <value>小组件沙盒主机不可用。</value>
+  </data>
+  <data name="Dashboards_Widget_WebViewUnavailable" xml:space="preserve">
+    <value>小组件内容需要 Microsoft Edge WebView2 Runtime。</value>
+  </data>
+  <data name="Dashboards_Widget_RenderTimeout" xml:space="preserve">
+    <value>小组件内容未完成加载。请选择“重试”。</value>
+  </data>
+  <data name="Dashboards_Widget_StoppedResponding" xml:space="preserve">
+    <value>小组件内容多次停止响应。请选择“重试”。</value>
+  </data>
+  <data name="Dashboards_Widget_AuthorizationFailed" xml:space="preserve">
+    <value>多次刷新后，小组件授权仍失败。</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxOriginRequired" xml:space="preserve">
+    <value>多次刷新后，小组件授权仍失败。如果网关位于不转发小组件沙盒端口的反向代理或隧道之后，请将 mcp.apps.sandboxOrigin 设置为路由到沙盒侦听器的专用公共源。</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxUnreachableHint" xml:space="preserve">
+    <value>小组件沙盒没有响应。如果网关位于不转发小组件沙盒端口的反向代理或隧道之后，请将 mcp.apps.sandboxOrigin 设置为路由到沙盒侦听器的专用公共源。</value>
+  </data>
+  <data name="Dashboards_Widget_NeedsApproval" xml:space="preserve">
+    <value>需要批准</value>
+  </data>
+  <data name="Dashboards_Widget_NeedsApprovalDetail" xml:space="preserve">
+    <value>此小组件请求了额外的访问权限。</value>
+  </data>
+  <data name="Dashboards_Widget_NetworkAccess" xml:space="preserve">
+    <value>网络源</value>
+  </data>
+  <data name="Dashboards_Widget_HostTools" xml:space="preserve">
+    <value>主机工具和数据</value>
+  </data>
+  <data name="Dashboards_Widget_Rejected" xml:space="preserve">
+    <value>访问已拒绝</value>
+  </data>
+  <data name="Dashboards_Widget_RejectedDetail" xml:space="preserve">
+    <value>此小组件在被删除或替换之前保持非活动状态。</value>
+  </data>
+  <data name="Dashboards_Widget_McpAppTitle" xml:space="preserve">
+    <value>MCP 应用</value>
+  </data>
+  <data name="Dashboards_Widget_McpAppDetail" xml:space="preserve">
+    <value>MCP 应用小组件尚不可在 Windows 上使用。</value>
+  </data>
+  <data name="Dashboards_Widget_DisabledPluginFormat" xml:space="preserve">
+    <value>来自已禁用插件 {0} 的小组件</value>
+  </data>
+  <data name="Dashboards_Widget_UnsupportedTitle" xml:space="preserve">
+    <value>此小组件尚不可在 Windows 上使用</value>
+  </data>
+  <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
+    <value>{0} 小组件尚不可在 Windows 上使用。</value>
+  </data>
+  <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
+    <value>此报告包含无效数据。</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteInvalid" xml:space="preserve">
+    <value>此网站小组件需要有效的 HTTPS 地址。</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteFailed" xml:space="preserve">
+    <value>无法加载此网站。请检查连接，然后选择“重试”。</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteOpen" xml:space="preserve">
+    <value>打开网站</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteEmbedHint" xml:space="preserve">
+    <value>如果此网站无法在此处加载，请在浏览器中打开。</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteSameOrigin" xml:space="preserve">
+    <value>请在浏览器中打开此网站。网关页面无法嵌入网站小组件。</value>
+  </data>
+  <data name="Command_GoToDashboards_Title" xml:space="preserve">
+    <value>转到仪表板</value>
+  </data>
+  <data name="Command_GoToDashboards_Subtitle" xml:space="preserve">
+    <value>会话中的实时看板</value>
+  </data>
+  <data name="Command_OpenSessionDashboard_TitleFormat" xml:space="preserve">
+    <value>打开仪表板: {0}</value>
+  </data>
+  <data name="Command_OpenSessionDashboard_Subtitle" xml:space="preserve">
+    <value>会话仪表板</value>
+  </data>
+  <data name="HubWindow_NavDashboards.Content" xml:space="preserve">
+    <value>仪表板</value>
+  </data>
+  <data name="SessionsPage_OpenDashboard.Text" xml:space="preserve">
+    <value>打开仪表板</value>
+  </data>
+  <data name="Dashboards_Tagline" xml:space="preserve">
+    <value>由代理创建并持续更新的实时看板。</value>
+  </data>
+  <data name="Dashboards_StatTotal" xml:space="preserve">
+    <value>仪表板</value>
+  </data>
+  <data name="Dashboards_StatLive" xml:space="preserve">
+    <value>正在实时更新</value>
+  </data>
+  <data name="Dashboards_StatAuthors" xml:space="preserve">
+    <value>作者</value>
+  </data>
+  <data name="Dashboards_PreviewEmpty" xml:space="preserve">
+    <value>尚未固定任何内容</value>
+  </data>
+  <data name="Dashboards_OpenAction" xml:space="preserve">
+    <value>打开</value>
+  </data>
+  <data name="Dashboards_AskInChat" xml:space="preserve">
+    <value>在聊天中询问</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>节点沙盒</value>
   </data>

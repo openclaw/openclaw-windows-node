@@ -11,6 +11,10 @@ namespace OpenClaw.GatewayFixtureHost;
 /// <summary>Owns synthetic app state. No installed settings or identities are imported.</summary>
 public sealed class GatewayFixtureProfile : IDisposable
 {
+    private static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_FIXTURE_CLEANUP_TIMEOUT_SECONDS"), out var seconds) && seconds > 0
+            ? seconds : 10);
+    private static readonly TimeSpan CleanupPollInterval = TimeSpan.FromMilliseconds(50);
     private readonly TempDirectory _directory;
     private bool _disposed;
 
@@ -64,7 +68,7 @@ public sealed class GatewayFixtureProfile : IDisposable
                 VoiceAudioFeedback = false,
                 UseLegacyWebChat = false,
                 ShowCompletedSessions = true,
-                AppTheme = "Light",
+                AppTheme = Environment.GetEnvironmentVariable("OPENCLAW_FIXTURE_APP_THEME") is { Length: > 0 } theme ? theme : "Light",
                 OpenTelemetryEndpoint = null
             };
             File.WriteAllText(Path.Combine(DataDirectory, "settings.json"), settings.ToJson());
@@ -158,8 +162,21 @@ public sealed class GatewayFixtureProfile : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        EnsureNoReparsePoints(RunDirectory);
-        Directory.Delete(RunDirectory, recursive: true);
+        var cleanup = Stopwatch.StartNew();
+        while (true)
+        {
+            EnsureNoReparsePoints(RunDirectory);
+            try
+            {
+                Directory.Delete(RunDirectory, recursive: true);
+                return;
+            }
+            catch (IOException ex) when ((ex.HResult & 0xFFFF) is 32 or 33 && cleanup.Elapsed < CleanupTimeout)
+            {
+                // Killing the owned app tree can finish before WebView2 releases its Crashpad files.
+                Thread.Sleep(CleanupPollInterval);
+            }
+        }
     }
 
     private static void EnsureNoReparsePoints(string directory)

@@ -58,6 +58,8 @@ public class LocalizationValidationTests
         "VoiceOverlayWindow_winexWindowEx_2.Title",
         // Brand name — identical across all locales.
         "ConnectionPage_TopologyTailscale",
+        // Board widget content-kind chip: the HTML file-format name.
+        "Dashboards_Widget_KindHtml",
         // Canonical product surface name, shared with the existing Dashboard action.
         "ChatDashboardButton.Content",
         // Native engine executable/product name. Keep the exact llama-server
@@ -1114,6 +1116,8 @@ public class LocalizationValidationTests
                     "Onboarding_V2_ProfileFullTitle.Text" or "SandboxPage_PresetOpen.Text" => ["nl-nl"],
                     "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
+                    "Dashboards_Title" or "HubWindow_NavDashboards.Content" or "Dashboards_Live" or "Dashboards_StatTotal" => ["nl-nl"],
+                    "Dashboards_AgentLabel" => ["fr-fr", "nl-nl"],
                     _ => [],
                 };
                 if (naturalLoanwordLocales.Length > 0 &&

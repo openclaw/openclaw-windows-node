@@ -25,7 +25,8 @@ internal enum HubPageKind
     AgentEvents,
     Skills,
     Cron,
-    Workspace
+    Workspace,
+    Dashboards
 }
 
 internal enum HubCommandActionKind
@@ -103,6 +104,10 @@ internal static class HubPageRegistry
         "Command_GoToChat_Subtitle",
         "Command_GoToSessions_Title",
         "Command_GoToSessions_Subtitle",
+        "Command_GoToDashboards_Title",
+        "Command_GoToDashboards_Subtitle",
+        "Command_OpenSessionDashboard_TitleFormat",
+        "Command_OpenSessionDashboard_Subtitle",
         "Command_GoToAgentEvents_Title",
         "Command_GoToAgentEvents_Subtitle",
         "Command_GoToSkills_Title",
@@ -172,6 +177,7 @@ internal static class HubPageRegistry
         "skills" => HubPageKind.Skills,
         "cron" => HubPageKind.Cron,
         "workspace" => HubPageKind.Workspace,
+        _ when DashboardsRoute.IsDashboardsTag(tag) => HubPageKind.Dashboards,
         _ when tag?.StartsWith("agent:", StringComparison.Ordinal) == true => ResolveAgentPage(tag),
         _ => null
     };
@@ -218,11 +224,13 @@ internal static class HubPageRegistry
             tag.Equals("config", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("usage", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("cron", StringComparison.OrdinalIgnoreCase) ||
-            tag.Equals("workspace", StringComparison.OrdinalIgnoreCase);
+            tag.Equals("workspace", StringComparison.OrdinalIgnoreCase) ||
+            DashboardsRoute.IsDashboardsTag(tag);
     }
 
     public static bool ShouldKeepCurrentPageVisibleDuringDisconnect(string? currentTag) =>
-        string.Equals(currentTag, "config", StringComparison.OrdinalIgnoreCase);
+        string.Equals(currentTag, "config", StringComparison.OrdinalIgnoreCase) ||
+        DashboardsRoute.IsDashboardsTag(currentTag);
 
 #if !OPENCLAW_TRAY_TESTS
     public static Type? ResolvePageType(string? tag) => ResolvePage(tag) switch
@@ -245,6 +253,7 @@ internal static class HubPageRegistry
         HubPageKind.Skills => typeof(SkillsPage),
         HubPageKind.Cron => typeof(CronPage),
         HubPageKind.Workspace => typeof(WorkspacePage),
+        HubPageKind.Dashboards => typeof(DashboardsPage),
         _ => null
     };
 #endif
@@ -257,6 +266,7 @@ internal static class HubPageRegistry
         AddNavigation(commands, context, "AI", "Command_GoToLocalAi", "local-ai");
         AddNavigation(commands, context, "💬", "Command_GoToChat", "chat");
         AddNavigation(commands, context, "🧠", "Command_GoToSessions", "sessions");
+        AddNavigation(commands, context, "📊", "Command_GoToDashboards", DashboardsRoute.Tag);
         AddNavigation(commands, context, "🧠", "Command_GoToAgentEvents", "agentevents");
         AddNavigation(commands, context, "🧠", "Command_GoToSkills", "skills");
         commands.Add(new HubCommand(
@@ -302,6 +312,11 @@ internal static class HubPageRegistry
                 $"Go to session: {sessionKey}",
                 "Open in dashboard",
                 HubCommandAction.OpenDashboard($"sessions/{sessionKey}")));
+            commands.Add(new HubCommand(
+                "📊",
+                Format(context, "Command_OpenSessionDashboard_TitleFormat", sessionKey),
+                Get(context, "Command_OpenSessionDashboard_Subtitle"),
+                HubCommandAction.Navigate(DashboardsRoute.ForSession(sessionKey))));
         }
 
         return commands.ToImmutable();

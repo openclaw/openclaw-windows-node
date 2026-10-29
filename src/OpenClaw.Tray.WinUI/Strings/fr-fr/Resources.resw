@@ -8167,6 +8167,279 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Résumer mes sessions récentes</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>M’aider à configurer un canal</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Vérifier l’état du système</value></data>
+  <data name="Dashboards_Title" xml:space="preserve">
+    <value>Tableaux de bord</value>
+  </data>
+  <data name="Dashboards_LearnMore" xml:space="preserve">
+    <value>En savoir plus</value>
+  </data>
+  <data name="Dashboards_Refresh" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="Dashboards_AgentLabel" xml:space="preserve">
+    <value>Agent</value>
+  </data>
+  <data name="Dashboards_AllAuthors" xml:space="preserve">
+    <value>Tous les auteurs</value>
+  </data>
+  <data name="Dashboards_AuthorLabel" xml:space="preserve">
+    <value>Auteur</value>
+  </data>
+  <data name="Dashboards_SortLabel" xml:space="preserve">
+    <value>Trier</value>
+  </data>
+  <data name="Dashboards_SortUpdated" xml:space="preserve">
+    <value>Mis à jour récemment</value>
+  </data>
+  <data name="Dashboards_SortTitle" xml:space="preserve">
+    <value>Titre de A à Z</value>
+  </data>
+  <data name="Dashboards_SearchLabel" xml:space="preserve">
+    <value>Rechercher des tableaux de bord</value>
+  </data>
+  <data name="Dashboards_SearchPlaceholder" xml:space="preserve">
+    <value>Rechercher des tableaux de bord</value>
+  </data>
+  <data name="Dashboards_ResultCountFormat" xml:space="preserve">
+    <value>Tableaux de bord : {0}</value>
+  </data>
+  <data name="Dashboards_GalleryLabel" xml:space="preserve">
+    <value>Galerie de tableaux de bord</value>
+  </data>
+  <data name="Dashboards_NoResults_Title" xml:space="preserve">
+    <value>Aucun tableau de bord correspondant</value>
+  </data>
+  <data name="Dashboards_NoResults_Detail" xml:space="preserve">
+    <value>Essayez une autre recherche ou un autre auteur.</value>
+  </data>
+  <data name="Dashboards_Empty_Title" xml:space="preserve">
+    <value>Aucun tableau de bord pour le moment</value>
+  </data>
+  <data name="Dashboards_Empty_Detail" xml:space="preserve">
+    <value>Les tableaux de bord créés dans vos sessions apparaîtront ici.</value>
+  </data>
+  <data name="Dashboards_LoadError_Title" xml:space="preserve">
+    <value>Impossible de charger les tableaux de bord</value>
+  </data>
+  <data name="Dashboards_LoadErrorFormat" xml:space="preserve">
+    <value>Détails : {0}</value>
+  </data>
+  <data name="Dashboards_Retry" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
+  <data name="Dashboards_Loading" xml:space="preserve">
+    <value>Chargement des tableaux de bord</value>
+  </data>
+  <data name="Dashboards_Live" xml:space="preserve">
+    <value>En direct</value>
+  </data>
+  <data name="Dashboards_ByAuthorFormat" xml:space="preserve">
+    <value>Par {0}</value>
+  </data>
+  <data name="Dashboards_UpdatedFormat" xml:space="preserve">
+    <value>Mis à jour : {0}</value>
+  </data>
+  <data name="Dashboards_UpdatedUnknown" xml:space="preserve">
+    <value>Heure de mise à jour inconnue</value>
+  </data>
+  <data name="Dashboards_PreviewErrorFormat" xml:space="preserve">
+    <value>Aperçu indisponible : {0}</value>
+  </data>
+  <data name="Dashboards_Disconnected_Title" xml:space="preserve">
+    <value>Non connecté à une passerelle</value>
+  </data>
+  <data name="Dashboards_Disconnected_Detail" xml:space="preserve">
+    <value>Les tableaux de bord proviennent de votre passerelle. Ils reviennent lorsque la connexion est rétablie.</value>
+  </data>
+  <data name="Dashboards_Disconnected_Action" xml:space="preserve">
+    <value>Ouvrir les paramètres de connexion</value>
+  </data>
+  <data name="Dashboards_Unavailable_Title" xml:space="preserve">
+    <value>Les tableaux de bord ne sont pas disponibles</value>
+  </data>
+  <data name="Dashboards_Unavailable_Detail" xml:space="preserve">
+    <value>Cette connexion à la passerelle ne peut pas lire les tableaux de bord des sessions. Demandez un accès en lecture au propriétaire de la passerelle ou mettez-la à jour.</value>
+  </data>
+  <data name="Dashboards_Back" xml:space="preserve">
+    <value>Retour aux tableaux de bord</value>
+  </data>
+  <data name="Dashboards_OpenChat" xml:space="preserve">
+    <value>Ouvrir la conversation</value>
+  </data>
+  <data name="Dashboards_BoardLabel" xml:space="preserve">
+    <value>Tableau de bord de session</value>
+  </data>
+  <data name="Dashboards_BoardLoadError_Title" xml:space="preserve">
+    <value>Impossible de charger ce tableau de bord</value>
+  </data>
+  <data name="Dashboards_BoardEmpty_Title" xml:space="preserve">
+    <value>Un tableau vide, prêt à l'emploi</value>
+  </data>
+  <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
+    <value>Votre agent peut épingler des widgets ici. Demandez-lui une carte d'état.</value>
+  </data>
+  <data name="Dashboards_GridLabel" xml:space="preserve">
+    <value>Widgets du tableau de bord</value>
+  </data>
+  <data name="Dashboards_TabsLabel" xml:space="preserve">
+    <value>Onglets du tableau de bord</value>
+  </data>
+  <data name="Dashboards_MoreTabs" xml:space="preserve">
+    <value>Plus d'onglets</value>
+  </data>
+  <data name="Dashboards_Widget_CellFormat" xml:space="preserve">
+    <value>Widget du tableau de bord : {0}</value>
+  </data>
+  <data name="Dashboards_Widget_KindHtml" xml:space="preserve">
+    <value>HTML</value>
+  </data>
+  <data name="Dashboards_Widget_KindMcp" xml:space="preserve">
+    <value>MCP</value>
+  </data>
+  <data name="Dashboards_Widget_KindPlugin" xml:space="preserve">
+    <value>Module</value>
+  </data>
+  <data name="Dashboards_Widget_Granted" xml:space="preserve">
+    <value>Autorisé</value>
+  </data>
+  <data name="Dashboards_Widget_ActiveCapabilities" xml:space="preserve">
+    <value>Capacités actives du widget</value>
+  </data>
+  <data name="Dashboards_Widget_NetworkCapability" xml:space="preserve">
+    <value>Réseau : {0}</value>
+  </data>
+  <data name="Dashboards_Widget_ToolCapability" xml:space="preserve">
+    <value>Outil : {0}</value>
+  </data>
+  <data name="Dashboards_Widget_Loading" xml:space="preserve">
+    <value>Chargement du widget</value>
+  </data>
+  <data name="Dashboards_Widget_Slow" xml:space="preserve">
+    <value>Ce widget met plus de temps que d'habitude à se charger.</value>
+  </data>
+  <data name="Dashboards_Widget_ErrorTitle" xml:space="preserve">
+    <value>Impossible de charger ce widget</value>
+  </data>
+  <data name="Dashboards_Widget_ErrorDetail" xml:space="preserve">
+    <value>Le problème est limité à cette carte.</value>
+  </data>
+  <data name="Dashboards_Widget_ShowDetails" xml:space="preserve">
+    <value>Afficher les détails</value>
+  </data>
+  <data name="Dashboards_Widget_ContentUnavailable" xml:space="preserve">
+    <value>Le contenu du widget n'est pas disponible.</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxUnavailable" xml:space="preserve">
+    <value>L'hôte de bac à sable du widget n'est pas disponible.</value>
+  </data>
+  <data name="Dashboards_Widget_WebViewUnavailable" xml:space="preserve">
+    <value>Le contenu du widget nécessite Microsoft Edge WebView2 Runtime.</value>
+  </data>
+  <data name="Dashboards_Widget_RenderTimeout" xml:space="preserve">
+    <value>Le contenu du widget n'a pas fini de se charger. Sélectionnez Réessayer.</value>
+  </data>
+  <data name="Dashboards_Widget_StoppedResponding" xml:space="preserve">
+    <value>Le contenu du widget a cessé de répondre à plusieurs reprises. Sélectionnez Réessayer.</value>
+  </data>
+  <data name="Dashboards_Widget_AuthorizationFailed" xml:space="preserve">
+    <value>L'autorisation du widget a échoué après plusieurs tentatives d'actualisation.</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxOriginRequired" xml:space="preserve">
+    <value>L'autorisation du widget a échoué après plusieurs tentatives d'actualisation. Si la passerelle s'exécute derrière un proxy inverse ou un tunnel qui n'achemine pas le port du bac à sable, définissez mcp.apps.sandboxOrigin sur une origine publique dédiée acheminée vers l'écouteur du bac à sable.</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxUnreachableHint" xml:space="preserve">
+    <value>Le bac à sable du widget n'a pas répondu. Si la passerelle s'exécute derrière un proxy inverse ou un tunnel qui n'achemine pas le port du bac à sable, définissez mcp.apps.sandboxOrigin sur une origine publique dédiée acheminée vers l'écouteur du bac à sable.</value>
+  </data>
+  <data name="Dashboards_Widget_NeedsApproval" xml:space="preserve">
+    <value>Approbation requise</value>
+  </data>
+  <data name="Dashboards_Widget_NeedsApprovalDetail" xml:space="preserve">
+    <value>Ce widget a demandé un accès supplémentaire.</value>
+  </data>
+  <data name="Dashboards_Widget_NetworkAccess" xml:space="preserve">
+    <value>Origines réseau</value>
+  </data>
+  <data name="Dashboards_Widget_HostTools" xml:space="preserve">
+    <value>Outils et données de l'hôte</value>
+  </data>
+  <data name="Dashboards_Widget_Rejected" xml:space="preserve">
+    <value>Accès refusé</value>
+  </data>
+  <data name="Dashboards_Widget_RejectedDetail" xml:space="preserve">
+    <value>Ce widget reste inactif jusqu'à ce qu'il soit supprimé ou remplacé.</value>
+  </data>
+  <data name="Dashboards_Widget_McpAppTitle" xml:space="preserve">
+    <value>Application MCP</value>
+  </data>
+  <data name="Dashboards_Widget_McpAppDetail" xml:space="preserve">
+    <value>Les widgets d'application MCP ne sont pas encore disponibles sur Windows.</value>
+  </data>
+  <data name="Dashboards_Widget_DisabledPluginFormat" xml:space="preserve">
+    <value>Widget du module désactivé {0}</value>
+  </data>
+  <data name="Dashboards_Widget_UnsupportedTitle" xml:space="preserve">
+    <value>Widget pas encore disponible sur Windows</value>
+  </data>
+  <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
+    <value>Les widgets {0} ne sont pas encore disponibles sur Windows.</value>
+  </data>
+  <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
+    <value>Ce rapport contient des données non valides.</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteInvalid" xml:space="preserve">
+    <value>Ce widget de site web nécessite une adresse HTTPS valide.</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteFailed" xml:space="preserve">
+    <value>Impossible de charger ce site web. Vérifiez votre connexion, puis sélectionnez Réessayer.</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteOpen" xml:space="preserve">
+    <value>Ouvrir le site web</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteEmbedHint" xml:space="preserve">
+    <value>Si ce site ne se charge pas ici, ouvrez-le dans votre navigateur.</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteSameOrigin" xml:space="preserve">
+    <value>Ouvrez ce site web dans votre navigateur. Les pages de la passerelle ne peuvent pas être incorporées dans un widget de site web.</value>
+  </data>
+  <data name="Command_GoToDashboards_Title" xml:space="preserve">
+    <value>Accéder aux tableaux de bord</value>
+  </data>
+  <data name="Command_GoToDashboards_Subtitle" xml:space="preserve">
+    <value>Tableaux en direct de vos sessions</value>
+  </data>
+  <data name="Command_OpenSessionDashboard_TitleFormat" xml:space="preserve">
+    <value>Ouvrir le tableau de bord : {0}</value>
+  </data>
+  <data name="Command_OpenSessionDashboard_Subtitle" xml:space="preserve">
+    <value>Tableau de bord de session</value>
+  </data>
+  <data name="HubWindow_NavDashboards.Content" xml:space="preserve">
+    <value>Tableaux de bord</value>
+  </data>
+  <data name="SessionsPage_OpenDashboard.Text" xml:space="preserve">
+    <value>Ouvrir le tableau de bord</value>
+  </data>
+  <data name="Dashboards_Tagline" xml:space="preserve">
+    <value>Des tableaux en direct que vos agents créent et tiennent à jour.</value>
+  </data>
+  <data name="Dashboards_StatTotal" xml:space="preserve">
+    <value>Tableaux de bord</value>
+  </data>
+  <data name="Dashboards_StatLive" xml:space="preserve">
+    <value>En direct</value>
+  </data>
+  <data name="Dashboards_StatAuthors" xml:space="preserve">
+    <value>Auteurs</value>
+  </data>
+  <data name="Dashboards_PreviewEmpty" xml:space="preserve">
+    <value>Rien d'épinglé pour le moment</value>
+  </data>
+  <data name="Dashboards_OpenAction" xml:space="preserve">
+    <value>Ouvrir</value>
+  </data>
+  <data name="Dashboards_AskInChat" xml:space="preserve">
+    <value>Demander dans la conversation</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Sandbox du nœud</value>
   </data>

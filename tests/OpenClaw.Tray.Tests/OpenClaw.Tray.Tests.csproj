@@ -280,6 +280,12 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ConnectionTogglePresenter.cs" Link="Presentation\ConnectionTogglePresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\TrayMenuPresenter.cs" Link="Presentation\TrayMenuPresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubPageRegistry.cs" Link="Presentation\HubPageRegistry.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DashboardsRoute.cs" Link="Presentation\DashboardsRoute.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Dashboards\DashboardGalleryModel.cs" Link="Dashboards\DashboardGalleryModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Dashboards\BoardDocumentModel.cs" Link="Dashboards\BoardDocumentModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Dashboards\DashboardsPageState.cs" Link="Dashboards\DashboardsPageState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Dashboards\BoardPreviewSlots.cs" Link="Dashboards\BoardPreviewSlots.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Dashboards\BoardWidgetWebHostRequest.cs" Link="Dashboards\BoardWidgetWebHostRequest.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceNavigation.cs" Link="Presentation\WorkspaceNavigation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ChatVisibilityPolicy.cs" Link="Presentation\ChatVisibilityPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceProjection.cs" Link="Presentation\WorkspaceProjection.cs" />

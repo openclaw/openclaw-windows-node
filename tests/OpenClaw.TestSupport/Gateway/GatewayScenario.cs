@@ -14,6 +14,7 @@ public sealed partial class GatewayScenario
 {
     public const string BrowseName = "multi-session-browse";
     public const string InteractiveName = "chat-interactive";
+    public const string DashboardsName = "dashboards";
     public const string MainSessionKey = "agent:main:main";
     public const string LongSessionKey = "agent:main:fixture-long";
     public const string OtherSessionKey = "agent:research:fixture-other";
@@ -57,13 +58,16 @@ public sealed partial class GatewayScenario
     private readonly bool _allowChatSend;
     public bool IsInteractive { get; }
     private readonly ContextUsageFixture? _contextUsage;
+    private readonly FixtureBoards? _boards;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Session> _createdSessions = new(StringComparer.Ordinal);
     private readonly List<object> _createdAgents = [];
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public FixtureBoards? Boards => _boards;
+
+    public string Name => _boards is not null ? DashboardsName : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -76,7 +80,8 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        FixtureBoards? boards = null)
     {
         _sessions = sessions;
         _reads = reads;
@@ -88,6 +93,7 @@ public sealed partial class GatewayScenario
         _allowChatSend = allowChatSend;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         _contextUsage = contextUsage;
+        _boards = boards;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
@@ -97,10 +103,11 @@ public sealed partial class GatewayScenario
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
+            .Concat(boards is null ? [] : FixtureBoards.Methods)
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
-            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog,
+            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog, boards = boards?.SessionKeys,
             sessions = sessions.Select(s => new { s.Row, s.Messages }), reads, cronJobs
         });
         Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant();
@@ -110,8 +117,16 @@ public sealed partial class GatewayScenario
     {
         BrowseName => CreateBrowse(),
         InteractiveName => CreateInteractive(),
+        DashboardsName => CreateDashboards(),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
+
+    /// <summary>Synthetic session dashboards: gallery rows, boards, widget documents, and a sandbox proxy.</summary>
+    public static GatewayScenario CreateDashboards()
+    {
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, boards: new FixtureBoards());
+    }
 
     public static GatewayScenario CreateInteractive()
     {
@@ -346,13 +361,22 @@ public sealed partial class GatewayScenario
             },
             policy = new { maxPayload = 1_048_576, maxBufferedBytes = 1_048_576, tickIntervalMs = 30_000 }
         };
-        return hello;
+        if (_boards is null || role != "operator")
+            return hello;
+        // Dashboards advertise board methods/events, trusted core widget kinds, and read/write/approval access.
+        var dashboardHello = JsonSerializer.SerializeToNode(hello)!.AsObject();
+        var features = dashboardHello["features"]!.AsObject();
+        features["events"] = new JsonArray([.. features["events"]!.AsArray().Select(e => e!.DeepClone()),
+            .. FixtureBoards.Events.Select(e => (JsonNode)JsonValue.Create(e))]);
+        dashboardHello["controlUiWidgetKinds"] = JsonSerializer.SerializeToNode(FixtureBoards.HelloWidgetKinds());
+        dashboardHello["auth"]!["scopes"] = new JsonArray("operator.read", "operator.write", "operator.approvals");
+        return dashboardHello;
     }
 
     internal bool ContainsSession(string key)
     {
         lock (_sessionChanges)
-            return _sessions.Any(s => s.Key == key) || _createdSessions.ContainsKey(key);
+            return _sessions.Any(s => s.Key == key) || _createdSessions.ContainsKey(key) || _boards?.SessionKeys.Contains(key) == true;
     }
 
     internal bool ContainsChatRun(string sessionKey, string runId)
@@ -363,6 +387,10 @@ public sealed partial class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters, Func<string, bool>? containsModelSession = null)
     {
+        if (_boards is not null && method == "board.get")
+            return _boards.GetBoard(parameters);
+        if (_boards is not null && method == "sessions.list" && OptionalString(parameters, "rowMode") == "dashboard")
+            return _boards.ListSessions(parameters);
         if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
             return RespondCron(method, parameters);
         if (_contextUsage is not null && method == "chat.send")
@@ -661,7 +689,7 @@ public sealed partial class GatewayScenario
     internal static string RequiredString(JsonElement p, string name) => OptionalString(p, name)
         ?? throw new FixtureRequestException("INVALID_PARAMS", $"Missing {name}.");
 
-    private static string? OptionalString(JsonElement p, string name)
+    internal static string? OptionalString(JsonElement p, string name)
     {
         if (!p.TryGetProperty(name, out var value))
             return null;
@@ -670,7 +698,7 @@ public sealed partial class GatewayScenario
         return value.GetString();
     }
 
-    private static int PositiveInt(JsonElement p, string name, int fallback)
+    internal static int PositiveInt(JsonElement p, string name, int fallback)
     {
         if (!p.TryGetProperty(name, out var value))
             return fallback;

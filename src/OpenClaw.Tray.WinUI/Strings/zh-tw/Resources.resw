@@ -8167,6 +8167,279 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>摘要我的近期工作階段</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>協助我設定頻道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>檢查系統健康狀態</value></data>
+  <data name="Dashboards_Title" xml:space="preserve">
+    <value>儀表板</value>
+  </data>
+  <data name="Dashboards_LearnMore" xml:space="preserve">
+    <value>深入了解</value>
+  </data>
+  <data name="Dashboards_Refresh" xml:space="preserve">
+    <value>重新整理</value>
+  </data>
+  <data name="Dashboards_AgentLabel" xml:space="preserve">
+    <value>代理程式</value>
+  </data>
+  <data name="Dashboards_AllAuthors" xml:space="preserve">
+    <value>所有作者</value>
+  </data>
+  <data name="Dashboards_AuthorLabel" xml:space="preserve">
+    <value>作者</value>
+  </data>
+  <data name="Dashboards_SortLabel" xml:space="preserve">
+    <value>排序</value>
+  </data>
+  <data name="Dashboards_SortUpdated" xml:space="preserve">
+    <value>最近更新</value>
+  </data>
+  <data name="Dashboards_SortTitle" xml:space="preserve">
+    <value>標題 A 到 Z</value>
+  </data>
+  <data name="Dashboards_SearchLabel" xml:space="preserve">
+    <value>搜尋儀表板</value>
+  </data>
+  <data name="Dashboards_SearchPlaceholder" xml:space="preserve">
+    <value>搜尋儀表板</value>
+  </data>
+  <data name="Dashboards_ResultCountFormat" xml:space="preserve">
+    <value>儀表板: {0}</value>
+  </data>
+  <data name="Dashboards_GalleryLabel" xml:space="preserve">
+    <value>儀表板庫</value>
+  </data>
+  <data name="Dashboards_NoResults_Title" xml:space="preserve">
+    <value>沒有相符的儀表板</value>
+  </data>
+  <data name="Dashboards_NoResults_Detail" xml:space="preserve">
+    <value>請嘗試其他搜尋或作者。</value>
+  </data>
+  <data name="Dashboards_Empty_Title" xml:space="preserve">
+    <value>尚無儀表板</value>
+  </data>
+  <data name="Dashboards_Empty_Detail" xml:space="preserve">
+    <value>在工作階段中建立的儀表板會顯示在這裡。</value>
+  </data>
+  <data name="Dashboards_LoadError_Title" xml:space="preserve">
+    <value>無法載入儀表板</value>
+  </data>
+  <data name="Dashboards_LoadErrorFormat" xml:space="preserve">
+    <value>詳細資料: {0}</value>
+  </data>
+  <data name="Dashboards_Retry" xml:space="preserve">
+    <value>重試</value>
+  </data>
+  <data name="Dashboards_Loading" xml:space="preserve">
+    <value>正在載入儀表板</value>
+  </data>
+  <data name="Dashboards_Live" xml:space="preserve">
+    <value>即時</value>
+  </data>
+  <data name="Dashboards_ByAuthorFormat" xml:space="preserve">
+    <value>作者: {0}</value>
+  </data>
+  <data name="Dashboards_UpdatedFormat" xml:space="preserve">
+    <value>更新時間: {0}</value>
+  </data>
+  <data name="Dashboards_UpdatedUnknown" xml:space="preserve">
+    <value>更新時間不明</value>
+  </data>
+  <data name="Dashboards_PreviewErrorFormat" xml:space="preserve">
+    <value>無法預覽: {0}</value>
+  </data>
+  <data name="Dashboards_Disconnected_Title" xml:space="preserve">
+    <value>未連線到閘道</value>
+  </data>
+  <data name="Dashboards_Disconnected_Detail" xml:space="preserve">
+    <value>儀表板來自閘道。連線恢復後會重新顯示。</value>
+  </data>
+  <data name="Dashboards_Disconnected_Action" xml:space="preserve">
+    <value>開啟連線設定</value>
+  </data>
+  <data name="Dashboards_Unavailable_Title" xml:space="preserve">
+    <value>無法使用儀表板</value>
+  </data>
+  <data name="Dashboards_Unavailable_Detail" xml:space="preserve">
+    <value>此閘道連線無法讀取工作階段儀表板。請向閘道擁有者要求讀取權限，或更新閘道。</value>
+  </data>
+  <data name="Dashboards_Back" xml:space="preserve">
+    <value>返回儀表板</value>
+  </data>
+  <data name="Dashboards_OpenChat" xml:space="preserve">
+    <value>開啟聊天</value>
+  </data>
+  <data name="Dashboards_BoardLabel" xml:space="preserve">
+    <value>工作階段儀表板</value>
+  </data>
+  <data name="Dashboards_BoardLoadError_Title" xml:space="preserve">
+    <value>無法載入此儀表板</value>
+  </data>
+  <data name="Dashboards_BoardEmpty_Title" xml:space="preserve">
+    <value>空白看板，隨時可用</value>
+  </data>
+  <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
+    <value>代理程式可以在這裡釘選小工具。試著要求一張狀態卡。</value>
+  </data>
+  <data name="Dashboards_GridLabel" xml:space="preserve">
+    <value>儀表板小工具</value>
+  </data>
+  <data name="Dashboards_TabsLabel" xml:space="preserve">
+    <value>儀表板索引標籤</value>
+  </data>
+  <data name="Dashboards_MoreTabs" xml:space="preserve">
+    <value>更多索引標籤</value>
+  </data>
+  <data name="Dashboards_Widget_CellFormat" xml:space="preserve">
+    <value>儀表板小工具: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_KindHtml" xml:space="preserve">
+    <value>HTML</value>
+  </data>
+  <data name="Dashboards_Widget_KindMcp" xml:space="preserve">
+    <value>MCP</value>
+  </data>
+  <data name="Dashboards_Widget_KindPlugin" xml:space="preserve">
+    <value>外掛程式</value>
+  </data>
+  <data name="Dashboards_Widget_Granted" xml:space="preserve">
+    <value>已授權</value>
+  </data>
+  <data name="Dashboards_Widget_ActiveCapabilities" xml:space="preserve">
+    <value>小工具的作用中功能</value>
+  </data>
+  <data name="Dashboards_Widget_NetworkCapability" xml:space="preserve">
+    <value>網路: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_ToolCapability" xml:space="preserve">
+    <value>工具: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_Loading" xml:space="preserve">
+    <value>正在載入小工具</value>
+  </data>
+  <data name="Dashboards_Widget_Slow" xml:space="preserve">
+    <value>此小工具的載入時間比平常長。</value>
+  </data>
+  <data name="Dashboards_Widget_ErrorTitle" xml:space="preserve">
+    <value>無法載入此小工具</value>
+  </data>
+  <data name="Dashboards_Widget_ErrorDetail" xml:space="preserve">
+    <value>問題僅限於此卡片。</value>
+  </data>
+  <data name="Dashboards_Widget_ShowDetails" xml:space="preserve">
+    <value>顯示詳細資料</value>
+  </data>
+  <data name="Dashboards_Widget_ContentUnavailable" xml:space="preserve">
+    <value>無法使用小工具內容。</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxUnavailable" xml:space="preserve">
+    <value>無法使用小工具沙箱主機。</value>
+  </data>
+  <data name="Dashboards_Widget_WebViewUnavailable" xml:space="preserve">
+    <value>小工具內容需要 Microsoft Edge WebView2 Runtime。</value>
+  </data>
+  <data name="Dashboards_Widget_RenderTimeout" xml:space="preserve">
+    <value>小工具內容未完成載入。請選取 [重試]。</value>
+  </data>
+  <data name="Dashboards_Widget_StoppedResponding" xml:space="preserve">
+    <value>小工具內容多次停止回應。請選取 [重試]。</value>
+  </data>
+  <data name="Dashboards_Widget_AuthorizationFailed" xml:space="preserve">
+    <value>多次重新整理後，小工具授權仍失敗。</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxOriginRequired" xml:space="preserve">
+    <value>多次重新整理後，小工具授權仍失敗。如果閘道位於不轉送小工具沙箱連接埠的反向 Proxy 或通道之後，請將 mcp.apps.sandboxOrigin 設為路由到沙箱接聽程式的專用公開來源。</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxUnreachableHint" xml:space="preserve">
+    <value>小工具沙箱沒有回應。如果閘道位於不轉送小工具沙箱連接埠的反向 Proxy 或通道之後，請將 mcp.apps.sandboxOrigin 設為路由到沙箱接聽程式的專用公開來源。</value>
+  </data>
+  <data name="Dashboards_Widget_NeedsApproval" xml:space="preserve">
+    <value>需要核准</value>
+  </data>
+  <data name="Dashboards_Widget_NeedsApprovalDetail" xml:space="preserve">
+    <value>此小工具要求了額外的存取權。</value>
+  </data>
+  <data name="Dashboards_Widget_NetworkAccess" xml:space="preserve">
+    <value>網路來源</value>
+  </data>
+  <data name="Dashboards_Widget_HostTools" xml:space="preserve">
+    <value>主機工具與資料</value>
+  </data>
+  <data name="Dashboards_Widget_Rejected" xml:space="preserve">
+    <value>存取已拒絕</value>
+  </data>
+  <data name="Dashboards_Widget_RejectedDetail" xml:space="preserve">
+    <value>此小工具在移除或取代前會保持非作用中。</value>
+  </data>
+  <data name="Dashboards_Widget_McpAppTitle" xml:space="preserve">
+    <value>MCP 應用程式</value>
+  </data>
+  <data name="Dashboards_Widget_McpAppDetail" xml:space="preserve">
+    <value>MCP 應用程式小工具尚無法在 Windows 上使用。</value>
+  </data>
+  <data name="Dashboards_Widget_DisabledPluginFormat" xml:space="preserve">
+    <value>來自已停用外掛程式 {0} 的小工具</value>
+  </data>
+  <data name="Dashboards_Widget_UnsupportedTitle" xml:space="preserve">
+    <value>此小工具尚無法在 Windows 上使用</value>
+  </data>
+  <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
+    <value>{0} 小工具尚無法在 Windows 上使用。</value>
+  </data>
+  <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
+    <value>此報告包含無效資料。</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteInvalid" xml:space="preserve">
+    <value>此網站小工具需要有效的 HTTPS 位址。</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteFailed" xml:space="preserve">
+    <value>無法載入此網站。請檢查連線，然後選取 [重試]。</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteOpen" xml:space="preserve">
+    <value>開啟網站</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteEmbedHint" xml:space="preserve">
+    <value>如果此網站無法在這裡載入，請在瀏覽器中開啟。</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteSameOrigin" xml:space="preserve">
+    <value>請在瀏覽器中開啟此網站。閘道頁面無法內嵌在網站小工具中。</value>
+  </data>
+  <data name="Command_GoToDashboards_Title" xml:space="preserve">
+    <value>前往儀表板</value>
+  </data>
+  <data name="Command_GoToDashboards_Subtitle" xml:space="preserve">
+    <value>工作階段中的即時看板</value>
+  </data>
+  <data name="Command_OpenSessionDashboard_TitleFormat" xml:space="preserve">
+    <value>開啟儀表板: {0}</value>
+  </data>
+  <data name="Command_OpenSessionDashboard_Subtitle" xml:space="preserve">
+    <value>工作階段儀表板</value>
+  </data>
+  <data name="HubWindow_NavDashboards.Content" xml:space="preserve">
+    <value>儀表板</value>
+  </data>
+  <data name="SessionsPage_OpenDashboard.Text" xml:space="preserve">
+    <value>開啟儀表板</value>
+  </data>
+  <data name="Dashboards_Tagline" xml:space="preserve">
+    <value>由代理程式建立並持續更新的即時看板。</value>
+  </data>
+  <data name="Dashboards_StatTotal" xml:space="preserve">
+    <value>儀表板</value>
+  </data>
+  <data name="Dashboards_StatLive" xml:space="preserve">
+    <value>正在即時更新</value>
+  </data>
+  <data name="Dashboards_StatAuthors" xml:space="preserve">
+    <value>作者</value>
+  </data>
+  <data name="Dashboards_PreviewEmpty" xml:space="preserve">
+    <value>尚未釘選任何內容</value>
+  </data>
+  <data name="Dashboards_OpenAction" xml:space="preserve">
+    <value>開啟</value>
+  </data>
+  <data name="Dashboards_AskInChat" xml:space="preserve">
+    <value>在聊天中詢問</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>節點沙箱</value>
   </data>

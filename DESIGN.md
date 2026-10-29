@@ -1027,6 +1027,18 @@ The [120-DPI comparison](.agents/design/reference/chat-comparison.png) preserves
 
 The Colophon catalog now uses the actual geometry, semantic alpha brushes and Fluent glyphs. It is **not a verified pixel-identical native renderer**: Mica is wallpaper/activation-dependent; this host's native UI Automation reports Segoe UI Variable while Chromium resolves the requested family to Segoe UI; and text rasterization/layout rounding differ. The installed schema also lacks responsive breakpoints, row-hover opacity, gradient elevation borders and native input/flyout behavior. Fixed-size references must not become production layout code. High-contrast preview swatches are resource simulations, not evidence of Windows HC mode.
 
+## Dashboards expressive extension
+
+The Dashboards hub page (`src/OpenClaw.Tray.WinUI/Dashboards/`) is the one place this system spends color on identity, at the product owner's direction: dashboards are visual workspaces, and a gallery of identical gray cards reads as a file list. The extension adds color without weakening the core rules.
+
+- **Palette.** Six categorical hues (blue, teal, purple, pumpkin, berry, green) are theme resources in `Themes/DashboardResources.xaml`: `DashboardHue{n}Brush` (strong, at least 4.5:1 on cards in light and dark), `DashboardHue{n}SubtleBrush` (tinted tiles) and `DashboardHue{n}WashBrush` (preview and metric backdrops), plus `DashboardOnHueBrush` for text on a strong fill. Light uses Fluent-style shades, dark uses tints. High contrast maps every hue to `SystemColorHighlightColor` and every wash to `SystemColorWindowColor`, so identity never carries meaning on its own.
+- **What hues mean.** A dashboard's hue is stable for its session key (monogram, preview wash); an author's hue is stable for the author id (avatar). Widget kinds have fixed hues: HTML blue, report purple, website teal, MCP app pumpkin, other plugins green. Hues never encode state: live, approval, error and disconnected keep `positive`, `warning` and `critical`, and actions keep the system `accent`.
+- **Hero.** The gallery header is a 12px-radius panel on `DashboardHeroBrush`, a soft diagonal wash of three hues at low alpha (a solid window color in high contrast), with a title, tagline, three stats and a small tile mosaic. It is the only gradient on the page.
+- **Motion.** Cards rise 4px on hover (160ms decelerate), cards and widgets fade and rise on entry with a 45ms stagger, the Live dot breathes over 1.8s, mosaic tiles drift a few pixels and loading tiles shimmer. Every loop and entrance is skipped when Windows animations are off (`UseReducedMotion`).
+- **Charts.** Report charts draw one series in the purple hue with the peak at full strength and other bars at 55%, rounded tops and soft gridlines. Metrics get a hue rail on a matching wash, cycling from purple.
+
+Do not reuse this palette outside Dashboards without updating this section, and keep it out of chat, setup and settings surfaces.
+
 ## Workspace shell
 
 The landing window is the native Home and Sessions workspace (`Windows/WorkspaceWindow.xaml`, shipped in #1541). The reference is reconciled against production commit `dc9f6345821075362580bd598cc32e4f2aa6a18a` and the supplied 125%-scale screenshot. It shows that screenshot's expanded, no-agent/no-session state, Owner / Error footer and one notification, not invented connected conversations. It is a Mica window with a 32px title bar, a 256px left `NavigationView` pane, and a content host that mounts the Reactor chat when connected. Settings remains an independent native companion window.

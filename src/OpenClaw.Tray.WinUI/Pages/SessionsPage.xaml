@@ -204,6 +204,18 @@
                                                           IsTextScaleFactorEnabled="False"/>
                                                 <Button.Flyout>
                                                     <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                                        <MenuFlyoutItem x:Uid="SessionsPage_OpenDashboard"
+                                                                        Text="Open dashboard"
+                                                                        Tag="{Binding Key}"
+                                                                        Click="OnOpenDashboard"
+                                                                        AutomationProperties.AutomationId="SessionOpenDashboard">
+                                                            <MenuFlyoutItem.Icon>
+                                                                <FontIcon Glyph="&#xECA5;"
+                                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                          IsTextScaleFactorEnabled="False"/>
+                                                            </MenuFlyoutItem.Icon>
+                                                        </MenuFlyoutItem>
+                                                        <MenuFlyoutSeparator/>
                                                         <MenuFlyoutItem x:Uid="SessionsPage_Reset"
                                                                         Text="Reset"
                                                                         Tag="{Binding Key}"

@@ -509,6 +509,10 @@ public sealed partial class HubWindow : WindowEx
         // re-invokes the current page.
         if (nativeRequest is null && ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
+            // Dashboards opens and closes boards in-page without changing the hub tag,
+            // so the same tag can still mean a different visible destination.
+            if (ContentFrame.Content is DashboardsPage dashboards)
+                dashboards.Initialize(this, tag);
             _contentReady = CreateCompletedContentReady();
             AccessibilityNavigationSignal.WritePageReady(pageType.Name);
             return;
@@ -534,6 +538,9 @@ public sealed partial class HubWindow : WindowEx
     private void SyncNavSelection(string? tag)
     {
         if (tag == null) return;
+        // A session dashboard route lights up the Dashboards rail item.
+        if (DashboardsRoute.IsDashboardsTag(tag))
+            tag = DashboardsRoute.Tag;
         var item = FindNavItemForTag(NavView.MenuItems, tag)
                 ?? FindNavItemForTag(NavView.FooterMenuItems, tag);
         if (item != null && !ReferenceEquals(NavView.SelectedItem, item))
@@ -678,11 +685,16 @@ public sealed partial class HubWindow : WindowEx
                 HubPageRegistry.ShouldKeepCurrentPageVisibleDuringDisconnect(currentTag);
 
             NavSessions.Visibility = vis;
+            NavDashboards.Visibility = keepCurrentGatewayPageVisible && DashboardsRoute.IsDashboardsTag(currentTag)
+                ? Visibility.Visible
+                : vis;
             NavSkills.Visibility = vis;
             NavChannels.Visibility = vis;
             NavInstances.Visibility = vis;
             NavCron.Visibility = vis;
-            NavAdvanced.Visibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
+            NavAdvanced.Visibility = keepCurrentGatewayPageVisible && !DashboardsRoute.IsDashboardsTag(currentTag)
+                ? Visibility.Visible
+                : vis;
             NavGatewaySeparator.Visibility = vis;
 
             if (!connected)
@@ -935,6 +947,7 @@ public sealed partial class HubWindow : WindowEx
                 }
                 break;
             case InstancesPage instances: instances.Initialize(); break;
+            case DashboardsPage dashboards: dashboards.Initialize(this, _currentNavTag); break;
             case PermissionsPage: break;
             case SandboxPage sandbox: sandbox.Initialize(); break;
             case VoiceSettingsPage voice: voice.Initialize(CurrentApp.VoiceService); break;

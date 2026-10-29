@@ -491,6 +491,12 @@ public sealed partial class SessionsPage : Page
         }
     }
 
+    private void OnOpenDashboard(object sender, RoutedEventArgs e)
+    {
+        if (ResolveSessionKey(sender) is { } key)
+            ((IAppCommands)CurrentApp).Navigate(OpenClawTray.Presentation.DashboardsRoute.ForSession(key));
+    }
+
     private void ChannelSelector_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
         var selected = sender.SelectedItem;
