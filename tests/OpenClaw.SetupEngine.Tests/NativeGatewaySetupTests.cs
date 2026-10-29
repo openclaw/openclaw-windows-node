@@ -1161,6 +1161,9 @@ public sealed class NativeGatewaySetupTests
         }
 
         public List<NativeGatewaySetupStage> Progress { get; } = [];
+        public Action<long, GatewayHandshakeObservation>? HandshakeObservation { get; set; }
+        public void ReportHandshakeObservation(long attempt, GatewayHandshakeObservation observation) =>
+            HandshakeObservation?.Invoke(attempt, observation);
         public void ReportProgress(NativeGatewaySetupStage stage) => Progress.Add(stage);
         public Action Prepare { get; set; } = () => { };
         public Action Health { get; set; } = () => { };

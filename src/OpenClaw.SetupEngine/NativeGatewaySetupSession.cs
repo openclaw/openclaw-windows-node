@@ -28,6 +28,16 @@ public sealed class NativeGatewaySetupSession(
     private bool _published;
     private string? _identityBinding;
     private IDisposable? _terminal;
+    private long _connectionAttempt;
+
+    internal long NextConnectionAttempt() => Interlocked.Increment(ref _connectionAttempt);
+
+    internal void ReportHandshakeObservation(long connectionAttempt, GatewayHandshakeObservation observation)
+    {
+        if (!_disposed && !_lifetime.IsCancellationRequested)
+            host.ReportHandshakeObservation(connectionAttempt, observation);
+    }
+
     public GatewayRecord Record { get; private set; } = record;
     public bool IsIsolated => draft.Contract == NativeGatewayContract.IsolatedSessionV1;
     public bool IsPublished => _published;

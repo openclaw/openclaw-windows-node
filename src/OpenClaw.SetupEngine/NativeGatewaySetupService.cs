@@ -15,6 +15,8 @@ public interface INativeGatewaySetupHost
 {
     void ReportProgress(NativeGatewaySetupStage stage) { }
 
+    void ReportHandshakeObservation(long connectionAttempt, GatewayHandshakeObservation observation) { }
+
     Task<NativeGatewayContract> DetectContractAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken);
 

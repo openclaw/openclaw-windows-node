@@ -218,6 +218,59 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         return Task.CompletedTask;
     }
 
+    private readonly object _handshakeObservationLock = new();
+    private long _observedTransportGeneration;
+    private long _handshakeStartedTimestamp;
+    private long _handshakePhaseTimestamp;
+
+    public event EventHandler<GatewayHandshakeObservation>? HandshakeObserved;
+
+    protected override void OnTransportObservation(
+        long connectionGeneration, GatewayHandshakePhase phase,
+        Exception? error = null, GatewayErrorKind? failureKind = null)
+    {
+        lock (_handshakeObservationLock)
+        {
+            if (!IsCurrentConnectionGeneration(connectionGeneration) || CancellationToken.IsCancellationRequested)
+                return;
+            if (phase == GatewayHandshakePhase.TransportConnecting)
+            {
+                _observedTransportGeneration = connectionGeneration;
+                _handshakeStartedTimestamp = _handshakePhaseTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+            }
+            ObserveHandshake(connectionGeneration, phase,
+                failureKind ?? (error is null ? null : GatewayErrorClassifier.Classify(error.ToString())));
+        }
+    }
+
+    private void ObserveHandshake(long generation, GatewayHandshakePhase phase,
+        GatewayErrorKind? failureKind = null, int? retryAfterMs = null)
+    {
+        lock (_handshakeObservationLock)
+        {
+            if (generation <= 0 || !IsCurrentConnectionGeneration(generation) || CancellationToken.IsCancellationRequested ||
+                generation != _observedTransportGeneration)
+                return;
+            var now = System.Diagnostics.Stopwatch.GetTimestamp();
+            var observation = new GatewayHandshakeObservation(generation, phase,
+                System.Diagnostics.Stopwatch.GetElapsedTime(_handshakeStartedTimestamp, now).TotalMilliseconds,
+                System.Diagnostics.Stopwatch.GetElapsedTime(_handshakePhaseTimestamp, now).TotalMilliseconds,
+                failureKind, retryAfterMs);
+            _handshakePhaseTimestamp = now;
+            if (HandshakeObserved is not { } subscribers)
+                return;
+            foreach (EventHandler<GatewayHandshakeObservation> subscriber in subscribers.GetInvocationList())
+            {
+                try { subscriber(this, observation); }
+                catch (Exception)
+                {
+                    // Diagnostics must not change credential admission or connection policy.
+                    _logger.Warn("Gateway handshake observation subscriber failed.");
+                }
+            }
+        }
+    }
+
     protected override Task OnConnectedAsync()
     {
         Volatile.Write(ref _startupRejection, null);
@@ -2325,6 +2378,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         try
         {
+            ObserveHandshake(connectionGeneration, GatewayHandshakePhase.ConnectSending);
             var sent = await SendRawAsync(
                     envelope.Serialize(signature),
                     connectionGeneration,
@@ -2627,7 +2681,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (!root.TryGetProperty("payload", out var payload))
         {
             if (string.Equals(requestMethod, "connect", StringComparison.Ordinal))
-                HandleProtocolMismatch("connect success response has no payload");
+                HandleProtocolMismatch("connect success response has no payload", null, sourceConnectionGeneration);
             return;
         }
 
@@ -2645,7 +2699,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             var compatibility = GatewayProtocolCompatibility.FromGatewayExpectation(
                 GatewayProtocolContract.TryGetProtocol(payload, out var protocol) ? protocol : null);
-            HandleProtocolMismatch(protocolError, compatibility);
+            HandleProtocolMismatch(protocolError, compatibility, sourceConnectionGeneration);
             return;
         }
 
@@ -2747,6 +2801,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             }
 
             _logger.Info("Handshake complete (hello-ok)");
+            ObserveHandshake(sourceConnectionGeneration, GatewayHandshakePhase.ConnectAccepted);
             HandshakeSucceeded?.Invoke(this, EventArgs.Empty);
             if (!string.IsNullOrWhiteSpace(_operatorDeviceId))
             {
@@ -2992,12 +3047,21 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 GatewayStartupUnavailable.Parse(root) is { } startup)
             {
                 Volatile.Write(ref _startupRejection, new(sourceConnectionGeneration, startup));
+                ObserveHandshake(sourceConnectionGeneration, GatewayHandshakePhase.StartupUnavailable,
+                    retryAfterMs: startup.RetryAfterMs);
                 _logger.Info($"[HANDSHAKE] Gateway startup pending; retry in {startup.RetryAfterMs}ms.");
                 StartupUnavailableReceived?.Invoke(this, startup);
                 RaiseStatusChanged(ConnectionStatus.Connecting);
                 return;
             }
 
+            var pairing = detailCode == "PAIRING_REQUIRED" ||
+                message.Contains("pairing required", StringComparison.OrdinalIgnoreCase);
+            var failure = pairing ? GatewayErrorKind.PairingRequired :
+                GatewayErrorClassifier.ClassifyWithCode(message, topLevelCode, detailCode);
+            if (failure != GatewayErrorKind.ProtocolMismatch)
+                ObserveHandshake(sourceConnectionGeneration,
+                    pairing ? GatewayHandshakePhase.PairingRequired : GatewayHandshakePhase.ConnectRejected, failure);
             _logger.Warn($"[HANDSHAKE] Connect error from gateway: message=\"{message}\", detailCode={detailCode ?? "none"}");
             // Log raw JSON for debugging (truncated)
             var rawJson = root.ToString() ?? "";
@@ -3021,7 +3085,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             GatewayErrorClassifier.ClassifyWithCode(message, topLevelCode, detailCode) ==
                 GatewayErrorKind.ProtocolMismatch)
         {
-            HandleProtocolMismatch(message, GatewayProtocolContract.ParseMismatch(root));
+            HandleProtocolMismatch(message, GatewayProtocolContract.ParseMismatch(root), sourceConnectionGeneration);
             return;
         }
 
@@ -3168,8 +3232,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private void HandleProtocolMismatch(
         string detail,
-        GatewayProtocolCompatibility? compatibility = null)
+        GatewayProtocolCompatibility? compatibility,
+        long sourceGeneration)
     {
+        ObserveHandshake(sourceGeneration, GatewayHandshakePhase.ConnectRejected,
+            GatewayErrorKind.ProtocolMismatch);
         _protocolMismatch = true;
         AbortCurrentWebSocket(CurrentConnectionGeneration);
         _logger.Warn($"[HANDSHAKE] Gateway protocol mismatch: {TokenSanitizer.Sanitize(detail)}");
@@ -3964,6 +4031,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         _challengeTimestampMs = ts;
         _currentChallengeNonce = nonce;
+        ObserveHandshake(sourceConnectionGeneration, GatewayHandshakePhase.ChallengeReceived);
         
         _logger.Info($"[HANDSHAKE] Received connect.challenge: nonce={nonce}, ts={ts}");
         _ = SendConnectSafeAsync(nonce, sourceConnectionGeneration);
@@ -3971,18 +4039,24 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private async Task SendConnectSafeAsync(string? nonce, long connectionGeneration)
     {
+        var authorizing = false;
         try
         {
             if (HandshakeAuthorizationAsync is not null)
             {
+                ObserveHandshake(connectionGeneration, GatewayHandshakePhase.AuthorizationStarted);
+                authorizing = true;
                 var authorization = await HandshakeAuthorizationAsync(CancellationToken)
                     .ConfigureAwait(false);
+                authorizing = false;
                 if (!IsCurrentConnectionGeneration(connectionGeneration))
                     return;
                 if (!authorization.Allowed)
                 {
                     if (!_handshakeChallengeGate.TryBlock(connectionGeneration))
                         return;
+                    ObserveHandshake(connectionGeneration, GatewayHandshakePhase.AuthorizationDenied,
+                        authorization.FailureKind);
                     _logger.Warn(
                         $"[HANDSHAKE] Operator credential handoff blocked: {authorization.Detail}");
                     RaiseConnectionFailure(authorization.FailureKind);
@@ -3999,6 +4073,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 }
                 if (!_handshakeChallengeGate.TryAuthorize(connectionGeneration))
                     return;
+                ObserveHandshake(connectionGeneration, GatewayHandshakePhase.AuthorizationSucceeded);
             }
             else if (!_handshakeChallengeGate.TryAuthorize(connectionGeneration))
             {
@@ -4023,6 +4098,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             _logger.Error($"[HANDSHAKE] FATAL: SendConnectMessageAsync threw: {ex}");
             if (_handshakeChallengeGate.TryBlock(connectionGeneration))
             {
+                ObserveHandshake(connectionGeneration,
+                    authorizing ? GatewayHandshakePhase.AuthorizationDenied : GatewayHandshakePhase.Failed,
+                    authorizing ? GatewayErrorKind.Unknown : GatewayErrorKind.Network);
                 RaiseConnectionFailure(GatewayErrorKind.Network);
                 AbortCurrentWebSocket(connectionGeneration);
                 RaiseStatusChanged(ConnectionStatus.Error);
