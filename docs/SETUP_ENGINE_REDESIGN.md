@@ -179,15 +179,17 @@ substitute.
 The [Welcome recommendation policy](ONBOARDING_WIZARD.md#welcome) now checks
 `wxc-exec --probe` session capability before recommending the existing native
 Gateway. `NativeGatewaySetupEligibility` owns admission and selection policy.
-Unavailable capability offers Windows Update guidance. It says native Gateway
-support is coming soon to all devices and, until broad availability, directs
-users to join the Windows Insider Program, select the Beta or Experimental
-channel, and choose Windows 11, version 26H1 under **Advanced options** during
+Unavailable capability guidance names the isolation-session check, explains that
+a newer Windows version alone does not guarantee availability, and offers the
+existing WSL and existing-Gateway routes. For users who need to update Windows,
+it describes joining the Windows Insider Program, selecting the Beta or Experimental
+channel, and choosing Windows 11, version 26H1 under **Advanced options** during
 enrollment. It warns that returning to Windows 11, version 25H2/26H2 requires
 a clean reinstall. After enrolling, users return to
 **Settings > Windows Update** and check for updates. The copy notes that feature
-availability can vary by device and tells users to reopen the page after
-updating to check support again. The live probe remains
+availability can vary by device and tells users to reopen the page to check
+support again, including when Windows is already up to date. It does not promise
+a rollout or that updating fixes the capability. The live probe remains
 authoritative; failed probes offer retry/repair instead. WSL is always visible
 as the second option after native, with existing-gateway connection third.
 Explicit WSL and existing-gateway choices survive late native probe results. Welcome has no

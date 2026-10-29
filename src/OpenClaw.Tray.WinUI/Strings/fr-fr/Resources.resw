@@ -7786,13 +7786,13 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Installer un Gateway WSL local</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Vérification de la prise en charge du Gateway natif...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>Le Gateway natif est pris en charge sur cet appareil.</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Pour utiliser le Gateway natif, mettez votre appareil à jour vers une version de Windows compatible.
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Windows indique que la capacité de session isolée requise par le Gateway natif est indisponible. Une version plus récente de Windows ne garantit pas sa disponibilité. Vous pouvez installer un Gateway WSL local ou vous connecter à un Gateway existant.
 
-La prise en charge du Gateway natif sera bientôt disponible sur tous les appareils. En attendant sa disponibilité générale, rejoignez le programme Windows Insider, sélectionnez le canal Bêta ou Expérimental, puis choisissez Windows 11 version 26H1 dans les Options avancées lors de l'inscription. Le retour à Windows 11 version 25H2/26H2 nécessite une réinstallation complète.
+Si vous devez mettre Windows à jour, vous pouvez rejoindre le programme Windows Insider, sélectionner le canal Bêta ou Expérimental, puis choisir Windows 11 version 26H1 dans les Options avancées lors de l'inscription. Le retour à Windows 11 version 25H2/26H2 nécessite une réinstallation complète.
 
-Après votre inscription, revenez dans Paramètres &gt; Windows Update et recherchez les mises à jour. L'affichage de la mise à jour peut prendre quelques minutes. La disponibilité de cette fonctionnalité peut varier selon l'appareil. Après la mise à jour, rouvrez cette page pour vérifier à nouveau la prise en charge.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Pour utiliser le Gateway natif, mettez votre appareil à jour vers une version de Windows compatible.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>sera bientôt disponible sur tous les appareils.</value></data>
+Après votre inscription, revenez dans Paramètres &gt; Windows Update et recherchez les mises à jour. L'affichage de la mise à jour peut prendre quelques minutes. La disponibilité de cette fonctionnalité peut varier selon l'appareil. Vous pouvez rouvrir cette page pour vérifier à nouveau la prise en charge.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Windows indique que la capacité de session isolée requise par le Gateway natif est indisponible.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableAlternatives" xml:space="preserve"><value>Vous pouvez installer un Gateway WSL local ou vous connecter à un Gateway existant.</value></data>
   <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>programme Windows Insider</value></data>
   <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Bêta ou Expérimental</value></data>
   <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11 version 26H1</value></data>

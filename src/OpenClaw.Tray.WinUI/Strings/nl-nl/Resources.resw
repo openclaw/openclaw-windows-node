@@ -7787,13 +7787,13 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Een lokale WSL Gateway installeren</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Ondersteuning voor de native Gateway controleren...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>De native Gateway wordt ondersteund op dit apparaat.</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Als u de native Gateway wilt gebruiken, werkt u uw apparaat bij naar een Windows-versie die dit ondersteunt.
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Windows meldt dat de isolatiesessiefunctionaliteit die de native Gateway nodig heeft niet beschikbaar is. Een nieuwere Windows-versie garandeert niet dat deze beschikbaar is. U kunt in plaats daarvan een lokale WSL-Gateway installeren of verbinding maken met een bestaande Gateway.
 
-Ondersteuning voor de native Gateway is binnenkort beschikbaar op alle apparaten. Totdat deze algemeen beschikbaar is, neemt u deel aan het Windows Insider-programma, selecteert u het Beta- of Experimental-kanaal en kiest u tijdens de inschrijving Windows 11, versie 26H1 onder Geavanceerde opties. Terugkeren naar Windows 11, versie 25H2/26H2 vereist een schone herinstallatie.
+Als u Windows moet bijwerken, kunt u deelnemen aan het Windows Insider-programma, het Beta- of Experimental-kanaal selecteren en tijdens de inschrijving Windows 11, versie 26H1 onder Geavanceerde opties kiezen. Terugkeren naar Windows 11, versie 25H2/26H2 vereist een schone herinstallatie.
 
-Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op updates. Het kan enkele minuten duren voordat de update wordt weergegeven. De beschikbaarheid van deze functie kan per apparaat verschillen. Open deze pagina na de update opnieuw om de ondersteuning nogmaals te controleren.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Als u de native Gateway wilt gebruiken, werkt u uw apparaat bij naar een Windows-versie die dit ondersteunt.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>is binnenkort beschikbaar op alle apparaten.</value></data>
+Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op updates. Het kan enkele minuten duren voordat de update wordt weergegeven. De beschikbaarheid van deze functie kan per apparaat verschillen. Open deze pagina opnieuw om de ondersteuning nogmaals te controleren.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Windows meldt dat de isolatiesessiefunctionaliteit die de native Gateway nodig heeft niet beschikbaar is.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableAlternatives" xml:space="preserve"><value>U kunt in plaats daarvan een lokale WSL-Gateway installeren of verbinding maken met een bestaande Gateway.</value></data>
   <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Windows Insider-programma</value></data>
   <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta- of Experimental</value></data>
   <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11, versie 26H1</value></data>

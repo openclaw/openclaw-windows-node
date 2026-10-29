@@ -395,7 +395,7 @@ public sealed class NativeGatewaySetupUxContractTests
             foreach (var suffix in new[]
                      {
                          "Lead",
-                         "ComingSoon",
+                         "Alternatives",
                          "InsiderProgram",
                          "Channels",
                          "WindowsVersion",
@@ -416,10 +416,34 @@ public sealed class NativeGatewaySetupUxContractTests
     }
 
     [Theory]
+    [InlineData("en-us", "isolation-session capability", "does not guarantee availability", "WSL", "existing gateway", "If you need to update Windows")]
+    [InlineData("fr-fr", "capacité de session isolée", "ne garantit pas sa disponibilité", "WSL", "Gateway existant", "Si vous devez mettre Windows à jour")]
+    [InlineData("nl-nl", "isolatiesessiefunctionaliteit", "garandeert niet dat deze beschikbaar is", "WSL", "bestaande Gateway", "Als u Windows moet bijwerken")]
+    [InlineData("pt-br", "capacidade de sessão isolada", "não garante sua disponibilidade", "WSL", "Gateway existente", "Se precisar atualizar o Windows")]
+    [InlineData("zh-cn", "隔离会话功能", "并不保证此功能可用", "WSL", "现有 Gateway", "如果需要更新 Windows")]
+    [InlineData("zh-tw", "隔離工作階段功能", "並不保證此功能可用", "WSL", "現有 Gateway", "如果需要更新 Windows")]
+    public void Welcome_NativeUnavailableGuidanceExplainsCapabilityAndAlternativesEvenOnNewerWindows(
+        string locale, string capability, string noGuarantee, string wsl, string existing, string conditionalUpdate)
+    {
+        var document = XDocument.Load(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI",
+            "Strings", locale, "Resources.resw"));
+        string guidance = document.Descendants("data")
+            .Single(element => (string?)element.Attribute("name") == "Onboarding_Native_SupportUnavailable")
+            .Element("value")!.Value;
+
+        Assert.Contains(capability, guidance);
+        Assert.Contains(noGuarantee, guidance);
+        Assert.Contains(wsl, guidance);
+        Assert.Contains(existing, guidance);
+        Assert.Contains(conditionalUpdate, guidance);
+    }
+
+    [Theory]
     [InlineData("en-us", "Advanced options", "clean reinstall", "vary by device", "reopen this page")]
-    [InlineData("fr-fr", "Options avancées", "réinstallation complète", "varier selon l'appareil", "rouvrez cette page")]
+    [InlineData("fr-fr", "Options avancées", "réinstallation complète", "varier selon l'appareil", "rouvrir cette page")]
     [InlineData("nl-nl", "Geavanceerde opties", "schone herinstallatie", "per apparaat verschillen", "Open deze pagina")]
-    [InlineData("pt-br", "Opções avançadas", "reinstalação limpa", "variar conforme o dispositivo", "reabra esta página")]
+    [InlineData("pt-br", "Opções avançadas", "reinstalação limpa", "variar conforme o dispositivo", "reabrir esta página")]
     [InlineData("zh-cn", "高级选项", "全新安装系统", "因设备而异", "重新打开此页面")]
     [InlineData("zh-tw", "進階選項", "全新安裝系統", "因裝置而異", "重新開啟此頁面")]
     public void Welcome_NativeUnavailableGuidanceIncludesEnrollmentTradeoffAndRecheck(
