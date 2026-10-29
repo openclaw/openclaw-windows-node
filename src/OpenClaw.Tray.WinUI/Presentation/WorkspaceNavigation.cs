@@ -26,6 +26,13 @@ internal sealed record WorkspaceDestination(
    /// <summary>The replacement for a pruned section keeps the presentation the user was in.</summary>
    public static WorkspaceDestination PrunedFallback(WorkspaceDestination current, string fallbackTag) =>
        Settings(fallbackTag, current.Page == WorkspacePageId.Settings && current.Embedded);
+
+   /// <summary>
+   /// The control to refocus when leaving Settings: the one that opened it, unless focus is already
+   /// on a retained workspace sidebar row (a deliberate navigation). The full Settings rail is not one.
+   /// </summary>
+   public static T? SettingsExitFocus<T>(T? saved, bool focusInWorkspaceSidebar) where T : class =>
+       focusInWorkspaceSidebar ? null : saved;
 }
 
 /// <summary>

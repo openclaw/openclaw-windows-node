@@ -506,7 +506,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             return;
         // A deliberate click or key press on another sidebar row owns focus; only Back/Forward and
         // other non-row exits restore the control that opened Settings.
-        var focus = FocusedElement() is DependencyObject now && IsInsideNavigationItem(now) ? null : _chatFocus;
+        var focus = WorkspaceDestination.SettingsExitFocus(_chatFocus, FocusInWorkspaceSidebar());
         _chatFocus = null;
         _settings?.Deactivate();
         _settings?.ContentOnly = false;
@@ -908,15 +908,27 @@ public sealed partial class WorkspaceWindow : WindowEx
         OperationInfo.IsOpen = true;
         EmbeddedOperationInfo.Severity = severity;
         EmbeddedOperationInfo.Message = message;
-        EmbeddedOperationInfo.IsOpen = IsSettingsVisible && Destination.Embedded;
+        EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && Destination.Embedded;
     }
 
-    private void OnEmbeddedOperationClosed(InfoBar sender, InfoBarClosedEventArgs args) => OperationInfo.IsOpen = false;
-
-    private static bool IsInsideNavigationItem(DependencyObject element)
+    // Only the user's close button dismisses the shared message; hiding the mirror must not.
+    private void OnEmbeddedOperationClosed(InfoBar sender, InfoBarClosedEventArgs args)
     {
-        for (var node = element; node is not null; node = VisualTreeHelper.GetParent(node))
-            if (node is NavigationViewItem) return true;
+        if (args.Reason == InfoBarCloseReason.CloseButton) OperationInfo.IsOpen = false;
+    }
+
+    // Focus only counts as a deliberate sidebar navigation inside the retained workspace sidebar,
+    // never the full Settings rail, whose items live under SettingsSection.
+    private bool FocusInWorkspaceSidebar()
+    {
+        if (NavigationSection.Visibility != Visibility.Visible || FocusedElement() is not DependencyObject node) return false;
+        var inItem = false;
+        for (; node is not null; node = VisualTreeHelper.GetParent(node))
+        {
+            if (node is NavigationViewItem) inItem = true;
+            if (ReferenceEquals(node, SettingsSection)) return false;
+            if (ReferenceEquals(node, NavigationSection)) return inItem;
+        }
         return false;
     }
 
@@ -1100,6 +1112,9 @@ public sealed partial class WorkspaceWindow : WindowEx
             ? (Brush)Application.Current.Resources["ApplicationPageBackgroundThemeBrush"]
             : null;
         SettingsHistoryBar.Visibility = embedded && paneOpen ? Visibility.Collapsed : Visibility.Visible;
+        EmbeddedOperationInfo.Severity = OperationInfo.Severity;
+        EmbeddedOperationInfo.Message = OperationInfo.Message;
+        EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen;
     }
     private void OnPaneClosed(NavigationView sender, object args)
     {

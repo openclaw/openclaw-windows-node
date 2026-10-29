@@ -110,6 +110,15 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void SettingsExitFocus_RestoresSavedControl_UnlessWorkspaceSidebarOwnsFocus()
+    {
+        var saved = new object();
+        Assert.Same(saved, WorkspaceDestination.SettingsExitFocus(saved, focusInWorkspaceSidebar: false));
+        Assert.Null(WorkspaceDestination.SettingsExitFocus(saved, focusInWorkspaceSidebar: true));
+        Assert.Null(WorkspaceDestination.SettingsExitFocus<object>(null, focusInWorkspaceSidebar: false));
+    }
+
+    [Fact]
     public void PrunedFallback_KeepsEmbeddedPresentation_OnlyForSettings()
     {
         Assert.Equal(WorkspaceDestination.Settings("connection", embedded: true),

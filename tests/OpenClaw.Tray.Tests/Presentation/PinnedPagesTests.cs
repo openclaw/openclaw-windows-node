@@ -216,8 +216,11 @@ public sealed class PinnedPagesTests
         var render = window[window.IndexOf("private void RenderSettings()", StringComparison.Ordinal)..];
         Assert.Contains("UpdateNavigationSelection();", render[..render.IndexOf("ShowSection(", StringComparison.Ordinal)]);
         Assert.Contains("PrunedFallback(_navigation.Current, fallbackTag)", window);
-        Assert.Contains("IsInsideNavigationItem(now) ? null : _chatFocus", window);
-        Assert.Contains("EmbeddedOperationInfo.IsOpen = IsSettingsVisible && Destination.Embedded", window);
+        Assert.Contains("SettingsExitFocus(_chatFocus, FocusInWorkspaceSidebar())", window);
+        Assert.Contains("ReferenceEquals(node, SettingsSection)) return false", window);
+        Assert.Contains("args.Reason == InfoBarCloseReason.CloseButton", window);
+        Assert.Contains("EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen", window);
+        Assert.Contains("EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && Destination.Embedded", window);
         Assert.Contains("SettingsSection.Children.Insert(0, view)", window);
         Assert.Contains("AccessibilityView.Raw", pins);
         Assert.Contains("SelectsOnInvoked = false", pins);
