@@ -21,6 +21,8 @@ public sealed partial class UsagePage : Page
     private int _currentPeriodDays = 7;
     private readonly AsyncListLoadingState _providerLoading = new();
     private readonly AsyncListLoadingState _dailyCostLoading = new();
+    private bool _isUnsupportedRangeWarningVisible;
+    private bool _hasMatchingUsageCost;
     private DateTime _lastAppliedUsageCostUpdatedAtUtc = DateTime.MinValue;
 
     private const string DailyEmptyMessage = "No daily usage for this period";
@@ -74,9 +76,16 @@ public sealed partial class UsagePage : Page
         // Only apply cached cost data when its period matches the current
         // selection — otherwise the daily list briefly shows e.g. 30-day
         // data while the selector reads "7 Days".
-        if (_appState?.UsageCost != null && ShouldApplyUsageCost(_appState.UsageCost))
+        var cachedCost = _appState?.GetUsageCostForPeriod(_currentPeriodDays);
+        if (cachedCost == null &&
+            _appState?.UsageCost is { } latestCost &&
+            ShouldApplyUsageCost(latestCost))
         {
-            UpdateUsageCost(_appState.UsageCost);
+            cachedCost = latestCost;
+        }
+        if (cachedCost != null)
+        {
+            UpdateUsageCost(cachedCost);
             _dailyCostLoading.BeginRefresh();
         }
         else
@@ -133,6 +142,11 @@ public sealed partial class UsagePage : Page
         if (dispatcher == null) return;
         dispatcher.TryEnqueue(() =>
         {
+            if (!ReferenceEquals(e.OldClient, e.NewClient))
+            {
+                ResetUsageCostState();
+            }
+
             AttachClient(e.NewClient);
             if (e.NewClient is { IsConnectedToGateway: true })
             {
@@ -149,8 +163,24 @@ public sealed partial class UsagePage : Page
         });
     }
 
+    private void ResetUsageCostState()
+    {
+        _lastAppliedUsageCostUpdatedAtUtc = DateTime.MinValue;
+        _hasMatchingUsageCost = false;
+        _isUnsupportedRangeWarningVisible = false;
+        DailyListView.ItemsSource = null;
+        TotalCostText.Text = "—";
+        TokenCountText.Text = "—";
+        _dailyCostLoading.BeginInitialRefresh();
+        _dailyCostLoading.Fail();
+        ShowDisconnected();
+        UpdateDailyCostLoadingVisuals();
+    }
+
     private void RecoverConnectedClient(IOperatorGatewayClient client)
     {
+        _isUnsupportedRangeWarningVisible = false;
+        OpenConnectionButton.Visibility = Visibility.Collapsed;
         ConnectionInfoBar.IsOpen = false;
         if (!_dailyCostLoading.HasLoaded) _dailyCostLoading.BeginInitialRefresh();
         else _dailyCostLoading.BeginRefresh();
@@ -163,9 +193,8 @@ public sealed partial class UsagePage : Page
 
     private void RequestRefresh(IOperatorGatewayClient client)
     {
-        _ = client.RequestUsageAsync();
-        _ = client.RequestUsageCostAsync(_currentPeriodDays);
         _ = client.RequestUsageStatusAsync();
+        _ = client.RequestUsageCostAsync(_currentPeriodDays);
     }
 
     private void OnOpenConnectionClick(object sender, RoutedEventArgs e)
@@ -179,7 +208,8 @@ public sealed partial class UsagePage : Page
                 if (_appState?.Usage != null) UpdateUsage(_appState.Usage);
                 break;
             case nameof(AppState.UsageCost):
-                if (_appState?.UsageCost != null) UpdateUsageCost(_appState.UsageCost);
+                if (_appState?.UsageCost is { } usageCost) UpdateUsageCost(usageCost);
+                else ResetUsageCostState();
                 break;
             case nameof(AppState.UsageStatus):
                 if (_appState?.UsageStatus != null) UpdateUsageStatus(_appState.UsageStatus);
@@ -198,26 +228,26 @@ public sealed partial class UsagePage : Page
 
     public void UpdateUsageCost(GatewayCostUsageInfo cost)
     {
-        if (cost.UpdatedAt < _lastAppliedUsageCostUpdatedAtUtc)
-            return;
-
-        if (!ShouldApplyUsageCost(cost))
-            return;
-
-        // The Windows tray fires usage.cost twice per refresh: once via
-        // RequestUsageAsync() (always days=30) and once directly via the
-        // selector (currently 7 or 30). If the gateway ignores the `days`
-        // request param or only replies to one of the two, the page used to
-        // reject the response that didn't match _currentPeriodDays and the
-        // spinner ran forever. Accept whatever days the server returns and,
-        // when the selector is out of sync, silently snap it to that period
-        // so the header isn't lying about what data the user sees.
-        if (cost.Days > 0 && cost.Days != _currentPeriodDays)
+        switch (UsageCostApplicationPolicy.Decide(
+            cost.Days,
+            _currentPeriodDays,
+            _hasMatchingUsageCost,
+            cost.UpdatedAt,
+            _lastAppliedUsageCostUpdatedAtUtc))
         {
-            SyncSelectorToServerDays(cost.Days);
+            case UsageCostApplicationPolicy.Decision.Ignore:
+            case UsageCostApplicationPolicy.Decision.IgnoreStale:
+                _dailyCostLoading.Complete(_dailyCostLoading.ItemCount);
+                UpdateDailyCostLoadingVisuals();
+                return;
+            case UsageCostApplicationPolicy.Decision.StopForUnsupportedRange:
+                StopForUnsupportedRange(cost);
+                return;
         }
 
         _lastAppliedUsageCostUpdatedAtUtc = cost.UpdatedAt;
+        _hasMatchingUsageCost = true;
+        _isUnsupportedRangeWarningVisible = false;
         ConnectionInfoBar.IsOpen = false;
         TotalCostText.Text = $"${cost.Totals.TotalCost:F2}";
         TokenCountText.Text = FormatLargeNumber(cost.Totals.TotalTokens);
@@ -233,30 +263,28 @@ public sealed partial class UsagePage : Page
 
     private bool ShouldApplyUsageCost(GatewayCostUsageInfo cost)
     {
-        return UsageCostApplicationPolicy.ShouldApply(
-            cost.Days,
-            _currentPeriodDays,
-            _dailyCostLoading.HasLoaded);
+        return UsageCostApplicationPolicy.ShouldApply(cost.Days, _currentPeriodDays);
     }
 
-    private void SyncSelectorToServerDays(int days)
+    private void StopForUnsupportedRange(GatewayCostUsageInfo cost)
     {
-        // Only the two SelectorBar items are valid targets; ignore anything
-        // else (e.g. server-defaulted 14 days) and just keep the user's pick.
-        if (days != 7 && days != 30) return;
-        _currentPeriodDays = days;
-        var target = days == 30 ? Period30DaysItem : Period7DaysItem;
-        if (!ReferenceEquals(PeriodSelector.SelectedItem, target))
-        {
-            PeriodSelector.SelectionChanged -= OnPeriodSelectionChanged;
-            try { PeriodSelector.SelectedItem = target; }
-            finally { PeriodSelector.SelectionChanged += OnPeriodSelectionChanged; }
-        }
+        _hasMatchingUsageCost = false;
+        _isUnsupportedRangeWarningVisible = true;
+        OpenConnectionButton.Visibility = Visibility.Collapsed;
+        ConnectionInfoBar.Title = LocalizationHelper.GetString("UsagePage_UnsupportedRange.Title");
+        ConnectionInfoBar.Message = string.Format(
+            LocalizationHelper.GetString("UsagePage_UnsupportedRange.Message"),
+            cost.Days);
+        ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
+        ConnectionInfoBar.IsOpen = true;
+        _dailyCostLoading.Complete(0);
+        UpdateDailyCostLoadingVisuals();
     }
 
     public void UpdateUsageStatus(GatewayUsageStatusInfo status)
     {
-        ConnectionInfoBar.IsOpen = false;
+        if (!_isUnsupportedRangeWarningVisible)
+            ConnectionInfoBar.IsOpen = false;
         ProviderCountText.Text = status.Providers.Count.ToString();
         ProviderListView.ItemsSource = status.Providers.Select(p => new ProviderRow
         {
@@ -281,10 +309,28 @@ public sealed partial class UsagePage : Page
         if (days == _currentPeriodDays) return;
         _currentPeriodDays = days;
         _lastAppliedUsageCostUpdatedAtUtc = DateTime.MinValue;
+        _isUnsupportedRangeWarningVisible = false;
+        _hasMatchingUsageCost = false;
+        ConnectionInfoBar.IsOpen = false;
         DailyListView.ItemsSource = null;
         TotalCostText.Text = "—";
         TokenCountText.Text = "—";
-        _dailyCostLoading.BeginInitialRefresh();
+        var cachedCost = _appState?.GetUsageCostForPeriod(days);
+        if (cachedCost == null &&
+            _appState?.UsageCost is { } latestCost &&
+            ShouldApplyUsageCost(latestCost))
+        {
+            cachedCost = latestCost;
+        }
+        if (cachedCost != null)
+        {
+            UpdateUsageCost(cachedCost);
+            _dailyCostLoading.BeginRefresh();
+        }
+        else
+        {
+            _dailyCostLoading.BeginInitialRefresh();
+        }
         UpdateDailyCostLoadingVisuals();
 
         var client = CurrentApp.GatewayClient;
@@ -309,7 +355,9 @@ public sealed partial class UsagePage : Page
         // message in that case so the page never looks frozen.
         bool failed = !_dailyCostLoading.IsRefreshing && !_dailyCostLoading.HasLoaded;
         DailyEmptyText.Text = failed ? DisconnectedListMessage : DailyEmptyMessage;
-        DailyEmptyText.Visibility = (_dailyCostLoading.ShouldShowEmpty || failed) ? Visibility.Visible : Visibility.Collapsed;
+        bool showEmpty = !_isUnsupportedRangeWarningVisible
+            && (_dailyCostLoading.ShouldShowEmpty || failed);
+        DailyEmptyText.Visibility = showEmpty ? Visibility.Visible : Visibility.Collapsed;
         PeriodSelector.IsEnabled = _dailyCostLoading.CanEdit;
     }
 
@@ -324,6 +372,8 @@ public sealed partial class UsagePage : Page
 
     private void ShowDisconnected()
     {
+        _isUnsupportedRangeWarningVisible = false;
+        OpenConnectionButton.Visibility = Visibility.Visible;
         ConnectionInfoBar.Title = LocalizationHelper.GetString("UsagePage_GatewayDisconnected.Title");
         ConnectionInfoBar.Message = LocalizationHelper.GetString("UsagePage_GatewayDisconnected.Message");
         ConnectionInfoBar.Severity = InfoBarSeverity.Warning;

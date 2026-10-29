@@ -5099,6 +5099,12 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
     <value>Geen dagelijks gebruik voor deze periode</value>
   </data>
+  <data name="UsagePage_UnsupportedRange.Title" xml:space="preserve">
+    <value>Gebruiksperiode is niet beschikbaar</value>
+  </data>
+  <data name="UsagePage_UnsupportedRange.Message" xml:space="preserve">
+    <value>Deze gateway heeft een totaal van {0} dagen teruggestuurd. Kies die periode om het te zien.</value>
+  </data>
   <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
     <value>Spraakinvoer testen</value>
   </data>

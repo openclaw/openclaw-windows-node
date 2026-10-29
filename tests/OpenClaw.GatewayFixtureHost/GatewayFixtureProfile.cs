@@ -125,6 +125,27 @@ public sealed class GatewayFixtureProfile : IDisposable
         return start;
     }
 
+    public string AddGateway(Uri endpoint, string token, string friendlyName)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ValidateEndpoint(endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        ArgumentException.ThrowIfNullOrWhiteSpace(friendlyName);
+        var registry = new GatewayRegistry(DataDirectory);
+        registry.Load();
+        var id = Guid.NewGuid().ToString();
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = id,
+            Url = endpoint.AbsoluteUri,
+            FriendlyName = friendlyName,
+            SharedGatewayToken = token,
+            IsLocal = false
+        });
+        registry.Save();
+        return id;
+    }
+
     /// <summary>Reject older binaries before they can perform unguarded startup side effects.</summary>
     public static string ValidateApp(string appPath)
     {

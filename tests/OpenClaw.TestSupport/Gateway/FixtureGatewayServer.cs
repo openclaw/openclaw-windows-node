@@ -42,6 +42,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private TaskCompletionSource? _sessionMutationGate;
     private TaskCompletionSource? _chatSendGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
+    private readonly Dictionary<int, TaskCompletionSource> _usageCostGates = [];
     private int _chatEventSequence;
     private TaskCompletionSource? _nextSessionListGate;
     private TaskCompletionSource? _heldSessionList;
@@ -247,6 +248,27 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         {
             var gate = _sessionMutationGate ?? throw new InvalidOperationException("Session mutations are not held.");
             _sessionMutationGate = null;
+            gate.TrySetResult();
+        }
+    }
+
+    public void HoldUsageCosts(int days)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(days);
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (!_usageCostGates.TryAdd(days, NewSignal()))
+                throw new InvalidOperationException("Usage costs are already held for this range.");
+        }
+    }
+
+    public void ReleaseUsageCosts(int days)
+    {
+        lock (_sync)
+        {
+            if (!_usageCostGates.Remove(days, out var gate))
+                throw new InvalidOperationException("Usage costs are not held for this range.");
             gate.TrySetResult();
         }
     }
@@ -662,6 +684,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                             : method == "chat.history" && key is not null && _historyGates.TryGetValue(key, out var held)
                                 ? held.Task : null;
                         abortOutcome = method == "chat.abort" ? _chatAbortGate?.Task : null;
+                        if (method == "usage.cost" && parameters.ValueKind == JsonValueKind.Object
+                            && parameters.TryGetProperty("days", out var days) && days.ValueKind == JsonValueKind.Number
+                            && days.TryGetInt32(out var requestedDays))
+                            gate = _usageCostGates.TryGetValue(requestedDays, out var costGate) ? costGate.Task : null;
                         if (method == "sessions.list") _nextSessionListGate = null;
                     }
                     pending.RemoveAll(task => task.IsCompletedSuccessfully);
@@ -724,6 +750,11 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             {
                 if (parameters.ValueKind != JsonValueKind.Object)
                     throw new FixtureRequestException("INVALID_PARAMS", "params must be an object.");
+                if (method == "usage.cost" && gate is not null)
+                {
+                    await gate.WaitAsync(cancellationToken);
+                    gate = null;
+                }
                 if (method == "exec.approval.resolve" && Interactive is null)
                 {
                     var approvalId = ReadString(parameters, "id");

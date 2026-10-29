@@ -150,6 +150,44 @@ public class AppStateTests
         Assert.DoesNotContain(nameof(AppState.AuthFailureMessage), fired);
     }
 
+    [Fact]
+    public void UpdateUsageCost_KeepsNewestSnapshotForEachPeriodUntilGatewayStateIsCleared()
+    {
+        var state = CreateState();
+        var sevenDaySnapshot = new GatewayCostUsageInfo
+        {
+            Days = 7,
+            UpdatedAt = new DateTime(2026, 1, 21),
+            Totals = new GatewayCostUsageTotalsInfo { TotalCost = 7 },
+        };
+        var olderSevenDaySnapshot = new GatewayCostUsageInfo
+        {
+            Days = 7,
+            UpdatedAt = new DateTime(2026, 1, 20),
+            Totals = new GatewayCostUsageTotalsInfo { TotalCost = 6 },
+        };
+        var thirtyDaySnapshot = new GatewayCostUsageInfo
+        {
+            Days = 30,
+            UpdatedAt = new DateTime(2026, 1, 19),
+            Totals = new GatewayCostUsageTotalsInfo { TotalCost = 30 },
+        };
+
+        state.UpdateUsageCost(sevenDaySnapshot);
+        state.UpdateUsageCost(olderSevenDaySnapshot);
+        state.UpdateUsageCost(thirtyDaySnapshot);
+
+        Assert.Same(sevenDaySnapshot, state.GetUsageCostForPeriod(7));
+        Assert.Same(thirtyDaySnapshot, state.GetUsageCostForPeriod(30));
+        Assert.Same(thirtyDaySnapshot, state.UsageCost);
+
+        state.ClearCachedData();
+
+        Assert.Null(state.GetUsageCostForPeriod(7));
+        Assert.Null(state.GetUsageCostForPeriod(30));
+        Assert.Null(state.UsageCost);
+    }
+
     // ── AddAgentEvent ring buffer ───────────────────────────────────────
 
     [Fact]

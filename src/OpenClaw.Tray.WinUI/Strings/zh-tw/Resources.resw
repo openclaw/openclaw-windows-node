@@ -5098,6 +5098,12 @@
   <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
     <value>此期間內無每日使用量</value>
   </data>
+  <data name="UsagePage_UnsupportedRange.Title" xml:space="preserve">
+    <value>用量時段無法使用</value>
+  </data>
+  <data name="UsagePage_UnsupportedRange.Message" xml:space="preserve">
+    <value>此閘道傳回了 {0} 天的合計。請選擇該時段查看。</value>
+  </data>
   <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
     <value>測試語音輸入</value>
   </data>

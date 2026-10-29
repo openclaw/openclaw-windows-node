@@ -62,8 +62,9 @@ public sealed partial class GatewayScenario
     private readonly List<object> _createdAgents = [];
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
+    private readonly UsagePeriodFixture? _usagePeriod;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : _usagePeriod is not null ? _usagePeriod.ScenarioName : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -76,7 +77,8 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        UsagePeriodFixture? usagePeriod = null)
     {
         _sessions = sessions;
         _reads = reads;
@@ -88,6 +90,7 @@ public sealed partial class GatewayScenario
         _allowChatSend = allowChatSend;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         _contextUsage = contextUsage;
+        _usagePeriod = usagePeriod;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
@@ -101,6 +104,7 @@ public sealed partial class GatewayScenario
         var source = JsonSerializer.Serialize(new
         {
             Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog,
+            usagePeriodMode = usagePeriod?.Mode.ToString(),
             sessions = sessions.Select(s => new { s.Row, s.Messages }), reads, cronJobs
         });
         Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant();
@@ -124,6 +128,13 @@ public sealed partial class GatewayScenario
         ArgumentNullException.ThrowIfNull(contextUsage);
         var browse = CreateBrowse();
         return new(browse._sessions, browse._reads, contextUsage: contextUsage);
+    }
+
+    public static GatewayScenario CreateUsagePeriod(UsagePeriodFixture usagePeriod)
+    {
+        ArgumentNullException.ThrowIfNull(usagePeriod);
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, usagePeriod: usagePeriod);
     }
 
     /// <summary>Explicit synthetic setup replies only. The host never executes provider or package operations.</summary>
@@ -261,6 +272,7 @@ public sealed partial class GatewayScenario
             }),
             ["node.list"] = JsonSerializer.SerializeToElement(new { ts = Epoch.ToUnixTimeMilliseconds(), nodes = Array.Empty<object>() }),
             ["projects.list"] = JsonSerializer.SerializeToElement(new { projects = Array.Empty<object>() }),
+            ["question.list"] = JsonSerializer.SerializeToElement(new { questions = Array.Empty<object>() }),
             ["environments.list"] = JsonSerializer.SerializeToElement(new
             {
                 environments = new[]
@@ -619,10 +631,12 @@ public sealed partial class GatewayScenario
         };
     }
 
-    private static object Cost(JsonElement p)
+    private object Cost(JsonElement p)
     {
         ValidateProperties(p, "days");
         var days = PositiveInt(p, "days", 30);
+        if (_usagePeriod is not null)
+            return _usagePeriod.Cost(days);
         return new
         {
             updatedAt = Epoch.ToUnixTimeMilliseconds(), days, daily = Array.Empty<object>(),

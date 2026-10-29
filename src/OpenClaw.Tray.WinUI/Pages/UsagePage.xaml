@@ -17,7 +17,8 @@
                      Title="Gateway disconnected"
                      Message="Connect to a gateway to load usage data.">
                 <InfoBar.ActionButton>
-                    <Button x:Uid="UsagePage_OpenConnection" Content="Open Connection" Click="OnOpenConnectionClick"/>
+                    <Button x:Uid="UsagePage_OpenConnection" x:Name="OpenConnectionButton"
+                            Content="Open Connection" Click="OnOpenConnectionClick"/>
                 </InfoBar.ActionButton>
             </InfoBar>
 

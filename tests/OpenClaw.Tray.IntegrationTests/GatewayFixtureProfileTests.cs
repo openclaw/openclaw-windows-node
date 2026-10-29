@@ -59,6 +59,25 @@ public sealed class GatewayFixtureProfileTests
     }
 
     [Fact]
+    public void SecondGatewayIsIsolatedRegisteredAndDoesNotChangeActiveGateway()
+    {
+        using var profile = new GatewayFixtureProfile(Endpoint, "first-token");
+        var secondary = new Uri("ws://127.0.0.1:49232/");
+        var id = profile.AddGateway(secondary, "second-token", "Fixture Usage B");
+        var registry = new GatewayRegistry(profile.DataDirectory);
+        registry.Load();
+        Assert.Equal(profile.GatewayId, registry.ActiveGatewayId);
+        Assert.Equal(2, registry.GetAll().Count);
+        var record = Assert.Single(registry.GetAll(), gateway => gateway.Id == id);
+        Assert.Equal(secondary.AbsoluteUri, record.Url);
+        Assert.Equal("second-token", record.SharedGatewayToken);
+        Assert.Equal("Fixture Usage B", record.FriendlyName);
+        Assert.False(record.IsLocal);
+        Assert.Throws<ArgumentException>(() =>
+            profile.AddGateway(new Uri("ws://example.org:49232/"), "token", "unsafe"));
+    }
+
+    [Fact]
     public void BrowserProxyProfileKeepsExecutionCapabilitiesOff()
     {
         using var profile = new GatewayFixtureProfile(Endpoint, "only-this-fixture", enableNodeBrowserProxy: true);

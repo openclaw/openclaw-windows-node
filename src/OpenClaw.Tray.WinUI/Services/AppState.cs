@@ -85,6 +85,32 @@ internal sealed class AppState : INotifyPropertyChanged
     private GatewayCostUsageInfo? _usageCost;
     public GatewayCostUsageInfo? UsageCost { get => _usageCost; set => SetField(ref _usageCost, value); }
 
+    private readonly Dictionary<int, GatewayCostUsageInfo> _usageCostsByDays = new();
+
+    public GatewayCostUsageInfo? GetUsageCostForPeriod(int periodDays)
+        => _usageCostsByDays.GetValueOrDefault(periodDays);
+
+    public void UpdateUsageCost(GatewayCostUsageInfo usageCost)
+    {
+        var periodDays = 0;
+        if (usageCost.Days > 0)
+        {
+            if (UsageCostApplicationPolicy.ShouldApply(usageCost.Days, 7))
+                periodDays = 7;
+            else if (UsageCostApplicationPolicy.ShouldApply(usageCost.Days, 30))
+                periodDays = 30;
+        }
+
+        if (periodDays > 0 &&
+            (!_usageCostsByDays.TryGetValue(periodDays, out var cached) ||
+             usageCost.UpdatedAt >= cached.UpdatedAt))
+        {
+            _usageCostsByDays[periodDays] = usageCost;
+        }
+
+        UsageCost = usageCost;
+    }
+
     // ── Gateway identity ────────────────────────────────────────────────
 
     private GatewaySelfInfo? _gatewaySelf;
@@ -266,6 +292,7 @@ internal sealed class AppState : INotifyPropertyChanged
         Nodes = Array.Empty<GatewayNodeInfo>();
         Usage = null;
         UsageStatus = null;
+        _usageCostsByDays.Clear();
         UsageCost = null;
         GatewaySelf = null;
         NodePairList = null;

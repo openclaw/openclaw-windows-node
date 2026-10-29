@@ -5098,6 +5098,12 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
     <value>Aucune utilisation quotidienne pour cette période</value>
   </data>
+  <data name="UsagePage_UnsupportedRange.Title" xml:space="preserve">
+    <value>Période d'utilisation indisponible</value>
+  </data>
+  <data name="UsagePage_UnsupportedRange.Message" xml:space="preserve">
+    <value>Cette passerelle a renvoyé un total de {0} jours. Choisissez cette période pour le voir.</value>
+  </data>
   <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
     <value>Tester l'entrée vocale</value>
   </data>

@@ -14,6 +14,21 @@ public sealed partial class GatewayFixtureProtocolTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
 
+    [Fact]
+    public async Task Browse_AdvertisesReadOnlyEmptyQuestionsForStartup()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+
+        var result = await connected.Client.ListQuestionsAsync();
+        Assert.True(result.IsSupported);
+        Assert.Empty(result.Questions);
+        Assert.Contains("question.list", connected.Client.AdvertisedServerMethods);
+        Assert.DoesNotContain("question.resolve", connected.Client.AdvertisedServerMethods);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -522,6 +537,103 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Fact]
+    public async Task UsagePeriodLegacyScenario_ReturnsSeedThenMismatchedAndSupportedTotals()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateUsagePeriod(new UsagePeriodFixture()), token);
+        using var identity = CreateIdentity();
+        using var client = new OpenClawGatewayClient(
+            server.Endpoint.AbsoluteUri, token, NullLogger.Instance, identityPath: identity.Path,
+            ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var costs = System.Threading.Channels.Channel.CreateUnbounded<GatewayCostUsageInfo>();
+        client.UsageCostUpdated += (_, cost) => costs.Writer.TryWrite(cost);
+        try
+        {
+            await client.ConnectAsync();
+            using var deadline = new CancellationTokenSource(Deadline);
+            var cached = await costs.Reader.ReadAsync(deadline.Token);
+            Assert.Equal(7, cached.Days);
+            Assert.Equal(7, cached.Totals.TotalCost);
+
+            await client.RequestUsageCostAsync(7);
+            var mismatched = await costs.Reader.ReadAsync(deadline.Token);
+            Assert.Equal(30, mismatched.Days);
+            Assert.Equal(30, mismatched.Totals.TotalCost);
+
+            await client.RequestUsageCostAsync(30);
+            var selected = await costs.Reader.ReadAsync(deadline.Token);
+            Assert.Equal(30, selected.Days);
+            Assert.Equal(30, selected.Totals.TotalCost);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Fact]
+    public async Task UsagePeriodGate_HoldsCostsWithoutBlockingOtherReads()
+    {
+        var token = CreateToken();
+        var fixture = new UsagePeriodFixture(UsagePeriodFixture.GatewayMode.B);
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateUsagePeriod(fixture), token);
+        server.HoldUsageCosts(7);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var response = connected.Client.SendWizardRequestAsync("usage.cost", new { days = 7 });
+        try
+        {
+            await server.WaitForRequestAsync("usage.cost");
+            await connected.Client.SendWizardRequestAsync("health", new { }).WaitAsync(Deadline);
+            var thirtyDays = await connected.Client.SendWizardRequestAsync("usage.cost", new { days = 30 }).WaitAsync(Deadline);
+            Assert.Equal(30, thirtyDays.GetProperty("days").GetInt32());
+            Assert.Equal(300, thirtyDays.GetProperty("totals").GetProperty("totalCost").GetDouble());
+            Assert.False(response.IsCompleted);
+            fixture.EnableMatchingSevenDays();
+        }
+        finally
+        {
+            server.ReleaseUsageCosts(7);
+        }
+        var cost = await response.WaitAsync(Deadline);
+        Assert.Equal(7, cost.GetProperty("days").GetInt32());
+        Assert.Equal(70, cost.GetProperty("totals").GetProperty("totalCost").GetDouble());
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task UsagePeriodSwitch_SeparateGatewaysReturnMismatchThenOlderMatchingSnapshot()
+    {
+        var token = CreateToken();
+        var second = new UsagePeriodFixture(UsagePeriodFixture.GatewayMode.B);
+        await using var a = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateUsagePeriod(new UsagePeriodFixture(UsagePeriodFixture.GatewayMode.A)), token);
+        await using var b = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateUsagePeriod(second), token);
+        await using var firstClient = await ConnectedClient.OpenAsync(a, token);
+        await using var secondClient = await ConnectedClient.OpenAsync(b, token);
+
+        var seed = await firstClient.Client.SendWizardRequestAsync("usage.cost", new { days = 7 });
+        Assert.Equal(7, seed.GetProperty("days").GetInt32());
+        Assert.Equal(7, seed.GetProperty("totals").GetProperty("totalCost").GetDouble());
+
+        var mismatch = await secondClient.Client.SendWizardRequestAsync("usage.cost", new { days = 7 });
+        Assert.Equal(30, mismatch.GetProperty("days").GetInt32());
+        Assert.Equal(300, mismatch.GetProperty("totals").GetProperty("totalCost").GetDouble());
+        var selected = await secondClient.Client.SendWizardRequestAsync("usage.cost", new { days = 30 });
+        Assert.Equal(30, selected.GetProperty("days").GetInt32());
+        Assert.Equal(300, selected.GetProperty("totals").GetProperty("totalCost").GetDouble());
+
+        second.EnableMatchingSevenDays();
+        var matching = await secondClient.Client.SendWizardRequestAsync("usage.cost", new { days = 7 });
+        Assert.Equal(7, matching.GetProperty("days").GetInt32());
+        Assert.Equal(70, matching.GetProperty("totals").GetProperty("totalCost").GetDouble());
+        Assert.True(matching.GetProperty("updatedAt").GetInt64() < seed.GetProperty("updatedAt").GetInt64());
+        var unchanged = await firstClient.Client.SendWizardRequestAsync("usage.cost", new { days = 7 });
+        Assert.Equal(7, unchanged.GetProperty("totals").GetProperty("totalCost").GetDouble());
+    }
+
+    [Fact]
     public async Task RealClient_SupportingReadsUseTypedModelsAndConsistentConfiguration()
     {
         var token = CreateToken();
@@ -637,6 +749,7 @@ public sealed partial class GatewayFixtureProtocolTests
     [InlineData("sessions.preview", """{"keys":[7]}""", "session key strings")]
     [InlineData("models.list", """{"view":"invented"}""", "configured or all")]
     [InlineData("usage.cost", """{"days":-1}""", "positive integer")]
+    [InlineData("usage.cost", """{"days":"seven"}""", "positive integer")]
     [InlineData("projects.list", """{"unexpected":true}""", "Unsupported fixture request parameter")]
     [InlineData("environments.list", """{"unexpected":true}""", "Unsupported fixture request parameter")]
     [InlineData("channels.status", """{"probe":"yes"}""", "must be a boolean")]
