@@ -73,7 +73,8 @@ public sealed class NativeGatewaySetupService(
     GatewayRegistry registry,
     INativeGatewayPackageResolver packageResolver,
     INativeGatewaySetupHost host,
-    Func<INativeGatewayRuntime> runtimeFactory)
+    Func<INativeGatewayRuntime> runtimeFactory,
+    TimeProvider? timeProvider = null)
 {
     public async Task<NativeGatewaySetupDraft> CreateDraftAsync(CancellationToken cancellationToken)
     {
@@ -266,7 +267,7 @@ public sealed class NativeGatewaySetupService(
             };
             var isolatedSession = new NativeGatewaySetupSession(
                 registry, selected, isolatedRecord, package,
-                new Dictionary<string, string>(), host, runtimeFactory());
+                new Dictionary<string, string>(), host, runtimeFactory(), timeProvider);
             try
             {
                 await isolatedSession.PrepareAsync(cancellationToken);
@@ -304,7 +305,7 @@ public sealed class NativeGatewaySetupService(
         cancellationToken.ThrowIfCancellationRequested();
         var record = ReadConfiguredRecord(draft, await File.ReadAllTextAsync(configPath, cancellationToken));
         var session = new NativeGatewaySetupSession(
-            registry, draft, record, package, environment, host, runtimeFactory());
+            registry, draft, record, package, environment, host, runtimeFactory(), timeProvider);
         try
         {
             await session.PrepareAsync(cancellationToken);
