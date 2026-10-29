@@ -136,6 +136,7 @@ public sealed partial class WorkspaceWindow
     }
     private void OnPinItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs e)
     {
+        if (e.InvokedItemContainer is not null) _sidebarInvoked = true;
         if (e.InvokedItemContainer?.Tag is not PinnedPageTag pin) return;
         if (!PinnedPages.IsAvailable(pin.Tag, PinStatus))
         {

@@ -110,12 +110,12 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
-    public void SettingsExitFocus_RestoresSavedControl_UnlessWorkspaceSidebarOwnsFocus()
+    public void SettingsExitFocus_SameSavedControl_HistoryRestores_SidebarActivationDoesNot()
     {
         var saved = new object();
-        Assert.Same(saved, WorkspaceDestination.SettingsExitFocus(saved, focusInWorkspaceSidebar: false));
-        Assert.Null(WorkspaceDestination.SettingsExitFocus(saved, focusInWorkspaceSidebar: true));
-        Assert.Null(WorkspaceDestination.SettingsExitFocus<object>(null, focusInWorkspaceSidebar: false));
+        Assert.Same(saved, WorkspaceDestination.SettingsExitFocus(saved, SettingsExitCause.History));
+        Assert.Null(WorkspaceDestination.SettingsExitFocus(saved, SettingsExitCause.SidebarActivation));
+        Assert.Null(WorkspaceDestination.SettingsExitFocus<object>(null, SettingsExitCause.History));
     }
 
     [Fact]

@@ -476,6 +476,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void RenderSettings()
     {
         var view = EnsureSettings();
+        _sidebarInvoked = false;
         if (SettingsSection.Visibility != Visibility.Visible)
         {
             _chatFocus = Root.XamlRoot is { } root
@@ -506,7 +507,9 @@ public sealed partial class WorkspaceWindow : WindowEx
             return;
         // A deliberate click or key press on another sidebar row owns focus; only Back/Forward and
         // other non-row exits restore the control that opened Settings.
-        var focus = WorkspaceDestination.SettingsExitFocus(_chatFocus, FocusInWorkspaceSidebar());
+        var focus = WorkspaceDestination.SettingsExitFocus(_chatFocus,
+            _sidebarInvoked ? SettingsExitCause.SidebarActivation : SettingsExitCause.History);
+        _sidebarInvoked = false;
         _chatFocus = null;
         _settings?.Deactivate();
         _settings?.ContentOnly = false;
@@ -917,20 +920,9 @@ public sealed partial class WorkspaceWindow : WindowEx
         if (args.Reason == InfoBarCloseReason.CloseButton) OperationInfo.IsOpen = false;
     }
 
-    // Focus only counts as a deliberate sidebar navigation inside the retained workspace sidebar,
-    // never the full Settings rail, whose items live under SettingsSection.
-    private bool FocusInWorkspaceSidebar()
-    {
-        if (NavigationSection.Visibility != Visibility.Visible || FocusedElement() is not DependencyObject node) return false;
-        var inItem = false;
-        for (; node is not null; node = VisualTreeHelper.GetParent(node))
-        {
-            if (node is NavigationViewItem) inItem = true;
-            if (ReferenceEquals(node, SettingsSection)) return false;
-            if (ReferenceEquals(node, NavigationSection)) return inItem;
-        }
-        return false;
-    }
+    // Set by a sidebar row invocation and consumed by the next Settings exit or render, so a row that is
+    // merely focused (then Back/Forward) never counts as the cause of leaving Settings.
+    private bool _sidebarInvoked;
 
     private void ReportError(string operation, Exception ex)
     {
@@ -1124,6 +1116,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     internal void NavigateBack()
     {
         if (DeferWhileModalOpen(NavigateBack)) return;
+        _sidebarInvoked = false;
         PruneUnavailableGatewayHistory();
         if (_navigation.GoBack()) RenderDestination();
         else UpdateHistoryButtons();
@@ -1131,6 +1124,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void NavigateForward()
     {
         if (DeferWhileModalOpen(NavigateForward)) return;
+        _sidebarInvoked = false;
         PruneUnavailableGatewayHistory();
         if (_navigation.GoForward()) RenderDestination();
         else UpdateHistoryButtons();

@@ -28,12 +28,14 @@ internal sealed record WorkspaceDestination(
        Settings(fallbackTag, current.Page == WorkspacePageId.Settings && current.Embedded);
 
    /// <summary>
-   /// The control to refocus when leaving Settings: the one that opened it, unless focus is already
-   /// on a retained workspace sidebar row (a deliberate navigation). The full Settings rail is not one.
+   /// The control to refocus when leaving Settings: the one that opened it, unless a sidebar row was
+   /// invoked to leave (a deliberate navigation that owns focus). History exits always restore it.
    /// </summary>
-   public static T? SettingsExitFocus<T>(T? saved, bool focusInWorkspaceSidebar) where T : class =>
-       focusInWorkspaceSidebar ? null : saved;
+   public static T? SettingsExitFocus<T>(T? saved, SettingsExitCause cause) where T : class =>
+       cause == SettingsExitCause.SidebarActivation ? null : saved;
 }
+
+public enum SettingsExitCause { History, SidebarActivation }
 
 /// <summary>
 /// Window boundary and route identity for the approved Workspace. Agent file

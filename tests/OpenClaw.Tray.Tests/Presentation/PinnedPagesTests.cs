@@ -216,8 +216,14 @@ public sealed class PinnedPagesTests
         var render = window[window.IndexOf("private void RenderSettings()", StringComparison.Ordinal)..];
         Assert.Contains("UpdateNavigationSelection();", render[..render.IndexOf("ShowSection(", StringComparison.Ordinal)]);
         Assert.Contains("PrunedFallback(_navigation.Current, fallbackTag)", window);
-        Assert.Contains("SettingsExitFocus(_chatFocus, FocusInWorkspaceSidebar())", window);
-        Assert.Contains("ReferenceEquals(node, SettingsSection)) return false", window);
+        Assert.Contains("SettingsExitFocus(_chatFocus,", window);
+        Assert.Contains("_sidebarInvoked ? SettingsExitCause.SidebarActivation : SettingsExitCause.History", window);
+        Assert.DoesNotContain("FocusInWorkspaceSidebar", window);
+        var back = window[window.IndexOf("internal void NavigateBack()", StringComparison.Ordinal)..];
+        Assert.Contains("_sidebarInvoked = false;", back[..back.IndexOf("GoBack()", StringComparison.Ordinal)]);
+        var forward = window[window.IndexOf("private void NavigateForward()", StringComparison.Ordinal)..];
+        Assert.Contains("_sidebarInvoked = false;", forward[..forward.IndexOf("GoForward()", StringComparison.Ordinal)]);
+        Assert.Contains("_sidebarInvoked = true;", pins);
         Assert.Contains("args.Reason == InfoBarCloseReason.CloseButton", window);
         Assert.Contains("EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen", window);
         Assert.Contains("EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && Destination.Embedded", window);
