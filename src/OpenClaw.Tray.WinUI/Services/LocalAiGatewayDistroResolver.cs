@@ -88,8 +88,10 @@ internal static class LocalAiSetupRoutePolicy
 /// <summary>
 /// Resolves the WSL distro that owns the Local AI installation and rejects any
 /// registry change that would redirect lifecycle commands to a different distro.
-/// Binding happens at construction; every <see cref="Resolve"/> revalidates the
-/// pinned owner against the current registry.
+/// The resolver pins a unique owner at construction when one is already registered.
+/// During first-run setup it binds on the first <see cref="Resolve"/> after the
+/// canonical registry adopts the completed setup; subsequent calls revalidate
+/// the pinned owner against the current registry.
 ///
 /// Use <see cref="LocalAiSetupRouteResolver.ResolveAsync"/> (not raw
 /// <see cref="LocalAiSetupRoutePolicy.Decide"/> flags) for setup route decisions:
