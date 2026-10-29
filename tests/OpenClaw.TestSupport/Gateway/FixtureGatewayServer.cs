@@ -90,6 +90,11 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     /// </summary>
     public Action? DeviceTokenRejected { get; set; }
 
+    /// <summary>Pre-authentication startup rejections before this fixture admits an operator.</summary>
+    public int StartupRejectionsRemaining { get; set; }
+    public int StartupRetryAfterMs { get; set; } = 100;
+    public Action? StartupRejected { get; set; }
+
     /// <summary>Connect attempts that presented no device token, so the shared credential was judged.</summary>
     public int SharedCredentialConnects => Volatile.Read(ref _sharedCredentialConnects);
 
@@ -695,6 +700,23 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                             Task? handshakeGate;
                             lock (_sync) handshakeGate = _connectionHandshakeGate?.Task;
                             if (handshakeGate is not null) await handshakeGate.WaitAsync(connection.Token);
+                            if (StartupRejectionsRemaining > 0)
+                            {
+                                StartupRejectionsRemaining--;
+                                await SendAsync(socket, sendLock, new
+                                {
+                                    type = "res", id, ok = false,
+                                    error = new
+                                    {
+                                        code = "UNAVAILABLE", message = "Gateway starting", retryable = true,
+                                        retryAfterMs = StartupRetryAfterMs, details = new { reason = "startup-sidecars" }
+                                    }
+                                }, connection.Token);
+                                Complete(requestIndex, "error:UNAVAILABLE");
+                                StartupRejected?.Invoke();
+                                await socket.CloseOutputAsync((WebSocketCloseStatus)1013, "gateway starting", connection.Token);
+                                return;
+                            }
                             var role = Authenticate(parameters, nonce);
                             await SendAsync(socket, sendLock, new
                             {
