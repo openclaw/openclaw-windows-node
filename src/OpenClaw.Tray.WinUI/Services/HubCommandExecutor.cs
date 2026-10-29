@@ -44,7 +44,7 @@ internal sealed partial class HubCommandExecutor
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warn($"[HubCommandExecutor] Failed to apply saved setting {GetSettingName(toggle)}: {ex.Message}");
+                    Logger.Warn($"[HubCommandExecutor] Failed to apply saved setting {GetSettingName(toggle)}: {ex}");
                 }
                 break;
         }

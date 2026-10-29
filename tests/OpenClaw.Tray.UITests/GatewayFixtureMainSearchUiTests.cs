@@ -63,6 +63,7 @@ public sealed partial class GatewayFixtureUiTests
             OwnedWindowCapture.Save(run, window, "main-search-collapsed-sidebar.png", FindById(run, "WorkspaceSearchBox")!);
             await EscapeAndAssertDraftAsync(run, window, identity, expectComposerFocus: false);
 
+            FocusComposer(run, window);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search before routing");
             FindById(run, "WorkspaceSearchBox")!.FindFirst(TreeScope.Descendants,
@@ -76,6 +77,9 @@ public sealed partial class GatewayFixtureUiTests
             Send(run, window, "%{LEFT}");
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false },
                 "Back to chat");
+            // No SetFocus here: Back must restore composer focus by itself.
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")!.Current.HasKeyboardFocus,
+                "composer focus restored by Back after search routing");
             Assert.Equal(identity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
             Assert.Equal(MainSearchDraft, ComposerText(run));
         });
@@ -182,7 +186,7 @@ public sealed partial class GatewayFixtureUiTests
             SetForegroundWindow(new IntPtr(window.Current.NativeWindowHandle));
             Thread.Sleep(100);
         }
-        foreach (var modifier in new[] { 0x10, 0x11, 0x12 })
+        foreach (var modifier in new[] { 0x10, 0x11, 0x12, 0x5B, 0x5C })
         {
             if ((GetAsyncKeyState(modifier) & 0x8000) != 0)
                 throw new InvalidOperationException("A modifier key is held; refusing to send keys.");

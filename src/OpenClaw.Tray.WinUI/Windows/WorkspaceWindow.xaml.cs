@@ -188,21 +188,40 @@ public sealed partial class WorkspaceWindow : WindowEx
     /// Opens the search of the visible surface: the Settings flyout while Settings is shown,
     /// otherwise the main-screen flyout. Neither changes the page, conversation or draft.
     /// </summary>
+    private bool _commandCenterPending;
+
     internal void OpenCommandCenter()
     {
         if (IsClosed) return;
         if (!Root.IsLoaded)
         {
             // A window opened by app.navigate has no loaded anchors yet; open once its tree is live.
+            if (_commandCenterPending) return;
+            _commandCenterPending = true;
             void Retry(object? s, RoutedEventArgs e)
             {
                 Root.Loaded -= Retry;
-                OpenCommandCenter();
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    _commandCenterPending = false;
+                    OpenCommandCenter();
+                });
             }
             Root.Loaded += Retry;
             return;
         }
-        if (OpenModalDialog() is not null) return;
+        if (OpenModalDialog() is { } dialog)
+        {
+            // Keep one request and open search after the dialog closes; navigation intents are not touched.
+            if (_commandCenterPending) return;
+            _commandCenterPending = true;
+            dialog.Closed += (_, _) => DispatcherQueue.TryEnqueue(() =>
+            {
+                _commandCenterPending = false;
+                OpenCommandCenter();
+            });
+            return;
+        }
         if (IsSettingsVisible)
         {
             if (_settings is { IsLoaded: true }) _settings.OpenCommandCenter();

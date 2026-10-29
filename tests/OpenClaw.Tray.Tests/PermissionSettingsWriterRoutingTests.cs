@@ -114,7 +114,9 @@ public sealed class PermissionSettingsWriterRoutingTests
         Assert.Contains("_settings.OpenCommandCenter()", open);
         Assert.Contains("WorkspaceSearchFlyout.ShowAt", open);
         Assert.Contains("Root.IsLoaded", open);
-        Assert.Contains("OpenModalDialog() is not null", open);
+        Assert.Contains("OpenModalDialog() is { } dialog", open);
+        Assert.Contains("_commandCenterPending", open);
+        Assert.Contains("dialog.Closed +=", open);
         Assert.Contains("HubCommandCatalog.Build(_state", workspace);
         Assert.Contains("_commandExecutor.Execute(command, OnSettingsWorkspaceRoute, () => SettingsSaved?.Invoke(this, EventArgs.Empty))", submitted);
         Assert.Contains("TitleSearchBox.PlaceholderText", workspace);
