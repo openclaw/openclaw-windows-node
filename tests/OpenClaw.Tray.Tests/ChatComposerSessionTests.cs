@@ -191,4 +191,23 @@ public sealed class ChatComposerSessionTests
         Assert.Equal(SandboxStatus.Disabled, first.ViewModel.SandboxStatus);
         Assert.Equal(SandboxStatus.Compatibility, second.ViewModel.SandboxStatus);
     }
+
+    [Fact]
+    public void EffectiveThreadProjectionBindsInitialFallbackAndChangedSpeechTargetsWithoutRenderDuplicates()
+    {
+        var observed = new List<string>();
+        using var temp = new TempDirectory();
+        var dispatcher = new RecordingUiDispatcher();
+        using var store = new SettingsStore(new SettingsManager(temp.Path), dispatcher);
+        var factory = new ChatComposerFactory(dispatcher, store, new SandboxStatusStore());
+        using var session = factory.Create(new FakeChatDataProviderForComposerTests(),
+            new ChatComposerHostActions(null, null, null, null, SpeechTargetChanged: observed.Add), false);
+        session.ApplyInputs(MakeInputs("initial-default"));
+        session.ApplyInputs(MakeInputs("initial-default"));
+        session.ApplyInputs(MakeInputs("fallback-thread"));
+        session.ApplyInputs(MakeInputs("selected-thread"));
+        session.Dispose();
+        session.ApplyInputs(MakeInputs("retired-thread"));
+        Assert.Equal(new[] { "initial-default", "fallback-thread", "selected-thread" }, observed);
+    }
 }

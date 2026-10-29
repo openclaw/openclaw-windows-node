@@ -111,6 +111,9 @@ public record class SettingsData
     /// provider (which is unaffected by this setting).
     /// </summary>
     public bool NodeOllamaInferenceEnabled { get; set; } = false;
+    /// <summary>Opt-in Companion chat/preview route. Does not change node/MCP TTS.</summary>
+    public bool UseGatewayVoice { get; set; } = false;
+
     public string TtsProvider { get; set; } = OpenClaw.Shared.Capabilities.TtsCapability.KokoroProvider;
     /// <summary>Persisted: whether the Hub's NavigationView pane is expanded
     /// (true) or collapsed/compact (false). Default true.</summary>

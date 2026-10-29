@@ -8212,4 +8212,26 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在處理此問題。請重新整理以查看其狀態。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>請為每個問題選擇有效的答案。</value></data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>使用已連線 Gateway 的語音</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>聊天朗讀和自動回覆使用 Gateway 設定的語音。文字會傳送至 Gateway 及其語音供應商。金鑰保留在 Gateway 上。本機節點和 MCP 語音不受影響。</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>不會自動改用本機。若無法使用，請關閉此選項以使用本機供應商。</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceRefresh.Content" xml:space="preserve"><value>檢查就緒狀態</value></data>
+  <data name="VoiceSettingsPage_GatewayVoicePreview.Content" xml:space="preserve"><value>預覽 Gateway 語音</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>停止</value></data>
+  <data name="GatewayVoice_Checking" xml:space="preserve"><value>正在檢查 Gateway 語音就緒狀態…</value></data>
+  <data name="GatewayVoice_Ready" xml:space="preserve"><value>Gateway 選擇：{0}。已設定的供應商：{1}。</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>正在產生 Gateway 語音…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Gateway 語音：{0}。</value></data>
+  <data name="GatewayVoice_ActualFallback" xml:space="preserve"><value>Gateway 語音：{0}（檢查時 Gateway 的選擇：{1}）。</value></data>
+  <data name="GatewayVoice_Stopped" xml:space="preserve"><value>Gateway 語音已停止。不會播放尚未完成的結果。</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>請在連線設定中連接 Gateway 以使用其語音。</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>此 Gateway 未宣告必要的語音 RPC。請更新 Gateway 或關閉 Gateway 語音。</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>Gateway 語音需要 operator.read 和 operator.write 權限。請檢查 Gateway 對此裝置的核准。Companion 不會變更權限。</value></data>
+  <data name="GatewayVoice_ProviderUnavailable" xml:space="preserve"><value>沒有已就緒的 Gateway 語音供應商。請在 Gateway 上設定 TTS 或關閉 Gateway 語音。</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>語音文字為空或超過 Companion 的 4096 字元限制。請選擇較短的訊息。</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>Gateway 傳回空白、無效或過大的音訊。請檢查其 TTS 設定。未播放任何音訊。</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>不支援此 Gateway 音訊格式。請在 Gateway 上設定 MP3 或 WAV 輸出。</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 語音已逾時。合成可能已完成。再次嘗試前請檢查 Gateway；未進行自動重試。</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 語音失敗。請檢查其語音設定和供應商配額。未改用本機或自動重試。</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 無法播放語音音訊。請檢查輸出裝置。未進行自動重試。</value></data>
 </root>

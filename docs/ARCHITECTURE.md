@@ -236,6 +236,8 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Chat-visible notification suppression | `ChatVisibilityPolicy` owns the pure visibility decision; `WorkspaceWindow` supplies current destination, AppWindow visibility and minimized state; `WindowManager.IsChatVisible` evaluates only Workspace chat | authoritative |
 | Inferring chat visibility from any existing main window | Closed in `App.ShouldShowNotification`; use `IWindowManager.IsChatVisible`, retaining chat/per-type notification toggles | closed |
 | Readiness-gated, single-use native chat voice launch | `PendingVoiceActivation` | authoritative |
+| Opt-in Gateway chat speech lifetime and late-result rejection | `GatewaySpeechPlayback` captures the operator client, authenticated epoch and chat target; mounted composer input projection supplies initial, fallback and explicit targets without becoming another selection owner; `OpenClawChatCoordinator` routes chat/preview and owns microphone playback-muting leases. `TextToSpeechService` remains the serialized native playback owner | authoritative |
+| Outward Gateway speech protocol and payload admission | `OpenClawGatewayClient.Speech` uses the existing response registry; `GatewaySpeech` validates method/scope authority, provider readiness and bounded inline MP3/WAV. Inward node/MCP `TtsCapability` keeps its local provider selection | authoritative |
 | Hub notification banner severity and action projection | `AppNotificationInfoBarPresenter` | authoritative |
 | Compact notification list reconciliation and dismissal | `NotificationFlyoutContent` | authoritative |
 | Gateway/operator/node status flyout controls | `GatewayStatusContent` | authoritative |

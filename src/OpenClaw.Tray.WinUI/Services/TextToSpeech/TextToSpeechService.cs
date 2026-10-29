@@ -449,16 +449,33 @@ public sealed class TextToSpeechService : IDisposable
         }
     }
 
+    /// <summary>Plays validated Gateway bytes through the existing serialized native player.</summary>
+    public async Task PlayGatewayAudioAsync(GatewaySpeechAudio audio, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var stream = await CreateStreamAsync(audio.Bytes, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        await PlayStreamAsync(stream, audio.MimeType, interrupt: true, cancellationToken).ConfigureAwait(false);
+    }
+
     private static async Task<InMemoryRandomAccessStream> CreateStreamAsync(byte[] bytes, CancellationToken cancellationToken)
     {
         var stream = new InMemoryRandomAccessStream();
         using var writer = new DataWriter(stream);
-        writer.WriteBytes(bytes);
-        await writer.StoreAsync().AsTask(cancellationToken).ConfigureAwait(false);
-        await writer.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
-        writer.DetachStream();
-        stream.Seek(0);
-        return stream;
+        try
+        {
+            writer.WriteBytes(bytes);
+            await writer.StoreAsync().AsTask(cancellationToken).ConfigureAwait(false);
+            await writer.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
+            writer.DetachStream();
+            stream.Seek(0);
+            return stream;
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
     }
 
     private async Task PlayStreamAsync(
@@ -488,11 +505,19 @@ public sealed class TextToSpeechService : IDisposable
                 _activeCompletion = completion;
             }
 
-            player.Play();
-
-            using var cancellationRegistration = cancellationToken.Register(
-                static state => ((TaskCompletionSource<bool>)state!).TrySetCanceled(),
-                completion);
+            using var cancellationRegistration = cancellationToken.Register(() =>
+            {
+                lock (_activeLock)
+                {
+                    player.Pause();
+                    completion.TrySetCanceled(cancellationToken);
+                }
+            });
+            lock (_activeLock)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                player.Play();
+            }
             await completion.Task.ConfigureAwait(false);
         }
         finally

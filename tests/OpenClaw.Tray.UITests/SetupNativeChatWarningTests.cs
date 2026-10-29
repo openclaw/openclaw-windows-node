@@ -15,6 +15,47 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class SetupNativeChatWarningTests(UIThreadFixture fixture)
 {
+    [Fact]
+    public async Task NavigationAndTeardownWithoutProductSpeechPreserveSessionSelection()
+    {
+        await fixture.RunOnUIAsync(() =>
+        {
+            Assert.IsType<TestApp>(Application.Current);
+            var page = new ChatPage();
+            fixture.Container.Children.Add(page);
+            try
+            {
+                const string queued = "agent:synthetic:queued";
+                const string selected = "agent:synthetic:selected";
+                string? observedSession = null;
+                string? observedPrevious = null;
+                page.SessionSelected += (session, previous) =>
+                {
+                    observedSession = session;
+                    observedPrevious = previous;
+                };
+
+                page.QueueSession(queued);
+                Assert.Equal(queued, typeof(ChatPage)
+                    .GetField("_pendingSessionKey", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(page));
+                page.OnComposerSessionSelected(selected, queued);
+                Assert.Equal(selected, observedSession);
+                Assert.Equal(queued, observedPrevious);
+
+                // Product speech is optional for these existing page contracts.
+                // CloseSurface must still retire the page under the real TestApp.
+                page.CloseSurface();
+                Assert.False((bool)typeof(ChatPage)
+                    .GetField("_pageActive", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(page)!);
+                Assert.False(Assert.IsType<InfoBar>(page.FindName("SpeechStatusBar")).IsOpen);
+            }
+            finally
+            {
+                fixture.Container.Children.Remove(page);
+            }
+        });
+    }
+
     [Theory]
     [InlineData((int)SetupNativeChatWarning.Unavailable, InfoBarSeverity.Warning)]
     [InlineData((int)SetupNativeChatWarning.AuthorityUnconfirmed, InfoBarSeverity.Error)]

@@ -124,6 +124,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     public string? PendingChatSessionKey { get; set; }
 
     public OpenClawTray.Chat.OpenClawChatDataProvider? ChatProvider => _chatCoordinator?.Provider;
+    public OpenClawTray.Chat.OpenClawChatCoordinator? ChatSpeech => _chatCoordinator;
     /// <summary>
     /// Raised after the tray-wide settings have been saved (either via the
     /// SettingsPage Save button or a direct toggle from the tray menu).
@@ -3088,7 +3089,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             // TTS: read response aloud whenever chat TTS is enabled and ready (any chat surface).
             if (SpeechSetupReadiness.IsAutomaticChatTtsEnabled(_settings))
             {
-                _ = (_chatCoordinator?.SpeakResponseAsync(speechText) ?? Task.CompletedTask);
+                _ = (_chatCoordinator?.SpeakResponseAsync(speechText, notification.SessionKey) ?? Task.CompletedTask);
             }
         }
 
