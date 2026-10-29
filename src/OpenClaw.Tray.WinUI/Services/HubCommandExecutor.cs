@@ -37,7 +37,15 @@ internal sealed partial class HubCommandExecutor
                 _openDashboard(command.Action.Value);
                 break;
             case HubCommandActionKind.ToggleSetting when command.Action.Toggle is { } toggle:
-                if (ToggleSetting(toggle)) settingsSaved?.Invoke();
+                if (!ToggleSetting(toggle)) break;
+                try
+                {
+                    settingsSaved?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"[HubCommandExecutor] Failed to apply saved setting {GetSettingName(toggle)}: {ex.Message}");
+                }
                 break;
         }
     }

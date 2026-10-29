@@ -6,7 +6,8 @@ namespace OpenClaw.Tray.UITests;
 public sealed partial class GatewayFixtureUiTests
 {
     private const string MainSearchDraft = "Keep this draft through main search";
-    private static readonly TimeSpan MainSearchNegativeWindow = TimeSpan.FromMilliseconds(750);
+    private const string OrderingProbe = "Z";
+    private static readonly TimeSpan MainSearchForegroundTimeout = TimeSpan.FromSeconds(5);
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
@@ -23,26 +24,25 @@ public sealed partial class GatewayFixtureUiTests
                     new PropertyCondition(AutomationElement.HasKeyboardFocusProperty, true)) is not null,
                 "search box focus");
             OwnedWindowCapture.Save(run, window, "main-search-open.png", FindById(run, "WorkspaceSearchBox")!);
-            await EscapeAndAssertDraftAsync(run, identity);
+            await EscapeAndAssertDraftAsync(run, window, identity, expectComposerFocus: false);
 
             foreach (var chord in new[] { "^k", "^e" })
             {
                 FocusComposer(run, window);
-                System.Windows.Forms.SendKeys.SendWait(chord);
+                Send(run, window, chord);
                 await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, $"search flyout from {chord}");
-                await EscapeAndAssertDraftAsync(run, identity);
+                await EscapeAndAssertDraftAsync(run, window, identity, expectComposerFocus: true);
             }
 
+            // Ctrl+F belongs to the chat content. The probe key is processed after Ctrl+F, so it
+            // reaching the composer proves Ctrl+F was delivered and did not move focus to search.
             FocusComposer(run, window);
-            System.Windows.Forms.SendKeys.SendWait("^f");
-            await Task.Delay(MainSearchNegativeWindow);
+            Send(run, window, "^f");
+            Send(run, window, OrderingProbe);
+            await WaitUiAsync(run, () => ComposerText(run).Contains(OrderingProbe), "ordering probe reaches the composer after Ctrl+F");
             Assert.Null(FindById(run, "WorkspaceSearchBox"));
-            Assert.Equal(MainSearchDraft, ComposerText(run));
-
-            // Delivery sentinel: the same focus state still opens search with Ctrl+K, so the earlier Ctrl+F was not lost to focus.
-            System.Windows.Forms.SendKeys.SendWait("^k");
-            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search flyout from Ctrl+K after Ctrl+F");
-            await EscapeAndAssertDraftAsync(run, identity);
+            Assert.Equal(MainSearchDraft, ComposerText(run).Replace(OrderingProbe, string.Empty));
+            ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(MainSearchDraft);
         });
     }
 
@@ -58,23 +58,22 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindById(run, "WorkspaceReopenPane") is { Current.IsOffscreen: false },
                 "collapsed sidebar");
             SetForeground(window);
-            System.Windows.Forms.SendKeys.SendWait("^k");
+            Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search with collapsed sidebar");
             OwnedWindowCapture.Save(run, window, "main-search-collapsed-sidebar.png", FindById(run, "WorkspaceSearchBox")!);
-            await EscapeAndAssertDraftAsync(run, identity);
+            await EscapeAndAssertDraftAsync(run, window, identity, expectComposerFocus: false);
 
-            System.Windows.Forms.SendKeys.SendWait("^k");
+            Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search before routing");
             FindById(run, "WorkspaceSearchBox")!.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))!.SetFocus();
-            System.Windows.Forms.SendKeys.SendWait("Settings{ENTER}");
+            Send(run, window, "Settings{ENTER}");
             await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is { Current.IsOffscreen: false },
                 "Settings route from main search");
             Assert.Null(FindById(run, "WorkspaceSearchBox"));
             OwnedWindowCapture.Save(run, window, "main-search-routed-to-settings.png", FindById(run, "SettingsPageMarker")!);
 
-            SetForeground(window);
-            System.Windows.Forms.SendKeys.SendWait("%{LEFT}");
+            Send(run, window, "%{LEFT}");
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false },
                 "Back to chat");
             Assert.Equal(identity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
@@ -101,12 +100,12 @@ public sealed partial class GatewayFixtureUiTests
                     new PropertyCondition(AutomationElement.IsOffscreenProperty, false))).Cast<AutomationElement>()
                     .First(e => e.Current.AutomationId != "WorkspaceSearch").SetFocus();
                 Assert.Null(FindById(run, "SettingsSearchBox"));
-                System.Windows.Forms.SendKeys.SendWait(chord);
+                Send(run, window, chord);
                 await WaitUiAsync(run, () => FindById(run, "SettingsSearchBox") is not null, $"Settings search from {chord}");
                 Assert.Null(FindById(run, "WorkspaceSearchBox"));
                 if (chord == "^f")
                     OwnedWindowCapture.Save(run, window, "settings-ctrlf-search.png", FindById(run, "SettingsSearchBox")!);
-                System.Windows.Forms.SendKeys.SendWait("{ESC}");
+                Send(run, window, "{ESC}");
                 await WaitUiAsync(run, () => FindById(run, "SettingsSearchBox") is null, $"Settings search closed after {chord}");
             }
         });
@@ -121,30 +120,32 @@ public sealed partial class GatewayFixtureUiTests
             var (window, _, identity) = await PrepareChatWithDraftAsync(run);
 
             SetForeground(window);
-            System.Windows.Forms.SendKeys.SendWait("^k");
+            Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search flyout");
             var edit = FindById(run, "WorkspaceSearchBox")!.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))!;
             edit.SetFocus();
             const string unmatched = "zzqqxx-no-such-command";
-            System.Windows.Forms.SendKeys.SendWait(unmatched);
+            Send(run, window, unmatched);
             await WaitUiAsync(run, () => ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == unmatched,
                 "unmatched query typed");
             OwnedWindowCapture.Save(run, window, "main-search-unmatched-query.png", FindById(run, "WorkspaceSearchBox")!);
-            System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+            Send(run, window, "{ENTER}");
 
-            // Enter on an unmatched query is a no-op; a following valid query in the same flyout proves Enter is processed.
-            await Task.Delay(MainSearchNegativeWindow);
+            // Keys are processed in order: the probe after Enter reaching the same box proves Enter was
+            // handled, the flyout stayed open and focus stayed in the search box.
+            Send(run, window, OrderingProbe);
+            await WaitUiAsync(run, () => ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == unmatched + OrderingProbe,
+                "probe typed after unmatched Enter");
             Assert.NotNull(FindById(run, "WorkspaceSearchBox"));
             Assert.True(FindById(run, "SettingsPageMarker") is null or { Current.IsOffscreen: true });
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Settings");
             edit.SetFocus();
-            System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+            Send(run, window, "{ENTER}");
             await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is { Current.IsOffscreen: false },
                 "valid query routes after unmatched one");
 
-            SetForeground(window);
-            System.Windows.Forms.SendKeys.SendWait("%{LEFT}");
+            Send(run, window, "%{LEFT}");
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false }, "Back to chat");
             Assert.Equal(identity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
             Assert.Equal(MainSearchDraft, ComposerText(run));
@@ -169,6 +170,38 @@ public sealed partial class GatewayFixtureUiTests
             throw new InvalidOperationException("Cannot activate the isolated Workspace for keyboard proof.");
     }
 
+    // SendKeys is global input. Refuse to send unless the foreground window belongs to the fixture app
+    // process (a flyout popup is a separate window of the same process) and no modifier key is held.
+    private static void Send(GatewayFixtureRun run, AutomationElement window, string keys)
+    {
+        var deadline = DateTime.UtcNow + MainSearchForegroundTimeout;
+        while (!ForegroundBelongsTo(run.AppProcessId))
+        {
+            if (DateTime.UtcNow > deadline)
+                throw new InvalidOperationException($"Fixture app PID {run.AppProcessId} is not foreground; refusing to send keys '{keys}'.");
+            SetForegroundWindow(new IntPtr(window.Current.NativeWindowHandle));
+            Thread.Sleep(100);
+        }
+        foreach (var modifier in new[] { 0x10, 0x11, 0x12 })
+        {
+            if ((GetAsyncKeyState(modifier) & 0x8000) != 0)
+                throw new InvalidOperationException("A modifier key is held; refusing to send keys.");
+        }
+        System.Windows.Forms.SendKeys.SendWait(keys);
+    }
+
+    private static bool ForegroundBelongsTo(int processId)
+    {
+        GetWindowThreadProcessId(GetForegroundWindow(), out var owner);
+        return owner == (uint)processId;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int virtualKey);
+
     private static void FocusComposer(GatewayFixtureRun run, AutomationElement window)
     {
         SetForeground(window);
@@ -178,10 +211,13 @@ public sealed partial class GatewayFixtureUiTests
     private static string ComposerText(GatewayFixtureRun run) =>
         ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value;
 
-    private static async Task EscapeAndAssertDraftAsync(GatewayFixtureRun run, int[] composerIdentity)
+    private static async Task EscapeAndAssertDraftAsync(
+        GatewayFixtureRun run, AutomationElement window, int[] composerIdentity, bool expectComposerFocus)
     {
-        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        Send(run, window, "{ESC}");
         await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is null, "search flyout closed by Escape");
+        if (expectComposerFocus)
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")!.Current.HasKeyboardFocus, "composer focus restored by Escape");
         Assert.Equal(composerIdentity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
         Assert.Equal(MainSearchDraft, ComposerText(run));
     }

@@ -64,14 +64,16 @@ public sealed class PermissionSettingsWriterRoutingTests
     }
 
     [Fact]
-    public async Task Executor_Toggle_SurfacesRuntimeApplyFailure()
+    public void Executor_Toggle_ContainsRuntimeApplyFailure()
     {
         using var temp = new TempDir();
         var settings = new SettingsManager(temp.Path);
         using var store = new SettingsStore(settings, new RecordingUiDispatcher());
         var executor = new HubCommandExecutor(() => settings, () => store, _ => { });
-        await Assert.ThrowsAsync<InvalidOperationException>(() => { executor.Execute(
-            Toggle(HubSettingToggle.ScreenCapture), _ => { }, () => throw new InvalidOperationException("apply")); return Task.CompletedTask; });
+        var applied = 0;
+        executor.Execute(Toggle(HubSettingToggle.ScreenCapture), _ => { },
+            () => { applied++; throw new InvalidOperationException("apply"); });
+        Assert.Equal(1, applied);
     }
 
     [Fact]
@@ -111,6 +113,8 @@ public sealed class PermissionSettingsWriterRoutingTests
         Assert.DoesNotContain("Navigate(", open);
         Assert.Contains("_settings.OpenCommandCenter()", open);
         Assert.Contains("WorkspaceSearchFlyout.ShowAt", open);
+        Assert.Contains("Root.IsLoaded", open);
+        Assert.Contains("OpenModalDialog() is not null", open);
         Assert.Contains("HubCommandCatalog.Build(_state", workspace);
         Assert.Contains("_commandExecutor.Execute(command, OnSettingsWorkspaceRoute, () => SettingsSaved?.Invoke(this, EventArgs.Empty))", submitted);
         Assert.Contains("TitleSearchBox.PlaceholderText", workspace);
