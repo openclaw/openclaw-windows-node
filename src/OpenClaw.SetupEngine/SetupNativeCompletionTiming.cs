@@ -3,14 +3,16 @@ using OpenClaw.Connection.NativeGateway;
 
 namespace OpenClaw.SetupEngine;
 
-public enum SetupNativeCompletionPhase { PageDrain, Connection, ModelRecovery, ModelVerification, Verification }
+public enum SetupNativeCompletionPhase { PageDrain, Connection, ModelRecovery, ModelVerification, Verification, Execution }
 
 public sealed class SetupNativeCompletionTimeoutException : TimeoutException
 {
     public SetupNativeCompletionPhase Phase { get; }
 
     internal SetupNativeCompletionTimeoutException(SetupNativeCompletionPhase phase, Exception innerException)
-        : base($"Native AI completion timed out while {Describe(phase)}. Retry when the Gateway is ready.", innerException)
+        : base(phase == SetupNativeCompletionPhase.Execution
+            ? "Native AI completion exceeded its execution deadline. Close setup and wait for admitted work to settle before starting again."
+            : $"Native AI completion timed out while {Describe(phase)}. Retry when the Gateway is ready.", innerException)
     {
         Phase = phase;
     }
