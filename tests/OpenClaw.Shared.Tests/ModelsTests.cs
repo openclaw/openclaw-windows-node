@@ -5,6 +5,7 @@ using OpenClaw.Shared;
 
 namespace OpenClaw.Shared.Tests;
 
+// A/A timing control only. No test behavior or assertions are changed.
 public class ChatSendResultTests
 {
     [Theory]
