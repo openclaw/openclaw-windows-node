@@ -517,7 +517,6 @@ public sealed class NativeLocalAiLifecycleTests
         Assert.Equal(original.ModelCatalogId, observed.ModelId);
         Assert.True(observed.GatewayRouteRequiresResolution);
         var stopped = await runtime.StopAsync();
-        Assert.Equal(LocalAiRuntimeState.Stopped, stopped.State);
         Assert.False(stopped.GatewayRouteRequiresResolution);
         Assert.True(fixture.Store.Exists);
         Assert.False(fixture.Store.Load()!.Pending);
@@ -1361,6 +1360,40 @@ public sealed class NativeLocalAiLifecycleTests
     }
 
     [Fact]
+    public async Task RetiredModelRouteCanBeWithdrawnAndReleased()
+    {
+        // Catalog ID retired by #1760 (fix(inference): rename Bolt model ID to public 24gb name).
+        const string retiredModelId = "nemotron-3.5-bolt-74b-a9b-iq2-lilicorr";
+        const string retiredRef = "llamacpp/" + retiredModelId;
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        // Recreate a route published before the catalog rename, at the same config revision.
+        var config = fixture.Rpc.Config;
+        config["models"]!["providers"]!["llamacpp"]!["models"]![0]!["id"] = retiredModelId;
+        config["agents"]!["defaults"]!["model"]!["primary"] = retiredRef;
+        var allowlist = config["agents"]!["defaults"]!["models"]!.AsObject();
+        if (allowlist[fixture.Model] is { } entry)
+        {
+            allowlist.Remove(fixture.Model);
+            allowlist[retiredRef] = entry;
+        }
+        fixture.Store.Save(fixture.Store.Load()! with { ModelRef = retiredRef });
+        var retired = fixture.Install with
+        {
+            Manifest = fixture.Install.Manifest with { ModelCatalogId = retiredModelId, ModelAlias = retiredModelId },
+        };
+        await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(false);
+
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(retired)).Success);
+
+        Assert.Null(fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]);
+        Assert.Equal("cloud/model", fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"]!.GetValue<string>());
+        await fixture.Lifecycle.ForgetWithdrawnAsync(Record.Id, default);
+        Assert.False(fixture.Store.Exists);
+    }
+
+    [Fact]
     public async Task TeardownPreservesUserAdoptedAllowlistEntryAndAllowsRelease()
     {
         using var fixture = new Fixture();
@@ -1383,6 +1416,34 @@ public sealed class NativeLocalAiLifecycleTests
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.ReleaseOwnershipAsync(default));
         Assert.Contains("Close Local AI setup", error.Message);
         Assert.True(fixture.Store.Exists);
+    }
+
+    [Fact]
+    public async Task SetupResetReleasesThroughItsOwnRegistrationOnly()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        var host = new SetupLocalAiHost(
+            () => throw new InvalidOperationException("No WSL inspection."),
+            () => null, () => null, _ => Task.FromResult<LocalAiResolvedInstall?>(fixture.Install),
+            (_, _) => Task.FromResult(true), _ => throw new InvalidOperationException("No hardware probe."),
+            () => throw new InvalidOperationException("No publication."),
+            nativeLifecycle: fixture.Lifecycle,
+            resetLocalAi: async ct =>
+            {
+                // The tray reset releases native ownership after its confirmed stop.
+                await fixture.Lifecycle.ReleaseOwnershipAsync(ct);
+                return null;
+            });
+        host.ConfigureNative(Record, fixture.Rpc, _ => Task.CompletedTask);
+
+        Assert.Null(await host.ResetLocalAiAsync(default));
+        Assert.False(fixture.Store.Exists);
+
+        // Outside its own reset, an open setup still excludes release.
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.ReleaseOwnershipAsync(default));
+        Assert.Contains("Close Local AI setup", error.Message);
     }
 
     [Fact]

@@ -2,6 +2,7 @@ using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using OpenClaw.Connection.LocalAi;
@@ -1010,6 +1011,7 @@ public sealed partial class SetupWindow : Window
         string? errorMessage = null,
         GatewayCompatibilityFailureKind? compatibilityFailure = null,
         LocalAiFailureDetail? detail = null,
+        PipelineFailureCode? failureCode = null,
         bool restartRequired = false)
     {
         var canRetryFallback =
@@ -1029,10 +1031,68 @@ public sealed partial class SetupWindow : Window
                 GatewayFallbackVersion: canRetryFallback
                     ? _config.Gateway.FallbackVersion
                     : null,
-                Detail: detail)
+                Detail: detail,
+                FailureCode: failureCode)
             {
                 RequiresRestart = restartRequired,
             });
+    }
+    /// <summary>
+    /// Confirms and runs the tray-owned Local AI reset. Callers are CompletePage (after
+    /// ProgressPage settlement) and AiSetupPage (observation is only re-read afterwards);
+    /// neither has a setup mutation in flight while this window lends its run lock to the engine.
+    /// </summary>
+    internal async Task<LocalAiResetPrompt> ConfirmAndResetLocalAiAsync(XamlRoot xamlRoot)
+    {
+        if (_localAiHost is null)
+            return new(Confirmed: false, SetupLocalization.GetString("LocalAiReset_Unavailable"));
+        var dialog = new ContentDialog
+        {
+            Title = SetupLocalization.GetString("LocalAiPage_ResetDialogTitle"),
+            Content = SetupLocalization.GetString("LocalAiPage_ResetDialogContent"),
+            PrimaryButtonText = SetupLocalization.GetString("LocalAiPage_ResetDialogPrimary"),
+            CloseButtonText = SetupLocalization.GetString("LocalAiPage_ResetDialogCancel"),
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = xamlRoot,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return new(Confirmed: false, Error: null);
+        // The reset engine is its own setup run and refuses while this window holds the run
+        // lock, so the window yields the lock until the reset settles, then takes it back.
+        bool yieldedLock = _setupLock is not null;
+        _setupLock?.Dispose();
+        _setupLock = null;
+        string? error;
+        try { error = await _localAiHost.ResetLocalAiAsync(_lifetimeCts.Token); }
+        finally
+        {
+            if (yieldedLock)
+                ReclaimSetupLock();
+        }
+        return new(Confirmed: true, error);
+    }
+
+    private void ReclaimSetupLock()
+    {
+        if (_isClosed)
+            return;
+        if (!SetupRunLock.TryAcquire(_dataDir, out _setupLock, out var lockMessage))
+            NavigateTo(typeof(CompletePage), new CompletePageArgs(false, TimeSpan.Zero, null,
+                lockMessage ?? "Another setup run is active."));
+    }
+
+    /// <summary>Reruns the same setup configuration after a reset removed the unusable receipt.</summary>
+    internal void RetryAfterLocalAiReset()
+    {
+        // Without the run lock another setup run owns this data, so this window must not continue.
+        if (_setupLock is not null)
+            NavigateToProgress();
+    }
+
+    /// <summary>Confirmed=false with no error means the user cancelled. Error null after confirmation means removed.</summary>
+    internal readonly record struct LocalAiResetPrompt(bool Confirmed, string? Error)
+    {
+        public bool Removed => Confirmed && Error is null;
     }
 
     public bool TryRetryWithGatewayFallback(out string? error)
@@ -1271,7 +1331,8 @@ public sealed record CompletePageArgs(
     SetupReviewSummary? ReviewSummary = null,
     bool CanRetryGatewayFallback = false,
     string? GatewayFallbackVersion = null,
-    LocalAiFailureDetail? Detail = null)
+    LocalAiFailureDetail? Detail = null,
+    PipelineFailureCode? FailureCode = null)
 {
     public bool RequiresRestart { get; init; }
     public string? NativeGatewayUrl { get; init; }

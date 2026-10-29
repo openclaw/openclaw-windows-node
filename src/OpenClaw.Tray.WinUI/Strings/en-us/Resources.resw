@@ -8161,6 +8161,12 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>This Windows version cannot provide the required MXC containment. Approved commands run directly on this computer. Sandbox file, network, clipboard and Windows UI restrictions are not enforced. Saved permissions are preserved and command approvals remain active. Update Windows to enable containment. Companion's own minimum Windows version still applies.</value></data>
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>The preferred {0} profile does not fit this hardware. Setup can use {1} with {2:N0} context tokens. Review this profile in setup before installing.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>This profile requires at least {0} of system RAM.</value></data>
+  <data name="LocalAiPage_ResetButton.Content" xml:space="preserve"><value>Reset Local AI</value></data>
+  <data name="LocalAiPage_ResetDialogTitle" xml:space="preserve"><value>Reset Local AI?</value></data>
+  <data name="LocalAiPage_ResetDialogContent" xml:space="preserve"><value>This removes the managed Local AI installation and restores the previous Gateway model. Download caches are kept.</value></data>
+  <data name="LocalAiPage_ResetDialogPrimary" xml:space="preserve"><value>Reset Local AI</value></data>
+  <data name="LocalAiPage_ResetDialogCancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="LocalAiReset_Unavailable" xml:space="preserve"><value>Local AI reset is not available here. Open Settings, then Local AI, to reset it.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>This profile requires at least {0} free on both the model cache and runtime volumes.</value></data>
   <data name="Chat_Placement_Unknown" xml:space="preserve">
     <value>Not verified</value>

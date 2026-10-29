@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -8212,4 +8212,10 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在處理此問題。請重新整理以查看其狀態。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>請為每個問題選擇有效的答案。</value></data>
+  <data name="LocalAiPage_ResetButton.Content" xml:space="preserve"><value>重設本機 AI</value></data>
+  <data name="LocalAiPage_ResetDialogTitle" xml:space="preserve"><value>要重設本機 AI 嗎？</value></data>
+  <data name="LocalAiPage_ResetDialogContent" xml:space="preserve"><value>這會移除受管理的本機 AI 安裝並還原先前的 Gateway 模型。下載快取會保留。</value></data>
+  <data name="LocalAiPage_ResetDialogPrimary" xml:space="preserve"><value>重設本機 AI</value></data>
+  <data name="LocalAiPage_ResetDialogCancel" xml:space="preserve"><value>取消</value></data>
+  <data name="LocalAiReset_Unavailable" xml:space="preserve"><value>此處無法重設本機 AI。請開啟「設定」，然後開啟「本機 AI」進行重設。</value></data>
 </root>

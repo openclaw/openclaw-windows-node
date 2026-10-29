@@ -4,8 +4,9 @@ using System.Globalization;
 namespace OpenClawTray;
 
 /// <summary>
-/// Headless CLI handler for the --uninstall flag. Attaches to the parent console
-/// and delegates to the setup engine for the actual teardown.
+/// Headless CLI handler for the destructive --uninstall and --reset-local-ai flags.
+/// Attaches to the parent console and delegates to the setup engine with this
+/// app identity's data directories, so both operations target the same profile.
 /// </summary>
 internal static class CliUninstallHandler
 {
@@ -18,7 +19,12 @@ internal static class CliUninstallHandler
     public static async Task RunAsync(string[] args)
     {
         AttachConsole(AttachParentProcess);
-
+        if (!DestructiveCliOperation.TrySelect(args, out string? operationFlag, out string? selectionError))
+        {
+            Console.Error.WriteLine(selectionError);
+            Environment.Exit(2);
+            return;
+        }
         bool dryRun             = args.Contains("--dry-run",             StringComparer.OrdinalIgnoreCase);
         bool confirmDestructive = args.Contains("--confirm-destructive", StringComparer.OrdinalIgnoreCase);
 
@@ -34,13 +40,13 @@ internal static class CliUninstallHandler
 
         if (!confirmDestructive && !dryRun)
         {
-            Console.Error.WriteLine("ERROR: --uninstall requires --confirm-destructive (or --dry-run).");
+            Console.Error.WriteLine($"ERROR: {operationFlag} requires --confirm-destructive (or --dry-run).");
             Environment.Exit(2);
             return;
         }
 
         // Build CLI arguments for SetupEngine
-        var setupArgs = new List<string> { "--headless", "--uninstall" };
+        var setupArgs = new List<string> { "--headless", operationFlag };
         setupArgs.AddRange([
             "--data-dir", AppIdentity.ResolveRoamingDataDirectory(),
             "--local-data-dir", AppIdentity.ResolveSetupLocalDataDirectory(),
@@ -57,7 +63,7 @@ internal static class CliUninstallHandler
             setupArgs.Add(jsonOutputPath);
         }
 
-        Console.WriteLine("OpenClaw Uninstall: running SetupEngine");
+        Console.WriteLine($"OpenClaw {operationFlag}: running SetupEngine");
         Console.WriteLine($"  Arguments:  {string.Join(' ', setupArgs)}");
         Console.WriteLine();
 

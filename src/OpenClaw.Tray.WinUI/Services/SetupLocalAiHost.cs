@@ -22,7 +22,8 @@ internal sealed class SetupLocalAiHost(
     Func<LocalAiGatewayProviderCoordinator> getProvider,
     Func<GatewayRecord?, GatewayRecord?, Task>? reconcileConnection = null,
     Action? reportSettlementFailure = null,
-    LocalAiGatewayLifecycle? nativeLifecycle = null) : ISetupLocalAiHost, INativeSetupLocalAiHost
+    LocalAiGatewayLifecycle? nativeLifecycle = null,
+    Func<CancellationToken, Task<string?>>? resetLocalAi = null) : ISetupLocalAiHost, INativeSetupLocalAiHost
 {
     private GatewayRegistrySnapshot? _setupRegistryBaseline;
     private GatewayRecord? _nativeRecord;
@@ -65,6 +66,16 @@ internal sealed class SetupLocalAiHost(
     {
         nativeLifecycle?.Release(transport);
         if (ReferenceEquals(_nativeTransport, transport)) _nativeTransport = null;
+    }
+
+    public Task<string?> ResetLocalAiAsync(CancellationToken ct)
+    {
+        if (resetLocalAi is null)
+            return Task.FromResult<string?>("Local AI reset is not available here.");
+        // This setup's own Gateway registration must not block the reset it requested.
+        return _nativeTransport is { } transport && nativeLifecycle is not null
+            ? nativeLifecycle.RunSetupResetAsync(transport, () => resetLocalAi(ct))
+            : resetLocalAi(ct);
     }
 
     public GatewayRegistrySnapshot BeginGatewaySetup() => _setupRegistryBaseline =

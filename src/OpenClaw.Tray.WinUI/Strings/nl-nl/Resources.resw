@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -8213,4 +8213,10 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Deze vraag wordt afgehandeld. Vernieuw om de status te controleren.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Kies een geldig antwoord voor elke vraag.</value></data>
+  <data name="LocalAiPage_ResetButton.Content" xml:space="preserve"><value>Lokale AI opnieuw instellen</value></data>
+  <data name="LocalAiPage_ResetDialogTitle" xml:space="preserve"><value>Lokale AI opnieuw instellen?</value></data>
+  <data name="LocalAiPage_ResetDialogContent" xml:space="preserve"><value>Hiermee wordt de beheerde Lokale AI-installatie verwijderd en het vorige Gateway-model hersteld. Downloadcaches blijven behouden.</value></data>
+  <data name="LocalAiPage_ResetDialogPrimary" xml:space="preserve"><value>Lokale AI opnieuw instellen</value></data>
+  <data name="LocalAiPage_ResetDialogCancel" xml:space="preserve"><value>Annuleren</value></data>
+  <data name="LocalAiReset_Unavailable" xml:space="preserve"><value>Lokale AI opnieuw instellen is hier niet beschikbaar. Open Instellingen en daarna Lokale AI om dit te doen.</value></data>
 </root>

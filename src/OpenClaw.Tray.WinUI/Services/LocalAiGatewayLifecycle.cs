@@ -22,6 +22,7 @@ internal sealed class LocalAiGatewayLifecycle(
     private readonly LocalAiGatewayDistroResolver _wslOwner = new(getRegistry());
     private NativeLocalAiGatewayTarget? _registeredTarget;
     private IGatewayAiSetupTransport? _registeredTransport;
+    private IGatewayAiSetupTransport? _setupReset;
     private int _resuming;
     private Task? _resumeTask;
     private sealed record WslStartup(string GatewayId, Task Task);
@@ -175,10 +176,24 @@ internal sealed class LocalAiGatewayLifecycle(
 
     public async Task ReleaseOwnershipAsync(CancellationToken ct)
     {
-        if (_registeredTransport is not null)
+        if (_registeredTransport is not null && !ReferenceEquals(_registeredTransport, _setupReset))
             throw new InvalidOperationException("Close Local AI setup before releasing Gateway ownership.");
         var binding = _store.Load() ?? throw new InvalidOperationException("There is no native Local AI ownership to release.");
         await ForgetWithdrawnAsync(binding.GatewayId, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs the Reset Local AI requested by the setup holding <paramref name="transport"/>'s
+    /// registration. That reset may release ownership through this setup's own Gateway
+    /// connection; release requested from anywhere else still waits for setup to close.
+    /// </summary>
+    public async Task<T> RunSetupResetAsync<T>(IGatewayAiSetupTransport transport, Func<Task<T>> reset)
+    {
+        if (!ReferenceEquals(_registeredTransport, transport))
+            return await reset().ConfigureAwait(false);
+        _setupReset = transport;
+        try { return await reset().ConfigureAwait(false); }
+        finally { _setupReset = null; }
     }
 
     public async Task ReconcileVerifiedAsync(GatewayRecord record, IGatewayAiSetupTransport transport,
@@ -358,7 +373,7 @@ internal sealed class LocalAiGatewayLifecycle(
             {
                 // Stopped intent permits withdrawal only, including after an offline Stop.
                 var stopped = await runtime.ReconcileStoppedAsync().ConfigureAwait(false);
-                if (stopped.State == LocalAiRuntimeState.Failed || stopped.GatewayRouteRequiresResolution)
+                if (stopped.GatewayRouteRequiresResolution)
                     logger.Warn("The stopped Local AI route still needs withdrawal through its original Gateway.");
                 return;
             }
@@ -494,7 +509,11 @@ internal sealed class LocalAiGatewayLifecycle(
                 return reason is not null ? LocalAiEndpointLifecycleResult.Ok() :
                     LocalAiEndpointLifecycleResult.Failed("Choose Use Local AI for the selected native Gateway before publishing its endpoint.");
             var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
-            if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+            // Withdrawal must still prove a route whose model has since left the catalog.
+            string installedModelRef = reason is null
+                ? LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)
+                : LocalAiGatewayProviderDefinition.BuildOwnedPrimaryModel(install);
+            if (binding.ModelRef != installedModelRef)
                 throw new InvalidOperationException("The Local AI installation differs from its saved Gateway owner.");
             var rpc = new LocalAiGatewayRpcConfigurationTransport(target, transport);
             var current = await rpc.CaptureAsync(ct).ConfigureAwait(false);
@@ -519,7 +538,7 @@ internal sealed class LocalAiGatewayLifecycle(
                 }
                 else if (reason == LocalAiQuiesceReason.Teardown && !binding.Pending &&
                     provider is not null && primary == binding.ModelRef &&
-                    LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                    LocalAiGatewayProviderDefinition.MatchesOwnedProviderJson(
                         provider.ToJsonString(), install, _credentials.GetOrCreate()))
                 {
                     // Redacted keys alone cannot authorize deletion after an external edit.

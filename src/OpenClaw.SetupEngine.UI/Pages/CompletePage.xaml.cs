@@ -118,6 +118,9 @@ public sealed partial class CompletePage : Page
                 FallbackButton.Content = string.IsNullOrWhiteSpace(args.GatewayFallbackVersion)
                     ? "Retry with configured fallback"
                     : $"Retry with fallback {args.GatewayFallbackVersion}";
+                ResetLocalAiButton.Visibility = args.FailureCode == PipelineFailureCode.LocalAiReceiptUnusable
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
 
                 // Show error card with details and log link
                 ErrorCard.Visibility = Visibility.Visible;
@@ -230,6 +233,24 @@ public sealed partial class CompletePage : Page
         FallbackButton.Visibility = Visibility.Collapsed;
         if (!string.IsNullOrWhiteSpace(error))
             ErrorText.Text = $"{ErrorText.Text}{Environment.NewLine}{error}";
+    }
+
+    private void ResetLocalAiButton_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(ResetLocalAiAsync, NullLogger.Instance, nameof(ResetLocalAiButton_Click));
+
+    private async Task ResetLocalAiAsync()
+    {
+        if (SetupWindow.Active is not { } window) return;
+        ResetLocalAiButton.IsEnabled = false;
+        var prompt = await window.ConfirmAndResetLocalAiAsync(XamlRoot);
+        if (prompt.Removed)
+        {
+            window.RetryAfterLocalAiReset();
+            return;
+        }
+        ResetLocalAiButton.IsEnabled = true;
+        if (!string.IsNullOrWhiteSpace(prompt.Error))
+            ErrorText.Text = $"{ErrorText.Text}{Environment.NewLine}{prompt.Error}";
     }
 
     private void RestartLaterButton_Click(object sender, RoutedEventArgs e)

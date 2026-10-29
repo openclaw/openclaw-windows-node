@@ -300,10 +300,10 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
         public void Reconnect() => throw new NotSupportedException();
         public void Disconnect() => throw new NotSupportedException();
         public void ShowVoiceOverlay() => throw new NotSupportedException();
-        public void ShowChat() => throw new NotSupportedException();
         public void CheckForUpdates() => throw new NotSupportedException();
         public void ShowOnboarding() => throw new NotSupportedException();
         public void ShowLocalAiSetup() => throw new NotSupportedException();
+        public Task<LocalAiResetResult> ResetLocalAiAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
         public void ShowGatewayWizard() => throw new NotSupportedException();
         public void ShowConnectionStatus() => throw new NotSupportedException();
         public void NotifySettingsSaved() => throw new NotSupportedException();

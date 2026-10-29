@@ -806,6 +806,7 @@ public sealed class LocalAiOnboardingTests
         {
             await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => host.UseAsync(selected, CancellationToken.None, progress));
             Assert.Equal(0, runtime.Calls);
+            Assert.Equal(0, commands.Restarts);
             Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingFiles,
                 LocalAiSetupStage.PreparingGateway], stages);
         }
@@ -817,7 +818,9 @@ public sealed class LocalAiOnboardingTests
             Assert.Equal("gateway", result.GatewayId);
             Assert.Equal(selected.ModelRef, result.ModelRef);
             Assert.Equal(1, runtime.Calls);
-            Assert.Equal(4, commands.Reads);
+            // A saved matching route is adopted only through one confirmed restart and re-read.
+            Assert.Equal(1, commands.Restarts);
+            Assert.Equal(6, commands.Reads);
             Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingFiles,
                 LocalAiSetupStage.PreparingGateway, LocalAiSetupStage.StartingRuntime,
                 LocalAiSetupStage.PublishingProvider], stages);
@@ -881,14 +884,20 @@ public sealed class LocalAiOnboardingTests
     private sealed class ReadOnlyGateway(LocalAiResolvedInstall install, bool drifted) : IWslCommandRunner
     {
         public int Reads { get; private set; }
+        public int Restarts { get; private set; }
         public Func<int, Task>? AfterRead { get; init; }
         public async Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command,
             CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null,
             string? standardInput = null)
         {
             Assert.Equal("Managed", name);
-            Assert.Contains("get", command);
             Assert.Null(standardInput);
+            if (command.Contains("gateway") && command.Contains("restart"))
+            {
+                Restarts++;
+                return new WslCommandResult(0, "", "");
+            }
+            Assert.Contains("get", command);
             Reads++;
             if (AfterRead is not null) await AfterRead(Reads);
             return new WslCommandResult(0,

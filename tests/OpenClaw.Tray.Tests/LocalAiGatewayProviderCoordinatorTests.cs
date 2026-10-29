@@ -493,7 +493,65 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
 
         Assert.True((await coordinator.QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle)).Success);
         Assert.Null(commands.ActiveProviderJson);
-        Assert.Single(commands.Calls, call => call.Contains("restart"));
+        // The pre-existing saved provider is adopted by one restart; quiesce then restarts again.
+        Assert.Equal(2, commands.Calls.Count(call => call.Contains("restart")));
+    }
+
+    [Fact]
+    public async Task Publish_RetryAfterFailedRestartRestartsBeforeReportingSuccess()
+    {
+        LocalAiResolvedInstall install = Install(28_773);
+        var commands = new FakeWslCommandRunner(providerJson: null)
+        {
+            ProviderAfterApply = LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            PrimaryAfterApply = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install),
+            IndeterminateRestartCalls = [1],
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        Assert.False((await coordinator.PublishAsync(install)).Success);
+        Assert.Null(commands.ActiveProviderJson);
+
+        LocalAiEndpointLifecycleResult retried = await coordinator.PublishAsync(install);
+
+        Assert.True(retried.Success, retried.Detail);
+        Assert.NotNull(commands.ActiveProviderJson);
+        Assert.Equal(commands.ProviderJson, commands.ActiveProviderJson);
+        Assert.Equal(2, commands.Calls.Count(call => call.Contains("restart")));
+    }
+
+    [Fact]
+    public async Task Quiesce_WithdrawsRouteForModelRemovedFromCatalog()
+    {
+        LocalAiResolvedInstall install = RetiredInstall(28_774, "openai/gpt-5");
+        var commands = new FakeWslCommandRunner(RetiredProviderJson(install), RetiredPrimary)
+        {
+            PrimaryAfterApply = "openai/gpt-5",
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(install);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal("openai/gpt-5", commands.PrimaryModel);
+        Assert.Null(commands.ActiveProviderJson);
+    }
+
+    [Fact]
+    public async Task Quiesce_RetiredModelProviderWithChangedEndpointIsPreserved()
+    {
+        LocalAiResolvedInstall install = RetiredInstall(28_775, "openai/gpt-5");
+        string drifted = RetiredProviderJson(install).Replace(
+            "http://127.0.0.1:28775/v1", "http://127.0.0.1:39876/v1", StringComparison.Ordinal);
+        var commands = new FakeWslCommandRunner(drifted, RetiredPrimary);
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(install);
+
+        Assert.False(result.Success);
+        Assert.Equal(drifted, commands.ProviderJson);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
     }
 
     [Fact]
@@ -516,20 +574,15 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
     }
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task Quiesce_NoProviderWithUnqualifiedManagedModel_PreservesPrimaryAndFailsClosed(
-        bool unknownCatalog)
+    [Fact]
+    public async Task Quiesce_NoProviderWithTamperedManagedAlias_PreservesPrimaryAndFailsClosed()
     {
+        // A catalog model whose receipt alias no longer matches stays strict. A model that left
+        // the catalog is covered by Quiesce_WithdrawsRouteForModelRemovedFromCatalog.
         LocalAiResolvedInstall valid = InstallWithoutEndpoint(28_765);
         LocalAiResolvedInstall tampered = valid with
         {
-            Manifest = valid.Manifest with
-            {
-                ModelCatalogId = unknownCatalog ? "missing-model" : valid.Manifest.ModelCatalogId,
-                ModelAlias = unknownCatalog ? valid.Manifest.ModelAlias : "tampered-model",
-            },
+            Manifest = valid.Manifest with { ModelAlias = "tampered-model" },
         };
         string primary = $"llamacpp/{tampered.Manifest.ModelAlias}";
         var commands = new FakeWslCommandRunner(providerJson: null, primary);
@@ -1021,6 +1074,28 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             ContextLength = LocalModelCatalog.NativeContextTokens,
         };
         return new(manifest, "llama-server.exe", "model.gguf", endpoint);
+    }
+
+    // Catalog ID retired by #1760 (fix(inference): rename Bolt model ID to public 24gb name).
+    private const string RetiredModelId = "nemotron-3.5-bolt-74b-a9b-iq2-lilicorr";
+    private const string RetiredPrimary = "llamacpp/" + RetiredModelId;
+
+    private static LocalAiResolvedInstall RetiredInstall(int port, string? fallbackModel = null)
+    {
+        LocalAiResolvedInstall install = Install(port, fallbackModel);
+        return install with
+        {
+            Manifest = install.Manifest with { ModelCatalogId = RetiredModelId, ModelAlias = RetiredModelId },
+        };
+    }
+
+    private static string RetiredProviderJson(LocalAiResolvedInstall retired)
+    {
+        var provider = JsonNode.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(Install(retired.Endpoint!.Port,
+            retired.Manifest.GatewayFallbackModel)))!;
+        provider["models"]![0]!["id"] = RetiredModelId;
+        provider["models"]![0]!["name"] = "Nemotron 3.5 Bolt";
+        return provider.ToJsonString();
     }
 
     private static LocalAiResolvedInstall InstallWithoutEndpoint(

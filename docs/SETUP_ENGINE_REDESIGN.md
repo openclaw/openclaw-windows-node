@@ -491,6 +491,14 @@ configuration and before registry publication. Cancellation drains mutations and
 withdraws the selected Local AI route before releasing the native session.
 A damaged or foreign ownership receipt is never adopted implicitly.
 
+### Reset Local AI
+
+`BuildLocalAiResetSteps` runs only the existing Local AI rollback owners: it withdraws the receipt-proven WSL Gateway provider, restores the recorded primary model when cleanup removes the managed primary (a primary the user changed afterward is left as is), and deletes `<LocalDataDir>\LocalAI`. It keeps `<LocalDataDir>\LocalAICache` and the Hugging Face hub cache. Missing receipts, absent WSL distros, and conclusively unavailable WSL (for example a native-only install without the WSL optional component) are already removed and succeed. An unreadable receipt succeeds only when the Gateway has no `llamacpp` provider and no Local AI primary; otherwise it fails and keeps the tree. A receipt whose model has left the catalog still proves its route: every receipt-derived provider field must match, and only the catalog-derived model name and input modalities are read from the Gateway. Provider changes that cannot be proven app-owned remain visible failures.
+
+Reset refuses before any rollback while `<LocalDataDir>\LocalAI\gateway-binding.json` exists. That file is the native Gateway ownership receipt, and the tray deletes it only after the native Gateway confirms an authenticated withdrawal. Use Settings > Local AI > Reset Local AI, which stops the runtime and releases native ownership first. Settings offers it whenever the runtime reports `Failed`; status refresh reports a receipt whose runtime or model left the catalog as `Failed` ("no longer qualified"), not as a verified stopped install. Stop, and the startup reconciliation of a saved Stop intent, keep such a receipt `Failed` after withdrawing its route, and ownership release admits that confirmed stop. The setup wizard's Reset Local AI runs the same tray reset; while setup holds the native Gateway registration, only that setup's own reset may release ownership, through the setup's connection, and the setup window lends its setup run lock to the reset engine until the reset settles. The tray reset starts the engine only after Stop confirms no owned listener and a resolved Gateway route. When Stop refuses because no Gateway owns the route (for example, a rerun after ownership was released but the engine step failed), the reset still continues if no native ownership remains and the runtime reports that confirmed stop; the engine then proves any WSL route from the receipt. Each tray phase (stop, release, engine) has its own timeout (`OPENCLAW_LOCAL_AI_RESET_TIMEOUT_SECONDS`, default 120); on cancellation or timeout the phase is cancelled and awaited, and the engine process tree is killed and drained, before reporting. Rerunning the reset is safe because the receipt is deleted last.
+
+Run `--reset-local-ai --confirm-destructive` for a live reset, or add `--dry-run` to preview it. The flag is mutually exclusive with `--uninstall` (the tray exe and SetupEngine both exit 2 when both are passed), uses the setup run lock, and never runs tray artifact cleanup or non-Local-AI rollback steps. Reconciliation failures caused by unusable Local AI receipts return `failureCode: "LocalAiReceiptUnusable"` in `--json-output` so callers can offer Reset Local AI without parsing text.
+
 ### Local AI GPU admission
 
 Local AI uses the CUDA driver's `cuMemGetInfo` total and free memory directly
@@ -752,7 +760,7 @@ OpenClaw.SetupEngine.Program.Main(["--no-rollback-on-failure"])
 OpenClaw.SetupEngine.Program.Main(["--log-path", "./trace.log"])
 ```
 
-Common flags include `--config`, `--headless`, `--dry-run`, `--rollback-on-failure`, `--no-rollback-on-failure`, `--log-path`, `--gateway-port`, and uninstall safety flags such as `--uninstall` plus `--confirm-destructive`.
+Common flags include `--config`, `--headless`, `--dry-run`, `--rollback-on-failure`, `--no-rollback-on-failure`, `--log-path`, `--gateway-port`, and destructive safety flags such as `--uninstall` or `--reset-local-ai` plus `--confirm-destructive`.
 Normal setup uses npm `latest`. `Gateway.Version` may select an upstream npm
 channel tag or an exact OpenClaw package version. `Gateway.FallbackVersion` may
 name an exact stable release to offer after a typed compatibility failure.
@@ -813,6 +821,9 @@ dotnet build src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-x64
 
 # Run headless uninstall through the tray executable
 & "src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe" --uninstall --dry-run
+
+# Reset only the managed Local AI installation
+& "src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe" --reset-local-ai --confirm-destructive --json-output .\reset-local-ai-result.json
 
 ```
 

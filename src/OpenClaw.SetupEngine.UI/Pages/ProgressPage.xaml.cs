@@ -221,6 +221,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
                     errorMsg,
                     result.CompatibilityFailure,
                     result.Detail,
+                    result.FailureCode,
                     restartRequired: result.RequiresRestart);
             }
         }
@@ -232,7 +233,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             ProgressMascot.Mood = OnboardingMascotMood.Sad;
             if (!_closed && _window?.IsClosed == false)
                 _window.NavigateToComplete(false, sw.Elapsed, config.LogPath, SetupLogger.Sanitize(ex.Message),
-                    ex.OriginalResult?.CompatibilityFailure, ex.OriginalResult?.Detail,
+                    ex.OriginalResult?.CompatibilityFailure, ex.OriginalResult?.Detail, ex.OriginalResult?.FailureCode,
                     restartRequired: ex.OriginalResult?.RequiresRestart == true);
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)

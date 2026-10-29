@@ -79,6 +79,10 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
     private const string FailedValuePrefix = "FAILED:";
     private const string BatchVariable = "OPENCLAW_LOCAL_AI_BATCH_B64";
     private const int MaximumSnapshotBytes = 1024 * 1024;
+    private const string UnreadableReceiptRouteMessage =
+        "The Local AI installation receipt is unreadable, so the Gateway's Local AI settings cannot be proven app-owned. " +
+        "Use the Gateway's configuration tools to remove models.providers.llamacpp and set agents.defaults.model.primary " +
+        "to a non-Local-AI model, then run Reset Local AI again.";
 
     public override string Id => "configure-local-ai-gateway";
     public override string DisplayName => "Connect gateway to Local AI";
@@ -401,23 +405,34 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         CancellationToken ct)
     {
         LocalAiResolvedInstall? install = ctx.LocalAiResolvedInstall;
+        bool receiptUnreadable = false;
         if (install is null)
         {
-            install = await new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir))
-                .LoadAsync(ct)
-                .ConfigureAwait(false);
+            try
+            {
+                install = await new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir))
+                    .LoadAsync(ct)
+                    .ConfigureAwait(false);
+            }
+            catch (InvalidDataException ex)
+            {
+                // An unreadable receipt proves nothing app-owned, so only proven absence permits cleanup.
+                ctx.Logger.Warn(
+                    $"The Local AI installation receipt is unreadable ({ex.Message}). Checking that no Local AI Gateway route remains.");
+                receiptUnreadable = true;
+            }
         }
-        if (install is null)
+        if (install is null && !receiptUnreadable)
             return;
 
-        CommandResult currentResult = await CaptureStateAsync(ctx, ct).ConfigureAwait(false);
-        if (currentResult.ExitCode != 0 || currentResult.TimedOut)
+        LocalAiGatewayPriorState? current = await CaptureCleanupStateAsync(ctx, ct).ConfigureAwait(false);
+        if (current is null)
+            return;
+        if (install is null)
         {
-            throw new IOException(
-                "Could not safely inspect the managed Local AI gateway configuration during uninstall.");
+            RequireNoLocalAiRoute(current);
+            return;
         }
-
-        LocalAiGatewayPriorState current = ParseSnapshot(currentResult.Stdout);
         if (!current.ProviderExisted && !current.PrimaryModelExisted)
             return;
         if (install.Endpoint is null)
@@ -426,7 +441,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
                 "The Local AI manifest has no verified endpoint, so existing gateway settings cannot be proven app-owned.");
         }
 
-        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildOwnedPrimaryModel(install);
         string expectedPrimary = JsonSerializer.Serialize(managedPrimary);
         string? fallbackModel = install.Manifest.GatewayFallbackModel;
         string? currentPrimary = null;
@@ -444,7 +459,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         }
 
         if ((current.ProviderExisted &&
-                !LocalAiGatewayProviderDefinition.MatchesProviderJson(current.ProviderJson!, install)) ||
+                !LocalAiGatewayProviderDefinition.MatchesOwnedProviderJson(current.ProviderJson!, install)) ||
             (current.PrimaryModelExisted &&
                 !currentPrimaryIsManaged &&
                 !currentPrimaryIsFallback &&
@@ -489,15 +504,53 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         if (verifiedResult.ExitCode != 0 || verifiedResult.TimedOut)
             throw new IOException("Could not verify Local AI gateway removal during uninstall.");
         LocalAiGatewayPriorState verified = ParseSnapshot(verifiedResult.Stdout);
-        bool primaryIsSafe = fallbackModel is not null
-            ? verified.PrimaryModelExisted &&
-              JsonEquals(verified.PrimaryModelJson!, JsonSerializer.Serialize(fallbackModel))
-            : currentPrimary is not null
-                ? verified.PrimaryModelExisted &&
-                  JsonEquals(verified.PrimaryModelJson!, JsonSerializer.Serialize(currentPrimary))
-                : !verified.PrimaryModelExisted;
+        // Expect the recorded fallback only when this cleanup restored it; otherwise the
+        // pre-cleanup primary (fallback, user-selected, or absent) must be untouched.
+        string? preservedPrimaryJson = currentPrimaryIsManaged
+            ? fallbackModel is null ? null : JsonSerializer.Serialize(fallbackModel)
+            : current.PrimaryModelExisted ? current.PrimaryModelJson : null;
+        bool primaryIsSafe = preservedPrimaryJson is null
+            ? !verified.PrimaryModelExisted
+            : verified.PrimaryModelExisted && JsonEquals(verified.PrimaryModelJson!, preservedPrimaryJson);
         if (verified.ProviderExisted || !primaryIsSafe)
             throw new IOException("Managed Local AI gateway settings remained after uninstall cleanup.");
+    }
+
+    /// <summary>
+    /// Captures the WSL Gateway's Local AI settings for cleanup. Null means a conclusive
+    /// "no distro" or "WSL unavailable" answer proved no WSL Gateway can hold the route.
+    /// </summary>
+    private static async Task<LocalAiGatewayPriorState?> CaptureCleanupStateAsync(
+        SetupContext ctx,
+        CancellationToken ct)
+    {
+        CommandResult currentResult = await CaptureStateAsync(ctx, ct).ConfigureAwait(false);
+        if (currentResult.ExitCode != 0 || currentResult.TimedOut)
+        {
+            // Native-only installs need no WSL; ambiguous failures throw.
+            if (WindowsNodeBootstrapContextStep.IsMissingDistroResult(currentResult) ||
+                WindowsNodeBootstrapContextStep.IsWslUnavailableResult(currentResult))
+            {
+                ctx.Logger.Info("No managed WSL distro is available. WSL Gateway settings are already removed.");
+                return null;
+            }
+
+            throw new IOException(
+                "Could not safely inspect the managed Local AI gateway configuration during uninstall.");
+        }
+
+        return ParseSnapshot(currentResult.Stdout);
+    }
+
+    private static void RequireNoLocalAiRoute(LocalAiGatewayPriorState current)
+    {
+        // TryReadPrimaryModelJson rejects llamacpp/ and malformed primaries, so both fail closed.
+        if (current.ProviderExisted ||
+            (current.PrimaryModelExisted &&
+                !LocalAiGatewayProviderDefinition.TryReadPrimaryModelJson(current.PrimaryModelJson!, out _)))
+        {
+            throw new InvalidDataException(UnreadableReceiptRouteMessage);
+        }
     }
 
     private static Task<CommandResult> CaptureStateAsync(SetupContext ctx, CancellationToken ct)

@@ -199,8 +199,12 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         try
         {
             ThrowIfDisposed();
-            if (_managedProcess is not null || Snapshot.State != LocalAiRuntimeState.Stopped ||
-                _gatewayRouteRequiresResolution)
+            // An unqualified receipt reports Failed even after a confirmed stop, so Reset Local AI
+            // stays offered; that reset still has to release its ownership.
+            bool stopped = Snapshot.State == LocalAiRuntimeState.Stopped ||
+                (Snapshot.State == LocalAiRuntimeState.Failed && _install is { } install &&
+                    DescribeUnqualifiedInstall(install) is not null);
+            if (_managedProcess is not null || !stopped || _gatewayRouteRequiresResolution)
                 throw new InvalidOperationException("Stop Local AI successfully before releasing its Gateway ownership.");
             await _options.EndpointLifecycle.ReleaseOwnershipAsync(cancellationToken).ConfigureAwait(false);
             _explicitStopRequested = false;
@@ -784,6 +788,9 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
 
         try
         {
+            // A receipt whose runtime or model left the catalog can never start, so status must
+            // not report it as a verified stopped install; Failed is what offers Reset Local AI.
+            _ = LlamaServerRouterConfiguration.ResolveInstalledPlan(_install!);
             ValidateInstalledFilesForStatus(_install!);
         }
         catch (InvalidDataException ex)
@@ -1178,6 +1185,34 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         _runtimeModelPath = _verifiedModel.ResolvedPath;
     }
 
+    /// <summary>
+    /// Returns why a receipt whose runtime or model left the catalog can never start, or null
+    /// when the catalog still qualifies it. Missing files stay repairable, so they are not covered.
+    /// </summary>
+    private static string? DescribeUnqualifiedInstall(LocalAiResolvedInstall install)
+    {
+        try
+        {
+            _ = LlamaServerRouterConfiguration.ResolveInstalledPlan(install);
+            return null;
+        }
+        catch (InvalidDataException ex)
+        {
+            return Sanitize(ex.Message);
+        }
+    }
+
+    // A confirmed stop of an unqualified receipt stays Failed, as a refresh reports it, so
+    // Reset Local AI remains offered after Stop or a startup Stop-intent reconciliation.
+    private LocalAiRuntimeSnapshot PublishStoppedInstall(LocalAiResolvedInstall install) =>
+        DescribeUnqualifiedInstall(install) is { } unqualified
+            ? Publish(LocalAiRuntimeState.Failed, LocalAiOwnership.None, unqualified)
+            : Publish(
+                LocalAiRuntimeState.Stopped,
+                LocalAiOwnership.None,
+                null,
+                modelState: LocalAiModelAvailabilityState.Verified);
+
     private static void ValidateInstalledFilesForStatus(LocalAiResolvedInstall install)
     {
         if (!File.Exists(install.ExecutablePath))
@@ -1318,11 +1353,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         if (_managedProcess is null)
         {
             ++_generation;
-            return Publish(
-                LocalAiRuntimeState.Stopped,
-                LocalAiOwnership.None,
-                null,
-                modelState: LocalAiModelAvailabilityState.Verified);
+            return PublishStoppedInstall(_install!);
         }
 
         _stopping = true;
@@ -1331,11 +1362,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         try
         {
             await DisposeManagedProcessAsync(cancellationToken).ConfigureAwait(false);
-            return Publish(
-                LocalAiRuntimeState.Stopped,
-                LocalAiOwnership.None,
-                null,
-                modelState: LocalAiModelAvailabilityState.Verified);
+            return PublishStoppedInstall(_install!);
         }
         finally
         {
