@@ -244,6 +244,25 @@ public sealed class PinnedPagesTests
     }
 
     [Fact]
+    public void PreparingPinHost_KeepsPageActivationAndNativeTransitionsOnTheInvocationPath()
+    {
+        var pins = ReadSource("Windows", "WorkspaceWindow.Pins.cs");
+        var preparation = pins[pins.IndexOf("private void QueuePinnedPageHostPreparation()", StringComparison.Ordinal)..];
+        Assert.Contains("DispatcherQueuePriority.Low", preparation);
+        Assert.Contains("IsClosed || Root.XamlRoot is null || _settings is not null", preparation);
+        Assert.Contains("PinnedPagesFor(CurrentPinScope()).IsEmpty != false", preparation);
+        Assert.Contains("_preparedSettings = new SettingsShellView();", preparation);
+        Assert.DoesNotContain("BindToAppState", preparation);
+        Assert.DoesNotContain("_settings =", preparation);
+        Assert.DoesNotContain("OpenSettings(", preparation);
+        Assert.DoesNotContain("ShowSection(", preparation);
+        Assert.Contains("<NavigationThemeTransition/>", ReadSource("Controls", "SettingsShellView.xaml"));
+        var window = ReadSource("Windows", "WorkspaceWindow.xaml.cs");
+        Assert.Contains("var view = _preparedSettings ?? new SettingsShellView();", window);
+        Assert.Contains("_preparedSettings?.Dispose();", window);
+    }
+
+    [Fact]
     public void ProgrammaticPinInvocation_IsIgnoredBeforeChangingNavigationOrFocusIntent()
     {
         var pins = ReadSource("Windows", "WorkspaceWindow.Pins.cs");

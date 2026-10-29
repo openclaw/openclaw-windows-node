@@ -47,6 +47,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     // Settings lives in this window as a retained sibling of the chat section. Chat is only
     // collapsed while Settings is visible, so its control identity, draft and focus survive.
     private SettingsShellView? _settings;
+    private SettingsShellView? _preparedSettings;
     private Microsoft.UI.Xaml.Controls.Control? _chatFocus;
     private readonly PendingRequestSlot<SetupNativeNavigationRequest> _pendingSettingsRequest = new();
     private readonly TaskCompletionSource _settingsRendered = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -452,15 +453,14 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (_settings is { } existing)
             return existing;
-        var view = new SettingsShellView
-        {
-            AppModel = _state,
-            ConnectAction = () => ((IAppCommands)CurrentApp).Reconnect(),
-            ReconnectAction = () => ((IAppCommands)CurrentApp).Reconnect(),
-            NavigateRequested = tag => OpenSettings(tag),
-            WorkspaceRouteRequested = OnSettingsWorkspaceRoute,
-            PruneRequested = PruneSettingsHistory,
-        };
+        var view = _preparedSettings ?? new SettingsShellView();
+        _preparedSettings = null;
+        view.AppModel = _state;
+        view.ConnectAction = () => ((IAppCommands)CurrentApp).Reconnect();
+        view.ReconnectAction = () => ((IAppCommands)CurrentApp).Reconnect();
+        view.NavigateRequested = tag => OpenSettings(tag);
+        view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
+        view.PruneRequested = PruneSettingsHistory;
         view.SettingsSaved += OnSettingsViewSaved;
         view.BindAppNotifications(_notifications);
         if (CurrentApp.Settings is { } settings)
@@ -1281,6 +1281,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         NotificationContent.Unbind();
         _gatewayStatusFlyout.Hide();
         ContentHost.Children.Clear();
+        _preparedSettings?.Dispose();
+        _preparedSettings = null;
         if (_settings is { } settings)
         {
             settings.SettingsSaved -= OnSettingsViewSaved;

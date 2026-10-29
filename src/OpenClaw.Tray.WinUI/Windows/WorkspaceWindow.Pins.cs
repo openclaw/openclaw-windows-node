@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClawTray.Controls;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
@@ -192,5 +193,22 @@ public sealed partial class WorkspaceWindow
             ReportError("pin-page", ex);
         }
         RebuildPins();
+        QueuePinnedPageHostPreparation();
+    }
+
+    private void QueuePinnedPageHostPreparation()
+    {
+        if (_settings is not null || _preparedSettings is not null) return;
+        // Prepare only the XAML shell. Bind current state at invocation so preparation cannot
+        // establish Settings agent identity, subscriptions, page activation or history early.
+        if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (IsClosed || Root.XamlRoot is null || _settings is not null || _preparedSettings is not null ||
+                CurrentApp.SettingsStore?.Current.PinnedPagesFor(CurrentPinScope()).IsEmpty != false)
+                return;
+            try { _preparedSettings = new SettingsShellView(); }
+            catch (Exception ex) { ReportError("prepare-pinned-page-host", ex); }
+        }))
+            Logger.Warn("[Workspace] Could not queue pinned-page host preparation while shutting down.");
     }
 }

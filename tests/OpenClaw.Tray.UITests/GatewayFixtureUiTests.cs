@@ -24,6 +24,58 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task PinnedPages_NativeSwitchTiming()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            const string draft = "Keep this draft while preparing pinned pages";
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.IsOffscreen == false,
+                "initial chat composer");
+            ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+            foreach (var tag in new[] { "connection", "sessions" })
+            {
+                Invoke(FindById(run, "WorkspacePagesCustomize")!);
+                var toggleId = $"WorkspacePagesToggle:{tag}";
+                await WaitUiAsync(run, () => FindById(run, toggleId) is not null, "pin toggle");
+                Invoke(FindById(run, toggleId)!);
+                await WaitUiAsync(run, () => FindById(run, $"WorkspacePinnedPage:{tag}") is not null, "pinned row");
+            }
+
+            Assert.True(((SelectionItemPattern)FindById(run, "WorkspaceNavHome")!
+                .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+            Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!
+                .GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+            Assert.Null(FindById(run, "ConnectionPageMarker"));
+            Assert.Null(FindById(run, "SessionsPageMarker"));
+            var samples = new List<object>();
+            for (var pass = 0; pass < 4; pass++)
+            {
+                foreach (var (tag, marker) in new[] { ("connection", "ConnectionPageMarker"), ("sessions", "SessionsPageMarker") })
+                {
+                    var row = FindById(run, $"WorkspacePinnedPage:{tag}")!;
+                    var timer = System.Diagnostics.Stopwatch.StartNew();
+                    Invoke(row);
+                    var invocationMs = timer.Elapsed.TotalMilliseconds;
+                    await WaitUiAsync(run, () => FindById(run, marker)?.Current.IsOffscreen == false, $"visible {tag}");
+                    var visibleMs = timer.Elapsed.TotalMilliseconds;
+                    Assert.True(((SelectionItemPattern)row.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+                    samples.Add(new { tag, pass, invocationMs, visibleMs });
+                }
+            }
+            var json = JsonSerializer.Serialize(samples, new JsonSerializerOptions { WriteIndented = true });
+            output.WriteLine(json);
+            await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "pin-switch-timing.json"), json);
+            await CaptureIfRequestedAsync(run, "pinned-sessions-timing.png");
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.IsOffscreen == false, "retained chat");
+            Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!
+                .GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task PinnedPages_SelectionCallbacksDoNotReinvokeNavigation()
     {
         await WithAppAsync(async run =>
