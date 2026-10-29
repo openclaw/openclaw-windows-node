@@ -765,13 +765,24 @@ internal static class OnboardingNativeProof
             requiredLabels = labels, originalText = original.Text, scaledText = result.Text,
             missingLabels = missing, factor,
         }, new JsonSerializerOptions { WriteIndented = true }));
-        // Coordinator-approved evidence split only for the two documented capital-I/l
+        // Coordinator-approved evidence split only for documented capital-I/l
         // ambiguities. Never substitute text or call OCR successful; human pixel review
         // and exact visible HWND-scoped native labels are both still required.
-        foreach (var label in missing)
-            Assert.Contains(label, new[] { "Set up your AI", "Set up a local model" });
+        AssertManualLabelExceptions(missing, original.Text, result.Text);
         return new(original.Text, result.Text, factor, decoder.PixelWidth, decoder.PixelHeight,
             transform.ScaledWidth, transform.ScaledHeight, missing);
+    }
+
+    internal static void AssertManualLabelExceptions(string[] missingLabels, string originalText, string scaledText)
+    {
+        static bool HasWelcomeTitleAmbiguity(string text) =>
+            $" {text} ".Contains(" Set up OpenCIaw ", StringComparison.Ordinal);
+
+        foreach (var label in missingLabels)
+            Assert.True(label is "Set up your AI" or "Set up a local model" ||
+                label == "Set up OpenClaw" &&
+                HasWelcomeTitleAmbiguity(originalText) && HasWelcomeTitleAmbiguity(scaledText),
+                $"OCR did not verify expected label: {label}");
     }
 
     internal static async Task<T> RunOcrPassAsync<T>(
