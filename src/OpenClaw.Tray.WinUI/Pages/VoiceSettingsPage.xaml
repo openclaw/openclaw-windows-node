@@ -215,6 +215,28 @@
                         </StackPanel>
                     </Border>
 
+                    <ToggleSwitch x:Name="GatewayVoiceToggle" x:Uid="VoiceSettingsPage_GatewayVoice"
+                                  Header="Use connected Gateway voice" Toggled="OnGatewayVoiceToggled"/>
+                    <StackPanel x:Name="GatewayVoicePanel" Spacing="8" Visibility="Collapsed">
+                        <TextBlock x:Uid="VoiceSettingsPage_GatewayVoiceDescription" TextWrapping="Wrap"
+                                   Text="Chat Read Aloud and automatic replies use the Gateway's configured voice. Text is sent to the Gateway and its speech provider. Keys stay on the Gateway. Local node and MCP speech are unchanged."
+                                   Style="{StaticResource CaptionTextBlockStyle}"/>
+                        <TextBlock x:Uid="VoiceSettingsPage_GatewayVoiceNoFallback" TextWrapping="Wrap"
+                                   Text="No automatic local fallback. If unavailable, turn this option off to use your local provider."
+                                   Style="{StaticResource CaptionTextBlockStyle}"/>
+                        <TextBlock x:Name="GatewayVoiceStatus" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite"
+                                   Style="{StaticResource CaptionTextBlockStyle}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="GatewayVoiceRefresh" x:Uid="VoiceSettingsPage_GatewayVoiceRefresh"
+                                    Content="Check readiness" Click="OnGatewayVoiceRefresh"/>
+                            <Button x:Name="GatewayVoicePreview" x:Uid="VoiceSettingsPage_GatewayVoicePreview"
+                                    Content="Preview Gateway voice" Click="OnGatewayVoicePreview"/>
+                            <Button x:Name="GatewayVoiceStop" x:Uid="VoiceSettingsPage_GatewayVoiceStop"
+                                    Content="Stop" Click="OnGatewayVoiceStop" IsEnabled="False"/>
+                        </StackPanel>
+                    </StackPanel>
+
                     <ComboBox x:Uid="VoiceSettingsPage_TtsProviderCombo" x:Name="TtsProviderCombo" Header="Provider"
                               SelectionChanged="OnTtsProviderChanged" Width="360">
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsKokoro"     Content="Kokoro (local neural voices)"         Tag="kokoro"/>

@@ -8,6 +8,42 @@ namespace OpenClaw.Tray.Tests;
 public class SettingsRoundTripTests
 {
     [Theory]
+    [InlineData("windows")]
+    [InlineData("piper")]
+    [InlineData("kokoro")]
+    [InlineData("elevenlabs")]
+    public void ExistingSpeechProfile_GatewayVoiceIsOptInAndPreservesLocalProvider(string provider)
+    {
+        using var temp = new TempDirectory();
+        var path = temp.Combine("settings.json");
+        var originalJson = JsonSerializer.Serialize(new
+        {
+            SettingsSchemaVersion = 2,
+            TtsProvider = provider,
+            NodeTtsEnabled = true,
+            VoiceTtsEnabled = false
+        });
+        File.WriteAllText(path, originalJson);
+
+        var settings = new SettingsManager(temp.Path);
+        Assert.False(settings.UseGatewayVoice);
+        Assert.Equal(provider, settings.TtsProvider);
+        Assert.Equal(originalJson, File.ReadAllText(path));
+
+        foreach (var useGatewayVoice in new[] { true, false })
+        {
+            settings.UseGatewayVoice = useGatewayVoice;
+            settings.SaveOrThrow();
+            settings = new SettingsManager(temp.Path);
+
+            Assert.Equal(useGatewayVoice, settings.UseGatewayVoice);
+            Assert.Equal(provider, settings.TtsProvider);
+            Assert.True(settings.NodeTtsEnabled);
+            Assert.False(settings.VoiceTtsEnabled);
+        }
+    }
+
+    [Theory]
     [InlineData("SystemRunAllowWindowsUi", false)]
     [InlineData("SystemRunAllowWindowsUi", true)]
     [InlineData("systemrunallowwindowsui", false)]

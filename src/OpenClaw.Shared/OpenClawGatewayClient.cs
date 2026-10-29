@@ -1377,8 +1377,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         SendResponseRequestAsync(method, parameters, timeoutMs);
 
     private async Task<JsonElement> SendResponseRequestAsync(
-        string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null)
+        string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null,
+        CancellationToken requestCancellationToken = default)
     {
+        using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken, requestCancellationToken);
+        var requestToken = requestCancellation.Token;
+        requestToken.ThrowIfCancellationRequested();
         var connectionGeneration = GetReadyConnectionGeneration(method);
         if (expectedConnectionEpoch.HasValue && connectionGeneration != expectedConnectionEpoch.Value)
             throw new InvalidOperationException("The Gateway connection changed before the request could be sent.");
@@ -1402,11 +1406,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             var sent = await SendRawAsync(
                     SerializeRequest(requestId, method, parameters),
                     connectionGeneration,
-                    CancellationToken)
+                    requestToken)
                 .ConfigureAwait(false);
             if (!sent)
                 throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");
-            return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
+            return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), requestToken);
         }
         catch (TimeoutException ex)
         {
@@ -2525,8 +2529,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     okWiz.ValueKind == JsonValueKind.False)
                 {
                     var message = TryGetErrorMessage(root) ?? "wizard request failed";
-                    wizardCompletion.TryFault(QuestionRequestError(pending.Method, root)
-                        ?? new InvalidOperationException(message));
+                    wizardCompletion.TryFault(requestMethod is "tts.speak" or "tts.status"
+                        ? new GatewaySpeechException(ClassifySpeechRejection(message))
+                        : QuestionRequestError(pending.Method, root)
+                            ?? new InvalidOperationException(message));
                 }
                 else if (root.TryGetProperty("payload", out var wizPayload))
                 {
