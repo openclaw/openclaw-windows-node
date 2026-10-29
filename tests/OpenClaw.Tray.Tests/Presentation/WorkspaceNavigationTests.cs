@@ -95,6 +95,21 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void EmbeddedSettings_IsDistinctHistoryEntry_AndReturnsToChat()
+    {
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "chat-a"));
+        Assert.True(history.Navigate(WorkspaceDestination.Settings("permissions", embedded: true)));
+        Assert.True(history.Current.Embedded);
+        Assert.False(history.Navigate(WorkspaceDestination.Settings("permissions", embedded: true)));
+        Assert.True(history.Navigate(WorkspaceDestination.Settings("permissions")));
+        Assert.False(history.Current.Embedded);
+        Assert.Equal(new(WorkspacePageId.Home, "chat-a"), history.ChatDestination);
+        Assert.True(history.GoBack());
+        Assert.True(history.Current.Embedded);
+    }
+
+    [Fact]
     public void ChatSessionCompletingInSettings_DoesNotReplaceSettings()
     {
         var history = new WorkspaceNavigationHistory();

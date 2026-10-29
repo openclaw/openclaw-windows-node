@@ -84,14 +84,29 @@ public sealed partial class WorkspaceWindow
     private static NavigationViewItem CreatePinItem(PinnablePage page)
     {
         var label = LocalizationHelper.GetString(page.LabelKey);
+        var icon = new ImageIcon
+        {
+            Source = new SvgImageSource(new Uri($"ms-appx:///Assets/SidebarIcons/{page.IconAsset}.svg")),
+            Width = 22,
+            Height = 22,
+        };
+        AutomationProperties.SetAccessibilityView(icon, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+        // Same iconless-presenter layout as the Home row so icons and labels line up and the icon
+        // always has an explicit size (an SVG has no intrinsic one).
+        var text = new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center };
         var item = new NavigationViewItem
         {
-            Content = label,
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 16,
+                Children = { new Grid { Width = 24, Children = { icon } }, text },
+            },
+            Padding = new Thickness(0),
             Tag = new PinnedPageTag(page.Tag),
             SelectsOnInvoked = false,
-            Icon = new ImageIcon { Source = new SvgImageSource(new Uri($"ms-appx:///Assets/SidebarIcons/{page.IconAsset}.svg")) },
         };
-        AutomationProperties.SetAccessibilityView(item.Icon, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+        item.Resources["NavigationViewItemContentPresenterMargin"] = new Thickness(0, -1, 8, -1);
         AutomationProperties.SetAutomationId(item, $"WorkspacePinnedPage:{page.Tag}");
         AutomationProperties.SetName(item, label);
         return item;
@@ -127,7 +142,7 @@ public sealed partial class WorkspaceWindow
             return;
         }
         // Agent-scoped pages target the assistant selected in Chat now, never the last Settings agent.
-        OnSettingsWorkspaceRoute(PinnedPages.ResolveRoute(pin.Tag, _agentId));
+        OpenSettings(PinnedPages.ResolveRoute(pin.Tag, _agentId), embedded: true);
     }
 
     private void OnPagesFlyoutOpening(object sender, object e)

@@ -167,7 +167,9 @@ public sealed partial class WorkspaceWindow : WindowEx
     /// Shows a Settings section in this window. The section becomes one history entry; the visible
     /// chat's agent selection is never changed by Settings agent routes.
     /// </summary>
-    internal void OpenSettings(string tag)
+    internal void OpenSettings(string tag) => OpenSettings(tag, embedded: false);
+
+    internal void OpenSettings(string tag, bool embedded)
     {
         if (IsClosed) return;
         if (tag == "command-center")
@@ -176,7 +178,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             return;
         }
         Navigate(WorkspaceDestination.Settings(
-            WorkspaceNavigation.NormalizeSettingsTag(tag, _settings?.CurrentAgentId ?? _agentId ?? "main")));
+            WorkspaceNavigation.NormalizeSettingsTag(tag, _settings?.CurrentAgentId ?? _agentId ?? "main"), embedded));
     }
 
     /// <summary>The Settings view while it exists; null before Settings was first opened.</summary>
@@ -225,7 +227,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             }));
             return;
         }
-        if (IsSettingsVisible)
+        if (IsSettingsVisible && !Destination.Embedded)
         {
             if (_settings is { IsLoaded: true }) _settings.OpenCommandCenter();
             else if (_settings is not null && !_commandCenterPending)
@@ -484,6 +486,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             SettingsSection.Visibility = Visibility.Visible;
             SettingsHistoryBar.Visibility = Visibility.Visible;
         }
+        ApplySettingsPresentation(view);
         UpdateHistoryButtons();
         var request = _pendingSettingsRequest.Consume();
         var tag = Destination.CompanionTag ?? "settings";
@@ -501,6 +504,10 @@ public sealed partial class WorkspaceWindow : WindowEx
         if (SettingsSection.Visibility != Visibility.Visible)
             return;
         _settings?.Deactivate();
+        _settings?.ContentOnly = false;
+        SettingsSection.Margin = new Thickness(0);
+        SettingsSection.Background = null;
+        ContentHost.Visibility = Visibility.Visible;
         SettingsSection.Visibility = Visibility.Collapsed;
         SettingsHistoryBar.Visibility = Visibility.Collapsed;
         NavigationSection.Visibility = Visibility.Visible;
@@ -1046,6 +1053,27 @@ public sealed partial class WorkspaceWindow : WindowEx
         ReopenPaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Collapsed : Visibility.Visible;
         ReopenPaneSlot.Visibility = ReopenPaneButton.Visibility;
         CollapsePaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        if (_settings is { } settings && IsSettingsVisible)
+            ApplySettingsPresentation(settings);
+    }
+
+    // An embedded section sits to the right of the sidebar, which stays visible and usable. The
+    // chat underneath is hidden so it cannot take focus, and the sidebar's Back/Forward serve
+    // history unless the pane is collapsed, when the Settings history bar returns.
+    private void ApplySettingsPresentation(SettingsShellView view)
+    {
+        var embedded = Destination.Embedded;
+        view.ContentOnly = embedded;
+        NavigationSection.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
+        ContentHost.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible;
+        var paneOpen = NavView.IsPaneOpen;
+        SettingsSection.Margin = embedded
+            ? (paneOpen ? new Thickness(NavView.OpenPaneLength, 0, 0, 0) : new Thickness(0, 56, 0, 0))
+            : new Thickness(0);
+        SettingsSection.Background = embedded
+            ? (Brush)Application.Current.Resources["ApplicationPageBackgroundThemeBrush"]
+            : null;
+        SettingsHistoryBar.Visibility = embedded && paneOpen ? Visibility.Collapsed : Visibility.Visible;
     }
     private void OnPaneClosed(NavigationView sender, object args)
     {

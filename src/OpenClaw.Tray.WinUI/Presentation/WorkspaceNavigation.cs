@@ -14,12 +14,14 @@ internal enum CompanionPageId
 /// <summary>
 /// One entry in the Workspace window's single history. <see cref="SessionKey"/> identifies a chat;
 /// <see cref="CompanionTag"/> identifies the Settings section shown in the same window.
+/// <see cref="Embedded"/> shows that section beside the Workspace sidebar, without Settings' own
+/// section list, instead of replacing the whole window.
 /// </summary>
 internal sealed record WorkspaceDestination(
-    WorkspacePageId Page, string? SessionKey = null, string? CompanionTag = null)
+   WorkspacePageId Page, string? SessionKey = null, string? CompanionTag = null, bool Embedded = false)
 {
-    public static WorkspaceDestination Settings(string companionTag) =>
-        new(WorkspacePageId.Settings, null, companionTag);
+   public static WorkspaceDestination Settings(string companionTag, bool embedded = false) =>
+       new(WorkspacePageId.Settings, null, companionTag, embedded);
 }
 
 /// <summary>

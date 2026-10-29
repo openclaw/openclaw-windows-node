@@ -204,7 +204,12 @@ public sealed class PinnedPagesTests
     public void WindowWiring_UsesTypedTag_SingleRoutePath_AndNeverRaisesSettingsSaved()
     {
         var pins = ReadSource("Windows", "WorkspaceWindow.Pins.cs");
-        Assert.Contains("OnSettingsWorkspaceRoute(PinnedPages.ResolveRoute(pin.Tag, _agentId))", pins);
+        Assert.Contains("OpenSettings(PinnedPages.ResolveRoute(pin.Tag, _agentId), embedded: true)", pins);
+        Assert.Contains("Width = 22", pins);
+        var window = ReadSource("Windows", "WorkspaceWindow.xaml.cs");
+        Assert.Contains("ApplySettingsPresentation(view)", window);
+        Assert.Contains("ContentHost.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible", window);
+        Assert.Contains("_settings?.ContentOnly = false", window);
         Assert.Contains("AccessibilityView.Raw", pins);
         Assert.Contains("SelectsOnInvoked = false", pins);
         Assert.DoesNotContain("SettingsSaved?.Invoke", pins);
