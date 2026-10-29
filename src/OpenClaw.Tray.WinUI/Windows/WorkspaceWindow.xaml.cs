@@ -213,18 +213,35 @@ public sealed partial class WorkspaceWindow : WindowEx
         if (OpenModalDialog() is { } dialog)
         {
             // Keep one request and open search after the dialog closes; navigation intents are not touched.
+            // The second hop runs after the deferred navigation drain queued by the same Closed event,
+            // so search opens on the surface navigation leaves visible.
             if (_commandCenterPending) return;
             _commandCenterPending = true;
-            dialog.Closed += (_, _) => DispatcherQueue.TryEnqueue(() =>
+            dialog.Closed += (_, _) => DispatcherQueue.TryEnqueue(() => DispatcherQueue.TryEnqueue(() =>
             {
                 _commandCenterPending = false;
                 OpenCommandCenter();
-            });
+            }));
             return;
         }
         if (IsSettingsVisible)
         {
             if (_settings is { IsLoaded: true }) _settings.OpenCommandCenter();
+            else if (_settings is not null && !_commandCenterPending)
+            {
+                // Settings was just created by navigation; open its search once it is live.
+                _commandCenterPending = true;
+                void SettingsLoaded(object? s, RoutedEventArgs e)
+                {
+                    _settings.Loaded -= SettingsLoaded;
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        _commandCenterPending = false;
+                        OpenCommandCenter();
+                    });
+                }
+                _settings.Loaded += SettingsLoaded;
+            }
             return;
         }
         var anchor = WorkspaceSearchButton.IsLoaded && NavView.IsPaneOpen

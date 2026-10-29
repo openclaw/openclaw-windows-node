@@ -78,7 +78,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false },
                 "Back to chat");
             // No SetFocus here: Back must restore composer focus by itself.
-            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")!.Current.HasKeyboardFocus,
+            await WaitUiAsync(run,             () => FindById(run, "ChatComposerInput") is { Current.HasKeyboardFocus: true },
                 "composer focus restored by Back after search routing");
             Assert.Equal(identity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
             Assert.Equal(MainSearchDraft, ComposerText(run));
