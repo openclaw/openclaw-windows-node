@@ -213,6 +213,40 @@ public sealed class LocalAiResetServiceTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reset_StopRefusedForMissingOwner_RerunsEngineOnlyWithoutNativeOwnership(bool nativeOwnership)
+    {
+        // A rerun after a reset released native ownership but its engine step failed: nothing
+        // runs and Stop has no Gateway owner to withdraw through.
+        var order = new List<string>();
+        var runtime = new OrderedRuntime(order)
+        {
+            HasReleasableOwnership = nativeOwnership,
+            StopFailure = new InvalidOperationException("No WSL Gateway owns this Local AI installation."),
+        };
+        var service = new LocalAiResetService(runtime, (_, _) =>
+        {
+            order.Add("engine");
+            return Task.FromResult(0);
+        }, () => "OpenClaw.Tray.WinUI.exe");
+
+        LocalAiResetResult result = await service.ResetAsync();
+
+        if (nativeOwnership)
+        {
+            Assert.Equal(LocalAiResetOutcome.Failed, result.Outcome);
+            Assert.Contains("No WSL Gateway owns", result.Message);
+            Assert.Equal(["stop"], order);
+        }
+        else
+        {
+            Assert.True(result.Succeeded);
+            Assert.Equal(["stop", "engine"], order);
+        }
+    }
+
+    [Theory]
     [InlineData("stop")]
     [InlineData("release")]
     public async Task Reset_PhaseTimeout_CancelsAndSettlesOperationBeforeReporting(string phase)
@@ -243,6 +277,7 @@ public sealed class LocalAiResetServiceTests
         public bool HasReleasableOwnership { get; set; }
         public Exception? ReleaseFailure { get; init; }
         public LocalAiRuntimeSnapshot? StopResult { get; init; }
+        public Exception? StopFailure { get; init; }
         /// <summary>"stop" or "release": that call blocks until cancelled, then settles before rethrowing.</summary>
         public string? BlockPhase { get; init; }
         public LocalAiRuntimeSnapshot Snapshot { get; } =
@@ -256,6 +291,7 @@ public sealed class LocalAiResetServiceTests
         {
             lock (order) order.Add("stop");
             await BlockIfRequestedAsync("stop", cancellationToken);
+            if (StopFailure is not null) throw StopFailure;
             return StopResult ?? Snapshot;
         }
 

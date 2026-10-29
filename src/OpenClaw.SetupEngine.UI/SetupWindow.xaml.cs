@@ -1039,8 +1039,8 @@ public sealed partial class SetupWindow : Window
     }
     /// <summary>
     /// Confirms and runs the tray-owned Local AI reset. Callers are CompletePage (after
-    /// ProgressPage settlement released the setup lock) and AiSetupPage (observation is
-    /// only re-read afterwards).
+    /// ProgressPage settlement) and AiSetupPage (observation is only re-read afterwards);
+    /// neither has a setup mutation in flight while this window lends its run lock to the engine.
     /// </summary>
     internal async Task<LocalAiResetPrompt> ConfirmAndResetLocalAiAsync(XamlRoot xamlRoot)
     {
@@ -1057,11 +1057,37 @@ public sealed partial class SetupWindow : Window
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
             return new(Confirmed: false, Error: null);
-        return new(Confirmed: true, await _localAiHost.ResetLocalAiAsync(_lifetimeCts.Token));
+        // The reset engine is its own setup run and refuses while this window holds the run
+        // lock, so the window yields the lock until the reset settles, then takes it back.
+        bool yieldedLock = _setupLock is not null;
+        _setupLock?.Dispose();
+        _setupLock = null;
+        string? error;
+        try { error = await _localAiHost.ResetLocalAiAsync(_lifetimeCts.Token); }
+        finally
+        {
+            if (yieldedLock)
+                ReclaimSetupLock();
+        }
+        return new(Confirmed: true, error);
+    }
+
+    private void ReclaimSetupLock()
+    {
+        if (_isClosed)
+            return;
+        if (!SetupRunLock.TryAcquire(_dataDir, out _setupLock, out var lockMessage))
+            NavigateTo(typeof(CompletePage), new CompletePageArgs(false, TimeSpan.Zero, null,
+                lockMessage ?? "Another setup run is active."));
     }
 
     /// <summary>Reruns the same setup configuration after a reset removed the unusable receipt.</summary>
-    internal void RetryAfterLocalAiReset() => NavigateToProgress();
+    internal void RetryAfterLocalAiReset()
+    {
+        // Without the run lock another setup run owns this data, so this window must not continue.
+        if (_setupLock is not null)
+            NavigateToProgress();
+    }
 
     /// <summary>Confirmed=false with no error means the user cancelled. Error null after confirmation means removed.</summary>
     internal readonly record struct LocalAiResetPrompt(bool Confirmed, string? Error)

@@ -59,8 +59,20 @@ internal sealed class LocalAiResetService
         string jsonOutput = Path.Combine(Path.GetTempPath(), $"openclaw-local-ai-reset-{Guid.NewGuid():N}.json");
         try
         {
-            LocalAiRuntimeSnapshot stopped = await RunPhaseAsync(ct => _runtime.StopAsync(ct), cancellationToken)
-                .ConfigureAwait(false);
+            LocalAiRuntimeSnapshot stopped;
+            try
+            {
+                stopped = await RunPhaseAsync(ct => _runtime.StopAsync(ct), cancellationToken).ConfigureAwait(false);
+            }
+            catch (InvalidOperationException ex) when (ex is not ObjectDisposedException &&
+                !cancellationToken.IsCancellationRequested && !_runtime.HasReleasableOwnership &&
+                IsConfirmedStop(_runtime.Snapshot))
+            {
+                // Stop refuses when no Gateway owns the route it would withdraw, for example when a
+                // reset released native ownership and its engine step then failed. The runtime still
+                // reports a confirmed stop, so the engine may finish: it proves any WSL route itself.
+                stopped = _runtime.Snapshot;
+            }
             if (!IsConfirmedStop(stopped))
             {
                 return new(LocalAiResetOutcome.Failed, string.IsNullOrWhiteSpace(stopped.Detail)

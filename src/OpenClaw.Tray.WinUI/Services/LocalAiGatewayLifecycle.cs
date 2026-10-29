@@ -22,6 +22,7 @@ internal sealed class LocalAiGatewayLifecycle(
     private readonly LocalAiGatewayDistroResolver _wslOwner = new(getRegistry());
     private NativeLocalAiGatewayTarget? _registeredTarget;
     private IGatewayAiSetupTransport? _registeredTransport;
+    private IGatewayAiSetupTransport? _setupReset;
     private int _resuming;
     private Task? _resumeTask;
     private sealed record WslStartup(string GatewayId, Task Task);
@@ -175,10 +176,24 @@ internal sealed class LocalAiGatewayLifecycle(
 
     public async Task ReleaseOwnershipAsync(CancellationToken ct)
     {
-        if (_registeredTransport is not null)
+        if (_registeredTransport is not null && !ReferenceEquals(_registeredTransport, _setupReset))
             throw new InvalidOperationException("Close Local AI setup before releasing Gateway ownership.");
         var binding = _store.Load() ?? throw new InvalidOperationException("There is no native Local AI ownership to release.");
         await ForgetWithdrawnAsync(binding.GatewayId, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs the Reset Local AI requested by the setup holding <paramref name="transport"/>'s
+    /// registration. That reset may release ownership through this setup's own Gateway
+    /// connection; release requested from anywhere else still waits for setup to close.
+    /// </summary>
+    public async Task<T> RunSetupResetAsync<T>(IGatewayAiSetupTransport transport, Func<Task<T>> reset)
+    {
+        if (!ReferenceEquals(_registeredTransport, transport))
+            return await reset().ConfigureAwait(false);
+        _setupReset = transport;
+        try { return await reset().ConfigureAwait(false); }
+        finally { _setupReset = null; }
     }
 
     public async Task ReconcileVerifiedAsync(GatewayRecord record, IGatewayAiSetupTransport transport,
@@ -358,7 +373,7 @@ internal sealed class LocalAiGatewayLifecycle(
             {
                 // Stopped intent permits withdrawal only, including after an offline Stop.
                 var stopped = await runtime.ReconcileStoppedAsync().ConfigureAwait(false);
-                if (stopped.State == LocalAiRuntimeState.Failed || stopped.GatewayRouteRequiresResolution)
+                if (stopped.GatewayRouteRequiresResolution)
                     logger.Warn("The stopped Local AI route still needs withdrawal through its original Gateway.");
                 return;
             }

@@ -68,9 +68,15 @@ internal sealed class SetupLocalAiHost(
         if (ReferenceEquals(_nativeTransport, transport)) _nativeTransport = null;
     }
 
-    public Task<string?> ResetLocalAiAsync(CancellationToken ct) => resetLocalAi is null
-        ? Task.FromResult<string?>("Local AI reset is not available here.")
-        : resetLocalAi(ct);
+    public Task<string?> ResetLocalAiAsync(CancellationToken ct)
+    {
+        if (resetLocalAi is null)
+            return Task.FromResult<string?>("Local AI reset is not available here.");
+        // This setup's own Gateway registration must not block the reset it requested.
+        return _nativeTransport is { } transport && nativeLifecycle is not null
+            ? nativeLifecycle.RunSetupResetAsync(transport, () => resetLocalAi(ct))
+            : resetLocalAi(ct);
+    }
 
     public GatewayRegistrySnapshot BeginGatewaySetup() => _setupRegistryBaseline =
         (getRegistry() ?? throw new InvalidOperationException("The Gateway registry is unavailable.")).CapturePersistedSnapshot();
