@@ -466,7 +466,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         if (CurrentApp.Settings is { } settings)
             view.ApplyNavPaneState(settings);
         view.BindToAppState();
-        SettingsSection.Children.Add(view);
+        SettingsSection.Children.Insert(0, view);
         _settings = view;
         return view;
     }
@@ -487,6 +487,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             SettingsHistoryBar.Visibility = Visibility.Visible;
         }
         ApplySettingsPresentation(view);
+        UpdateNavigationSelection();
         UpdateHistoryButtons();
         var request = _pendingSettingsRequest.Consume();
         var tag = Destination.CompanionTag ?? "settings";
@@ -503,6 +504,10 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (SettingsSection.Visibility != Visibility.Visible)
             return;
+        // A deliberate click or key press on another sidebar row owns focus; only Back/Forward and
+        // other non-row exits restore the control that opened Settings.
+        var focus = FocusedElement() is DependencyObject now && IsInsideNavigationItem(now) ? null : _chatFocus;
+        _chatFocus = null;
         _settings?.Deactivate();
         _settings?.ContentOnly = false;
         SettingsSection.Margin = new Thickness(0);
@@ -510,9 +515,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         ContentHost.Visibility = Visibility.Visible;
         SettingsSection.Visibility = Visibility.Collapsed;
         SettingsHistoryBar.Visibility = Visibility.Collapsed;
+        EmbeddedOperationInfo.IsOpen = false;
         NavigationSection.Visibility = Visibility.Visible;
-        var focus = _chatFocus;
-        _chatFocus = null;
         if (focus is not null)
             DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
@@ -541,7 +545,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (IsClosed) return;
         var changed = _navigation.PruneSettings(
-            shouldRemove, fallbackTag is null ? _navigation.Current : WorkspaceDestination.Settings(fallbackTag));
+            shouldRemove, fallbackTag is null ? _navigation.Current : WorkspaceDestination.PrunedFallback(_navigation.Current, fallbackTag));
         UpdateHistoryButtons();
         if (!changed || fallbackTag is null || Root.XamlRoot is null)
             return;
@@ -593,9 +597,15 @@ public sealed partial class WorkspaceWindow : WindowEx
         NavView.SelectedItem = Destination.Page == WorkspacePageId.Home
             ? items.FirstOrDefault(item => item.Tag is WorkspaceSession session && session.Key == Destination.SessionKey)
                 ?? HomeItem
-            : null;
+            : Destination is { Page: WorkspacePageId.Settings, Embedded: true }
+                ? items.FirstOrDefault(item => item.Tag is PinnedPageTag pin && IsPinDestination(pin))
+                : null;
         _updating = false;
     }
+
+    private bool IsPinDestination(PinnedPageTag pin) =>
+        WorkspaceNavigation.NormalizeSettingsTag(PinnedPages.ResolveRoute(pin.Tag, _agentId),
+            _settings?.CurrentAgentId ?? _agentId ?? "main") == Destination.CompanionTag;
 
     private void SignalContentReady(FrameworkElement content)
     {
@@ -880,18 +890,34 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         Logger.Info($"[Workspace] {message}");
         if (IsClosed) return;
-        OperationInfo.Severity = severity;
-        OperationInfo.Message = message;
-        OperationInfo.IsOpen = true;
+        ShowOperation(message, severity);
     }
 
     internal void ShowError(string message)
     {
         Logger.Warn($"[Workspace] {message}");
         if (IsClosed) return;
-        OperationInfo.Severity = InfoBarSeverity.Error;
+        ShowOperation(message, InfoBarSeverity.Error);
+    }
+
+    // An embedded Settings section covers the chat's InfoBar, so the same message also shows above it.
+    private void ShowOperation(string message, InfoBarSeverity severity)
+    {
+        OperationInfo.Severity = severity;
         OperationInfo.Message = message;
         OperationInfo.IsOpen = true;
+        EmbeddedOperationInfo.Severity = severity;
+        EmbeddedOperationInfo.Message = message;
+        EmbeddedOperationInfo.IsOpen = IsSettingsVisible && Destination.Embedded;
+    }
+
+    private void OnEmbeddedOperationClosed(InfoBar sender, InfoBarClosedEventArgs args) => OperationInfo.IsOpen = false;
+
+    private static bool IsInsideNavigationItem(DependencyObject element)
+    {
+        for (var node = element; node is not null; node = VisualTreeHelper.GetParent(node))
+            if (node is NavigationViewItem) return true;
+        return false;
     }
 
     private void ReportError(string operation, Exception ex)

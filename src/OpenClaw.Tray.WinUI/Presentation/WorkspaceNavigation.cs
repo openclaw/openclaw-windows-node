@@ -22,6 +22,10 @@ internal sealed record WorkspaceDestination(
 {
    public static WorkspaceDestination Settings(string companionTag, bool embedded = false) =>
        new(WorkspacePageId.Settings, null, companionTag, embedded);
+
+   /// <summary>The replacement for a pruned section keeps the presentation the user was in.</summary>
+   public static WorkspaceDestination PrunedFallback(WorkspaceDestination current, string fallbackTag) =>
+       Settings(fallbackTag, current.Page == WorkspacePageId.Settings && current.Embedded);
 }
 
 /// <summary>

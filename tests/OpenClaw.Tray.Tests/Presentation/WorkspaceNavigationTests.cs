@@ -110,6 +110,24 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void PrunedFallback_KeepsEmbeddedPresentation_OnlyForSettings()
+    {
+        Assert.Equal(WorkspaceDestination.Settings("connection", embedded: true),
+            WorkspaceDestination.PrunedFallback(WorkspaceDestination.Settings("skills", embedded: true), "connection"));
+        Assert.Equal(WorkspaceDestination.Settings("connection"),
+            WorkspaceDestination.PrunedFallback(WorkspaceDestination.Settings("skills"), "connection"));
+        Assert.Equal(WorkspaceDestination.Settings("connection"),
+            WorkspaceDestination.PrunedFallback(new(WorkspacePageId.Home, "chat-a"), "connection"));
+
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "chat-a"));
+        history.Navigate(WorkspaceDestination.Settings("skills", embedded: true));
+        Assert.True(history.PruneSettings(tag => tag == "skills",
+            WorkspaceDestination.PrunedFallback(history.Current, "connection")));
+        Assert.Equal(WorkspaceDestination.Settings("connection", embedded: true), history.Current);
+    }
+
+    [Fact]
     public void ChatSessionCompletingInSettings_DoesNotReplaceSettings()
     {
         var history = new WorkspaceNavigationHistory();

@@ -210,6 +210,15 @@ public sealed class PinnedPagesTests
         Assert.Contains("ApplySettingsPresentation(view)", window);
         Assert.Contains("ContentHost.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible", window);
         Assert.Contains("_settings?.ContentOnly = false", window);
+        Assert.Contains("Embedded: true }", window);
+        Assert.Contains("item.Tag is PinnedPageTag pin && IsPinDestination(pin)", window);
+        // RenderSettings must sync selection (a nonselecting pin never raises SelectionChanged).
+        var render = window[window.IndexOf("private void RenderSettings()", StringComparison.Ordinal)..];
+        Assert.Contains("UpdateNavigationSelection();", render[..render.IndexOf("ShowSection(", StringComparison.Ordinal)]);
+        Assert.Contains("PrunedFallback(_navigation.Current, fallbackTag)", window);
+        Assert.Contains("IsInsideNavigationItem(now) ? null : _chatFocus", window);
+        Assert.Contains("EmbeddedOperationInfo.IsOpen = IsSettingsVisible && Destination.Embedded", window);
+        Assert.Contains("SettingsSection.Children.Insert(0, view)", window);
         Assert.Contains("AccessibilityView.Raw", pins);
         Assert.Contains("SelectsOnInvoked = false", pins);
         Assert.DoesNotContain("SettingsSaved?.Invoke", pins);

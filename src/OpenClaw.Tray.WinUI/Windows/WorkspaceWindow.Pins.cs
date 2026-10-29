@@ -79,6 +79,7 @@ public sealed partial class WorkspaceWindow
             PagesEmpty.Visibility = stored.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
         }
         finally { _updating = wasUpdating; }
+        if (Destination.Embedded) UpdateNavigationSelection();
     }
 
     private static NavigationViewItem CreatePinItem(PinnablePage page)
