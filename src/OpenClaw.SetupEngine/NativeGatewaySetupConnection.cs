@@ -58,18 +58,43 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
         }
     }
 
-    public static async Task<NativeGatewaySetupConnection> ConnectAsync(
+    public static Task<NativeGatewaySetupConnection> ConnectAsync(
         NativeGatewaySetupSession owner, CancellationToken ct = default, IProgress<SetupLoadingStep>? progress = null)
+        => ConnectWithBudgetAsync(owner, owner.AuthorizeAsync, allowPairing: true, ct, progress);
+
+    internal static async Task<NativeGatewaySetupConnection> ConnectWithBudgetAsync(
+        NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, bool allowPairing,
+        CancellationToken ct, IProgress<SetupLoadingStep>? progress)
     {
+        var remaining = owner.BeginAdmission();
+        using var deadline = new CancellationTokenSource(remaining, owner.AdmissionTimeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, owner.LifetimeToken, deadline.Token);
         progress?.Report(SetupLoadingStep.ConnectGateway);
-        await owner.PrepareConnectionAsync(ct);
-        return await ConnectCoreAsync(owner, owner.AuthorizeAsync, allowPairing: true, ct, progress);
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            owner.LifetimeToken.ThrowIfCancellationRequested();
+            if (remaining == TimeSpan.Zero)
+                throw new TimeoutException("The native Gateway connection budget expired before operator admission.");
+            if (allowPairing)
+                await owner.PrepareConnectionAsync(linked.Token);
+            var connection = await ConnectCoreAsync(owner, authorize, allowPairing, linked.Token, progress);
+            owner.EndAdmission();
+            return connection;
+        }
+        catch (OperationCanceledException error) when (
+            deadline.IsCancellationRequested && !ct.IsCancellationRequested && !owner.LifetimeToken.IsCancellationRequested)
+        {
+            if (error is NativeAdmissionCanceledException pending)
+                throw new GatewayStartupUnavailableException(pending.Startup);
+            throw new TimeoutException("The native Gateway did not admit this Companion within its connection budget.", error);
+        }
     }
 
     internal static Task<NativeGatewaySetupConnection> ConnectForFinalizationAsync(
         NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, CancellationToken ct,
         IProgress<SetupLoadingStep>? progress = null) =>
-        ConnectCoreAsync(owner, authorize, allowPairing: false, ct, progress);
+        ConnectWithBudgetAsync(owner, authorize, allowPairing: false, ct, progress);
 
     private static async Task<NativeGatewaySetupConnection> ConnectCoreAsync(
         NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, bool allowPairing, CancellationToken ct,
@@ -122,17 +147,19 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
             {
                 progress?.Report(SetupLoadingStep.ConnectGateway);
                 await client.ConnectAsync().WaitAsync(linked.Token);
-                await connected.Task.WaitAsync(TimeSpan.FromSeconds(20), linked.Token);
+                // Preparation, challenge authorization and typed startup retries all
+                // spend the same deadline. A terminal handshake error still fails now.
+                await connected.Task.WaitAsync(linked.Token);
                 linked.Token.ThrowIfCancellationRequested();
                 var connection = new NativeGatewaySetupConnection(owner, client, authorize, HandshakeObserved);
                 retained = true;
                 return connection;
             }
-            catch (TimeoutException) when (
-                !linked.IsCancellationRequested && client.StartupUnavailable is { } startup)
+            catch (OperationCanceledException error) when (
+                linked.IsCancellationRequested && client.StartupUnavailable is { } startup)
             {
                 client.Dispose();
-                throw new GatewayStartupUnavailableException(startup);
+                throw new NativeAdmissionCanceledException(startup, error, linked.Token);
             }
             catch (NativePairingException error) when (allowPairing && !pairingAttempted)
             {
@@ -216,5 +243,12 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
         : InvalidOperationException(NativeGatewaySetupSession.GetPairingGuidance(requestId))
     {
         public string? RequestId { get; } = requestId;
+    }
+
+    private sealed class NativeAdmissionCanceledException(
+        GatewayStartupUnavailable startup, Exception inner, CancellationToken ct)
+        : OperationCanceledException("Native Gateway operator admission is still starting.", inner, ct)
+    {
+        public GatewayStartupUnavailable Startup { get; } = startup;
     }
 }
