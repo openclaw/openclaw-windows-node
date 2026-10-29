@@ -24,6 +24,55 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task PinnedPages_SelectionCallbacksDoNotReinvokeNavigation()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            foreach (var tag in new[] { "settings", "permissions" })
+            {
+                Invoke(FindById(run, "WorkspacePagesCustomize")!);
+                var toggleId = $"WorkspacePagesToggle:{tag}";
+                await WaitUiAsync(run, () => FindById(run, toggleId) is not null, "pin toggle");
+                Invoke(FindById(run, toggleId)!);
+                await WaitUiAsync(run, () => FindById(run, $"WorkspacePinnedPage:{tag}") is not null, "pinned row");
+            }
+
+            // Use the real shipped NavigationView: its SelectedItem setter can synchronously
+            // raise ItemInvoked even though the pin has SelectsOnInvoked=false.
+            foreach (var (tag, marker) in new[]
+            {
+                ("settings", "SettingsPageMarker"),
+                ("permissions", "PermissionsPageMarker"),
+                ("settings", "SettingsPageMarker"),
+                ("settings", "SettingsPageMarker"),
+            })
+            {
+                Invoke(FindById(run, $"WorkspacePinnedPage:{tag}")!);
+                await WaitUiAsync(run, () => FindById(run, marker)?.Current.IsOffscreen == false,
+                    $"responsive embedded {tag} page");
+                var row = FindById(run, $"WorkspacePinnedPage:{tag}")!;
+                Assert.True(((SelectionItemPattern)row.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+                Assert.False(((SelectionItemPattern)FindById(run, "WorkspaceNavHome")!
+                    .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+                Assert.False(FindById(run, "WorkspacePagesCustomize")!.Current.IsOffscreen);
+                run.EnsureRunning();
+            }
+            await CaptureIfRequestedAsync(run, "pinned-settings-selected.png");
+            Invoke(FindById(run, "WorkspaceBack")!);
+            await WaitUiAsync(run, () => FindById(run, "PermissionsPageMarker")?.Current.IsOffscreen == false,
+                "Back restores the preceding pin, not a recursive duplicate");
+            Invoke(FindById(run, "WorkspaceForward")!);
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker")?.Current.IsOffscreen == false,
+                "Forward restores the selected pin");
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.IsOffscreen == false,
+                "chat remains usable after pin navigation");
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task HistoricalFractionalVoiceConversationRendersWithoutLoadingPlaceholder()
     {
         await WithAppAsync(async run =>

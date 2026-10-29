@@ -243,6 +243,22 @@ public sealed class PinnedPagesTests
                     xaml.IndexOf("x:Name=\"SessionsHeader\"", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void ProgrammaticPinInvocation_IsIgnoredBeforeChangingNavigationOrFocusIntent()
+    {
+        var pins = ReadSource("Windows", "WorkspaceWindow.Pins.cs");
+        var handler = pins[pins.IndexOf("private void OnPinItemInvoked(", StringComparison.Ordinal)..
+            pins.IndexOf("private void OnPagesFlyoutOpening(", StringComparison.Ordinal)];
+        Assert.True(handler.IndexOf("if (_updating) return;", StringComparison.Ordinal) >= 0);
+        Assert.True(handler.IndexOf("if (_updating) return;", StringComparison.Ordinal) <
+            handler.IndexOf("_sidebarInvoked = true;", StringComparison.Ordinal));
+        var window = ReadSource("Windows", "WorkspaceWindow.xaml.cs");
+        var selection = window[window.IndexOf("private void UpdateNavigationSelection()", StringComparison.Ordinal)..
+            window.IndexOf("private bool IsPinDestination(", StringComparison.Ordinal)];
+        Assert.Contains("var wasUpdating = _updating;", selection);
+        Assert.Contains("finally { _updating = wasUpdating; }", selection);
+    }
+
     private static string ReadSource(params string[] relative)
     {
         var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? Directory.GetCurrentDirectory();

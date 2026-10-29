@@ -136,6 +136,9 @@ public sealed partial class WorkspaceWindow
     }
     private void OnPinItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs e)
     {
+        // SelectedItem can synchronously raise ItemInvoked for a nonselecting pin.
+        // A render's selection update is not another user activation.
+        if (_updating) return;
         if (e.InvokedItemContainer is not null) _sidebarInvoked = true;
         if (e.InvokedItemContainer?.Tag is not PinnedPageTag pin) return;
         if (!PinnedPages.IsAvailable(pin.Tag, PinStatus))

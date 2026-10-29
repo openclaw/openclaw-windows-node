@@ -595,15 +595,32 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateNavigationSelection()
     {
+        var wasUpdating = _updating;
         _updating = true;
-        var items = NavView.MenuItems.OfType<NavigationViewItem>();
-        NavView.SelectedItem = Destination.Page == WorkspacePageId.Home
-            ? items.FirstOrDefault(item => item.Tag is WorkspaceSession session && session.Key == Destination.SessionKey)
-                ?? HomeItem
-            : Destination is { Page: WorkspacePageId.Settings, Embedded: true }
-                ? items.FirstOrDefault(item => item.Tag is PinnedPageTag pin && IsPinDestination(pin))
-                : null;
-        _updating = false;
+        try
+        {
+            var items = NavView.MenuItems.OfType<NavigationViewItem>();
+            var selected = Destination.Page == WorkspacePageId.Home
+                ? items.FirstOrDefault(item => item.Tag is WorkspaceSession session && session.Key == Destination.SessionKey)
+                    ?? HomeItem
+                : Destination is { Page: WorkspacePageId.Settings, Embedded: true }
+                    ? items.FirstOrDefault(item => item.Tag is PinnedPageTag pin && IsPinDestination(pin))
+                    : null;
+            if (ReferenceEquals(NavView.SelectedItem, selected)) return;
+            // WinUI treats selecting a nonselecting item as an invocation and restores the old
+            // selection. Allow only this guarded projection; actual pin invocations stay nonselecting.
+            var selectsOnInvoked = selected?.SelectsOnInvoked ?? true;
+            try
+            {
+                if (selected is not null) selected.SelectsOnInvoked = true;
+                NavView.SelectedItem = selected;
+            }
+            finally
+            {
+                if (selected is not null) selected.SelectsOnInvoked = selectsOnInvoked;
+            }
+        }
+        finally { _updating = wasUpdating; }
     }
 
     private bool IsPinDestination(PinnedPageTag pin) =>
