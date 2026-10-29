@@ -14,6 +14,7 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
     private readonly SetupGatewaySessionBinding _binding;
     private readonly Func<CancellationToken, Task> _authorize;
     private readonly GatewayAiSetupRoute _route;
+    private readonly EventHandler<GatewayHandshakeObservation> _handshakeObserver;
     public OpenClawGatewayClient Client { get; }
     public long Generation => Client.ServerHandshakeGeneration;
     public bool IsConnected => Client.IsConnectedToGateway && Client.HasHandshakeSnapshot;
@@ -27,11 +28,12 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
     }
 
     private NativeGatewaySetupConnection(NativeGatewaySetupSession owner, OpenClawGatewayClient client,
-        Func<CancellationToken, Task> authorize)
+        Func<CancellationToken, Task> authorize, EventHandler<GatewayHandshakeObservation> handshakeObserver)
     {
         _owner = owner;
         Client = client;
         _authorize = authorize;
+        _handshakeObserver = handshakeObserver;
         _binding = new(owner.Record);
         _route = CaptureRoute();
     }
@@ -85,9 +87,15 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
             var token = storedDeviceToken
                 ?? owner.Record.SharedGatewayToken
                 ?? throw new InvalidOperationException("No native Gateway credential found.");
+            // General client traces carry wire data. Only typed observations reach setup logs.
             var client = new OpenClawGatewayClient(owner.Record.Url, token,
                 logger: NullLogger.Instance, identityPath: owner.IdentityDirectory,
                 requireExistingIdentity: !allowPairing) { UseV2Signature = true };
+            var connectionAttempt = owner.NextConnectionAttempt();
+            void HandshakeObserved(object? sender, GatewayHandshakeObservation observation) =>
+                owner.ReportHandshakeObservation(connectionAttempt, observation);
+            client.HandshakeObserved += HandshakeObserved;
+            var retained = false;
             client.HandshakeAuthorizationAsync = client.ReconnectAuthorizationAsync = async cancellation =>
             {
                 await authorize(cancellation);
@@ -116,7 +124,9 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
                 await client.ConnectAsync().WaitAsync(linked.Token);
                 await connected.Task.WaitAsync(TimeSpan.FromSeconds(20), linked.Token);
                 linked.Token.ThrowIfCancellationRequested();
-                return new(owner, client, authorize);
+                var connection = new NativeGatewaySetupConnection(owner, client, authorize, HandshakeObserved);
+                retained = true;
+                return connection;
             }
             catch (TimeoutException) when (
                 !linked.IsCancellationRequested && client.StartupUnavailable is { } startup)
@@ -153,6 +163,8 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
                 client.ConnectionFailure -= ConnectionFailure;
                 client.StatusChanged -= StatusChanged;
                 client.PairingRequired -= PairingRequired;
+                if (!retained)
+                    client.HandshakeObserved -= HandshakeObserved;
             }
         }
         throw new InvalidOperationException("The Gateway did not accept this Companion after pairing.");
@@ -193,7 +205,11 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
     {
         try { await Client.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(5)); }
         catch (TimeoutException) { Trace.TraceWarning("Native setup connection shutdown timed out."); }
-        finally { Client.Dispose(); }
+        finally
+        {
+            Client.HandshakeObserved -= _handshakeObserver;
+            Client.Dispose();
+        }
     }
 
     private sealed class NativePairingException(string? requestId)

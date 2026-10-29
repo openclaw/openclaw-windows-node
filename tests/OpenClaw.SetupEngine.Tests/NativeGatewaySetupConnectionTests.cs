@@ -21,6 +21,8 @@ public sealed class NativeGatewaySetupConnectionTests
         server.StartupRejectionsRemaining = 3;
         server.AcceptedDeviceToken = StaleDeviceToken;
         using var fixture = CreateFixture(server, isolated: true);
+        using var log = new SetupLogger(Path.Combine(fixture.Temp.Path, "handshake.jsonl"));
+        fixture.Host.HandshakeObservation = log.HandshakeObservation;
         await using var owner = await fixture.PrepareAsync();
         var identity = new DeviceIdentity(owner.IdentityDirectory);
         identity.Initialize();
@@ -33,6 +35,23 @@ public sealed class NativeGatewaySetupConnectionTests
         Assert.Equal(StaleDeviceToken, DeviceIdentity.TryReadStoredDeviceToken(owner.IdentityDirectory));
         Assert.Equal(0, server.SharedCredentialConnects);
         Assert.Null(fixture.Host.ApprovedId);
+        log.Dispose();
+        var entries = File.ReadAllLines(log.FilePath!)
+            .Select(line => JsonSerializer.Deserialize<JsonElement>(line))
+            .Where(entry => entry.GetProperty("msg").GetString() == "native.gateway.handshake")
+            .Select(entry => entry.GetProperty("data")).ToArray();
+        Assert.Equal(new long[] { 1, 2, 3 }, entries.Where(entry =>
+                entry.GetProperty("phase").GetString() == "StartupUnavailable")
+            .Select(entry => entry.GetProperty("transport_generation").GetInt64()));
+        Assert.Equal(4, Assert.Single(entries, entry =>
+            entry.GetProperty("phase").GetString() == "ConnectAccepted")
+            .GetProperty("transport_generation").GetInt64());
+        Assert.All(entries, entry => Assert.Equal(1, entry.GetProperty("connection_attempt").GetInt64()));
+        var output = File.ReadAllText(log.FilePath!);
+        Assert.DoesNotContain(Token, output);
+        Assert.DoesNotContain(StaleDeviceToken, output);
+        Assert.DoesNotContain(identity.DeviceId, output);
+        Assert.DoesNotContain(owner.Record.Url, output);
     }
 
     [Fact]
