@@ -67,6 +67,8 @@ internal sealed class SetupLocalAiHost(
         if (ReferenceEquals(_nativeTransport, transport)) _nativeTransport = null;
     }
 
+    public ILocalAiRuntime? BorrowManagedRuntime() => getRuntime();
+
     public GatewayRegistrySnapshot BeginGatewaySetup() => _setupRegistryBaseline =
         (getRegistry() ?? throw new InvalidOperationException("The Gateway registry is unavailable.")).CapturePersistedSnapshot();
 
@@ -234,6 +236,7 @@ internal sealed class SetupLocalAiHost(
             if (!admitted.Success)
                 throw new LocalAiSelectionRejectedException(admitted.Detail ?? "Local AI route publication was not admitted.");
         }
+        LocalAiResolvedInstall admittedInstall = install;
         LocalAiRuntimeSnapshot started;
         try
         {
@@ -256,7 +259,7 @@ internal sealed class SetupLocalAiHost(
             started.Ownership == LocalAiOwnership.None && !started.GatewayRouteRequiresResolution)
             throw new LocalAiStartFailedException(started.Detail ?? "The managed Local AI model could not start.");
         install = await loadInstall(ct) ?? throw new InvalidOperationException("The Local AI receipt is unavailable.");
-        if (Identity(install) != selected.ReceiptIdentity || started.State != LocalAiRuntimeState.Healthy ||
+        if (Identity(admittedInstall) != Identity(install) || started.State != LocalAiRuntimeState.Healthy ||
             started.Ownership != LocalAiOwnership.CompanionManaged ||
             started.ModelId != install.Manifest.ModelCatalogId || started.Endpoint != install.Endpoint ||
             LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) != selected.ModelRef ||
@@ -338,6 +341,9 @@ internal sealed class SetupLocalAiHost(
     private static SetupLocalAiTarget ToTarget(LocalAiRecoveryTarget target) =>
         new(target.GatewayId, target.DistroName, target.GatewayPort, target.ModelCatalogId, target.RequestedLocalAiPort);
 
+    // Endpoint and fallback are bookkeeping, and recovery hints are JsonIgnored.
+    // Installation identity, model paths and artifact pins remain fenced.
     private static string? Identity(LocalAiResolvedInstall? install) => install is null ? null :
-        Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(install.Manifest with { Endpoint = null })));
+        Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(
+            install.Manifest with { Endpoint = null, GatewayFallbackModel = null })));
 }

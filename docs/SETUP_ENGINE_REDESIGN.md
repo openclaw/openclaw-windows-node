@@ -553,11 +553,29 @@ alone do not make a direct downgrade to those releases compatible. Rollback
 may remove a compatibility copy created by the current transaction, but it
 never removes the verified shared-cache source.
 
-Non-destructive Local AI recovery keeps the exact pre-recovery receipt as its
-rollback baseline. A successful repair always writes schema 4 with the verified
-hub-cache snapshot as the active model path, while preserving the legacy
-compatibility path and the prior gateway fallback, install time, and rollback
-metadata.
+Non-destructive Local AI recovery can select another model, including after an
+interrupted replacement. Successful repair writes schema 4 (or schema 5 for
+additional model assets) with the verified hub-cache snapshot as the active
+model path, retaining the legacy compatibility path and prior Gateway fallback.
+The canonical **LocalAI/state.json** keeps the pre-replacement schema shape even
+while setup is incomplete. Older readers can load only schemas they already
+support; format compatibility does not prove an older app can take over a
+running model or a Gateway route mid-switch.
+
+Optional **LocalAI/recovery-hints.json** remembers prior receipts and exact owned
+routes. It is bound to the canonical receipt bytes and write time. Older writes,
+missing or corrupt hints, and invalid historical paths discard those hints
+without invalidating the current installation. Hint persistence is best effort,
+not a second transaction authority. Endpoint, fallback and history drift do not
+block updates or finalization of the same installation. Runtime/model identity,
+artifact receipts and paths still must match; unrelated Gateway providers and
+mixed routes are preserved rather than claimed.
+
+Recovery does not require a newer Gateway's conditional-config flag. The normal
+supported batch path proceeds after exact route ownership checks. If compensation
+would need to move an endpoint and conditional writes are unavailable, recovery
+leaves that compensation unconfirmed and retains potentially active files and
+available recovery hints. It never falls back to a blind provider overwrite.
 
 Before restoring the original endpoint receipt, recovery resolves its model
 through the same existing-file handle resolver used for native runtime launch.
@@ -579,7 +597,8 @@ prune the rollback baseline.
 Completed cache files and pre-existing resumable partials are shared state.
 Setup rollback and uninstall do not delete them. Unsafe links, reparse points,
 hard-linked partials, destination conflicts, receipt mismatches, and concurrent
-manifest changes fail closed.
+installation or artifact changes fail closed. Optional recovery bookkeeping does
+not impose an additional installation-validity gate.
 
 ### Step Base Class
 
