@@ -227,11 +227,9 @@ jobs:
       shell: pwsh
       run: ./scripts/Test-InstallerScriptCompiles.ps1 -RequireCompiler
 
-    - name: Validate Store submission and source authorization
+    - name: Validate central Store publication requests
       shell: pwsh
-      run: |
-        ./scripts/test-microsoft-store-submission.ps1
-        ./scripts/Test-StoreSubmissionSource.Tests.ps1
+      run: ./scripts/test-store-publication-request.ps1
 
     - name: Validate Store MSIX bundle construction
       shell: pwsh
