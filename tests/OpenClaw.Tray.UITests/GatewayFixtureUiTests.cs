@@ -639,7 +639,24 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 transform.Resize(name == "narrow" ? 900 : narrowWidth + 400, name == "narrow" ? 720 : 950);
                 await ScrollToAsync(run, 0);
                 await ScrollToAsync(run, 100);
-                await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.LongHistoryFinalMarker), $"message 240 visible at {name} width");
+                try
+                {
+                    await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.LongHistoryFinalMarker), $"message 240 visible at {name} width");
+                }
+                catch (TimeoutException)
+                {
+                    var timeline = FindTimeline(run);
+                    var message = FindText(run, GatewayScenario.LongHistoryFinalMarker);
+                    output.WriteLine(JsonSerializer.Serialize(new
+                    {
+                        width = name,
+                        viewport = timeline?.Current.BoundingRectangle.ToString(),
+                        messageBounds = message?.Current.BoundingRectangle.ToString(),
+                        messageOffscreen = message?.Current.IsOffscreen,
+                        window = window.Current.BoundingRectangle.ToString(),
+                    }));
+                    throw;
+                }
                 var bounds = window.Current.BoundingRectangle;
                 if (name == "narrow")
                     narrowWidth = bounds.Width;

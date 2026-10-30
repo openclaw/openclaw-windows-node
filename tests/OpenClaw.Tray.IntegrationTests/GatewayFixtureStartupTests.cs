@@ -9,6 +9,50 @@ namespace OpenClaw.Tray.IntegrationTests;
 
 public sealed class GatewayFixtureStartupTests
 {
+    [Fact]
+    public async Task McpTokenRead_WaitsForWriterToPublishCompleteToken()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            Task<string> read;
+            await using (var writer = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                await writer.WriteAsync("synthetic-fixture-token\n"u8.ToArray(), deadline.Token);
+                await writer.FlushAsync(deadline.Token);
+                read = GatewayFixtureRun.ReadPublishedMcpTokenAsync(path, deadline.Token);
+                Assert.False(read.IsCompleted);
+            }
+            Assert.Equal("synthetic-fixture-token", await read);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task McpTokenRead_HonorsCancellationWhileLocked()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            using var stop = new CancellationTokenSource();
+            await using var writer = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+            var read = GatewayFixtureRun.ReadPublishedMcpTokenAsync(path, stop.Token);
+            Assert.False(read.IsCompleted);
+            stop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => read);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task McpTokenRead_DoesNotHideMissingFile()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        await Assert.ThrowsAsync<FileNotFoundException>(() =>
+            GatewayFixtureRun.ReadPublishedMcpTokenAsync(path, CancellationToken.None));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

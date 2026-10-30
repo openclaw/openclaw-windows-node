@@ -581,8 +581,12 @@ public sealed class WorkspaceWindowProofTests
         Assert.False(Find(workspaceElement, "WorkspaceSessionsAdd").Current.IsEnabled);
         var sessionsHeader = FindHeading(workspaceElement, "Sessions").Current.BoundingRectangle;
         var initialHomeBounds = Find(workspaceElement, "WorkspaceNavHome").Current.BoundingRectangle;
-        Assert.True(sessionsHeader.Top >= initialHomeBounds.Bottom - 1);
-        Assert.InRange(sessionsHeader.Top - initialHomeBounds.Bottom, -1, 36);
+        var pagesHeader = FindHeading(workspaceElement, "Pages").Current.BoundingRectangle;
+        var pagesEmpty = FindHeading(workspaceElement, "Pin pages here with the customize button.").Current.BoundingRectangle;
+        var scale = Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle.Width / 40;
+        Assert.InRange((pagesHeader.Top - initialHomeBounds.Bottom) / scale, -1, 36);
+        Assert.True(pagesEmpty.Top >= pagesHeader.Bottom - 1);
+        Assert.InRange((sessionsHeader.Top - pagesEmpty.Bottom) / scale, -1, 36);
         foreach (var id in new[] { "WorkspaceNavAgents", "WorkspaceNavDashboards", "WorkspaceNavSystems",
             "WorkspaceNavAutomations", "WorkspaceNavPlugins", "WorkspaceMore", "WorkspacePageHeading" })
             Assert.Null(workspaceElement.FindFirst(TreeScope.Descendants,
