@@ -228,8 +228,8 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
 
     internal static async Task<string> ReadPublishedMcpTokenAsync(string path, CancellationToken cancellationToken)
     {
-        // Existence precedes publication: File.WriteAllText still owns a write handle until
-        // the complete token is flushed. Do not read a partial token or retry other I/O failures.
+        // A published token file can still be transiently locked. Retry only sharing/lock
+        // violations within the caller's deadline; do not hide other I/O failures.
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
