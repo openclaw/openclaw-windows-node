@@ -26,19 +26,28 @@ public sealed class Migration2LocalizationTests
     };
 
     [Theory]
-    [InlineData("en-us", "same Windows user", "Do not uninstall OpenClaw first")]
-    [InlineData("fr-fr", "même utilisateur Windows", "Ne désinstallez pas OpenClaw au préalable")]
-    [InlineData("nl-nl", "dezelfde Windows-gebruiker", "Verwijder OpenClaw niet vooraf")]
-    [InlineData("pt-br", "mesmo usuário do Windows", "Não desinstale o OpenClaw antes")]
-    [InlineData("zh-cn", "同一 Windows 用户", "请勿先卸载 OpenClaw")]
-    [InlineData("zh-tw", "同一 Windows 使用者", "請勿先解除安裝 OpenClaw")]
+    [InlineData("en-us", "same Windows user", "Do not uninstall OpenClaw first",
+        "Setup repairs the installation files", "Migration must still pass the Store app’s compatibility checks")]
+    [InlineData("fr-fr", "même utilisateur Windows", "Ne désinstallez pas OpenClaw au préalable",
+        "répare les fichiers d’installation", "La migration doit encore satisfaire aux vérifications de compatibilité")]
+    [InlineData("nl-nl", "dezelfde Windows-gebruiker", "Verwijder OpenClaw niet vooraf",
+        "herstelt de installatiebestanden", "De migratie moet nog steeds voldoen aan de compatibiliteitscontroles")]
+    [InlineData("pt-br", "mesmo usuário do Windows", "Não desinstale o OpenClaw antes",
+        "repara os arquivos da instalação", "A migração ainda precisa passar pelas verificações de compatibilidade")]
+    [InlineData("zh-cn", "同一 Windows 用户", "请勿先卸载 OpenClaw",
+        "安装程序会修复安装文件", "迁移仍须通过 Store 应用的兼容性检查")]
+    [InlineData("zh-tw", "同一 Windows 使用者", "請勿先解除安裝 OpenClaw",
+        "安裝程式會修復安裝檔案", "移轉仍須通過 Store 應用程式的相容性檢查")]
     public void InnoRepairGuidance_DisclosesInPlaceRecoveryAndHasADownloadAction(
-        string locale, string sameUser, string keepInstalled)
+        string locale, string sameUser, string keepInstalled,
+        string repairScope, string compatibilityChecks)
     {
         var resources = ReadResources(locale);
         var repair = resources["Migration2_InnoRepairRequired"];
         Assert.Contains(sameUser, repair);
         Assert.Contains(keepInstalled, repair);
+        Assert.Contains(repairScope, repair);
+        Assert.Contains(compatibilityChecks, repair);
         Assert.NotEqual(resources["Migration2_InnoFailed"], repair);
         Assert.False(string.IsNullOrWhiteSpace(resources["Migration2_InnoDownloadSetup.Content"]));
         Assert.Contains("{0}", resources["Migration2_InnoSetupLinkFailed"]);

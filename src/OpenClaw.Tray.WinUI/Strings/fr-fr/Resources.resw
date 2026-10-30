@@ -7764,7 +7764,9 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
     <value>Le consentement à la migration a été enregistré. Installez et ouvrez la version du Store pour continuer. Gardez cette application installée jusqu'à la confirmation de la fin de la migration.</value>
   </data>
   <data name="Migration2_InnoRepairRequired" xml:space="preserve">
-    <value>Des fichiers requis de l’installation sont manquants ou invalides. Téléchargez le programme d’installation complet d’OpenClaw. Quittez OpenClaw, exécutez le programme sur cette installation avec le même utilisateur Windows, puis rouvrez l’application et réessayez la migration. Ne désinstallez pas OpenClaw au préalable.</value>
+    <value>Des fichiers requis de l’installation sont manquants ou invalides. Téléchargez le programme d’installation complet d’OpenClaw. Quittez OpenClaw, exécutez le programme sur cette installation avec le même utilisateur Windows, puis rouvrez l’application et réessayez la migration. Ne désinstallez pas OpenClaw au préalable.
+
+Le programme d’installation répare les fichiers d’installation. La migration doit encore satisfaire aux vérifications de compatibilité de l’application du Store.</value>
   </data>
   <data name="Migration2_InnoSetupLinkFailed" xml:space="preserve">
     <value>Windows n’a pas pu ouvrir le lien de téléchargement du programme d’installation. Copiez cette adresse dans votre navigateur : {0}. Ne désinstallez pas OpenClaw au préalable.</value>

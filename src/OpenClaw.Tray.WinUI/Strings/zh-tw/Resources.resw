@@ -7764,7 +7764,9 @@
     <value>已儲存移轉授權。請安裝並開啟 Store 版本以繼續。在確認移轉完成之前，請保留此應用程式。</value>
   </data>
   <data name="Migration2_InnoRepairRequired" xml:space="preserve">
-    <value>所需的安裝檔案遺失或無效。請下載完整的 OpenClaw 安裝程式。結束 OpenClaw，以同一 Windows 使用者執行安裝程式覆蓋此安裝，然後重新開啟應用程式並重試移轉。請勿先解除安裝 OpenClaw。</value>
+    <value>所需的安裝檔案遺失或無效。請下載完整的 OpenClaw 安裝程式。結束 OpenClaw，以同一 Windows 使用者執行安裝程式覆蓋此安裝，然後重新開啟應用程式並重試移轉。請勿先解除安裝 OpenClaw。
+
+安裝程式會修復安裝檔案。移轉仍須通過 Store 應用程式的相容性檢查。</value>
   </data>
   <data name="Migration2_InnoSetupLinkFailed" xml:space="preserve">
     <value>Windows 無法開啟安裝程式下載連結。請將此位址複製到瀏覽器中：{0}。請勿先解除安裝 OpenClaw。</value>

@@ -7816,7 +7816,9 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
     <value>O consentimento para migração foi salvo. Instale e abra a versão da Store para continuar. Mantenha este aplicativo instalado até que a conclusão da migração seja confirmada.</value>
   </data>
   <data name="Migration2_InnoRepairRequired" xml:space="preserve">
-    <value>Arquivos necessários da instalação estão ausentes ou são inválidos. Baixe o instalador completo do OpenClaw. Encerre o OpenClaw, execute o instalador sobre esta instalação com o mesmo usuário do Windows e reabra o aplicativo para tentar a migração novamente. Não desinstale o OpenClaw antes.</value>
+    <value>Arquivos necessários da instalação estão ausentes ou são inválidos. Baixe o instalador completo do OpenClaw. Encerre o OpenClaw, execute o instalador sobre esta instalação com o mesmo usuário do Windows e reabra o aplicativo para tentar a migração novamente. Não desinstale o OpenClaw antes.
+
+O instalador repara os arquivos da instalação. A migração ainda precisa passar pelas verificações de compatibilidade do aplicativo da Store.</value>
   </data>
   <data name="Migration2_InnoSetupLinkFailed" xml:space="preserve">
     <value>O Windows não conseguiu abrir o link de download do instalador. Copie este endereço para o navegador: {0}. Não desinstale o OpenClaw antes.</value>
