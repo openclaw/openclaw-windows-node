@@ -201,7 +201,7 @@ public sealed class Migration2LocalizationTests
         var resources = ReadResources(locale);
         var template = resources["Migration2_AwaitingRemovalWithApps"];
         foreach (var placeholder in new[] { "{0}", "{1}", "{2}" })
-            Assert.Equal(1, Regex.Matches(template, Regex.Escape(placeholder)).Count);
+            Assert.Single(Regex.Matches(template, Regex.Escape(placeholder)));
         var rendered = string.Format(System.Globalization.CultureInfo.InvariantCulture, template,
             "OpenClaw Companion version 2026.9.8-1", "OpenClaw", "2026.10.502.0");
         Assert.Matches(Regex.Escape(remove) + @"\s*" + Regex.Escape("OpenClaw Companion version 2026.9.8-1"), rendered);
