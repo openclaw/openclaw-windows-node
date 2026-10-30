@@ -1008,6 +1008,28 @@ public class LocalizationValidationTests
     }
 
     [Fact]
+    public void NoLocale_HasStrayTextOutsideResourceElements()
+    {
+        var offenders = new List<string>();
+        foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()).OrderBy(d => d, StringComparer.Ordinal))
+        {
+            var reswPath = Path.Combine(localeDir, "Resources.resw");
+            if (!File.Exists(reswPath)) continue;
+
+            var locale = Path.GetFileName(localeDir);
+            foreach (var text in XDocument.Load(reswPath).Root!.Nodes().OfType<XText>())
+            {
+                if (!string.IsNullOrWhiteSpace(text.Value))
+                    offenders.Add($"{locale}: '{text.Value.Trim()}'");
+            }
+        }
+
+        Assert.True(offenders.Count == 0,
+            "Resources.resw files contain text outside <data>/<resheader> elements (merge residue?): " +
+            string.Join("; ", offenders));
+    }
+
+    [Fact]
     public void NoLocale_HasWindows1252MojibakeValues()
     {
         var stringsDir = GetStringsDirectory();

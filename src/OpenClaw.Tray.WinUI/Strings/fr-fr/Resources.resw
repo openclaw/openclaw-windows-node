@@ -7827,6 +7827,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>Impossible de collecter les diagnostics du Gateway : {0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>Impossible d'ouvrir le terminal du Gateway : {0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Aperçu uniquement. Aucun package ne sera installé et aucun Gateway ne sera démarré.</value></data>
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>Activité détaillée</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>Ouvrir le fichier journal</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0} n'a pas abouti</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Ces fonctionnalités Windows deviennent utilisables une fois le mode nœud connecté et associé au Gateway. Les autorisations Windows et les approbations de commandes restent applicables.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Gateway natif configuré</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. Vous pouvez modifier ces choix dans les paramètres de Companion.</value></data>

@@ -4,13 +4,21 @@ using System.Diagnostics;
 namespace OpenClaw.SetupEngine.UI;
 
 internal sealed class NativeGatewaySetupHost(
+    SetupLogger logger,
     Action<string>? progress = null,
-    Action<NativeGatewaySetupStage>? stageProgress = null,
-    SetupLogger? log = null) : INativeGatewaySetupHost
+    Action<NativeGatewaySetupStage>? stageProgress = null) : INativeGatewaySetupHost
 {
     // Includes packaged Node/CLI startup, not just the Gateway RPC timeout.
     private static readonly TimeSpan PairingCommandTimeout = TimeSpan.FromMinutes(2);
-    private readonly NativeGatewayPackageClient _packageClient = new();
+    private readonly NativeGatewayPackageClient _packageClient =
+        new(new SetupOpenClawLogger(logger, prefix: ""));
+
+    private void Report(string message)
+    {
+        logger.Info(message);
+        progress?.Invoke(message);
+    }
+
 
     public Task<NativeGatewayContract> DetectContractAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken) =>
@@ -36,7 +44,7 @@ internal sealed class NativeGatewaySetupHost(
     public void ReportProgress(NativeGatewaySetupStage stage)
     {
         stageProgress?.Invoke(stage);
-        progress?.Invoke(stage switch
+        Report(stage switch
         {
             NativeGatewaySetupStage.StartingGateway => "Starting the packaged Gateway and verifying its listener...",
             NativeGatewaySetupStage.VerifyingEndpoint => "Verifying the Gateway endpoint before connecting...",
@@ -95,7 +103,7 @@ internal sealed class NativeGatewaySetupHost(
     {
         if (package.Contract == NativeGatewayContract.IsolatedSessionV1)
         {
-            progress?.Invoke("Preparing the isolated Gateway session...");
+            Report("Preparing the isolated Gateway session...");
             return _packageClient.SetupAsync(package, cancellationToken);
         }
         return RunAsync(package.ClawCtlAliasPath, ["setup"], environment,
@@ -145,9 +153,7 @@ internal sealed class NativeGatewaySetupHost(
         IReadOnlyDictionary<string, string> environment,
         TimeSpan timeout, string message, CancellationToken cancellationToken)
     {
-        progress?.Invoke(message);
-        using var owned = log is null ? new SetupLogger(filePath: null) : null;
-        var logger = log ?? owned!;
+        Report(message);
         var result = await new CommandRunner(logger).RunAsync(
             executable, arguments, timeout, environment,
             workingDirectory: environment.TryGetValue("OPENCLAW_STATE_DIR", out var directory)
@@ -162,7 +168,7 @@ internal sealed class NativeGatewaySetupHost(
                 $"{message} {(result.TimedOut ? "Timed out." : $"Exit code {result.ExitCode}.")} {detail}");
         }
         if (arguments is ["setup"] && !string.IsNullOrWhiteSpace(result.Stdout))
-            progress?.Invoke(SetupLogger.Sanitize(result.Stdout).Trim());
+            Report(SetupLogger.Sanitize(result.Stdout).Trim());
         return result.Stdout;
     }
 }

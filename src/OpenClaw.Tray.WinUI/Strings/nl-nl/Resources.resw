@@ -7828,6 +7828,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>Gateway-diagnostiek kon niet worden verzameld: {0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>De Gateway-terminal kon niet worden geopend: {0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Alleen een voorbeeld. Er wordt geen pakket geïnstalleerd of Gateway gestart.</value></data>
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>Gedetailleerde activiteit</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>Logbestand openen</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0} is niet voltooid</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Deze Windows-functies zijn bruikbaar nadat de nodemodus verbinding heeft gemaakt en met de Gateway is gekoppeld. Windows-machtigingen en opdrachtgoedkeuringen blijven van toepassing.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway geconfigureerd</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. U kunt deze keuzes wijzigen in de instellingen van Companion.</value></data>

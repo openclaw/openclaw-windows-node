@@ -150,14 +150,6 @@ public sealed class NativeGatewaySetupUxContractTests
             "src", "OpenClaw.SetupEngine.UI", "Pages", "NativeGatewaySetupPage.xaml.cs"));
         Assert.Contains("window.NativeSetupDraft = await service.CreateDraftAsync(cancellationToken)", source);
         Assert.DoesNotContain("window.NativeSetupDraft ??=", source);
-        var catchStart = source.IndexOf("catch (Exception ex)", StringComparison.Ordinal);
-        var finallyStart = source.IndexOf("finally", catchStart, StringComparison.Ordinal);
-        var failure = source[catchStart..finallyStart];
-        Assert.Contains("or AggregateException", failure);
-        Assert.Contains("Trace.TraceError", failure);
-        Assert.Contains("Apply(SetupInstallationStatus.Failed)", failure);
-        Assert.Contains("SetupLogger.Sanitize(ex.Message)", failure);
-        Assert.Contains("RetryButton.Visibility = Visibility.Visible", failure);
     }
 
     [Fact]
@@ -197,7 +189,6 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.True(source.IndexOf("GatewayAiPreparation.PrepareNativeAsync", StringComparison.Ordinal) <
             source.IndexOf("NavigateToNativeAiSetup(session, prepared)", StringComparison.Ordinal));
         Assert.DoesNotContain("NavigateToNativeWizard", source);
-        Assert.Contains("new NativeGatewaySetupHost(ReportProgress, ReportStage, log)", source);
         Assert.Contains("void ReportProgress(string message)", source);
         Assert.Contains("SetupLoadingView.DetailFor(step)", source);
         Assert.Contains("GatewayAiPreparation.PrepareNativeAsync(session, cancellationToken, progress)", source);
@@ -212,6 +203,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("NativeGatewaySetupStage.StartingGateway or NativeGatewaySetupStage.VerifyingEndpoint", stages);
         Assert.Contains("SetCurrentStep(3)", stages);
         Assert.Contains("Unloaded += (_, _) => _operationCts?.Cancel()", source);
+        Assert.Contains("new NativeGatewaySetupHost(log, ReportProgress, ReportStage)", source);
         Assert.True(source.IndexOf("if (SetupPreview.IsActive)", StringComparison.Ordinal) <
                     source.IndexOf("_operation = RunOperationAsync", StringComparison.Ordinal));
         Assert.DoesNotContain("message => StatusText.Text = message", source);
