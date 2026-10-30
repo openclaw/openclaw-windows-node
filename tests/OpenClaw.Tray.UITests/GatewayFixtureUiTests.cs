@@ -24,6 +24,76 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task PinnedPages_HistoryFocusAndFeedbackRemainOnVisibleSurface()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.IsOffscreen == false, "initial composer");
+            var window = FindHub(run);
+            if (!SetForegroundWindow(new IntPtr(window.Current.NativeWindowHandle)))
+                throw new InvalidOperationException("Cannot activate the isolated Workspace for pin keyboard proof.");
+
+            foreach (var tag in new[] { "settings", "permissions" })
+            {
+                Invoke(FindById(run, "WorkspacePagesCustomize")!);
+                var toggleId = $"WorkspacePagesToggle:{tag}";
+                await WaitUiAsync(run, () => FindById(run, toggleId) is not null, "pin toggle");
+                Invoke(FindById(run, toggleId)!);
+                await WaitUiAsync(run, () => FindById(run, $"WorkspacePinnedPage:{tag}") is not null, "pinned row");
+            }
+
+            Invoke(FindById(run, "WorkspacePinnedPage:settings")!);
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker")?.Current.IsOffscreen == false, "embedded Settings");
+            Invoke(FindById(run, "WorkspaceBack")!);
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.IsOffscreen == false, "returned composer");
+            FindById(run, "ChatComposerInput")!.SetFocus();
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")!.Current.HasKeyboardFocus, "composer focus");
+            System.Windows.Forms.SendKeys.SendWait("%{RIGHT}");
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker")?.Current.IsOffscreen == false, "keyboard Forward");
+            FindById(run, "WorkspacePinnedPage:permissions")!.SetFocus();
+            System.Windows.Forms.SendKeys.SendWait("%{LEFT}");
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.HasKeyboardFocus == true,
+                "history restores composer despite a merely focused sidebar row");
+            await CaptureIfRequestedAsync(run, "pin-history-composer-focus.png");
+
+            System.Windows.Forms.SendKeys.SendWait("%{RIGHT}");
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker")?.Current.IsOffscreen == false, "embedded Settings again");
+            var permissions = FindById(run, "WorkspacePinnedPage:permissions")!;
+            permissions.SetFocus();
+            System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+            await WaitUiAsync(run, () => FindById(run, "PermissionsPageMarker")?.Current.IsOffscreen == false, "keyboard pin invocation");
+            Assert.True(((SelectionItemPattern)permissions.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+
+            Invoke(FindById(run, "WorkspaceSessionsAdd")!);
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback")?.Current.IsOffscreen == false,
+                "visible rejected-operation feedback above embedded content");
+            Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Current.Name);
+            await CaptureIfRequestedAsync(run, "pin-operation-error-visible.png");
+
+            await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "SettingsBack")?.Current.IsOffscreen == false, "full Settings presentation");
+            Assert.True(FindById(run, "WorkspaceEmbeddedOperationFeedback") is null or { Current.IsOffscreen: true });
+            Invoke(FindById(run, "SettingsBack")!);
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback")?.Current.IsOffscreen == false,
+                "undismissed feedback survives presentation change");
+            var feedback = FindById(run, "WorkspaceEmbeddedOperationFeedback")!;
+            var close = feedback.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+            Assert.NotNull(close);
+            Invoke(close);
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback") is null or { Current.IsOffscreen: true },
+                "user dismisses embedded feedback");
+            FindById(run, "WorkspaceNavHome")!.SetFocus();
+            System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.IsOffscreen == false, "keyboard Home navigation");
+            Assert.True(FindById(run, "WorkspaceNavHome")!.Current.HasKeyboardFocus);
+            Assert.True(FindById(run, "WorkspaceOperationFeedback") is null or { Current.IsOffscreen: true });
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task PinnedPages_NativeSwitchTiming()
     {
         await WithAppAsync(async run =>

@@ -261,7 +261,8 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <Grid x:Name="ReopenPaneSlot" Height="56" Visibility="Collapsed"/>
-                <InfoBar x:Name="OperationInfo" Grid.Row="1" IsOpen="False" IsClosable="True" Severity="Error"/>
+                <InfoBar x:Name="OperationInfo" Grid.Row="1" IsOpen="False" IsClosable="True" Severity="Error"
+                         AutomationProperties.AutomationId="WorkspaceOperationFeedback"/>
                 <Grid x:Name="ContentHost" Grid.Row="2" AutomationProperties.AutomationId="WorkspaceContent"/>
             </Grid>
         </NavigationView>
@@ -281,7 +282,8 @@
         <Grid x:Name="SettingsSection" Grid.Row="1" Visibility="Collapsed"
               AutomationProperties.AutomationId="WorkspaceSettingsHost">
             <InfoBar x:Name="EmbeddedOperationInfo" Canvas.ZIndex="1" IsOpen="False" IsClosable="True"
-                     Severity="Error" VerticalAlignment="Top" Closed="OnEmbeddedOperationClosed"/>
+                     Severity="Error" VerticalAlignment="Top" Closed="OnEmbeddedOperationClosed"
+                     AutomationProperties.AutomationId="WorkspaceEmbeddedOperationFeedback"/>
         </Grid>
         <StackPanel x:Name="SettingsHistoryBar" Grid.Row="1" Orientation="Horizontal" Spacing="4"
                     Margin="48,8,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
