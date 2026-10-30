@@ -2272,7 +2272,7 @@ public class GatewayConnectionManagerTests : IDisposable
             registry,
             NullLogger.Instance);
 
-        await manager.SwitchGatewayAsync("gw-1");
+        await Assert.ThrowsAsync<IOException>(() => manager.SwitchGatewayAsync("gw-1"));
 
         Assert.Null(registry.ActiveGatewayId);
         Assert.Empty(factory.CreatedClients);
@@ -2299,7 +2299,7 @@ public class GatewayConnectionManagerTests : IDisposable
         await manager.ConnectAsync("gw-1");
         var activeLifecycle = Assert.Single(factory.CreatedClients);
 
-        await manager.SwitchGatewayAsync("gw-2");
+        await Assert.ThrowsAsync<IOException>(() => manager.SwitchGatewayAsync("gw-2"));
 
         Assert.Equal("gw-1", registry.ActiveGatewayId);
         Assert.Same(activeLifecycle.DataClient, manager.OperatorClient);
