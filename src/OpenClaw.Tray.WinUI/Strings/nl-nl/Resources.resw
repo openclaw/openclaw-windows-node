@@ -8002,9 +8002,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
-  <data name="WorkspaceShell_PagesLabel.Text" xml:space="preserve"><value>Pagina's</value></data>
   <data name="WorkspaceShell_PagesCustomize.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Pagina's aanpassen</value></data>
-  <data name="WorkspaceShell_PagesEmpty" xml:space="preserve"><value>Maak pagina's vast met de knop Aanpassen.</value></data>
   <data name="WorkspaceShell_MoreButton.Content" xml:space="preserve"><value>More</value></data>
   <data name="WorkspaceShell_Refresh.Content" xml:space="preserve"><value>Refresh</value></data>
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>

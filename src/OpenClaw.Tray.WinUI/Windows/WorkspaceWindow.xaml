@@ -123,58 +123,36 @@
                 </StackPanel>
             </NavigationView.PaneHeader>
             <NavigationView.MenuItems>
-                <NavigationViewItem x:Name="HomeItem" Tag="home" Padding="0" AutomationProperties.AutomationId="WorkspaceNavHome">
+                <NavigationViewItem x:Name="HomeItem" Tag="home" Padding="0" HorizontalContentAlignment="Stretch" AutomationProperties.AutomationId="WorkspaceNavHome">
                     <NavigationViewItem.Resources>
-                        <Thickness x:Key="NavigationViewItemContentPresenterMargin">0,-1,8,-1</Thickness>
+                        <!-- Cancel the native presenter's 14-DIP trailing gutter for this inline action.
+                             This keeps its right edge aligned with Sessions + without replacing the template. -->
+                        <Thickness x:Key="NavigationViewItemContentPresenterMargin">0,-1,-14,-1</Thickness>
                     </NavigationViewItem.Resources>
                     <!-- The native iconless presenter already reserves an 8-DIP leading column. -->
-                    <StackPanel Orientation="Horizontal" Spacing="16">
-                        <Grid Width="24">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Grid>
                             <ImageIcon x:Name="HomeIcon" Source="{StaticResource Chat_Icon}" Width="22" Height="22"
                                        AutomationProperties.AccessibilityView="Raw"/>
                         </Grid>
-                        <TextBlock x:Name="HomeLabel" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </NavigationViewItem>
-                <NavigationViewItemHeader x:Name="PagesHeader" IsEnabled="True">
-                    <NavigationViewItemHeader.Resources>
-                        <Thickness x:Key="NavigationViewItemInnerHeaderMargin">16,0,4,0</Thickness>
-                    </NavigationViewItemHeader.Resources>
-                    <NavigationViewItemHeader.Template>
-                        <ControlTemplate TargetType="NavigationViewItemHeader">
-                            <Grid>
-                                <VisualStateManager.VisualStateGroups>
-                                    <VisualStateGroup x:Name="PaneStates">
-                                        <VisualState x:Name="HeaderTextVisible"/>
-                                        <VisualState x:Name="HeaderTextCollapsed">
-                                            <VisualState.Setters>
-                                                <Setter Target="HeaderContent.Visibility" Value="Collapsed"/>
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                    </VisualStateGroup>
-                                </VisualStateManager.VisualStateGroups>
-                                <ContentPresenter x:Name="HeaderContent" Content="{TemplateBinding Content}"
-                                                  Height="40" HorizontalContentAlignment="Stretch"
-                                                  Margin="{ThemeResource NavigationViewItemInnerHeaderMargin}"/>
-                            </Grid>
-                        </ControlTemplate>
-                    </NavigationViewItemHeader.Template>
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <TextBlock x:Uid="WorkspaceShell_PagesLabel" Text="Pages" VerticalAlignment="Center"
-                                   Style="{StaticResource NavigationViewItemHeaderTextStyle}"/>
-                        <Button x:Name="PagesCustomizeButton" x:Uid="WorkspaceShell_PagesCustomize" Grid.Column="1"
+                        <TextBlock x:Name="HomeLabel" Grid.Column="1" VerticalAlignment="Center"/>
+                        <Button x:Name="PagesCustomizeButton" x:Uid="WorkspaceShell_PagesCustomize" Grid.Column="2"
                                 Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}"
+                                Padding="0"
                                 CornerRadius="{ThemeResource ControlCornerRadius}"
                                 Style="{StaticResource SubtleButtonStyle}" AutomationProperties.AutomationId="WorkspacePagesCustomize">
-                            <FontIcon Glyph="&#xE713;" FontSize="16"/>
+                            <Viewbox Width="12" Height="12">
+                                <SymbolIcon Symbol="Edit" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            AutomationProperties.AccessibilityView="Raw"/>
+                            </Viewbox>
                             <Button.Flyout>
                                 <MenuFlyout x:Name="PagesFlyout" Placement="BottomEdgeAlignedRight" Opening="OnPagesFlyoutOpening" Closed="OnPagesFlyoutClosed"/>
                             </Button.Flyout>
                         </Button>
                     </Grid>
-                </NavigationViewItemHeader>
-                <NavigationViewItemHeader x:Name="PagesEmpty" FontWeight="Normal"/>
+                </NavigationViewItem>
+                <NavigationViewItemSeparator x:Name="SessionsSeparator" AutomationProperties.AutomationId="WorkspaceSessionsSeparator"/>
                 <NavigationViewItemHeader x:Name="SessionsHeader" IsEnabled="True">
                     <NavigationViewItemHeader.Resources>
                         <Thickness x:Key="NavigationViewItemInnerHeaderMargin">16,0,4,0</Thickness>

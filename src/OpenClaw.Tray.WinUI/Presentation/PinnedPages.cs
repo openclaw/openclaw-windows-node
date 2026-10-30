@@ -11,8 +11,8 @@ namespace OpenClawTray.Presentation;
 internal sealed record PinnablePage(string Tag, string LabelKey, string IconAsset);
 
 /// <summary>
-/// Owner of the pinnable native page catalog and of pin list rules. Home (fixed) and Debug
-/// (diagnostics-gated) are intentionally not pinnable; agent-scoped routes are reached through the
+/// Owner of the pinnable native page catalog and of pin list rules. Home (fixed), Settings, the
+/// This Computer group and Debug (diagnostics-gated) are not pinnable; agent-scoped routes use the
 /// <c>cron</c> tag, which is normalized to the selected agent when the route is admitted.
 /// Pins are a local, per-Gateway shortcut list and never grant access to a page.
 /// </summary>
@@ -33,11 +33,6 @@ internal static class PinnedPages
         new("bindings", "HubWindow_NavigationViewItem_115.Content", "Bindings"),
         new("config", "HubWindow_NavigationViewItem_118.Content", "Config"),
         new("usage", "HubWindow_NavigationViewItem_121.Content", "Usage"),
-        new("local-ai", "HubWindow_NavigationViewItem_LocalAi.Content", "LocalAi"),
-        new("voice", "HubWindow_NavigationViewItem_Voice.Content", "Voice"),
-        new("permissions", "HubWindow_NavigationViewItem_136.Content", "Permissions"),
-        new("sandbox", "HubWindow_NavigationViewItem_Sandbox.Content", "Sandbox"),
-        new("settings", "HubWindow_NavigationViewItem_133.Content", "Settings"),
     ];
 
     public static string ScopeKey(string? activeGatewayId) =>
@@ -77,26 +72,21 @@ internal static class PinnedPages
     }
 
     /// <summary>
-    /// A pin is shown only while the destination is reachable. It uses the same Gateway page predicate
-    /// and visibility decision as the Settings navigation, without the open-page keep-visible exception,
-    /// so Connection recovery and local pages stay reachable offline. Pins never grant access.
-    /// </summary>
-    /// <summary>
     /// Route for invoking a pin: the generic stored tag is resolved against the assistant currently
     /// selected in Chat, so changing that assistant retargets agent-scoped pins without rewriting storage.
     /// </summary>
     public static string ResolveRoute(string tag, string? chatAgentId) =>
         WorkspaceNavigation.NormalizeSettingsTag(tag, string.IsNullOrWhiteSpace(chatAgentId) ? "main" : chatAgentId);
 
+    /// <summary>Availability controls invocation and enabled state, never whether a saved pin is shown.</summary>
     public static bool IsAvailable(string tag, ConnectionStatus status) =>
         !HubPageRegistry.IsGatewayPageTag(tag) ||
         GatewayNavVisibilityDebouncePolicy.GetDecision(status, debounceDisconnected: false)
             == GatewayNavVisibilityDecision.ShowNow;
 
-    /// <summary>Effective shortcuts: known and currently reachable pages in stored order.</summary>
-    public static ImmutableArray<PinnablePage> Visible(IEnumerable<string>? stored, ConnectionStatus status) =>
+    /// <summary>Effective shortcuts: catalog-allowed pages in stored order, including unavailable destinations.</summary>
+    public static ImmutableArray<PinnablePage> Visible(IEnumerable<string>? stored) =>
         [.. Normalize(stored)
             .Select(Find)
-            .OfType<PinnablePage>()
-            .Where(page => IsAvailable(page.Tag, status))];
+            .OfType<PinnablePage>()];
 }

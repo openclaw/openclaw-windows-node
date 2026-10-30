@@ -836,10 +836,13 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains(assistant.Descendants(), element => (string?)element.Attribute("ResourceKey") == "SubtleFillColorSecondaryBrush");
         Assert.Contains(assistant.Descendants(), element => (string?)element.Attribute("ResourceKey") == "SubtleFillColorTertiaryBrush");
         var headers = document.Descendants().Where(element => element.Name.LocalName == "NavigationViewItemHeader").ToArray();
-        var pages = headers.Single(element => (string?)element.Attribute(x + "Name") == "PagesHeader");
-        Assert.Equal("home", (string?)pages.ElementsBeforeSelf().Last().Attribute("Tag"));
+        Assert.DoesNotContain(headers, element => (string?)element.Attribute(x + "Name") is "PagesHeader" or "PagesEmpty");
+        var separator = document.Descendants().Single(element => element.Name.LocalName == "NavigationViewItemSeparator");
+        Assert.Equal("home", (string?)separator.ElementsBeforeSelf().Last().Attribute("Tag"));
+        var customize = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "PagesCustomizeButton");
+        Assert.Contains(customize.Ancestors(), element => (string?)element.Attribute(x + "Name") == "HomeItem");
         var sessions = headers.Single(element => (string?)element.Attribute(x + "Name") == "SessionsHeader");
-        Assert.Equal("PagesEmpty", (string?)sessions.ElementsBeforeSelf().Last().Attribute(x + "Name"));
+        Assert.Equal("SessionsSeparator", (string?)sessions.ElementsBeforeSelf().Last().Attribute(x + "Name"));
         Assert.Equal("True", (string?)sessions.Attribute("IsEnabled"));
         Assert.Contains(sessions.Descendants(), element => element.Name.LocalName == "ContentPresenter"
             && (string?)element.Attribute("Content") == "{TemplateBinding Content}");
@@ -1209,12 +1212,38 @@ public sealed class WorkspaceNavigationTests
     {
         var sessions = WorkspaceProjection.Sessions([
             new SessionInfo { Key = "agent:main:main", IsMain = true },
+            new SessionInfo { Key = "agent:main:fork", DisplayName = "Main session" },
             new SessionInfo { Key = "agent:research:main", IsMain = true },
             new SessionInfo { Key = "agent:main:subagent:worker", IsBackground = true }
         ], "main", new WorkspaceSessionOrder());
         var session = Assert.Single(sessions);
-        Assert.Equal("agent:main:main", session.Key);
+        Assert.Equal("agent:main:fork", session.Key);
         Assert.Equal("main", session.AgentId);
+    }
+
+    [Fact]
+    public void Home_UsesSelectedAgentCanonicalIdentity_AndOnlyThatConversationLeavesSidebar()
+    {
+        var source = new[]
+        {
+            new SessionInfo { Key = "agent:main:canonical", IsMain = true, DisplayName = "Renamed" },
+            new SessionInfo { Key = "agent:main:main", DisplayName = "Another conversation" },
+            new SessionInfo { Key = "agent:main:fork", DisplayName = "Main session", Pinned = true },
+            new SessionInfo { Key = "agent:research:main", DisplayName = "Renamed research" },
+        };
+        Assert.Equal("agent:main:canonical", WorkspaceProjection.HomeSessionKey(source, "main", "agent:main:canonical"));
+        Assert.Equal("agent:main:canonical", WorkspaceProjection.HomeSessionKey(source, "main"));
+        Assert.Equal("agent:main:canonical", WorkspaceProjection.HomeSessionKey(source, null));
+        Assert.Null(WorkspaceProjection.HomeSessionKey([
+            new SessionInfo { Key = "agent:main:main", IsMain = true },
+            new SessionInfo { Key = "agent:research:main", IsMain = true },
+        ], null));
+        Assert.Equal("agent:research:main", WorkspaceProjection.HomeSessionKey(source, "research", "agent:main:canonical"));
+        Assert.Equal("agent:new-agent:main", WorkspaceProjection.HomeSessionKey([], "new-agent"));
+        Assert.Null(WorkspaceProjection.HomeSessionKey([], null));
+        Assert.Equal(new[] { "agent:main:fork", "agent:main:main" },
+            WorkspaceProjection.Sessions(source, "main", new WorkspaceSessionOrder(), "agent:main:canonical").Select(row => row.Key));
+        Assert.Empty(WorkspaceProjection.Sessions(source, "research", new WorkspaceSessionOrder(), "agent:main:canonical"));
     }
 
     [Fact]
@@ -1325,7 +1354,8 @@ public sealed class WorkspaceNavigationTests
             new SessionInfo { Key = "agent:main:older", UpdatedAt = new DateTime(2026, 1, 1) },
             new SessionInfo { Key = key, Classification = classification, IsBackground = background, UpdatedAt = new DateTime(2026, 1, 2) }
         };
-        Assert.Equal(new[] { key, "agent:main:older" }, WorkspaceProjection.Sessions(sessions, "main", new WorkspaceSessionOrder()).Select(s => s.Key));
+        var expected = key == "agent:main:main" ? new[] { "agent:main:older" } : new[] { key, "agent:main:older" };
+        Assert.Equal(expected, WorkspaceProjection.Sessions(sessions, "main", new WorkspaceSessionOrder()).Select(s => s.Key));
         Assert.Equal(key, Assert.Single(WorkspaceProjection.Agents(agents.RootElement, sessions)).LatestSessionKey);
     }
 

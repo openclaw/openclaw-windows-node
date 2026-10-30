@@ -309,6 +309,11 @@ public sealed partial class WorkspaceWindow : WindowEx
     internal void SelectSession(string sessionKey) =>
         Navigate(new(WorkspacePageId.Home, sessionKey));
 
+    private void NavigateHome() =>
+        Navigate(new(WorkspacePageId.Home,
+            WorkspaceProjection.HomeSessionKey(_state.Sessions, _agentId, CurrentApp.GatewayClient?.MainSessionKey)),
+            preserveConversation: false);
+
     private void OnChatSessionSelected(string sessionKey, string? previousSessionKey)
     {
         if (IsClosed || !_navigation.SelectChatSession(sessionKey, previousSessionKey))
@@ -685,7 +690,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _agentId = WorkspaceProjection.SelectedAgentId(_state.AgentsList, agents, _agentId);
         RestoreAssistantSelection();
         AssistantSelector.PlaceholderText = Text(agents.Count == 0 ? "NoAgents" : "SelectAssistant");
-        var sessions = WorkspaceProjection.Sessions(_state.Sessions, _agentId, _sessionOrder);
+        var sessions = WorkspaceProjection.Sessions(_state.Sessions, _agentId, _sessionOrder, CurrentApp.GatewayClient?.MainSessionKey);
         SyncSessionItems(_sessionItems, sessions, "WorkspaceSession", NavView.MenuItems.IndexOf(SessionsEmpty) + 1);
         SessionsEmpty.Content = Text("NoSessions");
         SessionsEmpty.Visibility = sessions.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -1048,7 +1053,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         if (_updating) return;
         if (e.SelectedItemContainer?.Tag is string route)
         {
-            Navigate(new(WorkspaceNavigation.Routes[route]), preserveConversation: false);
+            if (route == "home") NavigateHome();
+            else Navigate(new(WorkspaceNavigation.Routes[route]), preserveConversation: false);
             UpdateNavigationSelection();
         }
         else if (e.SelectedItemContainer?.Tag is WorkspaceSession session)

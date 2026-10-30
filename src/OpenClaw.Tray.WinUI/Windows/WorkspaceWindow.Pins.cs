@@ -65,22 +65,41 @@ public sealed partial class WorkspaceWindow
     private void RebuildPins()
     {
         var stored = CurrentApp.SettingsStore?.Current.PinnedPagesFor(CurrentPinScope()) ?? [];
-        var visible = PinnedPages.Visible(stored, PinStatus);
+        var visible = PinnedPages.Visible(stored);
         var wasUpdating = _updating;
         _updating = true;
         try
         {
             // Unchanged pins keep their row (and focus); only added, removed or moved rows change.
-            var start = NavView.MenuItems.IndexOf(PagesHeader) + 1;
+            var start = NavView.MenuItems.IndexOf(HomeItem) + 1;
             var change = _pinRows.Reconcile(NavView.MenuItems, start,
                 visible.Select(page => page.Tag).ToList(), tag => CreatePinItem(PinnedPages.Find(tag)!),
                 FocusedElement, PinRowOwns);
             RepairFocusForRemovedPins(change);
-            PagesEmpty.Content = Text("PagesEmpty");
-            PagesEmpty.Visibility = stored.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
+            UpdatePinAvailability();
         }
         finally { _updating = wasUpdating; }
         if (Destination.Embedded) UpdateNavigationSelection();
+    }
+
+    private void UpdatePinAvailability()
+    {
+        // Native disabling can move focus synchronously. Capture ownership before any setter.
+        var focused = FocusedElement();
+        var focusedPinDisabled = false;
+        foreach (var item in _pinRows.Rows.OfType<NavigationViewItem>())
+        {
+            if (item.Tag is not PinnedPageTag pin) continue;
+            var available = PinnedPages.IsAvailable(pin.Tag, PinStatus);
+            if (!available)
+            {
+                focusedPinDisabled |= focused is not null && PinRowOwns(item, focused);
+                if (_chatFocus is not null && PinRowOwns(item, _chatFocus))
+                    _chatFocus = PagesCustomizeButton;
+            }
+            item.IsEnabled = available;
+        }
+        if (focusedPinDisabled) FocusPinCustomizer();
     }
 
     private static NavigationViewItem CreatePinItem(PinnablePage page)
@@ -125,28 +144,40 @@ public sealed partial class WorkspaceWindow
         return false;
     }
 
-    // Only a focus target that genuinely disappeared falls back, to the customize button or, when the
-    // collapsed pane makes it unfocusable, to the always-present Home row. Neither navigates.
+    // Removed or newly disabled focus targets fall back without navigating.
     private void RepairFocusForRemovedPins(PinnedRowsChange change)
     {
         if (change.Removed.Count == 0) return;
         if (_chatFocus is not null && change.Removed.Any(row => PinRowOwns(row, _chatFocus)))
             _chatFocus = PagesCustomizeButton;
-        if (change.FocusedRowRemoved && !PagesCustomizeButton.Focus(FocusState.Programmatic))
-            HomeItem.Focus(FocusState.Programmatic);
+        if (change.FocusedRowRemoved) FocusPinCustomizer();
     }
+
+    private void FocusPinCustomizer()
+    {
+        if (!PagesCustomizeButton.Focus(FocusState.Programmatic)) HomeItem.Focus(FocusState.Programmatic);
+    }
+
     private void OnPinItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs e)
     {
         // SelectedItem can synchronously raise ItemInvoked for a nonselecting pin.
         // A render's selection update is not another user activation.
         if (_updating) return;
-        if (e.InvokedItemContainer is not null) _sidebarInvoked = true;
-        if (e.InvokedItemContainer?.Tag is not PinnedPageTag pin) return;
-        if (!PinnedPages.IsAvailable(pin.Tag, PinStatus))
+        // Recheck the live state even if an activation was queued before the row became disabled.
+        if (e.InvokedItemContainer?.Tag is PinnedPageTag candidate &&
+            !PinnedPages.IsAvailable(candidate.Tag, PinStatus))
         {
             RebuildPins();
             return;
         }
+        if (e.InvokedItemContainer is not null) _sidebarInvoked = true;
+        // Home may already be highlighted while the retained host shows an unresolved/default thread.
+        if (e.InvokedItemContainer == HomeItem)
+        {
+            NavigateHome();
+            return;
+        }
+        if (e.InvokedItemContainer?.Tag is not PinnedPageTag pin) return;
         // Agent-scoped pages target the assistant selected in Chat now, never the last Settings agent.
         OpenSettings(PinnedPages.ResolveRoute(pin.Tag, _agentId), embedded: true);
     }

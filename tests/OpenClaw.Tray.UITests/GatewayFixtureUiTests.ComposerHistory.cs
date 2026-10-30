@@ -27,7 +27,8 @@ public sealed partial class GatewayFixtureUiTests
 
             Invoke(FindById(run, "WorkspaceBack")!);
             await WaitComposerSelectionAsync(run, GatewayScenario.MainSessionKey);
-            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.MainTitle)
+            await WaitUiAsync(run, () => ((SelectionItemPattern)FindById(run, "WorkspaceNavHome")!
+                    .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected
                 && IsVisibleInTimeline(run, GatewayScenario.MainSentinel), "Back restored original conversation");
             Assert.False(FindById(run, "WorkspaceBack")!.Current.IsEnabled);
             Assert.True(FindById(run, "WorkspaceForward")!.Current.IsEnabled);
@@ -107,7 +108,7 @@ public sealed partial class GatewayFixtureUiTests
         await run.Gateway.WaitForRequestAsync("sessions.create", GatewayScenario.MainSessionKey);
     }
 
-    private static Task WaitComposerSelectionAsync(GatewayFixtureRun run, string key) =>
+    private static Task WaitComposerSelectionAsync(GatewayFixtureRun run, string key, bool waitForHistory = true) =>
         WaitUiAsync(run, () =>
         {
             var status = FindById(run, "ChatComposerInput")?.Current.ItemStatus;
@@ -115,7 +116,7 @@ public sealed partial class GatewayFixtureUiTests
                 return false;
             using var rendered = JsonDocument.Parse(status);
             return rendered.RootElement.GetProperty("selectedThreadId").GetString() == key
-                && RenderConsumedHistory(run, key)
+                && (!waitForHistory || RenderConsumedHistory(run, key))
                 && (key != ComposerCreatedKey
                     || FindById(run, "ChatWelcomeHint") is { Current.IsOffscreen: false });
         }, $"mounted composer and history selected {key}");

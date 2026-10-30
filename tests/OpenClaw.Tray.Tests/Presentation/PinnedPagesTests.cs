@@ -35,8 +35,8 @@ public sealed class PinnedPagesTests
     [Fact]
     public void Visible_OmitsUnknownTags_ButStorageKeepsThem()
     {
-        var visible = PinnedPages.Visible(["future-page", "voice"], ConnectionStatus.Connected);
-        Assert.Equal(["voice"], visible.Select(page => page.Tag).ToArray());
+        var visible = PinnedPages.Visible(["future-page", "skills"]);
+        Assert.Equal(["skills"], visible.Select(page => page.Tag).ToArray());
     }
 
     [Fact]
@@ -50,16 +50,47 @@ public sealed class PinnedPagesTests
     }
 
     [Fact]
-    public void Catalog_ExcludesHomeAndDebug_AndHasUniqueTags()
+    public void Catalog_ExcludesHomeDebugSettingsAndThisComputer_AndHasUniqueTags()
     {
         var tags = PinnedPages.Catalog.Select(page => page.Tag).ToArray();
         Assert.DoesNotContain("home", tags);
         Assert.DoesNotContain("debug", tags);
+        Assert.DoesNotContain("settings", tags);
+        foreach (var tag in new[] { "local-ai", "voice", "permissions", "sandbox" })
+            Assert.DoesNotContain(tag, tags);
+        Assert.DoesNotContain(PinnedPages.Catalog, page => page.LabelKey == "WorkspaceShell_ThisComputer");
+        Assert.Equal(HubPageKind.Settings, HubPageRegistry.ResolvePage("settings"));
+        Assert.Equal(HubPageKind.LocalAi, HubPageRegistry.ResolvePage("local-ai"));
+        Assert.Equal(HubPageKind.Voice, HubPageRegistry.ResolvePage("voice"));
+        Assert.Equal(HubPageKind.Permissions, HubPageRegistry.ResolvePage("permissions"));
+        Assert.Equal(HubPageKind.Sandbox, HubPageRegistry.ResolvePage("sandbox"));
         Assert.Equal(tags.Length, tags.Distinct().Count());
         Assert.Equal(
             ["connection", "sessions", "skills", "channels", "instances", "cron", "agentevents",
-             "bindings", "config", "usage", "local-ai", "voice", "permissions", "sandbox", "settings"],
+             "bindings", "config", "usage"],
             tags);
+    }
+
+    [Fact]
+    public void ExcludedSettingsAndComputerPins_AreHiddenButSurvivePersistenceAndOtherPinEdits()
+    {
+        using var temp = new TempDir();
+        var settings = new SettingsManager(temp.Path);
+        settings.SetPinnedPages("gw-a", ["settings", "local-ai", "voice", "permissions", "sandbox", "future-page", "connection"]);
+        settings.Save();
+        using (var store = Store(temp.Path, out _))
+        {
+            Assert.Equal(["connection"], PinnedPages.Visible(store.Current.PinnedPagesFor("gw-a")).Select(page => page.Tag).ToArray());
+            store.Update(null, editor => editor.SetPagePinned("gw-a", "skills", true));
+            foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox" })
+                store.Update(null, editor => editor.SetPagePinned("gw-a", excluded, false));
+        }
+        using var reloaded = Store(temp.Path, out _);
+        Assert.Equal(["settings", "local-ai", "voice", "permissions", "sandbox", "future-page", "connection", "skills"],
+            Tags(reloaded.Current.PinnedPagesFor("gw-a")));
+        Assert.Equal(["connection", "skills"], PinnedPages.Visible(reloaded.Current.PinnedPagesFor("gw-a")).Select(page => page.Tag).ToArray());
+        foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox" })
+            Assert.Empty(PinnedPages.Toggle([], excluded, true));
     }
 
     [Theory]
@@ -67,7 +98,7 @@ public sealed class PinnedPagesTests
     [InlineData("Connecting", false)]
     [InlineData("Disconnected", false)]
     [InlineData("Error", false)]
-    public void Availability_GatewayPagesFollowConnection_LocalPagesAndConnectionAlwaysReachable(string statusName, bool gatewayReachable)
+    public void Availability_GatewayPinsFollowConnection_ConnectionAlwaysReachable(string statusName, bool gatewayReachable)
     {
         var status = Enum.Parse<ConnectionStatus>(statusName);
         foreach (var page in PinnedPages.Catalog)
@@ -76,15 +107,32 @@ public sealed class PinnedPagesTests
             Assert.Equal(expected, PinnedPages.IsAvailable(page.Tag, status));
         }
         Assert.True(PinnedPages.IsAvailable("connection", status));
-        Assert.True(PinnedPages.IsAvailable("permissions", status));
     }
 
     [Fact]
-    public void Visible_PinsSurviveDisconnectAndReturnOnReconnect()
+    public void Visible_AllKnownPinsRemainInStoredOrderAcrossConnectionStates()
     {
         string[] stored = ["cron", "connection", "usage"];
-        Assert.Equal(["connection"], PinnedPages.Visible(stored, ConnectionStatus.Disconnected).Select(p => p.Tag).ToArray());
-        Assert.Equal(stored, PinnedPages.Visible(stored, ConnectionStatus.Connected).Select(p => p.Tag).ToArray());
+        foreach (var status in Enum.GetValues<ConnectionStatus>())
+        {
+            Assert.Equal(stored, PinnedPages.Visible(stored).Select(p => p.Tag).ToArray());
+            Assert.Equal(status == ConnectionStatus.Connected, PinnedPages.IsAvailable("cron", status));
+            Assert.True(PinnedPages.IsAvailable("connection", status));
+        }
+    }
+
+    [Fact]
+    public void QueuedPinInvocation_RechecksAvailabilityBeforeRoutingOrRecordingSidebarIntent()
+    {
+        var source = ReadSource("Windows", "WorkspaceWindow.Pins.cs");
+        var invoke = source[source.IndexOf("private void OnPinItemInvoked(", StringComparison.Ordinal)..
+            source.IndexOf("private void OnPagesFlyoutOpening(", StringComparison.Ordinal)];
+        var gate = invoke.IndexOf("!PinnedPages.IsAvailable(candidate.Tag, PinStatus)", StringComparison.Ordinal);
+        var intent = invoke.IndexOf("_sidebarInvoked = true", StringComparison.Ordinal);
+        var route = invoke.IndexOf("OpenSettings(", StringComparison.Ordinal);
+        Assert.True(gate >= 0 && intent > gate && route > intent);
+        Assert.Contains("RebuildPins();", invoke[gate..intent]);
+        Assert.Contains("return;", invoke[gate..intent]);
     }
 
     [Fact]
@@ -103,11 +151,11 @@ public sealed class PinnedPagesTests
         using (var store = Store(temp.Path, out _))
         {
             store.Update(null, e => e.SetPagePinned("gw-a", "cron", true));
-            store.Update(null, e => e.SetPagePinned("gw-a", "voice", true));
+            store.Update(null, e => e.SetPagePinned("gw-a", "skills", true));
             store.Update(null, e => e.SetPagePinned("gw-b", "usage", true));
         }
         using var reloaded = Store(temp.Path, out _);
-        Assert.Equal(["cron", "voice"], Tags(reloaded.Current.PinnedPagesFor("gw-a")));
+        Assert.Equal(["cron", "skills"], Tags(reloaded.Current.PinnedPagesFor("gw-a")));
         Assert.Equal(["usage"], Tags(reloaded.Current.PinnedPagesFor("gw-b")));
         Assert.Empty(reloaded.Current.PinnedPagesFor(null));
     }
@@ -188,7 +236,7 @@ public sealed class PinnedPagesTests
         Assert.Equal("agent:C:workspace", PinnedPages.ResolveRoute("workspace", "C"));
         Assert.Equal("agent:main:cron", PinnedPages.ResolveRoute("cron", null));
         Assert.Equal("usage", PinnedPages.ResolveRoute("usage", "C"));
-        Assert.Equal("voice", PinnedPages.ResolveRoute("voice", "A"));
+        Assert.Equal("instances", PinnedPages.ResolveRoute("instances", "A"));
     }
 
     [Fact]
@@ -242,9 +290,12 @@ public sealed class PinnedPagesTests
         Assert.Contains("FocusedElement, PinRowOwns", pins);
         var xaml = ReadSource("Windows", "WorkspaceWindow.xaml");
         Assert.True(xaml.IndexOf("x:Name=\"HomeItem\"", StringComparison.Ordinal) <
-                    xaml.IndexOf("x:Name=\"PagesHeader\"", StringComparison.Ordinal));
-        Assert.True(xaml.IndexOf("x:Name=\"PagesEmpty\"", StringComparison.Ordinal) <
+                    xaml.IndexOf("x:Name=\"SessionsSeparator\"", StringComparison.Ordinal));
+        Assert.True(xaml.IndexOf("x:Name=\"SessionsSeparator\"", StringComparison.Ordinal) <
                     xaml.IndexOf("x:Name=\"SessionsHeader\"", StringComparison.Ordinal));
+        Assert.Contains("NavView.MenuItems.IndexOf(HomeItem) + 1", pins);
+        Assert.DoesNotContain("PagesHeader", xaml);
+        Assert.DoesNotContain("PagesEmpty", xaml);
     }
 
     [Fact]

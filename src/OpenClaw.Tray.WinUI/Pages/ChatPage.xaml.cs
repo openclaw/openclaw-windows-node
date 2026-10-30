@@ -644,7 +644,7 @@ public sealed partial class ChatPage : Page
                         .Add(new ChatTimelineItem(
                             $"accessibility-user-{id}",
                             ChatTimelineItemKind.User,
-                            "Verify the native chat surface."))
+                            $"Verify the native chat surface. Session: {id}."))
                         .Add(new ChatTimelineItem(
                             $"accessibility-assistant-{id}",
                             ChatTimelineItemKind.Assistant,

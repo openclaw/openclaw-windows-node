@@ -487,14 +487,18 @@ public sealed class WorkspaceWindowProofTests
         var workspace = app.HubWindowHandle;
         var root = AutomationElement.FromHandle(workspace);
         var composerIdentity = Find(root, "ChatComposerInput").GetRuntimeId();
-        foreach (var key in new[] { "agent:main:main", "agent:main:fork" })
+        foreach (var key in new[] { "agent:main:fork", "agent:main:main", "agent:main:fork" })
         {
-            var item = Find(root, $"WorkspaceSession:{key}");
+            var id = key == "agent:main:main" ? "WorkspaceNavHome" : $"WorkspaceSession:{key}";
+            var item = Find(root, id);
             Assert.False(item.Current.IsOffscreen);
             ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
-            await WaitUntilAsync(() => SelectionState(root, $"WorkspaceSession:{key}") == true);
+            await WaitUntilAsync(() => SelectionState(root, id) == true);
+            await WaitUntilAsync(() => root.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
+                .Cast<AutomationElement>().Any(text => text.Current.Name.Contains($"Session: {key}.", StringComparison.Ordinal)));
             Assert.Equal(composerIdentity, Find(root, "ChatComposerInput").GetRuntimeId());
-            await WaitUntilAsync(() => SelectionState(root, "WorkspaceNavHome") == false);
+            await WaitUntilAsync(() => SelectionState(root, "WorkspaceNavHome") == (key == "agent:main:main"));
         }
         var input = Find(root, "ChatComposerInput");
         const string draft = "Keep the selected session draft while opening Settings";
@@ -581,12 +585,16 @@ public sealed class WorkspaceWindowProofTests
         Assert.False(Find(workspaceElement, "WorkspaceSessionsAdd").Current.IsEnabled);
         var sessionsHeader = FindHeading(workspaceElement, "Sessions").Current.BoundingRectangle;
         var initialHomeBounds = Find(workspaceElement, "WorkspaceNavHome").Current.BoundingRectangle;
-        var pagesHeader = FindHeading(workspaceElement, "Pages").Current.BoundingRectangle;
-        var pagesEmpty = FindHeading(workspaceElement, "Pin pages here with the customize button.").Current.BoundingRectangle;
+        var customize = Find(workspaceElement, "WorkspacePagesCustomize").Current.BoundingRectangle;
         var scale = Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle.Width / 40;
-        Assert.InRange((pagesHeader.Top - initialHomeBounds.Bottom) / scale, -1, 36);
-        Assert.True(pagesEmpty.Top >= pagesHeader.Bottom - 1);
-        Assert.InRange((sessionsHeader.Top - pagesEmpty.Bottom) / scale, -1, 36);
+        Assert.InRange((customize.Top - initialHomeBounds.Top) / scale, -1, 4);
+        Assert.True(customize.Right <= initialHomeBounds.Right + 1);
+        // NavigationViewItemSeparator is decorative and has no automation peer.
+        // Its native spacing separates Home from the first and only section header.
+        Assert.InRange((sessionsHeader.Top - initialHomeBounds.Bottom) / scale, 4, 48);
+        foreach (var obsolete in new[] { "Pages", "Pin pages here with the customize button." })
+            Assert.Null(workspaceElement.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, obsolete)));
         foreach (var id in new[] { "WorkspaceNavAgents", "WorkspaceNavDashboards", "WorkspaceNavSystems",
             "WorkspaceNavAutomations", "WorkspaceNavPlugins", "WorkspaceMore", "WorkspacePageHeading" })
             Assert.Null(workspaceElement.FindFirst(TreeScope.Descendants,
