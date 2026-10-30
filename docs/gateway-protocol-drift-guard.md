@@ -20,9 +20,19 @@ suite whenever the typed client and the pinned schema diverge.
 
 The typed client implements the richer protocol surface -
 `commands.list`, the extended `sessions.patch` field set, `sessions.files.list`/
-`get`, and `sessions.compaction.list`/`get`/`branch`/`restore` - across
-`OpenClawGatewayClient.Protocol.cs` and the DTO/payload builders in
-`GatewayProtocolModels.cs`. This guard pins that whole surface.
+`get`, `sessions.compaction.list`/`get`/`branch`/`restore`, and the Usage page's
+unadvertised `sessions.usage`/`.timeseries`/`.logs` reads - across
+`OpenClawGatewayClient.Protocol.cs`, `OpenClawGatewayClient.Usage.cs` and the
+DTO/payload builders in `GatewayProtocolModels.cs` and `Usage/SessionsUsageQuery.cs`.
+This guard pins that whole surface.
+
+The pinned `sessions.usage` fields follow upstream `main`, which adds the
+server-side overview (`projection`, `query`, selections, paging and sort).
+Released Gateways (2026.10.7) reject those as unexpected properties, so the
+client retries once with `SessionsUsageQuery.WithoutServerOverview()` and keeps
+the basic shape for the rest of the connection. If that request is also
+rejected for an unexpected property, the client reports `sessions.usage` as
+unsupported for the connection and the page falls back to `usage.cost`.
 
 Active and archived `sessions.list` requests set `includeDerivedTitles: true`
 so unlabeled conversations can use the Gateway's generated titles. Direct-peer
@@ -42,7 +52,7 @@ unit tests still pass on their fixed sample payloads.
 | File | Role |
 | --- | --- |
 | `tests/OpenClaw.Shared.Tests/Protocol/gateway-protocol-snapshot.json` | The pinned canonical schema mirror. **Edit this when upstream changes.** |
-| `tests/OpenClaw.Shared.Tests/Protocol/GatewayProtocolDriftTests.cs` | The guard. Cross-checks the snapshot against `OpenClawGatewayClient*.cs` + `GatewayProtocolModels.cs`. |
+| `tests/OpenClaw.Shared.Tests/Protocol/GatewayProtocolDriftTests.cs` | The guard. Cross-checks the snapshot against `OpenClawGatewayClient*.cs`, `GatewayProtocolModels.cs` and `SessionsUsageQuery.cs`. |
 
 ## What the guard checks
 

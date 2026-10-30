@@ -307,6 +307,39 @@ PRI and compiled page resources beside the native UI test assembly. It does not
 use this Gateway scenario or prove usage reconciliation. Run it serially with
 the fixture UI test and computer-use, not concurrently on the same desktop.
 
+## Usage analytics proof
+
+The `usage-analytics` scenario opens the Settings Usage page against synthetic
+`sessions.usage`, `sessions.usage.timeseries`, `sessions.usage.logs` and
+`usage.status` replies. Data is deterministic and anchored to the requested
+date range, so every preset shows populated charts. Twelve sessions cover
+several agents, channels, providers and models, plus cache, error and tool
+activity. Every other scenario also answers the three `sessions.usage*` reads,
+which the Gateway does not advertise in `hello-ok`.
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario usage-analytics
+```
+
+Enter one of these modes in the host console, then select Refresh on the page.
+For unattended runs, pass `-UsageMode <mode>` to start in that mode:
+
+| Mode | Replies |
+|---|---|
+| `populated` | Complete usage with sessions, details and provider plans |
+| `empty` | A complete report with no sessions |
+| `partial` | Lower-bound totals with `cacheStatus` pending and stale sessions |
+| `legacy` | `sessions.usage*` fail as unknown methods, so the page falls back to `usage.cost` |
+| `released` | Like Gateway 2026.10.7: `sessions.usage` rejects the overview parameters with the released schema error, so the page retries with full rows and shows its basic view |
+
+The app remembers unknown methods for the life of a connection. After leaving
+`legacy`, reconnect from Connection settings before refreshing, or start a new
+run with `-UsageMode`.
+
+Disconnect the app from Connection settings to show the disconnected banner.
+The fixture proves rendering and the native client contract, not a real
+Gateway's session aggregation or cost estimates.
+
 ## Known runtime regression
 
 The strict cached-session tail assertion has exposed an intermittent failure:

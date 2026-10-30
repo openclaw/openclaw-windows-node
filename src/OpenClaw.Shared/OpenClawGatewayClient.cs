@@ -171,6 +171,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _agentFilesListUnsupported = false;
         _agentFileGetUnsupported = false;
         _operatorReadScopeUnavailable = false;
+        _sessionsUsageUnsupported = false;
+        _sessionsUsageOverviewUnsupported = false;
+        _sessionsUsageTimeseriesUnsupported = false;
+        _sessionsUsageLogsUnsupported = false;
     }
 
     /// <summary>

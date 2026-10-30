@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OpenClaw.Shared.Usage;
 
 namespace OpenClaw.Shared;
 
@@ -203,6 +204,29 @@ public interface IOperatorGatewayClient
     /// <summary>List only the archived sessions (<c>sessions.list</c> with <c>archived:true</c>). Rows are detached snapshots.</summary>
     Task<SessionListResult> ListArchivedSessionsAsync(int timeoutMs = 15000)
         => Task.FromResult(new SessionListResult { IsSupported = false });
+
+    // ─── Usage analytics (Usage page) ───
+    // Response-aware reads; defaults report Unsupported so test doubles keep compiling.
+    /// <summary>Per-session usage report (<c>sessions.usage</c>).</summary>
+    Task<UsageReadResult<SessionsUsageReport>> GetSessionsUsageAsync(
+        SessionsUsageQuery query, int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<SessionsUsageReport>.Unsupported());
+    /// <summary>Usage samples for one session (<c>sessions.usage.timeseries</c>).</summary>
+    Task<UsageReadResult<SessionUsageTimeseries>> GetSessionUsageTimeseriesAsync(
+        string key, string? agentId = null, int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<SessionUsageTimeseries>.Unsupported());
+    /// <summary>Conversation entries with usage for one session (<c>sessions.usage.logs</c>).</summary>
+    Task<UsageReadResult<IReadOnlyList<SessionUsageLogEntry>>> GetSessionUsageLogsAsync(
+        string key, string? agentId = null, int limit = 1000, int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<IReadOnlyList<SessionUsageLogEntry>>.Unsupported());
+    /// <summary>Provider plans, quotas and billing (<c>usage.status</c>) as a typed response.</summary>
+    Task<UsageReadResult<ProviderUsageSummary>> GetProviderUsageAsync(
+        int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<ProviderUsageSummary>.Unsupported());
+    /// <summary>Legacy daily cost summary (<c>usage.cost</c>) as a session-less report.</summary>
+    Task<UsageReadResult<SessionsUsageReport>> GetUsageCostSummaryAsync(
+        int days, int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<SessionsUsageReport>.Unsupported());
 }
 
 public sealed record CronRunRequestResult(

@@ -27,6 +27,11 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
+        // Usage page symbols: the lower-bound sign, the unavailable-value placeholder and
+        // the UTC abbreviation read the same in every supported language.
+        "Usage_AtLeastFormat",
+        "Usage_EmptyValue",
+        "Usage_TimeZone_Utc",
         // Updater dependency recovery is seeded in English across every locale.
         // Translate the explanation and manual-release action together after review.
         "Update_Message_Unavailable",
@@ -1114,6 +1119,12 @@ public class LocalizationValidationTests
                     "Onboarding_V2_ProfileFullTitle.Text" or "SandboxPage_PresetOpen.Text" => ["nl-nl"],
                     "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
+                    // Usage page cognates: the natural term in these languages.
+                    "Usage_Metric_Tokens" or "Usage_Metric_TokensLower" => ["nl-nl", "pt-br"],
+                    "Usage_Overview_Messages" or "Usage_Overview_Sessions" or "Usage_Sessions_Title"
+                        or "Usage_Details_Conversation" or "Usage_Details_Role_assistant" => ["fr-fr"],
+                    "Usage_Facet_agent" => ["fr-fr", "nl-nl"],
+                    "Usage_Facet_model" => ["nl-nl"],
                     _ => [],
                 };
                 if (naturalLoanwordLocales.Length > 0 &&

@@ -102,6 +102,30 @@
       "requestFields": ["keys", "limit", "maxChars"]
     },
     {
+      "method": "sessions.usage",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": [
+        "startDate", "endDate", "agentId", "agentScope", "mode", "timeZone", "utcOffset", "creatorKey", "groupBy",
+        "key", "limit", "projection", "query", "selectedDays", "selectedHours", "selectedSessions", "offset",
+        "recentKeys", "sort", "sortDirection", "includeContextWeight"
+      ],
+      "requestFieldsSource": "public Dictionary<string, object?> ToParameters(",
+      "_note": "Unadvertised upstream (core-descriptors advertise:false); SessionsUsageQuery mirrors the web client's requestSessionUsage. The deprecated range/includeHistorical inputs are intentionally not sent."
+    },
+    {
+      "method": "sessions.usage.timeseries",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["key", "agentId"]
+    },
+    {
+      "method": "sessions.usage.logs",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["key", "limit", "agentId"]
+    },
+    {
       "method": "sessions.patch",
       "kind": "request",
       "windowsUsage": "used",

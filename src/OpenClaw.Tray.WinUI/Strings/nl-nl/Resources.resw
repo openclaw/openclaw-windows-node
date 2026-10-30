@@ -2098,36 +2098,6 @@ Gebruik een van deze opties:
   <data name="MarketplaceLink.Content" xml:space="preserve">
     <value>Skills Marketplace bekijken →</value>
   </data>
-  <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
-    <value>Totale kosten</value>
-  </data>
-  <data name="UsagePage_TextBlock_35.Text" xml:space="preserve">
-    <value>Aanvragen</value>
-  </data>
-  <data name="UsagePage_TextBlock_45.Text" xml:space="preserve">
-    <value>Toegangstokens</value>
-  </data>
-  <data name="UsagePage_TextBlock_55.Text" xml:space="preserve">
-    <value>Aanbieders</value>
-  </data>
-  <data name="Period7DaysItem.Text" xml:space="preserve">
-    <value>7 dagen</value>
-  </data>
-  <data name="Period30DaysItem.Text" xml:space="preserve">
-    <value>30 dagen</value>
-  </data>
-  <data name="UsagePage_ProviderLoading.Text" xml:space="preserve">
-    <value>Aanbieders laden…</value>
-  </data>
-  <data name="UsagePage_NoProviders.Text" xml:space="preserve">
-    <value>Geen aanbieders geconfigureerd</value>
-  </data>
-  <data name="UsagePage_TextBlock_70.Text" xml:space="preserve">
-    <value>Uitsplitsing per provider</value>
-  </data>
-  <data name="UsagePage_TextBlock_100.Text" xml:space="preserve">
-    <value>Dagelijkse kosten</value>
-  </data>
   <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
     <value>Werkruimte</value>
   </data>
@@ -2457,9 +2427,6 @@ Gebruik een van deze opties:
   </data>
   <data name="TrayMenuWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>OpenClaw Menu</value>
-  </data>
-  <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
-    <value>Gebruik en kosten</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Openen in browser</value>
@@ -5092,12 +5059,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="UsagePage_OpenConnection.Content" xml:space="preserve">
     <value>Verbinding openen</value>
-  </data>
-  <data name="UsagePage_LoadingDailyCosts.Text" xml:space="preserve">
-    <value>Dagelijkse kosten worden geladen…</value>
-  </data>
-  <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
-    <value>Geen dagelijks gebruik voor deze periode</value>
   </data>
   <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
     <value>Spraakinvoer testen</value>
@@ -8168,6 +8129,301 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="Usage_Title" xml:space="preserve"><value>Gebruik</value></data>
+  <data name="Usage_RangeFormat" xml:space="preserve"><value>{0} tot {1}</value></data>
+  <data name="Usage_RangeCaptionFormat" xml:space="preserve"><value>{0} · {1} (tijdzone)</value></data>
+  <data name="Usage_Range_AllTime" xml:space="preserve"><value>Volledige periode</value></data>
+  <data name="Usage_UpdatedFormat" xml:space="preserve"><value>Bijgewerkt om {0}</value></data>
+  <data name="Usage_Refresh" xml:space="preserve"><value>Vernieuwen</value></data>
+  <data name="Usage_Refreshing" xml:space="preserve"><value>Gebruik wordt vernieuwd</value></data>
+  <data name="Usage_Export" xml:space="preserve"><value>Exporteren</value></data>
+  <data name="Usage_Exporting" xml:space="preserve"><value>Exporteren bezig</value></data>
+  <data name="Usage_Export_SessionsCsv" xml:space="preserve"><value>Sessies (CSV)</value></data>
+  <data name="Usage_Export_DailyCsv" xml:space="preserve"><value>Dagtotalen (CSV)</value></data>
+  <data name="Usage_Export_Json" xml:space="preserve"><value>Volledig rapport (JSON)</value></data>
+  <data name="Usage_Export_SavedTitle" xml:space="preserve"><value>Export opgeslagen</value></data>
+  <data name="Usage_Export_SavedFormat" xml:space="preserve"><value>{0} is opgeslagen.</value></data>
+  <data name="Usage_Export_FailedTitle" xml:space="preserve"><value>Exporteren mislukt</value></data>
+  <data name="Usage_Export_Error_Offline" xml:space="preserve"><value>Maak verbinding met een gateway om gebruik te exporteren.</value></data>
+  <data name="Usage_Export_Error_Failed" xml:space="preserve"><value>Het gebruiksrapport kon niet worden gelezen of opgeslagen. Probeer het opnieuw.</value></data>
+  <data name="Usage_Export_Error_Incomplete" xml:space="preserve"><value>De gebruiksgegevens zijn onvolledig. Vernieuw en probeer het opnieuw, of verklein de periode.</value></data>
+  <data name="Usage_Export_Error_TooMany" xml:space="preserve"><value>Deze periode bevat meer sessies dan één export kan bevatten. Verklein de periode of de filters en probeer het opnieuw.</value></data>
+  <data name="Usage_ReadError_Unsupported" xml:space="preserve"><value>Deze gateway biedt dit niet.</value></data>
+  <data name="Usage_ReadError_Disconnected" xml:space="preserve"><value>De gateway is niet verbonden.</value></data>
+  <data name="Usage_ReadError_Failed" xml:space="preserve"><value>Het verzoek is mislukt.</value></data>
+  <data name="Usage_Dismiss" xml:space="preserve"><value>Sluiten</value></data>
+  <data name="Usage_Pin" xml:space="preserve"><value>Filters bovenaan vastmaken</value></data>
+  <data name="Usage_Unpin" xml:space="preserve"><value>Filters losmaken</value></data>
+  <data name="Usage_Filter_Range" xml:space="preserve"><value>Periode</value></data>
+  <data name="Usage_Filter_StartDate" xml:space="preserve"><value>Begindatum</value></data>
+  <data name="Usage_Filter_EndDate" xml:space="preserve"><value>Einddatum</value></data>
+  <data name="Usage_Filter_To" xml:space="preserve"><value>tot</value></data>
+  <data name="Usage_Filter_TimeZone" xml:space="preserve"><value>Tijdzone</value></data>
+  <data name="Usage_Filter_Scope" xml:space="preserve"><value>Bereik</value></data>
+  <data name="Usage_Filter_Show" xml:space="preserve"><value>Weergeven</value></data>
+  <data name="Usage_Preset_Today" xml:space="preserve"><value>Vandaag</value></data>
+  <data name="Usage_Preset_7d" xml:space="preserve"><value>7 dagen</value></data>
+  <data name="Usage_Preset_30d" xml:space="preserve"><value>30 dagen</value></data>
+  <data name="Usage_Preset_90d" xml:space="preserve"><value>90 dagen</value></data>
+  <data name="Usage_Preset_1y" xml:space="preserve"><value>1 jaar</value></data>
+  <data name="Usage_Preset_All" xml:space="preserve"><value>Alles</value></data>
+  <data name="Usage_TimeZone_Local" xml:space="preserve"><value>Lokaal</value></data>
+  <data name="Usage_TimeZone_Utc" xml:space="preserve"><value>UTC</value></data>
+  <data name="Usage_Scope_Instance" xml:space="preserve"><value>Huidige instantie</value></data>
+  <data name="Usage_Scope_Family" xml:space="preserve"><value>Historische afstamming</value></data>
+  <data name="Usage_Scope_FamilyHint" xml:space="preserve"><value>Voegt bekende, geroteerde sessie-ID's samen.</value></data>
+  <data name="Usage_Metric_Tokens" xml:space="preserve"><value>Tokens</value></data>
+  <data name="Usage_Metric_TokensLower" xml:space="preserve"><value>tokens</value></data>
+  <data name="Usage_Metric_Cost" xml:space="preserve"><value>Kosten</value></data>
+  <data name="Usage_Creators_Title" xml:space="preserve"><value>Gestart door</value></data>
+  <data name="Usage_Creators_Subtitle" xml:space="preserve"><value>Toewijzing is op basis van wie elke sessie startte, niet per beurt.</value></data>
+  <data name="Usage_Creators_All" xml:space="preserve"><value>Alle identiteiten</value></data>
+  <data name="Usage_Creators_Filter" xml:space="preserve"><value>Filteren op maker van sessie</value></data>
+  <data name="Usage_Creators_ClearFilter" xml:space="preserve"><value>Alle identiteiten weergeven</value></data>
+  <data name="Usage_Creators_System" xml:space="preserve"><value>Systeem</value></data>
+  <data name="Usage_Creators_NotRecorded" xml:space="preserve"><value>Niet vastgelegd</value></data>
+  <data name="Usage_Creators_SessionsFormat" xml:space="preserve"><value>{0} sessies</value></data>
+  <data name="Usage_Creators_ShowMoreFormat" xml:space="preserve"><value>Nog {0} identiteiten weergeven</value></data>
+  <data name="Usage_Creators_ShowFewer" xml:space="preserve"><value>Minder weergeven</value></data>
+  <data name="Usage_Creators_Type_human" xml:space="preserve"><value>Persoon</value></data>
+  <data name="Usage_Creators_Type_agent" xml:space="preserve"><value>AI-agent</value></data>
+  <data name="Usage_Creators_Type_system" xml:space="preserve"><value>Systeem</value></data>
+  <data name="Usage_Creators_Type_unknown" xml:space="preserve"><value>Onbekend</value></data>
+  <data name="Usage_LowerBoundShort" xml:space="preserve"><value>≥ Ondergrens</value></data>
+  <data name="Usage_LowerBoundNote" xml:space="preserve"><value>≥ geeft een ondergrens aan: sommige antwoorden stopten voordat het definitieve gebruik binnenkwam, dus tokens en kosten zijn deels geteld.</value></data>
+  <data name="Usage_PartialShort" xml:space="preserve"><value>Gedeeltelijke resultaten</value></data>
+  <data name="Usage_PartialNote" xml:space="preserve"><value>Een deel van het gebruik wordt nog berekend, dus totalen kunnen stijgen.</value></data>
+  <data name="Usage_AtLeastFormat" xml:space="preserve"><value>≥ {0}</value></data>
+  <data name="Usage_EmptyValue" xml:space="preserve"><value>—</value></data>
+  <data name="Usage_Unknown" xml:space="preserve"><value>Onbekend</value></data>
+  <data name="Usage_Selected" xml:space="preserve"><value>Geselecteerd</value></data>
+  <data name="Usage_SelectedSessionsFormat" xml:space="preserve"><value>{0} sessies geselecteerd</value></data>
+  <data name="Usage_RemoveFilterFormat" xml:space="preserve"><value>Filter {0} verwijderen</value></data>
+  <data name="Usage_ClearFilters" xml:space="preserve"><value>Filters wissen</value></data>
+  <data name="Usage_Query_Placeholder" xml:space="preserve"><value>Sessies filteren, bijv. model:gpt-5.1 has:errors minTokens:2000</value></data>
+  <data name="Usage_Query_Label" xml:space="preserve"><value>Sessies filteren</value></data>
+  <data name="Usage_Query_Help" xml:space="preserve"><value>Gebruik sleutel:waarde-termen zoals agent:, channel:, provider:, model:, tool:, key:, has:errors, has:tools of minTokens:. Druk op Enter om toe te passen.</value></data>
+  <data name="Usage_Query_Apply" xml:space="preserve"><value>Toepassen</value></data>
+  <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>Sommige filters zijn genegeerd</value></data>
+  <data name="Usage_Facet_agent" xml:space="preserve"><value>Agent</value></data>
+  <data name="Usage_Facet_channel" xml:space="preserve"><value>Kanaal</value></data>
+  <data name="Usage_Facet_provider" xml:space="preserve"><value>Aanbieder</value></data>
+  <data name="Usage_Facet_model" xml:space="preserve"><value>Model</value></data>
+  <data name="Usage_Facet_tool" xml:space="preserve"><value>Hulpmiddel</value></data>
+  <data name="Usage_Loading" xml:space="preserve"><value>Gebruik laden</value></data>
+  <data name="Usage_Empty_Title" xml:space="preserve"><value>Nog niets om te tellen</value></data>
+  <data name="Usage_Empty_Message" xml:space="preserve"><value>Geen gebruik in deze periode. Begin een gesprek of kies een ruimere periode om meer geschiedenis te bekijken.</value></data>
+  <data name="Usage_Forbidden_Title" xml:space="preserve"><value>Gebruik vereist leestoegang</value></data>
+  <data name="Usage_Forbidden_Message" xml:space="preserve"><value>Deze verbinding heeft geen operator.read-bereik. Koppel opnieuw met leestoegang om gebruik te zien.</value></data>
+  <data name="Usage_Legacy_Title" xml:space="preserve"><value>Gebruik per sessie is niet beschikbaar</value></data>
+  <data name="Usage_Legacy_Message" xml:space="preserve"><value>Deze gateway meldt alleen dagkosten. Werk de gateway bij om sessies, modellen, activiteit en details te zien.</value></data>
+  <data name="Usage_Error_Title" xml:space="preserve"><value>Gebruik kon niet worden geladen</value></data>
+  <data name="Usage_Error_Message" xml:space="preserve"><value>De gateway gaf geen gebruik terug. Probeer het opnieuw.</value></data>
+  <data name="Usage_Error_MessageFormat" xml:space="preserve"><value>De gateway meldde: {0}</value></data>
+  <data name="Usage_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
+  <data name="Usage_Partial_Title" xml:space="preserve"><value>Gedeeltelijke resultaten</value></data>
+  <data name="Usage_Partial_Message" xml:space="preserve"><value>De gateway stopte eerder met lezen. Totalen bevatten wat tot nu toe is gelezen.</value></data>
+  <data name="Usage_Cache_Title" xml:space="preserve"><value>Bijwerken</value></data>
+  <data name="Usage_Cache_Checking" xml:space="preserve"><value>Gebruiksgegevens zijn mogelijk onvolledig. Bijgewerkte totalen worden automatisch gecontroleerd.</value></data>
+  <data name="Usage_Cache_Paused" xml:space="preserve"><value>Gebruiksgegevens zijn mogelijk onvolledig. Automatische controles gepauzeerd; selecteer Vernieuwen om opnieuw te controleren.</value></data>
+  <data name="Usage_Daily_TokensTitle" xml:space="preserve"><value>Dagelijks tokengebruik</value></data>
+  <data name="Usage_Daily_CostTitle" xml:space="preserve"><value>Dagelijkse kosten</value></data>
+  <data name="Usage_Daily_Total" xml:space="preserve"><value>Totaal</value></data>
+  <data name="Usage_Daily_ByType" xml:space="preserve"><value>Per type</value></data>
+  <data name="Usage_Daily_ByProvider" xml:space="preserve"><value>Per aanbieder</value></data>
+  <data name="Usage_Daily_ModeLabel" xml:space="preserve"><value>Uitsplitsing dagelijkse grafiek</value></data>
+  <data name="Usage_Daily_Other" xml:space="preserve"><value>Overig</value></data>
+  <data name="Usage_Daily_Empty" xml:space="preserve"><value>Geen dagelijks gebruik voor deze periode.</value></data>
+  <data name="Usage_Daily_Hint" xml:space="preserve"><value>Selecteer een dag om te filteren. Ctrl-klik om dagen toe te voegen.</value></data>
+  <data name="Usage_Daily_BarFormat" xml:space="preserve"><value>{0}: {1} tokens, kosten {2}</value></data>
+  <data name="Usage_Daily_PendingFormat" xml:space="preserve"><value>{0}: nog niet geladen</value></data>
+  <data name="Usage_Daily_NotLoaded" xml:space="preserve"><value>Nog niet geladen</value></data>
+  <data name="Usage_Daily_ShowTable" xml:space="preserve"><value>Dagwaarden als tabel weergeven</value></data>
+  <data name="Usage_Table_Date" xml:space="preserve"><value>Datum</value></data>
+  <data name="Usage_Breakdown_TokensTitle" xml:space="preserve"><value>Tokens per type</value></data>
+  <data name="Usage_Breakdown_CostTitle" xml:space="preserve"><value>Kosten per type</value></data>
+  <data name="Usage_Type_Output" xml:space="preserve"><value>Uitvoer</value></data>
+  <data name="Usage_Type_Input" xml:space="preserve"><value>Invoer</value></data>
+  <data name="Usage_Type_CacheWrite" xml:space="preserve"><value>Cache schrijven</value></data>
+  <data name="Usage_Type_CacheRead" xml:space="preserve"><value>Cache lezen</value></data>
+  <data name="Usage_CostWindows_Title" xml:space="preserve"><value>Kostenvensters</value></data>
+  <data name="Usage_CostWindows_SubtitleFormat" xml:space="preserve"><value>Totalen tot en met {0}</value></data>
+  <data name="Usage_CostWindows_SelectedRange" xml:space="preserve"><value>Geselecteerde periode</value></data>
+  <data name="Usage_CostWindows_LastDaysFormat" xml:space="preserve"><value>Afgelopen {0} dagen</value></data>
+  <data name="Usage_CostWindows_PerDayFormat" xml:space="preserve"><value>{0} per dag</value></data>
+  <data name="Usage_Overview_Title" xml:space="preserve"><value>Gebruiksoverzicht</value></data>
+  <data name="Usage_Overview_Messages" xml:space="preserve"><value>Berichten</value></data>
+  <data name="Usage_Overview_MessagesSubFormat" xml:space="preserve"><value>{0} gebruiker · {1} assistent</value></data>
+  <data name="Usage_Overview_Throughput" xml:space="preserve"><value>Doorvoer</value></data>
+  <data name="Usage_Overview_ThroughputHint" xml:space="preserve"><value>Tokens per minuut actieve sessietijd.</value></data>
+  <data name="Usage_Overview_TokensPerMinuteFormat" xml:space="preserve"><value>{0} tok/min (tokens)</value></data>
+  <data name="Usage_Overview_CostPerMinuteFormat" xml:space="preserve"><value>{0} per min</value></data>
+  <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>Hulpmiddelaanroepen</value></data>
+  <data name="Usage_Overview_ToolsUsedFormat" xml:space="preserve"><value>{0} hulpmiddelen gebruikt</value></data>
+  <data name="Usage_Overview_AvgTokens" xml:space="preserve"><value>Gem. tokens per bericht</value></data>
+  <data name="Usage_Overview_AcrossMessagesFormat" xml:space="preserve"><value>Over {0} berichten</value></data>
+  <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>Cache-hitratio</value></data>
+  <data name="Usage_Overview_CacheSubFormat" xml:space="preserve"><value>{0} uit cache · {1} prompt</value></data>
+  <data name="Usage_Overview_CacheHint" xml:space="preserve"><value>Aandeel prompttokens uit de cache: cache lezen gedeeld door invoer plus cache lezen en schrijven.</value></data>
+  <data name="Usage_Overview_ErrorRate" xml:space="preserve"><value>Foutpercentage</value></data>
+  <data name="Usage_Overview_ErrorHint" xml:space="preserve"><value>Fouten gedeeld door alle berichten in de periode.</value></data>
+  <data name="Usage_Overview_ErrorSubFormat" xml:space="preserve"><value>Fouten: {0} · gem. sessie {1}</value></data>
+  <data name="Usage_Overview_AvgCost" xml:space="preserve"><value>Gem. kosten per bericht</value></data>
+  <data name="Usage_Overview_AvgCostHint" xml:space="preserve"><value>Totale kosten gedeeld door berichten in de periode.</value></data>
+  <data name="Usage_Overview_AvgCostHintMissing" xml:space="preserve"><value>Totale kosten gedeeld door berichten. Sommig gebruik heeft geen bekende prijs, dus dit kan lager zijn dan werkelijk.</value></data>
+  <data name="Usage_Overview_TotalCostFormat" xml:space="preserve"><value>{0} totaal</value></data>
+  <data name="Usage_Overview_Sessions" xml:space="preserve"><value>Sessies</value></data>
+  <data name="Usage_Overview_SessionsInRangeFormat" xml:space="preserve"><value>van {0} in periode</value></data>
+  <data name="Usage_Overview_Errors" xml:space="preserve"><value>Fouten</value></data>
+  <data name="Usage_Overview_ToolResultsFormat" xml:space="preserve"><value>{0} hulpmiddelresultaten</value></data>
+  <data name="Usage_Overview_TopModels" xml:space="preserve"><value>Belangrijkste modellen</value></data>
+  <data name="Usage_Overview_TopProviders" xml:space="preserve"><value>Belangrijkste aanbieders</value></data>
+  <data name="Usage_Overview_TopTools" xml:space="preserve"><value>Belangrijkste hulpmiddelen</value></data>
+  <data name="Usage_Overview_TopAgents" xml:space="preserve"><value>Belangrijkste agents</value></data>
+  <data name="Usage_Overview_TopChannels" xml:space="preserve"><value>Belangrijkste kanalen</value></data>
+  <data name="Usage_Overview_PeakErrorDays" xml:space="preserve"><value>Dagen met de meeste fouten</value></data>
+  <data name="Usage_Overview_PeakErrorHours" xml:space="preserve"><value>Uren met de meeste fouten</value></data>
+  <data name="Usage_Overview_NoModelData" xml:space="preserve"><value>Geen modelgegevens</value></data>
+  <data name="Usage_Overview_NoProviderData" xml:space="preserve"><value>Geen aanbiedergegevens</value></data>
+  <data name="Usage_Overview_NoToolCalls" xml:space="preserve"><value>Geen hulpmiddelaanroepen</value></data>
+  <data name="Usage_Overview_NoAgentData" xml:space="preserve"><value>Geen agentgegevens</value></data>
+  <data name="Usage_Overview_NoChannelData" xml:space="preserve"><value>Geen kanaalgegevens</value></data>
+  <data name="Usage_Overview_NoErrorData" xml:space="preserve"><value>Geen foutgegevens</value></data>
+  <data name="Usage_Overview_Unpriced" xml:space="preserve"><value>Zonder prijs</value></data>
+  <data name="Usage_Overview_CallsFormat" xml:space="preserve"><value>{0} aanroepen</value></data>
+  <data name="Usage_Overview_MessagesCountFormat" xml:space="preserve"><value>{0} ber.</value></data>
+  <data name="Usage_Overview_ErrorsCountFormat" xml:space="preserve"><value>{0} fouten</value></data>
+  <data name="Usage_Activity_CellFormat" xml:space="preserve"><value>{0}: {1} tokens gebruikt</value></data>
+  <data name="Usage_Mosaic_Title" xml:space="preserve"><value>Activiteit per tijdstip</value></data>
+  <data name="Usage_Mosaic_SubtitleFormat" xml:space="preserve"><value>Geschat op basis van sessieactiviteit. Tijdzone: {0}.</value></data>
+  <data name="Usage_Mosaic_NoTimeline" xml:space="preserve"><value>Schattingen vereisen tijdstempels van sessies.</value></data>
+  <data name="Usage_Mosaic_Weekdays" xml:space="preserve"><value>Per dag van de week</value></data>
+  <data name="Usage_Mosaic_Hours" xml:space="preserve"><value>Per uur van de dag. Selecteer een uur om te filteren.</value></data>
+  <data name="Usage_Mosaic_Hint" xml:space="preserve"><value>Donkerdere cellen betekenen meer tokens</value></data>
+  <data name="Usage_Mosaic_PeakHourFormat" xml:space="preserve"><value>Piekuur {0}</value></data>
+  <data name="Usage_Mosaic_PeakDayFormat" xml:space="preserve"><value>Drukste dag {0}</value></data>
+  <data name="Usage_Heatmap_Title" xml:space="preserve"><value>Dagelijkse activiteit</value></data>
+  <data name="Usage_Heatmap_SubtitleFormat" xml:space="preserve"><value>{0} actieve dagen</value></data>
+  <data name="Usage_Heatmap_CellFormat" xml:space="preserve"><value>{0}: {1} tokens gebruikt</value></data>
+  <data name="Usage_Heatmap_Less" xml:space="preserve"><value>Minder</value></data>
+  <data name="Usage_Heatmap_More" xml:space="preserve"><value>Meer</value></data>
+  <data name="Usage_Providers_Title" xml:space="preserve"><value>Gebruik per aanbieder</value></data>
+  <data name="Usage_Providers_Subtitle" xml:space="preserve"><value>Abonnementen, quota en facturering per aanbieder. Los van sessiegebruik.</value></data>
+  <data name="Usage_Providers_Loading" xml:space="preserve"><value>Gebruik per aanbieder laden</value></data>
+  <data name="Usage_Providers_Empty" xml:space="preserve"><value>Geen aanbieders melden abonnementsgebruik.</value></data>
+  <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>Gebruik per aanbieder is niet beschikbaar.</value></data>
+  <data name="Usage_Providers_Stalled" xml:space="preserve"><value>Gebruik per aanbieder kon niet worden vernieuwd. Laatste rapport wordt weergegeven.</value></data>
+  <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>Gebruik per aanbieder wordt vernieuwd.</value></data>
+  <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>Geen quotumgegevens gemeld.</value></data>
+  <data name="Usage_Providers_UsedFormat" xml:space="preserve"><value>{0} gebruikt</value></data>
+  <data name="Usage_Providers_ResetsFormat" xml:space="preserve"><value>Wordt gereset over {0}</value></data>
+  <data name="Usage_Providers_ResetNow" xml:space="preserve"><value>Wordt nu gereset</value></data>
+  <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0} van {1}</value></data>
+  <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1} (tegoed)</value></data>
+  <data name="Usage_Providers_CostHistoryFormat" xml:space="preserve"><value>{0} gefactureerd in de afgelopen {1} dagen</value></data>
+  <data name="Usage_Providers_Billing_balance" xml:space="preserve"><value>Saldo</value></data>
+  <data name="Usage_Providers_Billing_spend" xml:space="preserve"><value>Uitgaven</value></data>
+  <data name="Usage_Providers_Billing_budget" xml:space="preserve"><value>Budget (limiet)</value></data>
+  <data name="Usage_Sessions_Title" xml:space="preserve"><value>Sessies</value></data>
+  <data name="Usage_Sessions_SubtitleFormat" xml:space="preserve"><value>Sessies: {0} · gem. {1} · fouten: {2}</value></data>
+  <data name="Usage_Sessions_View" xml:space="preserve"><value>Sessielijst</value></data>
+  <data name="Usage_Sessions_All" xml:space="preserve"><value>Alle</value></data>
+  <data name="Usage_Sessions_Recent" xml:space="preserve"><value>Recent bekeken</value></data>
+  <data name="Usage_Sessions_Sort" xml:space="preserve"><value>Sessies sorteren</value></data>
+  <data name="Usage_Sort_Cost" xml:space="preserve"><value>Hoogste kosten</value></data>
+  <data name="Usage_Sort_Errors" xml:space="preserve"><value>Meeste fouten</value></data>
+  <data name="Usage_Sort_Messages" xml:space="preserve"><value>Meeste berichten</value></data>
+  <data name="Usage_Sort_Recent" xml:space="preserve"><value>Meest recent</value></data>
+  <data name="Usage_Sort_Tokens" xml:space="preserve"><value>Meeste tokens</value></data>
+  <data name="Usage_Sessions_Ascending" xml:space="preserve"><value>Oplopend sorteren</value></data>
+  <data name="Usage_Sessions_Descending" xml:space="preserve"><value>Aflopend sorteren</value></data>
+  <data name="Usage_Sessions_ClearSelection" xml:space="preserve"><value>Selectie wissen</value></data>
+  <data name="Usage_Sessions_SelectedFormat" xml:space="preserve"><value>Geselecteerd ({0})</value></data>
+  <data name="Usage_Sessions_NoneInRange" xml:space="preserve"><value>Geen sessies in de periode</value></data>
+  <data name="Usage_Sessions_NoRecent" xml:space="preserve"><value>Geen recent bekeken sessies</value></data>
+  <data name="Usage_Sessions_ShowAllFormat" xml:space="preserve"><value>Alle {0} weergeven</value></data>
+  <data name="Usage_Sessions_ShowTopFormat" xml:space="preserve"><value>Top {0} weergeven</value></data>
+  <data name="Usage_Sessions_PageFormat" xml:space="preserve"><value>{0} tot {1} van {2}</value></data>
+  <data name="Usage_Sessions_PreviousPage" xml:space="preserve"><value>Vorige pagina</value></data>
+  <data name="Usage_Sessions_NextPage" xml:space="preserve"><value>Volgende pagina</value></data>
+  <data name="Usage_Sessions_Computing" xml:space="preserve"><value>Wordt berekend</value></data>
+  <data name="Usage_Sessions_ToolsFormat" xml:space="preserve"><value>{0} hulpmiddelen</value></data>
+  <data name="Usage_Sessions_InstancesFormat" xml:space="preserve"><value>{0} instanties</value></data>
+  <data name="Usage_Sessions_AgentFormat" xml:space="preserve"><value>Agent: {0}</value></data>
+  <data name="Usage_Sessions_CopyKey" xml:space="preserve"><value>Sessiesleutel kopiëren</value></data>
+  <data name="Usage_Sessions_SelectHint" xml:space="preserve"><value>Selecteer om details te bekijken. Ctrl-klik om sessies te vergelijken.</value></data>
+  <data name="Usage_Details_Close" xml:space="preserve"><value>Details sluiten</value></data>
+  <data name="Usage_Details_Filtered" xml:space="preserve"><value>(gefilterd)</value></data>
+  <data name="Usage_Details_AccessibleFormat" xml:space="preserve"><value>Details van {0}</value></data>
+  <data name="Usage_Details_FamilyFormat" xml:space="preserve"><value>Bevat {0} sessie-instanties uit deze afstamming.</value></data>
+  <data name="Usage_Details_Summary" xml:space="preserve"><value>sessieoverzicht</value></data>
+  <data name="Usage_Details_LoadFailedTitle" xml:space="preserve"><value>Sommige details konden niet worden geladen</value></data>
+  <data name="Usage_Details_LoadFailedFormat" xml:space="preserve"><value>Kan {0} niet laden: {1}</value></data>
+  <data name="Usage_Details_TokenSplitFormat" xml:space="preserve"><value>{0} in · {1} uit</value></data>
+  <data name="Usage_Details_MissingCostFormat" xml:space="preserve"><value>{0} items zonder prijs</value></data>
+  <data name="Usage_Details_Duration" xml:space="preserve"><value>Duur</value></data>
+  <data name="Usage_Details_ActivityFormat" xml:space="preserve"><value>{0} tot {1}</value></data>
+  <data name="Usage_Details_Latency" xml:space="preserve"><value>Responstijd</value></data>
+  <data name="Usage_Details_LatencySubFormat" xml:space="preserve"><value>p95: {0}</value></data>
+  <data name="Usage_Details_StartedByFormat" xml:space="preserve"><value>Gestart door {0}</value></data>
+  <data name="Usage_Details_ModelMix" xml:space="preserve"><value>Modelverdeling</value></data>
+  <data name="Usage_Details_UsageOverTime" xml:space="preserve"><value>Gebruik in de tijd</value></data>
+  <data name="Usage_Details_TimelineMode" xml:space="preserve"><value>Tijdlijnmodus</value></data>
+  <data name="Usage_Details_Cumulative" xml:space="preserve"><value>Cumulatief</value></data>
+  <data name="Usage_Details_PerTurn" xml:space="preserve"><value>Per beurt</value></data>
+  <data name="Usage_Details_LoadingTimeline" xml:space="preserve"><value>Gebruik in de tijd laden</value></data>
+  <data name="Usage_Details_NoTimeline" xml:space="preserve"><value>Geen gebruiksmetingen voor deze sessie.</value></data>
+  <data name="Usage_Details_Unavailable" xml:space="preserve"><value>Tokengebruik en kosten zijn onbekend omdat een antwoord stopte voordat het definitieve gebruik binnenkwam. Selecteer een andere sessie om het gebruik te zien.</value></data>
+  <data name="Usage_Details_PointFormat" xml:space="preserve"><value>{0}: {1} tokens, kosten {2}</value></data>
+  <data name="Usage_Details_TurnsFormat" xml:space="preserve"><value>{0} metingen</value></data>
+  <data name="Usage_Details_Context" xml:space="preserve"><value>Contextopbouw</value></data>
+  <data name="Usage_Details_LoadingContext" xml:space="preserve"><value>Context laden</value></data>
+  <data name="Usage_Details_NoContext" xml:space="preserve"><value>Geen contextrapport voor deze sessie.</value></data>
+  <data name="Usage_Details_ContextOfInputFormat" xml:space="preserve"><value>Ongeveer {0} van de invoer</value></data>
+  <data name="Usage_Details_BaseContextPerMessage" xml:space="preserve"><value>Basiscontext bij elk bericht</value></data>
+  <data name="Usage_Details_ApproxTokensFormat" xml:space="preserve"><value>Ongeveer {0} tokens</value></data>
+  <data name="Usage_Details_Unmeasured" xml:space="preserve"><value>Niet gemeten</value></data>
+  <data name="Usage_Details_Context_System" xml:space="preserve"><value>Systeem</value></data>
+  <data name="Usage_Details_Context_Skills" xml:space="preserve"><value>Vaardigheden</value></data>
+  <data name="Usage_Details_Context_Tools" xml:space="preserve"><value>Hulpmiddelen</value></data>
+  <data name="Usage_Details_Context_Files" xml:space="preserve"><value>Bestanden</value></data>
+  <data name="Usage_Details_Conversation" xml:space="preserve"><value>Gesprek</value></data>
+  <data name="Usage_Details_LoadingConversation" xml:space="preserve"><value>Gesprek laden</value></data>
+  <data name="Usage_Details_MessageCountFormat" xml:space="preserve"><value>{0} van {1} berichten</value></data>
+  <data name="Usage_Details_RoleFilter" xml:space="preserve"><value>Filteren op rol</value></data>
+  <data name="Usage_Details_Role_All" xml:space="preserve"><value>Alle rollen</value></data>
+  <data name="Usage_Details_Role_user" xml:space="preserve"><value>U</value></data>
+  <data name="Usage_Details_Role_assistant" xml:space="preserve"><value>Assistent</value></data>
+  <data name="Usage_Details_Role_tool" xml:space="preserve"><value>Hulpmiddel</value></data>
+  <data name="Usage_Details_Role_toolResult" xml:space="preserve"><value>Hulpmiddelresultaat</value></data>
+  <data name="Usage_Details_ToolFilter" xml:space="preserve"><value>Filteren op hulpmiddel</value></data>
+  <data name="Usage_Details_AllTools" xml:space="preserve"><value>Alle hulpmiddelen</value></data>
+  <data name="Usage_Details_HasTools" xml:space="preserve"><value>Met hulpmiddelen</value></data>
+  <data name="Usage_Details_Search" xml:space="preserve"><value>Gesprek doorzoeken</value></data>
+  <data name="Usage_Details_SearchPlaceholder" xml:space="preserve"><value>Berichten zoeken</value></data>
+  <data name="Usage_Details_NoMessages" xml:space="preserve"><value>Geen berichten</value></data>
+  <data name="Usage_Details_NoMessagesMatch" xml:space="preserve"><value>Geen berichten komen overeen met de filters.</value></data>
+  <data name="Usage_Details_NoMatchingUsage" xml:space="preserve"><value>Geen gebruik van deze sessie komt overeen met de huidige filters.</value></data>
+  <data name="Usage_Creators_SessionsFormatOne" xml:space="preserve"><value>{0} sessie</value></data>
+  <data name="Usage_SelectedSessionsFormatOne" xml:space="preserve"><value>{0} sessie geselecteerd</value></data>
+  <data name="Usage_Overview_ToolsUsedFormatOne" xml:space="preserve"><value>{0} hulpmiddel gebruikt</value></data>
+  <data name="Usage_Overview_AcrossMessagesFormatOne" xml:space="preserve"><value>Over {0} bericht</value></data>
+  <data name="Usage_Overview_CallsFormatOne" xml:space="preserve"><value>{0} aanroep</value></data>
+  <data name="Usage_Overview_MessagesCountFormatOne" xml:space="preserve"><value>{0} ber.</value></data>
+  <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} fout</value></data>
+  <data name="Usage_Sessions_ToolsFormatOne" xml:space="preserve"><value>{0} hulpmiddel</value></data>
+  <data name="Usage_Sessions_InstancesFormatOne" xml:space="preserve"><value>{0} instantie</value></data>
+  <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} item zonder prijs</value></data>
+  <data name="Usage_Details_TurnsFormatOne" xml:space="preserve"><value>{0} meting</value></data>
+  <data name="Usage_Basic_Title" xml:space="preserve"><value>Sommige filters vereisen een nieuwere gateway</value></data>
+  <data name="Usage_Basic_Message" xml:space="preserve"><value>Deze gateway levert totalen, grafieken en sessies. Werk hem bij om te filteren op tekst, agent, model, dag of uur, sessies te sorteren en te bladeren, en activiteit per uur te zien.</value></data>
+  <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>Nieuwste eerst</value></data>
+  <data name="Usage_Subtitle" xml:space="preserve"><value>Tokengebruik en kosten van je sessies.</value></data>
+  <data name="Usage_ReportingRange" xml:space="preserve"><value>Rapportageperiode</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>{0} sessies in deze periode</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>{0} sessie in deze periode</value></data>
+  <data name="Usage_Filter_Tip" xml:space="preserve"><value>Tip: gebruik filters of selecteer staven in de grafiek om dagen te beperken.</value></data>
+  <data name="Usage_Creators_Identity" xml:space="preserve"><value>Identiteit</value></data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node-sandbox</value>
   </data>

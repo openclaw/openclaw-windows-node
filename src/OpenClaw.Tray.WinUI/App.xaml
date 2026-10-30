@@ -38,6 +38,23 @@
                     <SolidColorBrush x:Key="ConnectionCapabilityPillSuccessBrush" Color="{ThemeResource SystemFillColorSuccess}" Opacity="0.14" />
                     <SolidColorBrush x:Key="ConnectionCapabilityPillCautionBrush" Color="{ThemeResource SystemFillColorCaution}" Opacity="0.14" />
                     <SolidColorBrush x:Key="ConnectionCapabilityPillCriticalBrush" Color="{ThemeResource SystemFillColorCritical}" Opacity="0.14" />
+                    <!-- Usage chart cache-read series: the accent shade opposite the accent fill, so stacks stay distinguishable. -->
+                    <SolidColorBrush x:Key="UsageChartCacheReadBrush" Color="{ThemeResource SystemAccentColorDark1}" />
+                    <!-- Usage page categorical palette (DESIGN.md usagePalette1-6): fills and 16% tints. -->
+                    <SolidColorBrush x:Key="UsagePalette1Brush" Color="{ThemeResource SystemAccentColorLight2}" />
+                    <SolidColorBrush x:Key="UsageActivityTextBrush" Color="{ThemeResource TextOnAccentFillColorPrimary}" />
+                    <x:Double x:Key="UsageActivityMinimumOpacity">0.18</x:Double>
+                    <SolidColorBrush x:Key="UsagePalette1TintBrush" Color="{ThemeResource SystemAccentColorLight2}" Opacity="0.16" />
+                    <SolidColorBrush x:Key="UsagePalette2Brush" Color="#4FC3C7" />
+                    <SolidColorBrush x:Key="UsagePalette2TintBrush" Color="#4FC3C7" Opacity="0.16" />
+                    <SolidColorBrush x:Key="UsagePalette3Brush" Color="#B4A0FF" />
+                    <SolidColorBrush x:Key="UsagePalette3TintBrush" Color="#B4A0FF" Opacity="0.16" />
+                    <SolidColorBrush x:Key="UsagePalette4Brush" Color="#F7894A" />
+                    <SolidColorBrush x:Key="UsagePalette4TintBrush" Color="#F7894A" Opacity="0.16" />
+                    <SolidColorBrush x:Key="UsagePalette5Brush" Color="#EE7AE3" />
+                    <SolidColorBrush x:Key="UsagePalette5TintBrush" Color="#EE7AE3" Opacity="0.16" />
+                    <SolidColorBrush x:Key="UsagePalette6Brush" Color="#6CCB5F" />
+                    <SolidColorBrush x:Key="UsagePalette6TintBrush" Color="#6CCB5F" Opacity="0.16" />
                     <x:Boolean x:Key="HubNavigationUseHighContrastIcons">False</x:Boolean>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
@@ -53,6 +70,22 @@
                     <SolidColorBrush x:Key="ConnectionCapabilityPillSuccessBrush" Color="{ThemeResource SystemFillColorSuccess}" Opacity="0.14" />
                     <SolidColorBrush x:Key="ConnectionCapabilityPillCautionBrush" Color="{ThemeResource SystemFillColorCaution}" Opacity="0.14" />
                     <SolidColorBrush x:Key="ConnectionCapabilityPillCriticalBrush" Color="{ThemeResource SystemFillColorCritical}" Opacity="0.14" />
+                    <SolidColorBrush x:Key="UsageChartCacheReadBrush" Color="{ThemeResource SystemAccentColorLight2}" />
+                    <!-- Usage page categorical palette (DESIGN.md usagePalette1-6): fills and 16% tints. -->
+                    <SolidColorBrush x:Key="UsagePalette1Brush" Color="{ThemeResource SystemAccentColorDark1}" />
+                    <SolidColorBrush x:Key="UsageActivityTextBrush" Color="{ThemeResource TextOnAccentFillColorPrimary}" />
+                    <x:Double x:Key="UsageActivityMinimumOpacity">0.18</x:Double>
+                    <SolidColorBrush x:Key="UsagePalette1TintBrush" Color="{ThemeResource SystemAccentColorDark1}" Opacity="0.16" />
+                    <SolidColorBrush x:Key="UsagePalette2Brush" Color="#038387" />
+                    <SolidColorBrush x:Key="UsagePalette2TintBrush" Color="#038387" Opacity="0.16" />
+                    <SolidColorBrush x:Key="UsagePalette3Brush" Color="#8764B8" />
+                    <SolidColorBrush x:Key="UsagePalette3TintBrush" Color="#8764B8" Opacity="0.16" />
+                    <SolidColorBrush x:Key="UsagePalette4Brush" Color="#CA5010" />
+                    <SolidColorBrush x:Key="UsagePalette4TintBrush" Color="#CA5010" Opacity="0.16" />
+                    <SolidColorBrush x:Key="UsagePalette5Brush" Color="#C239B3" />
+                    <SolidColorBrush x:Key="UsagePalette5TintBrush" Color="#C239B3" Opacity="0.16" />
+                    <SolidColorBrush x:Key="UsagePalette6Brush" Color="#107C10" />
+                    <SolidColorBrush x:Key="UsagePalette6TintBrush" Color="#107C10" Opacity="0.16" />
                     <x:Boolean x:Key="HubNavigationUseHighContrastIcons">False</x:Boolean>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
@@ -68,6 +101,22 @@
                     <SolidColorBrush x:Key="ConnectionCapabilityPillSuccessBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="ConnectionCapabilityPillCautionBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="ConnectionCapabilityPillCriticalBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="UsageChartCacheReadBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+                    <!-- Usage page categorical palette (DESIGN.md usagePalette1-6): fills and 16% tints. -->
+                    <SolidColorBrush x:Key="UsagePalette1Brush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="UsageActivityTextBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                    <x:Double x:Key="UsageActivityMinimumOpacity">1</x:Double>
+                    <SolidColorBrush x:Key="UsagePalette1TintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="UsagePalette2Brush" Color="{ThemeResource SystemColorHotlightColor}" />
+                    <SolidColorBrush x:Key="UsagePalette2TintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="UsagePalette3Brush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="UsagePalette3TintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="UsagePalette4Brush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="UsagePalette4TintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="UsagePalette5Brush" Color="{ThemeResource SystemColorHotlightColor}" />
+                    <SolidColorBrush x:Key="UsagePalette5TintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="UsagePalette6Brush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="UsagePalette6TintBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <x:Boolean x:Key="HubNavigationUseHighContrastIcons">True</x:Boolean>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>

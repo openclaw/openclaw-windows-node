@@ -2097,36 +2097,6 @@
   <data name="MarketplaceLink.Content" xml:space="preserve">
     <value>浏览技能市场 →</value>
   </data>
-  <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
-    <value>总成本</value>
-  </data>
-  <data name="UsagePage_TextBlock_35.Text" xml:space="preserve">
-    <value>请求</value>
-  </data>
-  <data name="UsagePage_TextBlock_45.Text" xml:space="preserve">
-    <value>令牌</value>
-  </data>
-  <data name="UsagePage_TextBlock_55.Text" xml:space="preserve">
-    <value>提供程序</value>
-  </data>
-  <data name="Period7DaysItem.Text" xml:space="preserve">
-    <value>7 天</value>
-  </data>
-  <data name="Period30DaysItem.Text" xml:space="preserve">
-    <value>30 天</value>
-  </data>
-  <data name="UsagePage_ProviderLoading.Text" xml:space="preserve">
-    <value>正在加载提供程序…</value>
-  </data>
-  <data name="UsagePage_NoProviders.Text" xml:space="preserve">
-    <value>未配置任何提供程序</value>
-  </data>
-  <data name="UsagePage_TextBlock_70.Text" xml:space="preserve">
-    <value>提供程序明细</value>
-  </data>
-  <data name="UsagePage_TextBlock_100.Text" xml:space="preserve">
-    <value>每日成本</value>
-  </data>
   <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
     <value>工作区</value>
   </data>
@@ -2456,9 +2426,6 @@
   </data>
   <data name="TrayMenuWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>OpenClaw Menu</value>
-  </data>
-  <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
-    <value>使用量和成本</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>在浏览器中打开</value>
@@ -5091,12 +5058,6 @@
   </data>
   <data name="UsagePage_OpenConnection.Content" xml:space="preserve">
     <value>打开连接</value>
-  </data>
-  <data name="UsagePage_LoadingDailyCosts.Text" xml:space="preserve">
-    <value>正在加载每日费用…</value>
-  </data>
-  <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
-    <value>此期间内无每日用量</value>
   </data>
   <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
     <value>测试语音输入</value>
@@ -8167,6 +8128,301 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>总结我最近的会话</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>帮我配置一个频道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>检查系统健康状况</value></data>
+  <data name="Usage_Title" xml:space="preserve"><value>用量</value></data>
+  <data name="Usage_RangeFormat" xml:space="preserve"><value>{0} 至 {1}</value></data>
+  <data name="Usage_RangeCaptionFormat" xml:space="preserve"><value>{0} · {1}（时区）</value></data>
+  <data name="Usage_Range_AllTime" xml:space="preserve"><value>全部时间</value></data>
+  <data name="Usage_UpdatedFormat" xml:space="preserve"><value>更新于 {0}</value></data>
+  <data name="Usage_Refresh" xml:space="preserve"><value>刷新</value></data>
+  <data name="Usage_Refreshing" xml:space="preserve"><value>正在刷新用量</value></data>
+  <data name="Usage_Export" xml:space="preserve"><value>导出</value></data>
+  <data name="Usage_Exporting" xml:space="preserve"><value>正在导出</value></data>
+  <data name="Usage_Export_SessionsCsv" xml:space="preserve"><value>会话 (CSV)</value></data>
+  <data name="Usage_Export_DailyCsv" xml:space="preserve"><value>每日合计 (CSV)</value></data>
+  <data name="Usage_Export_Json" xml:space="preserve"><value>完整报告 (JSON)</value></data>
+  <data name="Usage_Export_SavedTitle" xml:space="preserve"><value>已保存导出</value></data>
+  <data name="Usage_Export_SavedFormat" xml:space="preserve"><value>已保存 {0}。</value></data>
+  <data name="Usage_Export_FailedTitle" xml:space="preserve"><value>导出失败</value></data>
+  <data name="Usage_Export_Error_Offline" xml:space="preserve"><value>连接到网关后才能导出用量。</value></data>
+  <data name="Usage_Export_Error_Failed" xml:space="preserve"><value>无法读取或保存用量报告。请重试。</value></data>
+  <data name="Usage_Export_Error_Incomplete" xml:space="preserve"><value>用量数据不完整。请刷新后重试，或缩小日期范围。</value></data>
+  <data name="Usage_Export_Error_TooMany" xml:space="preserve"><value>此范围内的会话数超过单次导出的上限。请缩小日期范围或筛选条件后重试。</value></data>
+  <data name="Usage_ReadError_Unsupported" xml:space="preserve"><value>此网关不提供此项。</value></data>
+  <data name="Usage_ReadError_Disconnected" xml:space="preserve"><value>网关未连接。</value></data>
+  <data name="Usage_ReadError_Failed" xml:space="preserve"><value>请求失败。</value></data>
+  <data name="Usage_Dismiss" xml:space="preserve"><value>关闭</value></data>
+  <data name="Usage_Pin" xml:space="preserve"><value>将筛选器固定在顶部</value></data>
+  <data name="Usage_Unpin" xml:space="preserve"><value>取消固定筛选器</value></data>
+  <data name="Usage_Filter_Range" xml:space="preserve"><value>范围</value></data>
+  <data name="Usage_Filter_StartDate" xml:space="preserve"><value>开始日期</value></data>
+  <data name="Usage_Filter_EndDate" xml:space="preserve"><value>结束日期</value></data>
+  <data name="Usage_Filter_To" xml:space="preserve"><value>至</value></data>
+  <data name="Usage_Filter_TimeZone" xml:space="preserve"><value>时区</value></data>
+  <data name="Usage_Filter_Scope" xml:space="preserve"><value>范围类型</value></data>
+  <data name="Usage_Filter_Show" xml:space="preserve"><value>显示</value></data>
+  <data name="Usage_Preset_Today" xml:space="preserve"><value>今天</value></data>
+  <data name="Usage_Preset_7d" xml:space="preserve"><value>7 天</value></data>
+  <data name="Usage_Preset_30d" xml:space="preserve"><value>30 天</value></data>
+  <data name="Usage_Preset_90d" xml:space="preserve"><value>90 天</value></data>
+  <data name="Usage_Preset_1y" xml:space="preserve"><value>1 年</value></data>
+  <data name="Usage_Preset_All" xml:space="preserve"><value>全部</value></data>
+  <data name="Usage_TimeZone_Local" xml:space="preserve"><value>本地</value></data>
+  <data name="Usage_TimeZone_Utc" xml:space="preserve"><value>UTC</value></data>
+  <data name="Usage_Scope_Instance" xml:space="preserve"><value>当前实例</value></data>
+  <data name="Usage_Scope_Family" xml:space="preserve"><value>历史沿袭</value></data>
+  <data name="Usage_Scope_FamilyHint" xml:space="preserve"><value>合并已知的轮换会话 ID。</value></data>
+  <data name="Usage_Metric_Tokens" xml:space="preserve"><value>令牌</value></data>
+  <data name="Usage_Metric_TokensLower" xml:space="preserve"><value>个令牌</value></data>
+  <data name="Usage_Metric_Cost" xml:space="preserve"><value>费用</value></data>
+  <data name="Usage_Creators_Title" xml:space="preserve"><value>发起者</value></data>
+  <data name="Usage_Creators_Subtitle" xml:space="preserve"><value>按会话发起者归属，而非按每轮计费。</value></data>
+  <data name="Usage_Creators_All" xml:space="preserve"><value>所有身份</value></data>
+  <data name="Usage_Creators_Filter" xml:space="preserve"><value>按会话发起者筛选</value></data>
+  <data name="Usage_Creators_ClearFilter" xml:space="preserve"><value>显示所有身份</value></data>
+  <data name="Usage_Creators_System" xml:space="preserve"><value>系统</value></data>
+  <data name="Usage_Creators_NotRecorded" xml:space="preserve"><value>未记录</value></data>
+  <data name="Usage_Creators_SessionsFormat" xml:space="preserve"><value>{0} 个会话</value></data>
+  <data name="Usage_Creators_ShowMoreFormat" xml:space="preserve"><value>再显示 {0} 个身份</value></data>
+  <data name="Usage_Creators_ShowFewer" xml:space="preserve"><value>显示更少</value></data>
+  <data name="Usage_Creators_Type_human" xml:space="preserve"><value>人员</value></data>
+  <data name="Usage_Creators_Type_agent" xml:space="preserve"><value>代理</value></data>
+  <data name="Usage_Creators_Type_system" xml:space="preserve"><value>系统</value></data>
+  <data name="Usage_Creators_Type_unknown" xml:space="preserve"><value>未知</value></data>
+  <data name="Usage_LowerBoundShort" xml:space="preserve"><value>≥ 下限</value></data>
+  <data name="Usage_LowerBoundNote" xml:space="preserve"><value>≥ 表示下限：部分响应在最终用量到达前结束，因此其令牌和费用只计入了一部分。</value></data>
+  <data name="Usage_PartialShort" xml:space="preserve"><value>部分结果</value></data>
+  <data name="Usage_PartialNote" xml:space="preserve"><value>部分用量仍在计算中，合计可能会增加。</value></data>
+  <data name="Usage_AtLeastFormat" xml:space="preserve"><value>≥ {0}</value></data>
+  <data name="Usage_EmptyValue" xml:space="preserve"><value>—</value></data>
+  <data name="Usage_Unknown" xml:space="preserve"><value>未知</value></data>
+  <data name="Usage_Selected" xml:space="preserve"><value>已选择</value></data>
+  <data name="Usage_SelectedSessionsFormat" xml:space="preserve"><value>已选择 {0} 个会话</value></data>
+  <data name="Usage_RemoveFilterFormat" xml:space="preserve"><value>移除筛选器 {0}</value></data>
+  <data name="Usage_ClearFilters" xml:space="preserve"><value>清除筛选器</value></data>
+  <data name="Usage_Query_Placeholder" xml:space="preserve"><value>筛选会话，例如 model:gpt-5.1 has:errors minTokens:2000</value></data>
+  <data name="Usage_Query_Label" xml:space="preserve"><value>筛选会话</value></data>
+  <data name="Usage_Query_Help" xml:space="preserve"><value>使用 key:value 形式的条件，例如 agent:、channel:、provider:、model:、tool:、key:、has:errors、has:tools 或 minTokens:。按 Enter 应用。</value></data>
+  <data name="Usage_Query_Apply" xml:space="preserve"><value>应用</value></data>
+  <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>部分筛选器已被忽略</value></data>
+  <data name="Usage_Facet_agent" xml:space="preserve"><value>代理</value></data>
+  <data name="Usage_Facet_channel" xml:space="preserve"><value>频道</value></data>
+  <data name="Usage_Facet_provider" xml:space="preserve"><value>提供商</value></data>
+  <data name="Usage_Facet_model" xml:space="preserve"><value>模型</value></data>
+  <data name="Usage_Facet_tool" xml:space="preserve"><value>工具</value></data>
+  <data name="Usage_Loading" xml:space="preserve"><value>正在加载用量</value></data>
+  <data name="Usage_Empty_Title" xml:space="preserve"><value>暂时还没有可统计的内容</value></data>
+  <data name="Usage_Empty_Message" xml:space="preserve"><value>此日期范围内没有使用记录。开始一段对话，或选择更大的日期范围查看更多历史记录。</value></data>
+  <data name="Usage_Forbidden_Title" xml:space="preserve"><value>查看用量需要读取权限</value></data>
+  <data name="Usage_Forbidden_Message" xml:space="preserve"><value>此连接没有 operator.read 范围。请使用读取权限重新配对以查看用量。</value></data>
+  <data name="Usage_Legacy_Title" xml:space="preserve"><value>按会话用量不可用</value></data>
+  <data name="Usage_Legacy_Message" xml:space="preserve"><value>此网关仅报告每日费用。请更新网关以查看会话、模型、活动和详细信息。</value></data>
+  <data name="Usage_Error_Title" xml:space="preserve"><value>无法加载用量</value></data>
+  <data name="Usage_Error_Message" xml:space="preserve"><value>网关未返回用量。请重试。</value></data>
+  <data name="Usage_Error_MessageFormat" xml:space="preserve"><value>网关报告：{0}</value></data>
+  <data name="Usage_Retry" xml:space="preserve"><value>重试</value></data>
+  <data name="Usage_Partial_Title" xml:space="preserve"><value>部分结果</value></data>
+  <data name="Usage_Partial_Message" xml:space="preserve"><value>网关提前停止读取用量。合计仅包含已读取的部分。</value></data>
+  <data name="Usage_Cache_Title" xml:space="preserve"><value>正在更新</value></data>
+  <data name="Usage_Cache_Checking" xml:space="preserve"><value>用量数据可能不完整。正在自动检查更新的合计。</value></data>
+  <data name="Usage_Cache_Paused" xml:space="preserve"><value>用量数据可能不完整。自动检查已暂停；请选择“刷新”再次检查。</value></data>
+  <data name="Usage_Daily_TokensTitle" xml:space="preserve"><value>每日令牌用量</value></data>
+  <data name="Usage_Daily_CostTitle" xml:space="preserve"><value>每日费用</value></data>
+  <data name="Usage_Daily_Total" xml:space="preserve"><value>合计</value></data>
+  <data name="Usage_Daily_ByType" xml:space="preserve"><value>按类型</value></data>
+  <data name="Usage_Daily_ByProvider" xml:space="preserve"><value>按提供商</value></data>
+  <data name="Usage_Daily_ModeLabel" xml:space="preserve"><value>每日图表细分</value></data>
+  <data name="Usage_Daily_Other" xml:space="preserve"><value>其他</value></data>
+  <data name="Usage_Daily_Empty" xml:space="preserve"><value>此期间没有每日用量。</value></data>
+  <data name="Usage_Daily_Hint" xml:space="preserve"><value>选择某一天进行筛选。按住 Ctrl 单击可添加更多天。</value></data>
+  <data name="Usage_Daily_BarFormat" xml:space="preserve"><value>{0}：{1} 个令牌，{2}</value></data>
+  <data name="Usage_Daily_PendingFormat" xml:space="preserve"><value>{0}：尚未加载</value></data>
+  <data name="Usage_Daily_NotLoaded" xml:space="preserve"><value>尚未加载</value></data>
+  <data name="Usage_Daily_ShowTable" xml:space="preserve"><value>以表格显示每日数值</value></data>
+  <data name="Usage_Table_Date" xml:space="preserve"><value>日期</value></data>
+  <data name="Usage_Breakdown_TokensTitle" xml:space="preserve"><value>按类型的令牌</value></data>
+  <data name="Usage_Breakdown_CostTitle" xml:space="preserve"><value>按类型的费用</value></data>
+  <data name="Usage_Type_Output" xml:space="preserve"><value>输出</value></data>
+  <data name="Usage_Type_Input" xml:space="preserve"><value>输入</value></data>
+  <data name="Usage_Type_CacheWrite" xml:space="preserve"><value>缓存写入</value></data>
+  <data name="Usage_Type_CacheRead" xml:space="preserve"><value>缓存读取</value></data>
+  <data name="Usage_CostWindows_Title" xml:space="preserve"><value>费用时间窗</value></data>
+  <data name="Usage_CostWindows_SubtitleFormat" xml:space="preserve"><value>截至 {0} 的合计</value></data>
+  <data name="Usage_CostWindows_SelectedRange" xml:space="preserve"><value>所选范围</value></data>
+  <data name="Usage_CostWindows_LastDaysFormat" xml:space="preserve"><value>最近 {0} 天</value></data>
+  <data name="Usage_CostWindows_PerDayFormat" xml:space="preserve"><value>每天 {0}</value></data>
+  <data name="Usage_Overview_Title" xml:space="preserve"><value>用量概览</value></data>
+  <data name="Usage_Overview_Messages" xml:space="preserve"><value>消息</value></data>
+  <data name="Usage_Overview_MessagesSubFormat" xml:space="preserve"><value>{0} 条用户 · {1} 条助手</value></data>
+  <data name="Usage_Overview_Throughput" xml:space="preserve"><value>吞吐量</value></data>
+  <data name="Usage_Overview_ThroughputHint" xml:space="preserve"><value>每分钟活跃会话时间的令牌数。</value></data>
+  <data name="Usage_Overview_TokensPerMinuteFormat" xml:space="preserve"><value>{0} 令牌/分钟</value></data>
+  <data name="Usage_Overview_CostPerMinuteFormat" xml:space="preserve"><value>每分钟 {0}</value></data>
+  <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>工具调用</value></data>
+  <data name="Usage_Overview_ToolsUsedFormat" xml:space="preserve"><value>使用了 {0} 个工具</value></data>
+  <data name="Usage_Overview_AvgTokens" xml:space="preserve"><value>每条消息平均令牌</value></data>
+  <data name="Usage_Overview_AcrossMessagesFormat" xml:space="preserve"><value>共 {0} 条消息</value></data>
+  <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>缓存命中率</value></data>
+  <data name="Usage_Overview_CacheSubFormat" xml:space="preserve"><value>{0} 已缓存 · {1} 提示</value></data>
+  <data name="Usage_Overview_CacheHint" xml:space="preserve"><value>来自缓存的提示令牌比例：缓存读取除以输入加缓存读取和写入。</value></data>
+  <data name="Usage_Overview_ErrorRate" xml:space="preserve"><value>错误率</value></data>
+  <data name="Usage_Overview_ErrorHint" xml:space="preserve"><value>错误数除以范围内的所有消息数。</value></data>
+  <data name="Usage_Overview_ErrorSubFormat" xml:space="preserve"><value>错误：{0} · 平均会话 {1}</value></data>
+  <data name="Usage_Overview_AvgCost" xml:space="preserve"><value>每条消息平均费用</value></data>
+  <data name="Usage_Overview_AvgCostHint" xml:space="preserve"><value>总费用除以范围内的消息数。</value></data>
+  <data name="Usage_Overview_AvgCostHintMissing" xml:space="preserve"><value>总费用除以消息数。部分用量没有已知价格，因此可能低于实际。</value></data>
+  <data name="Usage_Overview_TotalCostFormat" xml:space="preserve"><value>合计 {0}</value></data>
+  <data name="Usage_Overview_Sessions" xml:space="preserve"><value>会话</value></data>
+  <data name="Usage_Overview_SessionsInRangeFormat" xml:space="preserve"><value>共 {0} 个在范围内</value></data>
+  <data name="Usage_Overview_Errors" xml:space="preserve"><value>错误</value></data>
+  <data name="Usage_Overview_ToolResultsFormat" xml:space="preserve"><value>{0} 个工具结果</value></data>
+  <data name="Usage_Overview_TopModels" xml:space="preserve"><value>主要模型</value></data>
+  <data name="Usage_Overview_TopProviders" xml:space="preserve"><value>主要提供商</value></data>
+  <data name="Usage_Overview_TopTools" xml:space="preserve"><value>主要工具</value></data>
+  <data name="Usage_Overview_TopAgents" xml:space="preserve"><value>主要代理</value></data>
+  <data name="Usage_Overview_TopChannels" xml:space="preserve"><value>主要频道</value></data>
+  <data name="Usage_Overview_PeakErrorDays" xml:space="preserve"><value>错误高峰日</value></data>
+  <data name="Usage_Overview_PeakErrorHours" xml:space="preserve"><value>错误高峰时段</value></data>
+  <data name="Usage_Overview_NoModelData" xml:space="preserve"><value>没有模型数据</value></data>
+  <data name="Usage_Overview_NoProviderData" xml:space="preserve"><value>没有提供商数据</value></data>
+  <data name="Usage_Overview_NoToolCalls" xml:space="preserve"><value>没有工具调用</value></data>
+  <data name="Usage_Overview_NoAgentData" xml:space="preserve"><value>没有代理数据</value></data>
+  <data name="Usage_Overview_NoChannelData" xml:space="preserve"><value>没有频道数据</value></data>
+  <data name="Usage_Overview_NoErrorData" xml:space="preserve"><value>没有错误数据</value></data>
+  <data name="Usage_Overview_Unpriced" xml:space="preserve"><value>未定价</value></data>
+  <data name="Usage_Overview_CallsFormat" xml:space="preserve"><value>{0} 次调用</value></data>
+  <data name="Usage_Overview_MessagesCountFormat" xml:space="preserve"><value>{0} 条消息</value></data>
+  <data name="Usage_Overview_ErrorsCountFormat" xml:space="preserve"><value>{0} 个错误</value></data>
+  <data name="Usage_Activity_CellFormat" xml:space="preserve"><value>{0}：{1} 个令牌</value></data>
+  <data name="Usage_Mosaic_Title" xml:space="preserve"><value>按时间的活动</value></data>
+  <data name="Usage_Mosaic_SubtitleFormat" xml:space="preserve"><value>根据会话活动估算。时区：{0}。</value></data>
+  <data name="Usage_Mosaic_NoTimeline" xml:space="preserve"><value>估算需要会话时间戳。</value></data>
+  <data name="Usage_Mosaic_Weekdays" xml:space="preserve"><value>按星期几</value></data>
+  <data name="Usage_Mosaic_Hours" xml:space="preserve"><value>按一天中的小时。选择某个小时进行筛选。</value></data>
+  <data name="Usage_Mosaic_Hint" xml:space="preserve"><value>颜色越深表示令牌越多</value></data>
+  <data name="Usage_Mosaic_PeakHourFormat" xml:space="preserve"><value>高峰时段 {0}</value></data>
+  <data name="Usage_Mosaic_PeakDayFormat" xml:space="preserve"><value>最忙的一天：{0}</value></data>
+  <data name="Usage_Heatmap_Title" xml:space="preserve"><value>每日活动</value></data>
+  <data name="Usage_Heatmap_SubtitleFormat" xml:space="preserve"><value>{0} 个活跃日</value></data>
+  <data name="Usage_Heatmap_CellFormat" xml:space="preserve"><value>{0}：{1} 个令牌</value></data>
+  <data name="Usage_Heatmap_Less" xml:space="preserve"><value>较少</value></data>
+  <data name="Usage_Heatmap_More" xml:space="preserve"><value>较多</value></data>
+  <data name="Usage_Providers_Title" xml:space="preserve"><value>提供商用量</value></data>
+  <data name="Usage_Providers_Subtitle" xml:space="preserve"><value>各提供商报告的计划、配额和账单。与会话用量分开。</value></data>
+  <data name="Usage_Providers_Loading" xml:space="preserve"><value>正在加载提供商用量</value></data>
+  <data name="Usage_Providers_Empty" xml:space="preserve"><value>没有提供商报告计划用量。</value></data>
+  <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>提供商用量不可用。</value></data>
+  <data name="Usage_Providers_Stalled" xml:space="preserve"><value>无法刷新提供商用量。正在显示上次的报告。</value></data>
+  <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>正在刷新提供商用量。</value></data>
+  <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>未报告配额信息。</value></data>
+  <data name="Usage_Providers_UsedFormat" xml:space="preserve"><value>已用 {0}</value></data>
+  <data name="Usage_Providers_ResetsFormat" xml:space="preserve"><value>{0} 后重置</value></data>
+  <data name="Usage_Providers_ResetNow" xml:space="preserve"><value>正在重置</value></data>
+  <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0}，共 {1}</value></data>
+  <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1}（额度）</value></data>
+  <data name="Usage_Providers_CostHistoryFormat" xml:space="preserve"><value>最近 {1} 天计费 {0}</value></data>
+  <data name="Usage_Providers_Billing_balance" xml:space="preserve"><value>余额</value></data>
+  <data name="Usage_Providers_Billing_spend" xml:space="preserve"><value>支出</value></data>
+  <data name="Usage_Providers_Billing_budget" xml:space="preserve"><value>预算</value></data>
+  <data name="Usage_Sessions_Title" xml:space="preserve"><value>会话</value></data>
+  <data name="Usage_Sessions_SubtitleFormat" xml:space="preserve"><value>会话：{0} · 平均 {1} · 错误：{2}</value></data>
+  <data name="Usage_Sessions_View" xml:space="preserve"><value>会话列表</value></data>
+  <data name="Usage_Sessions_All" xml:space="preserve"><value>全部</value></data>
+  <data name="Usage_Sessions_Recent" xml:space="preserve"><value>最近查看</value></data>
+  <data name="Usage_Sessions_Sort" xml:space="preserve"><value>排序会话</value></data>
+  <data name="Usage_Sort_Cost" xml:space="preserve"><value>费用最高</value></data>
+  <data name="Usage_Sort_Errors" xml:space="preserve"><value>错误最多</value></data>
+  <data name="Usage_Sort_Messages" xml:space="preserve"><value>消息最多</value></data>
+  <data name="Usage_Sort_Recent" xml:space="preserve"><value>最近</value></data>
+  <data name="Usage_Sort_Tokens" xml:space="preserve"><value>令牌最多</value></data>
+  <data name="Usage_Sessions_Ascending" xml:space="preserve"><value>升序排序</value></data>
+  <data name="Usage_Sessions_Descending" xml:space="preserve"><value>降序排序</value></data>
+  <data name="Usage_Sessions_ClearSelection" xml:space="preserve"><value>清除选择</value></data>
+  <data name="Usage_Sessions_SelectedFormat" xml:space="preserve"><value>已选择 ({0})</value></data>
+  <data name="Usage_Sessions_NoneInRange" xml:space="preserve"><value>范围内没有会话</value></data>
+  <data name="Usage_Sessions_NoRecent" xml:space="preserve"><value>没有最近查看的会话</value></data>
+  <data name="Usage_Sessions_ShowAllFormat" xml:space="preserve"><value>显示全部 {0} 个</value></data>
+  <data name="Usage_Sessions_ShowTopFormat" xml:space="preserve"><value>显示前 {0} 个</value></data>
+  <data name="Usage_Sessions_PageFormat" xml:space="preserve"><value>第 {0} 至 {1} 个，共 {2} 个</value></data>
+  <data name="Usage_Sessions_PreviousPage" xml:space="preserve"><value>上一页</value></data>
+  <data name="Usage_Sessions_NextPage" xml:space="preserve"><value>下一页</value></data>
+  <data name="Usage_Sessions_Computing" xml:space="preserve"><value>正在计算</value></data>
+  <data name="Usage_Sessions_ToolsFormat" xml:space="preserve"><value>{0} 个工具</value></data>
+  <data name="Usage_Sessions_InstancesFormat" xml:space="preserve"><value>{0} 个实例</value></data>
+  <data name="Usage_Sessions_AgentFormat" xml:space="preserve"><value>代理 {0}</value></data>
+  <data name="Usage_Sessions_CopyKey" xml:space="preserve"><value>复制会话密钥</value></data>
+  <data name="Usage_Sessions_SelectHint" xml:space="preserve"><value>选择以查看详细信息。按住 Ctrl 单击可比较多个会话。</value></data>
+  <data name="Usage_Details_Close" xml:space="preserve"><value>关闭详细信息</value></data>
+  <data name="Usage_Details_Filtered" xml:space="preserve"><value>（已筛选）</value></data>
+  <data name="Usage_Details_AccessibleFormat" xml:space="preserve"><value>{0} 的详细信息</value></data>
+  <data name="Usage_Details_FamilyFormat" xml:space="preserve"><value>包含此沿袭中的 {0} 个会话实例。</value></data>
+  <data name="Usage_Details_Summary" xml:space="preserve"><value>会话摘要</value></data>
+  <data name="Usage_Details_LoadFailedTitle" xml:space="preserve"><value>部分详细信息无法加载</value></data>
+  <data name="Usage_Details_LoadFailedFormat" xml:space="preserve"><value>无法加载{0}：{1}</value></data>
+  <data name="Usage_Details_TokenSplitFormat" xml:space="preserve"><value>输入 {0} · 输出 {1}</value></data>
+  <data name="Usage_Details_MissingCostFormat" xml:space="preserve"><value>{0} 个条目没有价格</value></data>
+  <data name="Usage_Details_Duration" xml:space="preserve"><value>持续时间</value></data>
+  <data name="Usage_Details_ActivityFormat" xml:space="preserve"><value>{0} 至 {1}</value></data>
+  <data name="Usage_Details_Latency" xml:space="preserve"><value>响应时间</value></data>
+  <data name="Usage_Details_LatencySubFormat" xml:space="preserve"><value>第 95 百分位 {0}</value></data>
+  <data name="Usage_Details_StartedByFormat" xml:space="preserve"><value>由 {0} 发起</value></data>
+  <data name="Usage_Details_ModelMix" xml:space="preserve"><value>模型构成</value></data>
+  <data name="Usage_Details_UsageOverTime" xml:space="preserve"><value>用量随时间变化</value></data>
+  <data name="Usage_Details_TimelineMode" xml:space="preserve"><value>时间线模式</value></data>
+  <data name="Usage_Details_Cumulative" xml:space="preserve"><value>累计</value></data>
+  <data name="Usage_Details_PerTurn" xml:space="preserve"><value>每轮</value></data>
+  <data name="Usage_Details_LoadingTimeline" xml:space="preserve"><value>正在加载随时间的用量</value></data>
+  <data name="Usage_Details_NoTimeline" xml:space="preserve"><value>此会话没有用量样本。</value></data>
+  <data name="Usage_Details_Unavailable" xml:space="preserve"><value>由于某个响应在最终用量到达前结束，令牌用量和费用未知。请选择未受影响的会话查看其用量。</value></data>
+  <data name="Usage_Details_PointFormat" xml:space="preserve"><value>{0}：{1} 个令牌，{2}</value></data>
+  <data name="Usage_Details_TurnsFormat" xml:space="preserve"><value>{0} 个样本</value></data>
+  <data name="Usage_Details_Context" xml:space="preserve"><value>上下文构成</value></data>
+  <data name="Usage_Details_LoadingContext" xml:space="preserve"><value>正在加载上下文</value></data>
+  <data name="Usage_Details_NoContext" xml:space="preserve"><value>此会话没有上下文报告。</value></data>
+  <data name="Usage_Details_ContextOfInputFormat" xml:space="preserve"><value>约占输入的 {0}</value></data>
+  <data name="Usage_Details_BaseContextPerMessage" xml:space="preserve"><value>每条消息发送的基础上下文</value></data>
+  <data name="Usage_Details_ApproxTokensFormat" xml:space="preserve"><value>约 {0} 个令牌</value></data>
+  <data name="Usage_Details_Unmeasured" xml:space="preserve"><value>未测量</value></data>
+  <data name="Usage_Details_Context_System" xml:space="preserve"><value>系统</value></data>
+  <data name="Usage_Details_Context_Skills" xml:space="preserve"><value>技能</value></data>
+  <data name="Usage_Details_Context_Tools" xml:space="preserve"><value>工具</value></data>
+  <data name="Usage_Details_Context_Files" xml:space="preserve"><value>文件</value></data>
+  <data name="Usage_Details_Conversation" xml:space="preserve"><value>对话</value></data>
+  <data name="Usage_Details_LoadingConversation" xml:space="preserve"><value>正在加载对话</value></data>
+  <data name="Usage_Details_MessageCountFormat" xml:space="preserve"><value>{0} / {1} 条消息</value></data>
+  <data name="Usage_Details_RoleFilter" xml:space="preserve"><value>按角色筛选</value></data>
+  <data name="Usage_Details_Role_All" xml:space="preserve"><value>所有角色</value></data>
+  <data name="Usage_Details_Role_user" xml:space="preserve"><value>你</value></data>
+  <data name="Usage_Details_Role_assistant" xml:space="preserve"><value>助手</value></data>
+  <data name="Usage_Details_Role_tool" xml:space="preserve"><value>工具</value></data>
+  <data name="Usage_Details_Role_toolResult" xml:space="preserve"><value>工具结果</value></data>
+  <data name="Usage_Details_ToolFilter" xml:space="preserve"><value>按工具筛选</value></data>
+  <data name="Usage_Details_AllTools" xml:space="preserve"><value>所有工具</value></data>
+  <data name="Usage_Details_HasTools" xml:space="preserve"><value>包含工具</value></data>
+  <data name="Usage_Details_Search" xml:space="preserve"><value>搜索对话</value></data>
+  <data name="Usage_Details_SearchPlaceholder" xml:space="preserve"><value>搜索消息</value></data>
+  <data name="Usage_Details_NoMessages" xml:space="preserve"><value>没有消息</value></data>
+  <data name="Usage_Details_NoMessagesMatch" xml:space="preserve"><value>没有符合筛选条件的消息。</value></data>
+  <data name="Usage_Details_NoMatchingUsage" xml:space="preserve"><value>此会话没有符合当前筛选条件的用量。</value></data>
+  <data name="Usage_Creators_SessionsFormatOne" xml:space="preserve"><value>{0} 个会话</value></data>
+  <data name="Usage_SelectedSessionsFormatOne" xml:space="preserve"><value>已选择 {0} 个会话</value></data>
+  <data name="Usage_Overview_ToolsUsedFormatOne" xml:space="preserve"><value>使用了 {0} 个工具</value></data>
+  <data name="Usage_Overview_AcrossMessagesFormatOne" xml:space="preserve"><value>共 {0} 条消息</value></data>
+  <data name="Usage_Overview_CallsFormatOne" xml:space="preserve"><value>{0} 次调用</value></data>
+  <data name="Usage_Overview_MessagesCountFormatOne" xml:space="preserve"><value>{0} 条消息</value></data>
+  <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} 个错误</value></data>
+  <data name="Usage_Sessions_ToolsFormatOne" xml:space="preserve"><value>{0} 个工具</value></data>
+  <data name="Usage_Sessions_InstancesFormatOne" xml:space="preserve"><value>{0} 个实例</value></data>
+  <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} 个条目没有价格</value></data>
+  <data name="Usage_Details_TurnsFormatOne" xml:space="preserve"><value>{0} 个样本</value></data>
+  <data name="Usage_Basic_Title" xml:space="preserve"><value>部分筛选需要更新版本的网关</value></data>
+  <data name="Usage_Basic_Message" xml:space="preserve"><value>此网关提供总计、图表和会话。更新网关后即可按文本、代理、模型、日期或小时筛选，对会话排序和分页，并查看按小时的活动。</value></data>
+  <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>最新的在前</value></data>
+  <data name="Usage_Subtitle" xml:space="preserve"><value>各会话的令牌用量和费用。</value></data>
+  <data name="Usage_ReportingRange" xml:space="preserve"><value>报告范围</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>此范围内有 {0} 个会话</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>此范围内有 {0} 个会话</value></data>
+  <data name="Usage_Filter_Tip" xml:space="preserve"><value>提示：使用筛选或选择图表中的柱形来缩小日期范围。</value></data>
+  <data name="Usage_Creators_Identity" xml:space="preserve"><value>身份</value></data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>节点沙盒</value>
   </data>

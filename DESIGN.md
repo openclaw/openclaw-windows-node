@@ -68,6 +68,13 @@ colors:
   chatReadAloudText: rgba(0,0,0,0.43372549)
   chatUser: rgba(0,103,192,0.08)
   chatUserText: "#000000e4"
+  usageChartCacheRead: "#99ebff"
+  usagePalette1: "#005fb8"
+  usagePalette2: "#038387"
+  usagePalette3: "#8764b8"
+  usagePalette4: "#ca5010"
+  usagePalette5: "#c239b3"
+  usagePalette6: "#107c10"
   chatActionDisabled: "#00000037"
   chatActionDisabledText: "#ffffff"
   chatActionHover: "#0067c0e6"
@@ -724,6 +731,38 @@ x-colophon:
       chatUserText:
         resource: ChatUserTextBrush
         themes: { dark: "#ffffff", highContrast: "#000000" }
+      usageChartCacheRead:
+        resource: UsageChartCacheReadBrush
+        themes: { dark: "#005fb8", highContrast: "#3ff23f" }
+        usage: Usage chart cache-read series. SystemAccentColorLight2 in light and SystemAccentColorDark1 in dark, the accent shade opposite AccentFillColorDefault so stacked series stay distinct; SystemColorGrayTextColor in high contrast. Other series bind accent, success, caution, critical and tertiary-text fills. Every chart also has a text or list equivalent.
+      usagePalette1:
+        resource: UsagePalette1Brush
+        themes: { dark: "#99ebff", highContrast: "#1aebff" }
+        usage: Usage page categorical slot 1 and data/selection accent. Follows the user's accent (SystemAccentColorDark1 light, Light2 dark); SystemColorHighlightColor keeps charts and selection marks visible in high contrast, where native button accent fills can match the plot background. Each palette slot has a matching UsagePaletteNTintBrush at 16% for badges, avatars and statistics; high-contrast tints use SystemColorWindowColor.
+      usageActivityText:
+        resource: UsageActivityTextBrush
+        themes: { dark: "#000000", highContrast: "#000000" }
+        usage: Text on filled weekday tiles. Uses native TextOnAccentFillColorPrimary normally and SystemColorHighlightTextColor in high contrast. UsageActivityMinimumOpacity keeps the normal 0.18 intensity floor but uses 1 in high contrast, preserving an opaque Highlight/HighlightText pair and full-opacity labels.
+      usagePalette2:
+        resource: UsagePalette2Brush
+        themes: { dark: "#4fc3c7", highContrast: "#8080ff" }
+        usage: Usage categorical teal. Agents, models, providers, channels and tools keep one slot page-wide (stable name hash); stacked provider series move to the next free slot on collision. High contrast uses SystemColorHotlightColor.
+      usagePalette3:
+        resource: UsagePalette3Brush
+        themes: { dark: "#b4a0ff", highContrast: "#ffffff" }
+        usage: Usage categorical purple. High contrast uses SystemColorWindowTextColor.
+      usagePalette4:
+        resource: UsagePalette4Brush
+        themes: { dark: "#f7894a", highContrast: "#1aebff" }
+        usage: Usage categorical orange. High contrast uses SystemColorHighlightColor.
+      usagePalette5:
+        resource: UsagePalette5Brush
+        themes: { dark: "#ee7ae3", highContrast: "#8080ff" }
+        usage: Usage categorical magenta. High contrast uses SystemColorHotlightColor.
+      usagePalette6:
+        resource: UsagePalette6Brush
+        themes: { dark: "#6ccb5f", highContrast: "#ffffff" }
+        usage: Usage categorical green, also the cost color. Color never carries meaning alone; labels and values sit beside every swatch. High contrast uses SystemColorWindowTextColor.
       chatActionDisabled:
         resource: AccentButtonBackgroundDisabled
         themes: { dark: "#ffffff28", highContrast: "#000000" }

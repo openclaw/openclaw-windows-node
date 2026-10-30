@@ -14,7 +14,7 @@ internal static class Program
             return await ListenForControlAsync(int.Parse(args[1]), args[2]);
         if (args.Length == 0 || args.Contains("--help"))
         {
-            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|chat-interactive|context-usage-snapshots] [--interaction <name>] [--artifacts <directory>] [--duration-seconds <1..86400>] [--browser-proxy] [--browser-proxy-foreign]");
+            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|chat-interactive|context-usage-snapshots|usage-analytics] [--interaction <name>] [--usage-mode populated|empty|partial|legacy|released] [--artifacts <directory>] [--duration-seconds <1..86400>] [--browser-proxy] [--browser-proxy-foreign]");
             Console.WriteLine("Starts a synthetic Gateway and an isolated real app. Ctrl+C stops only this run.");
             return args.Length == 0 ? 2 : 0;
         }
@@ -23,6 +23,7 @@ internal static class Program
         int? durationSeconds = null;
         var scenarioName = GatewayScenario.BrowseName;
         string? interaction = null;
+        UsageAnalyticsMode? usageMode = null;
         var enableNodeBrowserProxy = false;
         var foreignBrowserControl = false;
         for (var index = 0; index < args.Length; index++)
@@ -38,7 +39,7 @@ internal static class Program
                 foreignBrowserControl = true;
                 continue;
             }
-            if (index + 1 >= args.Length || args[index] is not ("--app" or "--artifacts" or "--duration-seconds" or "--scenario" or "--interaction"))
+            if (index + 1 >= args.Length || args[index] is not ("--app" or "--artifacts" or "--duration-seconds" or "--scenario" or "--interaction" or "--usage-mode"))
             {
                 Console.Error.WriteLine($"Unknown or incomplete option: {args[index]}");
                 return 2;
@@ -47,6 +48,15 @@ internal static class Program
             else if (args[index] == "--artifacts") artifacts = args[++index];
             else if (args[index] == "--scenario") scenarioName = args[++index];
             else if (args[index] == "--interaction") interaction = args[++index];
+            else if (args[index] == "--usage-mode")
+            {
+                if (!Enum.TryParse<UsageAnalyticsMode>(args[++index], ignoreCase: true, out var mode) || !Enum.IsDefined(mode))
+                {
+                    Console.Error.WriteLine("--usage-mode must be populated, empty, partial, legacy or released.");
+                    return 2;
+                }
+                usageMode = mode;
+            }
             else if (int.TryParse(args[++index], out var duration) && duration is >= 1 and <= 86400)
                 durationSeconds = duration;
             else
@@ -60,7 +70,8 @@ internal static class Program
             Console.Error.WriteLine("--app is required. The installed app is never selected implicitly.");
             return 2;
         }
-        if (scenarioName is not (GatewayScenario.BrowseName or GatewayScenario.InteractiveName or ContextUsageFixture.Name))
+        if (scenarioName is not (GatewayScenario.BrowseName or GatewayScenario.InteractiveName or ContextUsageFixture.Name
+            or UsageAnalyticsFixture.Name))
         {
             Console.Error.WriteLine("Unknown fixture scenario.");
             return 2;
@@ -74,6 +85,12 @@ internal static class Program
             var scenario = usage is null ? GatewayScenario.LoadBuiltin(scenarioName) : GatewayScenario.CreateContextUsage(usage);
             if (interaction is not null && (!scenario.IsInteractive || !FixturePlayback.Scenarios.Contains(interaction)))
                 throw new ArgumentException("--interaction requires chat-interactive and a supported interaction name.");
+            if (usageMode is { } initialMode)
+            {
+                if (scenario.Name != UsageAnalyticsFixture.Name)
+                    throw new ArgumentException("--usage-mode requires usage-analytics.");
+                scenario.UsageAnalytics.Mode = initialMode;
+            }
             await using var run = await GatewayFixtureRun.StartAsync(
                 appPath, artifacts, stop.Token,
                 enableNodeBrowserProxy: enableNodeBrowserProxy,
@@ -102,6 +119,12 @@ internal static class Program
                 Console.WriteLine($"Send exactly '{ContextUsageFixture.FirstPrompt}', then '{ContextUsageFixture.SecondPrompt}' in the app.");
                 Console.WriteLine("After those replies, enter host console commands: missing-total, lower800, lower600, delayed1200. 'stop' ends this run.");
                 controls = Task.Run(() => ReadUsageControlsAsync(run, usage, stop));
+            }
+            else if (scenario.Name == UsageAnalyticsFixture.Name)
+            {
+                await run.InvokeAsync("app.navigate", new { page = "usage" });
+                Console.WriteLine("Synthetic usage analytics. Enter populated, empty, partial, legacy or released to switch replies. 'stop' ends this run.");
+                controls = Task.Run(() => ReadUsageAnalyticsControlsAsync(scenario.UsageAnalytics, stop));
             }
             if (durationSeconds is { } seconds)
                 stop.CancelAfter(TimeSpan.FromSeconds(seconds));
@@ -199,6 +222,29 @@ internal static class Program
         {
             Console.Error.WriteLine($"Fixture control rejected: {ex.Message}");
         }
+    }
+
+    private static async Task ReadUsageAnalyticsControlsAsync(UsageAnalyticsFixture usage, CancellationTokenSource stop)
+    {
+        try
+        {
+            while (!stop.IsCancellationRequested &&
+                await Console.In.ReadLineAsync(stop.Token) is { } command)
+            {
+                if (command == "stop") { stop.Cancel(); return; }
+                if (!Enum.TryParse<UsageAnalyticsMode>(command, ignoreCase: true, out var mode) || !Enum.IsDefined(mode))
+                {
+                    Console.WriteLine("Unknown fixture control. No state changed.");
+                    continue;
+                }
+                var leavingLegacy = usage.Mode == UsageAnalyticsMode.Legacy && mode != UsageAnalyticsMode.Legacy;
+                usage.Mode = mode;
+                Console.WriteLine(leavingLegacy
+                    ? $"Usage fixture mode: {mode}. The app caches unknown methods per connection: reconnect from Connection settings, then refresh Usage."
+                    : $"Usage fixture mode: {mode}. Select Refresh on the Usage page.");
+            }
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
     }
 
     private static async Task ReadUsageControlsAsync(GatewayFixtureRun run, ContextUsageFixture usage,
