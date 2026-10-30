@@ -6137,6 +6137,12 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
     <value>En attente de la confirmation par la passerelle que le canal est en cours d’exécution…</value>
   </data>
+  <data name="ConnectionPage_RelayTrustWarning.Title" xml:space="preserve">
+    <value>Le relais WSL n'a pas pu être vérifié</value>
+  </data>
+  <data name="ConnectionPage_RelayTrustWarning_Format" xml:space="preserve">
+    <value>Windows n'a pas pu vérifier entièrement le relais WSL (wslrelay.exe) qui transmet cette connexion à la passerelle. OpenClaw s'est connecté car la distribution WSL gérée a confirmé qu'elle possède le port de la passerelle. Raison : {0}</value>
+  </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
     <value>Passerelle WSL</value>
   </data>

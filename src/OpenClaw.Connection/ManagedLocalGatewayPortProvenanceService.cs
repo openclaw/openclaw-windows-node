@@ -53,6 +53,11 @@ internal readonly record struct WslRelayTrustResult(bool IsTrusted, string? Deta
 
 internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGatewayPortPlatform
 {
+    private const string WslRelayFileName = "wslrelay.exe";
+    private const string WslDeploymentFolderName = "WSL";
+    private const string System32FolderName = "System32";
+    private const string WindowsAppsFolderName = "WindowsApps";
+
     public WindowsTcpListenerSnapshotResult CaptureListeners() =>
         WindowsTcpListenerSnapshot.Capture();
 
@@ -71,14 +76,14 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
             var fullPath = Path.GetFullPath(processPath);
             var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
             var systemRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-            var canonicalProgramFiles = Path.Combine(programFiles, "WSL", "wslrelay.exe");
-            var canonicalSystem = Path.Combine(systemRoot, "System32", "wslrelay.exe");
-            var windowsAppsRoot = Path.Combine(programFiles, "WindowsApps") + Path.DirectorySeparatorChar;
+            var canonicalProgramFiles = Path.Combine(programFiles, WslDeploymentFolderName, WslRelayFileName);
+            var canonicalSystem = Path.Combine(systemRoot, System32FolderName, WslRelayFileName);
+            var windowsAppsRoot = Path.Combine(programFiles, WindowsAppsFolderName) + Path.DirectorySeparatorChar;
             var isCanonical =
                 string.Equals(fullPath, canonicalProgramFiles, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(fullPath, canonicalSystem, StringComparison.OrdinalIgnoreCase) ||
                 (fullPath.StartsWith(windowsAppsRoot, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(Path.GetFileName(fullPath), "wslrelay.exe", StringComparison.OrdinalIgnoreCase));
+                 string.Equals(Path.GetFileName(fullPath), WslRelayFileName, StringComparison.OrdinalIgnoreCase));
             if (!isCanonical)
             {
                 return WslRelayTrustResult.Rejected(
@@ -253,7 +258,7 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
         var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         if (string.IsNullOrWhiteSpace(windowsDir))
             windowsDir = Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows";
-        return Path.Combine(windowsDir, "System32", "wsl.exe");
+        return Path.Combine(windowsDir, System32FolderName, "wsl.exe");
     }
 }
 
@@ -299,7 +304,7 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 Detail: "Native Gateway ownership must be verified by its Companion runtime, not WSL.");
         }
         var result = InspectCore(record);
-        if (result.Detail is not null && result.Detail.Contains("binary trust is unproven", StringComparison.OrdinalIgnoreCase))
+        if (result.RelayTrustWarning is not null)
         {
             _logger.Warn($"[GatewayPort] {result.Detail}");
         }
@@ -460,11 +465,19 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                     .Where(itemDetail => itemDetail is not null)
                     .Select(itemDetail => itemDetail!)
                     .Distinct(StringComparer.Ordinal));
+            var relayTrustWarnings = classified
+                .Select(item => item.RelayTrustWarning)
+                .OfType<string>()
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
             return first with
             {
                 Detail = string.IsNullOrEmpty(warning)
                     ? $"Expected WSL relay owns loopback port {uri.Port}."
                     : $"Expected WSL relay owns loopback port {uri.Port}. {warning}",
+                RelayTrustWarning = relayTrustWarnings.Length == 0
+                    ? null
+                    : string.Join("; ", relayTrustWarnings),
             };
         }
 
@@ -612,7 +625,8 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 listener.ProcessName,
                 listener.ProcessStartTimeUtc,
                 listener.ProcessPath,
-                Detail: warningDetail);
+                Detail: warningDetail,
+                RelayTrustWarning: warnedRelay ? relayTrust.Detail : null);
         }
 
         var taskName = $"OpenClaw Gateway ({managedDistroName})";

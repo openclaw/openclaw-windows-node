@@ -35,6 +35,11 @@ public enum GatewayEndpointProvenanceFailureReason
 /// Address-specific endpoint provenance. Process/task details are diagnostics only; no credential
 /// material is ever included.
 /// </summary>
+/// <param name="RelayTrustWarning">
+/// Verifier reason when a WSL relay was accepted only because the managed distro confirmed the
+/// gateway while the relay binary trust stayed unproven. Non-null only with
+/// <see cref="GatewayEndpointProvenanceKind.ExpectedManagedGateway"/>. Diagnostic text, no credentials.
+/// </param>
 public sealed record GatewayEndpointProvenance(
     GatewayEndpointProvenanceKind Kind,
     int Port,
@@ -45,4 +50,5 @@ public sealed record GatewayEndpointProvenance(
     string? ScheduledTaskName = null,
     string? Detail = null,
     GatewayEndpointProvenanceFailureReason FailureReason =
-        GatewayEndpointProvenanceFailureReason.None);
+        GatewayEndpointProvenanceFailureReason.None,
+    string? RelayTrustWarning = null);

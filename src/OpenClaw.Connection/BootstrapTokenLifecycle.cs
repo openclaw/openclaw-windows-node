@@ -6,7 +6,8 @@ internal readonly record struct EndpointCredentialAuthorization(
     bool Allowed,
     GatewayErrorKind FailureKind,
     string Detail,
-    EndpointOwnershipProof? OwnershipProof = null)
+    EndpointOwnershipProof? OwnershipProof = null,
+    string? RelayTrustWarning = null)
 {
     internal static EndpointCredentialAuthorization AllowedResult { get; } =
         new(true, GatewayErrorKind.Unknown, string.Empty);

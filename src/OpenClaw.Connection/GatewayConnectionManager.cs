@@ -367,7 +367,8 @@ public sealed class GatewayConnectionManager :
             {
                 GatewayId = record.Id,
                 GatewayUrl = record.Url,
-                GatewayName = record.FriendlyName
+                GatewayName = record.FriendlyName,
+                ManagedRelayTrustWarning = null,
             };
 
             // Per-gateway identity directory — each gateway has its own keypair + tokens
@@ -462,6 +463,11 @@ public sealed class GatewayConnectionManager :
                 EmitStateChanged();
                 return;
             }
+
+            _stateMachine.Current = _stateMachine.Current with
+            {
+                ManagedRelayTrustWarning = endpointAuthorization.RelayTrustWarning,
+            };
 
             // Transition to Connecting
             var prevState = _stateMachine.Current.OverallState;
@@ -650,7 +656,14 @@ public sealed class GatewayConnectionManager :
                             IsAutomaticReconnectAllowed(record.Id),
                         operatorOperationCancellation,
                         cancellationToken,
-                        "operator")
+                        "operator",
+                        observeRelayTrustWarning: warning => ObserveBackgroundFault(
+                            ApplyManagedRelayTrustWarningAsync(
+                                warning,
+                                gen,
+                                record.Id,
+                                operatorOperationCancellation),
+                            "[ConnMgr] Relay trust warning update failed"))
                     .ConfigureAwait(false);
                 if (!authorization.Allowed &&
                     authorization.FailureKind != GatewayErrorKind.Unknown)
@@ -872,7 +885,10 @@ public sealed class GatewayConnectionManager :
         {
             GatewayId = record.Id,
             GatewayUrl = record.Url,
-            GatewayName = record.FriendlyName
+            GatewayName = record.FriendlyName,
+            ManagedRelayTrustWarning = preservesOperatorConnection
+                ? _stateMachine.Current.ManagedRelayTrustWarning
+                : null,
         };
         _stateMachine.SetNodeEnabled(true);
         _stateMachine.StartNodeConnecting();
@@ -935,6 +951,10 @@ public sealed class GatewayConnectionManager :
             return null;
         }
 
+        _stateMachine.Current = _stateMachine.Current with
+        {
+            ManagedRelayTrustWarning = nodeEndpointAuthorization.RelayTrustWarning,
+        };
         _diagnostics.RecordCredentialResolutionResult(nodeCredentialResolution);
         if (!preservesOperatorConnection)
             _stateMachine.SetOperatorCredentialSource(null);
@@ -1145,6 +1165,7 @@ public sealed class GatewayConnectionManager :
         }
         SyncNodeIntentFromSettings();
         _stateMachine.TryTransition(ConnectionTrigger.DisconnectRequested);
+        _stateMachine.Current = _stateMachine.Current with { ManagedRelayTrustWarning = null };
         _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
         EmitStateChanged();
     }
@@ -2489,11 +2510,15 @@ public sealed class GatewayConnectionManager :
             return EndpointCredentialAuthorization.AllowedResult;
         if (!isStrongCredential)
         {
-            // Still populate the shared provenance cache used by Chat/Dashboard, but a device token
-            // does not need the stronger-credential gate.
-            if (_endpointProvenanceProbe is not null)
-                _ = await _endpointProvenanceProbe(record, cancellationToken).ConfigureAwait(false);
-            return EndpointCredentialAuthorization.AllowedResult;
+            if (_endpointProvenanceProbe is null)
+                return EndpointCredentialAuthorization.AllowedResult;
+            // Still populate the shared provenance cache used by Chat/Dashboard; a device token does not
+            // need the stronger-credential gate, but an unproven relay is still surfaced to the UI.
+            var cachedProvenance = await _endpointProvenanceProbe(record, cancellationToken).ConfigureAwait(false);
+            return EndpointCredentialAuthorization.AllowedResult with
+            {
+                RelayTrustWarning = cachedProvenance.RelayTrustWarning,
+            };
         }
         if (_endpointProvenanceProbe is null)
         {
@@ -2506,7 +2531,10 @@ public sealed class GatewayConnectionManager :
         var provenance = await _endpointProvenanceProbe(record, cancellationToken).ConfigureAwait(false);
         if (provenance.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway)
             return EndpointCredentialAuthorization.AllowWithProof(
-                EndpointOwnershipProof.ForManagedGateway(provenance));
+                EndpointOwnershipProof.ForManagedGateway(provenance)) with
+            {
+                RelayTrustWarning = provenance.RelayTrustWarning,
+            };
 
         if (provenance.Kind == GatewayEndpointProvenanceKind.NoListener)
         {
@@ -2530,7 +2558,8 @@ public sealed class GatewayConnectionManager :
         Func<bool> isCurrentAttempt,
         CancellationToken operationCancellationToken,
         CancellationToken handshakeCancellationToken,
-        string role)
+        string role,
+        Action<string?>? observeRelayTrustWarning = null)
     {
         var budget = expectedRecord.NativePackageFamilyName is not null
             ? NativeGatewayEndpointSecurity.CredentialHandoffTimeout : _credentialHandoffTimeout;
@@ -2595,6 +2624,9 @@ public sealed class GatewayConnectionManager :
                     GatewayErrorKind.LocalPortConflict,
                     $"Endpoint ownership changed after preflight, so {role} credentials were not sent.");
             }
+
+            if (authorization.Allowed)
+                observeRelayTrustWarning?.Invoke(authorization.RelayTrustWarning);
 
             return new ReconnectAuthorizationResult(
                 authorization.Allowed,
@@ -2992,6 +3024,42 @@ public sealed class GatewayConnectionManager :
     private void OnNodeTransportConnected(object? sender, EventArgs e)
     {
         _nodeConnectionCoordinator.HandleTransportConnected();
+    }
+
+    /// <summary>
+    /// Publishes the relay-trust warning observed by a live operator credential handoff.
+    /// Runs off the handshake path; superseded or canceled attempts are ignored.
+    /// </summary>
+    private async Task ApplyManagedRelayTrustWarningAsync(
+        string? warning,
+        long expectedLifecycleGeneration,
+        string expectedGatewayId,
+        CancellationToken cancellationToken)
+    {
+        if (!IsCurrentGatewayAttempt(expectedLifecycleGeneration, expectedGatewayId))
+            return;
+        try
+        {
+            await _transitionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        try
+        {
+            if (!IsCurrentGatewayAttempt(expectedLifecycleGeneration, expectedGatewayId) ||
+                string.Equals(_stateMachine.Current.ManagedRelayTrustWarning, warning, StringComparison.Ordinal))
+            {
+                return;
+            }
+            _stateMachine.Current = _stateMachine.Current with { ManagedRelayTrustWarning = warning };
+            EmitStateChanged();
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
     }
 
     private async Task RecordOperatorCredentialHandoffFailureAsync(

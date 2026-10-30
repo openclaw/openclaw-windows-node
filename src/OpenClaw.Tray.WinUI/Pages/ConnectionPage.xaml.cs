@@ -358,6 +358,7 @@ public sealed partial class ConnectionPage : Page
 
         // ─── Status strip ───
         ApplyStripVisuals(plan);
+        ApplyRelayTrustWarning(plan);
         ApplyGatewayHostAccess(plan);
 
         // ─── Cards (only meaningful when we have an operator session
@@ -465,6 +466,21 @@ public sealed partial class ConnectionPage : Page
 
         // Glance chips (presence • channels • $today • topology) — when connected.
         ApplyGlanceChips(plan, hasActive && toggleOn);
+    }
+
+    private void ApplyRelayTrustWarning(ConnectionPagePlan plan)
+    {
+        var detail = plan.RelayTrustWarningDetail;
+        var show = !string.IsNullOrWhiteSpace(detail);
+        if (show)
+        {
+            RelayTrustWarningBar.Message = LocalizationHelper.Format(
+                "ConnectionPage_RelayTrustWarning_Format",
+                detail);
+        }
+        // Toggle Visibility too: a closed InfoBar alone does not reclaim layout space.
+        RelayTrustWarningBar.IsOpen = show;
+        RelayTrustWarningBar.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ApplyGatewayHostAccess(ConnectionPagePlan plan)

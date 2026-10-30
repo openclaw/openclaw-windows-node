@@ -693,6 +693,55 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal("shared-http-token", client.AssistantMediaAuthToken);
     }
 
+    [Theory]
+    [InlineData(CredentialResolver.SourceDeviceToken)]
+    [InlineData(CredentialResolver.SourceSharedGatewayToken)]
+    public async Task ManagedRelayTrustWarning_PublishesOnConnect_RefreshesOnHandoff_ClearsOnDisconnect(
+        string credentialSource)
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-local",
+            Url = "ws://localhost:18789",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            SharedGatewayToken = "shared-http-token",
+        });
+        _registry.SetActive("gw-local");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "operator-token",
+            false,
+            credentialSource);
+        var warned = new GatewayEndpointProvenance(
+            GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+            18789,
+            RelayTrustWarning: "relay unproven");
+        var provenance = warned;
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            endpointProvenanceProbe: (_, _) => Task.FromResult(provenance));
+
+        await manager.ConnectAsync("gw-local");
+        var client = Assert.Single(_factory.CreatedClients);
+        Assert.Equal("relay unproven", manager.CurrentSnapshot.ManagedRelayTrustWarning);
+
+        provenance = new GatewayEndpointProvenance(
+            GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+            18789);
+        Assert.True((await client.DataClient.ReconnectAuthorizationAsync!(CancellationToken.None)).Allowed);
+        await WaitUntilAsync(() => manager.CurrentSnapshot.ManagedRelayTrustWarning is null);
+
+        provenance = warned;
+        Assert.True((await client.DataClient.ReconnectAuthorizationAsync!(CancellationToken.None)).Allowed);
+        await WaitUntilAsync(() => manager.CurrentSnapshot.ManagedRelayTrustWarning == "relay unproven");
+
+        await manager.DisconnectAsync();
+        Assert.Null(manager.CurrentSnapshot.ManagedRelayTrustWarning);
+    }
+
     [Fact]
     public async Task ReconnectAuthorization_RefreshesFallbackDeviceCredential()
     {

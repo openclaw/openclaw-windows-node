@@ -103,6 +103,9 @@ internal static class WindowsAuthenticodeVerifier
     private const int DefaultPackageLookupCacheSeconds = 300;
 
     private const int PackageLookupTimeoutMs = 8_000;
+    private const string WslDeploymentFolderName = "WSL";
+    private const string System32FolderName = "System32";
+    private const string WindowsAppsFolderName = "WindowsApps";
 
     private static readonly object PackageLookupGate = new();
     private static AppxPackageInfo? PackageLookupCache;
@@ -202,9 +205,9 @@ internal static class WindowsAuthenticodeVerifier
 
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         var windowsRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-        var canonicalProgramFiles = Path.Combine(programFiles, "WSL", WslRelayFileName);
-        var canonicalSystem = Path.Combine(windowsRoot, "System32", WslRelayFileName);
-        var windowsAppsRoot = Path.Combine(programFiles, "WindowsApps");
+        var canonicalProgramFiles = Path.Combine(programFiles, WslDeploymentFolderName, WslRelayFileName);
+        var canonicalSystem = Path.Combine(windowsRoot, System32FolderName, WslRelayFileName);
+        var windowsAppsRoot = Path.Combine(programFiles, WindowsAppsFolderName);
         var isWithinWindowsApps = IsPathWithin(fullPath, windowsAppsRoot);
         var isCanonicalExternal =
             string.Equals(fullPath, canonicalProgramFiles, StringComparison.OrdinalIgnoreCase) ||
@@ -418,7 +421,7 @@ internal static class WindowsAuthenticodeVerifier
         var systemRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         if (string.IsNullOrWhiteSpace(systemRoot))
             systemRoot = Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows";
-        return Path.Combine(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+        return Path.Combine(systemRoot, System32FolderName, "WindowsPowerShell", "v1.0", "powershell.exe");
     }
 
     private static AppxPackageInfo? ParseAppxPackageJson(string json)
