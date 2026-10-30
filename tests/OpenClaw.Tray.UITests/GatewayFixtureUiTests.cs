@@ -41,6 +41,9 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.Equal("Customize pages", customize.Current.Name);
             const string draft = "Keep this other conversation draft";
             ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+            await WaitUiAsync(run, () => ComposerText(run) == draft &&
+                FindById(run, "ChatComposerPrimaryAction") is { Current.Name: "Send", Current.IsEnabled: true },
+                "non-main draft acknowledged before native pointer input");
             Assert.Null(FindById(run, $"WorkspaceSession:{GatewayScenario.MainSessionKey}"));
 
             async Task TogglePinAsync(string tag, bool keyboard)
@@ -55,7 +58,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                     await WaitUiAsync(run, () => gear.Current.HasKeyboardFocus, "customize keyboard focus");
                     Send(run, window, " ");
                 }
-                else Invoke(gear);
+                else ClickOwnedElement(run, window, gear);
                 await WaitUiAsync(run, () => FindById(run, $"WorkspacePagesToggle:{tag}") is not null, "customize flyout");
                 foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox" })
                     Assert.Null(FindById(run, $"WorkspacePagesToggle:{excluded}"));
