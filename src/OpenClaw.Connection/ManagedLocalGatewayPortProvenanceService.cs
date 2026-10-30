@@ -40,9 +40,13 @@ internal interface IManagedLocalGatewayPortPlatform
         CancellationToken cancellationToken);
 }
 
-internal readonly record struct WslRelayTrustResult(bool IsTrusted, string? Detail)
+internal readonly record struct WslRelayTrustResult(bool IsTrusted, string? Detail, bool IsWarning = false)
 {
     public static WslRelayTrustResult Trusted() => new(true, null);
+
+    /// <summary>Binary trust could not be fully proven, but the deployment path is canonical.
+    /// Usable only when the managed distro ownership probe independently confirms the gateway.</summary>
+    public static WslRelayTrustResult Warned(string detail) => new(true, detail, true);
 
     public static WslRelayTrustResult Rejected(string detail) => new(false, detail);
 }
@@ -82,10 +86,14 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
             }
 
             var signature = verifySignature(fullPath);
-            return signature.IsTrusted
-                ? WslRelayTrustResult.Trusted()
-                : WslRelayTrustResult.Rejected(
-                    signature.Detail ?? "WSL relay Authenticode verification failed.");
+            if (signature.IsTrusted)
+            {
+                return signature.IsWarning
+                    ? WslRelayTrustResult.Warned(signature.Detail ?? "WSL relay trust could not be fully verified.")
+                    : WslRelayTrustResult.Trusted();
+            }
+            return WslRelayTrustResult.Rejected(
+                signature.Detail ?? "WSL relay Authenticode verification failed.");
         }
         catch
         {
@@ -291,6 +299,10 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 Detail: "Native Gateway ownership must be verified by its Companion runtime, not WSL.");
         }
         var result = InspectCore(record);
+        if (result.Detail is not null && result.Detail.Contains("binary trust is unproven", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.Warn($"[GatewayPort] {result.Detail}");
+        }
         _lastProvenance[new ProvenanceCacheKey(record.Id, record.Url)] = result;
         return result;
     }
@@ -441,7 +453,19 @@ public sealed class ManagedLocalGatewayPortProvenanceService
         if (classified.All(item => item.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway))
         {
             var first = classified[0];
-            return first with { Detail = $"Expected WSL relay owns loopback port {uri.Port}." };
+            var warning = string.Join(
+                " ",
+                classified
+                    .Select(item => item.Detail)
+                    .Where(itemDetail => itemDetail is not null)
+                    .Select(itemDetail => itemDetail!)
+                    .Distinct(StringComparer.Ordinal));
+            return first with
+            {
+                Detail = string.IsNullOrEmpty(warning)
+                    ? $"Expected WSL relay owns loopback port {uri.Port}."
+                    : $"Expected WSL relay owns loopback port {uri.Port}. {warning}",
+            };
         }
 
         if (classified.All(item => item.Kind == GatewayEndpointProvenanceKind.ConflictingOpenClawGateway) &&
@@ -575,15 +599,20 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             relayPath is not null &&
             relayTrustByPath.TryGetValue(relayPath, out relayTrust);
         var trustedRelay = hasRelayTrust && relayTrust.IsTrusted;
+        var warnedRelay = hasRelayTrust && relayTrust.IsWarning;
         if (isWslRelay && trustedRelay && expectedDistroListening)
         {
+            var warningDetail = warnedRelay
+                ? $"Expected WSL relay owns loopback port {port}, but binary trust is unproven: {relayTrust.Detail}."
+                : null;
             return new GatewayEndpointProvenance(
                 GatewayEndpointProvenanceKind.ExpectedManagedGateway,
                 port,
                 listener.ProcessId,
                 listener.ProcessName,
                 listener.ProcessStartTimeUtc,
-                listener.ProcessPath);
+                listener.ProcessPath,
+                Detail: warningDetail);
         }
 
         var taskName = $"OpenClaw Gateway ({managedDistroName})";
@@ -606,7 +635,9 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 : !trustedRelay
                     ? relayTrust.Detail ??
                         "WSL relay Authenticode verification failed."
-                    : $"Expected distro '{managedDistroName}' does not report its systemd gateway MainPID owning port {port}."
+                    : warnedRelay
+                        ? $"Binary trust is unproven for the relay ({relayTrust.Detail}), and the expected distro '{managedDistroName}' does not report its systemd gateway MainPID owning port {port}."
+                        : $"Expected distro '{managedDistroName}' does not report its systemd gateway MainPID owning port {port}."
             : "Process is not a verified managed WSL relay or proven obsolete OpenClaw gateway.";
         return new GatewayEndpointProvenance(
             GatewayEndpointProvenanceKind.UnknownListener,
