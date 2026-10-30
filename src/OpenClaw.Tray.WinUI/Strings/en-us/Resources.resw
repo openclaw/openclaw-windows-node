@@ -1532,15 +1532,6 @@ Use one of these options:
   <data name="ClearButton.Text" xml:space="preserve">
     <value>Clear</value>
   </data>
-  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
-    <value>Bindings</value>
-  </data>
-  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Message routing rules</value>
-  </data>
-  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
   <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
     <value>🖥️ This Computer</value>
   </data>
@@ -2321,9 +2312,6 @@ Use one of these options:
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
     <value>Instances</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
-    <value>Bindings</value>
-  </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Config</value>
   </data>
@@ -2437,18 +2425,6 @@ Use one of these options:
   </data>
   <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
     <value>Please wait while the connection is established...</value>
-  </data>
-  <data name="PriorityInfoBar.Title" xml:space="preserve">
-    <value>Routing priority</value>
-  </data>
-  <data name="PriorityInfoBar.Message" xml:space="preserve">
-    <value>Bindings control which agent handles messages from each channel. Priority: peer &gt; account &gt; channel &gt; default.</value>
-  </data>
-  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
-    <value>Single-agent mode</value>
-  </data>
-  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
-    <value>All messages route to the default agent. Add bindings for multi-agent routing.</value>
   </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
     <value>Edit gateway configuration (openclaw.json) with a schema-guided form.</value>
@@ -4222,18 +4198,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
     <value>Connection Status</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>Gateway disconnected</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>Connect to a gateway to load bindings.</value>
-  </data>
-  <data name="BindingsPage_OpenConnection.Content" xml:space="preserve">
-    <value>Open Connection</value>
-  </data>
-  <data name="BindingsPage_LoadingBindings.Text" xml:space="preserve">
-    <value>Loading bindings...</value>
   </data>
   <data name="ConnectionPage_ApprovalsWaitingOnYou.Text" xml:space="preserve">
     <value>Approvals waiting on you</value>
@@ -6207,23 +6171,11 @@ Make sure the gateway is running.</value>
   <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
     <value>Offline</value>
   </data>
-  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
-    <value>Could not load bindings</value>
-  </data>
-  <data name="BindingsPage_ConfigRequestFailed.Message" xml:space="preserve">
-    <value>The gateway did not return bindings. Refresh to try again.</value>
-  </data>
   <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
     <value>Agent event log</value>
   </data>
   <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
     <value>Go to Agent Events</value>
-  </data>
-  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
-    <value>Gateway bindings</value>
-  </data>
-  <data name="Command_GoToBindings_Title" xml:space="preserve">
-    <value>Go to Bindings</value>
   </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
@@ -7951,7 +7903,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
   <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
-  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>

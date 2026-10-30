@@ -234,8 +234,6 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Protocol\A2UIProtocol.cs" Link="A2UI\Protocol\A2UIProtocol.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Rendering\SecretRedactor.cs" Link="A2UI\Rendering\SecretRedactor.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayChatUrlBuilder.cs" Link="Imported\GatewayChatUrlBuilder.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\BindingsConnectionRecovery.cs" Link="Pages\BindingsConnectionRecovery.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\BindingsPage.xaml.cs" Link="Pages\BindingsPage.xaml.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPageChannelMetrics.cs" Link="Imported\ConnectionPageChannelMetrics.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPagePlan.cs" Link="Imported\ConnectionPagePlan.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\CronScheduleTimezone.cs" Link="Pages\CronScheduleTimezone.cs" />

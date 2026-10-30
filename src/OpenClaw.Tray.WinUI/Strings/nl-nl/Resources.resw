@@ -1486,15 +1486,6 @@ Gebruik een van deze opties:
   <data name="ClearButton.Text" xml:space="preserve">
     <value>Wissen</value>
   </data>
-  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
-    <value>Koppelingen</value>
-  </data>
-  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Regels voor berichtroutering</value>
-  </data>
-  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
-    <value>Vernieuwen</value>
-  </data>
   <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
     <value>🖥️ Deze computer</value>
   </data>
@@ -2275,9 +2266,6 @@ Gebruik een van deze opties:
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
     <value>Instanties</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
-    <value>Koppelingen</value>
-  </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Configuratie</value>
   </data>
@@ -2391,18 +2379,6 @@ Gebruik een van deze opties:
   </data>
   <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
     <value>Wacht terwijl de verbinding tot stand wordt gebracht...</value>
-  </data>
-  <data name="PriorityInfoBar.Title" xml:space="preserve">
-    <value>Routeringsprioriteit</value>
-  </data>
-  <data name="PriorityInfoBar.Message" xml:space="preserve">
-    <value>Koppelingen bepalen welke agent berichten van elk kanaal verwerkt. Prioriteit: peer &gt; account &gt; kanaal &gt; standaard.</value>
-  </data>
-  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
-    <value>Modus met één agent</value>
-  </data>
-  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
-    <value>Alle berichten worden naar de standaardagent gerouteerd. Voeg koppelingen toe voor routering met meerdere agents.</value>
   </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
     <value>Bewerk gatewayconfiguratie (openclaw.json) met een schemagestuurd formulier.</value>
@@ -4176,18 +4152,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
     <value>Connection Status</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>Gateway losgekoppeld</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>Maak verbinding met een gateway om bindingen te laden.</value>
-  </data>
-  <data name="BindingsPage_OpenConnection.Content" xml:space="preserve">
-    <value>Verbinding openen</value>
-  </data>
-  <data name="BindingsPage_LoadingBindings.Text" xml:space="preserve">
-    <value>Bindingen worden geladen…</value>
   </data>
   <data name="ConnectionPage_ApprovalsWaitingOnYou.Text" xml:space="preserve">
     <value>Goedkeuringen wachten op u</value>
@@ -6204,23 +6168,11 @@ Controleer of de gateway actief is.</value>
   <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
     <value>Niet verbonden</value>
   </data>
-  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
-    <value>Could not load bindings</value>
-  </data>
-  <data name="BindingsPage_ConfigRequestFailed.Message" xml:space="preserve">
-    <value>De gateway heeft geen bindings teruggestuurd. Vernieuw om het opnieuw te proberen.</value>
-  </data>
   <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
     <value>Agent event log</value>
   </data>
   <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
     <value>Go to Agent Events</value>
-  </data>
-  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
-    <value>Gateway bindings</value>
-  </data>
-  <data name="Command_GoToBindings_Title" xml:space="preserve">
-    <value>Go to Bindings</value>
   </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
@@ -7884,7 +7836,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
   <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
-  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>

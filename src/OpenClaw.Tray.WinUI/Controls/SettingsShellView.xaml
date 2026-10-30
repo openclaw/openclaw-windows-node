@@ -31,7 +31,6 @@
                     <SvgImageSource x:Key="Advanced_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Advanced.svg"/>
                     <SvgImageSource x:Key="AgentEvents_Icon" UriSource="ms-appx:///Assets/SidebarIcons/AgentEvents.svg"/>
                     <SvgImageSource x:Key="Agents_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Agents.svg"/>
-                    <SvgImageSource x:Key="Bindings_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Bindings.svg"/>
                     <SvgImageSource x:Key="Config_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Config.svg"/>
                     <SvgImageSource x:Key="Usage_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Usage.svg"/>
                     <SvgImageSource x:Key="Cron_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Cron.svg"/>
@@ -81,9 +80,6 @@
                                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Agents_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                                     </NavigationViewItem>
                                 </NavigationViewItem.MenuItems>
-                            </NavigationViewItem>
-                            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_115" Tag="bindings" Content="Bindings">
-                                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Bindings_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                             </NavigationViewItem>
                             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_118" Tag="config" Content="Config">
                                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Config_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>

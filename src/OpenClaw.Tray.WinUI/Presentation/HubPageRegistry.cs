@@ -14,7 +14,6 @@ internal enum HubPageKind
     Instances,
     Config,
     Usage,
-    Bindings,
     Permissions,
     Voice,
     Sandbox,
@@ -119,8 +118,6 @@ internal static class HubPageRegistry
         "Command_GoToConfig_Subtitle",
         "Command_GoToUsage_Title",
         "Command_GoToUsage_Subtitle",
-        "Command_GoToBindings_Title",
-        "Command_GoToBindings_Subtitle",
         "Command_GoToPermissions_Title",
         "Command_GoToPermissions_Subtitle",
         "Command_GoToSettings_Title",
@@ -158,7 +155,6 @@ internal static class HubPageRegistry
         "nodes" or "instances" => HubPageKind.Instances,
         "config" => HubPageKind.Config,
         "usage" => HubPageKind.Usage,
-        "bindings" => HubPageKind.Bindings,
         "capabilities" or "permissions" => HubPageKind.Permissions,
         "voice" => HubPageKind.Voice,
         "sandbox" => HubPageKind.Sandbox,
@@ -214,7 +210,6 @@ internal static class HubPageRegistry
             tag.Equals("channels", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("instances", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("agentevents", StringComparison.OrdinalIgnoreCase) ||
-            tag.Equals("bindings", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("config", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("usage", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("cron", StringComparison.OrdinalIgnoreCase) ||
@@ -233,7 +228,6 @@ internal static class HubPageRegistry
         HubPageKind.Instances => typeof(InstancesPage),
         HubPageKind.Config => typeof(ConfigPage),
         HubPageKind.Usage => typeof(UsagePage),
-        HubPageKind.Bindings => typeof(BindingsPage),
         HubPageKind.Permissions => typeof(PermissionsPage),
         HubPageKind.Voice => typeof(VoiceSettingsPage),
         HubPageKind.Sandbox => typeof(SandboxPage),
@@ -273,7 +267,6 @@ internal static class HubPageRegistry
         AddNavigation(commands, context, "📡", "Command_GoToInstances", "instances");
         AddNavigation(commands, context, "📡", "Command_GoToConfig", "config");
         AddNavigation(commands, context, "📡", "Command_GoToUsage", "usage");
-        AddNavigation(commands, context, "📡", "Command_GoToBindings", "bindings");
         AddNavigation(commands, context, "🛡️", "Command_GoToPermissions", "permissions");
         AddNavigation(commands, context, "⚙️", "Command_GoToSettings", "settings");
         AddNavigation(commands, context, "🔔", "Command_GoToNotifications", "notifications");

@@ -128,7 +128,6 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
 | UsagePage | Usage, UsageCost, UsageStatus |
 | InstancesPage | Nodes, Presence |
 | ConfigPage | Config, ConfigSchema |
-| BindingsPage | Config |
 | CronPage | CronList, CronStatus, CronRuns |
 | SkillsPage | SkillsData |
 | WorkspacePage | AgentFilesList, AgentFileContent |
