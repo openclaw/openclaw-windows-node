@@ -15,6 +15,7 @@ public sealed partial class GatewayFixtureUiTests
             await run.InvokeAsync("app.navigate", new { page = "chat" });
             for (var iteration = 0; iteration < 12; iteration++)
             {
+                var cycle = System.Diagnostics.Stopwatch.StartNew();
                 await SelectSessionAsync(run, GatewayScenario.LongSessionTitle, GatewayScenario.LongSessionKey);
                 // Tail placement has its own strict test. A missed final row must
                 // not prevent this independent crash/responsiveness exercise.
@@ -26,7 +27,7 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.OtherHistoryMarker),
                     "other session's visible history after scrolling");
                 Assert.False(HasVisibleLongHistory(run));
-                output.WriteLine($"Completed session-switch cycle {iteration + 1}/12.");
+                output.WriteLine($"Completed session-switch cycle {iteration + 1}/12 ({cycle.Elapsed.TotalSeconds:F3}s).");
             }
             await CaptureIfRequestedAsync(run, "session-switch-responsive.png");
         });
@@ -47,7 +48,7 @@ public sealed partial class GatewayFixtureUiTests
                 || text.Contains(GatewayScenario.LongMiddleSentinel, StringComparison.Ordinal)
                 || text.Contains(GatewayScenario.LongFinalSentinel, StringComparison.Ordinal)
                 || text.Contains(GatewayScenario.LongHistoryFinalMarker, StringComparison.Ordinal))
-                && IsVisibleInTimeline(run, text);
+                && IsVisibleInTimeline(timeline, element);
         });
     }
 }

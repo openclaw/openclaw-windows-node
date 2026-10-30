@@ -3,6 +3,9 @@ using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Core.V1Protocol;
 using Microsoft.UI.Reactor.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using System.Runtime.CompilerServices;
 using WinUIAnnotatedScrollBar = Microsoft.UI.Xaml.Controls.AnnotatedScrollBar;
 using WinUIItemsView = Microsoft.UI.Xaml.Controls.ItemsView;
@@ -95,15 +98,27 @@ file sealed class InitialTailPositioner : IDisposable
     private int _version;
     private bool _valid;
     private bool _awaitingLayout;
+    private bool _renderAfterLayout;
+    private EventHandler<object>? _rendering;
+    private readonly PointerEventHandler _cancelPointerNavigation;
+    private bool _awaitingIdle;
+    private readonly TailReflowCorrection _reflowCorrection = new();
+    private Microsoft.UI.Xaml.Controls.Primitives.IScrollController? _inputScrollController;
     private WinUIScrollView? _awaitingScrollView;
     private WinUIScrollView? _scrollView;
     private bool _following;
+    private bool _initialPending;
     private readonly TailNavigationQueue _tailNavigationQueue = new();
     private bool _disposed;
 
     public InitialTailPositioner(WinUIItemsView itemsView)
     {
         this.itemsView = itemsView;
+        _cancelPointerNavigation = (_, _) => CancelPendingNavigation();
+        itemsView.AddHandler(UIElement.PointerPressedEvent, _cancelPointerNavigation, true);
+        itemsView.AddHandler(UIElement.PointerWheelChangedEvent, _cancelPointerNavigation, true);
+        itemsView.PreviewKeyDown += OnNavigationKeyDown;
+        itemsView.SizeChanged += OnSizeChanged;
         itemsView.Loaded += OnLoaded;
         itemsView.Unloaded += OnUnloaded;
     }
@@ -115,15 +130,18 @@ file sealed class InitialTailPositioner : IDisposable
 
         _requestKey = requestKey;
         _version++;
+        _reflowCorrection.Clear();
         DetachLayout();
         _tailIndex = tailIndex;
         _itemCount = itemCount;
         _displayedTailKey = displayedTailKey;
         _following = true;
+        _initialPending = false;
         _valid = TailNavigationPolicy.TryCapture(tailIndex, displayedTailKey, itemCount, out _);
         if (!_valid)
             return;
 
+        _initialPending = true;
         if (itemsView.IsLoaded)
             AwaitLayout();
     }
@@ -149,13 +167,18 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnLoaded(object sender, RoutedEventArgs args)
     {
-        if (_valid)
-            AwaitLayout();
+        if (!_valid)
+            return;
+
+        _initialPending = true;
+        AwaitLayout();
     }
 
-    private void AwaitLayout()
+    private void AwaitLayout(bool renderAfterLayout = false)
     {
-        if (_disposed || !_valid || !itemsView.IsLoaded || _awaitingLayout)
+        _renderAfterLayout |= renderAfterLayout;
+        if (_disposed || !_valid || !itemsView.IsLoaded || _awaitingLayout
+            || _awaitingScrollView is not null || _rendering is not null)
             return;
 
         if (itemsView.ScrollView is { IsLoaded: false } scrollView)
@@ -180,31 +203,62 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnLayoutUpdated(object? sender, object args)
     {
+        var renderAfterLayout = _renderAfterLayout;
         DetachLayout();
         if (itemsView.ScrollView is not { IsLoaded: true })
         {
-            AwaitLayout();
+            AwaitLayout(renderAfterLayout);
             return;
         }
 
+        AttachScrollView();
         var version = _version;
         if (!TailNavigationPolicy.TryCapture(_tailIndex, _displayedTailKey, _itemCount, out var request))
             return;
 
-        itemsView.DispatcherQueue.TryEnqueue(() =>
+        if (!renderAfterLayout)
         {
-            if (_disposed || !_valid || !itemsView.IsLoaded || version != _version
-                || itemsView.ScrollView is not { IsLoaded: true })
+            DispatchTailRequest(version, request);
+            return;
+        }
+
+        // Extent changes can precede the native viewport's rendered geometry.
+        _rendering = (_, _) =>
+        {
+            DetachRendering();
+            if (_disposed || !_valid || !itemsView.IsLoaded || version != _version)
+                return;
+            if (_scrollView is not { IsLoaded: true })
             {
-                if (!_disposed && _valid)
-                    AwaitLayout();
+                AwaitLayout(renderAfterLayout: true);
+                return;
+            }
+            if (_scrollView.State != ScrollingInteractionState.Idle)
+            {
+                _awaitingIdle = true;
                 return;
             }
 
-            AttachScrollView();
-            if (!StartTailRequest(request) && !_disposed && _valid)
-                AwaitLayout();
-        });
+            DispatchTailRequest(version, request, renderAfterLayout: true);
+        };
+        CompositionTarget.Rendering += _rendering;
+    }
+
+    private void DispatchTailRequest(
+        int version, TailNavigationRequest request, bool renderAfterLayout = false)
+    {
+        if (!itemsView.DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_disposed || !_valid || !itemsView.IsLoaded || version != _version
+                || !TailNavigationPolicy.CanDispatch(renderAfterLayout, _following))
+                return;
+
+            if (!StartTailRequest(request))
+                AwaitLayout(renderAfterLayout);
+            else if (!renderAfterLayout)
+                _initialPending = false;
+        }))
+            OpenClawTray.Services.Logger.Warn("Chat tail navigation could not be dispatched.");
     }
 
     private void AttachScrollView()
@@ -219,7 +273,61 @@ file sealed class InitialTailPositioner : IDisposable
         {
             _scrollView.VerticalAnchorRatio = 1.0;
             _scrollView.ViewChanged += OnViewChanged;
+            _scrollView.StateChanged += OnScrollStateChanged;
+            _scrollView.ExtentChanged += OnExtentChanged;
+            _inputScrollController = itemsView.VerticalScrollController;
+            if (_inputScrollController is not null)
+                _inputScrollController.IsScrollingWithMouseChanged += OnControllerMouseChanged;
         }
+    }
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        if (args.PreviousSize.Width <= 0 || args.PreviousSize.Height <= 0
+            || (args.NewSize.Width == args.PreviousSize.Width
+                && args.NewSize.Height == args.PreviousSize.Height))
+            return;
+
+        _reflowCorrection.Arm();
+    }
+
+    private void OnExtentChanged(WinUIScrollView sender, object args)
+    {
+        if (_reflowCorrection.TryConsume(_following, IsNearBottom(sender), _initialPending))
+            AwaitLayout(renderAfterLayout: true);
+    }
+
+    private void OnScrollStateChanged(WinUIScrollView sender, object args)
+    {
+        if (sender.State == ScrollingInteractionState.Interaction)
+            CancelPendingNavigation();
+        else if (_awaitingIdle && sender.State == ScrollingInteractionState.Idle)
+        {
+            _awaitingIdle = false;
+            AwaitLayout(renderAfterLayout: true);
+        }
+    }
+
+    private void OnNavigationKeyDown(object sender, KeyRoutedEventArgs args) =>
+        CancelPendingNavigation();
+
+    private void OnControllerMouseChanged(
+        Microsoft.UI.Xaml.Controls.Primitives.IScrollController sender, object args)
+    {
+        if (sender.IsScrollingWithMouse)
+            CancelPendingNavigation();
+    }
+
+    private void CancelPendingNavigation()
+    {
+        _version++;
+        _initialPending = false;
+        // Input without movement (copy, focus, wheel at the tail) keeps follow;
+        // input that already left the tail stops it so the reader is not pulled back.
+        _following = _scrollView is { } scrollView && IsNearBottom(scrollView);
+        _reflowCorrection.Clear();
+        _tailNavigationQueue.Clear();
+        DetachLayout();
     }
 
     private void OnViewChanged(WinUIScrollView sender, object args)
@@ -280,6 +388,8 @@ file sealed class InitialTailPositioner : IDisposable
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
         _version++;
+        _initialPending = false;
+        _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         DetachLayout();
         DetachScrollView();
@@ -287,6 +397,9 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void DetachLayout()
     {
+        DetachRendering();
+        _awaitingIdle = false;
+        _renderAfterLayout = false;
         if (_awaitingScrollView is { } scrollView)
         {
             scrollView.Loaded -= OnScrollViewLoaded;
@@ -300,12 +413,24 @@ file sealed class InitialTailPositioner : IDisposable
         }
     }
 
+    private void DetachRendering()
+    {
+        if (_rendering is not null)
+            CompositionTarget.Rendering -= _rendering;
+        _rendering = null;
+    }
+
     private void DetachScrollView()
     {
+        if (_inputScrollController is not null)
+            _inputScrollController.IsScrollingWithMouseChanged -= OnControllerMouseChanged;
+        _inputScrollController = null;
         if (_scrollView is not null)
         {
             _scrollView.VerticalAnchorRatio = double.NaN;
             _scrollView.ViewChanged -= OnViewChanged;
+            _scrollView.StateChanged -= OnScrollStateChanged;
+            _scrollView.ExtentChanged -= OnExtentChanged;
         }
 
         _scrollView = null;
@@ -318,11 +443,16 @@ file sealed class InitialTailPositioner : IDisposable
 
         _disposed = true;
         _version++;
+        _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         DetachLayout();
         DetachScrollView();
         itemsView.Loaded -= OnLoaded;
         itemsView.Unloaded -= OnUnloaded;
+        itemsView.SizeChanged -= OnSizeChanged;
+        itemsView.PreviewKeyDown -= OnNavigationKeyDown;
+        itemsView.RemoveHandler(UIElement.PointerPressedEvent, _cancelPointerNavigation);
+        itemsView.RemoveHandler(UIElement.PointerWheelChangedEvent, _cancelPointerNavigation);
     }
 }
 

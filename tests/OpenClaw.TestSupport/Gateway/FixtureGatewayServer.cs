@@ -669,7 +669,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                         gate, abortOutcome, connection.Token));
                 }
             }
-            catch (OperationCanceledException) when (connection.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (connection.IsCancellationRequested ||
+                socket?.State is WebSocketState.Aborted or WebSocketState.Closed) { }
             catch (WebSocketException) when (activeConnection is null ||
                 socket?.State is WebSocketState.Aborted or WebSocketState.Closed) { }
             catch (IOException) when (connection.IsCancellationRequested) { }
