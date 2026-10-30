@@ -42,6 +42,8 @@ internal sealed record WindowManagerCallbacks(
 
 internal sealed class WindowManager : IWindowManager
 {
+    private const string ShuttingDownMessage = "The application is shutting down.";
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr window);
@@ -189,6 +191,8 @@ internal sealed class WindowManager : IWindowManager
         while (true)
         {
             ct.ThrowIfCancellationRequested();
+            if (_isShuttingDown)
+                throw new InvalidOperationException(ShuttingDownMessage);
             var active = _callbacks.GetGatewayRegistry()?.GetActive();
             if (active is null || active.Id != completion.Verification.GatewayId ||
                 GatewayDashboardBinding.Capture(active) != completion.Verification.EndpointBinding)
@@ -205,7 +209,7 @@ internal sealed class WindowManager : IWindowManager
         }
         ct.ThrowIfCancellationRequested();
         if (_isShuttingDown)
-            throw new InvalidOperationException("The application is shutting down.");
+            throw new InvalidOperationException(ShuttingDownMessage);
         Window window;
         if (request.WorkspaceDestination is { } destination)
             ShowWorkspace(destination, activate: false, preserveCurrent: false, nativeRequest: request);
