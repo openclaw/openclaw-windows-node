@@ -378,6 +378,7 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         var result = service.Inspect(ManagedRecord());
 
         Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, result.Kind);
+        Assert.Null(result.RelayTrustWarning);
     }
 
     [Fact]
@@ -497,6 +498,9 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, result.Kind);
         Assert.Contains("binary trust is unproven", result.Detail, StringComparison.Ordinal);
         Assert.Contains("no installed WSL package could corroborate", result.Detail, StringComparison.Ordinal);
+        Assert.Equal(
+            "no installed WSL package could corroborate the relay at 'C:\\Program Files\\WSL\\wslrelay.exe'",
+            result.RelayTrustWarning);
     }
 
     [Fact]
@@ -521,6 +525,7 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
         Assert.Contains("Binary trust is unproven for the relay", result.Detail, StringComparison.Ordinal);
         Assert.Contains("does not report its systemd gateway MainPID owning port", result.Detail, StringComparison.Ordinal);
+        Assert.Null(result.RelayTrustWarning);
     }
 
     [Fact]

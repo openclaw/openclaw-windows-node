@@ -59,6 +59,11 @@ public sealed record GatewayConnectionSnapshot
     public string? GatewayId { get; init; }
     public string? GatewayUrl { get; init; }
     public string? GatewayName { get; init; }
+    /// <summary>
+    /// Non-null when the active managed-WSL endpoint was accepted with unproven <c>wslrelay.exe</c>
+    /// binary trust (the distro confirmed the gateway). Holds the verifier reason for display.
+    /// </summary>
+    public string? ManagedRelayTrustWarning { get; init; }
 
     // ─── Derived ───
     public OpenClaw.Shared.GatewayProtocolCompatibility ProtocolCompatibility { get; init; } =

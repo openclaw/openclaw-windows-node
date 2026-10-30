@@ -6105,6 +6105,12 @@ Make sure the gateway is running.</value>
   <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
     <value>Waiting for the gateway to confirm the channel is running…</value>
   </data>
+  <data name="ConnectionPage_RelayTrustWarning.Title" xml:space="preserve">
+    <value>WSL relay could not be verified</value>
+  </data>
+  <data name="ConnectionPage_RelayTrustWarning_Format" xml:space="preserve">
+    <value>Windows could not fully verify the WSL relay (wslrelay.exe) that forwards this gateway connection. OpenClaw connected because the managed WSL distro confirmed it owns the gateway port. Reason: {0}</value>
+  </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
     <value>WSL gateway</value>
   </data>

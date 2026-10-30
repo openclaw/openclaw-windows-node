@@ -6101,6 +6101,12 @@
   <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
     <value>正在等待閘道確認頻道已執行…</value>
   </data>
+  <data name="ConnectionPage_RelayTrustWarning.Title" xml:space="preserve">
+    <value>無法驗證 WSL 中繼</value>
+  </data>
+  <data name="ConnectionPage_RelayTrustWarning_Format" xml:space="preserve">
+    <value>Windows 無法完整驗證轉送此閘道連線的 WSL 中繼 (wslrelay.exe)。OpenClaw 已連線,因為受管理的 WSL 發行版本已確認其擁有閘道連接埠。原因: {0}</value>
+  </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
     <value>WSL 閘道</value>
   </data>
