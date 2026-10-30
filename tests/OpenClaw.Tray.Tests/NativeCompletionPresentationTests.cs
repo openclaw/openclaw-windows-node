@@ -253,8 +253,11 @@ public sealed class NativeCompletionPresentationTests
         Assert.Contains("if (request.WorkspaceDestination is { } destination)", manager);
         Assert.Contains("ShowWorkspace(destination, activate: false, preserveCurrent: false, nativeRequest: request)", manager);
         Assert.Contains("await workspace.WaitForNativeSetupAsync(request, ct)", manager);
-        Assert.Contains("ShowCompanion(request.PageTag, activate: false, nativeRequest: request)", manager);
-        Assert.Contains("await hub.WaitForNativeSetupAsync(request, ct)", manager);
+        Assert.Contains("ShowWorkspace(WorkspaceDestination.Settings(\"settings\"), activate: false, preserveCurrent: false, nativeRequest: request,", manager);
+        Assert.Contains("settingsTag: request.PageTag", manager);
+        Assert.Contains("await workspace.WaitForNativeSetupAsync(request, ct)", manager);
+        Assert.DoesNotContain("ShowCompanion", manager);
+        Assert.DoesNotContain("await hub.WaitForNativeSetupAsync", manager);
         var workspace = Read(@"src\OpenClaw.Tray.WinUI\Windows\WorkspaceWindow.xaml.cs");
         var binding = workspace[workspace.IndexOf("internal void NavigateNativeSetup(SetupNativeNavigationRequest request)", StringComparison.Ordinal)..];
         Assert.True(binding.IndexOf("_chat.BindNativeSetupRequest(request)", StringComparison.Ordinal) <
@@ -266,9 +269,13 @@ public sealed class NativeCompletionPresentationTests
         Assert.Contains("_nativeSetupBinding.RequireCurrent(request, ct)", chat);
         Assert.Contains("!_nativeSetupPresentation.IsReady", chat);
         Assert.Contains("if (target is not null) _pendingSessionKey = target", chat);
-        var hub = Read(@"src\OpenClaw.Tray.WinUI\Windows\HubWindow.xaml.cs");
-        Assert.Contains("if (request.WorkspaceDestination is not null)", hub);
-        Assert.DoesNotContain("await chat.WaitForNativeSetupAsync", hub);
+        var settingsRoute = workspace[workspace.IndexOf("internal async Task WaitForNativeSetupAsync(", StringComparison.Ordinal)..
+            workspace.IndexOf("internal async Task StartAgentChatAsync", StringComparison.Ordinal)];
+        Assert.Contains("if (request.WorkspaceDestination is null)", settingsRoute);
+        Assert.Contains("await _settings.WaitForNativeSetupAsync(request, ct)", settingsRoute);
+        Assert.DoesNotContain("await _chat.WaitForNativeSetupAsync", settingsRoute[..settingsRoute.IndexOf("request.RequireWorkspaceDestination(Destination);", StringComparison.Ordinal)]);
+        var settingsView = Read(@"src\OpenClaw.Tray.WinUI\Controls\SettingsShellView.xaml.cs");
+        Assert.DoesNotMatch(@"new\s+ChatPage\b|typeof\(ChatPage\)|\bMountReactorChat\b", settingsView);
         var agentIntent = workspace[workspace.IndexOf("internal async Task StartAgentChatAsync", StringComparison.Ordinal)..];
         Assert.True(agentIntent.IndexOf("_chat.InvalidateNativeSetupForNavigation()", StringComparison.Ordinal) <
             agentIntent.IndexOf("_agentId = agent.Id", StringComparison.Ordinal));
@@ -360,7 +367,7 @@ public sealed class NativeCompletionPresentationTests
         Assert.Contains("AgentFilterCombo.IsEnabled = false", source);
         Assert.DoesNotContain("InstallSkillAsync", source);
         Assert.Contains("await skills.WaitForNativeSetupAsync(request, ct)",
-            Read(@"src\OpenClaw.Tray.WinUI\Windows\HubWindow.xaml.cs"));
+            Read(@"src\OpenClaw.Tray.WinUI\Controls\SettingsShellView.xaml.cs"));
     }
 
     [Fact]

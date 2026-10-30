@@ -90,6 +90,54 @@ tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
+The ordinary `windows-latest` CI UI job runs this script against its explicitly
+built Debug x64 app after installing the Windows App Runtime selected by
+`Directory.Build.props`. Its dedicated step enables the fixture opt-in only for
+the child test processes and selects `Category=GatewayFixture`, including the
+context-usage and chat-run correlation scenarios. The general UI test step
+excludes that category so each scenario runs once. TRX, synthetic request logs,
+run receipts and owned-window screenshots are uploaded in `test-results-ui`
+under `GatewayFixture`, including on failure. Other keyboard/compositor proof
+opt-ins, production-shaped Release proof, real Gateway, WSL and MXC validation
+remain separate; this hosted smoke does not replace them.
+
+The disposable hosted runner configures a 1920x1080 desktop before UI tests and
+verifies a work area large enough for the 1300x950 wide-window proof. Its actual
+screen/work-area receipt is retained at `Desktop\geometry.json` in `test-results-ui`.
+The original two-width and visible-content assertions remain unchanged. The local
+fixture runner does not change your desktop resolution.
+
+Fixture scenarios still execute if an earlier test suite fails, provided the UI
+build, runtime installation and desktop preflight succeeded and the job was not
+cancelled. The earlier failure remains a job failure; it cannot hide the fixture
+result or prevent its screenshots from being collected.
+
+For failed fixture tests, browse screenshots without downloading a ZIP: open the workflow run's
+**Summary** and find **Mock Gateway screenshots** in the UI job summary.
+The index contains only failed tests and interrupted runs with a failure capture,
+grouped by test with failure captures first. Click a capture filename to open its PNG
+in the browser. GitHub sign-in is required. Each PNG also appears individually
+under **Artifacts**, with a test/capture name and unique fixture run ID.
+These previews use unarchived GitHub artifacts, retain the repository's normal
+artifact retention, and are published only when the fixture step fails.
+Successful tests do not create screenshot summary entries or individual PNG
+artifacts; their captures stay inside `test-results-ui\GatewayFixture`.
+The `test-results-ui` ZIP remains the complete diagnostic download, including
+TRX, request logs, run receipts and original screenshot paths. If no capture was
+produced, the summary says so; inspect the fixture step for a build/startup failure.
+
+The browse fixture also supplies placement discovery reads: empty projects and
+recents, each agent's synthetic workspace, and one available local Gateway
+environment. Composer-created empty conversations can load their location
+choices without an unsupported-RPC error. These are synthetic catalog reads,
+not host filesystem discovery, remote worker capacity or placement mutation
+proof. Unsupported methods and parameters still fail explicitly.
+
+Ordinary browse/setup/context scenarios answer `question.list` with an empty
+question collection, so the real client's question recovery can complete without
+an unsupported-RPC error. This does not enable question creation or mutation:
+interactive question lifecycles remain owned by the explicit interactive scenario.
+
 `GatewayFixtureStartupTests` exercise parent and foreign browser-control startup
 without launching the app. Cancellation and readiness failures must reap the
 owned child, remove its readiness file, and release both listener ports.

@@ -70,6 +70,35 @@
                                     IsEnabled="False">
                                 <FontIcon Glyph="&#xE76C;" FontSize="16"/>
                             </Button>
+                            <Button x:Name="WorkspaceSearchButton" Height="40"
+                                    Style="{StaticResource SubtleButtonStyle}" AutomationProperties.AutomationId="WorkspaceSearch">
+                                <FontIcon Glyph="&#xE721;" FontSize="16"/>
+                                <Button.Flyout>
+                                    <Flyout x:Name="WorkspaceSearchFlyout" Placement="BottomEdgeAlignedLeft"
+                                            Opening="OnWorkspaceSearchOpening" Opened="OnWorkspaceSearchOpened">
+                                        <AutoSuggestBox x:Name="WorkspaceSearchBox"
+                                                        AutomationProperties.AutomationId="WorkspaceSearchBox"
+                                                        QueryIcon="Find" TextMemberPath="Title" Width="320"
+                                                        PreviewKeyDown="OnWorkspaceSearchKeyDown"
+                                                        TextChanged="OnWorkspaceSearchTextChanged"
+                                                        SuggestionChosen="OnWorkspaceSearchSuggestionChosen"
+                                                        QuerySubmitted="OnWorkspaceSearchQuerySubmitted">
+                                            <AutoSuggestBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal" Spacing="8" Padding="4">
+                                                        <TextBlock Text="{Binding Icon}" FontSize="14" VerticalAlignment="Center"/>
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Title}" Style="{StaticResource BodyTextBlockStyle}"/>
+                                                            <TextBlock Text="{Binding Subtitle}" Style="{StaticResource CaptionTextBlockStyle}"
+                                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </AutoSuggestBox.ItemTemplate>
+                                        </AutoSuggestBox>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
                         </StackPanel>
                     </Grid>
                     <ComboBox x:Name="AssistantSelector" x:Uid="WorkspaceShell_Assistant"
@@ -210,5 +239,22 @@
             <FontIcon Glyph="&#xE90C;" FontSize="16"/>
         </Button>
         </Grid>
+        <Grid x:Name="SettingsSection" Grid.Row="1" Visibility="Collapsed"
+              AutomationProperties.AutomationId="WorkspaceSettingsHost"/>
+        <StackPanel x:Name="SettingsHistoryBar" Grid.Row="1" Orientation="Horizontal" Spacing="4"
+                    Margin="48,8,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
+            <Button x:Name="SettingsBackButton" x:Uid="NavBackButton" Click="OnBack"
+                    Width="40" Height="40" Padding="0"
+                    Style="{StaticResource SubtleButtonStyle}" AutomationProperties.AutomationId="SettingsBack"
+                    IsEnabled="False">
+                <FontIcon Glyph="&#xE76B;" FontSize="16"/>
+            </Button>
+            <Button x:Name="SettingsForwardButton" x:Uid="WorkspaceShell_Forward" Click="OnForward"
+                    Width="40" Height="40" Padding="0"
+                    Style="{StaticResource SubtleButtonStyle}" AutomationProperties.AutomationId="SettingsForward"
+                    IsEnabled="False">
+                <FontIcon Glyph="&#xE76C;" FontSize="16"/>
+            </Button>
+        </StackPanel>
     </Grid>
 </winex:WindowEx>

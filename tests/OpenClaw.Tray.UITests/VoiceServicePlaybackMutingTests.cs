@@ -179,7 +179,8 @@ public sealed class VoiceServicePlaybackMutingTests
         public CaptureRun(bool failStart = false, PlaybackMuteState? sharedMute = null)
         {
             var settings = new SettingsManager(_directory.Path);
-            Voice = new VoiceService(NullLogger.Instance, settings, sharedMute, stt =>
+            Voice = new VoiceService(NullLogger.Instance, settings, new ReadySpeechToTextService(),
+                new WhisperModelManager(_directory.Path, NullLogger.Instance), stt =>
             {
                 var device = new FakeCapture(failStart);
                 var pipeline = new AudioPipeline(NullLogger.Instance, stt, () => device,
@@ -188,7 +189,7 @@ public sealed class VoiceServicePlaybackMutingTests
                 Captures.Add(device);
                 Pipelines.Add(pipeline);
                 return pipeline;
-            }, () => Task.CompletedTask);
+            }, sharedMute);
             Voice.AudioLevelChanged += _ => Levels++;
         }
 
@@ -197,6 +198,16 @@ public sealed class VoiceServicePlaybackMutingTests
             await Voice.DisposeAsync();
             _directory.Dispose();
         }
+    }
+
+    private sealed class ReadySpeechToTextService : ISpeechToTextService
+    {
+        public bool IsModelLoaded => true;
+        public void LoadModel(string path) => throw new InvalidOperationException("Synthetic model is already ready.");
+        public Task<List<TranscriptionResult>> TranscribeAsync(float[] samples, string language = "auto",
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("These capture-owner cases do not request recognition.");
+        public void Dispose() { }
     }
 
     private sealed class FakeCapture(bool failStart) : IAudioCapture

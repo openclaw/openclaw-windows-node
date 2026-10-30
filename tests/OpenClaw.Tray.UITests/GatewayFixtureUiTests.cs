@@ -639,7 +639,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false,
         bool requireAgentSelection = false, bool allowSessionMutations = false, GatewayScenario? scenario = null,
-        Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null)
+        Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null, bool postSetupRestart = false,
+        Action? releasePendingResponses = null)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
@@ -647,10 +648,11 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),
             allowAgentCreation: allowAgentCreation, requireAgentSelection: requireAgentSelection,
             allowSessionMutations: allowSessionMutations,
-            scenario: scenario, prepareSetupHandoff: prepareSetupHandoff);
-        output.WriteLine($"Fixture run {run.Profile.RunId}, PID {run.AppProcessId}, artifacts: {run.ArtifactsDirectory}");
+            scenario: scenario, prepareSetupHandoff: prepareSetupHandoff, postSetupRestart: postSetupRestart,
+            releasePendingResponses: releasePendingResponses);
         try
         {
+            output.WriteLine($"Fixture run {run.Profile.RunId}, PID {run.AppProcessId}, artifacts: {run.ArtifactsDirectory}");
             // UIA is synchronous and can block inside a hung app. Keep the deadline
             // outside that worker so failure reporting and owned-process cleanup still run.
             await Task.Run(() => test(run)).WaitAsync(TimeSpan.FromSeconds(150)).ConfigureAwait(false);
@@ -662,6 +664,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         }
         catch (Exception ex)
         {
+            releasePendingResponses?.Invoke();
             await run.WriteReportAsync("failed", ex);
             if (run.IsRunning)
             {
@@ -673,6 +676,11 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 }
             }
             throw;
+        }
+        finally
+        {
+            // Release response gates before await-using disposes the server and joins its connections.
+            releasePendingResponses?.Invoke();
         }
     }
 

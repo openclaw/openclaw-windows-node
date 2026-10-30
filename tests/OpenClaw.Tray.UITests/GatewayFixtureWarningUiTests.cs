@@ -37,14 +37,42 @@ public sealed partial class GatewayFixtureUiTests
     [Trait("Category", "GatewayFixture")]
     public async Task VerifiedSetupWarningRecoversAndRejectsChangedAuthorityInFullApp()
     {
-        var scenario = GatewayScenario.CreateNativeSetup((method, _) => method switch
+        using var releaseVerification = new ManualResetEventSlim();
+        var verificationRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var scenario = GatewayScenario.CreateNativeSetup((method, _) =>
         {
-            "openclaw.setup.verify" => new { ok = true, modelRef = "fixture/browse", latencyMs = 1 },
-            _ => throw new InvalidOperationException($"Unexpected synthetic setup request: {method}")
+            if (method != "openclaw.setup.verify")
+                throw new InvalidOperationException($"Unexpected synthetic setup request: {method}");
+            verificationRequested.TrySetResult();
+            if (!releaseVerification.Wait(TimeSpan.FromSeconds(60)))
+                throw new TimeoutException("The startup proof did not release synthetic model verification.");
+            return new { ok = true, modelRef = "fixture/browse", latencyMs = 1 };
         });
         await WithAppAsync(async run =>
         {
+            await verificationRequested.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            await WaitUiAsync(run, () => FindText(run, "Finishing setup") is { Current.IsOffscreen: false },
+                "restart progress while synthetic model verification is held");
+            var progressWindow = Assert.Single(AppWindows(run), window =>
+                window.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ProgressBar))
+                    is { Current.IsOffscreen: false });
+            Assert.Null(FindById(run, "ChatComposerInput"));
+            Assert.Null(FindText(run, "Welcome to OpenClaw"));
+            OwnedWindowCapture.Save(run, progressWindow, "00-restart-verification-progress.png",
+                FindText(run, "Finishing setup")!,
+                progressWindow.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ProgressBar)));
+            releaseVerification.Set();
             await WaitVerifiedChatAsync(run);
+            await WaitUiAsync(run, () => !AppWindows(run).Any(window => window.Current.Name == "Finishing setup"),
+                "progress window closed after verified native navigation");
+            var workspace = Assert.Single(AppWindows(run), window =>
+                window.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNavHome")) is not null);
+            Assert.DoesNotContain(AppWindows(run), window =>
+                window.Current.Name.Contains("OpenClaw Settings", StringComparison.Ordinal) ||
+                window.Current.Name.Contains("OpenClaw Setup", StringComparison.Ordinal));
             Assert.Contains(run.Gateway.Requests, request => request.Method == "openclaw.setup.verify" && request.Outcome == "ok");
             await run.WaitForAsync(() => Task.FromResult(
                 !File.Exists(Path.Combine(run.Profile.DataDirectory, "setup-dashboard-handoff", "pending.json"))),
@@ -93,7 +121,10 @@ public sealed partial class GatewayFixtureUiTests
                 {
                     scenario = scenario.Name, scenario.Sha256,
                     modelVerification = "synthetic fixture response, not real Gateway or inference proof",
-                    activation = "--post-setup-launch; actual SetupDashboardHandoffStore receipt and production verifier",
+                    activation = "--post-setup-restart --post-setup-launch; actual SetupDashboardHandoffStore receipt and production verifier",
+                    visibleProgressBeforeVerification = true,
+                    workspaceHwnd = workspace.Current.NativeWindowHandle,
+                    progressWindowClosedAfterVerification = true,
                     verifiedSession = GatewayScenario.MainSessionKey, initial, recovered,
                     automaticRecovery = true, authorityMismatchRemainedBlocked = true,
                     unsentDraftPreserved = true,
@@ -101,10 +132,14 @@ public sealed partial class GatewayFixtureUiTests
                     setupVerificationRequests = run.Gateway.Requests.Count(request => request.Method == "openclaw.setup.verify"),
                     run.Gateway.ConnectionCount
                 }, new JsonSerializerOptions { WriteIndented = true }));
-        }, scenario: scenario, prepareSetupHandoff: IssueSyntheticHandoff);
+        }, scenario: scenario, prepareSetupHandoff: IssueSyntheticHandoff, postSetupRestart: true,
+            releasePendingResponses: releaseVerification.Set);
     }
 
-    private static string IssueSyntheticHandoff(GatewayFixtureProfile profile)
+    private static string IssueSyntheticHandoff(GatewayFixtureProfile profile) =>
+        IssueSyntheticHandoff(profile, SetupNativeDestination.Chat);
+
+    private static string IssueSyntheticHandoff(GatewayFixtureProfile profile, SetupNativeDestination destination)
     {
         var registry = new GatewayRegistry(profile.DataDirectory);
         registry.Load();
@@ -117,7 +152,7 @@ public sealed partial class GatewayFixtureUiTests
             IdentityBinding: SetupCompletionAuthority.CaptureIdentity(identityPath, identity.DeviceId),
             SessionKey: GatewayScenario.MainSessionKey);
         return new SetupDashboardHandoffStore(profile.DataDirectory).Issue(new(verification,
-            new(SetupNativeDestination.Chat, GatewayScenario.MainSessionKey)));
+            new(destination, GatewayScenario.MainSessionKey)));
     }
 
     private static Task WaitVerifiedChatAsync(GatewayFixtureRun run) =>

@@ -21,6 +21,8 @@ public sealed class ChatComposerSession : IDisposable
 {
     private int _disposed;
     private long _inputRevision;
+    private bool _hostVisible = true;
+    private bool _composerVisible = true;
     private readonly ISettingsStore _settingsStore;
     private readonly SandboxStatusStore _sandboxStatus;
 
@@ -61,12 +63,24 @@ public sealed class ChatComposerSession : IDisposable
     /// session-monotonic revision that survives composer view remounts.</summary>
     internal void ApplyInputs(ChatComposerInputs inputs)
     {
-        Controller.SetComposerVisible(inputs.IsVisible);
+        _composerVisible = inputs.IsVisible;
+        Controller.SetComposerVisible(_hostVisible && _composerVisible);
         ViewModel.ApplyInputs(inputs with
         {
             Revision = Interlocked.Increment(ref _inputRevision),
         });
         Placement?.ApplyInputs(inputs);
+    }
+
+    internal void SetHostVisible(bool visible)
+    {
+        _hostVisible = visible;
+        Controller.SetComposerVisible(_hostVisible && _composerVisible);
+        if (!visible)
+        {
+            ViewModel.SetVoiceTranscript(null);
+            ViewModel.SetVoiceAudioLevel(0);
+        }
     }
 
     /// <summary>Disposes the controller then the view model exactly once. Safe to

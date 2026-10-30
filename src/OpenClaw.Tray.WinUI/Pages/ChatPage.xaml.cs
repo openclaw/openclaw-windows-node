@@ -140,14 +140,16 @@ public sealed partial class ChatPage : Page
         Unloaded += OnUnloaded;
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    private void OnUnloaded(object sender, RoutedEventArgs e) => SuspendSurface();
+
+    internal void SuspendSurface()
     {
         _pageActive = false;
         _surfaceGeneration++;
         InvalidatePendingSessionNavigation();
         ReconcileNativeSetupObserver();
         _pendingVoice.Cancel();
-        _reactorHost?.CancelVoiceRecording();
+        _reactorHost?.SetHostVisible(false);
 
         // Don't tear down the native chat host — preserve it across page
         // navigations so that scroll position, selected session, and loaded
@@ -201,6 +203,7 @@ public sealed partial class ChatPage : Page
         if (!_pageActive) _surfaceGeneration++;
         _pageActive = true;
         _ownerWindow = ownerWindow;
+        _reactorHost?.SetHostVisible(true);
 
         // Re-mount on settings change so toggling "Use standard Gateway Chat
         // interface" swaps the surface live.
@@ -1187,6 +1190,9 @@ public sealed partial class ChatPage : Page
 
     private async Task<string?> VoiceTranscribeAsync(CancellationToken cancellationToken, Action? onRecordingStarted)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_pageActive) return null;
+        var generation = _surfaceGeneration;
         if (CurrentApp.Settings?.NodeSttEnabled != true)
         {
             await ShowVoiceSettingsDialogAsync(
@@ -1221,11 +1227,17 @@ public sealed partial class ChatPage : Page
         }
 
         // Subscribe to streaming events during recording
-        void OnTranscription(string text) => host?.SetVoiceTranscript(text);
-        void OnAudioLevel(float level) => host?.SetVoiceAudioLevel(level);
+        bool IsCurrentCapture() => !cancellationToken.IsCancellationRequested && _pageActive &&
+            generation == _surfaceGeneration && ReferenceEquals(host, _reactorHost);
+        void OnTranscription(string text) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsCurrentCapture()) host?.SetVoiceTranscript(text);
+        });
+        void OnAudioLevel(float level) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsCurrentCapture()) host?.SetVoiceAudioLevel(level);
+        });
 
-        voiceService.TranscriptionReceived += OnTranscription;
-        voiceService.AudioLevelChanged += OnAudioLevel;
         onRecordingStarted?.Invoke();
         try
         {
@@ -1234,15 +1246,16 @@ public sealed partial class ChatPage : Page
                 TimeoutMs = 120_000,
                 Language = ""
             };
-            var result = await voiceService.ListenOnceAsync(args, cancellationToken);
+            var result = await voiceService.ListenOnceAsync(args, cancellationToken, OnTranscription, OnAudioLevel);
             return result?.Text;
         }
         finally
         {
-            voiceService.TranscriptionReceived -= OnTranscription;
-            voiceService.AudioLevelChanged -= OnAudioLevel;
-            host?.SetVoiceTranscript(null);
-            host?.SetVoiceAudioLevel(0f);
+            if (_pageActive && generation == _surfaceGeneration && ReferenceEquals(host, _reactorHost))
+            {
+                host?.SetVoiceTranscript(null);
+                host?.SetVoiceAudioLevel(0f);
+            }
         }
     }
 

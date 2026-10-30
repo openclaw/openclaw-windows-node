@@ -51,11 +51,13 @@ public sealed class AppSurfaceOwnershipContractTests
         var manager = Read("Services", "WindowManager.cs");
 
         Assert.Contains("private Window? _keepAliveWindow;", manager);
-        Assert.Contains("private HubWindow? _hubWindow;", manager);
+        Assert.DoesNotMatch(@"(?<![A-Za-z])HubWindow(?![A-Za-z_])", manager);
+        Assert.DoesNotContain("ShowCompanion", manager);
+        Assert.DoesNotContain("OnHubClosed", manager);
+        Assert.DoesNotContain("_hubWindow", manager);
         Assert.Contains("private WorkspaceWindow? _workspaceWindow;", manager);
         Assert.Contains("private ConnectionStatusWindow? _connectionStatusWindow;", manager);
         Assert.Contains("private SetupWindow? _setupWindow;", manager);
-        Assert.Contains("new HubWindow()", manager);
         Assert.Contains("new WorkspaceWindow(", manager);
         Assert.Contains("new ConnectionStatusWindow(", manager);
         Assert.Contains("new SetupWindow(", manager);
@@ -64,7 +66,7 @@ public sealed class AppSurfaceOwnershipContractTests
         Assert.Contains("WaitForInitialContentReadyAsync()", manager);
         Assert.Contains("await existingSetupWindow.CleanupCompleted", manager);
         Assert.Contains("ResetNavigationScope()", manager);
-        Assert.Contains("SettingsSaved -= _callbacks.SettingsSaved", manager);
+        Assert.Contains("workspace.SettingsSaved -= OnWorkspaceSettingsSaved;", manager);
         Assert.Contains("AdvancedSetupRequested -= _callbacks.AdvancedSetupRequested", manager);
         Assert.Contains("SetupCompleted -= _callbacks.SetupCompleted", manager);
         Assert.Contains("Closed -= OnSetupClosed", manager);

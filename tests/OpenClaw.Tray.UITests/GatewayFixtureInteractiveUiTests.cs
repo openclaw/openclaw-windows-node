@@ -25,6 +25,15 @@ public sealed partial class GatewayFixtureUiTests
             var composerId = FindById(run, "ChatComposerInput")!.GetRuntimeId();
             ((System.Windows.Automation.ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(
                 System.Windows.Automation.ValuePattern.Pattern)).SetValue("Keep this unsent draft.");
+            await WaitUiAsync(run, () =>
+            {
+                var input = FindById(run, "ChatComposerInput");
+                var send = FindById(run, "ChatComposerPrimaryAction");
+                return input is not null && send is { Current.IsEnabled: true }
+                    && send.Current.Name == "Send"
+                    && ((System.Windows.Automation.ValuePattern)input.GetCurrentPattern(
+                        System.Windows.Automation.ValuePattern.Pattern)).Current.Value == "Keep this unsent draft.";
+            }, "unsent draft accepted by the mounted composer before question delivery");
             run.Gateway.Interactive!.Playback.Select("question-choice");
             await run.InvokeAsync("app.chat.send", new
             {

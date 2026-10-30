@@ -1,27 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<winex:WindowEx x:Uid="HubWindow_winexWindowEx_2"
-    x:Class="OpenClawTray.Windows.HubWindow"
+<UserControl
+    x:Class="OpenClawTray.Controls.SettingsShellView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:OpenClawTray.Controls"
-    xmlns:winex="using:WinUIEx"
-    Title="OpenClaw Settings"
-    MinWidth="1000" MinHeight="400">
+    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
 
-    <Window.SystemBackdrop>
-        <MicaBackdrop/>
-    </Window.SystemBackdrop>
-
-    <Grid x:Name="RootGrid" PreviewKeyDown="OnRootPreviewKeyDown">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-
-        <TitleBar x:Name="AppTitleBar" Title="OpenClaw Settings"
-                  AutomationProperties.AutomationId="SettingsTitleBar"/>
-
-        <Grid x:Name="NavContentHost" Grid.Row="1" SizeChanged="OnNavContentHostSizeChanged">
+    <Grid x:Name="RootGrid">
+        <Grid x:Name="NavContentHost" SizeChanged="OnNavContentHostSizeChanged">
             <Grid.Clip>
                 <RectangleGeometry x:Name="NavContentClip"/>
             </Grid.Clip>
@@ -220,18 +206,6 @@
                     </Flyout>
                 </Button.Flyout>
             </Button>
-            <Button x:Uid="NavBackButton" x:Name="NavBackButton"
-                    AutomationProperties.AutomationId="SettingsBack"
-                    Width="40" Height="40" IsEnabled="False"
-                    Style="{StaticResource SubtleButtonStyle}" Click="OnBackRequested">
-                <FontIcon Glyph="&#xE76B;" FontSize="16"/>
-            </Button>
-            <Button x:Uid="WorkspaceShell_Forward" x:Name="NavForwardButton"
-                    AutomationProperties.AutomationId="SettingsForward"
-                    Width="40" Height="40" IsEnabled="False"
-                    Style="{StaticResource SubtleButtonStyle}" Click="OnForwardRequested">
-                <FontIcon Glyph="&#xE76C;" FontSize="16"/>
-            </Button>
         </StackPanel>
         </Grid>
         </Grid>
@@ -241,7 +215,7 @@
              area instead of pushing the title bar / content down. The wrapper grid
              pins it to the right ~2/5 of the content width so it never reaches into
              the navigation pane. Multi-line messages grow the banner taller. -->
-        <Grid Grid.Row="1" VerticalAlignment="Top">
+        <Grid VerticalAlignment="Top">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="3*"/>
                 <ColumnDefinition Width="2*"/>
@@ -265,4 +239,4 @@
         </Grid>
 
     </Grid>
-</winex:WindowEx>
+</UserControl>
