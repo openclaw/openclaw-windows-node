@@ -9,6 +9,38 @@ using Microsoft.Security.Extensions;
 
 namespace OpenClaw.Connection;
 
+//------------------------------------------------------------------------------
+// Module: WindowsAuthenticodeVerifier
+//
+// Verifies that a Windows executable is a genuine Microsoft binary before the
+// connection layer trusts it as the WSL relay (`wslrelay.exe`) for a
+// managed-local gateway. Trust is granted when either:
+//   1. the file carries a valid embedded Authenticode signature from
+//      "O=Microsoft Corporation", or
+//   2. for `wslrelay.exe` specifically (modern Store WSL ships it unsigned),
+//      a package-level fallback proves WSL deployment: the file sits at a
+//      canonical relay path (`Program Files\WSL`, `System32`, or
+//      `{WindowsApps}\{WSL package root}\wslrelay.exe`), the registered WSL
+//      MSIX package identity matches Microsoft's WSL family/publisher, and
+//      the path is admin-protected (TrustedInstaller/System/Administrators
+//      ownership, no user-writable ACEs, no reparse points).
+// When package or path evidence is merely unavailable the result degrades to
+// a warning that the caller must corroborate via the managed distro ownership
+// probe; definitive mismatch evidence is rejected.
+//
+// Primary entry point:
+//   WindowsAuthenticodeVerifier.VerifyMicrosoftSignedFile(path)
+//
+// Example:
+//   var result = WindowsAuthenticodeVerifier.VerifyMicrosoftSignedFile(
+//       @"C:\Program Files\WSL\wslrelay.exe");
+//   // AuthenticodeTrustResult: IsTrusted, Detail, IsWarning
+//   //   Signed wslrelay.exe      -> Trusted()               (IsTrusted=true,  IsWarning=false)
+//   //   Unsigned + proven package -> Trusted()               (IsTrusted=true,  IsWarning=false)
+//   //   Package/path evidence unavailable -> Warned(detail)  (IsTrusted=true,  IsWarning=true)
+//   //   Mismatched identity or unprotected path -> Rejected  (IsTrusted=false)
+//------------------------------------------------------------------------------
+
 internal readonly record struct AuthenticodeTrustResult(
     bool IsTrusted,
     string? Detail,
