@@ -141,6 +141,9 @@ interactive question lifecycles remain owned by the explicit interactive scenari
 `GatewayFixtureStartupTests` exercise parent and foreign browser-control startup
 without launching the app. Cancellation and readiness failures must reap the
 owned child, remove its readiness file, and release both listener ports.
+They share the nonparallel `Gateway fixture environment` collection so another
+test cannot allocate a just-released ephemeral port before the cleanup rebind
+assertion. Occupancy, child-exit, readiness-file and rebind checks remain required.
 The Shared browser-proxy regression runs the production client and a default-handler
 control in separate test-host processes with explicit proxy settings. It does not
 change the test runner's environment or cached default proxy.
