@@ -10,7 +10,6 @@ internal enum HubPageKind
 {
     Connection,
     LocalAi,
-    Channels,
     Instances,
     Config,
     Usage,
@@ -88,9 +87,15 @@ internal static class HubPageRegistry
     {
         OpenClaw.SetupEngine.SetupNativeDestination.Chat => "chat",
         OpenClaw.SetupEngine.SetupNativeDestination.Skills => "skills",
+        _ => throw new ArgumentOutOfRangeException(nameof(destination)),
+    };
+
+    /// <summary>Channel setup destinations open the Gateway dashboard instead of a native page.</summary>
+    internal static string? GetNativeSetupDashboardPath(OpenClaw.SetupEngine.SetupNativeDestination destination) => destination switch
+    {
         OpenClaw.SetupEngine.SetupNativeDestination.WhatsApp or OpenClaw.SetupEngine.SetupNativeDestination.Telegram or
             OpenClaw.SetupEngine.SetupNativeDestination.Channels => "channels",
-        _ => throw new ArgumentOutOfRangeException(nameof(destination)),
+        _ => null,
     };
 
     public static ImmutableArray<string> CommandResourceKeys { get; } =
@@ -154,7 +159,6 @@ internal static class HubPageRegistry
     {
         "connection" => HubPageKind.Connection,
         "local-ai" => HubPageKind.LocalAi,
-        "channels" => HubPageKind.Channels,
         "nodes" or "instances" => HubPageKind.Instances,
         "config" => HubPageKind.Config,
         "usage" => HubPageKind.Usage,
@@ -162,7 +166,6 @@ internal static class HubPageRegistry
         "capabilities" or "permissions" => HubPageKind.Permissions,
         "voice" => HubPageKind.Voice,
         "sandbox" => HubPageKind.Sandbox,
-        "activity" => HubPageKind.Channels,
         "settings" or "info" or "about" => HubPageKind.Settings,
         "notifications" => HubPageKind.Notifications,
         "debug" => HubPageKind.Debug,
@@ -211,7 +214,6 @@ internal static class HubPageRegistry
             tag.Equals("chat", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("sessions", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("skills", StringComparison.OrdinalIgnoreCase) ||
-            tag.Equals("channels", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("instances", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("agentevents", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("bindings", StringComparison.OrdinalIgnoreCase) ||
@@ -229,7 +231,6 @@ internal static class HubPageRegistry
     {
         HubPageKind.Connection => typeof(ConnectionPage),
         HubPageKind.LocalAi => typeof(LocalAiPage),
-        HubPageKind.Channels => typeof(ChannelsPage),
         HubPageKind.Instances => typeof(InstancesPage),
         HubPageKind.Config => typeof(ConfigPage),
         HubPageKind.Usage => typeof(UsagePage),
@@ -269,7 +270,11 @@ internal static class HubPageRegistry
             Format(context, "Command_GoToWorkspace_Title", context.CurrentAgentId),
             Get(context, "Command_GoToWorkspace_Subtitle"),
             HubCommandAction.Navigate($"agent:{context.CurrentAgentId}")));
-        AddNavigation(commands, context, "📡", "Command_GoToChannels", "channels");
+        commands.Add(new HubCommand(
+            "📡",
+            Get(context, "Command_GoToChannels_Title"),
+            Get(context, "Command_GoToChannels_Subtitle"),
+            HubCommandAction.OpenDashboard("channels")));
         AddNavigation(commands, context, "📡", "Command_GoToInstances", "instances");
         AddNavigation(commands, context, "📡", "Command_GoToConfig", "config");
         AddNavigation(commands, context, "📡", "Command_GoToUsage", "usage");

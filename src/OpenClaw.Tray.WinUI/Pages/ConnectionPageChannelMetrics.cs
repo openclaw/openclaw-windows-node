@@ -20,7 +20,7 @@ namespace OpenClawTray.Pages;
 /// <see cref="CountHealthyChannels"/> aligns to the canonical predicate and
 /// drops the <c>IsLinked</c> gate. <c>IsLinked</c> stays where it belongs —
 /// as auth-age detail in <see cref="ChannelHealth.DisplayText"/> and the
-/// channels page — not as a health predicate.
+/// channel summaries, not as a health predicate.
 /// </summary>
 internal static class ConnectionPageChannelMetrics
 {

@@ -1136,7 +1136,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
         Add("Settings", () => OpenCompanion(CompanionPageId.Settings), FluentIconCatalog.Settings);
         Add("Usage", () => OpenCompanion(CompanionPageId.Usage), FluentIconCatalog.Money);
-        Add("PairDevice", () => OpenCompanion(CompanionPageId.Channels), FluentIconCatalog.Devices);
+        Add("PairDevice", () => ((IAppCommands)Application.Current).OpenDashboard("channels"), FluentIconCatalog.Devices);
         var showConnectionStatus = false;
         _connectionStatusItem.Icon = _connectionStatusIcon;
         AutomationProperties.SetAutomationId(_connectionStatusItem, "WorkspaceOwnerConnectionStatus");

@@ -8,7 +8,7 @@ public sealed class ToastActivationRouterTests
     [InlineData("open_dashboard", typeof(ActivationRoute.OpenDashboard))]
     [InlineData("open_settings", typeof(ActivationRoute.OpenHub))]
     [InlineData("open_chat", typeof(ActivationRoute.OpenChat))]
-    [InlineData("open_activity", typeof(ActivationRoute.OpenHub))]
+    [InlineData("open_activity", typeof(ActivationRoute.OpenDashboard))]
     [InlineData("review_pairing", typeof(ActivationRoute.ReviewPairing))]
     public void PlanRoute_ReturnsExpectedRouteType(string action, Type expectedType)
     {

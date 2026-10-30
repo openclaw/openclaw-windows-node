@@ -205,7 +205,8 @@ selection, activation and recovery; the native AI page renders that state.
 page-owned `ProviderSetupDialog` owns prompt controls and secret clearing,
 without another client, persistence store or top-level setup page.
 `SetupWindow` remains the completion host. Verified AI opens the native chooser;
-an explicit choice restarts into Chat, Channels or Skills with a bound receipt.
+an explicit choice restarts into native Chat, native Skills, or the Gateway web
+dashboard's `channels` path with a bound receipt.
 The experimental browser-completion path is removed. See the completion handoff
 in `ONBOARDING_WIZARD.md`.
 Headless setup keeps `SetupStepFactory.BuildDefaultSteps()` and the

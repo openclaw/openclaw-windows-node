@@ -628,7 +628,6 @@ public sealed class WorkspaceWindowProofTests
         {
             ("Settings", "settings", "SettingsPage", "SettingsPageMarker"),
             ("Usage", "usage", "UsagePage", "UsagePageMarker"),
-            ("Pair device", "channels", "ChannelsPage", "ChannelsPageMarker"),
             ("About OpenClaw", "about", "SettingsPage", "SettingsPageMarker")
         })
         {

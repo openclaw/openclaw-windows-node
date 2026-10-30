@@ -90,7 +90,10 @@ public sealed partial class NotificationsPage : Page
             return;
         }
 
-        ((IAppCommands)CurrentApp).Navigate(item.ActionRoute);
+        if (AppNotificationActionRoutes.TryGetDashboardPath(item.ActionRoute, out var path))
+            ((IAppCommands)CurrentApp).OpenDashboard(path);
+        else
+            ((IAppCommands)CurrentApp).Navigate(item.ActionRoute);
         _notificationService?.Dismiss(item.Id);
     }
 }

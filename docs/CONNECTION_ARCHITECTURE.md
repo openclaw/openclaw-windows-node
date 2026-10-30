@@ -286,8 +286,9 @@ own focus handling. WindowManager restores a minimized Workspace and explicitly
 requests foreground activation, including when Workspace is already open.
 The Gateway dashboard action and its channels/integrations
 description live in their own Connection settings card, not above chat.
-Owner's Settings, Usage, Pair device, and About links open or focus that
-companion at `settings`, `usage`, `channels`, and `about` respectively. Closing
+Owner's Settings, Usage, and About links open or focus that
+companion at `settings`, `usage`, and `about` respectively. Pair device opens
+the Gateway web dashboard's `channels` path. Closing
 the companion does not close Workspace or discard an unsent chat draft.
 Generic Workspace refocus preserves the current page; explicit page/session
 links still navigate. `agent:<id>:workspace` retains its original agent-files
@@ -296,9 +297,15 @@ meaning and is not the main Workspace route.
 Verified native setup completion follows the same window boundary. Chat binds
 the receipt's exact session to Workspace's retained ChatPage and waits for the
 native composer before activating the window and consuming the receipt.
-Channels and Skills keep typed companion navigation. Both paths retain fresh
-gateway, endpoint, identity, agent, and session checks; selecting a different
-Workspace destination invalidates an in-flight chat handoff.
+Skills keeps typed companion navigation. Channels opens the Gateway web
+dashboard's `channels` path after verification, and the handoff carries the
+verified completion through credential resolution. The launcher rechecks the
+exact Gateway, connected signing identity, session and available live model facts
+immediately before browser dispatch. A changed Gateway or revoked identity is
+rejected before dispatch; a failed browser launch retains the receipt for explicit
+retry. Both paths retain fresh gateway, endpoint, identity, agent, and session
+checks; selecting a different Workspace destination invalidates an in-flight
+chat handoff.
 Admitted assistant changes and new-conversation creation invalidate that binding
 before any asynchronous session creation, even while the old conversation remains
 visible. Same-session rebinding must use the new request identity. Cancellation

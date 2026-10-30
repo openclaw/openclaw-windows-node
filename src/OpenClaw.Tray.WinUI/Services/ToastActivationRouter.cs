@@ -18,7 +18,7 @@ public static class ToastActivationRouter
             case "open_chat":
                 return new ActivationRoute.OpenChat(getArgument("sessionKey"));
             case "open_activity":
-                return new ActivationRoute.OpenHub("channels");
+                return new ActivationRoute.OpenDashboard("channels");
             case "copy_pairing_command":
                 var command = getArgument("command");
                 return string.IsNullOrWhiteSpace(command) ? null : new ActivationRoute.CopyPairingCommand(command);

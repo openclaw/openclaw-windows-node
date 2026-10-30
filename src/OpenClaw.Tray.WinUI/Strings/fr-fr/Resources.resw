@@ -1096,9 +1096,6 @@ Utilisez l'une de ces options :
   <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
     <value>Ouvrir le panneau de la barre de menus</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
-    <value>Connecter des canaux de messagerie</value>
-  </data>
   <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
     <value>Essayer l'activation vocale</value>
   </data>
@@ -1275,9 +1272,6 @@ Utilisez l'une de ces options :
   </data>
   <data name="Onboarding_Ready_Feature_TrayMenu_Subtitle" xml:space="preserve">
     <value>Accéder depuis la barre des tâches</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Channels_Subtitle" xml:space="preserve">
-    <value>Paramètres → Canaux</value>
   </data>
   <data name="Onboarding_Ready_Feature_Voice_Subtitle" xml:space="preserve">
     <value>Réveillez avec votre voix</value>
@@ -1521,14 +1515,8 @@ Utilisez l'une de ces options :
   <data name="NodeStatusText.Text" xml:space="preserve">
     <value>Mode nœud désactivé</value>
   </data>
-  <data name="ChannelsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>📡 Canaux</value>
-  </data>
   <data name="ConnectionWarning.Title" xml:space="preserve">
     <value>Non connecté</value>
-  </data>
-  <data name="ChannelsPage_TextBlock_22.Text" xml:space="preserve">
-    <value>Aucun canal configuré</value>
   </data>
   <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
     <value>Connectez-vous à la passerelle pour commencer la discussion</value>
@@ -2267,9 +2255,6 @@ Utilisez l'une de ces options :
   </data>
   <data name="DefaultAgentNavItem.Content" xml:space="preserve">
     <value>main</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_109.Content" xml:space="preserve">
-    <value>Canaux</value>
   </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
     <value>Instances connectées</value>
@@ -3873,18 +3858,6 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="FilterAllButton.Text" xml:space="preserve">
     <value>Tout</value>
   </data>
-  <data name="ChannelsPage_Title.Text" xml:space="preserve">
-    <value>Canaux</value>
-  </data>
-  <data name="ChannelsPage_Refresh.Text" xml:space="preserve">
-    <value>Rafraîchir</value>
-  </data>
-  <data name="ChannelsPage_ConfiguredHeader.Text" xml:space="preserve">
-    <value>CONFIGURÉ</value>
-  </data>
-  <data name="ChannelsPage_AvailableHeader.Text" xml:space="preserve">
-    <value>DISPONIBLE</value>
-  </data>
   <data name="ChatPageHomeToolTip.Content" xml:space="preserve">
     <value>Accueil</value>
   </data>
@@ -3923,27 +3896,6 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   </data>
   <data name="HubWindow_NavigationViewItem_Sandbox.Content" xml:space="preserve">
     <value>Bac à sable</value>
-  </data>
-  <data name="ChannelsPage_GuideBar.Title" xml:space="preserve">
-    <value>Your gateway didn't list any channels</value>
-  </data>
-  <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
-    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials. The form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
-  </data>
-  <data name="ChannelsPage_DocsLink.Content" xml:space="preserve">
-    <value>Read the channels guide</value>
-  </data>
-  <data name="ChannelsPage_NotConnected.Title" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="ChannelsPage_NotConnected.Message" xml:space="preserve">
-    <value>Connect to a gateway to manage channels.</value>
-  </data>
-  <data name="ChannelsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No channels available</value>
-  </data>
-  <data name="ChannelsPage_EmptySubtitle.Text" xml:space="preserve">
-    <value>The gateway didn't report any channels. Install channel plugins on the gateway and refresh.</value>
   </data>
   <data name="DiagnosticsPage_Title.Text" xml:space="preserve">
     <value>Diagnostics</value>
@@ -5849,293 +5801,8 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="ConnectionPage_ConnectionTimeout" xml:space="preserve">
     <value>Le délai d’attente de la connexion à la passerelle a expiré.</value>
   </data>
-  <data name="ChannelsPage_UnavailableOnWindows" xml:space="preserve">
-    <value>Ce canal nécessite un hôte macOS. Il ne peut pas être configuré depuis une machine Windows.</value>
-  </data>
-  <data name="ChannelsPage_ReplaceCredentials" xml:space="preserve">
-    <value>Remplacer les identifiants</value>
-  </data>
-  <data name="ChannelsPage_Configuration" xml:space="preserve">
-    <value>Paramètres</value>
-  </data>
-  <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
-    <value>Dissocier cet appareil du canal. Scannez un nouveau QR pour vous reconnecter: votre compte reste associé sur votre téléphone.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
-    <value>Mettre le canal en pause temporairement: les identifiants sont conservés pour pouvoir le redémarrer. Ou déconnectez-vous entièrement pour les effacer.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
-    <value>Démarrer le canal: il commencera à traiter les messages avec les identifiants enregistrés. Ou déconnectez-vous entièrement pour les effacer.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
-    <value>Mettre le canal en pause: les identifiants sont conservés pour pouvoir le redémarrer.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
-    <value>Démarrer le canal: il commencera à traiter les messages avec les identifiants enregistrés.</value>
-  </data>
-  <data name="ChannelsPage_Start" xml:space="preserve">
-    <value>Démarrer</value>
-  </data>
-  <data name="ChannelsPage_Stop" xml:space="preserve">
-    <value>Arrêter</value>
-  </data>
-  <data name="ChannelsPage_Logout" xml:space="preserve">
-    <value>Déconnexion</value>
-  </data>
-  <data name="ChannelsPage_DisconnectForget" xml:space="preserve">
-    <value>Déconnecter et oublier les identifiants</value>
-  </data>
-  <data name="ChannelsPage_Controls" xml:space="preserve">
-    <value>Commandes</value>
-  </data>
-  <data name="ChannelsPage_HelpWhatsApp" xml:space="preserve">
-    <value>Aide sur les appareils liés WhatsApp →</value>
-  </data>
-  <data name="ChannelsPage_HelpSignal" xml:space="preserve">
-    <value>Aide sur les appareils liés Signal →</value>
-  </data>
-  <data name="ChannelsPage_HelpTelegram" xml:space="preserve">
-    <value>Comment créer un bot Telegram →</value>
-  </data>
-  <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
-    <value>Comment créer un bot Discord →</value>
-  </data>
-  <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
-    <value>Comment ajouter un webhook Google Chat →</value>
-  </data>
-  <data name="ChannelsPage_HelpSlack" xml:space="preserve">
-    <value>Tableau de bord des applications Slack →</value>
-  </data>
-  <data name="ChannelsPage_HelpNostr" xml:space="preserve">
-    <value>À propos de Nostr →</value>
-  </data>
-  <data name="ChannelsPage_HelpIMessage" xml:space="preserve">
-    <value>À propos de Messages sur macOS →</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppHeadline" xml:space="preserve">
-    <value>Associer votre téléphone WhatsApp</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
-    <value>Cliquez sur "Show QR" dans la section Liaison ci-dessous.</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
-    <value>Sur votre téléphone : WhatsApp → Paramètres → Appareils liés → Lier un appareil.</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep3" xml:space="preserve">
-    <value>Scannez le code QR qui s’affiche ici.</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalHeadline" xml:space="preserve">
-    <value>Associer votre téléphone Signal</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
-    <value>Cliquez sur "Show QR" dans la section Liaison ci-dessous.</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
-    <value>Sur votre téléphone : Signal → Paramètres → Appareils liés → Lier un nouvel appareil.</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep3" xml:space="preserve">
-    <value>Scannez le code QR qui s’affiche ici.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramHeadline" xml:space="preserve">
-    <value>Connecter Telegram via un bot</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep1" xml:space="preserve">
-    <value>Ouvrez Telegram et envoyez un message à @BotFather.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep2" xml:space="preserve">
-    <value>Envoyez /newbot et suivez les instructions. Copiez le jeton du bot à la fin.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep3" xml:space="preserve">
-    <value>Collez le jeton dans le formulaire de configuration ci-dessous.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
-    <value>Cliquez sur "Save and start". Le canal démarrera automatiquement.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
-    <value>Connecter Discord via un bot</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
-    <value>Ouvrez le portail des développeurs Discord, puis créez ou sélectionnez une application.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>Ouvrez Bot, ajoutez un bot si nécessaire, puis réinitialisez et copiez son jeton.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
-    <value>Collez le jeton du bot dans le formulaire de configuration ci-dessous.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>Cliquez sur "Save and start", puis ajoutez le bot à votre serveur avec son lien d’installation OAuth2.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
-    <value>Connecter Google Chat via un webhook</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep1" xml:space="preserve">
-    <value>Dans Google Chat, ouvrez l’espace → Gérer les webhooks → Ajouter un webhook.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep2" xml:space="preserve">
-    <value>Copiez l’URL du webhook.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep3" xml:space="preserve">
-    <value>Collez l’URL dans le formulaire de configuration ci-dessous.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
-    <value>Cliquez sur "Save and start".</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
-    <value>Connecter Slack via une application</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep1" xml:space="preserve">
-    <value>Créez une application Slack sur api.slack.com/apps et installez-la dans votre espace de travail.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep2" xml:space="preserve">
-    <value>Copiez le jeton du bot (xoxb-…) et le secret de signature.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep3" xml:space="preserve">
-    <value>Collez les deux dans le formulaire de configuration ci-dessous.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
-    <value>Cliquez sur "Save and start".</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
-    <value>Connecter Nostr via des relais</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep1" xml:space="preserve">
-    <value>Générez ou collez une clé privée (nsec).</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep2" xml:space="preserve">
-    <value>Choisissez une ou plusieurs URL de relais (p. ex. wss://relay.damus.io).</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep3" xml:space="preserve">
-    <value>Collez les deux dans le formulaire de configuration ci-dessous.</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
-    <value>Cliquez sur "Save and start".</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
-    <value>iMessage est réservé à macOS</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep1" xml:space="preserve">
-    <value>iMessage lit la base de données locale de Messages.app, qui n’existe que sur macOS.</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep2" xml:space="preserve">
-    <value>Pour utiliser iMessage avec OpenClaw, exécutez la passerelle sur un Mac au lieu de cet hôte Windows.</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep3" xml:space="preserve">
-    <value>Tous les autres canaux de cette liste fonctionnent correctement depuis une passerelle hébergée sous Windows.</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericHeadline" xml:space="preserve">
-    <value>Connecter ce canal</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
-    <value>"{0}" est un canal de plugin. Consultez sa documentation pour connaître les champs requis.</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
-    <value>Utilisez "Open Config page" dans la section Configuration ci-dessous pour ajouter des paramètres sous channels.{0}.</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
-    <value>Enregistrez la configuration ; OpenClaw démarrera le canal automatiquement.</value>
-  </data>
-  <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
-    <value>Jeton du bot</value>
-  </data>
-  <data name="ChannelsPage_FieldDiscordBotToken" xml:space="preserve">
-    <value>Jeton du bot Discord</value>
-  </data>
-  <data name="ChannelsPage_PlaceholderDiscordBotToken" xml:space="preserve">
-    <value>Collez le jeton du bot Discord</value>
-  </data>
-  <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
-    <value>URL du webhook</value>
-  </data>
-  <data name="ChannelsPage_FieldSigningSecret" xml:space="preserve">
-    <value>Secret de signature</value>
-  </data>
-  <data name="ChannelsPage_FieldPrivateKey" xml:space="preserve">
-    <value>Clé privée (nsec)</value>
-  </data>
-  <data name="ChannelsPage_FieldRelayUrls" xml:space="preserve">
-    <value>URL des relais</value>
-  </data>
-  <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
-    <value>Obtenez-le auprès de @BotFather (/newbot).</value>
-  </data>
-  <data name="ChannelsPage_HelpDiscordBotToken" xml:space="preserve">
-    <value>Copiez-le depuis le portail des développeurs Discord → Bot → Reset Token.</value>
-  </data>
-  <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
-    <value>Ouvrez un espace → Gérer les webhooks → Ajouter un webhook.</value>
-  </data>
-  <data name="ChannelsPage_HelpSlackBotToken" xml:space="preserve">
-    <value>Jetons OAuth de votre application Slack.</value>
-  </data>
-  <data name="ChannelsPage_HelpSlackSigningSecret" xml:space="preserve">
-    <value>Informations de base → Identifiants de l'application.</value>
-  </data>
-  <data name="ChannelsPage_HelpRelayUrls" xml:space="preserve">
-    <value>Une par ligne.</value>
-  </data>
-  <data name="ChannelsPage_SaveChanges" xml:space="preserve">
-    <value>Enregistrer les modifications</value>
-  </data>
-  <data name="ChannelsPage_SaveAndStart" xml:space="preserve">
-    <value>Enregistrer et démarrer</value>
-  </data>
-  <data name="ChannelsPage_OpenConfigPage" xml:space="preserve">
-    <value>Ouvrir la page de configuration</value>
-  </data>
-  <data name="ChannelsPage_ConfigPlaceholderConfigured" xml:space="preserve">
-    <value>Modifiez les paramètres de ce canal dans la page de configuration de la passerelle.</value>
-  </data>
-  <data name="ChannelsPage_ConfigPlaceholderUnconfigured" xml:space="preserve">
-    <value>Après avoir suivi les étapes ci-dessus, enregistrez la configuration pour démarrer le canal.</value>
-  </data>
-  <data name="ChannelsPage_BannerNotConnectedTitle" xml:space="preserve">
-    <value>Non connecté</value>
-  </data>
-  <data name="ChannelsPage_BannerNotConnectedMessage" xml:space="preserve">
-    <value>Connectez-vous à une passerelle avant d’enregistrer la configuration du canal.</value>
-  </data>
-  <data name="ChannelsPage_BannerMissingFieldTitle" xml:space="preserve">
-    <value>Champ manquant</value>
-  </data>
-  <data name="ChannelsPage_BannerMissingFieldMessage" xml:space="preserve">
-    <value>{0} est requis.</value>
-  </data>
-  <data name="ChannelsPage_BannerSavingTitle" xml:space="preserve">
-    <value>Enregistrement de {0}…</value>
-  </data>
-  <data name="ChannelsPage_BannerSavingMessage" xml:space="preserve">
-    <value>Écriture de {0} champ(s) et activation du canal.</value>
-  </data>
-  <data name="ChannelsPage_BannerCantLoadConfigTitle" xml:space="preserve">
-    <value>Impossible de charger la configuration de la passerelle</value>
-  </data>
-  <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
-    <value>La passerelle n’a pas renvoyé sa configuration actuelle: impossible d’enregistrer en toute sécurité sans elle. Essayez d’actualiser et d’enregistrer à nouveau.</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
-    <value>La configuration de la passerelle a été effacée en cours d’enregistrement. Essayez d’actualiser et d’enregistrer à nouveau.</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveBlockedTitle" xml:space="preserve">
-    <value>Enregistrement bloqué pour {0}</value>
-  </data>
-  <data name="ChannelsPage_BannerGatewayNoResponse" xml:space="preserve">
+  <data name="ConfigPage_BannerGatewayNoResponse" xml:space="preserve">
     <value>La passerelle n’a pas répondu.</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveFailedTitle" xml:space="preserve">
-    <value>Échec de l’enregistrement pour {0}</value>
-  </data>
-  <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>La configuration de votre passerelle a été modifiée ailleurs (p. ex., depuis la page de configuration). Nous avons actualisé le cache. Réessayez d’enregistrer. Détails : {0}</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
-    <value>{0} Si cela ressemble à une incompatibilité de format filaire, ouvrez la page de configuration pour modifier directement le JSON.</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigSavedTitle" xml:space="preserve">
-    <value>Configuration de {0} enregistrée</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
-    <value>En attente de la confirmation par la passerelle que le canal est en cours d’exécution…</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
     <value>Passerelle WSL</value>
@@ -7543,8 +7210,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>Le Gateway vérifié ou la page n’est pas prêt. Vérifiez Connection, puis réessayez explicitement.</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Réessayer</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>Fermer</value></data>
-  <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>Ce Gateway ne propose pas le canal sélectionné. Consultez les canaux disponibles ou actualisez après sa mise à jour.</value></data>
-  <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>La disponibilité des canaux n’a pas pu être confirmée. Actualisez pour réessayer. Aucune connexion ni configuration de canal n’a été démarrée.</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>En savoir plus sur les risques et la sécurité</value></data>
   <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Configurer OpenClaw</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>Le Gateway relie votre assistant IA à vos applications et outils. Choisissez où il s’exécute. Vous pourrez modifier ce choix plus tard.</value></data>
@@ -7879,7 +7544,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_Notifications" xml:space="preserve"><value>Notifications</value></data>
   <data name="WorkspaceShell_More" xml:space="preserve"><value>More</value></data>
   <data name="WorkspaceShell_Connection" xml:space="preserve"><value>Connection</value></data>
-  <data name="WorkspaceShell_Channels" xml:space="preserve"><value>Channels</value></data>
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
   <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>

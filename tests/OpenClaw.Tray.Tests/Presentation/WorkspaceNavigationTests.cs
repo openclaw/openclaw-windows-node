@@ -112,9 +112,9 @@ public sealed class WorkspaceNavigationTests
         history.Navigate(new(WorkspacePageId.Home, "chat-a"));
         history.Navigate(WorkspaceDestination.Settings("sessions"));
         history.Navigate(WorkspaceDestination.Settings("connection"));
-        history.Navigate(WorkspaceDestination.Settings("channels"));
+        history.Navigate(WorkspaceDestination.Settings("skills"));
         history.GoBack();
-        history.RemoveSettingsEntries(tag => tag is "sessions" or "channels");
+        history.RemoveSettingsEntries(tag => tag is "sessions" or "skills");
         Assert.False(history.CanGoForward);
         Assert.True(history.GoBack());
         Assert.Equal(new(WorkspacePageId.Home, "chat-a"), history.Current);
@@ -141,8 +141,8 @@ public sealed class WorkspaceNavigationTests
         var history = new WorkspaceNavigationHistory();
         history.Navigate(new(WorkspacePageId.Home, "chat-a"));
         history.Navigate(WorkspaceDestination.Settings("connection"));
-        history.Navigate(WorkspaceDestination.Settings("channels"));
-        Assert.True(history.PruneSettings(tag => tag == "channels", WorkspaceDestination.Settings("connection")));
+        history.Navigate(WorkspaceDestination.Settings("skills"));
+        Assert.True(history.PruneSettings(tag => tag == "skills", WorkspaceDestination.Settings("connection")));
         Assert.Equal(WorkspaceDestination.Settings("connection"), history.Current);
         // The adjacent duplicate "connection" entry collapses so Back skips to chat.
         Assert.True(history.GoBack());
@@ -155,9 +155,9 @@ public sealed class WorkspaceNavigationTests
         var history = new WorkspaceNavigationHistory();
         history.Navigate(new(WorkspacePageId.Home, "chat-a"));
         history.Navigate(WorkspaceDestination.Settings("settings"));
-        history.Navigate(WorkspaceDestination.Settings("channels"));
+        history.Navigate(WorkspaceDestination.Settings("skills"));
         history.Navigate(WorkspaceDestination.Settings("settings"));
-        Assert.False(history.PruneSettings(tag => tag == "channels", history.Current));
+        Assert.False(history.PruneSettings(tag => tag == "skills", history.Current));
         Assert.Equal(WorkspaceDestination.Settings("settings"), history.Current);
         Assert.True(history.GoBack());
         Assert.Equal(new(WorkspacePageId.Home, "chat-a"), history.Current);
@@ -213,7 +213,7 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
-    public void ColdNativeSetup_ChannelsAndSkills_AwaitSettingsRenderInsteadOfThrowing()
+    public void ColdNativeSetup_Skills_AwaitSettingsRenderInsteadOfThrowing()
     {
         var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         var wait = workspace[workspace.IndexOf("internal async Task WaitForNativeSetupAsync", StringComparison.Ordinal)..];
@@ -228,7 +228,6 @@ public sealed class WorkspaceNavigationTests
         // and cleared when any non-Settings destination renders or the window closes.
         Assert.Contains("_pendingSettingsRequest.Consume()", workspace);
         Assert.Contains("_pendingSettingsRequest.Clear();\n        LeaveSettings();", workspace.Replace("\r\n", "\n"));
-        Assert.Equal("channels", WorkspaceNavigation.NormalizeSettingsTag("channels", "main"));
         Assert.Equal("skills", WorkspaceNavigation.NormalizeSettingsTag("skills", "main"));
         Assert.Contains("NormalizeNativeSetupTag(request.PageTag)", workspace);
     }
@@ -894,7 +893,7 @@ public sealed class WorkspaceNavigationTests
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("OwnerButton.Flyout = menu", code);
         Assert.Contains("OpenCompanion(CompanionPageId.Usage)", code);
-        Assert.Contains("OpenCompanion(CompanionPageId.Channels)", code);
+        Assert.Contains("OpenDashboard(\"channels\")", code);
         Assert.Contains("OpenCompanion(CompanionPageId.About)", code);
         Assert.Contains("Add(\"GetApps\", () => _ = OpenLinkAsync(\"https://docs.openclaw.ai/platforms\")", code);
         Assert.Contains("OpenLinkAsync(\"https://github.com/openclaw/openclaw-windows-node\")", code);

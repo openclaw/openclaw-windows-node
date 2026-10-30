@@ -361,6 +361,40 @@ public sealed class AppNotificationServiceTests
     }
 
     [Theory]
+    [InlineData("channels", "channels")]
+    [InlineData("dashboard:channels", "channels")]
+    [InlineData("dashboard:skills", "skills")]
+    public void AppNotificationActionRoutes_Dashboard_PreservesPathAndLegacyChannels(string route, string expected)
+    {
+        Assert.True(AppNotificationActionRoutes.TryGetDashboardPath(route, out var path));
+        Assert.Equal(expected, path);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("dashboard:")]
+    [InlineData("dashboard: ")]
+    [InlineData("connection")]
+    [InlineData("chat:session")]
+    public void AppNotificationActionRoutes_Dashboard_RejectsEmptyOrNativeRoutes(string? route)
+    {
+        Assert.False(AppNotificationActionRoutes.TryGetDashboardPath(route, out var path));
+        Assert.Null(path);
+    }
+
+    [Theory]
+    [InlineData(@"Pages\NotificationsPage.xaml.cs")]
+    [InlineData(@"Controls\SettingsShellView.xaml.cs")]
+    public void NotificationActions_DispatchDashboardRoutesWithoutNativePageNavigation(string relativePath)
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", relativePath));
+        Assert.Contains("AppNotificationActionRoutes.TryGetDashboardPath(", source);
+        Assert.Contains(".OpenDashboard(path)", source);
+    }
+
+    [Theory]
     [InlineData("", "message", "source")]
     [InlineData("title", "", "source")]
     [InlineData("title", "message", "")]

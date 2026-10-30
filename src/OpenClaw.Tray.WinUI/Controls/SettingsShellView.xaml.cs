@@ -261,6 +261,10 @@ internal sealed partial class SettingsShellView : UserControl
                 CurrentApp.PendingChatSessionKey = sessionKey;
                 NavigateTo("chat");
             }
+            else if (AppNotificationActionRoutes.TryGetDashboardPath(route, out var path))
+            {
+                ((IAppCommands)CurrentApp).OpenDashboard(path);
+            }
             else
             {
                 NavigateTo(route);
@@ -467,9 +471,7 @@ internal sealed partial class SettingsShellView : UserControl
             await Task.Delay(50, ct);
             EnsureCurrent();
         }
-        if (ContentFrame.Content is ChannelsPage channels && request.PageTag == "channels")
-            await channels.WaitForNativeSetupAsync(request, ct);
-        else if (ContentFrame.Content is SkillsPage skills && request.PageTag == "skills")
+        if (ContentFrame.Content is SkillsPage skills && request.PageTag == "skills")
             await skills.WaitForNativeSetupAsync(request, ct);
         else
             throw new InvalidOperationException("The selected setup destination changed.");
@@ -645,7 +647,6 @@ internal sealed partial class SettingsShellView : UserControl
 
             NavSessions.Visibility = vis;
             NavSkills.Visibility = vis;
-            NavChannels.Visibility = vis;
             NavInstances.Visibility = vis;
             NavCron.Visibility = vis;
             NavAdvanced.Visibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
@@ -855,7 +856,6 @@ internal sealed partial class SettingsShellView : UserControl
         {
             case SessionsPage sessions: sessions.Initialize(); break;
             case ConnectionPage connection: connection.Initialize(); break;
-            case ChannelsPage channels: channels.Initialize(); break;
             case UsagePage usage: usage.Initialize(); break;
             case CronPage cron: cron.Initialize(); break;
             case SkillsPage skills: skills.Initialize(); break;
@@ -987,7 +987,6 @@ internal sealed partial class SettingsShellView : UserControl
         { "connection",  "\uE839" },
         { "sessions",    "\uE8F2" },
         { "skills",      "\uE945" },
-        { "channels",    "\uEC05" },
         { "instances",   "\uE977" },
         { "agentevents", "\uE943" },
         { "bindings",    "\uE8AD" },

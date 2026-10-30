@@ -73,23 +73,23 @@ public static class DeepLinkHandler
                 return new ActivationRoute.OpenHub("chat");
 
             case "activity":
-                // ActivityPage was removed. Redirect by filter: channel events
-                // now live on the Channels page; sessions/usage/nodes have their
-                // own dedicated pages; notifications fall through to Channels.
+                // ActivityPage was removed. Redirect by filter: sessions/usage/nodes
+                // have their own pages; everything else opens the Gateway dashboard
+                // channels view.
                 {
                     var filter = result.Parameters.GetValueOrDefault("filter");
-                    return new ActivationRoute.OpenHub(filter switch
+                    return filter switch
                     {
-                        "session" => "sessions",
-                        "usage" => "usage",
-                        "node" => "instances",
-                        _ => "channels",
-                    });
+                        "session" => new ActivationRoute.OpenHub("sessions"),
+                        "usage" => new ActivationRoute.OpenHub("usage"),
+                        "node" => new ActivationRoute.OpenHub("instances"),
+                        _ => new ActivationRoute.OpenDashboard("channels"),
+                    };
                 }
 
             case "history":
-                // Legacy notification-history alias — Channels page is the closest match.
-                return new ActivationRoute.OpenHub("channels");
+                // Legacy notification-history alias — the dashboard channels view is the closest match.
+                return new ActivationRoute.OpenDashboard("channels");
 
             case "commandcenter":
                 return new ActivationRoute.OpenHub("connection");
@@ -186,8 +186,8 @@ public static class DeepLinkHandler
             case "notifications":
             case "notification-history":
             case "activity-stream":
-                // ActivityPage removed — channel events now live on the Channels page.
-                return new ActivationRoute.OpenHub("channels");
+                // ActivityPage removed. Channel events live in the Gateway dashboard.
+                return new ActivationRoute.OpenDashboard("channels");
 
             case "dashboard":
                 return new ActivationRoute.OpenDashboard(null);
@@ -205,6 +205,12 @@ public static class DeepLinkHandler
 
             case "voice-stop":
                 return new ActivationRoute.StopVoice();
+
+            case "hub/channels":
+                return new ActivationRoute.OpenDashboard("channels");
+
+            case "hub/activity":
+                return new ActivationRoute.OpenHub("notifications");
 
             default:
                 if (path == "hub" || path.StartsWith("hub/"))

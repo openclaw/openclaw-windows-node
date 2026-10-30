@@ -25,7 +25,6 @@ public sealed class HubPageRegistryTests
     [InlineData("nodes", (int)HubPageKind.Instances)]
     [InlineData("capabilities", (int)HubPageKind.Permissions)]
     [InlineData("permissions", (int)HubPageKind.Permissions)]
-    [InlineData("activity", (int)HubPageKind.Channels)]
     [InlineData("conversations", (int)HubPageKind.Sessions)]
     [InlineData("info", (int)HubPageKind.Settings)]
     [InlineData("agent:main", (int)HubPageKind.Workspace)]
@@ -41,6 +40,8 @@ public sealed class HubPageRegistryTests
 
     [Theory]
     [InlineData("chat")]
+    [InlineData("channels")]
+    [InlineData("activity")]
     [InlineData("PERMISSIONS")]
     [InlineData("Agent:main")]
     [InlineData("agent:main:unknown")]
@@ -58,7 +59,6 @@ public sealed class HubPageRegistryTests
     [InlineData("chat")]
     [InlineData("SESSIONS")]
     [InlineData("skills")]
-    [InlineData("channels")]
     [InlineData("instances")]
     [InlineData("agentevents")]
     [InlineData("bindings")]
@@ -73,6 +73,7 @@ public sealed class HubPageRegistryTests
 
     [Theory]
     [InlineData("connection")]
+    [InlineData("channels")]
     [InlineData("permissions")]
     [InlineData("local-ai")]
     [InlineData("debug")]
@@ -111,6 +112,7 @@ public sealed class HubPageRegistryTests
         Assert.Equal("Command_GoToConnection_Title", commands[0].Title);
         Assert.Equal("Command_GoToConnection_Subtitle", commands[0].Subtitle);
         Assert.Equal("Cron alpha", commands[6].Title);
+        Assert.Equal(HubCommandAction.OpenDashboard("channels"), commands[8].Action);
         Assert.Equal(HubCommandActionKind.OpenDashboard, commands[16].Action.Kind);
         Assert.Null(commands[16].Action.Value);
         Assert.Single(commands, command => command.Action == HubCommandAction.Navigate("chat"));

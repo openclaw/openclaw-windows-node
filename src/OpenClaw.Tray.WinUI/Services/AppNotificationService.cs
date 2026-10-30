@@ -46,6 +46,7 @@ public sealed record AppNotificationSnapshot(
 internal static class AppNotificationActionRoutes
 {
     private const string ChatPrefix = "chat:";
+    private const string DashboardPrefix = "dashboard:";
 
     public static string Chat(string sessionKey) =>
         ChatPrefix + Uri.EscapeDataString(sessionKey);
@@ -65,6 +66,23 @@ internal static class AppNotificationActionRoutes
 
         sessionKey = Uri.UnescapeDataString(encoded);
         return !string.IsNullOrWhiteSpace(sessionKey);
+    }
+
+    public static bool TryGetDashboardPath(string? route, out string? path)
+    {
+        path = null;
+        if (route == "channels")
+        {
+            path = "channels";
+            return true;
+        }
+        if (route?.StartsWith(DashboardPrefix, StringComparison.Ordinal) != true)
+            return false;
+        var candidate = route[DashboardPrefix.Length..];
+        if (string.IsNullOrWhiteSpace(candidate))
+            return false;
+        path = candidate;
+        return true;
     }
 }
 

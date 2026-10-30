@@ -243,10 +243,11 @@ public class DeepLinkParserTests
 
     [Theory]
     [InlineData("openclaw://settings", "hub:settings")]
+    [InlineData("openclaw://hub/channels", "dashboard:channels")]
+    [InlineData("openclaw://hub/activity", "hub:notifications")]
     [InlineData("openclaw://setup", "setup")]
     [InlineData("openclaw://chat", "hub:chat")]
     [InlineData("openclaw://commandcenter", "hub:connection")]
-    [InlineData("openclaw://history", "hub:channels")]
     [InlineData("openclaw://logs", "log-file")]
     [InlineData("openclaw://log-folder", "log-folder")]
     [InlineData("openclaw://config", "config-folder")]
@@ -268,6 +269,7 @@ public class DeepLinkParserTests
         var actual = route switch
         {
             ActivationRoute.OpenHub r => $"hub:{r.Page}",
+            ActivationRoute.OpenDashboard r => $"dashboard:{r.Path}",
             ActivationRoute.OpenSetup => "setup",
             ActivationRoute.OpenLogFile => "log-file",
             ActivationRoute.OpenLogFolder => "log-folder",
@@ -283,12 +285,9 @@ public class DeepLinkParserTests
     }
 
     [Theory]
-    [InlineData("openclaw://activity", "channels")]
     [InlineData("openclaw://activity?filter=usage", "usage")]
     [InlineData("openclaw://activity?filter=session", "sessions")]
     [InlineData("openclaw://activity?filter=node", "instances")]
-    [InlineData("openclaw://history", "channels")]
-    [InlineData("openclaw://notification-history", "channels")]
     [InlineData("openclaw://commandcenter", "connection")]
     [InlineData("openclaw://command-center", "connection")]
     public void PlanRoute_HubAliases_ReturnExpectedPage(string uri, string expectedHubTag)
@@ -296,6 +295,15 @@ public class DeepLinkParserTests
         var route = Assert.IsType<ActivationRoute.OpenHub>(
             DeepLinkHandler.PlanRoute(uri, "openclaw"));
         Assert.Equal(expectedHubTag, route.Page);
+    }
+
+    [Theory]
+    [InlineData("openclaw://history")]
+    [InlineData("openclaw://notification-history")]
+    public void PlanRoute_HistoryAliases_OpenChannelsDashboard(string uri)
+    {
+        var route = Assert.IsType<ActivationRoute.OpenDashboard>(DeepLinkHandler.PlanRoute(uri, "openclaw"));
+        Assert.Equal("channels", route.Path);
     }
 
     [Fact]
@@ -311,7 +319,8 @@ public class DeepLinkParserTests
     {
         Assert.Equal("instances", PlanHubPage("openclaw://activity?filter=node"));
         Assert.Equal("sessions", PlanHubPage("openclaw://activity?filter=session"));
-        Assert.Equal("channels", PlanHubPage("openclaw://activity"));
+        var dashboard = Assert.IsType<ActivationRoute.OpenDashboard>(DeepLinkHandler.PlanRoute("openclaw://activity", "openclaw"));
+        Assert.Equal("channels", dashboard.Path);
     }
 
     [Fact]

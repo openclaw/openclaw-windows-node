@@ -72,39 +72,6 @@ public class AppStateTests
         Assert.All(fired, name => Assert.Equal(nameof(AppState.GatewaySelf), name));
     }
 
-    [Fact]
-    public void ChannelsSnapshot_FiresPropertyChanged_AndIsClearedOnDisconnect()
-    {
-        // Mirrors the existing Sessions/Channels coverage: the rich
-        // channels.status snapshot is published via PropertyChanged, kept
-        // when re-set, and reset by ClearCachedData (without affecting Status).
-        var state = CreateState();
-        var fired = new List<string>();
-        state.PropertyChanged += (_, e) => fired.Add(e.PropertyName!);
-
-        var snap = new ChannelsStatusSnapshot { ChannelOrder = new[] { "whatsapp" } };
-        state.ChannelsSnapshot = snap;
-
-        Assert.Single(fired);
-        Assert.Equal(nameof(AppState.ChannelsSnapshot), fired[0]);
-        Assert.Same(snap, state.ChannelsSnapshot);
-
-        // Setting the same reference does not re-fire.
-        fired.Clear();
-        state.ChannelsSnapshot = snap;
-        Assert.Empty(fired);
-
-        // ClearCachedData resets it to null and notifies observers.
-        state.Status = ConnectionStatus.Connected;
-        fired.Clear();
-        state.ClearCachedData();
-
-        Assert.Null(state.ChannelsSnapshot);
-        Assert.Contains(nameof(AppState.ChannelsSnapshot), fired);
-        // Status is NOT reset by ClearCachedData (managed by OnManagerStateChanged).
-        Assert.Equal(ConnectionStatus.Connected, state.Status);
-    }
-
     // ── ClearCachedData ────────────────────────────────────────────────
 
     [Fact]

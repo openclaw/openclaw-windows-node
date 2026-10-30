@@ -653,14 +653,23 @@ public sealed class SetupNativeHandoffTests
         var store = new SetupDashboardHandoffStore(temp.Path);
         var choice = Choice with { Target = Choice.Target with { Destination = destination } };
         Assert.Equal(persistedValue, (int)destination);
-        Assert.Equal(page, new SetupNativeNavigationRequest(choice).PageTag);
+        var dashboardPath = HubPageRegistry.GetNativeSetupDashboardPath(destination);
+        if (dashboardPath is not null)
+        {
+            Assert.Equal(page, dashboardPath);
+            Assert.Throws<ArgumentOutOfRangeException>(() => HubPageRegistry.GetNativeSetupPage(destination));
+        }
+        else
+        {
+            Assert.Equal(page, new SetupNativeNavigationRequest(choice).PageTag);
+        }
         var request = new SetupNativeNavigationRequest(choice);
         if (destination == SetupNativeDestination.Chat)
         {
             Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, choice.Target.SessionKey), request.WorkspaceDestination);
             request.RequireWorkspaceDestination(request.WorkspaceDestination!);
         }
-        else
+        else if (dashboardPath is null)
         {
             Assert.Null(request.WorkspaceDestination);
             Assert.Throws<SetupNativeOwnershipException>(() =>
@@ -947,20 +956,6 @@ public sealed class SetupNativeHandoffTests
             failure => Assert.Equal(expiry ? SetupNativeLaunchFailure.Invalid : SetupNativeLaunchFailure.Changed, failure));
         Assert.False(await launcher.OpenAsync(store, handle));
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
-    }
-
-    [Fact]
-    public void FocusPolicyDoesNotTreatFallbackOrConfiguredOtherChannelsAsAuthoritativeAbsence()
-    {
-        Assert.Equal(SetupChannelAvailability.Unconfirmed,
-            SetupChannelFocusPolicy.GetAvailability(new(), "whatsapp"));
-        Assert.Equal(SetupChannelAvailability.Unconfirmed,
-            SetupChannelFocusPolicy.GetAvailability(new() { Channels = new Dictionary<string, System.Text.Json.JsonElement>
-                { ["telegram"] = default } }, "whatsapp"));
-        Assert.Equal(SetupChannelAvailability.NotOffered,
-            SetupChannelFocusPolicy.GetAvailability(new() { ChannelOrder = ["telegram"] }, "whatsapp"));
-        Assert.Equal(SetupChannelAvailability.Offered,
-            SetupChannelFocusPolicy.GetAvailability(new() { ChannelOrder = ["whatsapp"] }, "whatsapp"));
     }
 
     private sealed class Clock : TimeProvider

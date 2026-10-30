@@ -445,8 +445,9 @@ follow real primary-model verification, not discovery or browser sign-in.
 Showing the page creates no pending handoff and performs no finalization.
 
 The final screen has exactly three choices: **Talk to my agent**, with a visible
-Recommended badge, opens Chat; **Connect channels** opens Channels (WhatsApp,
-Telegram, and more); **Explore skills** opens Skills for the verified agent.
+Recommended badge, opens Chat; **Connect channels** opens the Gateway web
+dashboard's `channels` path (WhatsApp, Telegram, and more); **Explore skills**
+opens Skills for the verified agent.
 There are no bottom Return or Skip buttons; the progress dots remain. Selecting
 a card is the final action, with no extra Finish button. These are navigation
 choices, never automatic sign-in, channel configuration, or skill installation.
@@ -669,11 +670,11 @@ An invalid regular `restart.json` is rechecked and removed under its writer leas
 before reporting the error once. A newer valid handle, other handoff files and
 reparse paths are never removed by this recovery cleanup.
 
-After restart, native launch re-verifies ownership before mounting Chat,
-Channels or Skills. Legacy targeted Channels uses a fresh response from the bound Gateway,
-never generic fallback rows as evidence of support. Missing authoritative
-metadata produces an unconfirmed/retry state; an offered-channel list that
-omits the target produces an unavailable state. Native Chat selects the verified
+After restart, native launch re-verifies ownership before mounting Chat or
+Skills, or opening the Gateway web dashboard's `channels` path. Legacy targeted
+WhatsApp and Telegram destinations also open that dashboard path, without
+starting authentication or changing channel configuration. Failed browser
+launches retain the handoff for explicit retry. Native Chat selects the verified
 session without changing the user's persistent chat-surface preference.
 
 On first launch, the wizard appears only when there is no usable saved gateway connection. Users with existing gateways manage connections from the tray app's Connections tab. The local WSL setup affordance in Connections is shown only when setup has not already created an app-owned WSL gateway on this device.
@@ -685,7 +686,7 @@ The setup flow walks users through:
 3. **PC capabilities** - Strict, Balanced (Recommended), Open, and inline Fine-tune; Node mode, local MCP and Ollama sharing stay independent. No Gateway-installation disclosure, Windows-access advisory panel, or probe runs here.
 4. **Gateway setup** - Managed WSL reviews installation and replacement consent; native Gateway checks its package and prepares a dedicated profile without WSL or Local AI installation.
 5. **AI setup** - Native Gateway, WSL and existing/remote gateways use focused AI setup and live model verification, followed by the same three destination choices. Native uses its setup-owned runtime until finalization; WSL workspace integration remains WSL-only.
-6. **Completion** - Both verified focused AI flows open Chat, Channels or Skills. Only the explicit classic compatibility fallback retains its setup-complete and connection handoff.
+6. **Completion** - Both verified focused AI flows open native Chat, native Skills, or Channels in the Gateway web dashboard. Only the explicit classic compatibility fallback retains its setup-complete and connection handoff.
 
 `SetupWindow` owns one `SetupAccessDraft` over the same `SetupConfig` for the
 entire flow. The native connection contract separates verify-only **Check** from
