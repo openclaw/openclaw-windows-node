@@ -501,6 +501,7 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
                 Assert.Equal(Localized("Migration2_RemovalWarning"), Control<InfoBar>(window, "Safety").Message);
             });
             await CaptureAsync(window, "AwaitingRemovalNamedApps");
+            // Retry must clear app labels when reinspection no longer supplies them.
             await ui.RunOnUIAsync(() =>
             {
                 operations.Admission = new(StoreMigrationStartupState.AwaitingInnoRemoval, operations.Admission.Installation);
