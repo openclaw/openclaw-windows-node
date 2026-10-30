@@ -500,6 +500,11 @@ Build the same gateway dashboard URL the tray opens.
 {"path": "string"}           // optional
 ```
 Returns `{ url, credentialSource, usesSharedGatewayToken, hasTokenQuery }`.
+`credentialSource` is the selected credential's provenance, not proof it was
+included in the URL. `usesSharedGatewayToken` reports actual browser credential
+inclusion: false for verified Tailscale identity and bootstrap-only links, true
+for shared-token fallback. Device/bootstrap credentials are not exported.
+`hasTokenQuery` checks the query only; it does not describe a token fragment.
 
 ## App connection diagnostics and setup (app.connection.*)
 

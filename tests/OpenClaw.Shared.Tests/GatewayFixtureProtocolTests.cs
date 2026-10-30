@@ -26,7 +26,7 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.True(result.IsSupported);
         Assert.Empty(result.Questions);
         Assert.Contains(server.Requests, request => request.Method == "question.list" && request.Outcome == "ok");
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<GatewayRequestRejectedException>(() =>
             connected.Client.SendWizardRequestAsync("question.request", new { title = "Not an interactive fixture" }));
         Assert.Contains("Unknown fixture Gateway method", error.Message);
         Assert.Equal("question.request", Assert.Single(server.UnexpectedRequests).Method);
@@ -54,7 +54,7 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Empty(catalog.Workspaces);
         foreach (var method in new[] { "projects.list", "agents.list", "environments.list" })
             Assert.Contains(server.Requests, request => request.Method == method && request.Outcome == "ok");
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<GatewayRequestRejectedException>(() =>
             connected.Client.SendWizardRequestAsync("projects.add", new { gitUrl = "https://example.test/fixture.git" }));
         Assert.Contains("read-only", error.Message);
         Assert.Contains(server.Requests, request => request.Method == "projects.add" && request.Outcome == "error:FIXTURE_READ_ONLY");
@@ -101,7 +101,7 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.True(result.IsSupported);
         Assert.Empty(result.Questions);
         Assert.DoesNotContain("question.resolve", scenario.ReadMethods);
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<GatewayRequestRejectedException>(() =>
             connected.Client.SendWizardRequestAsync("question.list", new { unexpected = true }));
         Assert.Contains("Unsupported fixture request parameter", error.Message);
         Assert.Empty(server.UnexpectedRequests);
@@ -146,10 +146,16 @@ public sealed partial class GatewayFixtureProtocolTests
         var history = await client.SendWizardRequestAsync("chat.history", new { sessionKey = result.Key });
         Assert.Empty(history.GetProperty("messages").EnumerateArray());
         Assert.Equal(result.SessionId, history.GetProperty("sessionId").GetString());
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync(
-            "sessions.create", new { parentSessionKey = GatewayScenario.OtherSessionKey, fork = true }));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync(
-            "sessions.create", new { parentSessionKey = "unknown" }));
+        var unsupportedParameter = await Assert.ThrowsAsync<GatewayRequestRejectedException>(() =>
+            client.SendWizardRequestAsync(
+                "sessions.create", new { parentSessionKey = GatewayScenario.OtherSessionKey, fork = true }));
+        Assert.Equal("INVALID_PARAMS", unsupportedParameter.Code);
+        Assert.Equal("Unsupported fixture request parameter.", unsupportedParameter.Message);
+        var unknownParent = await Assert.ThrowsAsync<GatewayRequestRejectedException>(() =>
+            client.SendWizardRequestAsync(
+                "sessions.create", new { parentSessionKey = "unknown" }));
+        Assert.Equal("INVALID_PARAMS", unknownParent.Code);
+        Assert.Equal("Unknown fixture session key.", unknownParent.Message);
         Assert.Equal(6, (await client.SendWizardRequestAsync("sessions.list")).GetProperty("count").GetInt32());
         Assert.Empty(server.UnexpectedRequests);
     }
@@ -253,12 +259,12 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.False(toggled.GetProperty("enabled").GetBoolean());
         Assert.Equal("America/Chicago", toggled.GetProperty("schedule").GetProperty("tz").GetString());
         var beforeInvalid = JsonSerializer.Serialize(scenario.GetCronJobs());
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.update",
+        await Assert.ThrowsAsync<GatewayRequestRejectedException>(() => client.SendWizardRequestAsync("cron.update",
             new { id = "listed", patch = new { schedule = new { kind = "every", everyMs = "invalid" } } }));
         Assert.Equal(beforeInvalid, JsonSerializer.Serialize(scenario.GetCronJobs()));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.update",
+        await Assert.ThrowsAsync<GatewayRequestRejectedException>(() => client.SendWizardRequestAsync("cron.update",
             new { id = "unknown", patch = new { name = "Unknown" } }));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.run", new { id = "listed" }));
+        await Assert.ThrowsAsync<GatewayRequestRejectedException>(() => client.SendWizardRequestAsync("cron.run", new { id = "listed" }));
         Assert.Empty(server.UnexpectedRequests);
     }
 
@@ -401,7 +407,7 @@ public sealed partial class GatewayFixtureProtocolTests
         await server.NotifySessionsChangedAsync(deadline.Token);
         await refreshed.Task.WaitAsync(deadline.Token);
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendChatMessageForRunAsync(ContextUsageFixture.SecondPrompt, ContextUsageFixture.SessionKey));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("sessions.reset", new { key = ContextUsageFixture.SessionKey }));
+        await Assert.ThrowsAsync<GatewayRequestRejectedException>(() => client.SendWizardRequestAsync("sessions.reset", new { key = ContextUsageFixture.SessionKey }));
         Assert.Empty(server.UnexpectedRequests);
 
         static JsonElement UsageRow(JsonElement listing) => listing.GetProperty("sessions").EnumerateArray()
@@ -442,7 +448,7 @@ public sealed partial class GatewayFixtureProtocolTests
         server.ReleaseSessionMutations();
         if (!allow)
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => patch);
+            await Assert.ThrowsAnyAsync<InvalidOperationException>(() => patch);
             return;
         }
         await patch.WaitAsync(Deadline);
@@ -453,7 +459,7 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Equal(GatewayScenario.OtherSessionKey, Assert.Single(archived.Sessions).Key);
         await client.DeleteSessionConfirmedAsync(GatewayScenario.OtherSessionKey, epoch);
         Assert.Empty((await client.ListArchivedSessionsAsync()).Sessions);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteSessionConfirmedAsync(GatewayScenario.MainSessionKey, epoch));
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => client.DeleteSessionConfirmedAsync(GatewayScenario.MainSessionKey, epoch));
         Assert.Empty(server.UnexpectedRequests);
     }
 
@@ -740,7 +746,7 @@ public sealed partial class GatewayFixtureProtocolTests
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
         await using var connected = await ConnectedClient.OpenAsync(server, token);
         using var parameters = JsonDocument.Parse(json);
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+        var error = await Assert.ThrowsAnyAsync<InvalidOperationException>(
             () => connected.Client.SendWizardRequestAsync(method, parameters.RootElement));
         Assert.Contains(message, error.Message);
         Assert.Contains(server.Requests, request => request.Method == method && request.Outcome == "error:INVALID_PARAMS");
@@ -764,7 +770,7 @@ public sealed partial class GatewayFixtureProtocolTests
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
         await using var connected = await ConnectedClient.OpenAsync(server, token);
         var before = await connected.Client.SendWizardRequestAsync("config.get");
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+        var error = await Assert.ThrowsAnyAsync<InvalidOperationException>(
             () => method == "chat.send"
                 ? connected.Client.SendChatMessageForRunAsync("Synthetic write attempt.", GatewayScenario.MainSessionKey)
                 : (Task)connected.Client.SendWizardRequestAsync(method, new { sessionKey = GatewayScenario.MainSessionKey, message = "Synthetic write attempt." }));
@@ -808,8 +814,10 @@ public sealed partial class GatewayFixtureProtocolTests
             GatewayScenario.OtherSessionKey, sent.RunId!, "Wrong session."));
         await Assert.ThrowsAsync<ArgumentException>(() => server.PublishChatFinalAsync(
             GatewayScenario.MainSessionKey, "unissued-run", "Unknown run."));
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var wrongSessionAbort = await Assert.ThrowsAsync<GatewayRequestRejectedException>(() =>
             client.SendChatAbortAsync(sent.RunId!, GatewayScenario.OtherSessionKey));
+        Assert.Equal("INVALID_PARAMS", wrongSessionAbort.Code);
+        Assert.Equal("Chat run was not issued for this fixture session.", wrongSessionAbort.Message);
 
         server.HoldChatAborts();
         var abort = client.SendChatAbortAsync(sent.RunId!, GatewayScenario.MainSessionKey);
@@ -820,8 +828,9 @@ public sealed partial class GatewayFixtureProtocolTests
         server.ReleaseChatAborts(fail);
         if (fail)
         {
-            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => abort.WaitAsync(Deadline));
-            Assert.Contains("Fixture abort rejected.", error.Message);
+            var error = await Assert.ThrowsAsync<GatewayRequestRejectedException>(() => abort.WaitAsync(Deadline));
+            Assert.Equal("FIXTURE_ABORT_FAILED", error.Code);
+            Assert.Equal("Fixture abort rejected.", error.Message);
         }
         else
             await abort.WaitAsync(Deadline);
@@ -935,7 +944,7 @@ public sealed partial class GatewayFixtureProtocolTests
             command = "echo fixture",
         });
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAnyAsync<InvalidOperationException>(() =>
             connected.Client.SendWizardRequestAsync(
                 "exec.approval.resolve",
                 new { id = "fixture-approval-invalid", decision = "approve" }));
@@ -1046,7 +1055,7 @@ public sealed partial class GatewayFixtureProtocolTests
         var token = CreateToken();
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
         await using var connected = await ConnectedClient.OpenAsync(server, token);
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+        var error = await Assert.ThrowsAnyAsync<InvalidOperationException>(
             () => connected.Client.SendWizardRequestAsync("surprise.read", new { token, body = "PRIVATE-REQUEST-BODY" }));
         Assert.Contains("Unknown fixture Gateway method", error.Message);
         Assert.Equal("surprise.read", Assert.Single(server.UnexpectedRequests).Method);

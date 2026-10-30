@@ -157,6 +157,60 @@ public class AppCapabilityTests
     }
 
     [Fact]
+    public async Task DashboardUrl_AwaitsAsyncHandler()
+    {
+        const string expectedUrl = "https://gateway.test:8443/prefix/settings?view=compact#token=opaque";
+        var handlerStarted = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handlerResult = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cap = new AppCapability(NullLogger.Instance)
+        {
+            DashboardUrlHandler = path =>
+            {
+                handlerStarted.TrySetResult(path);
+                return handlerResult.Task;
+            }
+        };
+        var req = new NodeInvokeRequest
+        {
+            Id = "1",
+            Command = "app.dashboard.url",
+            Args = ParseArgs("{\"path\":\"settings\"}")
+        };
+
+        var responseTask = cap.ExecuteAsync(req);
+        Assert.Equal("settings", await handlerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(responseTask.IsCompleted);
+
+        handlerResult.SetResult(new { url = expectedUrl });
+        var res = await responseTask;
+
+        Assert.True(res.Ok);
+        Assert.Equal(
+            expectedUrl,
+            JsonSerializer.SerializeToElement(res.Payload).GetProperty("url").GetString());
+    }
+
+    [Fact]
+    public async Task DashboardUrl_PropagatesHandlerError()
+    {
+        var cap = new AppCapability(NullLogger.Instance)
+        {
+            DashboardUrlHandler = _ => Task.FromResult<object?>(new { error = "credential unavailable" })
+        };
+        var req = new NodeInvokeRequest
+        {
+            Id = "1",
+            Command = "app.dashboard.url",
+            Args = ParseArgs("{}")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.False(res.Ok);
+        Assert.Equal("credential unavailable", res.Error);
+    }
+
+    [Fact]
     public async Task UnknownCommand_ReturnsError()
     {
         var cap = new AppCapability(NullLogger.Instance);

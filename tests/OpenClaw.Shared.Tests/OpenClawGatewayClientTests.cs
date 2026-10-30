@@ -108,15 +108,19 @@ public class OpenClawGatewayClientTests
         if (unavailable)
             await Assert.ThrowsAsync<GatewayQuestionUnavailableException>(() => getting.WaitAsync(TimeSpan.FromSeconds(5)));
         else
-            await Assert.ThrowsAsync<InvalidOperationException>(() => getting.WaitAsync(TimeSpan.FromSeconds(5)));
+        {
+            var error = await Assert.ThrowsAsync<GatewayRequestRejectedException>(() => getting.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal("QUESTION_NOT_FOUND", error.Message);
+            Assert.Null(error.Code);
+        }
     }
 
     [Theory]
     [InlineData("QUESTION_NOT_FOUND", typeof(GatewayQuestionUnavailableException))]
     [InlineData("QUESTION_ALREADY_TERMINAL", typeof(GatewayQuestionAlreadyTerminalException))]
     [InlineData("QUESTION_INVALID_ANSWER", typeof(GatewayQuestionInvalidAnswerException))]
-    [InlineData("PERMISSION_DENIED", typeof(InvalidOperationException))]
-    [InlineData("", typeof(InvalidOperationException))]
+    [InlineData("PERMISSION_DENIED", typeof(GatewayRequestRejectedException))]
+    [InlineData("", typeof(GatewayRequestRejectedException))]
     public async Task QuestionResolve_ClassifiesStructuredReason_NotUntrustedMessage(string reason, Type expectedType)
     {
         using var server = new LoopbackWebSocketServer();
@@ -141,7 +145,12 @@ public class OpenClawGatewayClientTests
         }));
         var error = await Record.ExceptionAsync(() => sending.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.IsType(expectedType, error);
-        if (expectedType != typeof(InvalidOperationException))
+        if (error is GatewayRequestRejectedException rejection)
+        {
+            Assert.Equal("INVALID_REQUEST", rejection.Code);
+            Assert.Equal("private answer: QUESTION_ALREADY_TERMINAL QUESTION_INVALID_ANSWER", rejection.Message);
+        }
+        else
             Assert.DoesNotContain("private answer", error.Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
@@ -814,6 +823,14 @@ public class OpenClawGatewayClientTests
             return GetPendingRegistry().Count;
         }
 
+        public SemaphoreSlim GetSendLockForTest()
+        {
+            var field = typeof(WebSocketClientBase).GetField(
+                "_sendLock",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            return (SemaphoreSlim)field!.GetValue(_client)!;
+        }
+
         private PendingRequestRegistry GetPendingRegistry()
         {
             var field = typeof(OpenClawGatewayClient).GetField(
@@ -1022,7 +1039,7 @@ public class OpenClawGatewayClientTests
             error = new { message = "permission denied" },
             payload = new { ok = false, reason = "permission denied" }
         }));
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => task);
+        var error = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => task);
         Assert.Equal("permission denied", error.Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
@@ -1124,11 +1141,99 @@ public class OpenClawGatewayClientTests
                 error = new { message = "wizard rejected" }
             }));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<GatewayRequestRejectedException>(
             async () => await responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
 
         Assert.Equal("wizard rejected", exception.Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_ClassifiesGatewayRejectionAsAuthoritative()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("config-patch-rejection-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        using var config = JsonDocument.Parse("{}");
+
+        var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 10_000);
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var requestId = ReadRequestId(request);
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = requestId,
+            ok = false,
+            error = new { code = "INVALID_REQUEST", message = "patch rejected" },
+        }));
+
+        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(result.Ok);
+        Assert.True(result.IsGatewayRejection);
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_DoesNotClassifyUnavailableAsAuthoritative()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("config-patch-unavailable-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        using var config = JsonDocument.Parse("{}");
+
+        var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 10_000);
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var requestId = ReadRequestId(request);
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = requestId,
+            ok = false,
+            error = new { code = "UNAVAILABLE", message = "runtime activation failed" },
+        }));
+
+        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(result.Ok);
+        Assert.False(result.IsGatewayRejection);
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_DoesNotClassifyTimeoutAsGatewayRejection()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("config-patch-timeout-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        using var config = JsonDocument.Parse("{}");
+
+        var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 250);
+        await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(result.Ok);
+        Assert.False(result.IsGatewayRejection);
+        Assert.True(result.TimedOut);
+        Assert.Null(result.Error);
     }
 
     [Fact]
@@ -1147,7 +1252,7 @@ public class OpenClawGatewayClientTests
         Assert.Null(result.RawResponse);
         Assert.DoesNotContain("synthetic-transformed", logs);
         Assert.DoesNotContain(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(secret)), logs);
-        Assert.Contains("InvalidOperationException", logs);
+        Assert.Contains("GatewayRequestRejectedException", logs);
     }
 
     [Fact]
@@ -1173,7 +1278,7 @@ public class OpenClawGatewayClientTests
         Assert.False(result.LooksLikeStaleBaseHash);
         Assert.Null(result.Error);
         Assert.Null(result.RawResponse);
-        Assert.Contains("config.patch failed (InvalidOperationException)", logs);
+        Assert.Contains("config.patch failed (GatewayRequestRejectedException)", logs);
         foreach (var secret in new[] { botToken, signingSecret, webhookUrl })
         {
             Assert.DoesNotContain(secret, result.Error ?? "");
@@ -1353,6 +1458,46 @@ public class OpenClawGatewayClientTests
 
         Assert.Equal("Timed out waiting for wizard.status response", exception.Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task SendWizardRequestAsync_DeadlineExpiresWhileQueuedForSend_DoesNotWriteAfterUnlock()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("wizard-request-send-timeout-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var sendLock = helper.GetSendLockForTest();
+        await sendLock.WaitAsync();
+        var lockHeld = true;
+        try
+        {
+            var request = client.SendWizardRequestAsync("wizard.status", timeoutMs: 150);
+            Assert.Equal(1, helper.GetPendingRequestCount());
+
+            var exception = await Assert.ThrowsAsync<TimeoutException>(async () =>
+                await request.WaitAsync(TimeSpan.FromSeconds(2)));
+
+            Assert.Equal("Timed out sending wizard.status request", exception.Message);
+            Assert.Equal(0, helper.GetPendingRequestCount());
+            sendLock.Release();
+            lockHeld = false;
+
+            using var noFrameTimeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                await server.ReceiveTextAsync(noFrameTimeout.Token).WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            if (lockHeld)
+                sendLock.Release();
+        }
     }
 
     [Fact]

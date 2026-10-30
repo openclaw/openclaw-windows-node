@@ -5594,6 +5594,60 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
     <value>Ouvrir le tableau de bord</value>
   </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthMenu" xml:space="preserve">
+    <value>Utiliser l’identité Tailscale pour le tableau de bord</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthTitle" xml:space="preserve">
+    <value>Utiliser l’identité Tailscale pour le tableau de bord ?</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthBody" xml:space="preserve">
+    <value>Cela demande l’authentification par identité Tailscale sur une passerelle qui gère Tailscale Serve au premier plan. Votre jeton enregistré, l’identité de l’appareil, la distribution WSL et l’association restent inchangés. Cette action ne modifie pas Serve.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnable" xml:space="preserve">
+    <value>Activer</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnabled" xml:space="preserve">
+    <value>L’identité Tailscale est activée pour le tableau de bord.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthAccepted" xml:space="preserve">
+    <value>La passerelle a accepté le paramètre d’identité Tailscale. Les liens du tableau de bord vérifieront qu’il est appliqué et opérationnel avant d’omettre le jeton.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureUnsupportedTopology" xml:space="preserve">
+    <value>Cette action nécessite Tailscale Serve au premier plan, géré par la passerelle. Le mode Serve en arrière-plan créé par l’installation n’est pas pris en charge. Demandez à l’administrateur de la passerelle de vérifier le déploiement. Aucun paramètre n’a été modifié.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureIngressNotReady" xml:space="preserve">
+    <value>Le point d’entrée Tailscale géré par la passerelle n’est pas prêt ou n’a pas pu être vérifié. Vérifiez la passerelle et la connexion Tailscale, puis réessayez. Aucun paramètre n’a été modifié.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureIneligible" xml:space="preserve">
+    <value>Cette passerelle n’est plus une passerelle Tailscale gérée. Actualisez la liste des passerelles et réessayez.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureNotActive" xml:space="preserve">
+    <value>Sélectionnez cette passerelle comme passerelle active, puis réessayez.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureNotConnected" xml:space="preserve">
+    <value>Connectez-vous à cette passerelle, puis réessayez.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureMissingConfigScope" xml:space="preserve">
+    <value>Reconnectez-vous avec l’autorisation operator.admin. Demandez-la à l’administrateur de la passerelle si elle n’est pas disponible.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureConfigUnavailable" xml:space="preserve">
+    <value>Impossible de lire la configuration de la passerelle. Reconnectez-vous à la passerelle et réessayez.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailurePatchRejected" xml:space="preserve">
+    <value>La passerelle n’a pas confirmé la modification. Reconnectez-vous et réessayez. Une nouvelle tentative réapplique uniquement le même paramètre Tailscale en toute sécurité.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailurePersistenceFailed" xml:space="preserve">
+    <value>Impossible d’enregistrer localement le paramètre de confiance Tailscale. Vérifiez l’accès au dossier de données OpenClaw Tray, puis réessayez.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureGeneric" xml:space="preserve">
+    <value>Impossible d’activer l’identité Tailscale pour le tableau de bord. Reconnectez-vous à la passerelle et réessayez.</value>
+  </data>
+  <data name="DashboardLink_NoBrowserCompatibleCredential" xml:space="preserve">
+    <value>Aucun identifiant de passerelle compatible avec le navigateur n’est disponible</value>
+  </data>
+  <data name="DashboardLink_TailscaleRevalidationFailed" xml:space="preserve">
+    <value>La revalidation de l’authentification Tailscale du tableau de bord a échoué</value>
+  </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>Options pour {0}</value>
   </data>
@@ -6426,7 +6480,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Connectez-vous à une passerelle avant d'enregistrer la configuration.</value>
   </data>
   <data name="ConfigPage_StatusReadOnlyMessage" xml:space="preserve">
-    <value>Ce jeton opérateur ne dispose pas de l'autorisation operator.write ; les modifications de configuration ne peuvent donc pas être enregistrées.</value>
+    <value>Ce jeton opérateur ne dispose pas de l'autorisation operator.admin ; les modifications de configuration ne peuvent donc pas être enregistrées.</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedTitle" xml:space="preserve">
     <value>Configuration non chargée</value>
@@ -6507,7 +6561,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Ce jeton opérateur ne dispose pas de l'autorisation operator.read ; la configuration de la passerelle ne peut donc pas être chargée ici.</value>
   </data>
   <data name="ConfigPage_ConfigIsReadOnlyMessage" xml:space="preserve">
-    <value>Ce jeton opérateur peut lire la configuration, mais ne dispose pas de l'autorisation operator.write. Vous pouvez inspecter et valider les brouillons, mais Enregistrer est désactivé.</value>
+    <value>Ce jeton opérateur peut lire la configuration, mais ne dispose pas de l'autorisation operator.admin. Vous pouvez inspecter et valider les brouillons, mais Enregistrer est désactivé.</value>
   </data>
   <data name="ConfigPage_MetaNoUnsavedChanges" xml:space="preserve">
     <value>Aucune modification non enregistrée.</value>
@@ -6534,7 +6588,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Configuration indisponible : operator.read manquant</value>
   </data>
   <data name="ConfigPage_SaveStatusReadOnlyMissingWrite" xml:space="preserve">
-    <value>Lecture seule : operator.write manquant</value>
+    <value>Lecture seule : operator.admin manquant</value>
   </data>
   <data name="ConfigPage_SaveStatusFixValidationBeforeSaving" xml:space="preserve">
     <value>Corrigez les erreurs de validation avant d'enregistrer</value>

@@ -560,11 +560,40 @@ public sealed class AppRefactorContractTests
         var source = ReadAppSources();
         var method = ExtractMethod(source, "OpenDashboard");
 
-        Assert.Contains("new GatewayDashboardLauncher(", method);
-        Assert.Contains("EnsureSshTunnelConfigured,", method);
-        Assert.Contains("ShowDashboardLaunchFailureAsync", method);
+        Assert.Contains("CreateGatewayDashboardLauncher", method);
+        Assert.Contains("EnsureSshTunnelConfigured,", source);
+        Assert.Contains("ShowDashboardLaunchFailureAsync", source);
         Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build", method);
         Assert.DoesNotContain("Process.Start", method);
+    }
+
+    [Fact]
+    public void DashboardLinkPolicy_StaysDelegatedToFocusedService()
+    {
+        var source = ReadAppSources();
+
+        Assert.Contains("GatewayDashboardLinkService", source);
+        Assert.DoesNotContain("OpenDashboardAfterTailscaleAuthRevalidationAsync", source);
+        Assert.DoesNotContain(".RevalidateTailscaleDashboardAuthAsync(active.Id)", source);
+        Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build(", source);
+    }
+
+    [Fact]
+    public void DashboardUrlResponse_ReportsEmittedCredentialWithoutChangingProvenance()
+    {
+        var source = ReadAppSources();
+        var start = source.IndexOf("app.DashboardUrlHandler = async (path) =>", StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        var end = source.IndexOf("app.ChatSnapshotHandler", start, StringComparison.Ordinal);
+        Assert.True(end > start);
+        var handler = source[start..end];
+
+        Assert.Contains("TryResolveChatCredentials(out var gatewayUrl, out var dashboardCredential, out var credentialSource, out var isBootstrapToken)", handler);
+        Assert.Contains("!isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken", handler);
+        AssertInOrder(handler, "new GatewayDashboardLinkRequest(", "dashboardCredential,", "usesSharedCredential,", "tailscaleGatewayId)");
+        Assert.Contains("usesSharedGatewayToken = result.BrowserCredentialIncluded", handler);
+        AssertInOrder(handler, "var url = result.Url!;", "url,", "credentialSource,", "usesSharedGatewayToken = result.BrowserCredentialIncluded");
+        Assert.DoesNotContain("usesSharedGatewayToken = !isBootstrapToken", handler);
     }
 
     [Fact]
@@ -581,7 +610,7 @@ public sealed class AppRefactorContractTests
             "CurrentApp.ShowTransientConnectionError(",
             "LocalizationHelper.GetString(\"ConnectionPage_SavedDashboardInvalidAddress\")",
             "return;",
-            "Launcher.LaunchUriAsync(");
+            "OpenDashboardFromLinkServiceAsync(");
         Assert.DoesNotContain("urlError", method);
 
         var resources = File.ReadAllText(Path.Combine(

@@ -711,6 +711,24 @@ Many gateway records may be saved, but only `ActiveId` in `gateways.json` is the
 
 ## Credential precedence
 
+### Tailscale dashboard auth upgrade
+
+`GatewayConnectionManager` serializes enablement and dashboard revalidation with
+gateway transitions. Both use `GatewayTailscaleAuthUpgradeService` and the same
+live ingress verifier. Enablement requires Core-managed foreground Serve before
+dispatching the hash-conditional auth-only patch. It records new trust only after
+confirmed patch acceptance, not before dispatch or after an unknown outcome.
+The marker is not a readiness claim. `GatewayDashboardLinkService` still verifies
+applied config and live ingress before omitting a browser credential. See the
+[supported topology and retry contract](WSL_GATEWAY_ADMIN.md#upgrade-dashboard-authentication-on-an-existing-gateway).
+
+`app.dashboard.url` retains the selected credential's `credentialSource` as
+provenance, while `usesSharedGatewayToken` reports the emitted link's
+`BrowserCredentialIncluded`. Verified Tailscale identity can therefore report a
+shared-token source with `usesSharedGatewayToken=false`. Shared fallback reports
+true; bootstrap-only links retain bootstrap provenance without exporting that
+credential. `hasTokenQuery` describes the query only, not a token in the fragment.
+
 ### Native onboarding connection boundary
 
 `SetupNativeConnectionPage` retains an immutable `SetupNativeConnectionRequest`.

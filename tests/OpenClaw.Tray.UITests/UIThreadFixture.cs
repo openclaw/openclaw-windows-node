@@ -99,7 +99,9 @@ public sealed class UIThreadFixture : IDisposable
         {
             var threadState = _uiThread.IsAlive ? _uiThread.ThreadState.ToString() : "stopped";
             throw new InvalidOperationException(
-                $"UIThreadFixture failed to initialize within {timeoutSeconds}s; phase='{_startupPhase}', threadState='{threadState}'");
+                $"UIThreadFixture failed to initialize within {timeoutSeconds}s; phase='{_startupPhase}', " +
+                $"threadState='{threadState}', callerManagedThreadId={Environment.CurrentManagedThreadId}, " +
+                $"uiManagedThreadId={_uiThread.ManagedThreadId}");
         }
 
         if (_startupError != null)

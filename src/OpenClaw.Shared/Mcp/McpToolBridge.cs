@@ -380,7 +380,7 @@ public class McpToolBridge
         ["app.search"] =
             "Search the command palette and return matching commands. Args: query (string, required). Returns array of { Title, Subtitle, Icon }.",
         ["app.dashboard.url"] =
-            "Build the same gateway dashboard URL the tray opens. Args: path (string, optional). Returns { url, credentialSource, usesSharedGatewayToken, hasTokenQuery }.",
+            "Build the same gateway dashboard URL the tray opens. Args: path (string, optional). Returns { url, credentialSource, usesSharedGatewayToken, hasTokenQuery }. credentialSource is selected credential provenance; usesSharedGatewayToken reports actual browser credential inclusion (false for verified Tailscale identity or bootstrap-only links, true for shared-token fallback). Device/bootstrap credentials are not exported. hasTokenQuery checks only the query, not a token fragment.",
         ["app.chat.snapshot"] =
             "READ-ALL: Return the current native chat snapshot for local automation. Args: threadId/sessionKey (string, optional). Returns connection state, compose target, thread summaries, queued outgoing messages, and recent timeline entries including chat text.",
         ["app.chat.send"] =
