@@ -205,6 +205,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-ci-workflow-contract.ps1
 
+    - name: Validate UI profile isolation behavior
+      shell: pwsh
+      run: ./scripts/test-ci-ui-profile.ps1
+
     - name: Validate MSIX CI artifacts
       shell: pwsh
       run: ./scripts/test-msix-ci-artifacts.ps1
@@ -662,16 +666,16 @@ jobs:
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
-      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
-      OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests
-      OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming
-      OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Local
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
+
+    - name: Configure isolated UI product roots
+      shell: pwsh
+      run: ./scripts/Set-CiUiTestEnvironment.ps1 -EnvironmentFile $env:GITHUB_ENV
 
     - *promotion-version-tag
 
@@ -750,7 +754,7 @@ jobs:
         -ResultsDirectory TestResults\TrayUI
         -TrxFileName OpenClaw.Tray.UITests.trx
         -Runtime win-x64
-        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=NativeMarkdownProof"
         -HangTimeoutSeconds 300
 
     - name: Run mock Gateway application scenarios
@@ -763,6 +767,20 @@ jobs:
         -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
         -ArtifactsDirectory .\TestResults\GatewayFixture
         -Screenshots
+
+    # Native Expander templates cannot safely outlive theme resource replacement in the
+    # shared WinUI testhost, so the disclosure proofs (Light + inert content) run in their
+    # own process. Dark and HighContrast are screenshot-only (OPENCLAW_VISUAL_TEST=1).
+    - name: Run native Markdown disclosure proofs
+      timeout-minutes: 10
+      shell: pwsh
+      run: |
+        ./scripts/run-proof-tests.ps1 `
+          -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
+          -Filter 'Category=NativeMarkdownProof' `
+          -ResultName markdown-disclosure `
+          -RuntimeIdentifier win-x64 `
+          -ResultsDirectory TestResults\Markdown
 
     # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)

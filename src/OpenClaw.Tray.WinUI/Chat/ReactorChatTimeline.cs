@@ -605,6 +605,12 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
     internal static Element BuildSafeMarkdown(string? text, Func<string, bool>? tryCopy = null)
     {
+        var parts = ChatMarkdownDisclosures.Parse(ChatMarkdownSanitizer.Sanitize(text));
+        return ChatMarkdownPresentation.Disclosures(parts, markdown => BuildInertMarkdown(markdown, tryCopy));
+    }
+
+    private static Element BuildInertMarkdown(string text, Func<string, bool>? tryCopy)
+    {
         var options = new MarkdownOptions
         {
             Heading = ChatMarkdownPresentation.Heading,
@@ -628,7 +634,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         };
 
         return ChatMarkdownPresentation.MessageBlocks(
-            Microsoft.UI.Reactor.Factories.Markdown(ChatMarkdownSanitizer.Sanitize(text), options));
+            Microsoft.UI.Reactor.Factories.Markdown(text, options));
     }
 
     private static Element BuildWrappingMarkdownListItem(Element defaultElement)
