@@ -165,6 +165,36 @@ public sealed class ChatMarkdownDisclosureTests
     }
 
     [Fact]
+    public void UnterminatedSummaries_SearchOnlyTheSummaryWindow()
+    {
+        const int count = 10_000;
+        var input = string.Concat(Enumerable.Repeat("<details><summary>x\n", count));
+        Assert.True(input.Length <= OpenClaw.Shared.Markdown.ChatMarkdownAstBuilder.MaxInputBytes);
+
+        var parts = ChatMarkdownDisclosures.Parse(input, out _, out var summarySearchChars);
+
+        Assert.Equal(input, Assert.IsType<ChatMarkdownText>(Assert.Single(parts)).Text);
+        // Each opener may search at most its own summary window, never the rest of the message.
+        Assert.InRange(summarySearchChars, 1, (long)count * (4096 + "</summary>".Length));
+    }
+
+    [Theory]
+    [InlineData(4096, true)]
+    [InlineData(4097, false)]
+    public void SummaryLengthLimit_IsUnchangedByTheBoundedSearch(int length, bool disclosure)
+    {
+        var summary = new string('s', length);
+        var input = $"<details><summary>{summary}</summary>\n\nBody\n\n</details>";
+
+        var part = Assert.Single(ChatMarkdownDisclosures.Parse(input));
+
+        if (disclosure)
+            Assert.Equal(summary, Assert.IsType<ChatMarkdownDisclosure>(part).Summary);
+        else
+            Assert.Equal(input, Assert.IsType<ChatMarkdownText>(part).Text);
+    }
+
+    [Fact]
     public void DisclosureDepth_IsBoundedWithoutDiscardingDeepContent()
     {
         var input = string.Concat(Enumerable.Repeat("<details><summary>Nested</summary>\n\n", 20)) +

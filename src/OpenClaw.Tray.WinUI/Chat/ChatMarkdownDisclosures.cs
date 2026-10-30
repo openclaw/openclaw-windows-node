@@ -17,17 +17,23 @@ internal static class ChatMarkdownDisclosures
     private const int MaxDepth = 16;
     private const int MaxSummaryLength = 4096;
 
-    internal static IReadOnlyList<ChatMarkdownPart> Parse(string text) => Parse(text, out _);
+    internal static IReadOnlyList<ChatMarkdownPart> Parse(string text) => Parse(text, out _, out _);
 
-    // Count part-building token inspections so breadth complexity can be checked without timing.
-    internal static IReadOnlyList<ChatMarkdownPart> Parse(string text, out int partTokenVisits)
+    internal static IReadOnlyList<ChatMarkdownPart> Parse(string text, out int partTokenVisits) =>
+        Parse(text, out partTokenVisits, out _);
+
+    // Count part-building token inspections and summary-terminator characters searched so
+    // breadth and suffix-scan complexity can be checked without timing.
+    internal static IReadOnlyList<ChatMarkdownPart> Parse(
+        string text, out int partTokenVisits, out long summarySearchChars)
     {
         partTokenVisits = 0;
+        summarySearchChars = 0;
         if (text.Length > ChatMarkdownAstBuilder.MaxInputBytes ||
             !text.Contains("<details", StringComparison.OrdinalIgnoreCase))
             return [new ChatMarkdownText(text)];
 
-        var tokens = Scan(text);
+        var tokens = Scan(text, ref summarySearchChars);
         var stack = new Stack<int>();
         for (var i = 0; i < tokens.Count; i++)
         {
@@ -88,7 +94,7 @@ internal static class ChatMarkdownDisclosures
         }
     }
 
-    private static List<Token> Scan(string text)
+    private static List<Token> Scan(string text, ref long summarySearchChars)
     {
         var tokens = new List<Token>();
         var eligible = WrapperPositions(text);
@@ -139,7 +145,7 @@ internal static class ChatMarkdownDisclosures
             {
                 if (topLevelShape && eligible.Open.Contains(tag))
                 {
-                    if (TryOpening(text, tag, eligible.Close, out var summary, out var expanded, out var bodyStart))
+                    if (TryOpening(text, tag, eligible.Close, ref summarySearchChars, out var summary, out var expanded, out var bodyStart))
                     {
                         tokens.Add(new Token(position, bodyStart, summary, expanded));
                         end = bodyStart;
@@ -255,7 +261,8 @@ internal static class ChatMarkdownDisclosures
     }
 
     private static bool TryOpening(
-        string text, int start, HashSet<int> closable, out string summary, out bool expanded, out int bodyStart)
+        string text, int start, HashSet<int> closable, ref long summarySearchChars,
+        out string summary, out bool expanded, out int bodyStart)
     {
         summary = string.Empty;
         expanded = false;
@@ -280,8 +287,12 @@ internal static class ChatMarkdownDisclosures
             !text.AsSpan(after).StartsWith("<summary>", StringComparison.OrdinalIgnoreCase))
             return false;
         var summaryStart = after + "<summary>".Length;
-        var close = text.IndexOf("</summary>", summaryStart, StringComparison.OrdinalIgnoreCase);
-        if (close < 0 || close - summaryStart > MaxSummaryLength)
+        // Search only as far as an accepted summary can reach, so unterminated openers
+        // cannot each rescan the rest of the message.
+        var searchLength = Math.Min(text.Length - summaryStart, MaxSummaryLength + "</summary>".Length);
+        summarySearchChars += searchLength;
+        var close = text.IndexOf("</summary>", summaryStart, searchLength, StringComparison.OrdinalIgnoreCase);
+        if (close < 0)
             return false;
 
         after = close + "</summary>".Length;
