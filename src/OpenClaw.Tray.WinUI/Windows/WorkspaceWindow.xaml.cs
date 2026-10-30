@@ -514,7 +514,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _settings?.Deactivate();
         _settings?.ContentOnly = false;
         SettingsSection.Margin = new Thickness(0);
-        SettingsSection.Background = null;
+        EmbeddedPageBackground.Visibility = Visibility.Collapsed;
         ContentHost.Visibility = Visibility.Visible;
         SettingsSection.Visibility = Visibility.Collapsed;
         SettingsHistoryBar.Visibility = Visibility.Collapsed;
@@ -1117,9 +1117,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         SettingsSection.Margin = embedded
             ? (paneOpen ? new Thickness(NavView.OpenPaneLength, 0, 0, 0) : new Thickness(0, 56, 0, 0))
             : new Thickness(0);
-        SettingsSection.Background = embedded
-            ? (Brush)Application.Current.Resources["ApplicationPageBackgroundThemeBrush"]
-            : null;
+        EmbeddedPageBackground.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         SettingsHistoryBar.Visibility = embedded && paneOpen ? Visibility.Collapsed : Visibility.Visible;
         EmbeddedOperationInfo.Severity = OperationInfo.Severity;
         EmbeddedOperationInfo.Message = OperationInfo.Message;

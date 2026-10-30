@@ -281,6 +281,8 @@
         </Grid>
         <Grid x:Name="SettingsSection" Grid.Row="1" Visibility="Collapsed"
               AutomationProperties.AutomationId="WorkspaceSettingsHost">
+            <Border x:Name="EmbeddedPageBackground" Canvas.ZIndex="-1" Visibility="Collapsed"
+                    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" IsHitTestVisible="False"/>
             <InfoBar x:Name="EmbeddedOperationInfo" Canvas.ZIndex="1" IsOpen="False" IsClosable="True"
                      Severity="Error" VerticalAlignment="Top" Closed="OnEmbeddedOperationClosed"
                      AutomationProperties.AutomationId="WorkspaceEmbeddedOperationFeedback"/>

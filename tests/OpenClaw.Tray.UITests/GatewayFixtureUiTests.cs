@@ -24,6 +24,37 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task PinnedPages_DisconnectRepairsRemovedRowFocus_AndReconnectRestoresPins()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            foreach (var tag in new[] { "sessions", "connection" })
+            {
+                await WaitUiAsync(run, () => FindById(run, "WorkspacePagesCustomize") is not null, "customization button");
+                Invoke(FindById(run, "WorkspacePagesCustomize")!);
+                await WaitUiAsync(run, () => FindById(run, $"WorkspacePagesToggle:{tag}") is not null, "pin toggle");
+                Invoke(FindById(run, $"WorkspacePagesToggle:{tag}")!);
+                await WaitUiAsync(run, () => FindById(run, $"WorkspacePinnedPage:{tag}") is not null, "pinned row");
+            }
+            Invoke(FindById(run, "WorkspacePinnedPage:sessions")!);
+            await WaitUiAsync(run, () => FindById(run, "SessionsPageMarker")?.Current.IsOffscreen == false, "embedded Sessions");
+            var row = FindById(run, "WorkspacePinnedPage:sessions")!;
+            row.SetFocus();
+            await WaitUiAsync(run, () => row.Current.HasKeyboardFocus, "Gateway pin focused");
+            await run.Gateway.CloseConnectionsAsync();
+            await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:sessions") is null, "Gateway pin hidden on disconnect");
+            Assert.NotNull(FindById(run, "WorkspacePinnedPage:connection"));
+            Assert.True(FindById(run, "WorkspacePagesCustomize")!.Current.HasKeyboardFocus);
+            await CaptureIfRequestedAsync(run, "pin-disconnected-focus-fallback.png");
+            await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:sessions") is not null, "pin restored after reconnect");
+            Invoke(FindById(run, "WorkspacePinnedPage:sessions")!);
+            await WaitUiAsync(run, () => FindById(run, "SessionsPageMarker")?.Current.IsOffscreen == false, "restored pin remains usable");
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task PinnedPages_HistoryFocusAndFeedbackRemainOnVisibleSurface()
     {
         await WithAppAsync(async run =>
@@ -49,21 +80,38 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.IsOffscreen == false, "returned composer");
             FindById(run, "ChatComposerInput")!.SetFocus();
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")!.Current.HasKeyboardFocus, "composer focus");
-            System.Windows.Forms.SendKeys.SendWait("%{RIGHT}");
+            Send(run, window, "%{RIGHT}");
             await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker")?.Current.IsOffscreen == false, "keyboard Forward");
             FindById(run, "WorkspacePinnedPage:permissions")!.SetFocus();
-            System.Windows.Forms.SendKeys.SendWait("%{LEFT}");
+            Send(run, window, "%{LEFT}");
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.HasKeyboardFocus == true,
                 "history restores composer despite a merely focused sidebar row");
             await CaptureIfRequestedAsync(run, "pin-history-composer-focus.png");
 
-            System.Windows.Forms.SendKeys.SendWait("%{RIGHT}");
+            Send(run, window, "%{RIGHT}");
             await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker")?.Current.IsOffscreen == false, "embedded Settings again");
             var permissions = FindById(run, "WorkspacePinnedPage:permissions")!;
             permissions.SetFocus();
-            System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+            Send(run, window, "{ENTER}");
             await WaitUiAsync(run, () => FindById(run, "PermissionsPageMarker")?.Current.IsOffscreen == false, "keyboard pin invocation");
             Assert.True(((SelectionItemPattern)permissions.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "Workspace search over embedded page");
+            Assert.Null(FindById(run, "SettingsSearchBox"));
+            OwnedWindowCapture.Save(run, window, "pin-embedded-search.png", FindById(run, "WorkspaceSearchBox")!);
+            Send(run, window, "{ESC}");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is null, "embedded search dismissed");
+            Invoke(FindById(run, "WorkspaceTogglePane")!);
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceReopenPane")?.Current.IsOffscreen == false, "collapsed embedded sidebar");
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "embedded search on collapsed sidebar anchor");
+            Assert.Null(FindById(run, "SettingsSearchBox"));
+            OwnedWindowCapture.Save(run, window, "pin-embedded-search-collapsed.png", FindById(run, "WorkspaceSearchBox")!);
+            Send(run, window, "{ESC}");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is null, "collapsed search dismissed");
+            Invoke(FindById(run, "WorkspaceReopenPane")!);
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSessionsAdd")?.Current.IsOffscreen == false, "sidebar restored");
 
             Invoke(FindById(run, "WorkspaceSessionsAdd")!);
             await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback")?.Current.IsOffscreen == false,
@@ -85,10 +133,58 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback") is null or { Current.IsOffscreen: true },
                 "user dismisses embedded feedback");
             FindById(run, "WorkspaceNavHome")!.SetFocus();
-            System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+            Send(run, window, "{ENTER}");
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.IsOffscreen == false, "keyboard Home navigation");
             Assert.True(FindById(run, "WorkspaceNavHome")!.Current.HasKeyboardFocus);
             Assert.True(FindById(run, "WorkspaceOperationFeedback") is null or { Current.IsOffscreen: true });
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task PinnedPages_BackgroundFollowsLiveAppTheme()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "WorkspacePagesCustomize") is not null, "pin customization");
+            Invoke(FindById(run, "WorkspacePagesCustomize")!);
+            await WaitUiAsync(run, () => FindById(run, "WorkspacePagesToggle:settings") is not null, "Settings pin toggle");
+            Invoke(FindById(run, "WorkspacePagesToggle:settings")!);
+            await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:settings") is not null, "Settings pin");
+            Invoke(FindById(run, "WorkspacePinnedPage:settings")!);
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageAppTheme")?.Current.IsOffscreen == false, "theme selector");
+            var window = AppWindows(run).First(w => w.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsPageAppTheme")) is not null);
+            foreach (var theme in new[] { "Dark", "Light", "Dark" })
+            {
+                var selector = FindById(run, "SettingsPageAppTheme")!;
+                ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+                await WaitUiAsync(run, () => FindInApp(run, new AndCondition(
+                    new PropertyCondition(AutomationElement.NameProperty, theme),
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))) is not null, $"theme {theme}");
+                var option = FindInApp(run, new AndCondition(
+                    new PropertyCondition(AutomationElement.NameProperty, theme),
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem)))!;
+                ((SelectionItemPattern)option.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+                ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
+                var name = $"pinned-settings-theme-{theme.ToLowerInvariant()}.png";
+                await WaitUiAsync(run, () =>
+                {
+                    var pageMarker = FindById(run, "SettingsPageMarker");
+                    if (pageMarker is null || pageMarker.Current.IsOffscreen) return false;
+                    OwnedWindowCapture.Save(run, window, name, pageMarker);
+                    var path = Path.Combine(run.ArtifactsDirectory, name);
+                    using var metadata = JsonDocument.Parse(File.ReadAllText(Path.ChangeExtension(path, ".json")));
+                    var marker = metadata.RootElement.GetProperty("assertions")[0];
+                    var y = (int)(marker.GetProperty("top").GetDouble() + marker.GetProperty("Height").GetDouble()) + 8;
+                    using var bitmap = new System.Drawing.Bitmap(path);
+                    var color = bitmap.GetPixel(bitmap.Width - 50, y);
+                    return theme == "Dark"
+                        ? color.R < 128 && color.G < 128 && color.B < 128
+                        : color.R > 192 && color.G > 192 && color.B > 192;
+                }, $"embedded background matches {theme}, without another navigation");
+            }
         });
     }
 
@@ -103,6 +199,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.IsOffscreen == false,
                 "initial chat composer");
             ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+            var logPath = Path.Combine(run.Profile.DataDirectory, "openclaw-tray.log");
+            var initialLogLength = File.Exists(logPath) ? File.ReadAllText(logPath).Length : 0;
             foreach (var tag in new[] { "connection", "sessions" })
             {
                 Invoke(FindById(run, "WorkspacePagesCustomize")!);
@@ -118,6 +216,9 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 .GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
             Assert.Null(FindById(run, "ConnectionPageMarker"));
             Assert.Null(FindById(run, "SessionsPageMarker"));
+            var pinSaveLog = File.ReadAllText(logPath)[initialLogLength..];
+            Assert.DoesNotContain("[SETTINGS] Change impact", pinSaveLog);
+            Assert.DoesNotContain("Connecting to gateway:", pinSaveLog);
             var samples = new List<object>();
             for (var pass = 0; pass < 4; pass++)
             {
@@ -133,6 +234,16 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                     samples.Add(new { tag, pass, invocationMs, visibleMs });
                 }
             }
+            var selectedRow = FindById(run, "WorkspacePinnedPage:sessions")!;
+            var selectedIdentity = selectedRow.GetRuntimeId();
+            selectedRow.SetFocus();
+            await WaitUiAsync(run, () => selectedRow.Current.HasKeyboardFocus, "pin focus before unrelated setting save");
+            await run.InvokeAsync("app.settings.set", new { name = "HasSeenActivityStreamTip", value = "true" });
+            await run.InvokeAsync("app.settings.get", new { name = "HasSeenActivityStreamTip" });
+            selectedRow = FindById(run, "WorkspacePinnedPage:sessions")!;
+            Assert.Equal(selectedIdentity, selectedRow.GetRuntimeId());
+            Assert.True(selectedRow.Current.HasKeyboardFocus);
+            Assert.True(((SelectionItemPattern)selectedRow.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
             var json = JsonSerializer.Serialize(samples, new JsonSerializerOptions { WriteIndented = true });
             output.WriteLine(json);
             await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "pin-switch-timing.json"), json);

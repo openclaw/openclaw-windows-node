@@ -56,6 +56,10 @@ public sealed class PinnedPagesTests
         Assert.DoesNotContain("home", tags);
         Assert.DoesNotContain("debug", tags);
         Assert.Equal(tags.Length, tags.Distinct().Count());
+        Assert.Equal(
+            ["connection", "sessions", "skills", "channels", "instances", "cron", "agentevents",
+             "bindings", "config", "usage", "local-ai", "voice", "permissions", "sandbox", "settings"],
+            tags);
     }
 
     [Theory]
@@ -241,6 +245,25 @@ public sealed class PinnedPagesTests
                     xaml.IndexOf("x:Name=\"PagesHeader\"", StringComparison.Ordinal));
         Assert.True(xaml.IndexOf("x:Name=\"PagesEmpty\"", StringComparison.Ordinal) <
                     xaml.IndexOf("x:Name=\"SessionsHeader\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PinPicker_RejectsStaleGatewayBeforePersisting_AndBackgroundUsesLiveThemeResource()
+    {
+        var pins = ReadSource("Windows", "WorkspaceWindow.Pins.cs");
+        var toggle = pins[pins.IndexOf("private void OnPagePinToggled(", StringComparison.Ordinal)..
+            pins.IndexOf("private void QueuePinnedPageHostPreparation()", StringComparison.Ordinal)];
+        var fence = toggle.IndexOf("if (scope != CurrentPinScope())", StringComparison.Ordinal);
+        var write = toggle.IndexOf("store.Update(", StringComparison.Ordinal);
+        Assert.True(fence >= 0 && write > fence);
+        var staleBranch = toggle[fence..write];
+        Assert.Contains("PagesFlyout.Hide();", staleBranch);
+        Assert.Contains("RebuildPins();", staleBranch);
+        Assert.Contains("return;", staleBranch);
+        Assert.Contains("Background=\"{ThemeResource ApplicationPageBackgroundThemeBrush}\"",
+            ReadSource("Windows", "WorkspaceWindow.xaml"));
+        Assert.DoesNotContain("Application.Current.Resources[\"ApplicationPageBackgroundThemeBrush\"]",
+            ReadSource("Windows", "WorkspaceWindow.xaml.cs"));
     }
 
     [Fact]
