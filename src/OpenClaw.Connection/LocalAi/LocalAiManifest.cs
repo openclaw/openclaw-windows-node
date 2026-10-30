@@ -36,6 +36,7 @@ public sealed class LocalAiPaths
         DownloadsDirectory = Path.Combine(RootDirectory, "downloads");
         StagingDirectory = Path.Combine(RootDirectory, "staging");
         LogsDirectory = Path.Combine(RootDirectory, "logs");
+        PrefixCacheDirectory = Path.Combine(RootDirectory, "prefix-cache");
         RouterPresetPath = Path.Combine(RootDirectory, "llama-server-models.ini");
         StandardOutputLogPath = Path.Combine(LogsDirectory, "llama-server.stdout.log");
         StandardErrorLogPath = Path.Combine(LogsDirectory, "llama-server.stderr.log");
@@ -49,6 +50,7 @@ public sealed class LocalAiPaths
     public string DownloadsDirectory { get; }
     public string StagingDirectory { get; }
     public string LogsDirectory { get; }
+    public string PrefixCacheDirectory { get; }
     public string RouterPresetPath { get; }
     public string StandardOutputLogPath { get; }
     public string StandardErrorLogPath { get; }
@@ -61,6 +63,7 @@ public sealed class LocalAiPaths
         Directory.CreateDirectory(DownloadsDirectory);
         Directory.CreateDirectory(StagingDirectory);
         Directory.CreateDirectory(LogsDirectory);
+        Directory.CreateDirectory(PrefixCacheDirectory);
     }
 
     /// <summary>

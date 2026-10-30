@@ -59,8 +59,9 @@ public static class LlamaServerRouterConfiguration
         string verifiedModelPath,
         string? verifiedDraftModelPath,
         int? listenPort = null,
-        string? verifiedVisionProjectorPath = null) =>
-        BuildCore(paths, install, verifiedModelPath, verifiedDraftModelPath, listenPort, verifiedVisionProjectorPath);
+        string? verifiedVisionProjectorPath = null,
+        string? childPrefixCacheDirectory = null) =>
+        BuildCore(paths, install, verifiedModelPath, verifiedDraftModelPath, listenPort, verifiedVisionProjectorPath, childPrefixCacheDirectory);
 
     private static LlamaServerRouterLaunchPlan BuildCore(
         LocalAiPaths paths,
@@ -68,7 +69,8 @@ public static class LlamaServerRouterConfiguration
         string modelPath,
         string? verifiedDraftModelPath,
         int? listenPort,
-        string? verifiedVisionProjectorPath)
+        string? verifiedVisionProjectorPath,
+        string? childPrefixCacheDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(install);
@@ -112,7 +114,7 @@ public static class LlamaServerRouterConfiguration
                 .WithComparers(StringComparer.OrdinalIgnoreCase)
                 .Add("CUDA_VISIBLE_DEVICES", manifest.SelectedGpuId),
             presetPath,
-            BuildPreset(model, profile, modelPath, draftModelPath, visionProjectorPath),
+            BuildPreset(model, profile, modelPath, draftModelPath, visionProjectorPath, childPrefixCacheDirectory ?? paths.PrefixCacheDirectory),
             model.Id);
     }
 
@@ -225,10 +227,13 @@ public static class LlamaServerRouterConfiguration
         LocalInferenceRunProfile profile,
         string modelPath,
         string? draftModelPath,
-        string? visionProjectorPath = null)
+        string? visionProjectorPath = null,
+        string? prefixCacheDirectory = null)
     {
         if (modelPath.IndexOfAny(['\r', '\n']) >= 0)
             throw new InvalidDataException("The managed model path cannot be represented safely in a llama-server preset.");
+        if (prefixCacheDirectory is not null && prefixCacheDirectory.IndexOfAny(['\r', '\n']) >= 0)
+            throw new InvalidDataException("The prefix cache path cannot be represented safely in a llama-server preset.");
         if (draftModelPath is not null && draftModelPath.IndexOfAny(['\r', '\n']) >= 0)
             throw new InvalidDataException("The managed draft model path cannot be represented safely in a llama-server preset.");
         if (visionProjectorPath is not null && visionProjectorPath.IndexOfAny(['\r', '\n']) >= 0)
@@ -246,6 +251,8 @@ public static class LlamaServerRouterConfiguration
         if (visionProjectorPath is not null)
             preset.Append("mmproj = ").AppendLine(visionProjectorPath);
         preset.AppendLine("load-on-startup = false");
+        if (prefixCacheDirectory is not null)
+            preset.Append("slot-save-path = ").AppendLine(prefixCacheDirectory);
         preset.Append("ctx-size = ").AppendLine(Invariant(profile.ContextTokens));
         preset.Append("n-predict = ").AppendLine(Invariant(LocalAiGatewayProviderDefinition.GetMaximumOutputTokens(profile.ContextTokens)));
         preset.Append("parallel = ").AppendLine(Invariant(recipe.ParallelRequests));

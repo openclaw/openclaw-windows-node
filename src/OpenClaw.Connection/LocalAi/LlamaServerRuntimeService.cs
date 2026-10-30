@@ -26,6 +26,12 @@ public sealed record LlamaServerRuntimeOptions
     public Func<string?>? GetApiKey { get; init; }
     public Func<LocalAiResolvedInstall, int?>? GetRecoveryPort { get; init; }
     /// <summary>
+    /// Fronts the router with a loopback proxy that keeps the shared prompt prefix saved on
+    /// disk. The proxy owns the published endpoint and the router listens on an automatic
+    /// internal port; every request is forwarded unchanged.
+    /// </summary>
+    public bool PrefixCacheProxy { get; init; }
+    /// <summary>
     /// Maps Companion-visible paths to the physical paths visible to the native child.
     /// Persisted Local AI paths remain canonical and logical.
     /// </summary>
@@ -136,6 +142,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     private readonly List<LocalAiVerifiedModelLease> _verifiedAdditionalAssets = [];
     private string? _runtimeModelPath;
     private LocalAiResolvedInstall? _install;
+    private LocalAiPrefixCacheProxy? _prefixProxy;
     private long _generation;
     private int _restartAttempts;
     private bool _stopping;
@@ -484,6 +491,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             return await RefreshCoreAsync(cancellationToken).ConfigureAwait(false);
         if (_managedProcess is not null)
             await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+        // A proxy left from a previous router would hold the port the new one needs.
+        await DisposePrefixProxyAsync().ConfigureAwait(false);
 
         WindowsTcpListenerSnapshotResult beforeStart = _platform.CaptureListeners();
         if (!beforeStart.Ipv4Complete)
@@ -560,13 +569,16 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             string? projectorPath = LlamaServerRouterConfiguration.ResolveInstalledPlan(install).Model.Recipe.VisionProjector is null
                 ? null
                 : ResolveChildProcessPath(_verifiedAdditionalAssets[^1].ResolvedPath);
+            Directory.CreateDirectory(_options.Paths.PrefixCacheDirectory);
             LlamaServerRouterLaunchPlan launchPlan = LlamaServerRouterConfiguration.BuildForVerifiedRuntime(
                 _options.Paths,
                 install,
                 _runtimeModelPath,
                 draftModelPath,
-                requestedPort,
-                projectorPath);
+                // With the proxy the requested port is the proxy's; the router takes an automatic one.
+                _options.PrefixCacheProxy ? LocalAiPortPolicy.Automatic : requestedPort,
+                projectorPath,
+                ResolveChildProcessPath(_options.Paths.PrefixCacheDirectory));
             if (string.Equals(install.Manifest.ModelCatalogId, LocalModelCatalog.NemotronBoltModelId,
                     StringComparison.OrdinalIgnoreCase))
             {
@@ -671,9 +683,28 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                         .ConfigureAwait(false);
                     if (probe.IsReadyForManagedModel(runtimeModelPath))
                     {
+                        Uri publishedEndpoint = ownership.Endpoint;
+                        if (_options.PrefixCacheProxy)
+                        {
+                            try
+                            {
+                                publishedEndpoint = await StartPrefixCacheProxyAsync(
+                                        install, ownership.Endpoint, requestedPort)
+                                    .ConfigureAwait(false);
+                            }
+                            catch (Exception ex) when (ex is not OperationCanceledException)
+                            {
+                                _logger.Error("The Local AI prefix cache proxy could not start.", ex);
+                                return await FailStartupAsync(
+                                        LocalAiRuntimeState.Failed,
+                                        "The Local AI prefix cache proxy could not bind its endpoint.",
+                                        install)
+                                    .ConfigureAwait(false);
+                            }
+                        }
                         LocalAiInstallManifest verifiedManifest = install.Manifest with
                         {
-                            Endpoint = ownership.Endpoint.AbsoluteUri,
+                            Endpoint = publishedEndpoint.AbsoluteUri,
                         };
                         await _manifestStore.SaveAsync(verifiedManifest, cancellationToken).ConfigureAwait(false);
                         _install = _manifestStore.ResolveAndValidate(verifiedManifest);
@@ -793,6 +824,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
 
         if (_managedProcess is null || _managedProcess.HasExited)
         {
+            // Our own proxy would otherwise be reported below as a foreign process on the endpoint.
+            await DisposePrefixProxyAsync().ConfigureAwait(false);
             if (_install!.Endpoint is { } persistedEndpoint)
             {
                 WindowsTcpListenerSnapshotResult snapshot = _platform.CaptureListeners();
@@ -870,7 +903,9 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             .ConfigureAwait(false);
         if (probe.IsReadyForManagedModel(runtimeModelPath))
         {
-            bool endpointChanged = install.Endpoint != ownership.Endpoint;
+            // The router is probed at its own endpoint; the Gateway is routed to the proxy's.
+            Uri publishedEndpoint = _prefixProxy?.Endpoint ?? ownership.Endpoint;
+            bool endpointChanged = install.Endpoint != publishedEndpoint;
             if (_snapshot.State != LocalAiRuntimeState.Healthy || endpointChanged)
             {
                 if (endpointChanged && _snapshot.State == LocalAiRuntimeState.Healthy)
@@ -891,7 +926,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 {
                     install = await BindVerifiedEndpointAsync(
                             install,
-                            ownership.Endpoint,
+                            publishedEndpoint,
                             cancellationToken)
                         .ConfigureAwait(false);
                     published = await PublishRouteAsync(
@@ -906,7 +941,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                         using var recoveryTimeout = new CancellationTokenSource(_options.ShutdownTimeout);
                         install = await BindVerifiedEndpointAsync(
                                 install,
-                                ownership.Endpoint,
+                                publishedEndpoint,
                                 recoveryTimeout.Token)
                             .ConfigureAwait(false);
                         LocalAiEndpointLifecycleResult recovered = await PublishRouteAsync(
@@ -1486,6 +1521,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         if (_managedProcess is not null)
             await _managedProcess.DisposeAsync().ConfigureAwait(false);
         _managedProcess = null;
+        await DisposePrefixProxyAsync().ConfigureAwait(false);
         DisposeVerifiedModelHandle();
         return PublishTerminalCleanupFailure(detail ?? fallbackDetail);
     }
@@ -1522,6 +1558,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         CancellationToken cancellationToken,
         bool preserveForRetry = true)
     {
+        // The proxy is the Gateway's listener: stop it before the router it forwards to.
+        await DisposePrefixProxyAsync().ConfigureAwait(false);
         ILocalAiManagedProcess? process = _managedProcess;
         _managedProcess = null;
         if (process is null)
@@ -1603,6 +1641,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 _managedProcess = null;
                 if (exited is not null)
                     await exited.DisposeAsync().ConfigureAwait(false);
+                await DisposePrefixProxyAsync().ConfigureAwait(false);
                 DisposeVerifiedModelHandle();
 
                 bool willRestart = !_automaticResumeSuppressed && !_explicitStopRequested &&
@@ -1761,6 +1800,58 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             _exitTasks.Remove(exitTask);
     }
 
+    private async Task DisposePrefixProxyAsync()
+    {
+        LocalAiPrefixCacheProxy? proxy = _prefixProxy;
+        _prefixProxy = null;
+        if (proxy is not null)
+            await proxy.DisposeAsync().ConfigureAwait(false);
+    }
+
+    private async Task<Uri> StartPrefixCacheProxyAsync(
+        LocalAiResolvedInstall install,
+        Uri routerEndpoint,
+        int publishedPort)
+    {
+        LocalAiInstallManifest manifest = install.Manifest;
+        var proxy = new LocalAiPrefixCacheProxy(
+            new LocalAiPrefixCacheProxyOptions
+            {
+                Upstream = new Uri(routerEndpoint, "/"),
+                StoreDirectory = _options.Paths.PrefixCacheDirectory,
+                // Anything that makes a saved slot invalid for a different launch of the same model.
+                ProfileFingerprint = string.Join(
+                    '|',
+                    manifest.RuntimeId,
+                    manifest.EngineVersion,
+                    manifest.ModelCatalogId,
+                    manifest.ModelAlias,
+                    manifest.ModelAsset.Sha256,
+                    manifest.ContextLength,
+                    manifest.KeyCachePrecision,
+                    manifest.ValueCachePrecision,
+                    manifest.DraftKeyCachePrecision,
+                    manifest.DraftValueCachePrecision),
+                Slots = Math.Max(1, LocalModelCatalog.FindInstalled(manifest.ModelCatalogId)?.Recipe.ParallelRequests ?? 1),
+                // Restore the newest saved prefix now so the first chat finds it loaded.
+                ModelName = manifest.ModelAlias,
+                RestoreNewestOnStart = true,
+                GetApiKey = _options.GetApiKey,
+            },
+            _logger);
+        try
+        {
+            Uri endpoint = proxy.Start(publishedPort);
+            _prefixProxy = proxy;
+            return endpoint;
+        }
+        catch
+        {
+            await proxy.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
     private EndpointOwnershipObservation DiscoverOwnedEndpoint(
         LocalAiResolvedInstall install,
         ILocalAiManagedProcess process)
@@ -1797,7 +1888,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
 
         int requestedPort = install.Manifest.RequestedPort;
-        if (requestedPort != LocalAiPortPolicy.Automatic)
+        if (requestedPort != LocalAiPortPolicy.Automatic && !_options.PrefixCacheProxy)
         {
             IReadOnlyList<WindowsTcpListenerInfo> requestedListeners = FindEndpointListeners(snapshot, requestedPort);
             if (requestedListeners.Any(listener => !IsManagedListener(listener, process)))

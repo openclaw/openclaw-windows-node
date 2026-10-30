@@ -232,6 +232,25 @@ public sealed partial class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task RouterPreset_SavesSlotsUnderThePrefixCacheDirectory()
+    {
+        using var temp = new TempDirectory("local-ai-manifest-");
+        var paths = new LocalAiPaths(temp.Path);
+        paths.EnsureDirectories();
+        var store = new LocalAiManifestStore(paths);
+        await store.SaveAsync(ValidManifest() with { Endpoint = "http://127.0.0.1:28765/v1" });
+        LocalAiResolvedInstall saved = (await store.LoadAsync())!;
+
+        LlamaServerRouterLaunchPlan launch = LlamaServerRouterConfiguration.Build(paths, saved);
+
+        Assert.Equal(Path.Combine(paths.RootDirectory, "prefix-cache"), paths.PrefixCacheDirectory);
+        Assert.True(Directory.Exists(paths.PrefixCacheDirectory));
+        Assert.Contains(
+            $"slot-save-path = {paths.PrefixCacheDirectory}",
+            launch.PresetContent.Split(Environment.NewLine));
+    }
+
+    [Fact]
     public async Task RouterPreset_BoundsOmittedGenerationAtGatewayMaximum()
     {
         using var temp = new TempDirectory("local-ai-manifest-");
@@ -484,6 +503,214 @@ public sealed partial class LocalAiPortLifecycleTests
         LocalAiResolvedInstall? saved = await new LocalAiManifestStore(paths).LoadAsync();
         Assert.Equal(0, saved!.Manifest.RequestedPort);
         Assert.Equal(28_765, saved.Endpoint!.Port);
+    }
+
+    [Fact]
+    public async Task PrefixCacheProxy_OwnsThePublishedEndpointWhileTheRouterTakesAnInternalPort()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        var client = new FakeClient(events);
+        await using var runtime = CreateRuntime(
+            paths, host, platform, client, new FakeLifecycle(events), prefixCacheProxy: true);
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Healthy, snapshot.State);
+        int proxyPort = snapshot.Endpoint.Port;
+        Assert.NotEqual(28_765, proxyPort);
+        Assert.Equal("0", ArgumentAfter(host.LastSpec!.Arguments, "--port"));
+        Assert.Contains(
+            $"slot-save-path = {paths.PrefixCacheDirectory}",
+            (await File.ReadAllTextAsync(paths.RouterPresetPath)).Split(Environment.NewLine));
+        Assert.Equal([28_765], client.ProbedPorts);
+        Assert.Equal(["quiesce:EndpointCycle", "start", "probe:28765", $"publish:{proxyPort}"], events);
+        Assert.Equal(proxyPort, (await new LocalAiManifestStore(paths).LoadAsync())!.Endpoint!.Port);
+        // The published port answers from the proxy (the fake router behind it serves nothing).
+        using var http = new HttpClient();
+        using HttpResponseMessage reply = await http.GetAsync($"http://127.0.0.1:{proxyPort}/health");
+        Assert.Equal(HttpStatusCode.BadGateway, reply.StatusCode);
+
+        await runtime.StopAsync();
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => http.GetAsync($"http://127.0.0.1:{proxyPort}/health"));
+    }
+
+    [Fact]
+    public async Task PrefixCacheProxy_RestoresTheNewestSavedPrefixOnceTheRouterIsHealthy()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        Directory.CreateDirectory(paths.PrefixCacheDirectory);
+        string saved = $"openclaw-prefix-{7:x40}.bin";
+        await File.WriteAllTextAsync(Path.Combine(paths.PrefixCacheDirectory, saved), "kv");
+        // A real listener stands in for the router, so the proxy's own call is observable.
+        int routerPort;
+        using (var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0))
+        {
+            probe.Start();
+            routerPort = ((IPEndPoint)probe.LocalEndpoint).Port;
+        }
+        using var router = new HttpListener();
+        router.Prefixes.Add($"http://127.0.0.1:{routerPort}/");
+        router.Start();
+        var restoreBody = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = Task.Run(async () =>
+        {
+            while (router.IsListening)
+            {
+                HttpListenerContext context;
+                try
+                {
+                    context = await router.GetContextAsync();
+                }
+                catch
+                {
+                    return;
+                }
+                using var reader = new StreamReader(context.Request.InputStream);
+                string body = await reader.ReadToEndAsync();
+                if (context.Request.Url!.PathAndQuery == "/slots/0?action=restore")
+                    restoreBody.TrySetResult(body);
+                await context.Response.OutputStream.WriteAsync("{\"n_restored\":1}"u8.ToArray());
+                context.Response.Close();
+            }
+        });
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: routerPort);
+        await using var runtime = CreateRuntime(
+            paths, host, platform, new FakeClient(events), new FakeLifecycle(events), prefixCacheProxy: true);
+
+        Assert.Equal(LocalAiRuntimeState.Healthy, (await runtime.EnsureStartedAsync()).State);
+
+        string body = await restoreBody.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using JsonDocument json = JsonDocument.Parse(body);
+        Assert.Equal(saved, json.RootElement.GetProperty("filename").GetString());
+        Assert.Equal(LocalModelCatalog.Qwen35BModelId, json.RootElement.GetProperty("model").GetString());
+    }
+
+    [Fact]
+    public async Task PrefixCacheProxy_ClosesItsListenerWhenTheRouterExitsUnexpectedly()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        var lifecycle = new FakeLifecycle(events);
+        await using var runtime = CreateRuntime(
+            paths, host, platform, new FakeClient(events), lifecycle, maxRestartAttempts: 0, prefixCacheProxy: true);
+        int proxyPort = (await runtime.EnsureStartedAsync()).Endpoint.Port;
+        var teardown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lifecycle.QuiesceHandler = (_, reason, _) =>
+        {
+            if (reason == LocalAiQuiesceReason.Teardown)
+                teardown.TrySetResult();
+            return Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
+        };
+
+        var process = host.Process!;
+        process.MarkExited();
+        platform.Listeners.Clear();
+        host.LastExitCallback!(new LocalAiManagedProcessExit(process.ProcessId, process.StartedAtUtc, 1));
+        await teardown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using var probe = new System.Net.Sockets.TcpClient();
+        await Assert.ThrowsAnyAsync<System.Net.Sockets.SocketException>(
+            () => probe.ConnectAsync(IPAddress.Loopback, proxyPort));
+    }
+
+    [Fact]
+    public async Task PrefixCacheProxy_RefreshAfterRouterExitDoesNotReportItsOwnListenerAsAConflict()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        await using var runtime = CreateRuntime(
+            paths, host, platform, new FakeClient(events), new FakeLifecycle(events), prefixCacheProxy: true);
+        int proxyPort = (await runtime.EnsureStartedAsync()).Endpoint.Port;
+        // A real listener snapshot shows the proxy for as long as its socket is open.
+        platform.DynamicListeners = () =>
+        {
+            try
+            {
+                using var probe = new System.Net.Sockets.TcpClient();
+                probe.Connect(IPAddress.Loopback, proxyPort);
+                return [new WindowsTcpListenerInfo(
+                    IPAddress.Loopback, proxyPort, Environment.ProcessId, "app", @"C:\app.exe", platform.UtcNow.UtcDateTime)];
+            }
+            catch (System.Net.Sockets.SocketException)
+            {
+                return [];
+            }
+        };
+
+        host.Process!.MarkExited();
+        platform.Listeners.RemoveAll(listener => listener.Port == 28_765);
+        LocalAiRuntimeSnapshot refreshed = await runtime.RefreshAsync();
+
+        Assert.NotEqual(LocalAiRuntimeState.Conflict, refreshed.State);
+        using var probe = new System.Net.Sockets.TcpClient();
+        await Assert.ThrowsAnyAsync<System.Net.Sockets.SocketException>(
+            () => probe.ConnectAsync(IPAddress.Loopback, proxyPort));
+    }
+
+    [Fact]
+    public async Task PrefixCacheProxy_BindsTheRequestedFixedPortAndLeavesTheRouterOnAnotherPort()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        int fixedPort;
+        using (var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0))
+        {
+            probe.Start();
+            fixedPort = ((IPEndPoint)probe.LocalEndpoint).Port;
+        }
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall install = (await store.LoadAsync())!;
+        await store.SaveAsync(install.Manifest with { RequestedPort = fixedPort });
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        await using var runtime = CreateRuntime(
+            paths, host, platform, new FakeClient(events), new FakeLifecycle(events), prefixCacheProxy: true);
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Healthy, snapshot.State);
+        Assert.Equal(fixedPort, snapshot.Endpoint.Port);
+        Assert.Equal("0", ArgumentAfter(host.LastSpec!.Arguments, "--port"));
+        Assert.Equal(fixedPort, (await new LocalAiManifestStore(paths).LoadAsync())!.Endpoint!.Port);
+    }
+
+    [Fact]
+    public async Task PrefixCacheProxy_FailsStartupWhenItsPortCannotBeBound()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        using var occupied = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        occupied.Start();
+        int fixedPort = ((IPEndPoint)occupied.LocalEndpoint).Port;
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall install = (await store.LoadAsync())!;
+        await store.SaveAsync(install.Manifest with { RequestedPort = fixedPort });
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        await using var runtime = CreateRuntime(
+            paths, host, platform, new FakeClient(events), new FakeLifecycle(events), prefixCacheProxy: true);
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+        Assert.DoesNotContain(events, item => item.StartsWith("publish:", StringComparison.Ordinal));
+        Assert.True(host.Process!.StopCount > 0);
     }
 
     [Fact]
@@ -3273,13 +3500,15 @@ public sealed partial class LocalAiPortLifecycleTests
         Func<string>? getApiKey = null,
         Func<LocalAiResolvedInstall, int?>? getRecoveryPort = null,
         Func<string, string>? resolveChildProcessPath = null,
-        OpenClaw.Shared.Inference.IHostHardwareProbe? hardwareProbe = null) => new(
+        OpenClaw.Shared.Inference.IHostHardwareProbe? hardwareProbe = null,
+        bool prefixCacheProxy = false) => new(
             new LlamaServerRuntimeOptions
             {
                 Paths = paths,
                 EndpointLifecycle = lifecycle,
                 GetApiKey = getApiKey,
                 GetRecoveryPort = getRecoveryPort,
+                PrefixCacheProxy = prefixCacheProxy,
                 ResolveChildProcessPath = resolveChildProcessPath ?? (static path => path),
                 HealthPollInterval = TimeSpan.FromMilliseconds(1),
                 StartupTimeout = startupTimeout ?? TimeSpan.FromSeconds(1),
@@ -3688,11 +3917,13 @@ public sealed partial class LocalAiPortLifecycleTests
         public bool Ipv4Complete { get; set; } = true;
         public Action? AfterCapture { get; init; }
         public Action? AfterDelay { get; init; }
+        /// <summary>Listeners that exist only while something real holds them, evaluated per capture.</summary>
+        public Func<IEnumerable<WindowsTcpListenerInfo>>? DynamicListeners { get; set; }
 
         public WindowsTcpListenerSnapshotResult CaptureListeners()
         {
             WindowsTcpListenerSnapshotResult result =
-                new([.. Listeners], Ipv4Complete, Ipv6Complete: true);
+                new([.. Listeners, .. DynamicListeners?.Invoke() ?? []], Ipv4Complete, Ipv6Complete: true);
             AfterCapture?.Invoke();
             return result;
         }
