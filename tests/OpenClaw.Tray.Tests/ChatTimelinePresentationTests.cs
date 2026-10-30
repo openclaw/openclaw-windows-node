@@ -96,7 +96,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorTimeline_UsesStableBottomAnchoringAndDiscreteTailRequests()
+    public void ReactorTimeline_UsesNativeTailGeometryWithoutSynchronousLayout()
     {
         var binding = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -108,7 +108,9 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("itemsView.Loaded += OnLoaded", binding);
         Assert.Contains("itemsView.LayoutUpdated += OnLayoutUpdated", binding);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", binding);
-        Assert.Contains("itemsView.StartBringItemIntoView(", binding);
+        Assert.Contains("repeater.GetOrCreateElement(request.Index)", binding);
+        Assert.Contains("target.StartBringIntoView(", binding);
+        Assert.Contains("sender.ScrollTo(args.TargetHorizontalOffset, args.TargetVerticalOffset,", binding);
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
         Assert.Contains("!string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal)", binding);
         Assert.Contains("_following = IsNearBottom(sender)", binding);
@@ -125,8 +127,16 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("ChangeView", binding);
         Assert.DoesNotContain("UpdateLayout", binding);
         Assert.DoesNotContain("TailSettle", binding);
-        Assert.DoesNotContain("ScrollTo(", binding);
-        Assert.DoesNotContain("ScrollCompleted", binding);
+        Assert.DoesNotContain("itemsView.StartBringItemIntoView(", binding);
+        Assert.DoesNotContain("double.MaxValue", binding);
+        Assert.Contains("_scrollView.AnchorRequested += OnAnchorRequested", binding);
+        Assert.Contains("_scrollView.AnchorRequested -= OnAnchorRequested", binding);
+        Assert.Contains("_scrollView.ScrollCompleted += OnScrollCompleted", binding);
+        Assert.Contains("_scrollView.ScrollCompleted -= OnScrollCompleted", binding);
+        Assert.Contains("repeater.ElementClearing += OnTailTargetClearing", binding);
+        Assert.Contains("_tailRepeater.ElementClearing -= OnTailTargetClearing", binding);
+        Assert.Contains("args.CorrelationId != _tailScrollCorrelationId", binding);
+        Assert.Contains("CompositionTarget.Rendering -= OnTailAnchorRendering", binding);
         Assert.DoesNotContain("DispatcherTimer", binding);
         Assert.DoesNotContain("TextLength != current.TextLength", binding);
         Assert.DoesNotContain("ReactorStreamingTailState", binding);

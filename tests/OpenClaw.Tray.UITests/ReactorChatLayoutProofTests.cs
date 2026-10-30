@@ -1223,6 +1223,143 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 && VisualTreeHelper.GetParent(container) is ItemsRepeater repeater
                 && repeater.GetElementIndex(container) >= 0);
 
+    [Theory]
+    [InlineData(320, false, false)]
+    [InlineData(800, false, false)]
+    [InlineData(1007, false, false)]
+    [InlineData(1007, true, false)]
+    [InlineData(1007, true, true)]
+    public async Task HistoryTail_ScrollsPastTallMessageWithoutBlockingUi(int width, bool append, bool remount)
+    {
+        const string newestMessage = "Newest historical message";
+        await WithChatAsync(width, async (surface, host, _, provider) =>
+        {
+            var snapshot = await provider.LoadAsync();
+            // Separate the tall row from the tail so navigation must realize an off-screen item.
+            var entries = Enumerable.Range(0, 15)
+                .Select(index => new ChatTimelineItem(
+                    $"history-{index}",
+                    index % 3 == 0 ? ChatTimelineItemKind.User : ChatTimelineItemKind.Assistant,
+                    index == 5
+                        ? string.Join("\n\n", Enumerable.Repeat(new string('\u6d4b', 40), 50)) +
+                            "\n\n| Kind | Detail | Result |\n| --- | --- | --- |\n" +
+                            string.Join("\n", Enumerable.Repeat(
+                                $"| Example | {new string('\u6d4b', 40)} | {new string('\u8bd5', 20)} |", 10))
+                        : $"Historical message {index} " + new string('x', index % 12 + 100)))
+                .Append(new ChatTimelineItem("history-newest", ChatTimelineItemKind.Assistant,
+                    newestMessage + " " + new string('x', 180)))
+                .ToImmutableList();
+
+            if (append)
+                entries = snapshot.Timelines["proof"].Entries.AddRange(entries);
+
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState>
+                {
+                    ["proof"] = ChatTimelineState.Initial() with
+                    {
+                        HistoryLoaded = true,
+                        Entries = entries,
+                    },
+                },
+                HistoryRevisions = append
+                    ? snapshot.HistoryRevisions
+                    : new Dictionary<string, long> { ["proof"] = 1 },
+                CurrentHistoryThreads = new HashSet<string> { "proof" },
+            }));
+
+            if (remount)
+            {
+                await ui.RunOnUIAsync(() => surface.Child = null);
+                await ui.YieldToRenderAsync();
+                await ui.RunOnUIAsync(() => surface.Child = host);
+            }
+
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () =>
+                {
+                    var newest = RealizedTimelineElements<RichTextBlock>(host)
+                        .FirstOrDefault(text => CollectText(text).StartsWith(newestMessage, StringComparison.Ordinal));
+                    if (newest is null)
+                        return false;
+
+                    var scroll = Assert.Single(FindDescendants<ItemsView>(host)).ScrollView;
+                    var bounds = Bounds(newest, scroll);
+                    return bounds.Top >= 0 && bounds.Bottom <= scroll.ActualHeight + 1;
+                },
+                "responsive history tail with the newest message in view",
+                () =>
+                {
+                    var scroll = Assert.Single(FindDescendants<ItemsView>(host)).ScrollView;
+                    var newest = RealizedTimelineElements<RichTextBlock>(host)
+                        .FirstOrDefault(text => CollectText(text).StartsWith(newestMessage, StringComparison.Ordinal));
+                    var repeater = FindDescendants<ItemsRepeater>(scroll).First();
+                    var last = repeater.TryGetElement(repeater.ItemsSourceView.Count - 1) as FrameworkElement;
+                    return $"Offset={scroll.VerticalOffset}; maximum={scroll.ScrollableHeight}; " +
+                        $"viewport={scroll.ActualHeight}; newest={(newest is null ? "unrealized" : Bounds(newest, scroll).ToString())}; " +
+                        $"content={scroll.Content.GetType().Name}; extent={scroll.ExtentHeight}; " +
+                        $"repeater={repeater.ActualHeight}/{repeater.DesiredSize}; count={repeater.ItemsSourceView.Count}; " +
+                        $"last={(last is null ? "unrealized" : $"{Bounds(last, scroll)} desired={last.DesiredSize}")}";
+                }));
+            if (width == 1007 && !append)
+            {
+                await CaptureAsync(surface, "HistoryTail-after-tall-message");
+                await SettleAsync();
+                await ui.RunOnUIAsync(() =>
+                    Assert.Single(FindDescendants<ItemsView>(host)).ScrollView.ScrollTo(0, 0,
+                        new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore)));
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => Assert.Single(FindDescendants<ItemsView>(host)).ScrollView.VerticalOffset <= 1,
+                    "scrolling up to read history"));
+                await SettleAsync();
+
+                const string appendedMessage = "New message while reading older history";
+                var current = await provider.LoadAsync();
+                var appended = current with
+                {
+                    Timelines = new Dictionary<string, ChatTimelineState>
+                    {
+                        ["proof"] = current.Timelines["proof"] with
+                        {
+                            Entries = entries.Add(new ChatTimelineItem(
+                                "history-after-scroll-up", ChatTimelineItemKind.Assistant, appendedMessage)),
+                        },
+                    },
+                };
+                await ui.RunOnUIAsync(() => provider.Publish(appended));
+                await SettleAsync();
+                await ui.RunOnUIAsync(() =>
+                    Assert.InRange(Assert.Single(FindDescendants<ItemsView>(host)).ScrollView.VerticalOffset, 0, 1));
+
+                await ui.RunOnUIAsync(() => provider.Publish(appended with
+                {
+                    HistoryRevisions = new Dictionary<string, long> { ["proof"] = 2 },
+                }));
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () =>
+                    {
+                        var newest = RealizedTimelineElements<RichTextBlock>(host)
+                            .FirstOrDefault(text => CollectText(text) == appendedMessage);
+                        if (newest is null)
+                            return false;
+                        var scroll = Assert.Single(FindDescendants<ItemsView>(host)).ScrollView;
+                        var bounds = Bounds(newest, scroll);
+                        return bounds.Top >= 0 && bounds.Bottom <= scroll.ActualHeight + 1;
+                    },
+                    "explicit history jump after scrolling up",
+                    () =>
+                    {
+                        var scroll = Assert.Single(FindDescendants<ItemsView>(host)).ScrollView;
+                        var newest = RealizedTimelineElements<RichTextBlock>(host)
+                            .FirstOrDefault(text => CollectText(text) == appendedMessage);
+                        return $"Offset={scroll.VerticalOffset}; maximum={scroll.ScrollableHeight}; " +
+                            $"newest={(newest is null ? "unrealized" : Bounds(newest, scroll).ToString())}";
+                    }));
+            }
+        }, scenario: append ? "standard" : "loading");
+    }
+
     [Fact]
     public async Task ProductionRoot_RevealsHostLayerAndUsesCardComposerFill()
     {

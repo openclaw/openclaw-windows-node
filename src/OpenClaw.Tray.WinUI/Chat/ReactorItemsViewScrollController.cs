@@ -1,8 +1,11 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Core.V1Protocol;
 using Microsoft.UI.Reactor.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using System.Runtime.CompilerServices;
 using WinUIAnnotatedScrollBar = Microsoft.UI.Xaml.Controls.AnnotatedScrollBar;
 using WinUIItemsView = Microsoft.UI.Xaml.Controls.ItemsView;
@@ -86,6 +89,8 @@ file sealed class ItemsViewVerticalScrollControllerHandler
 file sealed class InitialTailPositioner : IDisposable
 {
     private const double FollowThreshold = 60;
+    // Match ItemsView's retention while virtualization settles after a bring request.
+    private const int TailAnchorRetentionFrames = 4;
 
     private readonly WinUIItemsView itemsView;
     private string? _requestKey;
@@ -99,6 +104,10 @@ file sealed class InitialTailPositioner : IDisposable
     private WinUIScrollView? _scrollView;
     private bool _following;
     private readonly TailNavigationQueue _tailNavigationQueue = new();
+    private UIElement? _tailBringTarget;
+    private ItemsRepeater? _tailRepeater;
+    private int _tailScrollCorrelationId = -1;
+    private int _tailAnchorRetentionRemaining;
     private bool _disposed;
 
     public InitialTailPositioner(WinUIItemsView itemsView)
@@ -115,6 +124,7 @@ file sealed class InitialTailPositioner : IDisposable
 
         _requestKey = requestKey;
         _version++;
+        CompleteTailRequest();
         DetachLayout();
         _tailIndex = tailIndex;
         _itemCount = itemCount;
@@ -191,7 +201,7 @@ file sealed class InitialTailPositioner : IDisposable
         if (!TailNavigationPolicy.TryCapture(_tailIndex, _displayedTailKey, _itemCount, out var request))
             return;
 
-        itemsView.DispatcherQueue.TryEnqueue(() =>
+        itemsView.DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
         {
             if (_disposed || !_valid || !itemsView.IsLoaded || version != _version
                 || itemsView.ScrollView is not { IsLoaded: true })
@@ -219,6 +229,9 @@ file sealed class InitialTailPositioner : IDisposable
         {
             _scrollView.VerticalAnchorRatio = 1.0;
             _scrollView.ViewChanged += OnViewChanged;
+            _scrollView.AnchorRequested += OnAnchorRequested;
+            _scrollView.BringingIntoView += OnBringingIntoView;
+            _scrollView.ScrollCompleted += OnScrollCompleted;
         }
     }
 
@@ -232,7 +245,7 @@ file sealed class InitialTailPositioner : IDisposable
         if (!_tailNavigationQueue.Enqueue(version, request))
             return;
 
-        if (!itemsView.DispatcherQueue.TryEnqueue(() =>
+        if (!itemsView.DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
         {
             if (!_tailNavigationQueue.TryDequeue(_version, out var queuedRequest)
                 || _disposed
@@ -243,7 +256,8 @@ file sealed class InitialTailPositioner : IDisposable
                 return;
             }
 
-            StartTailRequest(queuedRequest);
+            if (!StartTailRequest(queuedRequest) && !_disposed && _valid)
+                AwaitLayout();
         }))
         {
             _tailNavigationQueue.SchedulingFailed();
@@ -253,7 +267,7 @@ file sealed class InitialTailPositioner : IDisposable
 
     private bool StartTailRequest(TailNavigationRequest request)
     {
-        if (itemsView.ScrollView is not { IsLoaded: true })
+        if (itemsView.ScrollView is not { IsLoaded: true, Content: ItemsRepeater repeater } scrollView)
             return false;
 
         if (!TailNavigationPolicy.CanExecute(
@@ -265,13 +279,91 @@ file sealed class InitialTailPositioner : IDisposable
             return false;
         }
 
+        CompleteTailRequest();
         _following = true;
-        itemsView.StartBringItemIntoView(request.Index, new BringIntoViewOptions
+        if (repeater.TryGetElement(request.Index) is not FrameworkElement { IsLoaded: true, ActualWidth: > 0 } target)
+        {
+            // Realize the target in a normal layout pass, rather than forcing native
+            // item navigation to realize and position an off-screen row synchronously.
+            scrollView.VerticalAnchorRatio = double.NaN;
+            repeater.GetOrCreateElement(request.Index);
+            return false;
+        }
+
+        _tailBringTarget = target;
+        _tailRepeater = repeater;
+        repeater.ElementClearing += OnTailTargetClearing;
+        scrollView.VerticalAnchorRatio = 0.5;
+        target.StartBringIntoView(new BringIntoViewOptions
         {
             AnimationDesired = false,
             VerticalAlignmentRatio = 1.0,
         });
         return true;
+    }
+
+    private void OnAnchorRequested(WinUIScrollView sender, ScrollingAnchorRequestedEventArgs args)
+    {
+        if (_tailBringTarget is FrameworkElement { IsLoaded: true, Visibility: Visibility.Visible } target
+            && ReferenceEquals(VisualTreeHelper.GetParent(target), sender.Content))
+            args.AnchorElement = target;
+    }
+
+    private void OnTailTargetClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
+    {
+        if (!ReferenceEquals(_tailBringTarget, args.Element))
+            return;
+
+        _tailBringTarget = null;
+        if (_tailAnchorRetentionRemaining == 0)
+        {
+            _tailScrollCorrelationId = -1;
+            // Reactor can replace the container before the asynchronous scroll completes.
+            AwaitLayout();
+        }
+    }
+
+    private void OnBringingIntoView(WinUIScrollView sender, ScrollingBringingIntoViewEventArgs args)
+    {
+        if (ReferenceEquals(_tailBringTarget, args.RequestEventArgs.TargetElement))
+        {
+            // Use the native target geometry without tying the operation to a container
+            // that can be recycled during a reload.
+            args.Cancel = true;
+            _tailScrollCorrelationId = sender.ScrollTo(args.TargetHorizontalOffset, args.TargetVerticalOffset,
+                new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+            if (_tailScrollCorrelationId < 0)
+                CompleteTailRequest();
+        }
+    }
+
+    private void OnScrollCompleted(WinUIScrollView sender, ScrollingScrollCompletedEventArgs args)
+    {
+        if (_tailScrollCorrelationId < 0 || args.CorrelationId != _tailScrollCorrelationId)
+            return;
+
+        _tailScrollCorrelationId = -1;
+        _tailAnchorRetentionRemaining = TailAnchorRetentionFrames;
+        CompositionTarget.Rendering += OnTailAnchorRendering;
+    }
+
+    private void OnTailAnchorRendering(object? sender, object args)
+    {
+        if (--_tailAnchorRetentionRemaining == 0)
+            CompleteTailRequest();
+    }
+
+    private void CompleteTailRequest()
+    {
+        CompositionTarget.Rendering -= OnTailAnchorRendering;
+        if (_tailRepeater is not null)
+            _tailRepeater.ElementClearing -= OnTailTargetClearing;
+        _tailRepeater = null;
+        _tailAnchorRetentionRemaining = 0;
+        _tailScrollCorrelationId = -1;
+        _tailBringTarget = null;
+        if (_scrollView is not null)
+            _scrollView.VerticalAnchorRatio = 1.0;
     }
 
     private static bool IsNearBottom(WinUIScrollView scrollView) =>
@@ -280,6 +372,7 @@ file sealed class InitialTailPositioner : IDisposable
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
         _version++;
+        CompleteTailRequest();
         _tailNavigationQueue.Clear();
         DetachLayout();
         DetachScrollView();
@@ -302,10 +395,14 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void DetachScrollView()
     {
+        CompleteTailRequest();
         if (_scrollView is not null)
         {
             _scrollView.VerticalAnchorRatio = double.NaN;
             _scrollView.ViewChanged -= OnViewChanged;
+            _scrollView.AnchorRequested -= OnAnchorRequested;
+            _scrollView.BringingIntoView -= OnBringingIntoView;
+            _scrollView.ScrollCompleted -= OnScrollCompleted;
         }
 
         _scrollView = null;
@@ -318,6 +415,7 @@ file sealed class InitialTailPositioner : IDisposable
 
         _disposed = true;
         _version++;
+        CompleteTailRequest();
         _tailNavigationQueue.Clear();
         DetachLayout();
         DetachScrollView();
