@@ -7855,7 +7855,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>Não foi possível coletar os diagnósticos do Gateway: {0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>Não foi possível abrir o terminal do Gateway: {0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Somente visualização. Nenhum pacote será instalado e nenhum Gateway será iniciado.</value></data>
-=======
   <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>Atividade detalhada</value></data>
   <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>Abrir arquivo de log</value></data>
   <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0} não foi concluído</value></data>

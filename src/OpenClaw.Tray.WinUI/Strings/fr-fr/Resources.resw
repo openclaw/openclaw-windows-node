@@ -7803,7 +7803,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>Impossible de collecter les diagnostics du Gateway : {0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>Impossible d'ouvrir le terminal du Gateway : {0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Aperçu uniquement. Aucun package ne sera installé et aucun Gateway ne sera démarré.</value></data>
-=======
   <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>Activité détaillée</value></data>
   <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>Ouvrir le fichier journal</value></data>
   <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0} n'a pas abouti</value></data>

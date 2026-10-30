@@ -7803,7 +7803,6 @@
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>無法收集 Gateway 診斷資訊：{0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>無法開啟 Gateway 終端機：{0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>僅供預覽。不會安裝任何套件或啟動 Gateway。</value></data>
-=======
   <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>詳細活動</value></data>
   <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>開啟記錄檔</value></data>
   <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0}未完成</value></data>
