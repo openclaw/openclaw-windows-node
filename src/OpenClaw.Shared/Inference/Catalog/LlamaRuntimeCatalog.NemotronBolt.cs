@@ -24,10 +24,12 @@ public static partial class LlamaRuntimeCatalog
                 "llama-b11700-bin-win-cuda-13.4-arm64.zip",
                 146_943_791,
                 new Sha256Digest("8474f9edb24e917e5bf0c3824dd79bda5659483ee6adfcbf27197d05defb2783")),
+            // The CUDA runtime archive is byte-identical across stable releases. Keep it addressed at
+            // the release Bolt installs recorded so their receipts keep matching when the stable pin moves.
             new PinnedArtifact(
                 "cudart-b11320-cuda13-arm64",
                 ArtifactRole.RuntimeDependency,
-                new GitHubReleaseSource("ggml-org/llama.cpp", ReleaseTag, ReleaseCommitSha),
+                LegacyB11320Source,
                 "cudart-llama-bin-win-cuda-13.4-arm64.zip",
                 153_262_407,
                 new Sha256Digest("642dcde8805b3e3165ca710a5443b3b4044b27d96bd3ee3132473988c9bcb774"),
