@@ -26,8 +26,9 @@ Anything whose name contains "openclaw" (case-insensitive) in these places:
     "OpenClaw Gateway OpenClawFoundation.OpenClawGateway*", OpenClawAgentUia
   - Running processes named OpenClaw* / winnode*, or running from an
     OpenClaw-owned directory (the scan roots above or the MSIX package tree);
-    killed by PID only after re-checking path and creation time, so a reused
-    PID is never killed, and one process at a time (no tree kill)
+    killed through a handle opened once, after verifying image path and
+    creation time on that same handle, so a reused PID is never killed, and
+    one process at a time (no tree kill)
   - Installed apps listed in Settings > Apps > Installed apps ("Add or remove
     programs") whose name contains "OpenClaw":
       * MSIX/Store packages, Gateway before Companion. The native Gateway is first
@@ -50,12 +51,16 @@ Never deleted:
     digest-verified first). The Hugging Face cache is never scanned and its
     configured root (HF_HUB_CACHE/HF_HOME/XDG_CACHE_HOME, else
     %USERPROFILE%\\.cache\\huggingface\\hub) is excluded even when it sits
-    inside a matched directory.
+    inside a matched directory: recursive deletion checks exclusions before
+    every entry, including links, so protected descendants and their ancestors
+    survive, and GGUF files inside an excluded tree are not copied out.
   - The gateway source checkout at %USERPROFILE%\\openclaw (see EXCLUDED_PATHS)
 
-Order with --yes: processes, stop+disable tasks, native Gateway teardown, MSIX
-packages, Win32 uninstallers, WSL distros, delete tasks, then registry and files.
-A failed teardown, package removal, uninstall, or WSL step stops the wipe before
+Order with --yes: known inventory blockers (unreadable WSL inventory, orphan
+native session, WSL storage overlap) stop the wipe before anything changes;
+then processes, stop+disable tasks, native Gateway teardown, MSIX packages,
+Win32 uninstallers, WSL distros, delete tasks, then registry and files. A
+failed teardown, package removal, uninstall, or WSL step stops the wipe before
 any file is deleted, so the remaining state can still be removed by a re-run.
 
 Usage:
@@ -66,6 +71,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -76,6 +82,7 @@ import subprocess
 import sys
 import time
 import winreg
+from ctypes import wintypes
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -109,6 +116,22 @@ UNINSTALL_WAIT_SECONDS = 300
 MSIX_REMOVE_TIMEOUT_SECONDS = 120
 TEARDOWN_TIMEOUT_SECONDS = 240
 WSL_TIMEOUT_SECONDS = 300
+PROCESS_TERMINATE = 0x0001
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+STILL_ACTIVE = 259
+ERROR_INVALID_PARAMETER = 87  # OpenProcess on a PID that no longer exists
+KILL_EXIT_CODE = 1
+
+_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+_kernel32.OpenProcess.restype = wintypes.HANDLE
+_kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+_kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+_kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+_kernel32.QueryFullProcessImageNameW.argtypes = [
+    wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD),
+]
+_kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
 
 appdata = Path(os.environ["APPDATA"])
 localappdata = Path(os.environ["LOCALAPPDATA"])
@@ -397,16 +420,17 @@ def find_processes(targets: list[Path]) -> list[SimpleNamespace]:
     and every other program under %LOCALAPPDATA%.
     Other users' processes (e.g. the native Gateway's sandbox account) report no path
     to a non-elevated caller; clawctl teardown owns those.
-    CreationDate is captured so termination can reject a reused PID.
+    Identity is captured through a handle at discovery and rechecked on the handle
+    used for termination, so a reused PID is never killed.
     """
     rows = run_ps(
         "Get-CimInstance Win32_Process | "
-        "ForEach-Object { '' + $_.ProcessId + '|' + $_.Name + '|' + $_.ExecutablePath + '|' + $_.CreationDate }"
+        "ForEach-Object { '' + $_.ProcessId + '|' + $_.Name + '|' + $_.ExecutablePath }"
     )
     own = {os.getpid(), os.getppid()}
     procs = []
     for row in rows:
-        pid_text, name, path, created = row.split("|", 3)
+        pid_text, name, path = row.split("|", 2)
         pid = int(pid_text)
         if pid in own:
             continue
@@ -414,7 +438,7 @@ def find_processes(targets: list[Path]) -> list[SimpleNamespace]:
             continue
         if path and is_excluded(Path(path)):
             continue
-        procs.append(SimpleNamespace(pid=pid, name=name, path=path, created=created))
+        procs.append(SimpleNamespace(pid=pid, name=name, path=path, identity=process_identity(pid)))
     return procs
 
 
@@ -433,18 +457,78 @@ def owned_process_path(path: Path, targets: list[Path]) -> bool:
     return False
 
 
-def process_identity_unchanged(proc: SimpleNamespace) -> bool:
-    """Re-read the PID and compare executable path and creation time with discovery.
+def _handle_identity(handle) -> tuple[str, int] | None:
+    """Image path and creation FILETIME of a process handle, or None if unreadable."""
+    buffer = ctypes.create_unicode_buffer(32768)
+    size = wintypes.DWORD(len(buffer))
+    if not _kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+        return None
+    created = wintypes.FILETIME()
+    null = wintypes.FILETIME()
+    if not _kernel32.GetProcessTimes(handle, ctypes.byref(null), ctypes.byref(null), ctypes.byref(null), ctypes.byref(created)):
+        return None
+    return buffer.value, (created.dwHighDateTime << 32) | created.dwLowDateTime
 
-    A process that exited between discovery and termination frees its PID for reuse;
-    Windows may hand that number to an unrelated process, so the stored creation time
-    and path must still match before taskkill touches it (mirrors Stop-CleanProcess).
+
+def process_identity(pid: int) -> tuple[str, int] | None:
+    """Image path and creation time of a PID, or None when it cannot be read."""
+    handle = _kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return None
+    try:
+        return _handle_identity(handle)
+    finally:
+        _kernel32.CloseHandle(handle)
+
+
+def terminate_if_unchanged(proc: SimpleNamespace) -> str:
+    """Terminate proc only when the handle still matches its discovery identity.
+
+    The handle is opened once, kept, and terminated through, so the PID stays
+    pinned: the identity is verified on the same kernel object that
+    TerminateProcess acts on. A process that exited, or whose PID was reused by
+    an unrelated process, is never killed (mirrors Stop-CleanProcess).
     """
-    rows = run_ps(
-        "Get-CimInstance Win32_Process -Filter 'ProcessId = "
-        f"{proc.pid}' | ForEach-Object {{ '' + $_.ExecutablePath + '|' + $_.CreationDate }}"
-    )
-    return len(rows) == 1 and rows[0].split("|", 2) == [proc.path, proc.created]
+    handle = _kernel32.OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION, False, proc.pid)
+    if not handle:
+        err = ctypes.get_last_error()
+        return "gone" if err == ERROR_INVALID_PARAMETER else f"open failed (WinError {err})"
+    try:
+        exit_code = wintypes.DWORD()
+        if not _kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return f"exit code unreadable (WinError {ctypes.get_last_error()})"
+        if exit_code.value != STILL_ACTIVE:
+            return "gone"  # exited since discovery while the handle kept the PID pinned
+        if _handle_identity(handle) != proc.identity:
+            return "changed"
+        if not _kernel32.TerminateProcess(handle, KILL_EXIT_CODE):
+            return f"terminate failed (WinError {ctypes.get_last_error()})"
+        return "killed"
+    finally:
+        _kernel32.CloseHandle(handle)
+
+
+def stop_processes(procs: list[SimpleNamespace]) -> int:
+    """Kill each discovered process; returns the number of failures."""
+    errors = 0
+    for p in procs:
+        if p.identity is None:
+            errors += 1
+            print(f"  ERROR  PID {p.pid} {p.name}: identity unreadable at discovery "
+                  "(another user's process or already exited); not killing")
+            continue
+        result = terminate_if_unchanged(p)
+        if result == "killed":
+            print(f"  killed PID {p.pid} {p.name}")
+        elif result == "gone":
+            print(f"  gone    PID {p.pid} {p.name} (exited)")
+        elif result == "changed":
+            errors += 1
+            print(f"  SKIP   PID {p.pid} {p.name}: identity changed since discovery, not killing")
+        else:
+            errors += 1
+            print(f"  ERROR  kill PID {p.pid} {p.name}: {result}")
+    return errors
 
 
 def find_scheduled_tasks() -> list[str]:
@@ -462,10 +546,11 @@ def task_exists(task: str) -> bool | None:
     return None if code not in (0, 1) else code == 0
 
 
-def registered_wsl_distros() -> dict[str, Path] | None:
-    """Distro name to storage location from HKCU Lxss registrations, or None when WSL was never used.
+def registered_wsl_distros() -> dict[str, Path]:
+    """Distro name to storage location from HKCU Lxss registrations.
 
-    The registry is authoritative for both membership (names) and storage (BasePath):
+    Empty when this user never used WSL (no Lxss tree). The registry is
+    authoritative for both membership (names) and storage (BasePath):
     wsl.exe output is localized (a clean machine prints "no installed distributions"
     with a nonzero exit) and drops BasePath, so it can report absence where state
     still exists and cannot protect custom-named distros whose disk lives under a
@@ -475,7 +560,7 @@ def registered_wsl_distros() -> dict[str, Path] | None:
     try:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, LXSS_KEY)
     except FileNotFoundError:
-        return None  # no Lxss tree: WSL was never used on this machine
+        return {}  # no Lxss tree: WSL was never used on this machine
     except OSError as exc:
         raise InventoryError(f"could not read WSL registrations: {exc}") from exc
     distros: dict[str, Path] = {}
@@ -506,13 +591,14 @@ def unregister_wsl(distro: str) -> bool:
     except OSError as exc:
         print(f"  wsl could not run for {distro}: {exc}")
         return False
-    return code == 0 and remaining is not None and distro not in remaining
+    except InventoryError as exc:
+        print(f"  wsl verification failed for {distro}: {exc}")
+        return False
+    return code == 0 and distro not in remaining
 
 
-def wsl_storage_conflicts(targets: list[Path], registered: dict[str, Path] | None) -> list[tuple[str, Path]]:
+def wsl_storage_conflicts(targets: list[Path], registered: dict[str, Path]) -> list[tuple[str, Path]]:
     """Distro names whose disk storage lies under a deletion target, with that target."""
-    if not registered:
-        return []
     conflicts = []
     for distro, base in registered.items():
         if distro in WSL_DISTROS:
@@ -561,7 +647,8 @@ def models_in(path: Path) -> list[Path]:
     if path.suffix.lower() == MODEL_SUFFIX and not path.is_symlink():
         return [path]
     if path.is_dir() and not path.is_symlink() and not path.is_junction():
-        return [p for p in path.rglob(f"*{MODEL_SUFFIX}") if p.is_file() and not p.is_symlink()]
+        return [p for p in path.rglob(f"*{MODEL_SUFFIX}")
+                if p.is_file() and not p.is_symlink() and not is_excluded(p)]
     return []
 
 def model_digest(path: Path) -> str:
@@ -603,10 +690,16 @@ def preserve_models(models: list[Path]) -> list[Path]:
         preserved.append(destination)
     return preserved
 
-
-
 def remove_path(path: Path, kept: list[Path]) -> None:
-    """Delete path, keeping *.gguf model files and the directories that hold them."""
+    """Delete path, keeping *.gguf model files and the directories that hold them.
+
+    Excluded paths are checked before anything is touched, including links, so a
+    recursive deletion of an allowed parent never reaches a protected descendant;
+    ancestors are only removed when empty, so they are kept too.
+    """
+    if is_excluded(path):
+        kept.append(path)
+        return
     if path.is_junction() or (path.is_symlink() and path.is_dir()):
         os.rmdir(path)  # removes the link only, never the target's contents
     elif path.is_symlink():
@@ -711,7 +804,12 @@ def main() -> int:
     paths = find_paths()
     for path in paths:
         models = models_in(path)
-        detail = ("dir" if path.is_dir() else "file") + (f"; keeps {len(models)} model file(s)" if models else "")
+        detail = "dir" if path.is_dir() else "file"
+        if models:
+            detail += f"; keeps {len(models)} model file(s)"
+        held = [ex for ex in EXCLUDED_PATHS if path in ex.parents]
+        if held:
+            detail += f"; keeps excluded {', '.join(map(str, held))}"
         report(str(path), True, detail)
     if not paths:
         report(f"paths matching '{APP_NAME_MATCH}'", False)
@@ -743,11 +841,11 @@ def main() -> int:
     try:
         registered = registered_wsl_distros()
     except InventoryError as exc:
-        registered = None
+        registered = {}
         wsl_error = f"could not establish WSL inventory: {exc}"
     else:
         wsl_error = None
-    distros = [d for d in WSL_DISTROS if registered and d in registered]
+    distros = [d for d in WSL_DISTROS if d in registered]
     for distro in WSL_DISTROS:
         if wsl_error:
             print(f"  ERROR  {wsl_error}")
@@ -771,32 +869,9 @@ def main() -> int:
     print("\n== deleting ==")
     errors = 0
 
-    # Processes first: they lock files and package resources. Identity is revalidated at
-    # termination time (path + creation time), so a reused PID is rejected instead of
-    # killing whatever owns that number now; each process is killed individually (no /T
-    # tree kill), so exclusions and identity checks cannot be bypassed via descendants.
-    for p in procs:
-        if not process_identity_unchanged(p):
-            errors += 1
-            print(f"  SKIP   PID {p.pid} {p.name}: identity changed since discovery, not killing")
-            continue
-        code = subprocess.run(["taskkill", "/PID", str(p.pid), "/F"], capture_output=True).returncode
-        if code == 0:
-            print(f"  killed PID {p.pid} {p.name}")
-        else:
-            errors += 1
-            print(f"  ERROR  kill PID {p.pid} {p.name}: taskkill exit {code}")
-
-    # Stop and disable tasks so logon/timer triggers can't relaunch anything mid-wipe.
-    # They are deleted after the uninstallers, which may own them.
-    for task in tasks:
-        subprocess.run(["schtasks", "/End", "/TN", task], capture_output=True)
-        if subprocess.run(["schtasks", "/Change", "/TN", task, "/DISABLE"], capture_output=True).returncode == 0:
-            print(f"  disabled task {task}")
-        else:
-            print(f"  WARN   could not disable task {task}")
-
-    # Fatal stages: stop before deleting files so remaining state can still be removed by a re-run.
+    # Known inventory blockers are rejected before anything changes: stopping
+    # processes or disabling tasks that a blocked wipe then leaves behind would
+    # be mutation with no way for a re-run to undo it.
     def abort(reason: str) -> int:
         print(f"  ERROR  {reason}")
         print("\nStopped before deleting files. Fix the error above and re-run.")
@@ -809,6 +884,23 @@ def main() -> int:
     if conflicts:
         distro, target = conflicts[0]
         return abort(f"distro {distro} stores its disk under {target}; unregister it first or exclude that path")
+
+    # Processes first: they lock files and package resources. Each process is
+    # terminated through a handle whose identity was verified on that same
+    # handle (see terminate_if_unchanged); each process is killed individually
+    # (no tree kill), so exclusions and identity checks cannot be bypassed.
+    errors += stop_processes(procs)
+
+    # Stop and disable tasks so logon/timer triggers can't relaunch anything mid-wipe.
+    # They are deleted after the uninstallers, which may own them.
+    for task in tasks:
+        subprocess.run(["schtasks", "/End", "/TN", task], capture_output=True)
+        if subprocess.run(["schtasks", "/Change", "/TN", task, "/DISABLE"], capture_output=True).returncode == 0:
+            print(f"  disabled task {task}")
+        else:
+            print(f"  WARN   could not disable task {task}")
+
+    # Fatal stages: stop before deleting files so remaining state can still be removed by a re-run.
     models_to_preserve = [model for path in paths for model in models_in(path)]
     try:
         preserved_models = preserve_models(models_to_preserve)
@@ -830,9 +922,10 @@ def main() -> int:
         if not uninstall_win32(app):
             return abort(f"{app.name} still registered at {app.where} (cancelled, failed, or needs admin)")
         print(f"  uninstalled {app.name}")
-    remaining = registered_wsl_distros()
-    if remaining is None:
-        return abort("WSL registrations unreadable; cannot verify distro removal")
+    try:
+        remaining = registered_wsl_distros()
+    except InventoryError as exc:
+        return abort(f"could not verify WSL removal: {exc}")
     for distro in distros:
         if distro not in remaining:
             print(f"  gone    distro {distro} (removed by uninstaller)")
@@ -885,12 +978,13 @@ def main() -> int:
             continue
         try:
             remove_path(path, kept)
-            print(f"  {'kept' if path.exists() else 'removed':7s} {path}" + ("  (holds models)" if path.exists() else ""))
+            print(f"  {'kept' if path.exists() else 'removed':7s} {path}" + ("  (holds kept files)" if path.exists() else ""))
         except OSError as exc:
             errors += 1
             print(f"  ERROR  {path}: {exc}")
-    for model in kept:
-        print(f"  kept   {model}  (model)")
+    for item in kept:
+        kind = "model" if item.suffix.lower() == MODEL_SUFFIX else "excluded"
+        print(f"  kept   {item}  ({kind})")
 
     if errors:
         print(f"\nCompleted with {errors} error(s); re-run to retry.")
