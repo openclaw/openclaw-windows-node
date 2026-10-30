@@ -1,4 +1,5 @@
 name: Build and Test
+# A/A timing control only. Keep the existing full pull-request validation unchanged.
 
 on:
   push:
