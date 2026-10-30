@@ -39,7 +39,7 @@ internal sealed record WindowManagerCallbacks(
     Func<ISettingsStore?>? GetSettingsStore = null,
     Func<LocalAiGatewayLifecycle?>? GetLocalAiGatewayLifecycle = null,
     Func<SetupNativePreparation, CancellationToken, Task>? PublishNativePreparation = null,
-    Func<string, Task>? OpenSetupDashboard = null);
+    Func<SetupNativeCompletion, string, Task<bool>>? OpenSetupDashboard = null);
 
 internal sealed class WindowManager : IWindowManager
 {
@@ -211,7 +211,8 @@ internal sealed class WindowManager : IWindowManager
         {
             var openDashboard = _callbacks.OpenSetupDashboard
                 ?? throw new InvalidOperationException("The Gateway dashboard launcher is unavailable.");
-            await openDashboard(dashboardPath);
+            if (!await openDashboard(completion, dashboardPath))
+                throw new InvalidOperationException("The Gateway dashboard could not be opened.");
             return;
         }
         Window window;

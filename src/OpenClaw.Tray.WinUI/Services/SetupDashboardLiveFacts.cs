@@ -24,7 +24,7 @@ internal sealed record SetupDashboardLiveFacts(string GatewayId, string? AgentId
             concrete.GetSessionList().FirstOrDefault(session => session.Key == key);
         if (gatewayId is null || !ReferenceEquals(client, manager.OperatorClient) ||
             gatewayId != manager.CurrentSnapshot.GatewayId)
-            throw new InvalidOperationException("The Gateway connection changed during Dashboard admission.");
+            throw new SetupNativeOwnershipException();
         return Project(gatewayId, key, session?.Model, session?.Provider);
     }
 

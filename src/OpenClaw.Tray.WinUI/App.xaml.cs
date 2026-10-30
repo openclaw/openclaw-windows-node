@@ -16,6 +16,7 @@ using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using OpenClaw.Connection;
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.SetupEngine;
 using Microsoft.Extensions.DependencyInjection;
 using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Adapters;
@@ -722,11 +723,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     () => _settings?.AutoStart ?? throw new InvalidOperationException("Settings are unavailable."),
                     AutoStartManager.ApplySetupPreferenceAsync, ct),
                 GetSettingsStore: () => SettingsStore,
-                OpenSetupDashboard: async path =>
+                OpenSetupDashboard: async (completion, path) =>
                 {
                     var launcher = CreateDashboardLauncher(() =>
-                        throw new InvalidOperationException("Windows did not open the Gateway dashboard."));
-                    await launcher.OpenAsync(path);
+                        throw new InvalidOperationException("Windows did not open the Gateway dashboard."),
+                        completion);
+                    return await launcher.OpenAsync(path, () => RequireSetupDashboardAuthority(completion));
                 }));
         _updateCoordinator = new UpdateCoordinator(
             _appState,
@@ -3941,7 +3943,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         out string gatewayUrl,
         out string token,
         out string credentialSource,
-        out bool isBootstrapToken)
+        out bool isBootstrapToken,
+        SetupNativeCompletion? setupCompletion = null)
     {
         gatewayUrl = string.Empty;
         token = string.Empty;
@@ -3959,6 +3962,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _settings.LegacyToken,
             _settings.LegacyBootstrapToken,
             (record, candidate) =>
+                (setupCompletion is null || IsSetupDashboardCredentialAllowed(setupCompletion, record)) &&
                 InteractiveEndpointAuthorizer?.IsCredentialAllowed(record, candidate) == true,
             out var credential) ||
             credential == null)
@@ -4034,9 +4038,27 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }, new AppLogger(), nameof(OpenDashboard));
     }
 
-    private GatewayDashboardLauncher CreateDashboardLauncher(Action reportFailure) => new(
+    private bool IsSetupDashboardCredentialAllowed(SetupNativeCompletion completion, GatewayRecord record)
+    {
+        if (record.Id != completion.Verification.GatewayId ||
+            GatewayDashboardBinding.Capture(record) != completion.Verification.EndpointBinding)
+            throw new SetupNativeOwnershipException();
+        RequireSetupDashboardAuthority(completion);
+        return true;
+    }
+
+    private void RequireSetupDashboardAuthority(SetupNativeCompletion completion)
+    {
+        new SetupNativeNavigationRequest(completion).GetConnectedClient(_gatewayRegistry, _connectionManager);
+        if (SetupDashboardLiveFacts.Capture(_connectionManager) is not { } facts ||
+            !facts.Matches(completion.Verification))
+            throw new SetupNativeOwnershipException();
+    }
+
+    private GatewayDashboardLauncher CreateDashboardLauncher(
+        Action reportFailure, SetupNativeCompletion? setupCompletion = null) => new(
         EnsureSshTunnelConfigured,
-        () => TryResolveChatCredentials(out var url, out var token, out var source, out var bootstrap)
+        () => TryResolveChatCredentials(out var url, out var token, out var source, out var bootstrap, setupCompletion)
             ? new InteractiveGatewayCredential(url, token, bootstrap, source) : null,
         async url => await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url)),
         reportFailure,

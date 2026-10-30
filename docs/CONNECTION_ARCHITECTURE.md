@@ -298,10 +298,14 @@ Verified native setup completion follows the same window boundary. Chat binds
 the receipt's exact session to Workspace's retained ChatPage and waits for the
 native composer before activating the window and consuming the receipt.
 Skills keeps typed companion navigation. Channels opens the Gateway web
-dashboard's `channels` path after verification, and the handoff awaits the
-browser launch before consuming its receipt. Both paths retain fresh
-gateway, endpoint, identity, agent, and session checks; selecting a different
-Workspace destination invalidates an in-flight chat handoff.
+dashboard's `channels` path after verification, and the handoff carries the
+verified completion through credential resolution. The launcher rechecks the
+exact Gateway, connected signing identity, session and available live model facts
+immediately before browser dispatch. A changed Gateway or revoked identity is
+rejected before dispatch; a failed browser launch retains the receipt for explicit
+retry. Both paths retain fresh gateway, endpoint, identity, agent, and session
+checks; selecting a different Workspace destination invalidates an in-flight
+chat handoff.
 Admitted assistant changes and new-conversation creation invalidate that binding
 before any asynchronous session creation, even while the old conversation remains
 visible. Same-session rebinding must use the new request identity. Cancellation

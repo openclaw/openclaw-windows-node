@@ -412,13 +412,15 @@ public sealed class NativeCompletionPresentationTests
         var handoff = manager[manager.IndexOf("public async Task ShowNativeSetupAsync", StringComparison.Ordinal)..];
         Assert.True(handoff.IndexOf("request.GetConnectedClient(", StringComparison.Ordinal) <
             handoff.IndexOf("GetNativeSetupDashboardPath", StringComparison.Ordinal));
-        Assert.Contains("await openDashboard(dashboardPath)", handoff);
+        Assert.Contains("await openDashboard(completion, dashboardPath)", handoff);
+        Assert.Contains("if (!await openDashboard(completion, dashboardPath))", handoff);
         Assert.Contains("_callbacks.OpenSetupDashboard", handoff);
         var app = Read(@"src\OpenClaw.Tray.WinUI\App.xaml.cs");
-        var callback = app[app.IndexOf("OpenSetupDashboard: async path =>", StringComparison.Ordinal)..];
+        var callback = app[app.IndexOf("OpenSetupDashboard: async (completion, path) =>", StringComparison.Ordinal)..];
         callback = callback[..callback.IndexOf("}));", StringComparison.Ordinal)];
         Assert.Contains("CreateDashboardLauncher(", callback);
         Assert.Contains("throw new InvalidOperationException(", callback);
-        Assert.Contains("await launcher.OpenAsync(path)", callback);
+        Assert.Contains("launcher.OpenAsync(path, () => RequireSetupDashboardAuthority(completion))", callback);
+        Assert.Contains("IsSetupDashboardCredentialAllowed(setupCompletion, record)", app);
     }
 }
