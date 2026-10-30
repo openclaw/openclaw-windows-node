@@ -7770,6 +7770,18 @@ Choose {1} to exit this preview without starting migration and continue using th
 
 Your settings, gateway, files, and models stay in place.</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>Your setup has been validated and migration completion recorded.
+
+1. Open Installed apps.
+Remove: {0} (desktop installer)
+Keep: {1}, version {2} (Microsoft Store)
+Leave all other apps installed.
+
+2. Return here and choose Retry to verify removal and finish.
+
+Your settings, gateway, files, and models stay in place.</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>Remove the previous app</value>
   </data>

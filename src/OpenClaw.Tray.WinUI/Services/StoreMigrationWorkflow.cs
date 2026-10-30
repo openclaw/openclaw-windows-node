@@ -14,6 +14,8 @@ internal enum StoreMigrationStage
 internal interface IStoreMigrationOperations
 {
     StoreMigrationStartupDecision Inspect();
+    string? StoreDisplayName { get; }
+    string? StoreVersion { get; }
     bool HasConsent(InnoInstallation installation);
     void GrantConsent(InnoInstallation installation);
     Task<bool> CloseSourceAsync(StoreMigrationStartupDecision admission, CancellationToken cancellationToken);
@@ -45,6 +47,15 @@ internal sealed class StoreMigrationWorkflow(
 {
     public StoreMigrationStage Stage { get; private set; } = StoreMigrationStage.Inspecting;
     public bool IsBusy { get; private set; }
+
+    // Retry must not retain an old app label after removal or a different admission outcome.
+    public string? RemovalSourceDisplayName => Stage == StoreMigrationStage.AwaitingRemoval
+        ? _currentInstallation?.DisplayName : null;
+    public string? RemovalStoreDisplayName => Stage == StoreMigrationStage.AwaitingRemoval
+        ? operations.StoreDisplayName : null;
+    public string? RemovalStoreVersion => Stage == StoreMigrationStage.AwaitingRemoval
+        ? operations.StoreVersion : null;
+    private InnoInstallation? _currentInstallation;
 
     /// <summary>
     /// Whether recovery can be cleared from inside the app. Only undecodable records qualify:
@@ -184,9 +195,11 @@ internal sealed class StoreMigrationWorkflow(
         LastDiscard = null;
         try
         {
+            _currentInstallation = null;
             SetStage(StoreMigrationStage.Inspecting);
             cancellationToken.ThrowIfCancellationRequested();
             var admission = operations.Inspect();
+            _currentInstallation = admission.Installation;
             // Never cleared by a later pass: Retry re-inspects, and a transient failure there
             // must not drop a receipt this session already observed or wrote.
             _holdsStartupBlock |= admission.HoldsDurableBlock;

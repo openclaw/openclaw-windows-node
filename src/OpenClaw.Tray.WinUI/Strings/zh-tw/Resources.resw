@@ -7701,6 +7701,18 @@
 
 您的設定、閘道、檔案和模型將保留在原處。</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>您的設定已通過驗證，移轉完成狀態已記錄。
+
+1. 開啟「已安裝的應用程式」。
+解除安裝：{0}（桌面安裝版）
+保留：{1}，版本 {2}（Microsoft Store）
+保留所有其他應用程式。
+
+2. 返回此處並選擇「重試」以驗證移除狀態並完成移轉。
+
+您的設定、閘道、檔案和模型將保留在原處。</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>解除安裝舊版應用程式</value>
   </data>

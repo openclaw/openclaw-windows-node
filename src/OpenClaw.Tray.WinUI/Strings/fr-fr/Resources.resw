@@ -7701,6 +7701,18 @@ Choisissez {1} pour quitter cet aperçu sans démarrer la migration et continuer
 
 Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place.</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>Votre configuration a été validée et la fin de la migration enregistrée.
+
+1. Ouvrez Applications installées.
+À désinstaller : {0} (installation de bureau)
+À conserver : {1}, version {2} (Microsoft Store)
+Laissez les autres applications installées.
+
+2. Revenez ici et choisissez Réessayer pour vérifier la désinstallation et terminer.
+
+Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place.</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>Désinstallez l'application précédente</value>
   </data>

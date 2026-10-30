@@ -221,6 +221,23 @@ public sealed class InnoMigrationContractTests
     }
 
     [Fact]
+    public void RemovalLabels_UseValidatedRegistrationAndPackageMetadata()
+    {
+        var detector = Read("src", "OpenClaw.Connection", "Migration", "InnoInstallationDetector.cs");
+        Assert.Contains("architecture, version, registration.DisplayName)", detector);
+        var operations = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "StoreMigrationOperations.cs");
+        Assert.Contains("StoreDisplayName = package.DisplayName", operations);
+        Assert.True(operations.IndexOf("identity.Name != MigrationRecordCodec.PackageName", StringComparison.Ordinal)
+            < operations.IndexOf("StoreDisplayName = package.DisplayName", StringComparison.Ordinal));
+        var window = Read("src", "OpenClaw.Tray.WinUI", "Windows", "StoreMigrationWindow.xaml.cs");
+        Assert.Contains("Migration2_AwaitingRemovalWithApps", window);
+        Assert.Contains("string.IsNullOrWhiteSpace(_workflow.RemovalSourceDisplayName)", window);
+        Assert.Contains("string.IsNullOrWhiteSpace(_workflow.RemovalStoreDisplayName)", window);
+        Assert.Contains("string.IsNullOrWhiteSpace(_workflow.RemovalStoreVersion)", window);
+        Assert.DoesNotContain("Process.Start", window);
+    }
+
+    [Fact]
     public void MigrationWindow_HasAccessibleNamedActionsAndNoInventedProgress()
     {
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "StoreMigrationWindow.xaml");

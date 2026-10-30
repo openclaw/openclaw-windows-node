@@ -7702,6 +7702,18 @@ Kies {1} om dit voorbeeld te sluiten zonder de migratie te starten en de vorige 
 
 Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>Uw configuratie is gevalideerd en de voltooiing van de migratie is vastgelegd.
+
+1. Open Geïnstalleerde apps.
+Verwijderen: {0} (desktopinstallatie)
+Behouden: {1}, versie {2} (Microsoft Store)
+Laat alle andere apps geïnstalleerd.
+
+2. Keer hier terug en kies Opnieuw proberen om de verwijdering te verifiëren en af te ronden.
+
+Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>Verwijder de vorige app</value>
   </data>

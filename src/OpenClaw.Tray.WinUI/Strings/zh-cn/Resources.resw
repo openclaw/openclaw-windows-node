@@ -7701,6 +7701,18 @@
 
 您的设置、网关、文件和模型将保留在原处。</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>您的配置已通过验证，迁移完成状态已记录。
+
+1. 打开“已安装的应用”。
+卸载：{0}（桌面安装版）
+保留：{1}，版本 {2}（Microsoft Store）
+保留所有其他应用。
+
+2. 返回此处并选择“重试”以验证移除状态并完成迁移。
+
+您的设置、网关、文件和模型将保留在原处。</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>卸载旧版应用</value>
   </data>

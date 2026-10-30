@@ -30,7 +30,10 @@ public sealed record InnoInstallation(
     string ExecutablePath,
     string UninstallerPath,
     string Architecture,
-    Version Version);
+    Version Version,
+    // Exact validated Installed apps label, including the registered release spelling.
+    // Optional presentation metadata, never authorization to remove an app.
+    string? DisplayName = null);
 
 /// <param name="Status">What the inspection concluded.</param>
 /// <param name="Installation">Verified installation evidence, present only for <see cref="InnoInstallationStatus.Detected"/>.</param>

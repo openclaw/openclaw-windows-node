@@ -7753,6 +7753,18 @@ Escolha {1} para sair desta prévia sem iniciar a migração e continuar usando 
 
 Suas configurações, gateway, arquivos e modelos permanecem no mesmo local.</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>Sua configuração foi validada e a conclusão da migração foi registrada.
+
+1. Abra Aplicativos instalados.
+Remover: {0} (instalação para desktop)
+Manter: {1}, versão {2} (Microsoft Store)
+Mantenha todos os outros aplicativos instalados.
+
+2. Volte aqui e selecione Tentar novamente para verificar a remoção e finalizar.
+
+Suas configurações, gateway, arquivos e modelos permanecem no mesmo local.</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>Remova o aplicativo anterior</value>
   </data>

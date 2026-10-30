@@ -145,7 +145,7 @@ public sealed class InnoInstallationDetector : IInnoInstallationDetector
                     sourcePayloadPresent: sourcePayloadPresent);
 
             return new(InnoInstallationStatus.Detected,
-                new(_installDirectory, executable, uninstaller, architecture, version),
+                new(_installDirectory, executable, uninstaller, architecture, version, registration.DisplayName),
                 SourcePayloadPresent: true);
         }
         catch (InvalidDataException ex)
