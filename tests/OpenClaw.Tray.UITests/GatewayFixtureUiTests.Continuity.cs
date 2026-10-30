@@ -72,6 +72,20 @@ public sealed partial class GatewayFixtureUiTests
                 SessionSelected(run, GatewayScenario.OtherSessionTitle), "same assistant and conversation after reconnect");
             CaptureContinuity(run, "continuity-returned.png");
 
+            const string afterReconnect = "Fixture send after reconnect.";
+            var sends = run.Gateway.Requests.Count(request => request.Method == "chat.send");
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.IsEnabled == true,
+                "composer enabled after reconnect");
+            ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern))
+                .SetValue(afterReconnect);
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerPrimaryAction") is
+                { Current.IsEnabled: true, Current.Name: "Send" }, "native Send action after reconnect");
+            Invoke(FindById(run, "ChatComposerPrimaryAction")!);
+            var sent = await run.Gateway.WaitForCompletedRequestAsync("chat.send", GatewayScenario.OtherSessionKey);
+            Assert.Equal("ok", sent.Outcome);
+            Assert.Equal(sends + 1, run.Gateway.Requests.Count(request => request.Method == "chat.send"));
+            CaptureContinuity(run, "continuity-sent-after-reconnect.png");
+
             using var removed = JsonDocument.Parse(
                 """{"defaultId":"main","selectionRequired":true,"agents":[{"id":"main","name":"Main"}]}""");
             run.Gateway.SetAgentsRoster(removed.RootElement);
@@ -82,7 +96,7 @@ public sealed partial class GatewayFixtureUiTests
                 FindById(run, "WorkspaceSessionsAdd") is { } add && !add.Current.IsEnabled,
                 "authoritative removal requires a new selection");
             CaptureContinuity(run, "continuity-removed.png");
-        }, requireAgentSelection: true);
+        }, scenario: GatewayScenario.CreateBrowse(requireAgentSelection: true, allowChatSend: true));
     }
 
     private static bool AssistantSelected(GatewayFixtureRun run, string id) =>

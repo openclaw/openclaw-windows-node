@@ -22,11 +22,13 @@ The opt-in UI case
 `SelectedAssistantAndConversationSurviveTransientRosterLossButNotAuthoritativeRemoval`
 selects an assistant and conversation through normal UI Automation. It closes
 only fixture-owned connections, holds the next connection's `agents.list`
-responses, and then releases the unchanged roster. A second reconnect returns
+responses, and then releases the unchanged roster. It then sends one message
+through the ordinary composer and requires the fixture Gateway to record a
+successful `chat.send` for the restored conversation. A second reconnect returns
 an authoritative roster without that assistant and requires a fresh selection.
 `FixtureGatewayServer.SetAgentsRoster`, `HoldAgentsList`, and `ReleaseAgentsList`
 control only this synthetic producer; authentication and the production client
-are unchanged. With `-Screenshots`, the case saves four owned-HWND PrintWindow
+are unchanged. With `-Screenshots`, the case saves five owned-HWND PrintWindow
 PNGs and adjacent UIA assertion metadata in the fixture artifact directory.
 Without requested screenshots, the same UIA selection and protocol assertions
 still run, but no pixel proof is claimed. Requested capture remains strict:
