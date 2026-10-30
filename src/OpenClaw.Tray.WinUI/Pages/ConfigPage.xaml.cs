@@ -550,6 +550,24 @@ public sealed partial class ConfigPage : Page
         try
         {
             var updated = ConfigEditorModel.ApplyChanges(saveBase.Root, _pendingChanges);
+            var blockedPath = ConfigEditorModel.FindUneditedRedactionSentinel(
+                updated,
+                _pendingChanges.Keys,
+                saveBase.Root);
+            if (blockedPath != null)
+            {
+                ShowStatus(
+                    L("ConfigPage_StatusSaveFailedTitle"),
+                    Lf("ConfigPage_StatusSaveBlockedSentinelFormat", blockedPath),
+                    InfoBarSeverity.Error);
+                return;
+            }
+
+            updated = ConfigEditorModel.OmitUntouchedRedactionSentinels(
+                updated,
+                _pendingChanges.Keys,
+                saveBase.Root);
+
             var result = await client.PatchConfigDetailedAsync(updated, saveBase.BaseHash);
             if (!result.Ok)
             {
