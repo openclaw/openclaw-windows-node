@@ -40,7 +40,6 @@ internal sealed class GatewayDirectConnectService
     private readonly Action _reconcileRuntimeTunnel;
     private readonly IOpenClawLogger _logger;
     private readonly TimeSpan _terminalTimeout;
-
     public GatewayDirectConnectService(
         IGatewayConnectionManager connectionManager,
         GatewayRegistry registry,
@@ -322,37 +321,120 @@ internal sealed class GatewayDirectConnectService
         return matches.FirstOrDefault(record => IsSameSshCredentialEndpoint(record.SshTunnel, request.SshTunnel))
             ?? matches.FirstOrDefault();
     }
-    public void SynchronizeSettingsWithCommittedGateway(GatewayRecord committedGateway)
+
+    internal SharedTokenSettingsAttempt CaptureSharedTokenSettingsAttempt() =>
+        new(ConnectionSettingsSnapshot.Capture(_settings));
+
+    internal void SynchronizeSettingsWithCommittedGateway(
+        GatewayRecord committedGateway,
+        SharedTokenSettingsAttempt attempt)
     {
-        var active = _registry.GetActive()
-            ?? throw new InvalidOperationException("The committed gateway is no longer active.");
+        var active = _registry.GetActive();
+        if (active is null)
+        {
+            attempt.Snapshot.Restore(_settings);
+            _reconcileRuntimeTunnel();
+            return;
+        }
+
         if (!string.Equals(active.Id, committedGateway.Id, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
                 "The committed gateway was superseded before its settings could be synchronized.");
         }
-        var previous = ConnectionSettingsSnapshot.Capture(_settings);
+
         try
         {
             ApplySettings(committedGateway);
             _reconcileRuntimeTunnel();
+            FinishAttempt(attempt);
+            return;
         }
         catch (Exception ex)
         {
-            string? rollbackError = null;
             try
             {
-                previous.Restore(_settings);
+                ApplySettings(committedGateway);
                 _reconcileRuntimeTunnel();
+                FinishAttempt(attempt);
+                return;
             }
-            catch (Exception rollbackException)
+            catch (Exception recoveryException)
             {
-                rollbackError = $" Settings rollback failed: {rollbackException.Message}";
-            }
+                string? restoreError = null;
+                try
+                {
+                    attempt.Snapshot.Restore(_settings);
+                    _reconcileRuntimeTunnel();
+                }
+                catch (Exception restoreException)
+                {
+                    restoreError = $" Prior settings restore failed: {restoreException.Message}";
+                }
 
+                throw new InvalidOperationException(
+                    $"Saved settings are out of sync with the active gateway: {ex.Message} Recovery failed: {recoveryException.Message}{restoreError}",
+                    ex);
+            }
+        }
+    }
+
+    private static void FinishAttempt(SharedTokenSettingsAttempt attempt)
+    {
+        if (attempt.CandidateSynchronized)
+            return;
+
+        attempt.CandidateSynchronized = true;
+    }
+
+    public void SynchronizeSettingsWithCommittedGateway(GatewayRecord committedGateway)
+    {
+        var snapshot = ConnectionSettingsSnapshot.Capture(_settings);
+        var active = _registry.GetActive();
+        if (active is null)
+        {
+            snapshot.Restore(_settings);
+            _reconcileRuntimeTunnel();
+            return;
+        }
+
+        if (!string.Equals(active.Id, committedGateway.Id, StringComparison.Ordinal))
+        {
             throw new InvalidOperationException(
-                $"Failed to synchronize gateway settings: {ex.Message}{rollbackError}",
-                ex);
+                "The committed gateway was superseded before its settings could be synchronized.");
+        }
+
+        try
+        {
+            ApplySettings(committedGateway);
+            _reconcileRuntimeTunnel();
+            return;
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                ApplySettings(committedGateway);
+                _reconcileRuntimeTunnel();
+                return;
+            }
+            catch (Exception recoveryException)
+            {
+                string? restoreError = null;
+                try
+                {
+                    snapshot.Restore(_settings);
+                    _reconcileRuntimeTunnel();
+                }
+                catch (Exception restoreException)
+                {
+                    restoreError = $" Prior settings restore failed: {restoreException.Message}";
+                }
+
+                throw new InvalidOperationException(
+                    $"Saved settings are out of sync with the active gateway: {ex.Message} Recovery failed: {recoveryException.Message}{restoreError}",
+                    ex);
+            }
         }
     }
 
@@ -684,7 +766,16 @@ internal sealed class GatewayDirectConnectService
             error,
             rollbackIncomplete);
 
-    private sealed record ConnectionSettingsSnapshot(
+    internal sealed class SharedTokenSettingsAttempt
+    {
+        internal SharedTokenSettingsAttempt(ConnectionSettingsSnapshot snapshot) => Snapshot = snapshot;
+
+        internal ConnectionSettingsSnapshot Snapshot { get; }
+
+        internal bool CandidateSynchronized { get; set; }
+    }
+
+    internal sealed record ConnectionSettingsSnapshot(
         string GatewayUrl,
         bool UseSshTunnel,
         string SshUser,

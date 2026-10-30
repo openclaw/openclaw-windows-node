@@ -24,6 +24,9 @@ public interface ISshTunnelManager : IDisposable
         SshTunnelConfig config,
         CancellationToken ct);
     Task StopAsync();
+    /// <summary>Fences subsequent mutations against the supplied ownership generation.</summary>
+    SshTunnelOwnershipGuard.Scope BeginOwnershipScope(long expectedGeneration) =>
+        throw new NotSupportedException("This SSH tunnel manager does not support ownership-fenced restoration.");
     Task<bool> StopIfOwnedAsync(
         SshTunnelConfig config,
         long ownershipGeneration,

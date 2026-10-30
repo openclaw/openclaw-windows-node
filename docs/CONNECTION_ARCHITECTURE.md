@@ -709,6 +709,43 @@ Many gateway records may be saved, but only `ActiveId` in `gateways.json` is the
 
 `GatewayDirectConnectService` is the single transaction owner for direct-connect UI surfaces. It commits the registry and active id, applies identity changes, persists `SettingsManager`, waits for a terminal manager state, and rolls back ordinary asynchronous connection failures as well as thrown failures. When the operation replaced a live operator connection, successful rollback reconnects that previous gateway before returning the failure. The Connection page and Connection Status window only validate controls and render the result. MCP shared-token replacement keeps its device-token-preserving validation semantics, then asks this service to synchronize the committed active gateway into settings and the runtime tunnel.
 
+`GatewayConnectionManager` owns the shared-token replacement transaction. For an
+existing bootstrap/SSH record without durable role tokens, it observes the
+operator outcome and rolls back failed or unfinished replacements. The tray
+captures a request-local settings snapshot after transaction admission and
+reuses it for candidate and rollback synchronization. A connection-generation
+change alone is not a credential update: Cancel/Disconnect restores still-owned
+configuration without reconnecting against the user's disconnected intent.
+A genuinely newer credential/active-gateway writer or a newer authenticated
+connection is preserved.
+
+Registry rollback uses `ReplaceSnapshotAndSave` to reject concurrent memory or
+disk writes. It restores the replaced URL, credentials, SSH configuration and
+managed-gateway ownership fields while preserving unrelated records, later name
+edits and compatible learned connection metadata. Rollback
+save conflicts remain explicit failures, not successful restoration.
+Before recovery, the manager retires the candidate client and stops only the
+SSH tunnel identified by that candidate's ownership receipt. This cleanup also
+applies to the public manager API without a tray settings callback and without
+a previously live operator. A newer tunnel owner is never stopped by cleanup. If ownership changed or
+cleanup failed, the transaction reports incomplete settings/runtime recovery
+instead of invoking a settings callback or reconnect that could replace the
+newer tunnel. Candidate cleanup is still attempted when registry rollback cannot
+be saved. `SshTunnelOwnershipGuard` carries a generation checkpoint from cleanup
+to runtime recovery. The tunnel service checks that checkpoint under its
+mutation lock for every start or stop, including settings reconciliation and
+prior-live recovery. Registry persistence runs outside that scope, so a tunnel
+started by a newer writer during persistence invalidates recovery rather than
+being adopted by the failed transaction. Custom tunnel managers must implement
+ownership-fenced restoration or fail explicitly. Previously live connections are
+reopened only when the user's connection intent still permits recovery.
+
+The shared-token candidate and restoration observation periods each default to
+15 seconds, matching the direct-connect terminal-state policy. The manager's
+`sharedTokenHandshakeTimeout` constructor option lets tests use shorter periods.
+These are observation budgets, not one end-to-end deadline: connection
+preparation, SSH startup, persistence and lock reacquisition add time.
+
 ## Credential precedence
 
 ### Native onboarding connection boundary
