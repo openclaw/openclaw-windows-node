@@ -1,0 +1,97 @@
+name: Native Gateway Azure proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-gateway-azure
+  cancel-in-progress: false
+
+jobs:
+  admission:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      # Referencing a missing environment can silently create an unprotected one.
+      # Check it before admitting any job that references cloud secrets.
+      - name: Require existing protected environment
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Import-Module ./scripts/AzureNativeGatewayProof.psm1 -Force
+          Confirm-AzureNativeWorkflowEnvironment
+
+  native-proof:
+    needs: admission
+    runs-on: ubuntu-latest
+    environment: native-gateway-azure
+    timeout-minutes: 65
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Recheck environment protection after approval
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Import-Module ./scripts/AzureNativeGatewayProof.psm1 -Force
+          Confirm-AzureNativeWorkflowEnvironment
+      - name: Install digest-pinned Crabbox controller
+        id: controller
+        shell: pwsh
+        run: |
+          $directory = Join-Path $env:RUNNER_TEMP 'crabbox-0.79.0'
+          New-Item -ItemType Directory -Path $directory | Out-Null
+          $archive = Join-Path $directory 'crabbox.tar.gz'
+          Invoke-WebRequest -Uri 'https://github.com/openclaw/crabbox/releases/download/v0.79.0/crabbox_0.79.0_linux_amd64.tar.gz' -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'fc4d8d04b1a596e8e5fdc6af7b0794d44f3f19c2f63153205b92d45ebc5f095b') {
+            throw 'Crabbox release digest mismatch.'
+          }
+          tar -xzf $archive -C $directory
+          if ($LASTEXITCODE -ne 0) { throw 'Crabbox extraction failed.' }
+          $binary = Join-Path $directory 'crabbox'
+          if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw 'Crabbox binary is missing.' }
+          "binary=$binary" >> $env:GITHUB_OUTPUT
+      - name: Run real native Gateway lifecycle on Azure
+        shell: pwsh
+        env:
+          CRABBOX_AUTOMATION_TOKEN: ${{ secrets.CRABBOX_AUTOMATION_TOKEN }}
+          CRABBOX_AZURE_CHECKPOINT_ID: ${{ secrets.CRABBOX_AZURE_CHECKPOINT_ID }}
+          NATIVE_GATEWAY_INPUTS_SHA256: ${{ secrets.NATIVE_GATEWAY_INPUTS_SHA256 }}
+          CRABBOX_AZURE_CLASS: ${{ vars.CRABBOX_AZURE_CLASS }}
+          CRABBOX_AZURE_TTL_MINUTES: ${{ vars.CRABBOX_AZURE_TTL_MINUTES }}
+          CRABBOX_BINARY: ${{ steps.controller.outputs.binary }}
+        run: ./scripts/Invoke-AzureNativeGatewayProof.ps1 -CrabboxPath $env:CRABBOX_BINARY
+      - name: Confirm task-owned lease cleanup
+        if: ${{ always() && steps.controller.outputs.binary != '' }}
+        shell: pwsh
+        env:
+          CRABBOX_BINARY: ${{ steps.controller.outputs.binary }}
+        run: ./scripts/Invoke-AzureNativeGatewayProof.ps1 -Mode Cleanup -CrabboxPath $env:CRABBOX_BINARY
+      - name: Upload allowlisted proof only
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-gateway-azure-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/native-gateway-evidence/cloud-summary.json
+            ${{ runner.temp }}/native-gateway-evidence/native-gateway-proof.json
+          if-no-files-found: error
+          retention-days: 14

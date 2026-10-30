@@ -401,6 +401,146 @@ behavior against the real session endpoint before claiming native E2E coverage.
 Missing package provenance, installation consent/isolation, capable runner, or
 session endpoint integration is a blocker, not a passing skip or an npm fallback.
 
+#### Disposable native Gateway package proof
+
+Ordinary Windows build, unit and UI tests continue on the existing GitHub-hosted
+`windows-latest` lanes. Their new `test-native-gateway-proof.ps1` check exercises
+the native proof harness with explicit wire-contract fixtures and negative cases.
+It never launches a Gateway and is not MXC runtime evidence.
+
+`scripts\Test-NativeGatewayProof.ps1` is the real guest-side package lifecycle
+entrypoint. Run it only on an authorized disposable Windows client with PowerShell
+7.4 or newer, no current-user Gateway registration, and no unrelated work.
+The guest needs an approved installable, signed MSIX, a pinned `wxc-exec.exe`,
+and a clean checkout of the exact reviewed source. It does not install a
+certificate, repair the host, enable Windows features, or download a different
+Gateway when an input is unavailable. Developer loose registrations and legacy
+proof versions are rejected. OS build numbers are not qualification.
+
+Supply the values from the approved artifact inventory, not hashes newly computed
+from unverified downloaded files:
+
+```powershell
+.\scripts\Test-NativeGatewayProof.ps1 `
+  -SourceSha $ApprovedWindowsNodeSha `
+  -MsixPath $ApprovedMsixPath -MsixSha256 $ApprovedMsixSha256 `
+  -PackagingSha $ApprovedPackagingSha `
+  -WxcExecPath $ApprovedWxcExecPath -WxcExecSha256 $ApprovedWxcExecSha256 `
+  -DisposableHost
+```
+
+Success requires a fresh `probes.isolationSessionAvailable: true` result,
+Windows-validated package installation, matching installed package/CLI build
+identity, and the package-qualified `clawctl` sequence:
+`setup`, `companion prepare`, `gateway-service start/status/restart/status`,
+`gateway-service stop/status`, then `teardown/status`. The running listener must
+belong to the new session and restart must replace its process identity.
+An existing session, unsupported response, missing listener, failed command,
+timeout or unconfirmed teardown fails instead of skipping. Setup failures still
+attempt task-owned session teardown; package cleanup runs in `finally`.
+
+The invocation-specific `TestResults\NativeGateway\<id>\native-gateway-proof.json`
+records the source head, package and probe digests, installed build identity,
+completed lifecycle stages and separate session/package cleanup outcomes.
+It never exports raw CLI responses, tokens, agent SIDs or session identifiers.
+The receipt proves only package lifecycle. It does not prove authenticated
+Companion pairing, visible UI, Windows node invocation, process BaseContainer
+containment, or the separate required `validate-mxc-e2e.ps1` WSL path.
+
+#### Manual Azure native Gateway lane
+
+The [Native Gateway Azure proof workflow](../.github/workflows/native-gateway-azure.yml)
+uses a GitHub-hosted Linux **controller** and a disposable native Windows guest.
+It complements, rather than duplicates or replaces, ordinary GitHub-hosted
+Windows CI and the separate strict WSL-MXC proof. It is manual-only, accepts no
+arbitrary ref or command input, and binds the controller, guest checkout and
+evidence to the dispatch's exact `github.sha` on canonical `main`.
+
+The selected acquisition route is the OpenClaw Crabbox coordinator at
+`https://crabbox.openclaw.ai`, using an operator-approved Azure Windows 11
+**OS-disk snapshot checkpoint**. Azure credentials remain on the coordinator.
+This lane does not use personal/employer Azure credentials, browser-login
+Crabbox sessions, or this repository's release-signing `AZURE_*` secrets.
+It does not require Azure OIDC or register a self-hosted GitHub runner.
+
+Before enabling it, an OpenClaw administrator must create the
+`native-gateway-azure` environment with required reviewers, self-review disabled,
+administrator bypass disabled, and one custom deployment branch rule for `main`
+(type `branch`, no tag or wildcard rule). A secretless admission job verifies
+that this environment already exists before the credentialed job can reference
+it. Missing protection is a failure, not a skipped native lane.
+
+Configure these values in that environment, never in source or uploaded logs:
+
+| Name | Kind | Required value |
+| --- | --- | --- |
+| `CRABBOX_AUTOMATION_TOKEN` | Secret | OpenClaw operator-issued automation bearer credential with approved Azure/checkpoint access and budget for CI owner `openclaw-windows-node-ci` in org `openclaw`. Not a personal `cbxu_` login or an admin credential. |
+| `CRABBOX_AZURE_CHECKPOINT_ID` | Secret | Existing coordinator-owned x64 Windows native `azure-os-disk-snapshot` checkpoint. |
+| `NATIVE_GATEWAY_INPUTS_SHA256` | Secret | Approved SHA-256 of the guest's `C:\OpenClawProof\inputs.json`. |
+| `CRABBOX_AZURE_CLASS` | Variable | Explicit operator-approved machine class. There is no implicit machine-size fallback. |
+| `CRABBOX_AZURE_TTL_MINUTES` | Variable | Approved coordinator lease lifetime, 60 to 120 minutes. Allow time for acquisition, lifecycle and cleanup. |
+
+The approved snapshot must provide native OpenSSH/archive transport, Git,
+PowerShell 7.4 or newer, trusted package installation prerequisites, no
+current-user Gateway registration/session, and this inventory:
+
+```json
+{
+  "schemaVersion": 1,
+  "msixPath": "C:\\OpenClawProof\\gateway.msix",
+  "msixSha256": "<approved 64-character lowercase SHA-256>",
+  "packagingSha": "<approved 40-character packaging commit>",
+  "wxcExecPath": "C:\\OpenClawProof\\wxc-exec.exe",
+  "wxcExecSha256": "<approved 64-character lowercase SHA-256>"
+}
+```
+
+Approve the artifacts and inventory independently before supplying their digests.
+The controller never downloads an unpinned Gateway or a replacement probe,
+installs certificates, changes Windows features, or repairs a candidate guest.
+Checkpoint availability and OS build numbers are not session qualification:
+every run must pass the real capability probe and full package lifecycle above.
+Importing a local Windows disk, preparing the snapshot and approving its region,
+cost and provenance remain operator prerequisites.
+
+The controller pins Crabbox `v0.79.0` and the release archive's SHA-256. It inspects
+the coordinator checkpoint before allocation, records a fresh task-owned lease ID
+before calling `checkpoint fork --lease-id`, and requires that exact lease in the
+response. Fixed coordinator checkpoint intent survives ambiguous acquisition
+responses without allocating a replacement. There is no fallback to Marketplace,
+AWS, direct Azure, a user session, or another image.
+See the pinned [checkpoint contract](https://github.com/openclaw/crabbox/blob/v0.79.0/docs/commands/checkpoint.md)
+and [Azure implementation](https://github.com/openclaw/crabbox/blob/v0.79.0/internal/cli/azure.go).
+`azure.image` accepts `Publisher:Offer:SKU:Version`, not a VHDX path or arbitrary
+image resource ID; snapshot acquisition is a different path.
+
+Native `crabbox run` uses SSH/archive transport, not Actions runner registration.
+CI secrets are removed from subprocess environments, and the remote environment
+allowlist is explicitly limited to `CI`.
+The guest fetches a separate public checkout of the exact source SHA, validates
+the pinned inventory, and calls `Test-NativeGatewayProof.ps1`. A fresh invocation
+identifier and both source/inventory hashes bind its receipt. Only validated,
+allowlisted receipt fields and `cloud-summary.json` are uploaded; broker config,
+raw process output and arbitrary guest JSON are not artifacts. The summary's run
+URL is the actual GitHub Actions attempt, not an invented broker run URL.
+
+The controller attempts `crabbox stop --provider azure <task-lease> --wait` in
+`finally`. A separate `always()` step retries unconfirmed cleanup on ordinary
+failure/cancellation. It never stops a pre-existing or user-supplied lease.
+Confirmed provider cleanup is required for a passing cloud result. Coordinator
+TTL expiry remains the backstop if the controller is forcibly lost; it is not
+reported as observed cleanup. Retain the reported lease ID and escalate to the
+OpenClaw operator when cleanup is unconfirmed. Do not substitute direct-Azure
+TTL semantics or `stop --wait=false`.
+
+Dispatch only after the environment, automation credential and candidate inventory
+are approved. Adding this workflow does not provision or authorize infrastructure.
+Until it is deployed and a real run succeeds, report provider, lease ID, run URL
+and cloud result as **not run / blocked**. Hosted
+`test-azure-native-gateway-proof.ps1` regressions exercise admission, transport
+fixtures, exact-source evidence and failure/cleanup handling; they are not cloud
+or native runtime proof.
+
 Investigation snapshot (2026-09-24): packaging commit
 `3f2e3268ca0961a08a12e31a25b0c2c174548955` selects upstream `2026.9.4` and MSIX
 revision 4 (`2026.9.404.0`) with the Store identity
