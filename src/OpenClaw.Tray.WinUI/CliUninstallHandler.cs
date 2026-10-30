@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Globalization;
+using OpenClaw.Connection;
 
 namespace OpenClawTray;
 
@@ -14,6 +15,22 @@ internal static class CliUninstallHandler
     private static extern bool AttachConsole(int dwProcessId);
 
     private const int AttachParentProcess = -1;
+
+    /// <summary>Passed only by the tray's own removal child.</summary>
+    internal const string TrayOwnedFlag = "--tray-owned";
+
+    // An inaccessible mutex still means another instance owns it, so treat it as running.
+    private static bool IsTrayRunning()
+    {
+        try
+        {
+            if (!Mutex.TryOpenExisting(AppIdentity.ResolveSingleInstanceMutexName(), out var runningTray))
+                return false;
+            runningTray.Dispose();
+            return true;
+        }
+        catch (UnauthorizedAccessException) { return true; }
+    }
 
     public static async Task RunAsync(string[] args)
     {
@@ -39,18 +56,55 @@ internal static class CliUninstallHandler
             return;
         }
 
+        var distroName = AppIdentity.SetupDistroName;
+        var gatewayPort = AppIdentity.SetupGatewayPort;
+        if (!CliUninstallTarget.TryParse(args, out var uninstallTarget, out var argumentError))
+        {
+            Console.Error.WriteLine($"ERROR: {argumentError}");
+            Environment.Exit(2);
+            return;
+        }
+
+        string[] targetSetupArguments = [];
+        if (uninstallTarget is not null)
+        {
+            // A running tray keeps the removed record in memory and would fail every later save.
+            // Only the tray's own child, which reconciles the registry afterward, may run while it is open.
+            var trayOwned = args.Contains(TrayOwnedFlag, StringComparer.OrdinalIgnoreCase);
+            if (!dryRun && !trayOwned && IsTrayRunning())
+            {
+                Console.Error.WriteLine("ERROR: OpenClaw is running. Remove the Gateway from Settings or exit OpenClaw first. No uninstall was started.");
+                Environment.Exit(2);
+                return;
+            }
+            var registry = new GatewayRegistry(AppIdentity.ResolveRoamingDataDirectory());
+            registry.Load();
+            var target = registry.GetActive();
+            if (!uninstallTarget.TryGetSetupArguments(target, out targetSetupArguments))
+            {
+                Console.Error.WriteLine("ERROR: The selected WSL Gateway changed. No uninstall was started.");
+                Environment.Exit(2);
+                return;
+            }
+            distroName = GatewayRecordEditing.ResolveManagedDistroName(target!)!;
+            // A Tailscale URL's 443 is not the service's loopback port.
+            if (GatewayRecordEditing.IsLoopbackEndpoint(target!.Url))
+                gatewayPort = new Uri(target.Url).Port;
+        }
+
         // Build CLI arguments for SetupEngine
         var setupArgs = new List<string> { "--headless", "--uninstall" };
         setupArgs.AddRange([
             "--data-dir", AppIdentity.ResolveRoamingDataDirectory(),
             "--local-data-dir", AppIdentity.ResolveSetupLocalDataDirectory(),
-            "--distro-name", AppIdentity.SetupDistroName,
-            "--gateway-port", AppIdentity.SetupGatewayPort.ToString(CultureInfo.InvariantCulture),
+            "--distro-name", distroName,
+            "--gateway-port", gatewayPort.ToString(CultureInfo.InvariantCulture),
             "--autostart-name", AppIdentity.AutoStartRegistryName,
             "--startup-task-name", AppIdentity.StartupTaskName,
         ]);
         if (confirmDestructive) setupArgs.Add("--confirm-destructive");
         if (dryRun) setupArgs.Add("--dry-run");
+        setupArgs.AddRange(targetSetupArguments);
         if (jsonOutputPath != null)
         {
             setupArgs.Add("--json-output");

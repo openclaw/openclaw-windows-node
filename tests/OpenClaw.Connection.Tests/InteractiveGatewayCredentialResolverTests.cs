@@ -53,6 +53,24 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
     }
 
     [Fact]
+    public void TryResolve_RemovedGatewayEndpoint_DoesNotFallBackToLegacyCredentials()
+    {
+        var record = new GatewayRecord { Id = "gw-removed", Url = "ws://127.0.0.1:18789", SharedGatewayToken = "t", IsLocal = true, SetupManagedDistroName = "RemovedDistro" };
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+        _registry.Save();
+        GatewayIdentityRemoval.Remove(_registry, record);
+        Assert.True(_registry.IsLegacyMigrationSuppressed(record.Url));
+
+        Assert.False(InteractiveGatewayCredentialResolver.TryResolve(
+            _registry, _tempDir, _identityReader, record.Url, "legacy-token", null, out var credential));
+        Assert.Null(credential);
+        Assert.True(InteractiveGatewayCredentialResolver.TryResolve(
+            _registry, _tempDir, _identityReader, "ws://other.example:18789", "legacy-token", null, out var other));
+        Assert.Equal("legacy-token", other!.Token);
+    }
+
+    [Fact]
     public void TryResolve_ManagedLoopbackUnknownOwner_DoesNotReturnTokenBearingCredential()
     {
         var record = new GatewayRecord

@@ -61,6 +61,26 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void ExplicitRemovalBlocksStartupMigrationBridgeAndLegacyCredentialFallbacks()
+    {
+        var source = ReadAppSources();
+        var startup = ExtractMethod(source, "InitializeGatewayClient");
+        Assert.Contains(
+            "if (gatewayUrl is not null && _gatewayRegistry.IsLegacyMigrationSuppressed(gatewayUrl))",
+            startup);
+        AssertInOrder(startup,
+            "_gatewayRegistry.IsLegacyMigrationSuppressed(gatewayUrl)",
+            "TryMigrateLegacyGatewaySettings(gatewayUrl",
+            "_gatewayRegistry.FindByUrl(gatewayUrl)");
+        foreach (var method in new[] { "ResolveStartupOperatorCredential", "ResolveStartupNodeCredential" })
+        {
+            var body = ExtractMethod(source, method);
+            AssertInOrder(body, "IsLegacyMigrationSuppressed(record.Url)", "var effectiveUrl");
+            AssertInOrder(body, "resolver.Resolve", "IsLegacyMigrationSuppressed(record.Url)");
+        }
+    }
+
+    [Fact]
     public void E2ESetupTeardown_UsesFixtureOwnedUninstallArguments()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -1258,7 +1278,9 @@ public sealed class AppRefactorContractTests
         Assert.Contains("\"Update_Message_Skipped_Dev\"", updateCoordinator);
         Assert.Contains("\"--data-dir\", AppIdentity.ResolveRoamingDataDirectory()", cliUninstall);
         Assert.Contains("\"--local-data-dir\", AppIdentity.ResolveSetupLocalDataDirectory()", cliUninstall);
-        Assert.Contains("\"--distro-name\", AppIdentity.SetupDistroName", cliUninstall);
+        Assert.Contains("var distroName = AppIdentity.SetupDistroName", cliUninstall);
+        Assert.Contains("distroName = GatewayRecordEditing.ResolveManagedDistroName(target!)!", cliUninstall);
+        Assert.Contains("\"--distro-name\", distroName", cliUninstall);
         Assert.Contains("\"--autostart-name\", AppIdentity.AutoStartRegistryName", cliUninstall);
         Assert.Contains("AppIdentity.SetupDistroName", settingsPage);
         Assert.Contains("AppIdentity.SetupGatewayUrl", settingsManager);
@@ -1275,7 +1297,8 @@ public sealed class AppRefactorContractTests
         Assert.Contains("RootFrame.Content is not ProgressPage { IsPipelineRunning: true }", setupWindow);
         Assert.Contains("RootFrame.Content is not WizardPage", setupWindow);
         Assert.Contains("TryNavigateToGatewayInstalledMilestone", setupWindow);
-        Assert.Contains("setupWindow.TryNavigateToGatewayInstalledMilestone()", source);
+        Assert.Contains("existingWslGateway: existingWslGateway", source);
+        Assert.Contains("retaining its pinned Gateway and current page", source);
         AssertInOrder(
             setupWindow,
             "SetupRunLock.TryAcquire",
@@ -1815,7 +1838,7 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void Settings_OnboardCardRequiresActiveManagedWslGateway()
+    public void Settings_OnboardCardRequiresActiveManagedWslOrNativeGateway()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml"));
@@ -1823,9 +1846,10 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("x:Name=\"OpenClawOnboardCard\"", xaml);
         Assert.Contains("Visibility=\"Collapsed\"", xaml);
-        Assert.Contains("GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive())", code);
-        Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
-        Assert.Contains("CurrentApp.Registry?.Load();", code);
+        Assert.Contains("ApplyLocalGatewaySection(CurrentApp.Registry?.GetActive(), PackageHelper.IsPackaged)", code);
+        Assert.Contains("LocalGatewaySettings.Classify(_localGatewayTarget)", code);
+        Assert.Contains("OpenClawOnboardCard.Visibility = _localGatewayKind is LocalGatewayKind.Wsl or LocalGatewayKind.Native", code);
+        Assert.Contains("ReconcileRemovalRegistry(cleanupRegistry, baselineForCleanup);", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = Visibility.Collapsed;", code);
     }
 
@@ -1878,7 +1902,7 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("ResolveCurrentExecutablePath()", source);
         Assert.Contains("psi.ArgumentList.Add(\"--uninstall\")", source);
-        Assert.Contains("proc.WaitForExitAsync(_uninstallCts.Token)", source);
+        Assert.Contains("proc.WaitForExitAsync(removalCts.Token)", source);
         Assert.Contains("proc.Kill(entireProcessTree: true)", source);
         Assert.DoesNotContain("OpenClaw.SetupEngine.Program.Main(setupArgs)", source);
         Assert.DoesNotContain("OpenClaw.SetupEngine.UI.exe", source);

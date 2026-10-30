@@ -4976,6 +4976,45 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacybeheer</value>
   </data>
+  <data name="GatewayHostAccess_NativeManaged" xml:space="preserve">
+    <value>Deze native gateway wordt beheerd door het bijbehorende Windows-pakket. Open de configuratiewizard in Instellingen voor configuratie.</value>
+  </data>
+  <data name="SettingsPage_SetupGatewayDescription" xml:space="preserve">
+    <value>Installeer een native gateway of WSL-gateway, of configureer een bestaande gateway. Bestaande installaties worden alleen na bevestiging vervangen.</value>
+  </data>
+  <data name="SettingsPage_SetupNativeDescription" xml:space="preserve">
+    <value>Configureer de AI-provider en het model op de geselecteerde native gateway zonder deze opnieuw te installeren.</value>
+  </data>
+  <data name="SettingsPage_GatewayOnboardingDescription.Text" xml:space="preserve">
+    <value>Configureer de AI-provider en het model op de geselecteerde lokale gateway zonder deze opnieuw te installeren.</value>
+  </data>
+  <data name="SettingsPage_RemoveNativeBody" xml:space="preserve">
+    <value>Verwijdert het geïsoleerde gatewayaccount, de werkruimte, de configuratie, de referenties en de opstartregistraties van dit Windows-pakket definitief. Andere Companion-profielen die hetzelfde pakket en Windows-account gebruiken, verliezen ook de toegang. De Gateway-app uit de Store, WSL-gateways, andere opgeslagen gateways, Companion-instellingen en het MCP-token blijven behouden.</value>
+  </data>
+  <data name="SettingsPage_RemoveLegacyNativeBody" xml:space="preserve">
+    <value>Verwijdert permanent de opgeslagen verbinding en referenties van deze verouderde native gateway, plus de profielmap in de gatewaygegevens van Companion, inclusief de configuratie en de bestanden van de werkruimte. Stop eerst de verouderde gateway. De Gateway-app uit de Store, WSL-gateways, andere opgeslagen gateways, Companion-instellingen en het MCP-token blijven behouden.</value>
+  </data>
+  <data name="SettingsPage_RemoveWslBody" xml:space="preserve">
+    <value>Verwijdert de WSL-gateway in {0}, de bijbehorende schijfkopie, opgeslagen verbinding en gatewayreferenties definitief. Andere gateways, lokale AI-bestanden, Companion-instellingen, opstartvermeldingen, uitvoeringsgoedkeuringen, het MCP-token en de hoofdsleutel van het apparaat blijven behouden.</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalTitle" xml:space="preserve">
+    <value>Lokale gateway verwijderen?</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalPermanent" xml:space="preserve">
+    <value>Dit kan niet ongedaan worden gemaakt.</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalTargetChanged" xml:space="preserve">
+    <value>Selecteer de lokale gateway in de verbindingsinstellingen en controleer de verwijdering opnieuw. De vorige selectie is niet meer actueel.</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalLocalAi" xml:space="preserve">
+    <value>Stop lokale AI en geef het beheer van de gateway vrij in de instellingen voor lokale AI voordat u een gateway verwijdert. Er is geen gateway verwijderd.</value>
+  </data>
+  <data name="SettingsPage_NativeGatewayRemoved" xml:space="preserve">
+    <value>De native gateway en de opgeslagen verbinding zijn verwijderd. De Gateway-app uit de Store blijft geïnstalleerd. Open de configuratiewizard om een nieuwe gateway te configureren.</value>
+  </data>
+  <data name="SettingsPage_RemovingGateway" xml:space="preserve">
+    <value>Gateway wordt verwijderd...</value>
+  </data>
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>Lokale gateway</value>
   </data>
@@ -7251,6 +7290,9 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_AiSetup_AdminRequired" xml:space="preserve"><value>AI-installatie vereist een verbonden operator met beheerdersrechten. Voltooi de koppeling en vernieuw.</value></data>
   <data name="Onboarding_AiSetup_Failed" xml:space="preserve"><value>AI-installatie kan niet doorgaan. Controleer de Gateway-verbinding en vernieuw.</value></data>
   <data name="Onboarding_AiSetup_VerificationFailed" xml:space="preserve"><value>De controle van het geselecteerde model is mislukt. De installatie is niet voltooid.</value></data>
+  <data name="Onboarding_AiSetup_NativeClassicUnavailable" xml:space="preserve">
+    <value>Deze native Gateway ondersteunt geen AI-configuratie. Werk de Gateway bij en probeer het opnieuw. De klassieke wizard kan niet worden gebruikt voor een bestaande native installatie.</value>
+  </data>
   <data name="Onboarding_AiSetup_NavigationFailed" xml:space="preserve"><value>Klassieke installatie kon niet worden geopend. Houd dit venster open en probeer opnieuw.</value></data>
   <data name="Onboarding_AiSetup_InvalidLink" xml:space="preserve"><value>De providerlink kon niet worden geopend. Alleen HTTP- of HTTPS-links worden ondersteund.</value></data>
   <data name="Onboarding_AiSetup_NoChoices" xml:space="preserve"><value>De Gateway heeft geen ondersteunde opties geretourneerd. Controleer de providerconfiguratie en vernieuw.</value></data>
@@ -8096,6 +8138,12 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Het voorkeursprofiel {0} past niet bij deze hardware. De installatie kan {1} gebruiken met {2:N0} contexttokens. Controleer dit profiel in de installatie voordat u het installeert.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Dit profiel vereist minimaal {0} systeemgeheugen.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Dit profiel vereist minimaal {0} vrije ruimte op zowel het modelcachevolume als het runtimevolume.</value></data>
+  <data name="ConnectionPage_LocalConflictAddress" xml:space="preserve"><value>Een andere app gebruikt het lokale adres van deze gateway.</value></data>
+  <data name="ConnectionPage_LocalConflictOwnership" xml:space="preserve"><value>Onbekende processen worden nooit automatisch gestopt.</value></data>
+  <data name="ConnectionPage_LocalConflictRecovery" xml:space="preserve"><value>Sluit de conflicterende app of controleer de servicestatus en het adres van de gatewayinstallatie en probeer het daarna opnieuw.</value></data>
+  <data name="SettingsPage_LegacyNativeAiTitle" xml:space="preserve"><value>De native gateway moet worden bijgewerkt</value></data>
+  <data name="SettingsPage_LegacyNativeAiMessage" xml:space="preserve"><value>Beheerde lokale AI vereist een geïsoleerde native gateway. Werk het Gateway-pakket bij en configureer een geïsoleerde gateway voordat u lokale AI gebruikt.</value></data>
+  <data name="Onboarding_LocalAi_NativeCheckingMessage" xml:space="preserve"><value>OpenClaw controleert de vereisten voor de NVIDIA-GPU, het stuurprogramma, CUDA en het geheugen.</value></data>
   <data name="Chat_Placement_Unknown" xml:space="preserve">
     <value>Niet geverifieerd</value>
   </data>

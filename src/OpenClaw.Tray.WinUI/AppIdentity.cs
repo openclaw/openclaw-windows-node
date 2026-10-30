@@ -107,6 +107,15 @@ internal static class AppIdentity
     public static bool IsIsolated =>
         Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 };
 
+    /// <summary>Single-instance mutex name, suffixed per data directory for isolated runs.</summary>
+    public static string ResolveSingleInstanceMutexName()
+    {
+        if (Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is not { Length: > 0 } dataDir)
+            return MutexBaseName;
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(dataDir));
+        return $"{MutexBaseName}-{Convert.ToHexString(hash, 0, 4)}";
+    }
+
     public static string ResolveLocalDataDirectory()
         => Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } overrideDir
             ? overrideDir

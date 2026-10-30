@@ -143,6 +143,7 @@ public sealed partial class SetupWindow : Window
         bool startupRegistrationAllowed = true,
         Action<TraySettingsConfig, bool?, bool>? persistChoices = null,
         GatewayConnectionManager? connectionManager = null,
+        OpenClaw.Connection.GatewayRecord? existingWslGateway = null,
         Func<SetupNativePreparation, CancellationToken, Task>? publishNativePreparation = null)
     {
         _startupRegistrationAllowed = startupRegistrationAllowed;
@@ -151,6 +152,7 @@ public sealed partial class SetupWindow : Window
         _nativeConnectionHost = nativeConnectionHost;
         _localAiHost = localAiHost;
         _connectionManager = connectionManager;
+        _existingWslSetup = existingWslGateway is null ? null : new ExistingWslGatewaySetup(existingWslGateway);
         _publishNativeCompletion = publishNativeCompletion;
         _publishNativePreparation = publishNativePreparation;
         _applyNativeStartup = applyNativeStartup;
@@ -317,6 +319,7 @@ public sealed partial class SetupWindow : Window
         }
         _config.ApplyUiDefaults(rollbackOnFailure: setupArguments.RollbackOnFailure);
         _localAiRecoveryBaseline = LocalAiRecoveryConfigurationBaseline.Capture(_config);
+        _existingWslSetup?.Apply(_config);
         AccessDraft = new SetupAccessDraft(_config);
         if (startAtLocalAiRecoveryReview)
         {
@@ -375,6 +378,7 @@ public sealed partial class SetupWindow : Window
     public void NavigateToWelcome(bool back = false)
     {
         ResetLocalAiRecoveryMode();
+        ClearExistingWslSetup();
         NavigateTo(typeof(WelcomePage), _config, back);
     }
     internal async Task<NativeGatewayEligibility> GetNativeGatewayEligibilityAsync()
@@ -512,6 +516,8 @@ public sealed partial class SetupWindow : Window
     }
     public void SelectGatewayRoute(SetupGatewayRoute route, bool gatewayAvailable = false)
     {
+        if (route != SetupGatewayRoute.ManagedWsl)
+            ClearExistingWslSetup();
         AccessDraft.SelectRoute(route, gatewayAvailable);
         _isWelcomeInstallSelected = route == SetupGatewayRoute.ManagedWsl;
         RefreshFlowProgress();
@@ -661,6 +667,17 @@ public sealed partial class SetupWindow : Window
     private ProgressPageArgs CreateProgressPageArgs(bool showMilestoneOnly) =>
         new(_config, showMilestoneOnly, _startAtLocalAiRecoveryReview, _dataDir, _localDataDir);
 
+    private ExistingWslGatewaySetup? _existingWslSetup;
+
+    private void ClearExistingWslSetup()
+    {
+        if (_existingWslSetup is null) return;
+        ResetLocalAiRecoveryMode();
+        _existingWslSetup?.Restore(_config);
+        _existingWslSetup = null;
+        AccessDraft?.ResetManagedGatewayUrl(_config.GatewayUrl);
+    }
+
     public bool TryNavigateToGatewayInstalledMilestone()
     {
         if (!CanNavigateToGatewayInstalledMilestone)
@@ -714,7 +731,7 @@ public sealed partial class SetupWindow : Window
         new AiSetupPageArgs(_config, _dataDir, _localDataDir,
                 TryNavigateToLegacyWizard, CompleteSetupAsync, _expectedConfiguredModelRef,
                 LocalAiHost: _localAiHost, ReviewLocalAi: ReviewLocalAiAsync,
-                ExpectedGatewayId: NativeSetupSession?.Record.Id ??
+                ExpectedGatewayId: _existingWslSetup?.Record.Id ?? NativeSetupSession?.Record.Id ??
                     (_expectedConfiguredModelRef is null ? AccessDraft.NativeGatewayId : _expectedConfiguredGatewayId),
                 ConfiguredCompletionIntent: _configuredCompletionIntent,
                 CompleteVerifiedSetup: CompleteVerifiedAiSetupAsync, NativeSession: NativeSetupSession,
@@ -722,14 +739,19 @@ public sealed partial class SetupWindow : Window
                 ConnectionManager: _connectionManager,
                 CloseSetupWindow: Close,
                 Loading: _loadingProgress,
-                ExpectedEndpointBinding: _expectedConfiguredModelRef is null ? AccessDraft.NativeEndpointBinding : null);
+                ExpectedEndpointBinding: _existingWslSetup?.Binding ??
+                    (_expectedConfiguredModelRef is null ? AccessDraft.NativeEndpointBinding : null),
+                AllowClassicWizardFallback: !AccessDraft.IsExistingNativeLocalAi);
 
     public bool TryNavigateToLegacyWizard()
     {
-        if (_isClosed || _setupLock is null || RootFrame.Content is WizardPage)
+        if (_isClosed || _setupLock is null || RootFrame.Content is WizardPage ||
+            AccessDraft.IsExistingNativeLocalAi)
             return false;
 
-        NavigateTo(typeof(WizardPage), _config);
+        NavigateTo(typeof(WizardPage), new WizardPageArgs(
+            _config, _existingWslSetup?.Record.Id ?? AccessDraft.NativeGatewayId,
+            _existingWslSetup?.Binding ?? AccessDraft.NativeEndpointBinding));
         return true;
     }
 
@@ -975,6 +997,21 @@ public sealed partial class SetupWindow : Window
     {
         if (!OnboardingFlowPolicy.UsesWslWorkspaceFinalization(AccessDraft.Route))
             return StepResult.Skip("This setup route does not modify a WSL workspace.");
+        if (_existingWslSetup is not null)
+        {
+            try
+            {
+                var registry = new OpenClaw.Connection.GatewayRegistry(_dataDir);
+                registry.Load();
+                _existingWslSetup.RequireCurrent(registry.GetActive());
+                _existingWslSetup.Apply(_config);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or
+                UnauthorizedAccessException or System.Text.Json.JsonException or InvalidDataException)
+            {
+                return StepResult.Fail(ex.Message);
+            }
+        }
         if (!_config.WindowsNodeContext.Enabled)
             return StepResult.Skip("Windows node context injection disabled");
 

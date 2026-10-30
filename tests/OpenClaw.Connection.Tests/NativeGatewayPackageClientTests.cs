@@ -6,6 +6,51 @@ namespace OpenClaw.Connection.Tests;
 
 public sealed class NativeGatewayPackageClientTests
 {
+    [Theory]
+    [InlineData("removed")]
+    [InlineData("not-configured")]
+    public async Task TeardownUsesPinnedPackageWithoutStandardInput(string sessionState)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var client = new NativeGatewayPackageClient((package, arguments, input, token) =>
+        {
+            Assert.Equal(s_package, package);
+            Assert.Equal(["teardown", "--force", "--json"], arguments);
+            Assert.Null(input);
+            Assert.Equal(cancellation.Token, token);
+            return Task.FromResult(new NativeGatewayCommandResult(0, JsonSerializer.Serialize(new
+            {
+                ok = true,
+                schemaVersion = 1,
+                command = "teardown",
+                integration = new { kind = "isolated-session", version = 1 },
+                session = new { state = sessionState },
+                gateway = new { state = "records-removed" },
+            })));
+        });
+
+        await client.TeardownAsync(s_package, cancellation.Token);
+    }
+
+    [Fact]
+    public async Task TeardownPreservesPreDispatchErrorWithoutIntegration()
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(new NativeGatewayCommandResult(
+            1, """{"ok":false,"error":{"message":"Fixture lifecycle lock busy"}}""")));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => client.TeardownAsync(s_package, default));
+        Assert.Equal("Fixture lifecycle lock busy", error.Message);
+    }
+
+    [Fact]
+    public async Task TeardownTimeoutReportsUncertainRemovalAndRetainedConnection()
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => throw new TimeoutException("Retry setup"));
+        var error = await Assert.ThrowsAsync<TimeoutException>(() => client.TeardownAsync(s_package, default));
+        Assert.Contains("retry removal", error.Message);
+        Assert.Contains("retained", error.Message);
+        Assert.DoesNotContain("Retry setup", error.Message);
+    }
+
     private static readonly NativeGatewayPackage s_package =
         new("OpenClaw.Gateway_123456789abcd", "2026.9.5.5",
             @"C:\package\openclaw.exe", @"C:\package\clawctl.exe");

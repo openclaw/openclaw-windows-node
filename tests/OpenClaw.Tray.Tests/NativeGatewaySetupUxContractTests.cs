@@ -449,7 +449,7 @@ public sealed class NativeGatewaySetupUxContractTests
         var wizard = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
         var host = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "NativeGatewaySetupHost.cs"));
         Assert.Contains("NativeSetupSession = session;", window);
-        Assert.Contains("NavigateTo(typeof(WizardPage), _config)", window);
+        Assert.Contains("NavigateTo(typeof(WizardPage), new WizardPageArgs(", window);
         Assert.Contains("ApplyStartupPreference: _startupRegistrationAllowed && _persistStartupPreferenceOnComplete", window);
         Assert.Contains("WizardPage wizardPage => wizardPage.CancelAndWaitAsync()", window);
         Assert.Contains("await nativeCleanup", window);

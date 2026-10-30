@@ -87,7 +87,10 @@ public sealed class SetupAccessDraft
     public string ReplacementSummary { get; private set; } = string.Empty;
     private string? _inspectedDistroName;
     private string? _confirmedReplacementDistroName;
-    private readonly string? _managedGatewayUrl;
+    private string? _managedGatewayUrl;
+
+    /// <summary>Re-reads the managed WSL URL after an existing-gateway pin was cleared from the config.</summary>
+    public void ResetManagedGatewayUrl(string? url) => _managedGatewayUrl = url;
 
     public SetupAccessDraft(SetupConfig config)
     {

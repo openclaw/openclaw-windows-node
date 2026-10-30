@@ -28,7 +28,9 @@ public sealed class InstallerIssAssertionTests
         // The matching tray-side mutex name must be present in App.xaml.cs via AppIdentity.
         var appXamlCs = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
-        Assert.Contains("var mutexName = AppIdentity.MutexBaseName;", appXamlCs);
+        Assert.Contains("var mutexName = AppIdentity.ResolveSingleInstanceMutexName();", appXamlCs);
+        var identityCs = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "AppIdentity.cs"));
+        Assert.Contains("MutexBaseName", identityCs);
     }
 
     [Fact]

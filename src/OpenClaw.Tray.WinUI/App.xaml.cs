@@ -560,13 +560,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // The suffixed test-isolation variant is
         // intentionally not covered by AppMutex — production installs only
         // ever use the unsuffixed name.
-        var mutexName = AppIdentity.MutexBaseName;
-        if (DataDirOverride is not null)
-        {
-            var hash = System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes(DataDirOverride));
-            mutexName = $"{AppIdentity.MutexBaseName}-{Convert.ToHexString(hash, 0, 4)}";
-        }
+        var mutexName = AppIdentity.ResolveSingleInstanceMutexName();
         _mutex = new Mutex(true, mutexName, out bool createdNew);
         var ownsMutex = createdNew;
         _nativeRestartRecovery = new NativeRestartRecoveryStore(AppIdentity.ResolveRoamingDataDirectory());
@@ -1266,7 +1260,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             case "healthcheck": _ = RunHealthCheckAsync(userInitiated: true); break;
             case "checkupdates": _ = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync(); break;
             case "settings": ShowSettings(); break;
-            case "setup": _ = ShowOnboardingAsync(); break;
+            case "setup": _ = _windowManager?.ShowGatewaySetupAsync(); break;
             case "autostart": ToggleAutoStart(); break;
             case "log": OpenLogFile(); break;
             case "logfolder": OpenLogFolder(); break;
@@ -1853,6 +1847,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             return;
         }
 
+        if (gatewayUrl is not null && _gatewayRegistry.IsLegacyMigrationSuppressed(gatewayUrl))
+        {
+            Logger.Info("Automatic legacy Gateway recovery was disabled by explicit removal.");
+            TryStartLocalMcpOnlyNode();
+            return;
+        }
+
         TryMigrateLegacyGatewaySettings(gatewayUrl, new AppLogger());
         activeRecord = _gatewayRegistry.GetActive();
         if (activeRecord != null)
@@ -2111,6 +2112,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (credential != null)
             return credential;
 
+        if (_gatewayRegistry.IsLegacyMigrationSuppressed(record.Url))
+            return null;
+
         // Backfill for legacy installs that still have the identity file at the
         // root settings path while the active registry record points at that URL.
         var effectiveUrl = _settings?.GetLegacyCredentialGatewayUrlOrNull();
@@ -2133,6 +2137,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         var credential = ResolveStartupCredentialOrThrow(resolution, identityDir);
         if (credential != null)
             return credential;
+
+        if (_gatewayRegistry?.IsLegacyMigrationSuppressed(record.Url) == true)
+            return null;
 
         var effectiveUrl = _settings?.GetLegacyCredentialGatewayUrlOrNull();
         if (string.IsNullOrWhiteSpace(effectiveUrl) ||
@@ -3480,6 +3487,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             AuthFailureMessage = _appState!.AuthFailureMessage,
             LastCheckTime = _appState!.LastCheckTime,
             Settings = _settings,
+            ActiveGateway = _gatewayRegistry?.GetActive(),
             IsMcpRunning = _nodeService?.IsMcpRunning == true,
             McpStartupError = _nodeService?.McpStartupError
         };

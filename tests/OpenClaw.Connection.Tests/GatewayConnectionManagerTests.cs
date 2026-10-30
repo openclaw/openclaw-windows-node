@@ -419,6 +419,54 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task DisconnectByUserIfCurrent_DifferentActiveGateway_DoesNotDisconnect()
+    {
+        var runtime = new FakeNativeGatewayRuntime();
+        var active = LocalGatewaySettingsTests.Native();
+        _registry.AddOrUpdate(active);
+        _registry.SetActive(active.Id);
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        var other = active with { Id = "other-target", Url = "ws://other.example:18789" };
+
+        Assert.False(await manager.DisconnectByUserIfCurrentAsync(other));
+        Assert.Equal(0, runtime.StopCount);
+        Assert.True(await manager.DisconnectByUserIfCurrentAsync(active));
+    }
+
+    [Fact]
+    public async Task DisconnectByUserIfCurrent_ReportsPreviousIntentUnderTransitionLock()
+    {
+        var active = LocalGatewaySettingsTests.Native();
+        _registry.AddOrUpdate(active);
+        _registry.SetActive(active.Id);
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: new FakeNativeGatewayRuntime());
+        manager.SetGatewayConnectionIntent(active.Id, shouldBeConnected: false);
+        bool? previous = null;
+
+        Assert.True(await manager.DisconnectByUserIfCurrentAsync(active, default, allowed => previous = allowed));
+        Assert.False(previous);
+        Assert.False(manager.IsAutomaticReconnectAllowed(active.Id));
+        Assert.False(await manager.ReconnectIfSameTargetAsync(active with { Id = "other-target" }));
+    }
+
+    [Fact]
+    public async Task DisconnectByUserIfCurrent_DifferentActiveGateway_DoesNotReportIntent()
+    {
+        var active = LocalGatewaySettingsTests.Native();
+        _registry.AddOrUpdate(active);
+        _registry.SetActive(active.Id);
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: new FakeNativeGatewayRuntime());
+        var called = false;
+
+        Assert.False(await manager.DisconnectByUserIfCurrentAsync(
+            active with { Id = "other-target", Url = "ws://other.example:18789" }, default, _ => called = true));
+        Assert.False(called);
+    }
+
+    [Fact]
     public async Task NativeGateway_SupersededReconnectCannotRestartAfterDisconnect()
     {
         SetupNativeGateway();

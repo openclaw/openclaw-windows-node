@@ -4994,6 +4994,45 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacidade</value>
   </data>
+  <data name="GatewayHostAccess_NativeManaged" xml:space="preserve">
+    <value>Este gateway nativo é gerenciado pelo seu pacote do Windows. Abra o assistente de configuração em Configurações para configurar o gateway.</value>
+  </data>
+  <data name="SettingsPage_SetupGatewayDescription" xml:space="preserve">
+    <value>Instale um gateway nativo ou WSL, ou configure um gateway existente. As instalações existentes só são substituídas após a confirmação.</value>
+  </data>
+  <data name="SettingsPage_SetupNativeDescription" xml:space="preserve">
+    <value>Configure o provedor de IA e o modelo no gateway nativo selecionado sem reinstalá-lo.</value>
+  </data>
+  <data name="SettingsPage_GatewayOnboardingDescription.Text" xml:space="preserve">
+    <value>Configure o provedor de IA e o modelo no gateway local selecionado sem reinstalá-lo.</value>
+  </data>
+  <data name="SettingsPage_RemoveNativeBody" xml:space="preserve">
+    <value>Remove permanentemente a conta isolada do gateway deste pacote do Windows, seu espaço de trabalho, configuração, credenciais e registros de inicialização. Outros perfis do Companion que usam o mesmo pacote e a mesma conta do Windows também perderão o acesso. O aplicativo Gateway da Store, os gateways WSL, os outros gateways salvos, as configurações do Companion e o token MCP são preservados.</value>
+  </data>
+  <data name="SettingsPage_RemoveLegacyNativeBody" xml:space="preserve">
+    <value>Remove permanentemente a conexão salva e as credenciais deste gateway nativo legado, além da pasta de perfil dele nos dados de gateway do Companion, incluindo a configuração e os arquivos do espaço de trabalho. Interrompa primeiro o gateway legado. O aplicativo Gateway da Store, os gateways WSL, os outros gateways salvos, as configurações do Companion e o token MCP são preservados.</value>
+  </data>
+  <data name="SettingsPage_RemoveWslBody" xml:space="preserve">
+    <value>Remove permanentemente o gateway WSL em {0}, sua imagem de disco, a conexão salva e as credenciais do gateway. Os outros gateways, os arquivos de IA local, as configurações do Companion, as entradas de inicialização, as aprovações de execução, o token MCP e a chave raiz do dispositivo são preservados.</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalTitle" xml:space="preserve">
+    <value>Remover o gateway local?</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalPermanent" xml:space="preserve">
+    <value>Esta ação não pode ser desfeita.</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalTargetChanged" xml:space="preserve">
+    <value>Selecione o gateway local nas configurações de Conexão e revise a remoção novamente. A seleção anterior não está mais atualizada.</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalLocalAi" xml:space="preserve">
+    <value>Interrompa a IA local e libere seu controle sobre o gateway nas configurações de IA local antes de remover um gateway. Nenhum gateway foi removido.</value>
+  </data>
+  <data name="SettingsPage_NativeGatewayRemoved" xml:space="preserve">
+    <value>O gateway nativo e sua conexão salva foram removidos. O aplicativo Gateway da Store continua instalado. Abra o assistente de configuração para configurar um novo gateway.</value>
+  </data>
+  <data name="SettingsPage_RemovingGateway" xml:space="preserve">
+    <value>Removendo o gateway...</value>
+  </data>
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>Gateway local</value>
   </data>
@@ -7302,6 +7341,9 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_AiSetup_AdminRequired" xml:space="preserve"><value>A configuração exige um operador conectado com permissão de administrador. Conclua o emparelhamento e atualize.</value></data>
   <data name="Onboarding_AiSetup_Failed" xml:space="preserve"><value>Não foi possível continuar. Verifique a conexão com o Gateway e atualize.</value></data>
   <data name="Onboarding_AiSetup_VerificationFailed" xml:space="preserve"><value>O modelo não passou na verificação. A configuração não está concluída.</value></data>
+  <data name="Onboarding_AiSetup_NativeClassicUnavailable" xml:space="preserve">
+    <value>Este Gateway nativo não oferece suporte à configuração de IA. Atualize o Gateway e tente novamente. O assistente clássico não pode ser usado em uma instalação nativa existente.</value>
+  </data>
   <data name="Onboarding_AiSetup_NavigationFailed" xml:space="preserve"><value>Não foi possível abrir a configuração clássica. Mantenha esta janela aberta e tente novamente.</value></data>
   <data name="Onboarding_AiSetup_InvalidLink" xml:space="preserve"><value>Não foi possível abrir o link. Apenas links HTTP ou HTTPS são aceitos.</value></data>
   <data name="Onboarding_AiSetup_NoChoices" xml:space="preserve"><value>O Gateway não retornou opções compatíveis. Verifique a configuração dos provedores e atualize.</value></data>
@@ -8147,6 +8189,12 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>O perfil preferido {0} não cabe neste hardware. A configuração pode usar {1} com {2:N0} tokens de contexto. Revise este perfil na configuração antes de instalar.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Este perfil requer pelo menos {0} de RAM do sistema.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Este perfil requer pelo menos {0} livres nos volumes do cache de modelos e do mecanismo.</value></data>
+  <data name="ConnectionPage_LocalConflictAddress" xml:space="preserve"><value>Outro aplicativo está usando o endereço local deste gateway.</value></data>
+  <data name="ConnectionPage_LocalConflictOwnership" xml:space="preserve"><value>Processos desconhecidos nunca são interrompidos automaticamente.</value></data>
+  <data name="ConnectionPage_LocalConflictRecovery" xml:space="preserve"><value>Feche o aplicativo conflitante ou verifique o status do serviço e o endereço da instalação do gateway e tente novamente.</value></data>
+  <data name="SettingsPage_LegacyNativeAiTitle" xml:space="preserve"><value>O gateway nativo precisa de uma atualização</value></data>
+  <data name="SettingsPage_LegacyNativeAiMessage" xml:space="preserve"><value>A IA local gerenciada requer um gateway nativo isolado. Atualize o pacote Gateway e configure um gateway isolado antes de usar a IA local.</value></data>
+  <data name="Onboarding_LocalAi_NativeCheckingMessage" xml:space="preserve"><value>O OpenClaw está verificando os requisitos de GPU NVIDIA, driver, CUDA e memória.</value></data>
   <data name="Chat_Placement_Unknown" xml:space="preserve">
     <value>Não verificado</value>
   </data>

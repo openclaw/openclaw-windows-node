@@ -122,6 +122,13 @@ public static class InteractiveGatewayCredentialResolver
             return false;
         }
 
+        // An explicit removal revokes the endpoint: retained legacy settings and the root identity must
+        // not be sent to whatever listener later occupies it.
+        if (registry?.IsLegacyMigrationSuppressed(gatewayUrl) == true)
+        {
+            credential = null;
+            return false;
+        }
         var legacyRecord = new GatewayRecord
         {
             Id = "legacy-settings",

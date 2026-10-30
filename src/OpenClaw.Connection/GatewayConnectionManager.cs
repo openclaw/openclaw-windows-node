@@ -1123,6 +1123,112 @@ public sealed class GatewayConnectionManager :
         }
     }
 
+    /// <summary>
+    /// Disconnects only if <paramref name="expected"/> is still the saved active gateway. The check runs
+    /// under the transition gate, so a queued gateway switch cannot redirect the disconnect to another gateway.
+    /// </summary>
+    public async Task<bool> DisconnectByUserIfCurrentAsync(GatewayRecord expected, CancellationToken cancellationToken = default,
+        Action<bool>? onPreviousConnectionAllowed = null)
+    {
+        ThrowIfDisposed();
+        await _transitionSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            if (!LocalGatewaySettings.IsSameTarget(expected, _registry.GetActive()))
+                return false;
+            // Read under the transition lock so a queued connect cannot change the intent afterward.
+            onPreviousConnectionAllowed?.Invoke(IsAutomaticReconnectAllowed(expected.Id));
+            SetGatewayConnectionIntent(expected.Id, shouldBeConnected: false);
+            await DisconnectCoreAsync(stopNativeGateway: true);
+            return true;
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
+
+    /// <summary>Restores the connection after a failed removal, only while the same gateway is still active.</summary>
+    public async Task<bool> ReconnectIfSameTargetAsync(GatewayRecord expected)
+    {
+        ThrowIfDisposed();
+        await _transitionSemaphore.WaitAsync();
+        try
+        {
+            if (!LocalGatewaySettings.IsSameTarget(expected, _registry.GetActive()) ||
+                HasPendingProfileStage(expected.Id))
+                return false;
+            SetGatewayConnectionIntent(expected.Id, shouldBeConnected: true);
+            await DisconnectCoreAsync();
+            await ConnectCoreAsync(expected.Id, operation: "reconnect");
+            return true;
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
+
+    private bool HasPendingProfileStage(string gatewayId)
+    {
+        try { return GatewayIdentityRemoval.HasPendingProfileStage(_registry, gatewayId); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _logger.Warn($"Could not verify whether a removed profile is staged: {ex.Message}");
+            return true;
+        }
+    }
+
+    public async Task RemoveNativeGatewayAsync(
+        GatewayRecord expected, INativeGatewayPackageResolver resolver, CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        await _transitionSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            var removal = new NativeGatewayRemoval(_registry, resolver, new NativeGatewayPackageClient());
+            var disconnected = false;
+            var teardownStarted = false;
+            var wasConnectionAllowed = IsAutomaticReconnectAllowed(expected.Id);
+            try
+            {
+                await removal.RemoveAsync(expected, async () =>
+                {
+                    disconnected = true;
+                    SetGatewayConnectionIntent(expected.Id, shouldBeConnected: false);
+                    await DisconnectCoreAsync(stopNativeGateway: true);
+                    if (expected.NativeRuntimeContract is null)
+                    {
+                        var listeners = WindowsTcpListenerSnapshot.Capture();
+                        if (!listeners.Ipv4Complete || !listeners.Ipv6Complete ||
+                            listeners.Listeners.Any(listener => listener.Port == NativeGatewayPaths.ValidateRecord(expected).Port))
+                            throw new InvalidOperationException("The legacy native Gateway is still running or its listener could not be verified. Stop it, then retry. Its data was retained.");
+                    }
+                }, cancellationToken, () => teardownStarted = true);
+            }
+            catch (Exception removalError) when (disconnected && wasConnectionAllowed && !teardownStarted &&
+                        removalError is not NativeGatewayCleanupPendingException &&
+                        _registry.GetActive() is { } active &&
+                        string.Equals(active.Id, expected.Id, StringComparison.Ordinal) &&
+                        !HasPendingProfileStage(expected.Id))
+            {
+                // The saved gateway survived a failed removal before teardown began, so restore the dropped
+                // connection. A stopped gateway, a started teardown, or a staged profile must stay disconnected.
+                try
+                {
+                    SetGatewayConnectionIntent(expected.Id, shouldBeConnected: true);
+                    await ConnectCoreAsync(expected.Id, operation: "reconnect");
+                }
+                catch (Exception restoreError)
+                {
+                    _logger.Warn($"Failed to restore the Gateway connection after a failed removal: {restoreError.Message}");
+                }
+                throw;
+            }
+        }
+        finally { _transitionSemaphore.Release(); }
+    }
+
     /// <summary>Core disconnect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
     private async Task DisconnectCoreAsync(bool stopNativeGateway = false)
     {

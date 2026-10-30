@@ -175,13 +175,17 @@ public sealed class CleanupStaleDistroStep : SetupStep
         SetupContext ctx,
         string distroName,
         string wslDir,
-        CancellationToken ct)
+        CancellationToken ct,
+        Action? requireDeletionAuthority = null,
+        Func<TimeSpan, CancellationToken, Task>? delayAsync = null)
     {
         var deletePath = wslDir;
         Exception? lastError = null;
+        delayAsync ??= Task.Delay;
 
         for (var attempt = 0; attempt < 4; attempt++)
         {
+            ct.ThrowIfCancellationRequested();
             if (!DistroInstallPathPolicy.TryValidateDeleteTarget(
                     ctx.LocalDataDir,
                     distroName,
@@ -192,6 +196,8 @@ public sealed class CleanupStaleDistroStep : SetupStep
                 return StepResult.Terminal(pathError);
             }
 
+            // An earlier absence check cannot authorize deletion after a retry wait.
+            requireDeletionAuthority?.Invoke();
             try
             {
                 if (File.Exists(deletePath))
@@ -234,7 +240,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
                     break;
 
                 ctx.Logger.Warn($"VHD directory still locked, retrying in {(attempt + 1) * 2}s...");
-                await Task.Delay(TimeSpan.FromSeconds((attempt + 1) * 2), ct);
+                await delayAsync(TimeSpan.FromSeconds((attempt + 1) * 2), ct);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -243,7 +249,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
                     break;
 
                 ctx.Logger.Warn($"VHD directory access denied, retrying in {(attempt + 1) * 2}s...");
-                await Task.Delay(TimeSpan.FromSeconds((attempt + 1) * 2), ct);
+                await delayAsync(TimeSpan.FromSeconds((attempt + 1) * 2), ct);
             }
         }
 
