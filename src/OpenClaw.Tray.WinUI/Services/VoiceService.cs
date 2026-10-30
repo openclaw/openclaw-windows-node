@@ -29,6 +29,11 @@ public sealed class VoiceService : IAsyncDisposable
     private readonly SpeechToTextService _stt;
     private readonly WhisperModelManager _modelManager;
     private AudioPipeline? _pipeline;
+    private readonly PlaybackMuteState _playbackMute;
+    private readonly bool _ownsPlaybackMute;
+    private readonly Func<SpeechToTextService, AudioPipeline> _createPipeline;
+    private readonly Func<Task>? _ensureInitialized;
+    private IDisposable? _pipelineMuteRegistration;
     private VoiceMode _currentMode = VoiceMode.Inactive;
     private CancellationTokenSource? _sessionCts;
 
@@ -85,23 +90,36 @@ public sealed class VoiceService : IAsyncDisposable
     /// <summary>Fired when pipeline state changes.</summary>
     public event Action<AudioPipelineState>? PipelineStateChanged;
 
-    /// <summary>When true, the pipeline ignores audio input (used during TTS playback to prevent echo).</summary>
+    /// <summary>Desired playback mute, including captures created after this is set.</summary>
     public bool IsMutedForPlayback
     {
-        get => _pipeline?.IsMuted ?? false;
-        set
-        {
-            if (_pipeline != null)
-                _pipeline.IsMuted = value;
-        }
+        get => _playbackMute.IsMuted;
+        set => _playbackMute.IsMuted = value;
     }
 
+    /// <summary>Mute current and future captures until every playback lease ends.</summary>
+    public IDisposable AcquirePlaybackMute() => _playbackMute.Acquire();
+
     public VoiceService(IOpenClawLogger logger, SettingsManager settings)
+        : this(logger, settings, null)
+    {
+    }
+
+    // App services share mute intent, not pipeline or STT ownership. The
+    // optional factories isolate device/model IO in owner-level regressions.
+    internal VoiceService(IOpenClawLogger logger, SettingsManager settings,
+        PlaybackMuteState? playbackMute,
+        Func<SpeechToTextService, AudioPipeline>? createPipeline = null,
+        Func<Task>? ensureInitialized = null)
     {
         _logger = logger;
         _settings = settings;
         _stt = new SpeechToTextService(logger);
-        _modelManager = new WhisperModelManager(SettingsManager.SettingsDirectoryPath, logger);
+        _modelManager = new WhisperModelManager(settings.SettingsDirectory, logger);
+        _ownsPlaybackMute = playbackMute is null;
+        _playbackMute = playbackMute ?? new PlaybackMuteState();
+        _createPipeline = createPipeline ?? (stt => new AudioPipeline(_logger, stt));
+        _ensureInitialized = ensureInitialized;
     }
 
     /// <summary>
@@ -146,8 +164,10 @@ public sealed class VoiceService : IAsyncDisposable
         SetMode(VoiceMode.PushToTalk);
 
         _sessionCts = new CancellationTokenSource();
-        _pipeline = new AudioPipeline(_logger, _stt);
-        WirePipelineEvents(_pipeline);
+        var pipeline = _createPipeline(_stt);
+        _pipeline = pipeline;
+        _pipelineMuteRegistration = _playbackMute.RegisterCapture(muted => pipeline.IsMuted = muted);
+        WirePipelineEvents(pipeline);
 
         var options = new AudioPipelineOptions
         {
@@ -188,8 +208,10 @@ public sealed class VoiceService : IAsyncDisposable
         SetMode(VoiceMode.VoiceChat);
 
         _sessionCts = new CancellationTokenSource();
-        _pipeline = new AudioPipeline(_logger, _stt);
-        WirePipelineEvents(_pipeline);
+        var pipeline = _createPipeline(_stt);
+        _pipeline = pipeline;
+        _pipelineMuteRegistration = _playbackMute.RegisterCapture(muted => pipeline.IsMuted = muted);
+        WirePipelineEvents(pipeline);
 
         var options = new AudioPipelineOptions
         {
@@ -227,6 +249,8 @@ public sealed class VoiceService : IAsyncDisposable
         {
             try { await _pipeline.StopAsync(); }
             catch (Exception ex) { _logger.Debug($"VoiceService: pipeline stop during cleanup failed: {ex.Message}"); }
+            _pipelineMuteRegistration?.Dispose();
+            _pipelineMuteRegistration = null;
             try { await _pipeline.DisposeAsync(); }
             catch (Exception ex) { _logger.Debug($"VoiceService: pipeline dispose during cleanup failed: {ex.Message}"); }
             _pipeline = null;
@@ -252,7 +276,8 @@ public sealed class VoiceService : IAsyncDisposable
         using var timeoutCts = new CancellationTokenSource(args.TimeoutMs);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-        var pipeline = new AudioPipeline(_logger, _stt);
+        var pipeline = _createPipeline(_stt);
+        using var muteRegistration = _playbackMute.RegisterCapture(muted => pipeline.IsMuted = muted);
         WirePipelineEvents(pipeline);
         var tcs = new TaskCompletionSource<SttListenResult>();
         var sw = Stopwatch.StartNew();
@@ -324,6 +349,7 @@ public sealed class VoiceService : IAsyncDisposable
         {
             try { await pipeline.StopAsync(); }
             catch (Exception ex) { _logger.Debug($"VoiceService: pipeline stop in finally (idempotent) failed: {ex.Message}"); }
+            muteRegistration.Dispose();
             await pipeline.DisposeAsync();
         }
     }
@@ -346,7 +372,8 @@ public sealed class VoiceService : IAsyncDisposable
 
         await EnsureInitializedAsync();
 
-        var pipeline = new AudioPipeline(_logger, _stt);
+        var pipeline = _createPipeline(_stt);
+        using var muteRegistration = _playbackMute.RegisterCapture(muted => pipeline.IsMuted = muted);
         var sw = Stopwatch.StartNew();
         try
         {
@@ -383,6 +410,7 @@ public sealed class VoiceService : IAsyncDisposable
         }
         finally
         {
+            muteRegistration.Dispose();
             await pipeline.DisposeAsync();
         }
     }
@@ -435,6 +463,11 @@ public sealed class VoiceService : IAsyncDisposable
 
     private async Task EnsureInitializedAsync()
     {
+        if (_ensureInitialized is not null)
+        {
+            await _ensureInitialized();
+            return;
+        }
         if (!_stt.IsModelLoaded)
         {
             await InitializeAsync();
@@ -484,7 +517,11 @@ public sealed class VoiceService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await StopAsync();
-        _stt.Dispose();
+        try { await StopAsync(); }
+        finally
+        {
+            if (_ownsPlaybackMute) _playbackMute.Dispose();
+            _stt.Dispose();
+        }
     }
 }
