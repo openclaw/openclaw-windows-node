@@ -1226,16 +1226,17 @@ public sealed partial class ChatPage : Page
             return null;
         }
 
-        // Subscribe to streaming events during recording
+        // A partial is posted to the dispatcher and can run after the listen returns.
+        var preview = new VoiceCapturePreviewGate();
         bool IsCurrentCapture() => !cancellationToken.IsCancellationRequested && _pageActive &&
             generation == _surfaceGeneration && ReferenceEquals(host, _reactorHost);
         void OnTranscription(string text) => DispatcherQueue.TryEnqueue(() =>
         {
-            if (IsCurrentCapture()) host?.SetVoiceTranscript(text);
+            if (preview.TryApply(IsCurrentCapture())) host?.SetVoiceTranscript(text);
         });
         void OnAudioLevel(float level) => DispatcherQueue.TryEnqueue(() =>
         {
-            if (IsCurrentCapture()) host?.SetVoiceAudioLevel(level);
+            if (preview.TryApply(IsCurrentCapture())) host?.SetVoiceAudioLevel(level);
         });
 
         onRecordingStarted?.Invoke();
@@ -1251,6 +1252,8 @@ public sealed partial class ChatPage : Page
         }
         finally
         {
+            preview.End();
+            // Stop cancels the token before this runs. Still clear this surface.
             if (_pageActive && generation == _surfaceGeneration && ReferenceEquals(host, _reactorHost))
             {
                 host?.SetVoiceTranscript(null);

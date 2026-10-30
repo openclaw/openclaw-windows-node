@@ -438,6 +438,13 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("ListenOnceAsync(args, cancellationToken, OnTranscription, OnAudioLevel)", capture);
         Assert.Contains("!cancellationToken.IsCancellationRequested && _pageActive", capture);
         Assert.Contains("generation == _surfaceGeneration && ReferenceEquals(host, _reactorHost)", capture);
+        Assert.Contains("preview.TryApply(IsCurrentCapture())", capture);
+        var end = capture.IndexOf("preview.End()", StringComparison.Ordinal);
+        var clear = capture.IndexOf("host?.SetVoiceTranscript(null)", StringComparison.Ordinal);
+        Assert.True(end >= 0 && clear > end);
+        var clearPredicate = capture[end..clear];
+        Assert.Contains("_pageActive && generation == _surfaceGeneration && ReferenceEquals(host, _reactorHost)", clearPredicate);
+        Assert.DoesNotContain("IsCurrentCapture()", clearPredicate);
     }
 
     [Fact]
@@ -456,8 +463,9 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("_reactorHost?.SetHostVisible(false)", suspension);
         Assert.DoesNotContain("DisposeReactorHost();", suspension);
         Assert.Contains("_reactorHost?.SetHostVisible(true)", chat);
-        Assert.Contains("if (IsCurrentCapture()) host?.SetVoiceTranscript(text)", chat);
-        Assert.Contains("if (IsCurrentCapture()) host?.SetVoiceAudioLevel(level)", chat);
+        Assert.Contains("if (preview.TryApply(IsCurrentCapture())) host?.SetVoiceTranscript(text)", chat);
+        Assert.Contains("if (preview.TryApply(IsCurrentCapture())) host?.SetVoiceAudioLevel(level)", chat);
+        Assert.Contains("preview.End();", chat);
         Assert.Contains("e.Key == global::Windows.System.VirtualKey.E ||", workspace);
         Assert.Contains("(IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)", workspace);
     }
