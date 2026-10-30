@@ -190,20 +190,10 @@ internal static class WindowsAuthenticodeVerifier
             package = null;
         }
 
-        if (isWithinWindowsApps)
+        if (isWithinWindowsApps && !IsWslPackageRootRelay(fullPath, windowsAppsRoot))
         {
-            // The deployment directory name embeds the publisher-id suffix, so only a
-            // package signed with Microsoft's WSL publisher identity can occupy it.
-            var packageDirectory = Path.GetFileName(
-                Path.TrimEndingDirectorySeparator(
-                    Path.GetDirectoryName(fullPath) ?? string.Empty));
-            if (packageDirectory.Length == 0 ||
-                !packageDirectory.StartsWith(WslPackageNamePrefix, StringComparison.OrdinalIgnoreCase) ||
-                !packageDirectory.EndsWith(WslPackagePublisherSuffix, StringComparison.OrdinalIgnoreCase))
-            {
-                return AuthenticodeTrustResult.Rejected(
-                    "WSL relay package verification failed: the relay is not owned by the WSL package family.");
-            }
+            return AuthenticodeTrustResult.Rejected(
+                "WSL relay package verification failed: the relay is not owned by the WSL package family.");
         }
 
         if (package is not { } info)
@@ -280,6 +270,21 @@ internal static class WindowsAuthenticodeVerifier
                     part,
                     "O=Microsoft Corporation",
                     StringComparison.OrdinalIgnoreCase));
+
+
+    /// <summary>
+    /// True only for <c>{windowsAppsRoot}\{WSL package directory}\wslrelay.exe</c>. The package
+    /// root is the first directory below WindowsApps; a WSL-named folder nested inside another
+    /// package's directory is not a WSL deployment.
+    /// </summary>
+    private static bool IsWslPackageRootRelay(string fullPath, string windowsAppsRoot)
+    {
+        var segments = Path.GetRelativePath(windowsAppsRoot, fullPath)
+            .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]);
+        return segments.Length == 2 &&
+            segments[0].StartsWith(WslPackageNamePrefix, StringComparison.OrdinalIgnoreCase) &&
+            segments[0].EndsWith(WslPackagePublisherSuffix, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static TimeSpan ReadPackageLookupCacheLifetime()
     {

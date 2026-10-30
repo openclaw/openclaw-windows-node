@@ -123,6 +123,32 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         Assert.Contains("not owned by the WSL package family", result.Detail, StringComparison.Ordinal);
     }
 
+[Theory]
+[InlineData(true)]
+[InlineData(false)]
+public void VerifyMicrosoftSignedFile_WslNamedDirectoryNestedInsideAnotherWindowsAppsPackage_IsRejected(
+    bool pathProtected)
+{
+    var windowsAppsRoot = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WindowsApps");
+    var nestedRelayPath = Path.Combine(
+        windowsAppsRoot,
+        "Other.App_1.0.0.0_x64__deadbeefcafe",
+        "MicrosoftCorporationII.WindowsSubsystemForLinux_9__8wekyb3d8bbwe",
+        "wslrelay.exe");
+
+    var result = VerifyPackageFallback(
+        nestedRelayPath,
+        ValidWslPackage(),
+        pathProtected
+            ? WslRelayPathInspection.Protected()
+            : WslRelayPathInspection.Unverifiable("Injected unverifiable path."));
+
+    Assert.False(result.IsTrusted);
+    Assert.False(result.IsWarning);
+    Assert.Contains("not owned by the WSL package family", result.Detail, StringComparison.Ordinal);
+}
+
     [Fact]
     public void VerifyMicrosoftSignedFile_PackageIdentityMismatches_IsWarnedNotRejected()
     {
