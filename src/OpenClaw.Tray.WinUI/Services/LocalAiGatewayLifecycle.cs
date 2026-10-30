@@ -1,3 +1,54 @@
+// LocalAiGatewayLifecycle: single owner of the native Local AI <-> Gateway contract.
+//
+// This module owns the durable "ownership receipt" (LocalAiNativeBinding) that records
+// which Gateway (id + endpoint/identity binding) and which llamacpp model the Companion
+// installed into the Gateway configuration. It is the only component allowed to write
+// or withdraw the llamacpp provider block, and it does so transactionally: the binding
+// is marked Pending before the Gateway write dispatches, and only an acknowledged
+// configuration hash clears it. Every other flow (setup, recovery, withdrawal) reads
+// the receipt, validates the Gateway still matches it, and refuses to mutate on drift.
+//
+// The class multiplexes two endpoint modes behind ILocalAiEndpointLifecycle:
+//   - Native mode: a receipt exists; Gateway RPC configuration transport is borrowed
+//     from the owning Gateway connection for reads/writes/verification.
+//   - WSL mode: no receipt; a pinned WSL command transport (ILocalAiEndpointLifecycle wsl)
+//     handles start/stop, gated on the WSL Gateway distro owner.
+//
+// Main public methods (typical call order):
+//
+//   // 1. Detect who owns the current Gateway's Local AI configuration (read-only).
+//   var state = await lifecycle.ObserveOwnershipAsync(record, transport, install, ct);
+//   // NativeLocalAiOwnershipState: Unselected | MissingReceipt | DifferentOwner |
+//   //                              RecoveryRequired | SameOwner | InvalidReceipt | Unavailable
+//
+//   // 2. First use: stage the receipt, then start the runtime through its owning
+//   //    service; the runtime invokes CompleteStartAsync/PublishAsync itself as
+//   //    callbacks under its operation gate (see LlamaServerRuntimeService.EnsureStartedAsync
+//   //    and SetupLocalAiHost). Calling them directly never launches the process.
+//   await lifecycle.PrepareAsync(install, ct);   // requires a registered Gateway (Register)
+//   var started = await runtime.EnsureStartedAsync(ct, progress);
+//
+//   // 3. Stop/teardown: withdraw the provider, restore the previous primary model,
+//   //    and remove the Companion-added allowlist entry.
+//   var stopped = await lifecycle.QuiesceAsync(install, LocalAiQuiesceReason.Teardown, ct);
+//   await lifecycle.ConfirmWithdrawnWithoutInstallAsync(ct); // only when recovery is disabled
+//
+//   // 4. Gateway reconnection: automatic recovery resumes the owned runtime when the
+//   //    owning Gateway returns to Connected (see Attach + ResumeAsync), and startup
+//   //    handoff joins the in-flight recovery via WaitForRuntimeAsync.
+//   lifecycle.Attach(manager, runtime);
+//   await lifecycle.WaitForRuntimeAsync(expected, runtime, ct);
+//
+//   // 5. Shutdown or release: drain in-flight recovery, then drop ownership.
+//   await lifecycle.DrainRecoveryAsync();
+//   await lifecycle.ReleaseOwnershipAsync(ct); // deletes the receipt after confirmed withdrawal
+//
+// Invariants:
+//   - Only one receipt at a time; ownership never silently migrates to another Gateway.
+//   - A Pending receipt blocks all mutations except explicit endpoint recovery.
+//   - User-edited allowlist entries and provider keys are preserved, never overwritten;
+//     edited routes require live inference verification before withdrawal.
+
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using OpenClaw.Connection;

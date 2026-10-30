@@ -1,3 +1,33 @@
+// WSL execution seam for `openclaw` configuration commands against the single
+// setup-managed Local AI Gateway distro. LocalAiGatewayProviderCoordinator
+// (the only caller) owns publication, fallback, and endpoint-lifetime policy;
+// this module only runs commands and reports raw outcomes, and it revalidates
+// the pinned distro before every call.
+//
+// Example:
+//   ILocalAiGatewayConfigurationTransport transport =
+//       new WslLocalAiGatewayConfigurationTransport(commands, distroResolver);
+//
+//   // One `openclaw` CLI invocation, e.g. `openclaw gateway restart`:
+//   LocalAiGatewayCommandOutcome outcome = await transport.RunAsync(
+//       ["gateway", "restart"], cancellationToken);
+//   if (!outcome.Routed)
+//       return outcome.Detail;               // distro unresolved; nothing ran
+//   if (!outcome.Result!.Success)
+//       return outcome.Result.StandardError; // nonzero exit, timeout, or indeterminate
+//
+//   // Atomic config apply: dry-run then apply a JSON batch string.
+//   LocalAiGatewayCommandOutcome applied = await transport.ApplyBatchAsync(
+//       batchJson, cancellationToken);
+//
+// Routed is false only when the pinned distro is missing, ambiguous, or
+// drifted, so the command never started and Detail holds the resolver's
+// reason. Routed true means the CLI ran; Result carries ExitCode,
+// StandardOutput, StandardError, TimedOut, and OutcomeIndeterminate, and
+// Success holds only for exit code 0 with no timeout or indeterminate
+// outcome. ApplyBatchAsync pipes its sh script over stdin because wsl.exe
+// expands $var references in argv before the Linux shell runs
+// (docs/WSL_EXE_ARGV_PITFALL.md).
 using OpenClaw.Connection;
 using System.Text;
 

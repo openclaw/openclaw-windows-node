@@ -1,5 +1,31 @@
 using System.Text.Json;
 
+// Module: LocalAiNativeBindingStore
+//
+// Persisted ownership receipt for the native (non-WSL) Local AI Gateway binding:
+// which Gateway record owns the local llama.cpp runtime, its endpoint/identity
+// bindings, the published model, the previous primary model for fallback, and a
+// configuration hash used to detect out-of-band Gateway changes. The write-ahead
+// `Pending` flag survives a crash between dispatching a Gateway mutation and
+// recording its acknowledgement; `AutomaticRecoveryEnabled` records explicit
+// start/stop intent separately from ownership. State is a single JSON document
+// under LocalAiPaths.RootDirectory, read and written under an exclusive
+// cross-process file lock obtained via AcquireAsync.
+//
+// Main public API and typical use (see LocalAiGatewayLifecycle):
+//
+//   var store = new LocalAiNativeBindingStore(paths);
+//   if (store.Exists) { ... }                      // cheap presence probe (e.g. HasNativeBinding)
+//   LocalAiNativeBinding? binding = store.Load();  // null when absent; throws
+//                                                  // InvalidDataException/JsonException when damaged
+//
+//   // Mutations are serialized across processes with the cross-process lock:
+//   await using FileStream lease = await store.AcquireAsync(ct);
+//   binding = store.Load() ?? throw new InvalidOperationException("...");
+//   store.Save(binding with { Pending = false, ConfigHash = current.Hash });
+//
+//   store.Delete();                                // releases ownership (with lock held)
+
 namespace OpenClaw.Connection.LocalAi;
 
 public sealed record LocalAiNativeBinding(
