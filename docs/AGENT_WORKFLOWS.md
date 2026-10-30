@@ -190,6 +190,7 @@ or executing destructive commands.
 | Simplify my own completed Windows-node change before a PR | Use [PR simplification](../.agents/skills/pr-simplify/SKILL.md), preserve distinct WinUI, package, Gateway/WSL, command, installer and architecture contracts, then reprove the reduced diff |
 | Open a PR for my change, or write its description | Use [Windows PR preparation](../.agents/skills/windows-pr-prepare/SKILL.md), write the body locally, and publish only when explicitly authorized; a missing required source or rubber-duck review remains blocked |
 | The host lacks native Windows proof prerequisites | Report the specific unproven capability; do not substitute mock success or acquire a host automatically |
+| Launch an isolated test build that needs one or more real native Gateways | Build Companion in its task-owned worktree; prepare unique named Gateway patches in a task-owned work root and explicitly select each patch with separate app data. Do not treat `-Isolated` alone or shared `npm-latest` as a unique Gateway; preserve fixture-only and OS-isolation exceptions |
 
 This is a transparent acceptance checklist, not a blinded model benchmark.
 The expected decisions are deliberately reviewable by contributors.

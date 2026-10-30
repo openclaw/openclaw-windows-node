@@ -1,6 +1,6 @@
 ---
 name: native-gateway-from-source
-description: Build the native MSIX isolated-session Gateway from npm latest, a published packaging release with -GatewayChannel Packaged, or explicit openclaw sources. Register it beside the Store Gateway and run Companion with OPENCLAW_NATIVE_GATEWAY_DEV_PATCH. Use for native Gateway development, release-channel compatibility, unreleased source changes, or removing a development Gateway.
+description: Run side-by-side named Gateway patches as the default for local and future cloud native-Gateway E2E on capable Windows clients. Build from npm latest, a published packaging release with -GatewayChannel Packaged, or explicit sources; select the patch with OPENCLAW_NATIVE_GATEWAY_DEV_PATCH and remove only owned instances.
 ---
 
 # Native Gateway from source
@@ -10,7 +10,8 @@ description: Build the native MSIX isolated-session Gateway from npm latest, a p
 `OpenClawFoundation.OpenClawGateway-<patch>` with aliases `openclaw-<patch>.exe` and
 `clawctl-<patch>.exe`. A "patch" is a side-by-side identity slot (upstream
 `Deploy-LocalPackage.ps1 -Patch`), not a version: each patch has its own app data, isolated
-agent account, and Gateway port, and never touches the Store package.
+agent account, and Gateway configuration, and never touches the Store package.
+Distinct identities do not automatically allocate distinct listening ports.
 
 Companion uses the patch only when started with `OPENCLAW_NATIVE_GATEWAY_DEV_PATCH=<patch>`.
 Without it, Companion resolves the Store package and installs it with WinGet only when
@@ -33,10 +34,254 @@ Check before building; the script fails fast on most of these:
 - For explicit source builds only, pnpm with the same major as the source's `packageManager` (main uses pnpm 12):
   `npm install -g pnpm@<version>`. The script prints the exact version on mismatch.
 
+## Default multi-instance native Gateway testing
+
+For isolated test builds that need a real native Gateway, use task-owned named
+side-by-side patches by default, including single-instance tests, local E2E and
+future cloud E2E. Use one authorized, capability-qualified Windows 11 client
+host instead of one Hyper-V VM per Gateway. Each patch owns a package family,
+app data, isolated session and sign-in recovery task. They still share host CPU/RAM, networking and
+desktop resources; cap concurrent work to the host's available capacity.
+This is test-target guidance, not a CI migration or evidence that a cloud lane ran.
+Developer Mode and actual isolated-session/listener-ownership support are required;
+`windows-latest`, Windows Server, or a successful registration alone proves neither.
+
+Keep [fixture-backed app tests](../../../docs/GATEWAY_FIXTURE_TESTING.md) as the
+cheaper default for app-only behavior. Use a separate reusable local or approved
+cloud VM for clean-image/install/upgrade tests, genuine OS isolation, or a host
+without the required capabilities. Development patches do not prove signed
+Store/MSIX installation or upgrade behavior. Keep required real MXC containment,
+Gateway-to-node invocation and WSL proof; do not substitute patch startup for
+`.\scripts\validate-mxc-e2e.ps1` when that suite is required.
+
+### Prepare an isolated test build
+
+Build Companion in the task-owned **openclaw-windows-node** worktree, not the
+main/shared checkout. Prepare the real Gateway with the helper's explicit
+`-Patch` and `-WorkRoot` before launching Companion. This is the recommended
+path for test instances; the direct packaging workflow below is an alternative
+when testing packaging itself.
+
+After obtaining runtime authority and checking the prerequisites above, run
+from that worktree root. Replace `t42` consistently with a unique task ID:
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$patch = 't42-alpha'
+$workRoot = 'C:\OpenClawDev\t42\native-gateway'
+if (Get-AppxPackage -Name "OpenClawFoundation.OpenClawGateway-$patch") {
+    throw 'Choose an unused patch, or verify ownership before reusing this instance.'
+}
+.\build.ps1
+if ($LASTEXITCODE -ne 0) { throw 'Companion build failed.' }
+.\scripts\Build-NativeGatewayFromSource.ps1 -GatewayChannel Latest -Patch $patch -WorkRoot $workRoot
+```
+
+Expected: Companion output belongs to this worktree and the helper registers
+`OpenClawFoundation.OpenClawGateway-t42-alpha` from the task-owned work root.
+Use `-GatewayChannel Packaged` for released-payload compatibility, or
+`-OpenClawRef <full-sha>` / `-OpenClawSourceDirectory <task-owned-checkout>`
+instead of `-GatewayChannel` for explicit source changes. Keep the same unique
+patch and work root for each instance's rebuild and ownership-checked removal.
+
+Follow [selection, startup and verification](#select-start-and-verify-each-instance)
+before running tests. For helper-built instances, `$packagingRoot` is
+`Join-Path $workRoot 'openclaw-windows-packaging'`; use the build's architecture
+for the registration/layout checks. Set `OPENCLAW_NATIVE_GATEWAY_DEV_PATCH`
+before launching with `-NoBuild -Isolated -DataDir <task-instance-directory>`.
+That variable reuses the prepared patch without rebuilding it.
+
+`-Isolated` / `-DataDir` isolates Companion's profile, not its build output or
+Gateway package. An unqualified `.\run-app-local.ps1 -Isolated` still selects
+the shared `npm-latest` patch (or an inherited patch), not a new task instance.
+Do not use it as the isolated real-Gateway test recipe. Build Companion once;
+for a second Gateway, prepare `t42-beta` serially with the helper, then launch
+it with its own profile after alpha is verified listening. Remove helper-built
+instances with [the ownership-checking wrapper](#remove-it), passing the same
+`-WorkRoot`.
+
+### Alternative: deploy directly from the packaging repository
+
+The direct command belongs to **openclaw/openclaw-windows-packaging**, not this
+repository. Start with a clean task-owned clone outside the user profile, under
+a trusted parent readable by the isolated account and not writable by unrelated
+accounts. Do not deploy from a main/shared checkout or relax ACLs to make one work.
+Use its pinned .NET SDK, NativeAOT C++/Windows SDK tools, PowerShell 7 and Developer
+Mode prerequisites. The default payload download also needs authenticated `gh`;
+it obtains the bundled Node runtime, without a local Gateway npm/source build.
+
+The minimal examples are `.\scripts\Deploy-LocalPackage.ps1 -Patch alpha`, then
+`.\scripts\Deploy-LocalPackage.ps1 -Patch beta`. On shared hosts, qualify both
+with a unique task identifier as below. Replace `t42` and its path consistently:
+names must be 1 to 15 letters, digits or hyphens, starting and ending with a
+letter or digit, with no whitespace. They are lowercased. Do not reuse another
+task's patch or rely on the shared helper defaults `npm-latest` / `packaged`.
+Authorization must cover registration, session setup, startup-task creation and
+eventual teardown, not just building source.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$packagingRoot = 'C:\OpenClawDev\t42\openclaw-windows-packaging'
+$architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+$patches = @('t42-alpha', 't42-beta')
+if (Test-Path -LiteralPath $packagingRoot) { throw 'Choose a new task-owned clone path.' }
+git clone https://github.com/openclaw/openclaw-windows-packaging.git $packagingRoot
+if ($LASTEXITCODE -ne 0) { throw 'Packaging clone failed.' }
+Set-Location $packagingRoot
+foreach ($patch in $patches) {
+    if (Get-AppxPackage -Name "OpenClawFoundation.OpenClawGateway-$patch") {
+        throw "Patch $patch already exists. Confirm ownership or choose another task name."
+    }
+}
+.\scripts\Deploy-LocalPackage.ps1 -Patch $patches[0] -Architecture $architecture
+.\scripts\Deploy-LocalPackage.ps1 -Patch $patches[1] -Architecture $architecture
+```
+
+Expected: two `OpenClawFoundation.OpenClawGateway-<patch>` registrations with
+their own `openclaw-<patch>` and `clawctl-<patch>` aliases, beside the unchanged
+base package and other patches. Deploy normally runs `clawctl setup`: it
+provisions/reuses the session, installs Node in the agent profile and enables
+sign-in recovery, but **does not start a listening Gateway**. `-SkipSetup` leaves
+that setup work outstanding. A setup failure may leave a registration; inspect
+only the owned patch, then retry or clean it up rather than claiming readiness.
+
+Serialize deployment, rebuild, refresh and unregister operations, including
+across agents using the same checkout/cache. The node repo's build helper also
+enforces a machine-wide build/unregister lock; do not assume direct packaging
+commands have that same guard. Once prepared, separate running instances can
+serve independent tests concurrently. Do not rebuild or remove a layout/payload
+while a test uses it.
+
+**Cache scope:** rerunning the same patch reuses valid downloads and unchanged
+build output. Current packaging keeps payload and Node caches per patch under
+`artifacts\local-package\patches\<patch>\<architecture>`; beta's first deployment
+does not automatically reuse alpha's payload download. To share an already
+prepared payload, pass the same validated, task-owned immutable
+`-PayloadDirectory <absolute-payload-root>` on each deployment. It must contain
+`app` and `payload-metadata.json`. Keep it alive until every referencing patch
+is unregistered; never borrow a cache generation another patch may refresh/delete.
+For npm Latest, Packaged or source-ref selection, use the helper workflows below
+with explicit unique `-Patch` names and a task-owned `-WorkRoot` instead.
+
+### Select, start and verify each instance
+
+Resolve aliases from the actual registration, not a guessed publisher suffix,
+PATH's base `clawctl`, or a shared default endpoint. In the packaging shell,
+repeat this block for each owned patch:
+
+```powershell
+$patch = 't42-alpha'
+$packages = @(Get-AppxPackage -Name "OpenClawFoundation.OpenClawGateway-$patch")
+$expectedLayout = Join-Path $packagingRoot "artifacts\local-package\patches\$patch\$architecture\layout"
+if ($packages.Count -ne 1 -or -not $packages[0].IsDevelopmentMode -or
+    $packages[0].InstallLocation.TrimEnd('\') -ine $expectedLayout.TrimEnd('\')) {
+    throw 'The expected task-owned development registration was not found.'
+}
+$package = $packages[0]
+$aliasRoot = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\$($package.PackageFamilyName)"
+$clawctl = Join-Path $aliasRoot "clawctl-$patch.exe"
+$openclaw = Join-Path $aliasRoot "openclaw-$patch.exe"
+if (-not (Test-Path -LiteralPath $clawctl) -or -not (Test-Path -LiteralPath $openclaw)) {
+    throw 'Enable this package''s app execution aliases in Windows Settings, then retry.'
+}
+& $clawctl --version
+if ($LASTEXITCODE -ne 0) { throw 'Owned Gateway version check failed.' }
+```
+
+Build Companion once from its task-owned **openclaw-windows-node** worktree
+before launching tests. In a separate shell at that worktree root, select one
+patch and a fresh task/instance-specific data directory:
+
+**Setup-local boundary:** `-DataDir` separates Companion's app profile, but
+does not redirect setup-local or Local AI state. Without separate overrides,
+those paths still resolve under the user's normal `%LOCALAPPDATA%\OpenClawTray`.
+The recipe below covers Gateway setup and client behavior, not isolated Local
+AI acquisition, removal or concurrent Local AI setup. Before any such operation,
+configure and verify a task-owned `OPENCLAW_TRAY_LOCALAPPDATA_DIR` root;
+setup appends `OpenClawTray`. If the legacy `OPENCLAW_TRAY_LOCAL_DATA_DIR` is
+also set, align it with that effective directory. Do not use the normal user's
+Local AI manifest or runtime state as test-owned data.
+
+```powershell
+$env:OPENCLAW_NATIVE_GATEWAY_DEV_PATCH = 't42-alpha'
+.\run-app-local.ps1 -NoBuild -Isolated -DataDir "$env:TEMP\oc-t42-alpha"
+Remove-Item Env:\OPENCLAW_NATIVE_GATEWAY_DEV_PATCH
+```
+
+Choose **Install a local native gateway**, then **Set up gateway**. This path
+configures and starts the selected patch. Verify alpha is listening before
+launching beta with `t42-beta` and `oc-t42-beta`. Companion chooses an available
+port for a new draft, but separate drafts do not reserve ports. Serializing
+initial setup/start avoids both choosing the same unused default. Preserve the
+variable for any relaunch of that profile; an already-running app cannot switch
+patches. Never share profiles, copy real user credentials, or omit selection and
+accidentally configure the base Gateway.
+
+For CLI-only testing, configure a distinct `gateway.port` in each owned
+instance before `& $clawctl gateway-service start --json`, using the resolved
+patched aliases and that scenario's normal configuration flow. Both unconfigured
+Gateways otherwise use the upstream default. After either startup path, in the
+matching packaging shell:
+
+```powershell
+& $clawctl gateway-service status --json
+```
+
+This command is a status sample, not a readiness assertion. It can return a
+nonzero exit code while still `starting`, and failure JSON can omit `gateway`.
+Conversely, `not-started` can return zero. Do not put an immediate throw on every
+nonzero exit into a readiness loop. Retry pending startup within the scenario's
+configured startup timeout, inspect each JSON result, and fail explicitly with
+the last status/error if readiness is not reached. Malformed JSON or an explicit
+configuration/ownership error is a blocker, not a pending state to ignore.
+
+Require `integration.kind = isolated-session`, `gateway.state = running`, the
+actual `gateway.port` and non-null `gateway.ownership` for each instance. Match
+the port/family to that Companion profile and require distinct ports before
+parallel tests. `start` may exit zero with `state = starting`; use bounded status
+polling, not a successful exit alone. Status can probe/start an already-recorded
+session, so it is not a passive host inventory command. A port collision or
+missing ownership support is a blocker, not permission to kill another listener.
+Keep test artifacts and, when enabled, local MCP endpoints/tokens separate too.
+
+### Remove only the owned patch
+
+Close only that task's Companion/test clients. Re-run the exact registration,
+layout and alias checks above immediately before teardown. From the same
+packaging checkout and architecture, with `$patch` and `$clawctl` resolved for
+the instance being removed:
+
+```powershell
+& $clawctl teardown --force
+if ($LASTEXITCODE -ne 0) { throw 'Teardown failed. Keep the registration for recovery.' }
+.\scripts\Deploy-LocalPackage.ps1 -Unregister -Patch $patch -Architecture $architecture
+if (Get-AppxPackage -Name "OpenClawFoundation.OpenClawGateway-$patch") {
+    throw 'The owned patch is still registered.'
+}
+```
+
+This is `clawctl-<name> teardown --force` followed by
+`.\scripts\Deploy-LocalPackage.ps1 -Unregister -Patch <name>`, not wildcard
+removal or `-ReplaceExistingInstall`. Teardown removes that session/data and
+startup task; unregister preserves remaining package app data and caches.
+Do not delete the checkout/shared payload until all its registrations are gone.
+If unregister happened first, restore the same owned patch to reach teardown.
+For helper-created patches, prefer [the ownership-checking wrapper](#remove-it).
+
+Contracts checked against packaging
+[local-development guidance](https://github.com/openclaw/openclaw-windows-packaging/blob/2062d05176bdc2ff6732fc439986fcefe2f3e4fe/docs/local-development.md#side-by-side-patched-identities)
+and [deployment owner](https://github.com/openclaw/openclaw-windows-packaging/blob/2062d05176bdc2ff6732fc439986fcefe2f3e4fe/scripts/LocalPackage.psm1).
+Record the actual packaging commit, payload version/commit, package families,
+distinct ports, selected tests/results and cleanup outcome for each future run.
+Source inspection is not exercised local/cloud E2E proof.
+
 ## Latest and Packaged development
 
 Use one Companion branch for both Gateway compatibility targets. Do not create or
 continually synchronize a `release/extended-stable` fork.
+The shorthand commands below describe the launcher's channel defaults for
+single-developer compatibility work. For isolated test instances, use
+[unique task-owned builds and patches](#prepare-an-isolated-test-build) instead.
 
 ```powershell
 .\run-app-local.ps1 -Isolated

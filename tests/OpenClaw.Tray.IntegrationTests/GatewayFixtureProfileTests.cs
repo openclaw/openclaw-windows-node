@@ -128,14 +128,28 @@ public sealed class GatewayFixtureProfileTests
         Assert.Empty(start.ArgumentList);
     }
 
-    [Fact]
-    public void SetupHandoffIsExplicitAndPassedAsOneOpaqueArgument()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SetupHandoffIsExplicitAndPassedAsOneOpaqueArgument(bool restart)
     {
         using var app = CreateFakeSupportedApp();
         using var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
-        var start = profile.CreateStartInfo(app.Combine("OpenClaw.Tray.WinUI.exe"), 49233, "native:synthetic-handoff");
-        Assert.Equal(new[] { "--post-setup-launch", "native:synthetic-handoff" }, start.ArgumentList);
+        var start = profile.CreateStartInfo(app.Combine("OpenClaw.Tray.WinUI.exe"), 49233,
+            "native:synthetic-handoff", postSetupRestart: restart);
+        Assert.Equal(restart
+            ? new[] { "--post-setup-restart", "--post-setup-launch", "native:synthetic-handoff" }
+            : new[] { "--post-setup-launch", "native:synthetic-handoff" }, start.ArgumentList);
         Assert.Equal(profile.LocalRoot, start.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"]);
+    }
+
+    [Fact]
+    public void SetupRestartRequiresAnExplicitHandoff()
+    {
+        using var app = CreateFakeSupportedApp();
+        using var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        Assert.Throws<ArgumentException>(() =>
+            profile.CreateStartInfo(app.Combine("OpenClaw.Tray.WinUI.exe"), 49233, postSetupRestart: true));
     }
 
     [Theory]

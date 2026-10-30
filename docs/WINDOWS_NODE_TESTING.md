@@ -417,6 +417,41 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   .\scripts\validate-mxc-e2e.ps1
   ```
 
+### `system.run` failure outcomes
+
+- An explicit pre-execution security, ask, allowlist, or user denial, including a
+  revoked approval, carries `error.code = "SYSTEM_RUN_DENIED"` in both Gateway
+  `node.invoke.result` and legacy invocation responses. The message is retained.
+  This lets the Gateway distinguish a definite denial from an unknown outcome.
+  Disabling Run system tools after command registration also returns this code
+  for `system.run` and `system.run.prepare`, before approval dispatch or execution.
+  Handler exceptions, failed or unavailable policy revalidation, command timeouts, and
+  failures after process launch do not acquire this code. The same distinction
+  applies at the SDK prelaunch boundary: confirmed approval or permission
+  revocation is a policy denial, while unavailable revalidation is an internal
+  failure. Both prevent launch.
+  A malformed, unreadable, unsupported or untrusted approval store is unavailable
+  policy, not proof that the owner revoked approval. Initial authorization,
+  post-prompt checks and execution-boundary revalidation retain that distinction
+  from the same policy read, fail closed and do not emit `SYSTEM_RUN_DENIED`.
+  With no legacy store pending migration, a missing current store still uses
+  the normal fresh-policy defaults.
+  Presenter exceptions, failed dispatcher enqueue, dialog errors and cancelled
+  prompts fail closed as `InternalError (prompt-failed)` without using
+  `askFallback` or claiming a user refusal. An expired unanswered prompt likewise
+  remains `InternalError (prompt-timeout)`, even if a late answer arrives.
+  Confirmed policy tightening while a
+  prompt is open retains the `ValidationFailed` result code, with typed
+  definite-denial provenance so the Gateway receives `SYSTEM_RUN_DENIED`.
+- A contained, non-timeout process exit `0xC0000142` (`STATUS_DLL_INIT_FAILED`)
+  includes a diagnostic explaining that Windows UI APIs (USER32) or another DLL
+  dependency can be involved. The original exit code, output, native error detail,
+  and containment remain unchanged. The current SDK policy already enables
+  contained Windows UI API compatibility; there is no user-controlled UI opt-in.
+  This is contextual troubleshooting guidance, not proof that every DLL
+  initialization failure has the same cause. The diagnostic does not alter
+  permissions, retry the command, or fall back to host execution.
+
 ### Full Gateway `system.run` MXC runtime proof
 - The focused E2E below provisions a fresh WSL Gateway, starts an isolated tray instance with fixed contained Windows UI API compatibility, sets local exec approval policy, invokes the real Gateway `node.invoke` path, and checks SDK admission/execution and protected writes. Native `MxcCommandRunnerIntegrationTests.NativeSdk_DefaultPolicyStartsPowerShellWithoutOptIn` additionally verifies PowerShell startup and output with default settings, without enabling an opt-in. **Provisioning is a runtime mutation and requires authorization.** If it is forbidden, record this gate as blocked rather than launching it or using `-AllowSkip` as validation.
 - Run it when validating the Gateway/Windows node runtime path, not just direct MCP or shared library behavior.

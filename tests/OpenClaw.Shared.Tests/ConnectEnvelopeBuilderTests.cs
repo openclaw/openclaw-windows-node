@@ -322,6 +322,102 @@ public sealed class ConnectEnvelopeBuilderTests
         }
     }
 
+    [Theory]
+    [InlineData(OperatorClientIdentity.Cli, false, "cli", "cli")]
+    [InlineData(OperatorClientIdentity.Cli, true, "cli", "cli")]
+    [InlineData(OperatorClientIdentity.Interactive, false, "gateway-client", "ui")]
+    [InlineData(OperatorClientIdentity.Interactive, true, "gateway-client", "ui")]
+    public void OperatorIdentity_SignedAndSerializedIdentityMatch_WithoutChangingOtherFields(
+        OperatorClientIdentity identity,
+        bool useV2,
+        string expectedId,
+        string expectedMode)
+    {
+        var credentials = new ConnectCredential[]
+        {
+            new DeviceTokenConnectCredential("synthetic-device-token"),
+            new TokenConnectCredential("synthetic-shared-token"),
+            new BootstrapTokenConnectCredential("synthetic-bootstrap-token"),
+        };
+
+        foreach (var credential in credentials)
+        {
+            var signer = new CaptureSigner();
+            var envelope = ConnectEnvelopeBuilder.PrepareOperator(
+                new OperatorConnectEnvelopeOptions(
+                    RequestId,
+                    "9.8.7",
+                    "operator",
+                    ["operator.read", "operator.write"],
+                    credential,
+                    Nonce,
+                    ChallengeTimestamp,
+                    useV2,
+                    SupportsExecApprovals: true,
+                    ClientIdentity: identity),
+                signer);
+
+            var json = envelope.Serialize(envelope.Sign());
+            using var document = JsonDocument.Parse(json);
+            var parameters = document.RootElement.GetProperty("params");
+            var client = parameters.GetProperty("client");
+            var call = Assert.Single(signer.Calls);
+
+            Assert.Equal(expectedId, client.GetProperty("id").GetString());
+            Assert.Equal(expectedMode, client.GetProperty("mode").GetString());
+            Assert.Equal(client.GetProperty("id").GetString(), call.ClientId);
+            Assert.Equal(client.GetProperty("mode").GetString(), call.ClientMode);
+            Assert.Equal("OpenClaw Windows Tray", client.GetProperty("displayName").GetString());
+            Assert.Equal(WindowsClientMetadata.Platform, client.GetProperty("platform").GetString());
+            Assert.Equal(WindowsClientMetadata.DeviceFamily, client.GetProperty("deviceFamily").GetString());
+            Assert.False(client.TryGetProperty("instanceId", out _));
+            Assert.Equal("operator", parameters.GetProperty("role").GetString());
+            Assert.Equal(["operator.read", "operator.write"], call.Scopes);
+            Assert.Equal(credential.Value, call.AuthToken);
+            Assert.Equal(CaptureSigner.FixedDeviceId, parameters.GetProperty("device").GetProperty("id").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData(OperatorClientIdentity.Cli, "|cli|cli|operator|")]
+    [InlineData(OperatorClientIdentity.Interactive, "|gateway-client|ui|operator|")]
+    public void OperatorIdentity_RealDevicePayloadCoversChosenIdentity(
+        OperatorClientIdentity identity,
+        string expectedSegment)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "openclaw-envelope-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var device = new DeviceIdentity(dir);
+            device.Initialize();
+            foreach (var useV2 in new[] { false, true })
+            {
+                var envelope = ConnectEnvelopeBuilder.PrepareOperator(
+                    new OperatorConnectEnvelopeOptions(
+                        RequestId,
+                        "9.8.7",
+                        "operator",
+                        ["operator.read"],
+                        new DeviceTokenConnectCredential("synthetic-device-token"),
+                        Nonce,
+                        ChallengeTimestamp,
+                        useV2,
+                        ClientIdentity: identity),
+                    new DeviceIdentityConnectEnvelopeSigner(device));
+
+                var payload = envelope.SigningArguments.BuildPayload(device);
+
+                Assert.Contains(expectedSegment, payload, StringComparison.Ordinal);
+                Assert.Equal(device.DeviceId, envelope.SigningDeviceId);
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     private static PreparedConnectEnvelope Prepare(
         EnvelopeCase testCase,
         IConnectEnvelopeSigner signer,

@@ -2116,6 +2116,31 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task InstallCli_OfficialInstallerUsesSqliteCapableNodeAndVerifiesInstalledRuntime()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+                command.Contains("tools/node/bin/node --version", StringComparison.Ordinal)
+                    ? Ok("v24.22.1")
+                    : command.EndsWith("openclaw --version", StringComparison.Ordinal)
+                        ? Ok("OpenClaw 2026.10.5")
+                        : Ok());
+        var config = new SetupConfig();
+        GatewayInstallPolicy.ValidateAndApply(config);
+
+        var result = await new InstallCliStep().ExecuteAsync(
+            CreateContext(config, commands), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        var install = Assert.Single(commands.WslCalls,
+            call => call.Command.Contains("curl -fsSL", StringComparison.Ordinal));
+        Assert.Contains("--node-version '24.22.1'", install.Command);
+        Assert.Contains(commands.WslCalls,
+            call => call.Command.Contains("tools/node/bin/node --version", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task InstallCli_TransientDnsFailureRecoversOnSecondPipelineAttempt()
     {
         var downloadAttempts = 0;
@@ -3472,6 +3497,337 @@ public class SetupStepsTests : IDisposable
         Assert.True(result.IsSuccess, result.Message);
         Assert.Equal(2, postInstallListAttempts);
         Assert.DoesNotContain(commands.Calls, call => call.Arguments.Contains("--unregister"));
+    }
+
+    [Fact]
+    public async Task CreateWslInstance_RetriesTimedOutFreshDistroListAndContinues()
+    {
+        var installed = false;
+        var quietLists = 0;
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args.SequenceEqual(["--list", "--quiet"]))
+            {
+                quietLists++;
+                if (quietLists == 1)
+                    return Ok("");
+                if (quietLists == 2)
+                    return new CommandResult(-1, "", "", TimeSpan.FromSeconds(30), TimedOut: true);
+
+                return Ok("OpenClawGateway\n");
+            }
+
+            if (args.Contains("--install"))
+            {
+                installed = true;
+                return Ok("Installing Ubuntu-24.04\n");
+            }
+
+            if (args.SequenceEqual(["--list", "--verbose"]))
+                return Ok("  NAME              STATE           VERSION\n* OpenClawGateway   Stopped         2\n");
+            if (args.SequenceEqual(["-d", "OpenClawGateway", "-u", "root", "--", "sh", "-lc", "id -u && test -d / && echo OPENCLAW_FRESH_WSL_READY"]))
+                return Ok("0\nOPENCLAW_FRESH_WSL_READY\n");
+
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new CreateWslInstanceStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.True(installed);
+        Assert.Equal(3, quietLists);
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Contains("--unregister"));
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Contains("--terminate"));
+        var installCall = Assert.Single(commands.Calls, call => call.Arguments.Contains("--install"));
+        Assert.Contains("--no-launch", installCall.Arguments);
+        Assert.Equal(
+            [
+                TimeSpan.FromSeconds(15),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(60),
+            ],
+            commands.TimedCalls
+                .Where(call => call.Arguments.SequenceEqual(["--list", "--quiet"]))
+                .Select(call => call.Timeout)
+                .ToArray());
+    }
+
+    [Fact]
+    public async Task CreateWslInstance_LeavesDistroRegisteredWhenFreshDistroListNeverCompletes()
+    {
+        var quietLists = 0;
+        var installPath = "";
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args.SequenceEqual(["--list", "--quiet"]))
+            {
+                quietLists++;
+                return quietLists switch
+                {
+                    1 => Ok(""),
+                    2 => new CommandResult(-1, "", "", TimeSpan.FromSeconds(30), TimedOut: true),
+                    3 => new CommandResult(-1, "", "", TimeSpan.FromSeconds(60), TimedOut: false),
+                    4 => Fail("list failed"),
+                    _ => Ok("OpenClawGateway\n"),
+                };
+            }
+
+            if (args.Contains("--install"))
+            {
+                Directory.CreateDirectory(installPath);
+                File.WriteAllText(Path.Combine(installPath, "ext4.vhdx"), "partial");
+                return Ok("Installing Ubuntu-24.04\n");
+            }
+
+            if (args.SequenceEqual(["--status"]))
+                return Ok("Default Version: 2\n");
+            if (args.SequenceEqual(["--terminate", "OpenClawGateway"]) ||
+                args.SequenceEqual(["--unregister", "OpenClawGateway"]))
+                return Ok();
+
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(commands: commands);
+        installPath = Path.Combine(ctx.LocalDataDir, "wsl", "OpenClawGateway");
+        var step = new CreateWslInstanceStep(FakeWslRegistrationInspector.Found(installPath));
+
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("could not list distros after installing 'OpenClawGateway'", result.Message);
+        Assert.DoesNotContain("did not register expected distro", result.Message);
+        Assert.True(ManagedDistroOwnership.HasPathBoundMarkerEvidence(
+            ctx.LocalDataDir,
+            "OpenClawGateway"));
+        Assert.Equal(5, quietLists);
+        Assert.True(File.Exists(Path.Combine(installPath, "ext4.vhdx")));
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Contains("--unregister"));
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Contains("--terminate"));
+        Assert.Equal(
+            [
+                TimeSpan.FromSeconds(15),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(60),
+                TimeSpan.FromSeconds(90),
+                TimeSpan.FromSeconds(15),
+            ],
+            commands.TimedCalls
+                .Where(call => call.Arguments.SequenceEqual(["--list", "--quiet"]))
+                .Select(call => call.Timeout)
+                .ToArray());
+    }
+
+    [Fact]
+    public async Task SetupPipeline_PreservesFreshDistroWhenPostInstallListFailsAndRollbackRuns()
+    {
+        var quietLists = 0;
+        var installPath = "";
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args.SequenceEqual(["--list", "--quiet"]))
+            {
+                quietLists++;
+                return quietLists switch
+                {
+                    1 => Ok(""),
+                    2 => new CommandResult(-1, "", "", TimeSpan.FromSeconds(30), TimedOut: true),
+                    3 => new CommandResult(-1, "", "", TimeSpan.FromSeconds(60), TimedOut: false),
+                    4 => Fail("list failed"),
+                    _ => Ok("OpenClawGateway\n"),
+                };
+            }
+
+            if (args.Contains("--install"))
+            {
+                Directory.CreateDirectory(installPath);
+                File.WriteAllText(Path.Combine(installPath, "ext4.vhdx"), "partial");
+                return Ok("Installing Ubuntu-24.04\n");
+            }
+
+            if (args.SequenceEqual(["--status"]))
+                return Ok("Default Version: 2\n");
+            if (args.SequenceEqual(["--terminate", "OpenClawGateway"]) ||
+                args.SequenceEqual(["--unregister", "OpenClawGateway"]))
+                return Ok();
+
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(
+            new SetupConfig { RollbackOnFailure = true },
+            commands);
+        installPath = Path.Combine(ctx.LocalDataDir, "wsl", "OpenClawGateway");
+        var pipeline = new SetupPipeline([
+            new CreateWslInstanceStep(FakeWslRegistrationInspector.Found(installPath)),
+        ]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal("wsl-create", result.FailedStepId);
+        Assert.Contains("could not list distros after installing 'OpenClawGateway'", result.Message);
+        Assert.DoesNotContain("Refusing unsafe WSL rollback cleanup", result.Message);
+        Assert.True(File.Exists(Path.Combine(installPath, "ext4.vhdx")));
+        Assert.True(ManagedDistroOwnership.HasPathBoundMarkerEvidence(
+            ctx.LocalDataDir,
+            "OpenClawGateway"));
+        Assert.Equal(6, quietLists);
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Contains("--unregister"));
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Contains("--terminate"));
+    }
+
+    [Fact]
+    public async Task SetupPipeline_PreservesFreshDistroWhenFinalPostInstallListTimesOutAfterOmission()
+    {
+        var quietLists = 0;
+        var installPath = "";
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args.SequenceEqual(["--list", "--quiet"]))
+            {
+                quietLists++;
+                return quietLists switch
+                {
+                    1 => Ok(""),
+                    2 => Ok(""),
+                    3 => new CommandResult(-1, "", "", TimeSpan.FromSeconds(30), TimedOut: true),
+                    4 => new CommandResult(-1, "", "", TimeSpan.FromSeconds(60), TimedOut: true),
+                    _ => Ok("OpenClawGateway\n"),
+                };
+            }
+
+            if (args.Contains("--install"))
+            {
+                Directory.CreateDirectory(installPath);
+                File.WriteAllText(Path.Combine(installPath, "ext4.vhdx"), "partial");
+                return Ok("Installing Ubuntu-24.04\n");
+            }
+
+            if (args.SequenceEqual(["--status"]))
+                return Ok("Default Version: 2\n");
+            if (args.SequenceEqual(["--terminate", "OpenClawGateway"]) ||
+                args.SequenceEqual(["--unregister", "OpenClawGateway"]))
+                return Ok();
+
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(
+            new SetupConfig { RollbackOnFailure = true },
+            commands);
+        installPath = Path.Combine(ctx.LocalDataDir, "wsl", "OpenClawGateway");
+        var pipeline = new SetupPipeline([
+            new CreateWslInstanceStep(FakeWslRegistrationInspector.Found(installPath)),
+        ]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal("wsl-create", result.FailedStepId);
+        Assert.Contains("could not list distros after installing 'OpenClawGateway'", result.Message);
+        Assert.DoesNotContain("Refusing unsafe WSL rollback cleanup", result.Message);
+        Assert.Equal(6, quietLists);
+        Assert.True(File.Exists(Path.Combine(installPath, "ext4.vhdx")));
+        Assert.True(ManagedDistroOwnership.HasPathBoundMarkerEvidence(
+            ctx.LocalDataDir,
+            "OpenClawGateway"));
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Contains("--unregister"));
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Contains("--terminate"));
+    }
+
+    [Fact]
+    public async Task SetupPipeline_UnregistersDistroOnRollbackWhenPostInstallListCompleted()
+    {
+        var quietLists = 0;
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args.SequenceEqual(["--list", "--quiet"]))
+            {
+                quietLists++;
+                if (quietLists <= 4)
+                    return Ok("");
+                if (quietLists == 5)
+                    return Fail("list failed");
+
+                return Ok("OpenClawGateway\n");
+            }
+
+            if (args.Contains("--install"))
+                return Ok("Installing Ubuntu-24.04\n");
+            if (args.SequenceEqual(["--status"]))
+                return Ok("Default Version: 2\n");
+            if (args.SequenceEqual(["--terminate", "OpenClawGateway"]) ||
+                args.SequenceEqual(["--unregister", "OpenClawGateway"]))
+                return Ok();
+
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(
+            new SetupConfig { RollbackOnFailure = true },
+            commands);
+        var installPath = Path.Combine(ctx.LocalDataDir, "wsl", "OpenClawGateway");
+        var pipeline = new SetupPipeline([
+            new CreateWslInstanceStep(FakeWslRegistrationInspector.Found(installPath)),
+        ]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal("wsl-create", result.FailedStepId);
+        Assert.Contains("did not register expected distro 'OpenClawGateway'", result.Message);
+        Assert.DoesNotContain("could not list distros", result.Message);
+        Assert.DoesNotContain("left distro", result.Message);
+        Assert.Contains(commands.Calls, call => call.Arguments.SequenceEqual(["--unregister", "OpenClawGateway"]));
+        Assert.Contains(commands.Calls, call => call.Arguments.SequenceEqual(["--terminate", "OpenClawGateway"]));
+    }
+
+    [Fact]
+    public async Task CreateWslInstance_ReportsMissingDistroWhenFreshListOmitsIt()
+    {
+        var quietLists = 0;
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args.SequenceEqual(["--list", "--quiet"]))
+            {
+                quietLists++;
+                return quietLists < 5 ? Ok("") : Ok("OpenClawGateway\n");
+            }
+
+            if (args.Contains("--install"))
+                return Ok("Installing Ubuntu-24.04\n");
+            if (args.SequenceEqual(["--status"]))
+                return Ok("Default Version: 2\n");
+            if (args.SequenceEqual(["--terminate", "OpenClawGateway"]) ||
+                args.SequenceEqual(["--unregister", "OpenClawGateway"]))
+                return Ok();
+
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(commands: commands);
+        var installPath = Path.Combine(ctx.LocalDataDir, "wsl", "OpenClawGateway");
+
+        var result = await new CreateWslInstanceStep(FakeWslRegistrationInspector.Found(installPath))
+            .ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("did not register expected distro 'OpenClawGateway'", result.Message);
+        Assert.DoesNotContain("could not list distros", result.Message);
+        Assert.DoesNotContain("left distro", result.Message);
+        Assert.Equal(5, quietLists);
+        Assert.Contains(commands.Calls, call => call.Arguments.SequenceEqual(["--unregister", "OpenClawGateway"]));
+        Assert.Contains(commands.Calls, call => call.Arguments.SequenceEqual(["--terminate", "OpenClawGateway"]));
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.SequenceEqual(["--list", "--verbose"]));
+        Assert.Equal(
+            [
+                TimeSpan.FromSeconds(15),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(60),
+                TimeSpan.FromSeconds(90),
+                TimeSpan.FromSeconds(15),
+            ],
+            commands.TimedCalls
+                .Where(call => call.Arguments.SequenceEqual(["--list", "--quiet"]))
+                .Select(call => call.Timeout)
+                .ToArray());
     }
 
     [Fact]

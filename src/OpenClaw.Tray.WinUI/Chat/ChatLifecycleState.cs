@@ -50,6 +50,9 @@ internal sealed class ChatLifecycleState
     internal bool TryGetActiveRun(string threadId, out string? runId) =>
         _activeRunIds.TryGetValue(threadId, out runId);
 
+    internal string? ThreadForActiveRun(string runId) =>
+        _activeRunIds.FirstOrDefault(pair => string.Equals(pair.Value, runId, StringComparison.Ordinal)).Key;
+
     internal bool HasRunStartedAfter(
         string threadId,
         string runId,

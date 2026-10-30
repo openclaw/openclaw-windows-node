@@ -2,7 +2,7 @@ namespace OpenClawTray.Presentation;
 
 internal enum WorkspacePageId
 {
-    Home, Notifications
+    Home, Notifications, Settings
 }
 
 internal enum CompanionPageId
@@ -11,7 +11,16 @@ internal enum CompanionPageId
     Bindings, Config, Usage, LocalAi, Voice, Permissions, Sandbox, Debug, Settings, About
 }
 
-internal sealed record WorkspaceDestination(WorkspacePageId Page, string? SessionKey = null);
+/// <summary>
+/// One entry in the Workspace window's single history. <see cref="SessionKey"/> identifies a chat;
+/// <see cref="CompanionTag"/> identifies the Settings section shown in the same window.
+/// </summary>
+internal sealed record WorkspaceDestination(
+    WorkspacePageId Page, string? SessionKey = null, string? CompanionTag = null)
+{
+    public static WorkspaceDestination Settings(string companionTag) =>
+        new(WorkspacePageId.Settings, null, companionTag);
+}
 
 /// <summary>
 /// Window boundary and route identity for the approved Workspace. Agent file
@@ -77,6 +86,13 @@ internal static class WorkspaceNavigation
         _ => page.ToString().ToLowerInvariant()
     };
 
+    /// <summary>
+    /// Canonical identity of a Settings history entry. Aliases collapse to one section and agent
+    /// scope stays in the tag, except About, which keeps its own identity so Back restores it.
+    /// </summary>
+    public static string NormalizeSettingsTag(string tag, string agentId) =>
+        tag is "about" or "info" ? "about" : HubPageRegistry.NormalizeTag(tag, agentId);
+
 }
 
 internal sealed class WorkspaceNavigationHistory
@@ -122,12 +138,75 @@ internal sealed class WorkspaceNavigationHistory
         return wasCurrent;
     }
 
-    private static void RemoveFrom(Stack<WorkspaceDestination> history, string key)
+    private static void RemoveFrom(Stack<WorkspaceDestination> history, string key) =>
+        RemoveFrom(history, destination => destination.SessionKey == key);
+
+    private static void RemoveFrom(
+        Stack<WorkspaceDestination> history, Func<WorkspaceDestination, bool> shouldRemove)
     {
-        var retained = history.Reverse().Where(destination => destination.SessionKey != key).ToArray();
+        var retained = history.Reverse().Where(destination => !shouldRemove(destination)).ToArray();
         history.Clear();
         foreach (var destination in retained)
             history.Push(destination);
+    }
+
+    /// <summary>
+    /// Drops Back/Forward Settings entries whose section is no longer available (for example
+    /// Gateway sections after disconnect). The current destination is left to the caller.
+    /// </summary>
+    public void RemoveSettingsEntries(Func<string, bool> shouldRemove)
+    {
+        bool Match(WorkspaceDestination destination) =>
+            destination is { Page: WorkspacePageId.Settings, CompanionTag: { } tag } && shouldRemove(tag);
+        RemoveFrom(_back, Match);
+        RemoveFrom(_forward, Match);
+    }
+
+    /// <summary>
+    /// Removes unavailable Settings sections from Back/Forward and from <see cref="Current"/>.
+    /// A pruned Current becomes <paramref name="fallback"/> without a history entry, and adjacent
+    /// duplicates that pruning creates are collapsed so Back never lands on the page already shown.
+    /// Returns true when Current changed and the caller must render it.
+    /// </summary>
+    public bool PruneSettings(Func<string, bool> shouldRemove, WorkspaceDestination fallback)
+    {
+        RemoveSettingsEntries(shouldRemove);
+        var currentChanged = Current is { Page: WorkspacePageId.Settings, CompanionTag: { } tag } &&
+            shouldRemove(tag);
+        if (currentChanged)
+            SetCurrent(fallback);
+        CollapseAdjacentDuplicates();
+        return currentChanged;
+    }
+
+    private void CollapseAdjacentDuplicates()
+    {
+        var back = _back.Reverse().ToList();
+        var forward = _forward.ToList();
+        var previous = (WorkspaceDestination?)null;
+        var retainedBack = new List<WorkspaceDestination>();
+        foreach (var destination in back)
+        {
+            if (destination != previous)
+                retainedBack.Add(destination);
+            previous = destination;
+        }
+        if (previous == Current && retainedBack.Count > 0)
+            retainedBack.RemoveAt(retainedBack.Count - 1);
+        previous = Current;
+        var retainedForward = new List<WorkspaceDestination>();
+        foreach (var destination in forward)
+        {
+            if (destination != previous)
+                retainedForward.Add(destination);
+            previous = destination;
+        }
+        _back.Clear();
+        foreach (var destination in retainedBack)
+            _back.Push(destination);
+        _forward.Clear();
+        foreach (var destination in Enumerable.Reverse(retainedForward))
+            _forward.Push(destination);
     }
 
     public bool Navigate(WorkspaceDestination destination)

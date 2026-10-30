@@ -132,4 +132,42 @@ public class ChatUsageFormatterTests
             contextPercent: 17,
             fallbackContextTokens: 400_000));
     }
+
+    [Fact]
+    public void ResolveContext_UsesLatestAssistantMetadataLikeUsagePill()
+    {
+        var thread = new ChatThread { Id = "main", Title = "Main", TotalTokens = 1_000, ContextTokens = 400_000 };
+        var entries = new[] { new ChatTimelineItem("a1", ChatTimelineItemKind.Assistant, "hello") };
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            ["a1"] = new(Timestamp: DateTimeOffset.Now, Model: "gpt-5.5", ResponseTokens: 68_000, ContextTokens: 400_000, ContextPercent: 17),
+        };
+
+        Assert.Equal(new ChatContextUsage(68_000, 400_000, 17), ChatUsageFormatter.ResolveContext(entries, metadata, thread));
+    }
+
+    [Fact]
+    public void ResolveContext_ReturnsNullWithoutKnownContextWindow()
+    {
+        Assert.Null(ChatUsageFormatter.ResolveContext(null, null, new ChatThread { Id = "main", Title = "Main" }));
+        Assert.Null(ChatUsageFormatter.ResolveContext(null, null, new ChatThread { Id = "main", Title = "Main", TotalTokens = 500 }));
+    }
+
+    [Fact]
+    public void FormatThroughput_ShowsDashesBeforeFirstSample()
+        => Assert.Equal("— tps · μ — · p95 —", ChatUsageFormatter.FormatThroughput(ChatThroughputStats.Empty, turnActive: false));
+
+    [Fact]
+    public void FormatThroughput_PrefersLiveEstimateOnlyWhileTurnActive()
+    {
+        var stats = new ChatThroughputStats(42.26, 61.04, 38.5, 51.0, 3);
+
+        Assert.Equal("~61.0 tps · μ 38.5 · p95 51.0", ChatUsageFormatter.FormatThroughput(stats, turnActive: true));
+        Assert.Equal("42.3 tps · μ 38.5 · p95 51.0", ChatUsageFormatter.FormatThroughput(stats, turnActive: false));
+    }
+
+    [Fact]
+    public void FormatThroughput_DropsDecimalAtOneHundredAndAbove()
+        => Assert.Equal("150 tps · μ 150 · p95 150",
+            ChatUsageFormatter.FormatThroughput(new ChatThroughputStats(150.4, null, 150.4, 150.4, 1), turnActive: false));
 }

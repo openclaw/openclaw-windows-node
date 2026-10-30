@@ -124,7 +124,7 @@ public interface IChatGatewayBridge : IDisposable
 /// <summary>
 /// Production bridge wrapping a real <see cref="OpenClawGatewayClient"/>.
 /// </summary>
-public sealed class GatewayClientChatBridge : IChatGatewayBridge
+public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionGateway
 {
     private readonly OpenClawGatewayClient _client;
     private readonly EventHandler<ConnectionStatus> _statusChangedHandler;
@@ -233,6 +233,20 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public bool IsConnected => _client.IsConnectedToGateway;
     public IChatPlacementGateway PlacementGateway { get; }
+    public event EventHandler<GatewayQuestionEvent>? QuestionReceived
+    {
+        add => _client.QuestionReceived += value;
+        remove => _client.QuestionReceived -= value;
+    }
+    public event EventHandler? QuestionProtocolError
+    {
+        add => _client.QuestionProtocolError += value;
+        remove => _client.QuestionProtocolError -= value;
+    }
+    public Task<GatewayQuestionList> ListQuestionsAsync() => _client.ListQuestionsAsync();
+    public Task<GatewayQuestionRequest> GetQuestionAsync(string id) => _client.GetQuestionAsync(id);
+    public Task<string> ResolveQuestionAsync(string id, IReadOnlyDictionary<string, string[]>? answers) =>
+        _client.ResolveQuestionAsync(id, answers);
     public ConnectionStatus CurrentStatus => _currentStatus;
     public string? MainSessionKey => _client.MainSessionKey;
     public bool HasHandshakeSnapshot => _client.HasHandshakeSnapshot;

@@ -169,6 +169,9 @@ internal sealed class GatewayConnectionValidator(
             completion.TrySetResult(new(SetupCodeOutcome.Success));
         void AuthenticationFailed(object? sender, string message) =>
             completion.TrySetResult(AuthenticationFailure(message));
+        // Pairing is reported before the Gateway closes the socket. Preserve it as the first result.
+        void PairingRequired(object? sender, string? requestId) =>
+            completion.TrySetResult(AuthenticationFailure("pairing required"));
         void StatusChanged(object? sender, ConnectionStatus status)
         {
             if (status is ConnectionStatus.Error or ConnectionStatus.Disconnected)
@@ -177,6 +180,7 @@ internal sealed class GatewayConnectionValidator(
 
         client.HandshakeSucceeded += Handshake;
         client.AuthenticationFailed += AuthenticationFailed;
+        client.PairingRequired += PairingRequired;
         client.StatusChanged += StatusChanged;
         using var cancellation = cancellationToken.Register(client.Dispose);
         try
@@ -191,9 +195,16 @@ internal sealed class GatewayConnectionValidator(
         {
             client.HandshakeSucceeded -= Handshake;
             client.AuthenticationFailed -= AuthenticationFailed;
+            client.PairingRequired -= PairingRequired;
             client.StatusChanged -= StatusChanged;
             if (!cancellationToken.IsCancellationRequested)
-                await client.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            {
+                if (completion.Task.IsCompletedSuccessfully &&
+                    completion.Task.Result.ErrorKind == GatewayErrorKind.PairingRequired)
+                    client.Dispose();
+                else
+                    await client.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            }
         }
     }
 

@@ -29,9 +29,11 @@ public class InstanceMergerTests
         long ageSeconds = 10,
         string? ip = null,
         string? version = null,
-        string? text = null)
+        string? text = null,
+        string? reason = null)
         => new()
         {
+            Reason = reason,
             Host = host,
             DeviceId = deviceId,
             InstanceId = instanceId,
@@ -60,6 +62,60 @@ public class InstanceMergerTests
             LastSeen = lastSeen,
             Platform = platform,
         };
+
+    // ── Disconnect presence ───────────────────────────────────────────────
+
+    [Fact]
+    public void DisconnectReason_IsNotActive_DespiteFreshTimestamp()
+    {
+        var p = Presence(deviceId: "dev-1", host: "PC", ageSeconds: 1, reason: "disconnect");
+
+        var result = InstanceMerger.Merge(null, new[] { p }, Options());
+
+        Assert.Equal(PresenceStatus.Offline, Assert.Single(result).Status);
+    }
+
+    [Fact]
+    public void Reconnect_OldDisconnectRowAndNewRow_OnlyNewIsActive_AndOwnsNode()
+    {
+        var old = Presence(deviceId: "dev-1", host: "PC", instanceId: "conn-old", ageSeconds: 1, reason: "disconnect");
+        var fresh = Presence(deviceId: "dev-1", host: "PC", instanceId: "conn-new", ageSeconds: 2);
+        var n = Node("dev-1", isOnline: true);
+
+        var result = InstanceMerger.Merge(new[] { n }, new[] { old, fresh }, Options());
+
+        Assert.Single(result, r => r.Status == PresenceStatus.Active);
+        Assert.Same(n, result.Single(r => r.Presence == fresh).Node);
+        Assert.Equal(PresenceStatus.Offline, result.Single(r => r.Presence == old).Status);
+    }
+
+    [Fact]
+    public void ConnectedNode_IsNotOverridden_ByStaleDisconnectPresence()
+    {
+        var p = Presence(deviceId: "dev-1", host: "PC", ageSeconds: 1, reason: "disconnect");
+        var n = Node("dev-1", isOnline: true);
+
+        var result = InstanceMerger.Merge(new[] { n }, new[] { p }, Options());
+
+        Assert.Equal(PresenceStatus.Active, Assert.Single(result).Status);
+    }
+
+    [Fact]
+    public void NodePresence_PrefersSharedDeviceIdOverEarlierOperatorPresence()
+    {
+        var operatorPresence = Presence(deviceId: "dev-1", host: "PC", mode: "ui");
+        var nodePresence = Presence(deviceId: "dev-1", host: "PC", mode: "node");
+        var n = Node("dev-1", isOnline: true);
+
+        var result = InstanceMerger.Merge(new[] { n }, new[] { operatorPresence, nodePresence }, Options());
+        var operatorRow = result.Single(row => row.Presence == operatorPresence);
+        var nodeRow = result.Single(row => row.Presence == nodePresence);
+
+        Assert.Null(operatorRow.Node);
+        Assert.False(operatorRow.CanManageNode);
+        Assert.Same(n, nodeRow.Node);
+        Assert.True(nodeRow.CanManageNode);
+    }
 
     // ── Match strategies ──────────────────────────────────────────────────
 

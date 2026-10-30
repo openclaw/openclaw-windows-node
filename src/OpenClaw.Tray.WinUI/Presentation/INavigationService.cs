@@ -2,13 +2,13 @@ namespace OpenClawTray.Presentation;
 
 /// <summary>
 /// Navigation surface that future page view models depend on so they can request
-/// navigation without referencing <c>HubWindow</c> or any WinUI type.
+/// navigation without referencing the window host or any WinUI type.
 /// </summary>
 /// <remarks>
-/// <c>HubWindow</c> remains the single owner of frame navigation, back-stack, rail
-/// selection, and dedupe. This service forwards tag-based navigation to that existing
-/// path (via <c>IAppCommands</c>/HubWindow), so it is additive and does not change
-/// current navigation behavior.
+/// <c>WorkspaceWindow</c> (through <c>WorkspaceNavigationHistory</c>) is the single owner of
+/// back-stack and dedupe for chat and Settings; <c>SettingsShellView</c> owns the Settings rail
+/// and frame. This service forwards tag-based navigation to that path (via
+/// <c>IAppCommands</c>/<c>WindowManager</c>).
 /// </remarks>
 public interface INavigationService
 {

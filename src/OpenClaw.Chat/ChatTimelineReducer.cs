@@ -59,12 +59,19 @@ public static class ChatTimelineReducer
         };
     }
 
-    public static ChatTimelineState Apply(ChatTimelineState state, ChatEvent evt)
+    public static ChatTimelineState Apply(ChatTimelineState state, ChatEvent evt, DateTimeOffset? timestamp = null)
     {
-        return evt switch
+        var next = evt switch
         {
             ChatUserMessageEvent e => ApplyUserMessage(state, e),
-            ChatThinkingEvent => state with { TurnActive = true },
+            ChatThinkingEvent e => state with
+            {
+                TurnActive = true,
+                RunUsage = string.IsNullOrWhiteSpace(e.RunId) ? state.RunUsage
+                    : state.RunUsage?.RunId == e.RunId ? state.RunUsage : new(e.RunId),
+            },
+            ChatProgressEvent e => state with { ProgressText = e.Text },
+            ChatRunUsageEvent e => ApplyRunUsage(state, e),
             ChatReasoningEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: true),
             ChatReasoningDeltaEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: false),
             ChatReasoningEndEvent => state.ActiveReasoningId is null ? state : state with { ActiveReasoningId = null },
@@ -76,6 +83,7 @@ public static class ChatTimelineReducer
             ChatToolStartEvent e => ApplyToolStart(state, e),
             ChatToolPresentationEvent e => ApplyToolPresentation(state, e),
             ChatToolOutputEvent e => ApplyToolOutput(state, e),
+            ChatToolProgressEvent e => ApplyToolProgress(state, e),
             ChatToolErrorEvent e => ApplyToolError(state, e),
             ChatToolReplayResetEvent => ClearToolReplayState(state),
             ChatErrorEvent e => PushEntry(ApplyTurnEnd(state), ChatTimelineItemKind.Status, e.Text, ChatTone.Error),
@@ -87,9 +95,27 @@ public static class ChatTimelineReducer
             ChatRawEvent e => e.Text is { Length: > 0 } t ? PushEntry(state, ChatTimelineItemKind.Raw, t) : state,
             _ => state
         };
+        if (!state.TurnActive && next.TurnActive)
+        {
+            if (timestamp is not null)
+                next = next with { TurnStartedAt = timestamp, TurnEndedAt = null };
+            if (evt is not ChatThinkingEvent started || string.IsNullOrWhiteSpace(started.RunId))
+                next = next with { RunUsage = null };
+        }
+        if (state.TurnActive && !next.TurnActive)
+            next = next with { TurnEndedAt = timestamp, ProgressText = null };
+        if (evt is ChatMessageDeltaEvent or ChatReasoningDeltaEvent or ChatToolStartEvent)
+            next = next with { ProgressText = null };
+        return next;
     }
 
-    public static ChatTimelineState AddLocalUser(ChatTimelineState state, string text, string nonce)
+    private static ChatTimelineState ApplyRunUsage(ChatTimelineState state, ChatRunUsageEvent evt) =>
+        state.RunUsage is { } usage && usage.RunId == evt.RunId
+        && evt.OutputTokens >= 0 && evt.Sequence > usage.Sequence
+            ? state with { RunUsage = usage with { OutputTokens = evt.OutputTokens, Sequence = evt.Sequence } }
+            : state;
+
+    public static ChatTimelineState AddLocalUser(ChatTimelineState state, string text, string nonce, DateTimeOffset? timestamp = null)
     {
         // User message = hard turn boundary. Must apply BEFORE appending the
         // new user entry so a future reconcile-flagged final can't fast-path-
@@ -112,14 +138,20 @@ public static class ChatTimelineReducer
             Entries = state.Entries.Add(new(id, ChatTimelineItemKind.User, text)),
             LocalNonces = localNonces.Add(nonce),
             NextId = state.NextId + 1,
-            TurnActive = true
+            TurnActive = true,
+            TurnStartedAt = timestamp,
+            TurnEndedAt = null,
+            ProgressText = null
         };
     }
 
-    public static ChatTimelineState BeginLocalUserTurn(ChatTimelineState state)
+    public static ChatTimelineState BeginLocalUserTurn(ChatTimelineState state) =>
+        BeginLocalUserTurn(state, null);
+
+    public static ChatTimelineState BeginLocalUserTurn(ChatTimelineState state, DateTimeOffset? timestamp)
     {
         state = ClearStreamingAtTurnBoundary(state);
-        return state with { TurnActive = true };
+        return state with { TurnActive = true, TurnStartedAt = timestamp, TurnEndedAt = null, ProgressText = null };
     }
 
     // Hard turn boundary cleanup shared by both user-message entry points
@@ -164,7 +196,8 @@ public static class ChatTimelineReducer
         {
             Entries = entries,
             ActiveAssistantId = null,
-            ActiveReasoningId = null
+            ActiveReasoningId = null,
+            RunUsage = null,
         };
     }
 
@@ -571,6 +604,31 @@ public static class ChatTimelineReducer
 
     static ChatTimelineState ApplyToolOutput(ChatTimelineState state, ChatToolOutputEvent e) =>
         ApplyToolOutcome(state, e.Text, e.ToolCallId, e.RunId, ChatToolCallStatus.Success);
+
+    static ChatTimelineState ApplyToolProgress(ChatTimelineState state, ChatToolProgressEvent e)
+    {
+        if (string.IsNullOrWhiteSpace(e.ToolCallId) || string.IsNullOrEmpty(e.Text))
+            return state;
+        var key = ResolveBufferedCorrelationKey(state, e.RunId, e.ToolCallId);
+        var (entries, id) = ResolveToolEntry(state, key);
+        var index = id is null ? -1 : entries.FindIndex(entry => entry.Id == id);
+        if (index < 0 || entries[index].ToolResult != ChatToolCallStatus.InProgress
+            || (e.Sequence > 0 && e.Sequence <= entries[index].ToolProgressSequence))
+            return state;
+        var entry = entries[index];
+        var output = e.Append ? (entry.ToolOutput ?? "") + e.Text : e.Text;
+        // Streaming output is a bounded preview; terminal results own the final text.
+        if (output.Length > 64 * 1024)
+            output = output[..(64 * 1024)] + "\n[Output truncated]";
+        return state with
+        {
+            Entries = entries.SetItem(index, entry with
+            {
+                ToolOutput = output,
+                ToolProgressSequence = Math.Max(entry.ToolProgressSequence, e.Sequence),
+            }),
+        };
+    }
 
     static ChatTimelineState ApplyToolError(ChatTimelineState state, ChatToolErrorEvent e) =>
         ApplyToolOutcome(

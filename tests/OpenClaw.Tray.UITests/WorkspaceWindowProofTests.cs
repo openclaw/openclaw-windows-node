@@ -186,8 +186,9 @@ public sealed class WorkspaceWindowProofTests
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme, initialRoute: "settings");
         var root = AutomationElement.FromHandle(app.HubWindowHandle);
-        Assert.Equal("OpenClaw Settings", root.Current.Name);
-        var title = Find(root, "SettingsTitleBar").Current.BoundingRectangle;
+        Assert.Null(root.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNavigation")));
+        var title = Find(root, "WorkspaceTitleBar").Current.BoundingRectangle;
         var toggle = Find(root, "SettingsTogglePane").Current.BoundingRectangle;
         var search = Find(root, "SettingsSearch").Current.BoundingRectangle;
         var back = Find(root, "SettingsBack").Current.BoundingRectangle;
@@ -196,9 +197,10 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal(toggle.Top, search.Top);
         Assert.Equal(toggle.Top, back.Top);
         Assert.Equal(toggle.Top, forward.Top);
-        Assert.True(search.Left >= toggle.Right);
-        Assert.True(back.Left >= search.Right);
+        // The window-level history pair sits between the pane toggle and the search button, without overlap.
+        Assert.True(back.Left >= toggle.Right, $"Back {back} overlaps pane toggle {toggle}");
         Assert.True(forward.Left >= back.Right);
+        Assert.True(search.Left >= forward.Right, $"Search {search} overlaps Forward {forward}");
         Assert.False(Find(root, "SettingsForward").Current.IsEnabled);
         await VerifySettingsFooterAsync(root, compact: false);
         await app.NavigateAsync("permissions", "PermissionsPage", "PermissionsPageMarker");
@@ -240,6 +242,11 @@ public sealed class WorkspaceWindowProofTests
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Current.HasKeyboardFocus);
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
+        Find(root, "SettingsTogglePane").SetFocus();
+        System.Windows.Forms.SendKeys.SendWait("^f");
+        await WaitUntilAsync(() => SearchBox() is not null);
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        await WaitUntilAsync(() => SearchBox() is null);
         Invoke(Find(root, "SettingsTogglePane"));
         await WaitUntilAsync(() => IsVisible(root, "SettingsSearch"));
         await VerifySettingsFooterAsync(root, compact: false);
@@ -263,7 +270,7 @@ public sealed class WorkspaceWindowProofTests
             new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsNotifications")));
         var statusBounds = status.Current.BoundingRectangle;
         var settingsBounds = Find(root, "SettingsNavSettings").Current.BoundingRectangle;
-        Assert.True(statusBounds.Top > Find(root, "SettingsTitleBar").Current.BoundingRectangle.Bottom);
+        Assert.True(statusBounds.Top > Find(root, "WorkspaceTitleBar").Current.BoundingRectangle.Bottom);
         Assert.True(statusBounds.Bottom <= settingsBounds.Top, $"Status {statusBounds} overlaps Settings {settingsBounds}; compact={compact}");
         Assert.InRange(statusBounds.Left, settingsBounds.Left - 8, settingsBounds.Left + 8);
         var diagnostics = root.FindFirst(TreeScope.Descendants,
@@ -296,7 +303,7 @@ public sealed class WorkspaceWindowProofTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task SettingsChatLink_OpensWorkspaceWithoutChangingSettingsOrDiscardingDraft(bool useMouse)
+    public async Task SettingsChatLink_ReturnsToRetainedChatInSameWindow(bool useMouse)
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, syntheticData: true, initialRoute: null);
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
@@ -311,6 +318,7 @@ public sealed class WorkspaceWindowProofTests
         await app.NavigateAsync("workspace:notifications", "NotificationsPage", "NotificationsPageMarker");
         await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
         var settings = AutomationElement.FromHandle(app.HubWindowHandle);
+        Assert.Equal(workspaceHandle, app.HubWindowHandle);
         Assert.NotNull(Find(settings, "ConnectionDashboardButton"));
         Capture(app, "System", "connection-dashboard-card");
         ActivateChatLink();
@@ -319,18 +327,7 @@ public sealed class WorkspaceWindowProofTests
         var retained = Find(workspace, "ChatComposerInput");
         Assert.Equal(identity, retained.GetRuntimeId());
         Assert.Equal(draft, ((ValuePattern)retained.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
-        Assert.NotNull(Find(settings, "ConnectionPageMarker"));
-        ActivateChatLink();
-        await AssertChatForegroundAsync();
-        Assert.Equal(identity, Find(workspace, "ChatComposerInput").GetRuntimeId());
-        var window = (WindowPattern)workspace.GetCurrentPattern(WindowPattern.Pattern);
-        window.SetWindowVisualState(WindowVisualState.Minimized);
-        ActivateChatLink();
-        await AssertChatForegroundAsync();
-        Assert.NotEqual(WindowVisualState.Minimized, window.Current.WindowVisualState);
-        Assert.Equal(draft, ((ValuePattern)Find(workspace, "ChatComposerInput")
-            .GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
-        await app.RefocusWorkspaceAsync();
+        Assert.Equal(workspaceHandle, app.HubWindowHandle);
         Capture(app, "System", "settings-chat-link");
 
         void ActivateChatLink()
@@ -359,6 +356,57 @@ public sealed class WorkspaceWindowProofTests
     }
 
     [Fact]
+    public async Task ConfiguredFixtureChat_SettingsSections_GlobalBackForward_RetainSameWindowComposerDraftAndFocus()
+    {
+        // This provider has no Gateway connection, so use local Settings sections.
+        // Gateway-owned sections such as Usage are correctly pruned from disconnected history.
+        using var app = new AccessibilityAppFixture(initializeAxe: false, syntheticData: true, initialRoute: null);
+        await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
+        var workspaceHandle = app.HubWindowHandle;
+        var root = AutomationElement.FromHandle(workspaceHandle);
+        var composer = Find(root, "ChatComposerInput");
+        var identity = composer.GetRuntimeId();
+        const string draft = "Draft kept across Settings sections and global Back/Forward";
+        ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+        await FocusForKeyboardAsync(app, root, "ChatComposerInput");
+        Capture(app, "System", "retention-01-chat-draft");
+
+        await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
+        await app.NavigateAsync("permissions", "PermissionsPage", "PermissionsPageMarker");
+        Assert.Equal(workspaceHandle, app.HubWindowHandle);
+        Capture(app, "System", "retention-02-settings-permissions");
+
+        Invoke(Find(root, "SettingsBack"));
+        await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
+        Invoke(Find(root, "SettingsBack"));
+        await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
+        AssertComposerRetained();
+        await WaitUntilAsync(() => FindOrNull(root, "ChatComposerInput")?.Current.HasKeyboardFocus == true);
+        Capture(app, "System", "retention-03-back-restores-draft-focus");
+
+        Invoke(Find(root, "WorkspaceForward"));
+        await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
+        Assert.True(Find(root, "SettingsForward").Current.IsEnabled);
+        Invoke(Find(root, "SettingsForward"));
+        await WaitUntilAsync(() => IsVisible(root, "PermissionsPageMarker"));
+        Capture(app, "System", "retention-04-forward-restores-permissions");
+        Invoke(Find(root, "SettingsBack"));
+        await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
+        Invoke(Find(root, "SettingsBack"));
+        await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
+        AssertComposerRetained();
+        Assert.Equal(workspaceHandle, app.HubWindowHandle);
+        Capture(app, "System", "retention-05-back-restores-same-composer");
+
+        void AssertComposerRetained()
+        {
+            var retained = Find(root, "ChatComposerInput");
+            Assert.Equal(identity, retained.GetRuntimeId());
+            Assert.Equal(draft, ((ValuePattern)retained.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        }
+    }
+
+    [Fact]
     public async Task DefaultLaunchAndCompanionRefocus_PreserveNativeComposerDraft()
     {
         // Synthetic provider exercises the real composer without sending gateway traffic.
@@ -379,8 +427,10 @@ public sealed class WorkspaceWindowProofTests
         })
         {
             await app.NavigateAsync(route, page, marker);
-            Assert.NotEqual(workspace, app.HubWindowHandle);
-            await app.RefocusWorkspaceAsync();
+            Assert.Equal(workspace, app.HubWindowHandle);
+            var settingsRoot = AutomationElement.FromHandle(workspace);
+            Invoke(Find(settingsRoot, "SettingsBack"));
+            await WaitUntilAsync(() => IsVisible(settingsRoot, "ChatComposerInput"));
             Assert.Equal(workspace, app.HubWindowHandle);
             var retained = Find(AutomationElement.FromHandle(workspace), "ChatComposerInput");
             Assert.Equal(identity, retained.GetRuntimeId());
@@ -419,7 +469,8 @@ public sealed class WorkspaceWindowProofTests
         const string draft = "Continue a conversation after its last run finishes";
         ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
         await app.NavigateAsync("sessions", "SessionsPage", "SessionsPageMarker");
-        await app.RefocusWorkspaceAsync();
+        Invoke(Find(root, "SettingsBack"));
+        await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         await WaitUntilAsync(() => IsVisible(root, completedId));
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput")
             .GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
@@ -449,14 +500,14 @@ public sealed class WorkspaceWindowProofTests
         const string draft = "Keep the selected session draft while opening Settings";
         ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
         await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
-        Assert.NotEqual(workspace, app.HubWindowHandle);
-        await app.RefocusWorkspaceAsync();
         Assert.Equal(workspace, app.HubWindowHandle);
+        Invoke(Find(root, "SettingsBack"));
+        await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         await WaitUntilAsync(() => SelectionState(root, "WorkspaceSession:agent:main:fork") == true);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         var composerId = Find(root, "ChatComposerInput").GetRuntimeId();
         await FocusForKeyboardAsync(app, root, "WorkspaceTogglePane");
-        // This test covers session/draft preservation. NativePagesAndOwnerLinks_KeepCompanionIndependent
+        // This test covers session/draft preservation. NativePagesAndOwnerLinks_StayInOneWorkspaceWindow
         // separately requires Space activation and keyboard focus transfer after the Settings round-trip.
         Invoke(Find(root, "WorkspaceTogglePane"));
         await WaitUntilAsync(() => IsVisible(root, "WorkspaceReopenPane"));
@@ -471,9 +522,9 @@ public sealed class WorkspaceWindowProofTests
         await WaitUntilAsync(() => SelectionState(root, "WorkspaceSession:agent:main:fork") == true);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
-        // Reopening the isolated Sessions companion republishes its snapshot.
         await app.NavigateAsync("sessions", "SessionsPage", "SessionsPageMarker");
-        await app.RefocusWorkspaceAsync();
+        Invoke(Find(root, "SettingsBack"));
+        await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         await WaitUntilAsync(() => SelectionState(root, "WorkspaceSession:agent:main:fork") == true);
         await WaitUntilAsync(() => IsVisible(root, "WorkspaceNotifications"));
         Invoke(Find(root, "WorkspaceNotifications"));
@@ -493,8 +544,9 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         CaptureFlyout(root, theme, "owner-connection-status");
         Invoke(FindPopup(root, "GatewayStatusOpenConnection")!);
-        await WaitForMarkerAsync(root.Current.ProcessId, "ConnectionPageMarker", workspace);
-        await app.RefocusWorkspaceAsync();
+        await WaitUntilAsync(() => IsVisible(root, "ConnectionPageMarker"));
+        Invoke(Find(root, "SettingsBack"));
+        await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         Invoke(Find(root, "WorkspaceNotifications"));
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceNotificationsOpenPage") is not null);
@@ -516,13 +568,11 @@ public sealed class WorkspaceWindowProofTests
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
-    public async Task NativePagesAndOwnerLinks_KeepCompanionIndependent(string theme)
+    public async Task NativePagesAndOwnerLinks_StayInOneWorkspaceWindow(string theme)
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme, syntheticData: false);
-        var companion = app.HubWindowHandle;
         await app.NavigateAsync("chat", "ChatPage", "WorkspaceOwner");
         var workspace = app.HubWindowHandle;
-        Assert.NotEqual(companion, workspace);
         var workspaceElement = AutomationElement.FromHandle(workspace);
         var pid = workspaceElement.Current.ProcessId;
         var owner = Find(workspaceElement, "WorkspaceOwner");
@@ -570,7 +620,6 @@ public sealed class WorkspaceWindowProofTests
             Assert.True(((SelectionItemPattern)Find(workspaceElement, "WorkspaceNavHome")
                 .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
             Assert.False(IsVisible(workspaceElement, "WorkspacePageHeading"));
-            Assert.False(Find(workspaceElement, "WorkspaceBack").Current.IsEnabled);
         }
         await app.NavigateAsync("workspace:notifications", "NotificationsPage", "WorkspaceNotifications");
         Capture(app, theme, "notifications");
@@ -583,16 +632,17 @@ public sealed class WorkspaceWindowProofTests
             ("About OpenClaw", "about", "SettingsPage", "SettingsPageMarker")
         })
         {
-            await app.RefocusWorkspaceAsync();
+            await app.NavigateAsync("workspace:home", "ChatPage", "WorkspaceNavHome");
             Invoke(Find(AutomationElement.FromHandle(workspace), "WorkspaceOwner"));
             Assert.True(WaitForMenuItem(pid, "Get apps").Current.IsEnabled);
             Invoke(WaitForMenuItem(pid, label));
-            var destination = await WaitForMarkerAsync(pid, marker, workspace);
-            Assert.Equal(companion, new IntPtr(destination.Current.NativeWindowHandle));
-            Assert.NotNull(Find(AutomationElement.FromHandle(workspace), "WorkspaceOwner"));
-            // The explicit route is also exercised to verify focus/reuse and readiness.
+            var destination = await WaitForMarkerAsync(pid, marker, IntPtr.Zero);
+            Assert.Equal(workspace, new IntPtr(destination.Current.NativeWindowHandle));
+            Assert.Single(ProcessWindows(pid).Cast<AutomationElement>(),
+                window => window.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsBack")) is not null);
             await app.NavigateAsync(route, page, marker);
-            Assert.Equal(companion, app.HubWindowHandle);
+            Assert.Equal(workspace, app.HubWindowHandle);
             Capture(app, theme, route);
         }
         foreach (var (route, page, marker) in new[]
@@ -603,12 +653,8 @@ public sealed class WorkspaceWindowProofTests
         })
         {
             await app.NavigateAsync(route, page, marker);
-            Assert.Equal(companion, app.HubWindowHandle);
+            Assert.Equal(workspace, app.HubWindowHandle);
         }
-        ((WindowPattern)AutomationElement.FromHandle(companion).GetCurrentPattern(WindowPattern.Pattern)).Close();
-        Assert.NotNull(Find(AutomationElement.FromHandle(workspace), "WorkspaceOwner"));
-        await app.NavigateAsync("usage", "UsagePage", "UsagePageMarker");
-        Assert.NotEqual(workspace, app.HubWindowHandle);
         await app.NavigateAsync("workspace:home", "ChatPage", "WorkspaceNavHome");
         Assert.Equal(workspace, app.HubWindowHandle);
 
@@ -711,8 +757,9 @@ public sealed class WorkspaceWindowProofTests
         Assert.True(WaitForMenuItem(pid, "GitHub").Current.IsEnabled);
         ((ExpandCollapsePattern)help.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
         Invoke(WaitForMenuItem(pid, "Settings"));
-        Assert.NotNull(await WaitForMarkerAsync(pid, "SettingsPageMarker", workspace));
-        await app.RefocusWorkspaceAsync();
+        Assert.NotNull(await WaitForMarkerAsync(pid, "SettingsPageMarker", IntPtr.Zero));
+        Invoke(Find(workspaceElement, "SettingsBack"));
+        await WaitUntilAsync(() => IsVisible(workspaceElement, "WorkspaceTogglePane"));
         await FocusForKeyboardAsync(app, workspaceElement, "WorkspaceTogglePane");
         System.Windows.Forms.SendKeys.SendWait(" ");
         await WaitUntilAsync(() => IsVisible(workspaceElement, "WorkspaceReopenPane") &&
@@ -848,7 +895,7 @@ public sealed class WorkspaceWindowProofTests
         {
             foreach (AutomationElement window in ProcessWindows(pid))
             {
-                if (new IntPtr(window.Current.NativeWindowHandle) == exclude) continue;
+                if (exclude != IntPtr.Zero && new IntPtr(window.Current.NativeWindowHandle) == exclude) continue;
                 if (window.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty, marker)) is not null)
                     return window;

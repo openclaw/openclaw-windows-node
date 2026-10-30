@@ -881,6 +881,81 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         });
     }
 
+    [Theory]
+    [InlineData(320)]
+    [InlineData(800)]
+    public async Task ActiveRun_AfterAssistantPreamble_KeepsClawAndElapsedTimeVisible(int width)
+    {
+        await WithChatAsync(width, async (surface, host, _, provider) =>
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                var scale = surface.XamlRoot.RasterizationScale;
+                _captureWindow!.AppWindow.Resize(new(
+                    (int)Math.Ceiling(surface.Width * scale) + 32,
+                    (int)Math.Ceiling(surface.Height * scale) + 80));
+            });
+            var snapshot = await provider.LoadAsync();
+            var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "Investigate", "progress",
+                DateTimeOffset.UtcNow.AddSeconds(-65));
+            state = ChatTimelineReducer.Apply(state, new ChatThinkingEvent("", "proof-run"));
+            state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("I will inspect the project."));
+            state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("proof-run", 120, 3));
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = state },
+            }));
+            await SettleAsync();
+            var before = await ui.RunOnUIAsync(() => Task.FromResult(
+                FindControl<TextBlock>(host, "ChatRunProgressText").Text));
+            await ui.RunOnUIAsync(() =>
+                Assert.Contains("Responding", AutomationProperties.GetName(FindControl<TextBlock>(host, "ChatRunProgressText"))));
+            Assert.Contains("1m", before);
+            Assert.Contains("120 output tokens", before);
+            await Task.Delay(1200);
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.NotEqual(before, FindControl<TextBlock>(host, "ChatRunProgressText").Text);
+                Assert.NotNull(FindControl<Grid>(host, "ChatRunProgressClaw"));
+                var text = FindControl<TextBlock>(host, "ChatRunProgressText");
+                var bounds = text.TransformToVisual(surface).TransformBounds(new(0, 0, text.ActualWidth, text.ActualHeight));
+                Assert.InRange(bounds.Right, 1, surface.ActualWidth);
+            });
+            await CaptureAsync(surface, $"Reactor-streaming-after-preamble-{width}");
+            state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent(), DateTimeOffset.UtcNow);
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = state },
+            }));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+                Assert.DoesNotContain(RealizedTimelineElements<FrameworkElement>(host), element =>
+                    AutomationProperties.GetAutomationId(element).StartsWith("ChatRunProgress", StringComparison.Ordinal)));
+            state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("proof-run", 125, 4));
+            Assert.Equal(125, state.RunUsage!.OutputTokens);
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = state },
+            }));
+            await Task.Delay(1200);
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+                Assert.DoesNotContain(RealizedTimelineElements<FrameworkElement>(host), element =>
+                    AutomationProperties.GetAutomationId(element).StartsWith("ChatRunProgress", StringComparison.Ordinal)));
+            await CaptureAsync(surface, $"Reactor-run-completed-{width}");
+
+            state = ChatTimelineReducer.AddLocalUser(state, "Continue", "next-turn", DateTimeOffset.UtcNow);
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = state },
+            }));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+                Assert.DoesNotContain("output tokens", FindControl<TextBlock>(host, "ChatRunProgressText").Text));
+        });
+    }
+
     [Fact]
     public async Task ComposerInput_FixtureObservationSurvivesNarrowLayoutChanges()
     {
@@ -1179,8 +1254,11 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     private static IEnumerable<TextBlock> RealizedTimelineText(DependencyObject root) =>
-        FindDescendants<TextBlock>(Assert.Single(FindDescendants<ItemsView>(root)))
-            .Where(text => Ancestors(text).OfType<ItemContainer>().FirstOrDefault() is { } container
+        RealizedTimelineElements<TextBlock>(root);
+
+    private static IEnumerable<T> RealizedTimelineElements<T>(DependencyObject root) where T : DependencyObject =>
+        FindDescendants<T>(Assert.Single(FindDescendants<ItemsView>(root)))
+            .Where(element => Ancestors(element).OfType<ItemContainer>().FirstOrDefault() is { } container
                 && VisualTreeHelper.GetParent(container) is ItemsRepeater repeater
                 && repeater.GetElementIndex(container) >= 0);
 
@@ -1312,6 +1390,56 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 AssertCentered(surface, composer, Ancestors(paragraph).OfType<Border>().First());
                 Assert.Same(originalInput, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Contains("A second line.", originalInput.Text, StringComparison.Ordinal);
+            });
+        });
+    }
+
+    [Fact]
+    public async Task ComposerStatusRows_KeepNativeInputCaretAndToolbar()
+    {
+        await WithChatAsync(480, async (surface, _, session, _) =>
+        {
+            var input = await ui.RunOnUIAsync(() => Task.FromResult(
+                FindControl<TextBox>(surface, "ChatComposerInput")));
+            var picker = await ui.RunOnUIAsync(() => Task.FromResult(
+                FindControl<Button>(surface, "ChatComposerModelPicker")));
+            var attachment = new OpenClaw.Shared.ChatAttachment
+            {
+                FileName = "proof.txt", MimeType = "text/plain", Content = "cHJvb2Y=",
+            };
+            const string transcript = "Synthetic recording status.";
+            void AssertStableComposer()
+            {
+                Assert.Same(input, FindControl<TextBox>(surface, "ChatComposerInput"));
+                Assert.Same(picker, FindControl<Button>(surface, "ChatComposerModelPicker"));
+                Assert.Equal(Draft, input.Text);
+                Assert.Equal(Draft, session.ViewModel.Draft);
+                Assert.Equal((5, 7), (input.SelectionStart, input.SelectionLength));
+            }
+
+            await ui.RunOnUIAsync(() =>
+            {
+                input.Select(5, 7);
+                session.ViewModel.SetVoiceTranscript(transcript);
+                session.ViewModel.SetRecording(true);
+                session.ViewModel.AddAttachments([attachment]);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                AssertStableComposer();
+                Assert.Contains(FindDescendants<TextBlock>(surface), text => text.Text == transcript);
+                Assert.NotNull(FindControl<ScrollViewer>(surface, "ChatAttachmentRail"));
+                session.ViewModel.SetRecording(false);
+                session.ViewModel.RemoveAttachment(attachment);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                AssertStableComposer();
+                Assert.DoesNotContain(FindDescendants<TextBlock>(surface), text => text.Text == transcript);
+                Assert.DoesNotContain(FindDescendants<ScrollViewer>(surface),
+                    scroll => AutomationProperties.GetAutomationId(scroll) == "ChatAttachmentRail");
             });
         });
     }
@@ -2878,7 +3006,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     private static bool HasCheck(Button button) =>
         FindDescendants<TextBlock>(button).Any(text => text.Text == FluentIconCatalog.Check);
 
-    private static double Luminance(global::Windows.UI.Color color)
+    internal static double Luminance(global::Windows.UI.Color color)
     {
         static double Linear(byte channel)
         {

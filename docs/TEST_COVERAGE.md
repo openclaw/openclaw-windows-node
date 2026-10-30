@@ -106,6 +106,28 @@ shared thread-pool scheduling latency.
 
 ### Additional projects
 
+Gateway cleanup task registration, refresh, quoting and failure propagation run
+in the ordinary SetupEngine suite. The registration fixture replaces only the
+persistence boundary and cannot register a real scheduled task. The two desktop
+visibility tests use the existing integration opt-in because their positive
+control deliberately displays a classic console. Run them on an interactive
+Windows desktop without concurrent desktop automation:
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_RUN_INTEGRATION = '1'
+dotnet test .\tests\OpenClaw.SetupEngine.Tests\OpenClaw.SetupEngine.Tests.csproj --no-restore --filter 'FullyQualifiedName~GatewayCleanupTaskTests'
+```
+
+The visibility contract is no on-screen visible window or taskbar entry, not
+absence of an HWND. WinEvent observations and periodic window sampling cover
+startup through worker exit; native UI Automation checks the shell taskbar,
+including visible custom-shell surfaces when present. The visible-console positive control
+must be detected by both window observers and actual taskbar enumeration.
+Unavailable shell/provider access fails the selected proof instead of treating
+a window-style heuristic as taskbar evidence. Sampling gaps remain a limit of
+the measurement, not proof that an arbitrarily short transient is impossible.
+
 The chat composer's real keyboard regression is opt-in because it uses Windows
 `SendInput` on a visible, focused proof window. Run it only on an isolated
 interactive desktop with no concurrent computer-use or human input, Caps Lock
@@ -172,6 +194,41 @@ Capacity-dependent Windows validation is named in
 [`PROOF_POOLS.md`](./PROOF_POOLS.md). Pull requests declare the exact pool IDs
 they need. A declaration does not claim that the pool ran, and unavailable
 proof must remain reported as blocked.
+
+### Choose the local execution target
+
+Choose by the behavior under test, not merely a name containing `Mxc`.
+This is testing guidance, not automatic CI migration, host reservation or a new
+scheduler. Keep mandatory code-change closeout and every applicable proof pool.
+
+| Behavior to prove | Default target and boundary |
+|---|---|
+| Build, unit/component logic, pure MXC policy and mocked capabilities | Task-owned host worktree with isolated test settings; no VM needed solely because the code concerns MXC |
+| App layout, navigation, chat/history and fixture-covered client behavior | [Isolated app with the deterministic fixture Gateway](GATEWAY_FIXTURE_TESTING.md); cheapest app-only default, not real pairing, node invocation or MXC proof |
+| Isolated test builds needing a real native Gateway, including single-instance and multi-instance E2E | [Task-owned builds with named side-by-side development patches](../.agents/skills/native-gateway-from-source/SKILL.md#prepare-an-isolated-test-build) on one authorized, capable Windows 11 client host with Developer Mode; separate packages/sessions/profiles/ports, not one Hyper-V VM per Gateway |
+| Integration with an existing Gateway | Explicitly operator-approved endpoint and operations, with a task-owned app profile; discovery is not permission to reconfigure, restart or use a shared runtime |
+| Clean-machine/image, signed-package install/upgrade, genuine OS isolation or unavailable host capabilities | Separate reusable local or approved cloud Windows client VM; development patches do not prove signed Store/MSIX lifecycle |
+| Required WSL Gateway or MXC `system.run` path | Existing real WSL suite, including `.\scripts\validate-mxc-e2e.ps1` where required, on an authorized capable host/VM; native patch startup does not replace it |
+
+The named-patch default also applies when selecting future cloud native-Gateway
+E2E targets, after actual Windows client/session/listener capabilities are
+qualified. Do not assume `windows-latest` or Windows Server is MXC-ready or
+claim the cloud lane ran. Unsupported or skipped proof remains blocked.
+
+For real native Gateway tests, build Companion in the task-owned worktree and
+prepare the Gateway with an explicit unique `-Patch` and task-owned `-WorkRoot`.
+Launch that binary with `OPENCLAW_NATIVE_GATEWAY_DEV_PATCH` and separate app
+data. `run-app-local.ps1 -Isolated` alone isolates only the app profile; it does
+not allocate a unique Gateway and can reuse the shared `npm-latest` slot.
+Keep fixture-only app tests on the cheaper synthetic path.
+
+Serialize deployment/cache mutation and initial port selection/startup, then
+allow independent already-prepared instances to serve concurrent tests within
+host capacity. Package separation does not remove CPU/RAM costs, isolate the OS,
+or grant concurrent desktop-input ownership. Use unique task-owned names, explicit
+Companion patch selection, distinct app data/endpoints and ownership-checked
+cleanup as described in the canonical skill. Never stop another task's runtime
+or copy the user's profile/credentials to make a test pass.
 
 ### Explain the validation plan
 

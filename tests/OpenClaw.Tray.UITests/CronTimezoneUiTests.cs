@@ -139,6 +139,9 @@ public sealed partial class GatewayFixtureUiTests
         await WaitUiAsync(run, () => FindCronControl(run, id) is { } updated
             && ((SelectionPattern)updated.GetCurrentPattern(SelectionPattern.Pattern))
                 .Current.GetSelection().SingleOrDefault()?.Current.Name == name, $"selected cron option {name}");
+        if (id == "FormScheduleKind" && name == "Cron")
+            await WaitUiAsync(run, () => FindCronControl(run, "FormCronExpr") is not null,
+                "mounted cron expression editor");
     }
 
     private async Task SaveCronAsync(GatewayFixtureRun run, GatewayScenario scenario, string id, string? timezone,

@@ -4,6 +4,12 @@ Workspace's ChatPage uses native Reactor/WinUI controls. This
 presentation follows the reading rhythm of the published 2026.9.4 web chat
 (source `3a9d69db306cd7f081e06254cb89c4bcc14a7107`) without
 replacing Windows chrome, native input, or gateway contracts.
+The question dock geometry and working claw motion additionally follow the
+October 2026 Control UI at `db2d951fd047a9e6a03b73d41c8e5757506dedf9`.
+Backplates and accents stay native: WinUI owns the surfaces and Windows supplies
+the accent color, rather than the web client's orange/red palette.
+This source-derived presentation does not imply pixel-identical macOS text
+rasterization, a copied user avatar or the web client's personalized background.
 
 ## Geometry and typography
 
@@ -18,7 +24,8 @@ leave prose centered. Accessible sender and footer identity remain.
 The writing surface uses a 20-pixel corner radius, 16-pixel editor inset, and a
 112-pixel minimum height. Message and code surfaces use 12-pixel corners.
 These are chat surface tokens, not replacements for standard control radii.
-All layout spacing is on the 4-pixel grid.
+General layout spacing is on the 4-pixel grid. The question dock preserves the
+upstream 7/9/11/14-pixel option gaps, insets and typography instead.
 
 Prose uses native body type at 14 pixels with 21-pixel line height. Headings
 use 24/20/16 pixels for H1/H2/H3 and below. Top-level blocks use one uniform
@@ -46,27 +53,36 @@ aliases. Other Send glyph aliases are unchanged.
 ## Theme resources
 
 `Themes/ChatResources.xaml` owns the following semantic aliases in Default
-(Dark), Light, and HighContrast. No web colors or external fonts are imported.
+(Dark), Light, and HighContrast. Chat retains native WinUI surfaces, text and
+Windows accent colors; the web reference supplies geometry and motion, not colors.
 
-| Resource | Native source |
+| Resource | Source / mapping |
 |---|---|
-| `ChatCanvasBrush` | Transparent; system window in HC |
-| `ChatComposerBrush` | `CardBackgroundFillColorDefault` |
-| `ChatCardBrush` | `CardBackgroundFillColorDefault` |
-| `ChatStrokeBrush` | `ControlStrokeColorDefault` |
-| `ChatTextBrush` | `TextFillColorPrimary` |
-| `ChatSecondaryTextBrush` | `TextFillColorSecondary` |
+| `ChatCanvasBrush` | Transparent over the original WinUI content layer; system window in HC |
+| `ChatComposerBrush`, `ChatCardBrush` | `CardBackgroundFillColorDefault`; system window in HC |
+| `ChatStrokeBrush`, `ChatQuestionCardStrokeBrush` | `ControlStrokeColorDefault`; system window text in HC |
+| `ChatTextBrush`, `ChatStrongTextBrush` | `TextFillColorPrimary`; system window text in HC |
+| `ChatSecondaryTextBrush` | `TextFillColorSecondary`; system window text in HC |
+| `ChatClawBrush` | Light/dark Windows accent variants; system window text in HC |
+| `ChatQuestionOptionBrush`, `ChatQuestionOptionHoverBrush` | Native default/secondary control fills; system window in HC |
+| `ChatQuestionSelectedBrush`, `ChatQuestionSelectedStrokeBrush` | Windows accent tint and stroke; system window/highlight in HC |
+| `ChatQuestionSubmitStyle` | Native accent fill and text-on-accent brushes, including system HC mappings |
 | `ChatUserBrush` | Windows accent at low opacity; full system highlight in HC |
 | `ChatPendingUserBrush` | Transparent in every theme, revealing the conversation background |
 | `ChatUserTextBrush` | Primary text; system highlight text in HC |
 | `ChatRichTextStyle` | Native rich-text Foreground binding to `ChatTextBrush` |
 | `ChatCodeTextStyle` | Native code Foreground binding to `ChatSecondaryTextBrush` |
+| `ChatSecondaryTextStyle` | Native progress/result TextBlock binding to `ChatSecondaryTextBrush` |
+| `ChatQuestionCardStyle` | Native question Border bindings to card fill and question-specific stroke |
 | `ChatCopySuccessBrush` | `SystemFillColorSuccess`; system window text in HC |
 | `ChatPickerAccentBrush` | Light/dark system accent variants; system window text in HC |
 | `ChatSandboxOnBrush` | Light/dark system accent variants; system window text in HC |
 
 HC maps surfaces, strokes and text to system window/button/highlight colors.
 An HC resource simulation is not evidence that Windows HC mode was enabled.
+Progress text and question cards use native style setters rather than copying a
+Reactor-resolved brush. This preserves element-local Light/Dark/HC theme lookup
+and avoids light-theme colors on a dark question surface.
 
 Window layering follows WinUI Gallery: the Workspace title bar and expanded navigation
 pane reveal Mica, while `NavigationViewContentBackground` supplies one content
@@ -90,6 +106,39 @@ click or key press at the tail keeps following new replies. The correction
 rechecks follow eligibility at dispatch so a newer UI Automation scroll-away also
 takes precedence. Session replacement, unload, and disposal fence late callbacks.
 Native bottom anchoring and the existing follow threshold are unchanged.
+
+Pending agent questions replace the writing surface visually, not structurally.
+The same mounted composer and unsent draft return when the question is collapsed
+or resolved. Expanding the dock cancels voice capture and rejects late transcripts
+without changing the unsent draft or attachments. Hidden composers cannot start
+voice capture, including through host shortcuts. The dock uses a 20-pixel radius, 14-pixel padding, numbered full-width
+native radio/checkbox options with descriptions, inline free text, a question
+counter, collapse, request navigation, and right-aligned Skip/Submit actions.
+One question is shown at a time. Single-choice selection advances, Back preserves
+answers, digits 1-9 select outside text inputs, and Ctrl+Enter advances/submits.
+Enter within free text inserts a line; radio arrow navigation selects without
+advancing. Submission snapshots the current answers at invocation rather than
+reusing an earlier render's values. The dock is bounded by `min(58% of viewport height, 576 pixels)` and
+scrolls rather than clipping actions. Native automation peers and high-contrast
+colors remain in use. The coordinator alone owns answer and cancellation RPCs.
+A confirmed answer dismisses the dock without leaving a persistent success row.
+Pending or unconfirmed questions and cancellation, expiry, and unavailable
+feedback retain their existing presentation.
+
+The 18-pixel working claw uses the upstream filled SVG paths, jaw pivot
+`(8.6, 11)`, 2.4-second double-snip keyframes and CSS cubic-bezier timing.
+All twelve seeded one-shot surprise motions retain their upstream order,
+5% selection threshold and 4.8-second delay. `ChatWorkingClawMotion` is the pure
+motion table; `NativeWorkingClaw` owns native rendering and its unload cleanup.
+The row enters over 200 milliseconds and displays elapsed time plus known output
+tokens. Phase remains in its accessible name without a per-second live-region
+announcement. Elapsed units, fallback-model status and incomplete-stream recovery
+copy use native localized resources. Shared recovery events carry a stable reason
+code so the native mapper does not translate arbitrary Gateway messages.
+Completed turns dismiss the working row; observed timing and usage
+remain in timeline state, and late usage updates do not bring the row back.
+Pending questions or approvals keep their waiting indicator until resolved.
+OS reduced motion disables the moving presentation.
 
 Queued submissions leave the textbox and remain after the current turn as normal
 right-aligned user bubbles. A transparent `ChatPendingUserBrush`, subtle `ChatStrokeBrush`
@@ -139,6 +188,8 @@ chats or starter prompts. It shares the 768-pixel reading width and responsive
 gutters. A native ScrollViewer makes the entire block reachable at short heights
 and large text scales. Existing transcripts keep the composer at the bottom.
 The composer's parent and input control survive the transition to a transcript.
+The editor and toolbar keep stable sibling keys when status, recording or
+attachment rows appear above them, preserving native input, caret and picker identity.
 The selected Gateway agent's `identity.name`, then `name`, then ID supplies the
 heading through the placement catalog; a session title is never used as an agent name.
 The agent avatar, name and guidance are horizontally centered. The avatar uses the

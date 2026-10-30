@@ -163,6 +163,8 @@ public sealed class MountedReactorChat(
 
     internal void CancelVoiceRecording() => session.Controller.CancelVoiceRecording();
 
+    internal void SetHostVisible(bool visible) => session.SetHostVisible(visible);
+
     public void AttachFiles(IReadOnlyList<ChatAttachment> attachments) =>
         callbacks.AttachFiles?.Invoke(attachments);
 

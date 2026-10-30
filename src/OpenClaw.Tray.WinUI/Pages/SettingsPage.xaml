@@ -12,7 +12,7 @@
     </Page.Resources>
 
     <Grid>
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto">
             <!--
                 Grid wrapper is required: ScrollViewer measures its direct
                 child with infinite available width, which makes

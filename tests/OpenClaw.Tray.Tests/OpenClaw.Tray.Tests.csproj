@@ -44,6 +44,11 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatGatewayBridge.cs" Link="Chat\IChatGatewayBridge.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatQuestionGateway.cs" Link="Chat\IChatQuestionGateway.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatQuestionCoordinator.cs" Link="Chat\ChatQuestionCoordinator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatQuestionDraft.cs" Link="Chat\ChatQuestionDraft.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatRunProgressPresentation.cs" Link="Chat\ChatRunProgressPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatWorkingClawMotion.cs" Link="Chat\ChatWorkingClawMotion.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\AssistantFileDownloadLauncher.cs" Link="Chat\AssistantFileDownloadLauncher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs" Link="Chat\ChatSurfaceResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\GatewayFixtureRenderObservation.cs" Link="Chat\GatewayFixtureRenderObservation.cs" />
@@ -56,6 +61,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAttachmentEchoCorrelation.cs" Link="Chat\ChatAttachmentEchoCorrelation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\GatewayMediaMessageProjection.cs" Link="Chat\GatewayMediaMessageProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatUsageFormatter.cs" Link="Chat\ChatUsageFormatter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatThroughputTracker.cs" Link="Chat\ChatThroughputTracker.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatMarkdownSanitizer.cs" Link="Chat\ChatMarkdownSanitizer.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatTelemetryTracker.cs" Link="Chat\ChatTelemetryTracker.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatLifecycleCommandDispatcher.cs" Link="Chat\ChatLifecycleCommandDispatcher.cs" />
@@ -275,12 +281,15 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\TrayMenuPresenter.cs" Link="Presentation\TrayMenuPresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubPageRegistry.cs" Link="Presentation\HubPageRegistry.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceNavigation.cs" Link="Presentation\WorkspaceNavigation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PendingRequestSlot.cs" Link="Presentation\PendingRequestSlot.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DeferredNavigation.cs" Link="Presentation\DeferredNavigation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ChatVisibilityPolicy.cs" Link="Presentation\ChatVisibilityPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceProjection.cs" Link="Presentation\WorkspaceProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSessionOrder.cs" Link="Presentation\WorkspaceSessionOrder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceItemsSync.cs" Link="Presentation\WorkspaceItemsSync.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSessionMenu.cs" Link="Presentation\WorkspaceSessionMenu.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WorkspaceIdentitySource.cs" Link="Services\WorkspaceIdentitySource.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\HubCommandExecutor.cs" Link="Services\HubCommandExecutor.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WorkspaceSessionOperation.cs" Link="Services\WorkspaceSessionOperation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ArchivedSessionsSource.cs" Link="Services\ArchivedSessionsSource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNotificationInfoBarPresenter.cs" Link="Presentation\AppNotificationInfoBarPresenter.cs" />

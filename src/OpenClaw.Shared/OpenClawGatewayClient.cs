@@ -16,8 +16,6 @@ public sealed record SessionUsageSnapshot(SessionInfo[] Sessions, long? Timestam
 
 public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 {
-    private const string OperatorClientId = "cli";
-    private const string OperatorClientMode = "cli";
     private const string OperatorRole = "operator";
     private static readonly Regex s_pairingRequestIdRegex = new("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", RegexOptions.Compiled);
     private static readonly string[] s_operatorScopes =
@@ -36,6 +34,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private static readonly string[] s_operatorBoundedBootstrapScopes =
     [
         "operator.approvals",
+        "operator.questions",
         "operator.read",
         "operator.talk.secrets",
         "operator.write"
@@ -49,6 +48,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private GatewayCostUsageInfo? _usageCost;
     private readonly PendingRequestRegistry _pendingRequests = new();
     private readonly object _sessionsLock = new();
+    private const int DefaultSessionRefreshWindowMs = 250;
+    private readonly object _sessionRefreshLock = new();
+    private CancellationTokenSource? _sessionRefreshCancellation;
+    private bool _sessionRefreshDirty;
+    private static TimeSpan SessionRefreshWindow => TimeSpan.FromMilliseconds(
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_SESSION_REFRESH_WINDOW_MS"), out var milliseconds)
+        && milliseconds is > 0 and <= 5000 ? milliseconds : DefaultSessionRefreshWindowMs);
     private readonly DeviceIdentity _deviceIdentity;
     private sealed record SigningIdentity(string RequestId, long Generation, string DeviceId);
     private SigningIdentity? _pendingSigningIdentity;
@@ -96,6 +102,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// Headless and validation clients must not advertise an approval delivery route.
     /// </summary>
     public bool SupportsExecApprovals { get; init; }
+
+    /// <summary>Wire identity of the operator connection; only the tray's interactive client opts out of CLI.</summary>
+    public OperatorClientIdentity ClientIdentity { get; init; } = OperatorClientIdentity.Cli;
 
     internal IConnectEnvelopeSigner ConnectEnvelopeSigner
     {
@@ -193,6 +202,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override Task OnConnectedAsync()
     {
+        CancelScheduledSessionRefresh();
         lock (_sessionsLock)
         {
             _sessionThinkingDefaults = null;
@@ -224,6 +234,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnDisconnected()
     {
+        CancelScheduledSessionRefresh();
         // Invalidate the handshake snapshot — the next hello-ok must
         // re-establish the canonical session key, scopes, etc. Without this,
         // a reconnect-after-server-restart could leave the tray sending to a
@@ -246,6 +257,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnDisposing()
     {
+        CancelScheduledSessionRefresh();
         Volatile.Write(ref _pendingSigningIdentity, null);
         Volatile.Write(ref _authenticatedSigningIdentity, null);
         _pendingRequests.Drain();
@@ -1674,7 +1686,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// Response-aware variant of <see cref="PatchConfigAsync"/>. Uses the
     /// wizard request mechanism (<see cref="SendWizardRequestAsync"/>) so we
     /// actually await the gateway's response and return a <see cref="ConfigPatchResult"/>
-    /// with the real error message on failure. The fire-and-forget
+    /// with safe failure classification, never remote error text. The fire-and-forget
     /// <see cref="PatchConfigAsync"/> stays for legacy callers that don't
     /// care about the gateway's reply.
     /// </summary>
@@ -1694,40 +1706,58 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         catch (Exception ex)
         {
-            // Sanitize before logging — the gateway sometimes echoes patched
-            // field values in validation errors, so logging ex.Message verbatim
-            // can leak secrets to the on-disk tray log (Hanselman review LOW-7).
-            // The full unsanitized message stays in ConfigPatchResult.Error so
-            // the UI banner can show it.
-            _logger.Warn($"config.patch failed: {SanitizeErrorForLog(ex.Message)}");
+            // Remote text can echo partial or transformed credentials. Retain only
+            // classification and let pages use their existing localized failure guidance.
+            using var submittedConfig = JsonDocument.Parse(raw);
+            var staleBaseHash = ConfigPatchResult.IsStaleBaseHashError(
+                SanitizeConfigPatchError(ex.Message, submittedConfig.RootElement));
+            _logger.Warn($"config.patch failed ({ex.GetType().Name}); staleBaseHash={staleBaseHash}");
             return new ConfigPatchResult
             {
                 Ok = false,
-                Error = ex.Message,
-                RawResponse = ex.ToString(),
+                TimedOut = ex is TimeoutException,
+                HasStaleBaseHashSignal = staleBaseHash,
             };
         }
     }
 
     /// <summary>
-    /// Best-effort scrub of a gateway error message before it lands in the
-    /// tray log: caps length and masks token-shaped values for the channel
-    /// credential keys we know about (botToken / signingSecret / webhookUrl
-    /// / nsec / privateKey / generic token|secret|key|password fields). The
-    /// gateway may put raw field values in validation errors, and the log
-    /// is persistent on disk — see Hanselman review LOW-7.
+    /// Remove known credentials before classifying a stale-hash failure.
+    /// This text is never returned or logged, since an echo need not be verbatim.
     /// </summary>
-    private static string SanitizeErrorForLog(string? raw)
+    private static string SanitizeConfigPatchError(string raw, JsonElement config)
     {
-        if (string.IsNullOrEmpty(raw)) return raw ?? "";
-        const int MaxLen = 500;
-        var truncated = raw.Length > MaxLen ? raw[..MaxLen] + "…(truncated)" : raw;
-        // Mask JSON-style "field": "value" pairs for sensitive field names.
-        truncated = System.Text.RegularExpressions.Regex.Replace(
-            truncated,
-            @"(""(?i:botToken|signingSecret|webhookUrl|nsec|privateKey|token|secret|apiKey|password)""\s*:\s*"")[^""]+("")",
-            "$1<redacted>$2");
-        return truncated;
+        var secrets = EnumerateConfigSecrets(config)
+            .Where(value => !string.IsNullOrEmpty(value))
+            .Distinct(StringComparer.Ordinal)
+            .OrderByDescending(value => value.Length);
+        foreach (var secret in secrets)
+            raw = raw.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
+        return TokenSanitizer.SanitizeLogMessage(raw);
+    }
+
+    private static IEnumerable<string> EnumerateConfigSecrets(JsonElement value, bool sensitive = false)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in value.EnumerateObject())
+                    foreach (var secret in EnumerateConfigSecrets(
+                        property.Value, sensitive || TokenSanitizer.IsSensitiveMetadataKeyName(property.Name)))
+                        yield return secret;
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in value.EnumerateArray())
+                    foreach (var secret in EnumerateConfigSecrets(item, sensitive))
+                        yield return secret;
+                break;
+            case JsonValueKind.String when sensitive:
+                var text = value.GetString()!;
+                yield return text;
+                yield return value.GetRawText()[1..^1];
+                yield return JsonSerializer.Serialize(text)[1..^1];
+                break;
+        }
     }
 
     // Agent methods
@@ -2136,7 +2166,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         catch (Exception ex)
         {
-            _logger.Warn($"web.login.start failed: {ex.Message}");
+            var error = ChannelLinkDiagnosticText.Redact(ex.Message);
+            _logger.Warn($"web.login.start failed: {error}");
             // Return a populated result with the error so the UI can surface
             // it in the diagnostic disclosure. Returning null would lose the
             // gateway's actual reason for failing.
@@ -2148,8 +2179,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             // the page pattern-matches on and shows to the user.
             return new WebLoginStartResult
             {
-                Error = ex.Message,
-                RawResponse = ex.Message,
+                Error = error,
+                RawResponse = error,
             };
         }
     }
@@ -2174,13 +2205,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         catch (Exception ex)
         {
-            _logger.Warn($"web.login.wait failed: {ex.Message}");
+            var error = ChannelLinkDiagnosticText.Redact(ex.Message, currentQrDataUrl);
+            _logger.Warn($"web.login.wait failed: {error}");
             // ex.Message, not ex.ToString(): keep the clean gateway reason and
             // avoid leaking an internal .NET stack trace into the UI (issue #957).
             return new WebLoginWaitResult
             {
-                Error = ex.Message,
-                RawResponse = ex.Message,
+                Error = error,
+                RawResponse = error,
             };
         }
     }
@@ -2208,7 +2240,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 nonce,
                 _challengeTimestampMs,
                 _useV2Signature,
-                SupportsExecApprovals),
+                SupportsExecApprovals,
+                ClientIdentity),
             _connectEnvelopeSigner);
         var signedAt = envelope.SignedAt;
         var connectNonce = envelope.Nonce!;
@@ -2216,7 +2249,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         // Log complete handshake details for diagnostics
         _logger.Info($"[HANDSHAKE] → Sending connect:");
-        _logger.Info($"  role={role}, clientId={OperatorClientId}, mode={OperatorClientMode}");
+        _logger.Info($"  role={role}, clientId={envelope.SigningArguments.ClientId}, mode={envelope.SigningArguments.ClientMode}");
         _logger.Info($"  scopes=[{string.Join(", ", requestedScopes)}]");
         _logger.Info($"  isBootstrap={_tokenIsBootstrapToken}, hasDeviceToken={!string.IsNullOrEmpty(_deviceIdentity.DeviceToken)}");
         _logger.Info($"  deviceId={_deviceIdentity.DeviceId[..Math.Min(16, _deviceIdentity.DeviceId.Length)]}...");
@@ -2336,13 +2369,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// (SendConnectMessageAsync sends via SendRawAsync directly), so protocol
     /// frames are exempt by construction.
     /// </summary>
-    private async Task<bool> SendTrackedRequestAsync(string method, object? parameters = null)
+    private async Task<bool> SendTrackedRequestAsync(string method, object? parameters = null, long? expectedGeneration = null)
     {
         if (!TryGetReadyConnectionGeneration(out var connectionGeneration))
         {
             _logger.Debug($"[GatewayClient] {method} suppressed before handshake");
             return false;
         }
+
+        if (expectedGeneration.HasValue && expectedGeneration.Value != connectionGeneration)
+            return false;
 
         var requestId = Guid.NewGuid().ToString();
         var pending = _pendingRequests.RegisterTracked(requestId, method);
@@ -2489,7 +2525,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     okWiz.ValueKind == JsonValueKind.False)
                 {
                     var message = TryGetErrorMessage(root) ?? "wizard request failed";
-                    wizardCompletion.TryFault(new InvalidOperationException(message));
+                    wizardCompletion.TryFault(QuestionRequestError(pending.Method, root)
+                        ?? new InvalidOperationException(message));
                 }
                 else if (root.TryGetProperty("payload", out var wizPayload))
                 {
@@ -2891,7 +2928,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         if (string.IsNullOrEmpty(method))
         {
-            _logger.Warn($"Gateway request failed: {message}");
+            _logger.Warn("Gateway request failed (untracked response).");
+            return;
+        }
+
+        if (method == "config.patch")
+        {
+            _logger.Warn("config.patch failed (gateway rejection).");
             return;
         }
 
@@ -3570,6 +3613,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             case "agent":
                 HandleAgentEvent(root, rawMessageLength);
                 break;
+            case "question.requested":
+            case "question.resolved":
+                HandleQuestionEvent(root, eventType);
+                break;
             case "health":
                 if (root.TryGetProperty("payload", out var hp) &&
                     hp.TryGetProperty("channels", out var ch))
@@ -3579,11 +3626,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 }
                 break;
             case "chat":
+                HandleChatEventForConnection(root, rawMessageLength, sourceConnectionGeneration);
+                break;
             case "session.message":
                 HandleChatEvent(root, rawMessageLength);
                 break;
             case "session":
-                HandleSessionEvent(root);
+                ScheduleSessionRefresh(sourceConnectionGeneration);
                 break;
             case "node.pair.requested":
             case "node.pair.resolved":
@@ -3623,8 +3672,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 }
                 // Gateway broadcasts this after session mutations (patch, send, etc.).
                 // Re-request the full sessions list so we pick up model/thinking changes.
-                _logger.Info("[EVENT] sessions.changed received — refreshing sessions list");
-                _ = RequestSessionsAsync();
+                ScheduleSessionRefresh(sourceConnectionGeneration);
                 break;
             case "config.changed":
                 ConfigurationChanged?.Invoke(this, EventArgs.Empty);
@@ -4503,10 +4551,74 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         NotificationReceived?.Invoke(this, notification);
     }
 
-    private void HandleSessionEvent(JsonElement root)
+    private void ScheduleSessionRefresh(long sourceConnectionGeneration)
     {
-        // Re-request sessions list when session events come through
-        _ = RequestSessionsAsync();
+        lock (_sessionRefreshLock)
+        {
+            if (IsDisposed || _operatorReadScopeUnavailable
+                || !TryGetReadyConnectionGeneration(out var generation)
+                || generation != sourceConnectionGeneration)
+                return;
+
+            if (_sessionRefreshCancellation is not null)
+            {
+                _sessionRefreshDirty = true;
+                return;
+            }
+            var cancellation = new CancellationTokenSource();
+            _sessionRefreshCancellation = cancellation;
+            _sessionRefreshDirty = false;
+            _ = RefreshSessionsAfterWindowAsync(sourceConnectionGeneration, cancellation);
+        }
+    }
+
+    private async Task RefreshSessionsAfterWindowAsync(long generation, CancellationTokenSource cancellation)
+    {
+        try
+        {
+            // A fixed window (not a sliding debounce) bounds freshness during continuous activity.
+            await Task.Delay(SessionRefreshWindow, cancellation.Token).ConfigureAwait(false);
+            lock (_sessionRefreshLock)
+            {
+                if (!ReferenceEquals(_sessionRefreshCancellation, cancellation)) return;
+                _sessionRefreshDirty = false;
+            }
+            if (_operatorReadScopeUnavailable || cancellation.IsCancellationRequested) return;
+            await SendTrackedRequestAsync("sessions.list", new { includeDerivedTitles = true }, generation)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // Disconnect/disposal canceled this connection's pending refresh.
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Session event refresh failed: {ex.GetType().Name}");
+        }
+        finally
+        {
+            lock (_sessionRefreshLock)
+            {
+                if (ReferenceEquals(_sessionRefreshCancellation, cancellation))
+                {
+                    _sessionRefreshCancellation = null;
+                    // Changes received while sending need one trailing refresh, never a send queue.
+                    if (_sessionRefreshDirty) ScheduleSessionRefresh(generation);
+                }
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    private void CancelScheduledSessionRefresh()
+    {
+        lock (_sessionRefreshLock)
+        {
+            var cancellation = _sessionRefreshCancellation;
+            _sessionRefreshCancellation = null;
+            _sessionRefreshDirty = false;
+            cancellation?.Cancel();
+        }
     }
 
     // --- State tracking ---

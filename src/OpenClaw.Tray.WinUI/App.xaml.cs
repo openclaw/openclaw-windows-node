@@ -839,7 +839,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         // Initialize connection manager before setup flow.
         var credentialResolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
-        var clientFactory = new GatewayClientFactory { SupportsExecApprovals = true };
+        var clientFactory = new GatewayClientFactory { SupportsExecApprovals = true, ClientIdentity = OperatorClientIdentity.Interactive };
         var diagnostics = new ConnectionDiagnostics();
         var nodeConnector = new NodeConnector(appLogger, diagnostics);
         // Bridge: whenever NodeConnector creates a fresh WindowsNodeClient (initial

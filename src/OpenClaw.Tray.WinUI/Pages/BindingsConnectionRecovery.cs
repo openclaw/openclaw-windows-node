@@ -20,3 +20,19 @@ internal static class BindingsConnectionRecovery
         return connected ? Decision.Recover : Decision.ShowDisconnected;
     }
 }
+
+/// <summary>
+/// How long one Bindings <c>config.get</c> waits for its own reply.
+/// </summary>
+internal static class BindingsConfigLoadDeadline
+{
+    internal const int DefaultMilliseconds = 15_000;
+
+    /// <summary>Test seam. A positive value replaces the default for that process.</summary>
+    internal static int? OverrideMilliseconds { get; set; }
+
+    internal static int CurrentMilliseconds =>
+        OverrideMilliseconds is int overridden && overridden > 0
+            ? overridden
+            : DefaultMilliseconds;
+}

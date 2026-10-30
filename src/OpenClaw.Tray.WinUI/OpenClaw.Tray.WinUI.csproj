@@ -20,8 +20,6 @@
          ships a DPI-unaware executable that renders blurry on mixed-DPI displays, and
          the Windows App Certification Kit reports it. -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- WinUIEx 2.9.3 marks its legacy Icon type obsolete, but the WinUI XAML generator still emits Icon.FromFile. -->
-    <WarningsNotAsErrors>$(WarningsNotAsErrors);CS0618</WarningsNotAsErrors>
   </PropertyGroup>
 
   <!-- Dev build identity: allows side-by-side installation with Release.

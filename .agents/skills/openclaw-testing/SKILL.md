@@ -43,6 +43,16 @@ stale. Rebuild and rerun against the new exact tree.
 
 ## Use the proportional ladder
 
+Choose the [execution target](../../../docs/TEST_COVERAGE.md#choose-the-local-execution-target)
+before any authorized runtime proof. Fixture-covered app behavior stays on the
+deterministic fixture. Isolated test builds that need a real native Gateway
+default to the [task-owned build and named-patch workflow](../native-gateway-from-source/SKILL.md#prepare-an-isolated-test-build),
+including single-instance tests. Build Companion in its own worktree, prepare a
+unique patch with a task-owned work root, and select it explicitly with isolated
+app data. The launcher's `-Isolated` switch alone does not isolate a Gateway
+build or allocate a unique instance. Use separate VMs for OS/clean-image
+isolation or missing host capabilities; keep required real WSL/MXC proof.
+
 Start at the smallest boundary that can fail for the intended regression. Move
 up when the change crosses another owner, transport, persistence boundary,
 architecture, or distribution format. Code changes still end with the required

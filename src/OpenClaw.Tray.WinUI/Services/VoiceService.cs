@@ -26,8 +26,9 @@ public sealed class VoiceService : IAsyncDisposable
 {
     private readonly IOpenClawLogger _logger;
     private readonly SettingsManager _settings;
-    private readonly SpeechToTextService _stt;
+    private readonly ISpeechToTextService _stt;
     private readonly WhisperModelManager _modelManager;
+    private readonly Func<ISpeechToTextService, AudioPipeline> _pipelineFactory;
     private AudioPipeline? _pipeline;
     private VoiceMode _currentMode = VoiceMode.Inactive;
     private CancellationTokenSource? _sessionCts;
@@ -97,11 +98,20 @@ public sealed class VoiceService : IAsyncDisposable
     }
 
     public VoiceService(IOpenClawLogger logger, SettingsManager settings)
+        : this(logger, settings, new SpeechToTextService(logger),
+            new WhisperModelManager(SettingsManager.SettingsDirectoryPath, logger),
+            stt => new AudioPipeline(logger, stt))
+    {
+    }
+
+    internal VoiceService(IOpenClawLogger logger, SettingsManager settings, ISpeechToTextService stt,
+        WhisperModelManager modelManager, Func<ISpeechToTextService, AudioPipeline> pipelineFactory)
     {
         _logger = logger;
         _settings = settings;
-        _stt = new SpeechToTextService(logger);
-        _modelManager = new WhisperModelManager(SettingsManager.SettingsDirectoryPath, logger);
+        _stt = stt;
+        _modelManager = modelManager;
+        _pipelineFactory = pipelineFactory;
     }
 
     /// <summary>
@@ -146,7 +156,7 @@ public sealed class VoiceService : IAsyncDisposable
         SetMode(VoiceMode.PushToTalk);
 
         _sessionCts = new CancellationTokenSource();
-        _pipeline = new AudioPipeline(_logger, _stt);
+        _pipeline = _pipelineFactory(_stt);
         WirePipelineEvents(_pipeline);
 
         var options = new AudioPipelineOptions
@@ -188,7 +198,7 @@ public sealed class VoiceService : IAsyncDisposable
         SetMode(VoiceMode.VoiceChat);
 
         _sessionCts = new CancellationTokenSource();
-        _pipeline = new AudioPipeline(_logger, _stt);
+        _pipeline = _pipelineFactory(_stt);
         WirePipelineEvents(_pipeline);
 
         var options = new AudioPipelineOptions
@@ -245,15 +255,25 @@ public sealed class VoiceService : IAsyncDisposable
     /// return the transcription. Multi-segment utterances are concatenated
     /// before returning so callers never receive a partial first-segment.
     /// </summary>
-    public async Task<SttListenResult> ListenOnceAsync(SttListenArgs args, CancellationToken cancellationToken)
+    public Task<SttListenResult> ListenOnceAsync(SttListenArgs args, CancellationToken cancellationToken) =>
+        ListenOnceAsync(args, cancellationToken, onTranscription: null, onAudioLevel: null);
+
+    /// <summary>Routes progress only from this invocation's pipeline. Global events remain available
+    /// to legacy consumers; callers still own cancellation and queued-UI callback fencing.</summary>
+    internal async Task<SttListenResult> ListenOnceAsync(SttListenArgs args, CancellationToken cancellationToken,
+        Action<string>? onTranscription, Action<float>? onAudioLevel)
     {
         await EnsureInitializedAsync();
 
         using var timeoutCts = new CancellationTokenSource(args.TimeoutMs);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-        var pipeline = new AudioPipeline(_logger, _stt);
+        var pipeline = _pipelineFactory(_stt);
         WirePipelineEvents(pipeline);
+        if (onTranscription is not null)
+            pipeline.TranscriptionReady += result => onTranscription(result.Text);
+        if (onAudioLevel is not null)
+            pipeline.AudioLevelChanged += onAudioLevel;
         var tcs = new TaskCompletionSource<SttListenResult>();
         var sw = Stopwatch.StartNew();
 
@@ -346,7 +366,7 @@ public sealed class VoiceService : IAsyncDisposable
 
         await EnsureInitializedAsync();
 
-        var pipeline = new AudioPipeline(_logger, _stt);
+        var pipeline = _pipelineFactory(_stt);
         var sw = Stopwatch.StartNew();
         try
         {

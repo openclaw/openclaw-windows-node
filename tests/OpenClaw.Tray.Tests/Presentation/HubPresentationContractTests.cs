@@ -6,7 +6,7 @@ public sealed class HubPresentationContractTests
     public void HubPageRegistry_OwnsMappingsCommandsAndGatewayClassification()
     {
         var registry = ReadSource("Presentation", "HubPageRegistry.cs");
-        var hub = ReadSource("Windows", "HubWindow.xaml.cs");
+        var hub = ReadSource("Controls", "SettingsShellView.xaml.cs");
         var gatewayPolicy = ReadSource("Services", "GatewayNavVisibilityDebouncePolicy.cs");
 
         Assert.Contains("public static Type? ResolvePageType", registry);
@@ -49,7 +49,7 @@ public sealed class HubPresentationContractTests
     public void InfoBarPresenter_IsWinUiFreeAndHubOnlyAppliesPresentation()
     {
         var presenter = ReadSource("Presentation", "AppNotificationInfoBarPresenter.cs");
-        var hub = ReadSource("Windows", "HubWindow.xaml.cs");
+        var hub = ReadSource("Controls", "SettingsShellView.xaml.cs");
 
         Assert.DoesNotContain("Microsoft.UI", presenter);
         Assert.DoesNotContain("Application.Current", presenter);

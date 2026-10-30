@@ -1549,7 +1549,9 @@ public sealed partial class ChannelsPage : Page
 
                 if (!patchResult.Ok)
                 {
-                    var detail = patchResult.Error ?? LocalizationHelper.GetString("ChannelsPage_BannerGatewayNoResponse");
+                    var detail = patchResult.Error ?? LocalizationHelper.GetString(patchResult.TimedOut
+                        ? "ChannelsPage_BannerGatewayNoResponse"
+                        : "ConfigPage_StatusSaveRejectedMessage");
                     var title = string.Format(LocalizationHelper.GetString("ChannelsPage_BannerSaveFailedTitle"), record.Id);
                     if (patchResult.LooksLikeStaleBaseHash)
                     {
@@ -1817,7 +1819,7 @@ public sealed partial class ChannelsPage : Page
             relinkBtn.IsEnabled = false;
             try
             {
-                await StartLinkingAsync(qrImage, messageBlock, diagnostic, diagnosticBody, recoveryPanel, record.Id, force);
+                await StartLinkingAsync(BoundClient, qrImage, messageBlock, diagnostic, diagnosticBody, recoveryPanel, record.Id, force);
             }
             finally
             {
@@ -1837,6 +1839,7 @@ public sealed partial class ChannelsPage : Page
     }
 
     private async Task StartLinkingAsync(
+        IOperatorGatewayClient? client,
         Image qrImage,
         TextBlock messageBlock,
         Expander diagnostic,
@@ -1847,23 +1850,10 @@ public sealed partial class ChannelsPage : Page
     {
         // Local helper: show the diagnostic disclosure with method/params/response
         // info so the user can see *exactly* what the gateway did or didn't do.
-        void ShowDiagnostic(string method, object @params, string? error, string? rawResponse)
+        void ShowDiagnostic(string method, object @params, string? error, string? rawResponse, string? qrDataUrl = null)
         {
-            var parts = new List<string>
-            {
-                $"Method:   {method}",
-                $"Channel:  {channelId}",
-                $"Params:   {System.Text.Json.JsonSerializer.Serialize(@params)}",
-            };
-            if (!string.IsNullOrEmpty(error)) parts.Add($"Error:    {error}");
-            if (!string.IsNullOrEmpty(rawResponse))
-            {
-                // Trim verbose stack traces; keep first 1000 chars (plenty for diagnosis,
-                // small enough to read in the disclosure).
-                var trimmed = rawResponse.Length > 1000 ? rawResponse[..1000] + "…" : rawResponse;
-                parts.Add($"Response: {trimmed}");
-            }
-            diagnosticBody.Text = string.Join("\n", parts);
+            diagnosticBody.Text = ChannelLinkDiagnosticText.Format(
+                method, channelId, JsonSerializer.Serialize(@params), error, rawResponse, qrDataUrl);
             diagnostic.Visibility = Visibility.Visible;
         }
         void HideDiagnostic()
@@ -1963,7 +1953,6 @@ public sealed partial class ChannelsPage : Page
             recoveryPanel.Children.Clear();
         }
 
-        var client = BoundClient;
         if (client == null)
         {
             qrImage.Visibility = Visibility.Collapsed;
@@ -2038,7 +2027,7 @@ public sealed partial class ChannelsPage : Page
         if (start.Connected)
         {
             messageBlock.Text = !string.IsNullOrEmpty(start.Message)
-                ? start.Message
+                ? ChannelLinkDiagnosticText.Redact(start.Message)
                 : $"{channelId} is already linked.";
             qrImage.Visibility = Visibility.Collapsed;
             await RefreshAsync(probe: false);
@@ -2050,7 +2039,7 @@ public sealed partial class ChannelsPage : Page
             // raw response so the user can see what it did say.
             qrImage.Visibility = Visibility.Collapsed;
             messageBlock.Text = !string.IsNullOrEmpty(start.Message)
-                ? start.Message
+                ? ChannelLinkDiagnosticText.Redact(start.Message)
                 : $"Gateway didn't return a QR for {channelId}. See details below for what it returned.";
             ShowDiagnostic("web.login.start", startParams, null, start.RawResponse);
             return;
@@ -2059,7 +2048,7 @@ public sealed partial class ChannelsPage : Page
         await RenderQrAsync(qrImage, messageBlock, start.QrDataUrl);
         if (ct.IsCancellationRequested) return;
         messageBlock.Text = !string.IsNullOrEmpty(start.Message)
-            ? start.Message
+            ? ChannelLinkDiagnosticText.Redact(start.Message)
             : channelId.Equals("whatsapp", StringComparison.OrdinalIgnoreCase)
                 ? "Open WhatsApp on your phone → Settings → Linked devices → scan this QR."
                 : "Open the mobile app's linked-devices screen and scan this QR.";
@@ -2076,13 +2065,13 @@ public sealed partial class ChannelsPage : Page
         if (!string.IsNullOrEmpty(waitResult.Error))
         {
             messageBlock.Text = $"Link wait failed for {channelId}. See details below.";
-            ShowDiagnostic("web.login.wait", waitParams, waitResult.Error, waitResult.RawResponse);
+            ShowDiagnostic("web.login.wait", waitParams, waitResult.Error, waitResult.RawResponse, start.QrDataUrl);
             return;
         }
         if (waitResult.Connected)
         {
             messageBlock.Text = !string.IsNullOrEmpty(waitResult.Message)
-                ? waitResult.Message
+                ? ChannelLinkDiagnosticText.Redact(waitResult.Message)
                 : $"{channelId} linked.";
             qrImage.Visibility = Visibility.Collapsed;
             await RefreshAsync(probe: false);
@@ -2093,7 +2082,7 @@ public sealed partial class ChannelsPage : Page
             await RenderQrAsync(qrImage, messageBlock, waitResult.QrDataUrl);
             if (ct.IsCancellationRequested) return;
             if (!string.IsNullOrEmpty(waitResult.Message))
-                messageBlock.Text = waitResult.Message;
+                messageBlock.Text = ChannelLinkDiagnosticText.Redact(waitResult.Message);
         }
         else
         {
@@ -2147,7 +2136,7 @@ public sealed partial class ChannelsPage : Page
             // Surface decode failures to the user — silent hide makes gateway faults
             // look like UX bugs.
             target.Visibility = Visibility.Collapsed;
-            messageBlock.Text = $"QR decode failed: {ex.Message}";
+            messageBlock.Text = $"QR decode failed: {ChannelLinkDiagnosticText.Redact(ex.Message)}";
         }
     }
 

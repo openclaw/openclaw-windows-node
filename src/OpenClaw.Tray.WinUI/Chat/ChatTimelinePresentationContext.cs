@@ -28,5 +28,6 @@ public sealed record ChatTimelinePresentationContext(
         ResolveAssistantMediaAsync = null,
     IReadOnlyList<ChatQueuedMessage>? QueuedMessages = null,
     Action<string>? OnCancelQueuedMessage = null,
+    ChatRunProgressPresentation? RunProgress = null,
     Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>>?
         DownloadAssistantFileAsync = null);
