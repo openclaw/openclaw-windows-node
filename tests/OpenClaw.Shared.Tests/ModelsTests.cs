@@ -226,6 +226,37 @@ public class SshTunnelCommandLineTests
     }
 
     [Fact]
+    public void BuildArguments_ValidatesTheExplicitProxyPort()
+    {
+        var args = SshTunnelCommandLine.BuildArguments(
+            "scott",
+            "mac-mini.local",
+            18789,
+            65534,
+            includeBrowserProxyForward: true,
+            sshPort: 22,
+            browserProxyLocalPort: 19002);
+
+        Assert.Contains("-L 65534:127.0.0.1:18789", args);
+        Assert.Contains("-L 19002:127.0.0.1:18791", args);
+    }
+
+    [Fact]
+    public void BuildArguments_AcceptsProxyPorts65534And65535()
+    {
+        var args = SshTunnelCommandLine.BuildArguments(
+            "scott",
+            "mac-mini.local",
+            18789,
+            65533,
+            includeBrowserProxyForward: true,
+            sshPort: 22);
+
+        Assert.Contains("-L 65533:127.0.0.1:18789", args);
+        Assert.Contains("-L 65535:127.0.0.1:18791", args);
+    }
+
+    [Fact]
     public void BuildArguments_RejectsBrowserProxyForwardWhenPortPlusTwoOverflows()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>

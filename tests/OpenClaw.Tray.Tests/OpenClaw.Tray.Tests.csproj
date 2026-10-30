@@ -118,6 +118,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupReadyObservation.cs" Link="Services\SetupReadyObservation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupDashboardLiveFacts.cs" Link="Services\SetupDashboardLiveFacts.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayDashboardLauncher.cs" Link="Services\GatewayDashboardLauncher.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DashboardBrowserShell.cs" Link="Services\DashboardBrowserShell.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\GatewayAiSetupCompletion.cs" Link="GatewayAiSetupCompletion.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\GatewayAiSetupModels.cs" Link="GatewayAiSetupModels.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\NativeLocalAiGatewayTarget.cs" Link="NativeLocalAiGatewayTarget.cs" />
