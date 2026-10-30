@@ -1,6 +1,7 @@
 using OpenClaw.Shared;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
+using System.Text.Json;
 
 namespace OpenClaw.Tray.Tests.Presentation;
 
@@ -158,6 +159,88 @@ public sealed class PinnedPagesTests
         Assert.Equal(["cron", "skills"], Tags(reloaded.Current.PinnedPagesFor("gw-a")));
         Assert.Equal(["usage"], Tags(reloaded.Current.PinnedPagesFor("gw-b")));
         Assert.Empty(reloaded.Current.PinnedPagesFor(null));
+    }
+
+    [Fact]
+    public void StableSchemaV1Settings_KeepExistingPreferencesThroughFirstPinSaveAndReload()
+    {
+        // Synthetic source-shaped subset, not an export from an executed older binary.
+        // Latest stable release verified 2026-10-30: v2026.9.8-1, schema 1, no pin field.
+        // https://github.com/openclaw/openclaw-windows-node/blob/2ba89f377ce8ce3f5ddfc452e4d509329f109114/src/OpenClaw.Shared/SettingsData.cs
+        const string oldJson = """
+            {
+              "SettingsSchemaVersion": 1,
+              "AutoStart": false,
+              "GlobalHotkeyEnabled": false,
+              "ShowNotifications": false,
+              "NotifyEmail": false,
+              "ShowPairingApprovalDialog": false,
+              "NodeCameraEnabled": false,
+              "ShowChatToolCalls": false,
+              "HubNavPaneOpen": false,
+              "ShowCompletedSessions": true,
+              "AppTheme": "Dark",
+              "SttLanguage": "fr",
+              "SttSilenceTimeout": 4.5,
+              "EnableManagedLocalGatewayAutoRepair": false,
+              "A2UIImageHosts": ["cdn.fixture.invalid"]
+            }
+            """;
+        using var temp = new TempDir();
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, oldJson);
+        using var oldDocument = JsonDocument.Parse(oldJson);
+        Assert.False(oldDocument.RootElement.TryGetProperty("PinnedPagesByGateway", out _));
+
+        static void AssertExistingPreferences(SettingsManager settings)
+        {
+            Assert.False(settings.AutoStart);
+            Assert.False(settings.GlobalHotkeyEnabled);
+            Assert.False(settings.ShowNotifications);
+            Assert.False(settings.NotifyEmail);
+            Assert.False(settings.ShowPairingApprovalDialog);
+            Assert.False(settings.NodeCameraEnabled);
+            Assert.False(settings.ShowChatToolCalls);
+            Assert.False(settings.HubNavPaneOpen);
+            Assert.True(settings.ShowCompletedSessions);
+            Assert.Equal("Dark", settings.AppTheme);
+            Assert.Equal("fr", settings.SttLanguage);
+            Assert.Equal(4.5f, settings.SttSilenceTimeout);
+            Assert.False(settings.EnableManagedLocalGatewayAutoRepair);
+            Assert.Equal(["cdn.fixture.invalid"], settings.A2UIImageHosts);
+            Assert.Equal("Default", settings.NotificationSound);
+            Assert.Empty(settings.UserRules);
+        }
+
+        using (var store = Store(temp.Path, out var settings))
+        {
+            Assert.Equal(oldJson, File.ReadAllText(path)); // Loading must not rewrite the old file.
+            AssertExistingPreferences(settings);
+            Assert.Empty(settings.PinnedPagesByGateway);
+            Assert.Empty(store.Current.PinnedPagesByGateway);
+            Assert.Empty(store.Current.PinnedPagesFor("gw-compat"));
+            store.Update(store.CreateOrigin(), editor =>
+            {
+                editor.SetPagePinned("gw-compat", "connection", true);
+                editor.SetPagePinned("gw-compat", "sessions", true);
+            });
+            AssertExistingPreferences(settings);
+        }
+
+        using var saved = JsonDocument.Parse(File.ReadAllText(path));
+        foreach (var original in oldDocument.RootElement.EnumerateObject())
+        {
+            if (original.Name == "SettingsSchemaVersion") continue; // Existing schema migrations remain allowed.
+            Assert.True(JsonElement.DeepEquals(original.Value, saved.RootElement.GetProperty(original.Name)),
+                $"Pin save changed existing preference {original.Name}.");
+        }
+        Assert.Equal(["connection", "sessions"], saved.RootElement.GetProperty("PinnedPagesByGateway")
+            .GetProperty("gw-compat").EnumerateArray().Select(value => value.GetString()!).ToArray());
+        using var reloaded = Store(temp.Path, out var restartedSettings);
+        AssertExistingPreferences(restartedSettings);
+        Assert.Equal(["connection", "sessions"], Tags(reloaded.Current.PinnedPagesFor("gw-compat")));
+        Assert.Equal(["connection", "sessions"], Tags(restartedSettings.GetPinnedPages("gw-compat")));
+        Assert.Empty(reloaded.Current.PinnedPagesFor("gw-other"));
     }
 
     [Fact]
