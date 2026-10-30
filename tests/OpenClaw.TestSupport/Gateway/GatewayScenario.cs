@@ -277,7 +277,6 @@ public sealed partial class GatewayScenario
                 ts = Epoch.ToUnixTimeMilliseconds(), channelOrder = Array.Empty<string>(),
                 channels = new { }, channelAccounts = new { }
             }),
-            ["skills.status"] = JsonSerializer.SerializeToElement(new { skills = Array.Empty<object>() }),
             ["usage.status"] = JsonSerializer.SerializeToElement(new
             {
                 updatedAt = Epoch.ToUnixTimeMilliseconds(), providers = Array.Empty<object>()
@@ -637,7 +636,6 @@ public sealed partial class GatewayScenario
         {
             "health" => ["deep", "probe"],
             "channels.status" => ["probe", "timeoutMs"],
-            "skills.status" => ["agentId"],
             _ => []
         });
         if (method == "health")
@@ -649,12 +647,6 @@ public sealed partial class GatewayScenario
         {
             OptionalBoolean(p, "probe");
             PositiveInt(p, "timeoutMs", 10000);
-        }
-        else if (method == "skills.status")
-        {
-            var agent = OptionalString(p, "agentId");
-            if (agent is not null and not ("main" or "research"))
-                throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agentId.");
         }
         return _reads[method];
     }
@@ -672,7 +664,7 @@ public sealed partial class GatewayScenario
         or "sessions.compaction.branch" or "node.invoke" or "exec.approval.resolve" or "node.rename"
         or "node.pair.approve" or "node.pair.reject" or "node.pair.remove" or "device.pair.approve"
         or "device.pair.reject" or "device.token.rotate" or "device.token.revoke" or "update.run"
-        or "cron.add" or "cron.update" or "cron.remove" or "cron.run" or "skills.install" or "skills.update"
+        or "cron.add" or "cron.update" or "cron.remove" or "cron.run"
         or "projects.add";
 
     internal static void ValidateProperties(JsonElement p, params string[] names)

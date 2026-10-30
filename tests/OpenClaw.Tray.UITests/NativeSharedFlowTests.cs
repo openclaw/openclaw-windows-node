@@ -29,17 +29,13 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
     [Theory]
     [InlineData(SetupNativeDestination.Chat, ElementTheme.Light, false)]
     [InlineData(SetupNativeDestination.Channels, ElementTheme.Light, false)]
-    [InlineData(SetupNativeDestination.Skills, ElementTheme.Light, false)]
     [InlineData(SetupNativeDestination.Chat, ElementTheme.Dark, false)]
     [InlineData(SetupNativeDestination.Channels, ElementTheme.Dark, false)]
-    [InlineData(SetupNativeDestination.Skills, ElementTheme.Dark, false)]
     [InlineData(SetupNativeDestination.Chat, ElementTheme.Light, true)]
     [InlineData(SetupNativeDestination.Channels, ElementTheme.Light, true)]
-    [InlineData(SetupNativeDestination.Skills, ElementTheme.Light, true)]
     [InlineData(SetupNativeDestination.Chat, ElementTheme.Dark, true)]
     [InlineData(SetupNativeDestination.Channels, ElementTheme.Dark, true)]
-    [InlineData(SetupNativeDestination.Skills, ElementTheme.Dark, true)]
-    public async Task NativeInstall_UsesSharedAiVerificationAndAllThreeDestinations(
+    public async Task NativeInstall_UsesSharedAiVerificationAndAllDestinations(
         SetupNativeDestination destination, ElementTheme theme, bool isolated)
     {
         await WithNativeAsync(async (window, frame, registry, runtime, server, completed) =>
@@ -78,7 +74,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                 async (readyWindow, ready, navigated, normalRuntime) =>
                 {
                     var choices = Find<StackPanel>(ready, "Choices");
-                    Assert.Equal(["Chat", "Channels", "Skills"],
+                    Assert.Equal(["Chat", "Channels"],
                         choices.Children.Cast<FrameworkElement>().Select(element => element.Tag));
                     Assert.Empty(navigated);
                     Assert.Null(ready.FindName("NativeSummary"));
@@ -325,7 +321,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     ready.UpdateLayout();
                     await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
                     var readyRoot = Assert.IsAssignableFrom<FrameworkElement>(readyWindow.Content);
-                    Assert.Equal(3, Find<StackPanel>(ready, "Choices").Children.Count);
+                    Assert.Equal(2, Find<StackPanel>(ready, "Choices").Children.Count);
                     OnboardingNativeProof.AssertFullyVisible(
                         Find<OpenClaw.SetupEngine.UI.Controls.SetupProgressIndicator>(ready, "FlowProgress"), readyRoot);
                     await SetupWindowMinimumSizeTests.SaveViewportsAsync(

@@ -194,11 +194,11 @@ public sealed class NativeCompletionPresentationTests
     }
 
     [Fact]
-    public void ChooserHasThreeNativeActions_RecommendationAndErrorOnlyRecovery_NoFooterButtons()
+    public void ChooserHasTwoNativeActions_RecommendationAndErrorOnlyRecovery_NoFooterButtons()
     {
         var page = XDocument.Parse(Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml"));
         var actions = page.Descendants().Where(element => element.Name.LocalName == "SettingsCard").ToArray();
-        Assert.Equal(["Chat", "Channels", "Skills"], actions.Select(element => element.Attribute("Tag")?.Value));
+        Assert.Equal(["Chat", "Channels"], actions.Select(element => element.Attribute("Tag")?.Value));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(x + "Name") is "SkipButton" or "ReturnButton");
         var recovery = Assert.Single(page.Descendants(), element => (string?)element.Attribute(x + "Name") == "RecoveryButton");
@@ -354,20 +354,6 @@ public sealed class NativeCompletionPresentationTests
         Assert.Contains("SetupHandoffAcquisitionStatus.Busy", launcher);
         Assert.True(launcher.IndexOf("lease.Consume();", StringComparison.Ordinal) <
             launcher.IndexOf("ClearRestartRecovery();", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void SkillsEntryIsBoundReadOnlyAndWaitedBeforeReceiptConsumption()
-    {
-        var source = Read(@"src\OpenClaw.Tray.WinUI\Pages\SkillsPage.xaml.cs");
-        Assert.Contains("_nativeSetupRequest = e.Parameter as SetupNativeNavigationRequest", source);
-        Assert.Contains("SetupNativeSkills.LoadAsync(request, RequireNativeClient, ct)", source);
-        Assert.Contains("if (_nativeSetupRequest is not null) return;", source);
-        Assert.Contains("CurrentAgentId != request.Completion.Verification.AgentId", source);
-        Assert.Contains("AgentFilterCombo.IsEnabled = false", source);
-        Assert.DoesNotContain("InstallSkillAsync", source);
-        Assert.Contains("await skills.WaitForNativeSetupAsync(request, ct)",
-            Read(@"src\OpenClaw.Tray.WinUI\Controls\SettingsShellView.xaml.cs"));
     }
 
     [Fact]

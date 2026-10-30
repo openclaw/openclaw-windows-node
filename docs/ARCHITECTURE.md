@@ -188,8 +188,8 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Focused AI setup protocol state and provider progress polling | `GatewayAiSetupClient` + `GatewayAiSetupController` | authoritative |
 | Verified AI completion intent and opaque pending restart handoff | `GatewayAiSetupClient` + `GatewayAiSetupCompletion` + `SetupDashboardHandoffStore` + `SetupDashboardHandoff` | authoritative |
 | Native verified destination choice and selection-time read-only verification | `SetupNativeCompletionCoordinator` + `SetupNativeCompletionVerifier`; `AiReadyPage` renders, `SetupWindow` composes finalization | authoritative |
-| Native pending launch and bound Chat/Channels/Skills entry | `SetupNativeHandoffLauncher` + `SetupNativeNavigationRequest`; `SetupNativeSkills` owns response-bound read-only skills loading; `WindowManager` and pages apply the selected route | authoritative |
-| Verified native setup Chat window boundary | `SetupNativeNavigationRequest` projects the exact Workspace session; `WorkspaceWindow` calls `ChatPage.BindNativeSetupRequest` explicitly, not a Frame navigation override. `WindowManager` awaits the retained page before activation and receipt consumption. Channels/Skills remain typed companion routes | authoritative |
+| Native pending launch and bound Chat/Channels entry | `SetupNativeHandoffLauncher` + `SetupNativeNavigationRequest`; `WindowManager` and pages apply the selected route | authoritative |
+| Verified native setup Chat window boundary | `SetupNativeNavigationRequest` projects the exact Workspace session; `WorkspaceWindow` calls `ChatPage.BindNativeSetupRequest` explicitly, not a Frame navigation override. `WindowManager` awaits the retained page before activation and receipt consumption. Channels remains a typed companion route | authoritative |
 | Verified setup Chat hosting in the Settings view | Closed in `SettingsShellView`; typed native Chat requests must use Workspace without dropping endpoint, identity, agent or session verification | closed |
 | Settings Chat rail action | `SettingsShellView` forwards a non-selecting item invocation through `WorkspaceNavigation` to the retained chat destination in the same window; Settings never mounts Chat | authoritative |
 | Gateway dashboard management card | `ConnectionPage` owns the visible card and forwards to the existing `GatewayDashboardLauncher` path; `ChatPage` has no management banner | authoritative |
@@ -411,7 +411,7 @@ Restart, which would otherwise discard stop ownership for a setup-started servic
 The shared setup settings owner then saves the reviewed capability, transport
 and startup choices without overwriting unrelated settings. Settings write
 failure stays retryable before releasing the session. Completion shows the
-verified model and three destinations, not a running or paired Windows node.
+verified model and two destinations, not a running or paired Windows node.
 The normal connection owner still performs node connection/pairing; Windows
 permission and exec-approval gates are unchanged.
 
@@ -419,7 +419,7 @@ Native package setup uses the shared `AiSetupPage` and `AiReadyPage` flow.
 Only an explicit unsupported-method result offers `WizardPage` compatibility
 setup. Authentication failures, timeouts and uncertain writes do not enter that
 fallback. Healthy native and WSL AI/Ready screens use the same presentation:
-providers, verified model and the three destination choices, without a native-only
+providers, verified model and the two destination choices, without a native-only
 summary. Gateway and permission details remain in Connection and Permissions.
 Native recovery actions and output appear only for actionable errors or uncertain
 outcomes on the AI page/provider dialog, and hide again during normal progress or
@@ -632,7 +632,7 @@ cleanup applies after assignment, and no launcher code has resumed before then.
 
 This section describes the explicit compatibility path only. The normal native
 path uses the same detected providers, activation, exact-model verification and
-Chat/Channels/Skills chooser as WSL. `NativeGatewaySetupConnection` owns the
+Chat/Channels chooser as WSL. `NativeGatewaySetupConnection` owns the
 temporary operator socket in both paths; it never owns or replaces the native
 runtime. `SetupWindow` retains `NativeGatewaySetupSession` across AI/Ready navigation.
 

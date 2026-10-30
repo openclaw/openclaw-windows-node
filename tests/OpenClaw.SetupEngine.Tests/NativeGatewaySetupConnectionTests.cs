@@ -317,10 +317,8 @@ public sealed class NativeGatewaySetupConnectionTests
     [Theory]
     [InlineData(SetupNativeDestination.Chat, false)]
     [InlineData(SetupNativeDestination.Channels, false)]
-    [InlineData(SetupNativeDestination.Skills, false)]
     [InlineData(SetupNativeDestination.Chat, true)]
     [InlineData(SetupNativeDestination.Channels, true)]
-    [InlineData(SetupNativeDestination.Skills, true)]
     public async Task FocusedAi_AllDestinationsReverifyAfterNativeRestartBeforePublication(SetupNativeDestination destination, bool isolated)
     {
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);

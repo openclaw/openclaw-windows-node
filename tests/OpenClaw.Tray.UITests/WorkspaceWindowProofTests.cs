@@ -648,8 +648,7 @@ public sealed class WorkspaceWindowProofTests
         foreach (var (route, page, marker) in new[]
         {
             ("cron", "CronPage", "CronPageMarker"),
-            ("sessions", "SessionsPage", "SessionsPageMarker"),
-            ("skills", "SkillsPage", "SkillsPageMarker")
+            ("sessions", "SessionsPage", "SessionsPageMarker")
         })
         {
             await app.NavigateAsync(route, page, marker);

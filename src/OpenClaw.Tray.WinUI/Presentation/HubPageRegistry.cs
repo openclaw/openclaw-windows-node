@@ -23,7 +23,6 @@ internal enum HubPageKind
     Debug,
     Sessions,
     AgentEvents,
-    Skills,
     Cron,
     Workspace
 }
@@ -87,7 +86,6 @@ internal static class HubPageRegistry
     internal static string GetNativeSetupPage(OpenClaw.SetupEngine.SetupNativeDestination destination) => destination switch
     {
         OpenClaw.SetupEngine.SetupNativeDestination.Chat => "chat",
-        OpenClaw.SetupEngine.SetupNativeDestination.Skills => "skills",
         OpenClaw.SetupEngine.SetupNativeDestination.WhatsApp or OpenClaw.SetupEngine.SetupNativeDestination.Telegram or
             OpenClaw.SetupEngine.SetupNativeDestination.Channels => "channels",
         _ => throw new ArgumentOutOfRangeException(nameof(destination)),
@@ -105,8 +103,6 @@ internal static class HubPageRegistry
         "Command_GoToSessions_Subtitle",
         "Command_GoToAgentEvents_Title",
         "Command_GoToAgentEvents_Subtitle",
-        "Command_GoToSkills_Title",
-        "Command_GoToSkills_Subtitle",
         "Command_GoToCron_Title",
         "Command_GoToCron_Subtitle",
         "Command_GoToWorkspace_Title",
@@ -169,7 +165,6 @@ internal static class HubPageRegistry
         "home" or "general" => HubPageKind.Connection,
         "conversations" or "sessions" => HubPageKind.Sessions,
         "agentevents" => HubPageKind.AgentEvents,
-        "skills" => HubPageKind.Skills,
         "cron" => HubPageKind.Cron,
         "workspace" => HubPageKind.Workspace,
         _ when tag?.StartsWith("agent:", StringComparison.Ordinal) == true => ResolveAgentPage(tag),
@@ -186,7 +181,6 @@ internal static class HubPageRegistry
         {
             "sessions" => HubPageKind.Sessions,
             "agentevents" => HubPageKind.AgentEvents,
-            "skills" => HubPageKind.Skills,
             "cron" => HubPageKind.Cron,
             "workspace" => HubPageKind.Workspace,
             _ => null
@@ -210,7 +204,6 @@ internal static class HubPageRegistry
         return tag.StartsWith("agent:", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("chat", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("sessions", StringComparison.OrdinalIgnoreCase) ||
-            tag.Equals("skills", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("channels", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("instances", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("agentevents", StringComparison.OrdinalIgnoreCase) ||
@@ -242,7 +235,6 @@ internal static class HubPageRegistry
         HubPageKind.Debug => typeof(DebugPage),
         HubPageKind.Sessions => typeof(SessionsPage),
         HubPageKind.AgentEvents => typeof(AgentEventsPage),
-        HubPageKind.Skills => typeof(SkillsPage),
         HubPageKind.Cron => typeof(CronPage),
         HubPageKind.Workspace => typeof(WorkspacePage),
         _ => null
@@ -258,7 +250,6 @@ internal static class HubPageRegistry
         AddNavigation(commands, context, "💬", "Command_GoToChat", "chat");
         AddNavigation(commands, context, "🧠", "Command_GoToSessions", "sessions");
         AddNavigation(commands, context, "🧠", "Command_GoToAgentEvents", "agentevents");
-        AddNavigation(commands, context, "🧠", "Command_GoToSkills", "skills");
         commands.Add(new HubCommand(
             "🧠",
             Format(context, "Command_GoToCron_Title", context.CurrentAgentId),

@@ -120,7 +120,7 @@ package-contract and profile preparation. `NativeGatewaySetupSession` owns
 staged-record runtime authorization, legacy-only reload suspension/restoration, retry/cancel,
 authenticated health/config gates, and final registry publication.
 Both installations use the shared focused `AiSetupPage` and verified
-three-destination `AiReadyPage`. `WizardPage` remains an explicit compatibility
+two-destination `AiReadyPage`. `WizardPage` remains an explicit compatibility
 fallback when focused setup methods are unavailable. Its native requests retain
 the owned `NativeGatewaySetupConnection` authorization and upstream
 `installDaemon: false` contract.
@@ -205,7 +205,7 @@ selection, activation and recovery; the native AI page renders that state.
 page-owned `ProviderSetupDialog` owns prompt controls and secret clearing,
 without another client, persistence store or top-level setup page.
 `SetupWindow` remains the completion host. Verified AI opens the native chooser;
-an explicit choice restarts into Chat, Channels or Skills with a bound receipt.
+an explicit choice restarts into Chat or Channels with a bound receipt.
 The experimental browser-completion path is removed. See the completion handoff
 in `ONBOARDING_WIZARD.md`.
 Headless setup keeps `SetupStepFactory.BuildDefaultSteps()` and the

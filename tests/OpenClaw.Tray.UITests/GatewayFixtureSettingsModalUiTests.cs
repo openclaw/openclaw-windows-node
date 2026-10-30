@@ -13,7 +13,6 @@ public sealed partial class GatewayFixtureUiTests
     [GatewayFixtureUiTheory]
     [InlineData(null, false)]
     [InlineData(SetupNativeDestination.Channels, false)]
-    [InlineData(SetupNativeDestination.Skills, false)]
     [InlineData(SetupNativeDestination.Chat, false)]
     [InlineData(SetupNativeDestination.Chat, true)]
     [Trait("Category", "GatewayFixture")]
@@ -66,14 +65,12 @@ public sealed partial class GatewayFixtureUiTests
             var route = destination switch
             {
                 SetupNativeDestination.Channels => "channels",
-                SetupNativeDestination.Skills => "skills",
                 SetupNativeDestination.Chat => "chat",
                 _ => "settings"
             };
             var marker = destination switch
             {
                 SetupNativeDestination.Channels => "ChannelsPageMarker",
-                SetupNativeDestination.Skills => "SkillsPageMarker",
                 SetupNativeDestination.Chat => "ChatComposerInput",
                 _ => "SettingsPageMarker"
             };

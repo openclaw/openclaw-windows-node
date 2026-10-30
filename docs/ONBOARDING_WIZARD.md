@@ -202,7 +202,7 @@ remain removed; the general security notice and provider/onboarding consent
 remain explicit. With an isolated-session Gateway package, the package provisions
 and runs the agent account; the known legacy proof package retains its original
 same-user runtime. The UI capability gate alone never proves isolation.
-Native and WSL use the **same focused `AiSetupPage` and three-choice `AiReadyPage`**,
+Native and WSL use the **same focused `AiSetupPage` and two-choice `AiReadyPage`**,
 not separate normal provider/model wizards. The classic `WizardPage` is an explicit
 compatibility option only when the required setup methods are unavailable.
 WSL is always visible. It is first when native is unavailable and second after a
@@ -269,7 +269,7 @@ Retry checks registration again before invoking WinGet. Companion does not downl
 change certificate trust, or uninstall packages on cancellation.
 
 Progress reuses the WSL spinner/checkmark rows. Normal completion uses the same
-verified-model heading and three destination choices as WSL, without a native-only
+verified-model heading and two destination choices as WSL, without a native-only
 Gateway/capabilities summary. Gateway details and Windows permissions remain in
 their existing Connection and Permissions settings. AI readiness does not imply
 that a Windows node is paired or that command approvals have been granted.
@@ -308,8 +308,8 @@ The native path:
    Native console output and scoped terminal/restart/cancel recovery appear only
    for errors, skipped/unavailable console output or uncertain outcomes in the
    shared page/provider dialog. Healthy provider selection has no extra native controls.
-4. The verified chooser offers **Talk to my agent**, **Connect channels**, and
-   **Explore skills**. Choosing a destination rechecks the same Gateway, package
+4. The verified chooser offers **Talk to my agent** and **Connect channels**.
+   Choosing a destination rechecks the same Gateway, package
    family and runtime contract, signing identity, agent, session and primary model.
    After draining the operator, setup retains isolated stop ownership through
    the explicit package restart. The legacy path first stops its own runtime
@@ -444,9 +444,9 @@ completion coordinator. Its celebrating mascot and "Your AI is ready" heading
 follow real primary-model verification, not discovery or browser sign-in.
 Showing the page creates no pending handoff and performs no finalization.
 
-The final screen has exactly three choices: **Talk to my agent**, with a visible
+The final screen has exactly two choices: **Talk to my agent**, with a visible
 Recommended badge, opens Chat; **Connect channels** opens Channels (WhatsApp,
-Telegram, and more); **Explore skills** opens Skills for the verified agent.
+Telegram, and more).
 There are no bottom Return or Skip buttons; the progress dots remain. Selecting
 a card is the final action, with no extra Finish button. These are navigation
 choices, never automatic sign-in, channel configuration, or skill installation.
@@ -584,11 +584,6 @@ authority fields in earlier development receipts fail closed and require new
 verification. The persisted endpoint binding includes the effective SSH local
 forwarding endpoint, which is checked before a fresh connection is attempted.
 
-The Skills handoff ignores unscoped cached status, loads a response-bound
-`skills.status` for the verified agent, and rechecks the same connected client
-before presentation. Its agent filter stays bound to that agent. An unavailable
-or changed Gateway does not consume the receipt as a successful page launch.
-
 Native setup offers the existing **Launch OpenClaw at sign-in** choice on
 **PC capabilities**, before package installation. Managed WSL keeps that choice
 on its Gateway setup review; Existing/Remote keep it on capabilities. Native
@@ -669,8 +664,8 @@ An invalid regular `restart.json` is rechecked and removed under its writer leas
 before reporting the error once. A newer valid handle, other handoff files and
 reparse paths are never removed by this recovery cleanup.
 
-After restart, native launch re-verifies ownership before mounting Chat,
-Channels or Skills. Legacy targeted Channels uses a fresh response from the bound Gateway,
+After restart, native launch re-verifies ownership before mounting Chat
+or Channels. Legacy targeted Channels uses a fresh response from the bound Gateway,
 never generic fallback rows as evidence of support. Missing authoritative
 metadata produces an unconfirmed/retry state; an offered-channel list that
 omits the target produces an unavailable state. Native Chat selects the verified
@@ -684,8 +679,8 @@ The setup flow walks users through:
 2. **Gateway** - Capability-gated native Gateway recommendation (with WSL fallback), existing, remote, local MCP only, or deferred setup
 3. **PC capabilities** - Strict, Balanced (Recommended), Open, and inline Fine-tune; Node mode, local MCP and Ollama sharing stay independent. No Gateway-installation disclosure, Windows-access advisory panel, or probe runs here.
 4. **Gateway setup** - Managed WSL reviews installation and replacement consent; native Gateway checks its package and prepares a dedicated profile without WSL or Local AI installation.
-5. **AI setup** - Native Gateway, WSL and existing/remote gateways use focused AI setup and live model verification, followed by the same three destination choices. Native uses its setup-owned runtime until finalization; WSL workspace integration remains WSL-only.
-6. **Completion** - Both verified focused AI flows open Chat, Channels or Skills. Only the explicit classic compatibility fallback retains its setup-complete and connection handoff.
+5. **AI setup** - Native Gateway, WSL and existing/remote gateways use focused AI setup and live model verification, followed by the same two destination choices. Native uses its setup-owned runtime until finalization; WSL workspace integration remains WSL-only.
+6. **Completion** - Both verified focused AI flows open Chat or Channels. Only the explicit classic compatibility fallback retains its setup-complete and connection handoff.
 
 `SetupWindow` owns one `SetupAccessDraft` over the same `SetupConfig` for the
 entire flow. The native connection contract separates verify-only **Check** from
@@ -1234,7 +1229,7 @@ The headless setup engine also treats one terminal wizard payload as completion 
 When the gateway config wizard surfaces an error and the active gateway is an app-managed WSL distro, the error state also offers **Open terminal** and **Restart gateway**. The wizard does not parse or classify the gateway's error text; it leaves the message visible and selectable so the user can copy any command the gateway reports. The buttons reuse the shared `GatewayTerminalLauncher` and `WslGatewayController` (in `OpenClaw.Connection`, also used by the Connections tab). Restart re-enters the gateway config wizard (the provider/model onboarding step - not the whole V2 onboarding, and without re-installing the WSL distro) so fixes such as newly-installed tools are picked up on `PATH`. Because the gateway restart clears its wizard session, this resumes at the first config question rather than the exact step that failed. Detection is gated on `GatewayRecord.SetupManagedDistroName`, so it never appears for remote/SSH gateways.
 
 ### Completion and recovery
-Focused setup finishes through the three-choice native page. Startup is reviewed
+Focused setup finishes through the two-choice native page. Startup is reviewed
 before completion and defaults on for a fresh, non-isolated setup. Recovery
 preserves that preference; isolated hosts keep it off. The classic completion
 page retains its summary and Open chat action. Errors retain diagnostics and
@@ -1371,7 +1366,7 @@ clean directory and checks every setup asset, including nested SVGs and notices.
 
 Run the repository-required build, Shared and Tray suites, plus
 `OpenClaw.SetupEngine.Tests` for the flow and AI protocol contracts.
-`AiReadyPageRenderingTests` covers the three destinations and isolated startup.
+`AiReadyPageRenderingTests` covers the two destinations and isolated startup.
 `ApprovedMock_FivePagesAndProviderPopup_LightAndDark` provides an opt-in native
 comparison without installation. Building fixtures alone is not rendered proof;
 high contrast and Windows text scaling need authorized visible validation.

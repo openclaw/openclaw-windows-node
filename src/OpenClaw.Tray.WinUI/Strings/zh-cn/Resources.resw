@@ -173,12 +173,6 @@
   <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
     <value>在可用时打开频道设置，用于基于架构的身份验证、二维码、登录和仪表板流程。</value>
   </data>
-  <data name="StatusSkillsTitle.Text" xml:space="preserve">
-    <value>技能</value>
-  </data>
-  <data name="StatusSkillsDescription.Text" xml:space="preserve">
-    <value>当连接的网关支持时，打开网关技能配置。</value>
-  </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / 计划</value>
   </data>
@@ -1105,9 +1099,6 @@
   <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
     <value>使用画布</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
-    <value>启用技能</value>
-  </data>
   <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
     <value>开机时启动 OpenClaw</value>
   </data>
@@ -1284,9 +1275,6 @@
   </data>
   <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
     <value>视觉工作区</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
-    <value>设置 → 技能</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
     <value>来源不允许: 网关拒绝此连接</value>
@@ -2085,18 +2073,6 @@
   <data name="CancelButton.Content" xml:space="preserve">
     <value>取消</value>
   </data>
-  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>🧩 技能</value>
-  </data>
-  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
-    <value>所有代理</value>
-  </data>
-  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
-    <value>未安装技能</value>
-  </data>
-  <data name="MarketplaceLink.Content" xml:space="preserve">
-    <value>浏览技能市场 →</value>
-  </data>
   <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
     <value>总成本</value>
   </data>
@@ -2258,9 +2234,6 @@
   </data>
   <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
     <value>代理事件</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
-    <value>技能</value>
   </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>代理</value>
@@ -5062,27 +5035,6 @@
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>已保存</value>
   </data>
-  <data name="SkillsPage_Skills.Text" xml:space="preserve">
-    <value>🧩 技能</value>
-  </data>
-  <data name="SkillsPage_AllAgents.Content" xml:space="preserve">
-    <value>所有代理</value>
-  </data>
-  <data name="SkillsPage_Enabled.Text" xml:space="preserve">
-    <value>已启用</value>
-  </data>
-  <data name="SkillsPage_Disabled.Text" xml:space="preserve">
-    <value>已禁用</value>
-  </data>
-  <data name="SkillsPage_LoadingSkills.Text" xml:space="preserve">
-    <value>正在加载技能…</value>
-  </data>
-  <data name="SkillsPage_NoSkillsInstalled.Text" xml:space="preserve">
-    <value>未安装技能</value>
-  </data>
-  <data name="SkillsPage_SkillsExtendYourAgent.Text" xml:space="preserve">
-    <value>技能扩展代理的能力。通过 CLI 或 ClawHub 安装技能。</value>
-  </data>
   <data name="UsagePage_GatewayDisconnected.Title" xml:space="preserve">
     <value>网关已断开</value>
   </data>
@@ -5259,12 +5211,6 @@
   </data>
   <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
     <value>打开聊天</value>
-  </data>
-  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
-    <value>已启用</value>
-  </data>
-  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
-    <value>已禁用</value>
   </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>预览</value>
@@ -6287,12 +6233,6 @@
   <data name="Command_GoToSettings_Title" xml:space="preserve">
     <value>Go to Settings</value>
   </data>
-  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
-    <value>Registered skills</value>
-  </data>
-  <data name="Command_GoToSkills_Title" xml:space="preserve">
-    <value>Go to Skills</value>
-  </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
   </data>
@@ -6753,21 +6693,6 @@
   </data>
   <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Open this session in Chat</value>
-  </data>
-  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
-    <value>已禁用</value>
-  </data>
-  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
-    <value>已启用</value>
-  </data>
-  <data name="SkillsPage_CountFormat" xml:space="preserve">
-    <value>({0}/{1} 已启用)</value>
-  </data>
-  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
-    <value>已禁用 ({0})</value>
-  </data>
-  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
-    <value>已启用 ({0})</value>
   </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
@@ -7491,8 +7416,6 @@
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>与我的智能体聊天</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>打开 Chat，与智能体聊天。</value></data>
   <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>与我的智能体聊天，推荐</value></data>
-  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>探索技能</value></data>
-  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>浏览智能体的技能。不会自动安装任何内容。</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>连接渠道</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp、Telegram 等。由您选择何时登录。</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>重新检查就绪状态</value></data>
@@ -7868,7 +7791,6 @@
   <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
-  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
   <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
@@ -7970,7 +7892,6 @@
   <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
   <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
   <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
-  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
   <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
   <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
   <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>

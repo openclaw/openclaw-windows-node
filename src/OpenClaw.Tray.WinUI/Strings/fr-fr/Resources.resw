@@ -173,12 +173,6 @@
   <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
     <value>Ouvrir la configuration des canaux pour l'authentification pilotée par schéma, QR, connexion et flux de tableau de bord quand disponible.</value>
   </data>
-  <data name="StatusSkillsTitle.Text" xml:space="preserve">
-    <value>Compétences</value>
-  </data>
-  <data name="StatusSkillsDescription.Text" xml:space="preserve">
-    <value>Ouvrir la configuration des compétences de la passerelle quand la passerelle connectée la prend en charge.</value>
-  </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / planifications</value>
   </data>
@@ -1105,9 +1099,6 @@ Utilisez l'une de ces options :
   <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
     <value>Utiliser le canevas</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
-    <value>Activer les compétences</value>
-  </data>
   <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
     <value>Lancer OpenClaw au démarrage</value>
   </data>
@@ -1284,9 +1275,6 @@ Utilisez l'une de ces options :
   </data>
   <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
     <value>Espace de travail visuel</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
-    <value>Paramètres → Compétences</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
     <value>Origine non autorisée: la passerelle rejette cette connexion</value>
@@ -2085,18 +2073,6 @@ Utilisez l'une de ces options :
   <data name="CancelButton.Content" xml:space="preserve">
     <value>Annuler</value>
   </data>
-  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>🧩 Compétences</value>
-  </data>
-  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
-    <value>Tous les agents</value>
-  </data>
-  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
-    <value>Aucune compétence installée</value>
-  </data>
-  <data name="MarketplaceLink.Content" xml:space="preserve">
-    <value>Parcourir la place de marché des compétences →</value>
-  </data>
   <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
     <value>Coût total</value>
   </data>
@@ -2258,9 +2234,6 @@ Utilisez l'une de ces options :
   </data>
   <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
     <value>Événements d’agent</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
-    <value>Compétences</value>
   </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>Agents logiciels</value>
@@ -5062,27 +5035,6 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>Enregistré</value>
   </data>
-  <data name="SkillsPage_Skills.Text" xml:space="preserve">
-    <value>🧩 Compétences</value>
-  </data>
-  <data name="SkillsPage_AllAgents.Content" xml:space="preserve">
-    <value>Tous les agents</value>
-  </data>
-  <data name="SkillsPage_Enabled.Text" xml:space="preserve">
-    <value>Activé</value>
-  </data>
-  <data name="SkillsPage_Disabled.Text" xml:space="preserve">
-    <value>Désactivé</value>
-  </data>
-  <data name="SkillsPage_LoadingSkills.Text" xml:space="preserve">
-    <value>Chargement des compétences…</value>
-  </data>
-  <data name="SkillsPage_NoSkillsInstalled.Text" xml:space="preserve">
-    <value>Aucune compétence installée</value>
-  </data>
-  <data name="SkillsPage_SkillsExtendYourAgent.Text" xml:space="preserve">
-    <value>Les compétences étendent les capacités de votre agent. Installez des compétences via la CLI ou ClawHub.</value>
-  </data>
   <data name="UsagePage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Passerelle déconnectée</value>
   </data>
@@ -5259,12 +5211,6 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   </data>
   <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
     <value>Ouvrir le chat</value>
-  </data>
-  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
-    <value>Activées</value>
-  </data>
-  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
-    <value>Désactivées</value>
   </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>Aperçu</value>
@@ -6287,12 +6233,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
     <value>Go to Settings</value>
   </data>
-  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
-    <value>Registered skills</value>
-  </data>
-  <data name="Command_GoToSkills_Title" xml:space="preserve">
-    <value>Go to Skills</value>
-  </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
   </data>
@@ -6753,21 +6693,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Open this session in Chat</value>
-  </data>
-  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
-    <value>Désactivée</value>
-  </data>
-  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
-    <value>Activée</value>
-  </data>
-  <data name="SkillsPage_CountFormat" xml:space="preserve">
-    <value>({0}/{1} activées)</value>
-  </data>
-  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
-    <value>Désactivées ({0})</value>
-  </data>
-  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
-    <value>Activées ({0})</value>
   </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
@@ -7491,8 +7416,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Parler à mon agent</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Ouvrir le Chat avec votre agent.</value></data>
   <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Parler à mon agent, recommandé</value></data>
-  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>Explorer les compétences</value></data>
-  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Parcourir les compétences de votre agent. Rien n'est installé automatiquement.</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Connecter des canaux</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram et plus encore. Vous choisissez quand vous connecter.</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Vérifier à nouveau</value></data>
@@ -7868,7 +7791,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
-  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
   <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
@@ -7970,7 +7892,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
   <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
   <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
-  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
   <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
   <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
   <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>

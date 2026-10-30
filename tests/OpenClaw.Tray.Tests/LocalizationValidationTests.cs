@@ -260,7 +260,7 @@ public class LocalizationValidationTests
         "ConfigPage_ConfigIsReadOnly",
         // ConnectionPage gateway terminal controls — surfaced after PR #597
         // landed in master. Seeded English-only across all 5 locales using the
-        // same deferred-translation pattern as the AgentEventsPage / SkillsPage
+        // same deferred-translation pattern as the AgentEventsPage
         // / CronPage entries above. The Description_Format key takes the WSL
         // distro name as {0} and is formatted in ConnectionPage.xaml.cs.
         "ConnectionPage_GatewayHostControlsDescription_Format",
@@ -282,8 +282,6 @@ public class LocalizationValidationTests
         "Command_GoToSessions_Subtitle",
         "Command_GoToAgentEvents_Title",
         "Command_GoToAgentEvents_Subtitle",
-        "Command_GoToSkills_Title",
-        "Command_GoToSkills_Subtitle",
         "Command_GoToCron_Title",
         "Command_GoToCron_Subtitle",
         "Command_GoToWorkspace_Title",

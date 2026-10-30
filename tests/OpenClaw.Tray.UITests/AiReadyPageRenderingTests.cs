@@ -226,8 +226,8 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
                 window.CommitPresentation();
                 Assert.Equal(Visibility.Visible, choices.Visibility);
-                Assert.Equal(3, choices.Children.Count);
-                Assert.Equal(["Chat", "Channels", "Skills"], choices.Children.Cast<FrameworkElement>().Select(item => item.Tag));
+                Assert.Equal(2, choices.Children.Count);
+                Assert.Equal(["Chat", "Channels"], choices.Children.Cast<FrameworkElement>().Select(item => item.Tag));
                 Assert.All(choices.Children, item => Assert.True(Assert.IsAssignableFrom<Control>(item).IsEnabled));
                 Assert.Null(page.FindName("SkipButton"));
                 Assert.Null(page.FindName("ReturnButton"));

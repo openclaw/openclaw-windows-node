@@ -21,7 +21,6 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
         InitializeComponent();
         ChatChoice.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Chat, 20);
         ChannelsChoice.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Sessions, 20);
-        SkillsChoice.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Develop, 20);
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

@@ -296,7 +296,7 @@ meaning and is not the main Workspace route.
 Verified native setup completion follows the same window boundary. Chat binds
 the receipt's exact session to Workspace's retained ChatPage and waits for the
 native composer before activating the window and consuming the receipt.
-Channels and Skills keep typed companion navigation. Both paths retain fresh
+Channels keeps typed companion navigation. Both paths retain fresh
 gateway, endpoint, identity, agent, and session checks; selecting a different
 Workspace destination invalidates an in-flight chat handoff.
 Admitted assistant changes and new-conversation creation invalidate that binding
@@ -316,8 +316,9 @@ Both native window entry points use `WorkspaceNavigation.Dispatch` to reject
 unknown prefixed routes before creating a companion or forwarding navigation.
 `app.navigate` reports this rejection as an MCP tool error, not a successful
 no-op.
-Unprefixed companion routes, including `cron`, `sessions`, `skills`, `usage`,
-and `agent:<id>:workspace`, are unchanged.
+Unprefixed companion routes, including `cron`, `sessions`, `usage`,
+and `agent:<id>:workspace`, are unchanged. Skills management is available in the
+Gateway web dashboard, not a native companion page.
 
 The removed `WorkspaceContentPage` and `WorkspacePageRenderer` no longer host
 placeholder management pages. Native Cron keeps its existing companion

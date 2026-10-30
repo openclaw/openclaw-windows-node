@@ -34,8 +34,6 @@
                     </tk:SettingsCard>
                     <tk:SettingsCard x:Name="ChannelsChoice" x:Uid="Onboarding_Ready_Channels" Header="Connect channels"
                                      Description="WhatsApp, Telegram, and more. You choose when to sign in." Tag="Channels" IsClickEnabled="True" Click="Choose_Click" />
-                    <tk:SettingsCard x:Name="SkillsChoice" x:Uid="Onboarding_Ready_Skills" Header="Explore skills"
-                                     Description="Browse skills for your agent. Nothing is installed automatically." Tag="Skills" IsClickEnabled="True" Click="Choose_Click" />
                 </StackPanel>
                 <ProgressBar x:Name="BusyProgress" IsIndeterminate="True" Visibility="Collapsed" />
                 <TextBlock x:Name="StatusText" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"

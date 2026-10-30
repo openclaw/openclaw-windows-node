@@ -23,7 +23,6 @@ assets. The existing monochrome glyph catalog still applies to other surfaces.
 | `Chat.svg` | `chat-24` |
 | `Connection.svg` | `globe-24` |
 | `Sessions.svg` | `chat-multiple-24` |
-| `Skills.svg` | `toolbox-24` |
 | `Channels.svg` | `molecule-24` |
 | `Instances.svg` | `phone-laptop-24` |
 | `Advanced.svg` | `org-24` |

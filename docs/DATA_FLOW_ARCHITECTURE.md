@@ -26,7 +26,7 @@ Single source of truth for all gateway-cached data. Implements `INotifyPropertyC
 src/OpenClaw.Tray.WinUI/Services/AppState.cs
 ```
 
-**Properties** (24+): `Status`, `CurrentActivity`, `Sessions`, `Channels`, `Nodes`, `Usage`, `UsageCost`, `UsageStatus`, `GatewaySelf`, `NodePairList`, `DevicePairList`, `ModelsList`, `Presence`, `AgentsList`, `Config`, `ConfigSchema`, `SkillsData`, `CronList`, `CronStatus`, `CronRuns`, `AgentFilesList`, `AgentFileContent`, `AuthFailureMessage`, `UpdateInfo`, `LastCheckTime`
+**Properties** (24+): `Status`, `CurrentActivity`, `Sessions`, `Channels`, `Nodes`, `Usage`, `UsageCost`, `UsageStatus`, `GatewaySelf`, `NodePairList`, `DevicePairList`, `ModelsList`, `Presence`, `AgentsList`, `Config`, `ConfigSchema`, `CronList`, `CronStatus`, `CronRuns`, `AgentFilesList`, `AgentFileContent`, `AuthFailureMessage`, `UpdateInfo`, `LastCheckTime`
 
 **Threading model**: All property writes must happen on the UI thread (enforced by `Debug.Assert` in `SetField`). This guarantees `PropertyChanged` fires on the UI thread, so pages can update UI directly without `DispatcherQueue.TryEnqueue`.
 
@@ -130,7 +130,6 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
 | ConfigPage | Config, ConfigSchema |
 | BindingsPage | Config |
 | CronPage | CronList, CronStatus, CronRuns |
-| SkillsPage | SkillsData |
 | WorkspacePage | AgentFilesList, AgentFileContent |
 | AgentEventsPage | AgentEventAdded (separate event) |
 | AboutPage | GatewaySelf |

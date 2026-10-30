@@ -469,8 +469,6 @@ internal sealed partial class SettingsShellView : UserControl
         }
         if (ContentFrame.Content is ChannelsPage channels && request.PageTag == "channels")
             await channels.WaitForNativeSetupAsync(request, ct);
-        else if (ContentFrame.Content is SkillsPage skills && request.PageTag == "skills")
-            await skills.WaitForNativeSetupAsync(request, ct);
         else
             throw new InvalidOperationException("The selected setup destination changed.");
         EnsureCurrent();
@@ -644,7 +642,6 @@ internal sealed partial class SettingsShellView : UserControl
                 HubPageRegistry.ShouldKeepCurrentPageVisibleDuringDisconnect(currentTag);
 
             NavSessions.Visibility = vis;
-            NavSkills.Visibility = vis;
             NavChannels.Visibility = vis;
             NavInstances.Visibility = vis;
             NavCron.Visibility = vis;
@@ -858,7 +855,6 @@ internal sealed partial class SettingsShellView : UserControl
             case ChannelsPage channels: channels.Initialize(); break;
             case UsagePage usage: usage.Initialize(); break;
             case CronPage cron: cron.Initialize(); break;
-            case SkillsPage skills: skills.Initialize(); break;
             case ConfigPage config:
                 try { config.Initialize(); }
                 catch (Exception ex)
@@ -986,7 +982,6 @@ internal sealed partial class SettingsShellView : UserControl
         { "chat",        "\uE8BD" },
         { "connection",  "\uE839" },
         { "sessions",    "\uE8F2" },
-        { "skills",      "\uE945" },
         { "channels",    "\uEC05" },
         { "instances",   "\uE977" },
         { "agentevents", "\uE943" },

@@ -1069,7 +1069,7 @@ public sealed partial class ConnectionPage : Page
         }
 
         // Permissions link is always visible (entry point even when sharing is off);
-        // Voice and Skills deep links were removed from the simplified node card.
+        // Voice deep link were removed from the simplified node card.
     }
 
     private void ApplyRecoveryBody(ConnectionPagePlan plan)
