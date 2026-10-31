@@ -23,6 +23,7 @@ function New-GateArguments {
         Classification = "targeted"
         FullRequired = "false"
         FastValidationResult = "success"
+        ProofPoolContractsRequired = "true"
         ProofPoolContractsResult = "success"
         CoreRequired = "true"
         CoreResult = "success"
@@ -76,6 +77,22 @@ function Assert-GateFails {
 $targeted = Invoke-Gate (New-GateArguments)
 if ($targeted -ne "targeted") {
     throw "Expected a core-only targeted gate to pass."
+}
+
+foreach ($required in @('true', 'false', '', 'invalid')) {
+    foreach ($result in @('success', 'skipped', 'failure', 'cancelled', '', 'unknown')) {
+        $arguments = New-GateArguments
+        $arguments.ProofPoolContractsRequired = $required
+        $arguments.ProofPoolContractsResult = $result
+        $passes = ($required -eq 'true' -and $result -eq 'success') -or
+            ($required -eq 'false' -and $result -eq 'skipped')
+        if ($passes) {
+            if ((Invoke-Gate $arguments) -ne 'targeted') { throw 'Valid proof selection failed.' }
+        } else {
+            Assert-GateFails -Overrides @{ ProofPoolContractsRequired = $required; ProofPoolContractsResult = $result } `
+                -Scenario "Proof selection '$required' with result '$result'"
+        }
+    }
 }
 
 $docsArguments = New-GateArguments

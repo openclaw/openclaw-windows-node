@@ -8,7 +8,8 @@ param(
     [string]$EventName = $env:GITHUB_EVENT_NAME,
     [string]$BaseSha,
     [string]$HeadSha = $env:GITHUB_SHA,
-    [string]$RepoRoot
+    [string]$RepoRoot,
+    [string[]]$ChangedPaths
 )
 
 Set-StrictMode -Version Latest
@@ -30,8 +31,9 @@ if ($EventName -ne "pull_request") {
     return
 }
 
-if ([string]::IsNullOrWhiteSpace($BaseSha) -or
-    [string]::IsNullOrWhiteSpace($HeadSha)) {
+if (-not $PSBoundParameters.ContainsKey("ChangedPaths") -and
+    ([string]::IsNullOrWhiteSpace($BaseSha) -or
+    [string]::IsNullOrWhiteSpace($HeadSha))) {
     Write-Warning "Proof-pool diff inputs are incomplete. Running the regression fail-closed."
     Complete-Decision $true
     return
@@ -66,23 +68,27 @@ $triggerPaths = [System.Collections.Generic.HashSet[string]]::new(
     "scripts/test-agent-readiness.ps1"
 ) | ForEach-Object { [void]$triggerPaths.Add($_) }
 
-try {
-    $diffOutput = @(
-        & git -C $repoRootPath diff --name-only --no-renames "$BaseSha...$HeadSha" 2>&1
-    )
-    $gitExitCode = $LASTEXITCODE
-    $global:LASTEXITCODE = 0
-} catch {
-    Write-Warning "Proof-pool diff failed. Running the regression fail-closed: $($_.Exception.Message)"
-    Complete-Decision $true
-    return
-}
+if ($PSBoundParameters.ContainsKey("ChangedPaths")) {
+    $diffOutput = @($ChangedPaths)
+} else {
+    try {
+        $diffOutput = @(
+            & git -C $repoRootPath diff --name-only --no-renames "$BaseSha...$HeadSha" 2>&1
+        )
+        $gitExitCode = $LASTEXITCODE
+        $global:LASTEXITCODE = 0
+    } catch {
+        Write-Warning "Proof-pool diff failed. Running the regression fail-closed: $($_.Exception.Message)"
+        Complete-Decision $true
+        return
+    }
 
-if ($gitExitCode -ne 0) {
-    $detail = ($diffOutput | Out-String).Trim()
-    Write-Warning "Proof-pool diff exited with code $gitExitCode. Running the regression fail-closed: $detail"
-    Complete-Decision $true
-    return
+    if ($gitExitCode -ne 0) {
+        $detail = ($diffOutput | Out-String).Trim()
+        Write-Warning "Proof-pool diff exited with code $gitExitCode. Running the regression fail-closed: $detail"
+        Complete-Decision $true
+        return
+    }
 }
 
 $shouldRun = $false

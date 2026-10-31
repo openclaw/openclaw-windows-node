@@ -22,6 +22,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$changedPathsBound = $PSBoundParameters.ContainsKey("ChangedPaths")
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
@@ -76,6 +77,19 @@ function Complete-Impact([System.Collections.IDictionary]$Impact) {
         $Impact | ConvertTo-Json -Compress
         return
     }
+    # Complete-Impact has its own bound parameters. Preserve the script's original
+    # inputs so early classification returns cannot hide a later proof boundary.
+    $proofArguments = @{ EventName = $EventName; RepoRoot = $repoRootPath }
+    if ($changedPathsBound) { $proofArguments.ChangedPaths = $ChangedPaths }
+    else { $proofArguments.BaseSha = $BaseSha; $proofArguments.HeadSha = $HeadSha }
+    $proofRequired = $true
+    try {
+        $proofDecision = @(& (Join-Path $scriptRoot 'Get-CiProofPoolRegressionDecision.ps1') @proofArguments)
+        $proofRequired = -not ($LASTEXITCODE -eq 0 -and $proofDecision.Count -eq 1 -and $proofDecision[0] -ceq 'false')
+    } catch {
+        Write-Warning "Proof-pool selection failed. The plan retains proof-pool contracts: $($_.Exception.Message)"
+    }
+    $global:LASTEXITCODE = 0
     $selectedPaths = @(
         foreach ($path in $paths) {
             $known = @($pathReasons | Where-Object { $_.path -ceq [string]$path })
@@ -116,7 +130,9 @@ function Complete-Impact([System.Collections.IDictionary]$Impact) {
         impact = $Impact
         reason = $decisionReason
         selectedPaths = $selectedPaths
-        hostedLanes = @('change-classification', 'fast-validation', 'proof-pool-contracts', 'ci-gate') + @(
+        hostedLanes = @('change-classification', 'fast-validation', 'ci-gate') + @(
+            if ($proofRequired) { 'proof-pool-contracts' }
+        ) + @(
             if ($Impact.x64_release -or $Impact.arm64_release) { 'metadata'; 'build-msix'; 'build-msix-bundle' }
         ) + @(
             $Impact.Keys | Where-Object { $_ -notin @('classification', 'full') -and $Impact[$_] } | ForEach-Object {
@@ -345,7 +361,7 @@ if ($EventName -ne "pull_request") {
 }
 
 $paths = @()
-if ($PSBoundParameters.ContainsKey("ChangedPaths")) {
+if ($changedPathsBound) {
     $paths = @($ChangedPaths)
 } else {
     $shaPattern = "^[0-9a-fA-F]{40}$"
