@@ -926,6 +926,54 @@ public sealed class NativeGatewaySetupTests
     }
 
     [Fact]
+    public async Task SlowConfigurationValidation_DoesNotReduceNativeStartupBudget()
+    {
+        var clock = new ManualTimeProvider();
+        using var fixture = new Fixture(timeProvider: clock);
+        var startupEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Host.Validate = () => clock.Advance(TimeSpan.FromSeconds(87));
+        fixture.Runtime.Ensure = async cancellationToken =>
+        {
+            Task startup = Task.Delay(TimeSpan.FromSeconds(165), clock, cancellationToken);
+            startupEntered.SetResult();
+            await startup;
+        };
+
+        Task<NativeGatewaySetupSession> preparation =
+            fixture.Service.PrepareAsync(fixture.Draft, CancellationToken.None);
+        await startupEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        clock.Advance(TimeSpan.FromSeconds(165));
+        await using var session = await preparation.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(session.IsIsolated);
+        Assert.Equal(TimeSpan.FromSeconds(252), TimeSpan.FromTicks(clock.GetTimestamp()));
+        Assert.True(fixture.Events.IndexOf("validate") < fixture.Events.IndexOf("start"));
+    }
+
+    [Fact]
+    public async Task ConfigurationValidation_HasItsOwnBoundAndNeverStartsGatewayOnTimeout()
+    {
+        var clock = new ManualTimeProvider();
+        using var fixture = new Fixture(timeProvider: clock);
+        var validationEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Host.ValidateAsync = async cancellationToken =>
+        {
+            validationEntered.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        };
+
+        Task<NativeGatewaySetupSession> preparation =
+            fixture.Service.PrepareAsync(fixture.Draft, CancellationToken.None);
+        await validationEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        clock.Advance(NativeGatewaySetupService.ConfigurationValidationTimeout);
+        var error = await Assert.ThrowsAsync<TimeoutException>(
+            () => preparation.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        Assert.Contains("configuration validation", error.Message);
+        Assert.DoesNotContain("start", fixture.Events);
+    }
+
+    [Fact]
     public async Task ChangedPackage_IsRejectedBeforeCreatingConfig()
     {
         using var fixture = new Fixture();
@@ -1169,6 +1217,7 @@ public sealed class NativeGatewaySetupTests
         public Action Health { get; set; } = () => { };
         public Func<Task> HealthAsync { get; set; } = () => Task.CompletedTask;
         public Action Validate { get; set; } = () => { };
+        public Func<CancellationToken, Task> ValidateAsync { get; set; } = _ => Task.CompletedTask;
         public IDisposable OpenRecoveryTerminal(NativeGatewayPackage package,
             IReadOnlyDictionary<string, string> environment) => throw new NotSupportedException();
         public Task PreparePackageAsync(NativeGatewayPackage package, IReadOnlyDictionary<string, string> environment,
@@ -1179,12 +1228,12 @@ public sealed class NativeGatewaySetupTests
             Prepare();
             return Task.CompletedTask;
         }
-        public Task ValidateConfigurationAsync(NativeGatewayPackage package, IReadOnlyDictionary<string, string> environment,
+        public async Task ValidateConfigurationAsync(NativeGatewayPackage package, IReadOnlyDictionary<string, string> environment,
             CancellationToken cancellationToken)
         {
             events.Add("validate");
             Validate();
-            return Task.CompletedTask;
+            await ValidateAsync(cancellationToken);
         }
         public Task VerifyHealthAsync(NativeGatewayPackage package, IReadOnlyDictionary<string, string> environment,
             CancellationToken cancellationToken)

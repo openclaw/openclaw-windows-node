@@ -90,30 +90,64 @@ public sealed class NativeGatewaySetupSession(
 
     internal async Task PrepareAsync(CancellationToken cancellationToken)
     {
-        var remaining = BeginAdmission();
-        using var deadline = new CancellationTokenSource(remaining, AdmissionTimeProvider);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token, deadline.Token);
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        await _gate.WaitAsync(operation.Token);
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (remaining == TimeSpan.Zero)
-                throw new TimeoutException("The native Gateway connection budget expired during preparation.");
-            await _gate.WaitAsync(linked.Token);
-            try
-            {
-                if (!IsIsolated)
-                    SuspendReload();
-                await host.ValidateConfigurationAsync(package, environment, linked.Token);
-                await AuthorizeCoreAsync(linked.Token);
-            }
-            finally { _gate.Release(); }
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!IsIsolated)
+                SuspendReload();
+            await ValidateConfigurationAsync(operation.Token);
+            await AuthorizeWithinAdmissionBudgetAsync(operation.Token);
+        }
+        finally { _gate.Release(); }
+    }
+
+    private async Task ValidateConfigurationAsync(CancellationToken cancellationToken)
+    {
+        using var deadline = new CancellationTokenSource(
+            NativeGatewaySetupService.ConfigurationValidationTimeout, AdmissionTimeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        try
+        {
+            await host.ValidateConfigurationAsync(package, environment, linked.Token);
+            linked.Token.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException error) when (
-            deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
+            deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested &&
+            !_lifetime.IsCancellationRequested)
         {
-            throw new TimeoutException("The native Gateway did not finish preparation within its connection budget.", error);
+            int seconds = (int)NativeGatewaySetupService.ConfigurationValidationTimeout.TotalSeconds;
+            throw new TimeoutException(
+                $"Native Gateway configuration validation exceeded its {seconds}-second budget.", error);
         }
     }
+
+    private async Task AuthorizeWithinAdmissionBudgetAsync(CancellationToken cancellationToken)
+    {
+        var remaining = BeginAdmission();
+        if (remaining == TimeSpan.Zero)
+            throw CreateAdmissionTimeout();
+
+        using var deadline = new CancellationTokenSource(remaining, AdmissionTimeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetime.Token, deadline.Token);
+        try
+        {
+            await AuthorizeCoreAsync(linked.Token);
+        }
+        catch (OperationCanceledException error) when (
+            deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested &&
+            !_lifetime.IsCancellationRequested)
+        {
+            throw CreateAdmissionTimeout(error);
+        }
+    }
+
+    private static TimeoutException CreateAdmissionTimeout(Exception? innerException = null) =>
+        new($"The native Gateway admission budget of " +
+            $"{IsolatedGatewayRuntime.AdmissionTimeout.TotalSeconds:0} seconds expired after configuration validation.",
+            innerException);
 
     public async Task AuthorizeAsync(CancellationToken cancellationToken)
     {
