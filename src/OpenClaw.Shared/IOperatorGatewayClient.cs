@@ -131,6 +131,7 @@ public interface IOperatorGatewayClient
     Task RequestModelsListAsync();
     Task RequestNodePairListAsync();
     Task<bool> NodePairApproveAsync(string requestId);
+    /// <summary>Returns true only after a rejection acknowledgement on the same Gateway connection; never automatically replays a failed decision.</summary>
     Task<bool> NodePairRejectAsync(string requestId);
     Task<NodeForgetResult> NodePairRemoveAsync(string nodeId);
     Task<NodeRenameResult> NodeRenameAsync(string nodeId, string displayName);

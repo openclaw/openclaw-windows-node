@@ -814,6 +814,14 @@ public class OpenClawGatewayClientTests
             return GetPendingRegistry().Count;
         }
 
+        public void CompleteTakenResponseAfterConnectionReset(string requestId)
+        {
+            Assert.True(GetPendingRegistry().TryTake(requestId, out var pending));
+            OnDisconnected();
+            Assert.IsType<WizardRequestResolution>(pending).TryComplete(
+                JsonSerializer.SerializeToElement(new { requestId = "request-1" }));
+        }
+
         private PendingRequestRegistry GetPendingRegistry()
         {
             var field = typeof(OpenClawGatewayClient).GetField(
@@ -5558,6 +5566,52 @@ public class OpenClawGatewayClientTests
         Assert.Empty(n.PendingDeclaredCommands);
         Assert.Empty(n.PendingDeclaredPermissions);
         Assert.Empty(n.UnverifiedDeclaredCommands);
+    }
+
+    [Fact]
+    public async Task NodePairDecision_AlreadyTakenResponseAfterConnectionReset_IsDiscarded()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("node-pair-stale-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var decision = client.NodePairApproveAsync("request-1");
+        var requestId = ReadRequestId(await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+        // Response dispatch has taken ownership, so disconnect cannot fault this completion via the registry.
+        helper.CompleteTakenResponseAfterConnectionReset(requestId);
+
+        Assert.False(await decision.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task NodePairRejectAsync_WhenDisconnected_ReturnsFalseAndLogsUnavailable()
+    {
+        using var identity = new TempDirectory("node-pair-reject-");
+        var logger = new TestLogger();
+        using var client = new OpenClawGatewayClient(
+            "ws://localhost:18789", "test-token", logger, identityPath: identity.Path);
+
+        Assert.False(await client.NodePairRejectAsync("request-1"));
+        Assert.Contains(logger.Logs, line => line.Contains("node.pair.reject", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task NodePairRejectAsync_EmptyRequestId_IsRejectedAndLogged(string requestId)
+    {
+        using var identity = new TempDirectory("node-pair-reject-");
+        var logger = new TestLogger();
+        using var client = new OpenClawGatewayClient(
+            "ws://localhost:18789", "test-token", logger, identityPath: identity.Path);
+
+        Assert.False(await client.NodePairRejectAsync(requestId));
+        Assert.Contains(logger.Logs, line => line.Contains("requires a requestId", StringComparison.Ordinal));
     }
 
     [Fact]

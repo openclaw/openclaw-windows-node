@@ -106,6 +106,140 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         await client.DisconnectAsync();
     }
 
+    private static Task<bool> DecideNodePairingAsync(
+        OpenClawGatewayClient client, string method, string requestId) =>
+        method == "node.pair.approve"
+            ? client.NodePairApproveAsync(requestId)
+            : client.NodePairRejectAsync(requestId);
+
+    [Theory]
+    [InlineData("node.pair.approve")]
+    [InlineData("node.pair.reject")]
+    public async Task NodePairDecision_WaitsForMatchingGatewayAcknowledgement(string method)
+    {
+        using var server = new LoopbackGatewayServer();
+        server.SilenceMethod(method);
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server);
+
+        var decision = DecideNodePairingAsync(client, method, "pending-node-1");
+        using var request = JsonDocument.Parse(
+            await server.WaitFrameAsync(method, 0, 10_000));
+        Assert.Equal("pending-node-1", request.RootElement.GetProperty("params").GetProperty("requestId").GetString());
+        Assert.Single(request.RootElement.GetProperty("params").EnumerateObject());
+        await server.SendTextToCurrentSocketAsync(
+            """{"type":"res","id":"unrelated-response","ok":true,"payload":{}}""");
+        // A correlated read is an ordering barrier, not a timing-based guess that the response was consumed.
+        await client.SendWizardRequestAsync("health");
+        Assert.False(decision.IsCompleted, "Sending the frame is not a confirmed pairing decision.");
+
+        await server.SendTextToCurrentSocketAsync(JsonSerializer.Serialize(new
+        {
+            type = "res", id = request.RootElement.GetProperty("id").GetString(), ok = true,
+            payload = method == "node.pair.approve"
+                ? (object)new { requestId = "pending-node-1", node = new { nodeId = "node-1" } }
+                : new { requestId = "pending-node-1", nodeId = "node-1" }
+        }));
+        Assert.True(await decision.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Throws<InvalidOperationException>(() => server.FrameFor(method, 1));
+        _output.WriteLine($"{method}: one request; unrelated response ignored; matching Gateway acknowledgement accepted.");
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
+    [InlineData("INVALID_REQUEST", "missing scope: operator.pairing")]
+    [InlineData("INVALID_REQUEST", "node pairing rejection denied")]
+    [InlineData("INVALID_REQUEST", "unknown requestId")]
+    [InlineData("INVALID_REQUEST", "unknown method: node.pair.reject")]
+    public async Task NodePairRejection_GatewayDenialIsNotSuccessOrRetried(string code, string message)
+    {
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod("node.pair.reject", _ => new LoopbackResponse(false, null, new { code, message }));
+        var logger = new TestLogger();
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl, "test-token", logger, identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server);
+
+        Assert.False(await client.NodePairRejectAsync("pending-node-1").WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Contains(logger.Logs, line => line.Contains(message, StringComparison.Ordinal));
+        await client.SendWizardRequestAsync("health");
+        Assert.Throws<InvalidOperationException>(() => server.FrameFor("node.pair.reject", 1));
+        _output.WriteLine($"node.pair.reject: Gateway error '{message}' returned false; no mutation retry.");
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
+    [InlineData("node.pair.approve")]
+    [InlineData("node.pair.reject")]
+    public async Task NodePairDecision_BeforeHelloOkOrWithInvalidId_DoesNotReachWire(string method)
+    {
+        using var server = new LoopbackGatewayServer(sendHandshakeChallenge: false);
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await client.ConnectAsync();
+        Assert.False(await DecideNodePairingAsync(client, method, "pending-node-1"));
+        Assert.False(server.HasFrame(method));
+        await client.DisconnectAsync();
+
+        await ConnectAndWaitAsync(client, server);
+        Assert.False(await DecideNodePairingAsync(client, method, "   "));
+        await client.SendWizardRequestAsync("health");
+        Assert.False(server.HasFrame(method));
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
+    [InlineData("node.pair.approve")]
+    [InlineData("node.pair.reject")]
+    public async Task NodePairDecision_DisconnectSettlesFalseAndReconnectDoesNotReplay(string method)
+    {
+        using var server = new LoopbackGatewayServer();
+        server.SilenceMethod(method);
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server);
+        var decision = DecideNodePairingAsync(client, method, "pending-node-1");
+        using var request = JsonDocument.Parse(await server.WaitFrameAsync(method, 0, 10_000));
+
+        await client.DisconnectAsync();
+        Assert.False(await decision.WaitAsync(TimeSpan.FromSeconds(10)));
+        await ConnectAndWaitAsync(client, server);
+        await server.SendTextToCurrentSocketAsync(JsonSerializer.Serialize(new
+        {
+            type = "res", id = request.RootElement.GetProperty("id").GetString(), ok = true,
+            payload = new { requestId = "pending-node-1", nodeId = "node-1" }
+        }));
+        await client.SendWizardRequestAsync("health");
+        Assert.False(await decision);
+        Assert.Throws<InvalidOperationException>(() => server.FrameFor(method, 1));
+        _output.WriteLine($"{method}: disconnect returned false; reconnect and late acknowledgement did not replay or accept the old decision.");
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
+    public async Task NodePairRejection_TimeoutRemainsUnconfirmedAfterLateResponse()
+    {
+        using var server = new LoopbackGatewayServer();
+        server.SilenceMethod("node.pair.reject");
+        var logger = new TestLogger();
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl, "test-token", logger, identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server);
+        var decision = client.NodePairRejectAsync("pending-node-1");
+        using var request = JsonDocument.Parse(await server.WaitFrameAsync("node.pair.reject", 0, 10_000));
+        Assert.False(await decision.WaitAsync(TimeSpan.FromSeconds(30)));
+        Assert.Contains(logger.Logs, line => line.Contains("Timed out waiting for node.pair.reject response", StringComparison.Ordinal));
+
+        await server.SendTextToCurrentSocketAsync(JsonSerializer.Serialize(new
+        {
+            type = "res", id = request.RootElement.GetProperty("id").GetString(), ok = true,
+            payload = new { requestId = "pending-node-1", nodeId = "node-1" }
+        }));
+        await client.SendWizardRequestAsync("health");
+        Assert.False(await decision);
+        Assert.Throws<InvalidOperationException>(() => server.FrameFor("node.pair.reject", 1));
+        _output.WriteLine("node.pair.reject: timeout remains unconfirmed after late acknowledgement; no automatic replay.");
+        await client.DisconnectAsync();
+    }
+
     [Fact]
     public async Task ApplicationRpc_BeforeHelloOk_DoesNotReachWire()
     {
@@ -1001,7 +1135,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         }
     }
 
-    private sealed record LoopbackResponse(bool Ok, object? Payload = null, string? Error = null)
+    private sealed record LoopbackResponse(bool Ok, object? Payload = null, object? Error = null)
     {
         public static LoopbackResponse Fail(string error) => new(false, Error: error);
     }
