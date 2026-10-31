@@ -1,5 +1,4 @@
 using System.Windows.Automation;
-using OpenClaw.TestSupport;
 using OpenClaw.TestSupport.Gateway;
 
 namespace OpenClaw.Tray.UITests;
@@ -10,8 +9,6 @@ public sealed partial class GatewayFixtureUiTests
     [Trait("Category", "GatewayFixture")]
     public async Task ConnectedVerificationTimeoutHasExplicitRetryWithoutDiscardingTheLoadedDraft()
     {
-        using var timeout = new EnvironmentScope("OPENCLAW_CHAT_RECOVERY_TIMEOUT_MS", "1000");
-        using var language = new EnvironmentScope("OPENCLAW_LANGUAGE", "en-us");
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "chat" });
@@ -22,12 +19,21 @@ public sealed partial class GatewayFixtureUiTests
             var inputIdentity = FindById(run, "ChatComposerInput")!.GetRuntimeId();
             await CaptureIfRequestedAsync(run, "verification-before.png");
             await ToggleConnectionAsync(run, ToggleState.On);
-            var captured = run.Gateway.HoldNextSessionList();
+            await run.WaitForAsync(async () =>
+                (await run.InvokeAsync("app.status")).GetProperty("operatorState").GetString() == "Idle", "explicit manager disconnect before withholding roster");
+            var firstRequest = run.Gateway.Requests.Count;
+            // Reconnect has independent SDK/Workspace roster reads. Hold all of
+            // them and observe the correlated authority read, not simply the next one.
+            // The fixture strips ambient OPENCLAW_* flags, so this exercises the
+            // actual 12-second production deadline, not an inherited test override.
+            run.Gateway.HoldSessionListings();
             var rosterHeld = true;
             try
             {
                 await ToggleConnectionAsync(run, ToggleState.Off);
-                await captured.WaitAsync(TimeSpan.FromSeconds(20));
+                await run.WaitForAsync(() => Task.FromResult(run.Gateway.Requests.Skip(firstRequest)
+                    .Any(r => r.Method == "sessions.list" && r.AuthorityScoped && r.Outcome == "pending")), "held authoritative verification roster");
+                output.WriteLine("Observed authority-scoped sessions.list pending on the reconnected client; using the production verification deadline.");
                 await run.InvokeAsync("app.navigate", new { page = "chat" });
                 await WaitUiAsync(run, () => FindById(run, "ChatComposerRetryVerification") is { Current.IsOffscreen: false }, "explicit verification retry in the retained composer");
                 Assert.Equal("Connected", (await run.InvokeAsync("app.status")).GetProperty("operatorState").GetString());
@@ -38,7 +44,7 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.True(IsVisibleInTimeline(run, GatewayScenario.OtherSentinel));
                 Assert.Contains("could not be verified", FindById(run, "ChatComposerConnectionStatus")!.Current.Name);
                 await CaptureIfRequestedAsync(run, "verification-failed-retained.png");
-                run.Gateway.ReleaseSessionList();
+                run.Gateway.ReleaseSessionListings();
                 rosterHeld = false;
                 Invoke(FindById(run, "ChatComposerRetryVerification")!);
                 await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsEnabled: true }, "same-client explicit verification retry");
@@ -46,7 +52,7 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
                 await CaptureIfRequestedAsync(run, "verification-recovered-retained.png");
             }
-            finally { if (rosterHeld) run.Gateway.ReleaseSessionList(); }
+            finally { if (rosterHeld) run.Gateway.ReleaseSessionListings(); }
 
             // A known profile change discards old history. Its connected-but-unverified
             // state uses the existing waiting/retry surface, not connection guidance.

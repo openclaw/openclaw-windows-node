@@ -9,6 +9,43 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed partial class ChatProviderConnectionSecurityTests
 {
+    [Fact]
+    public async Task VerificationRosterTimeoutCannotBeDivertedToAnIndependentBootstrapRead()
+    {
+        await using var h = await Harness.StartAsync();
+        await h.PumpUntilAsync(() => h.Server.Requests.Any(r => r.Method == "agents.list" && r.Outcome == "ok"));
+        var retained = h.Lifetime.Provider!;
+        using var timeout = new EnvironmentScope("OPENCLAW_CHAT_RECOVERY_TIMEOUT_MS", "150");
+        h.Lifetime.SetClient(null);
+        var first = h.Server.Requests.Count;
+        h.Server.HoldSessionListings();
+        var held = true;
+        try
+        {
+            // The SDK and Workspace can issue unscoped listing reads as well as
+            // the lifetime owner's correlated verification. Reproduce that ordering.
+            await h.Client.RequestSessionsAsync();
+            await h.PumpUntilAsync(() => h.Server.Requests.Skip(first).Any(r => r.Method == "sessions.list" && !r.AuthorityScoped && r.Outcome == "pending"));
+            h.Lifetime.SetClient(h.Client);
+            await h.PumpUntilAsync(() => h.IsBound || h.Lifetime.VerificationState == ChatVerificationState.Failed);
+            var listings = h.Server.Requests.Skip(first).Where(r => r.Method == "sessions.list").ToArray();
+            foreach (var request in listings)
+                output.WriteLine($"roster-observed authority={request.AuthorityScoped}; outcome={request.Outcome}");
+            Assert.Equal(ChatVerificationState.Failed, h.Lifetime.VerificationState);
+            Assert.Contains(listings, r => r.AuthorityScoped && r.Outcome == "pending");
+            Assert.Contains(listings, r => !r.AuthorityScoped && r.Outcome == "pending");
+            Assert.Same(retained, h.Lifetime.Provider);
+            Assert.False(h.IsBound);
+            h.Server.ReleaseSessionListings();
+            held = false;
+            timeout.Set("OPENCLAW_CHAT_RECOVERY_TIMEOUT_MS", null);
+            Assert.True(retained.RetryVerification());
+            await h.PumpUntilAsync(() => h.IsBound);
+            Assert.Same(retained, h.Lifetime.Provider);
+        }
+        finally { if (held) h.Server.ReleaseSessionListings(); }
+    }
+
     [Theory]
     [InlineData("disconnect")]
     [InlineData("gateway")]

@@ -135,6 +135,19 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
         await using var h = await Harness.StartAsync();
         var old = h.Lifetime.Provider!;
         var handshake = h.Client.ServerHandshakeGeneration;
+        var censusStart = h.Server.Requests.Count;
+        var sequence = 0;
+        var eventStart = h.Server.Events.Count;
+        void Trace(string stage)
+        {
+            var rows = h.Server.Requests.Skip(censusStart).ToArray();
+            output.WriteLine(JsonSerializer.Serialize(new { sequence = ++sequence, stage,
+                invalidation = revoked ? "manager-auth-observation" : "wire-profile-identity",
+                connected = h.Client.IsConnectedToGateway, handshake = h.Client.ServerHandshakeGeneration,
+                bound = h.IsBound, chatSendCount = rows.Count(r => r.Method == "chat.send"),
+                events = h.Server.Events.Skip(eventStart).ToArray(),
+                requests = rows.Select((r, index) => new { ordinal = censusStart + index, r.Method, r.SessionKey, r.AuthorityScoped, r.Outcome }) }));
+        }
         var sendLock = (SemaphoreSlim)typeof(WebSocketClientBase).GetField("_sendLock", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(h.Client)!;
         await sendLock.WaitAsync();
         var held = true;
@@ -142,6 +155,7 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
         {
             var staleSend = old.SendMessageAsync(GatewayScenario.OtherSessionKey, "Fixture old-profile payload must never be written.");
             Assert.False(staleSend.IsCompleted);
+            Trace("old-send-queued-send-lock-held");
             if (revoked)
                 h.Lifetime.ObserveConnection(new GatewayConnectionSnapshot { GatewayId = h.Record.Id, OperatorErrorKind = GatewayErrorKind.Auth });
             else
@@ -159,13 +173,20 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
             }
             h.Drain();
             Assert.Null(h.Lifetime.Provider);
+            Trace("authority-invalidated-provider-retired-send-lock-held");
+            var staleOutcome = "completed";
             try { await staleSend.WaitAsync(Deadline); }
-            catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or InvalidOperationException) { }
+            catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or InvalidOperationException)
+            { staleOutcome = ex.GetType().Name; }
+            output.WriteLine(JsonSerializer.Serialize(new { sequence = ++sequence, stage = "old-send-task-settled-before-release", outcome = staleOutcome }));
             sendLock.Release();
             held = false;
+            Trace("serialized-send-lock-released");
             // A subsequent response is a wire barrier behind the queued request.
             await h.Client.SendWizardRequestAsync("health", new { }).WaitAsync(Deadline);
-            Assert.DoesNotContain(h.Server.Requests, request => request.Method == "chat.send");
+            Trace("health-response-acknowledged-after-settled-old-send");
+            var staleWrites = h.Server.Requests.Count(request => request.Method == "chat.send");
+            Assert.Equal(0, staleWrites);
             Assert.True(h.Client.IsConnectedToGateway);
             Assert.Equal(handshake, h.Client.ServerHandshakeGeneration);
             if (revoked)
@@ -175,12 +196,17 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
             }
             await h.PumpUntilAsync(() => h.IsBound);
             Assert.NotSame(old, h.Lifetime.Provider);
+            output.WriteLine(JsonSerializer.Serialize(new { sequence = ++sequence, stage = "fresh-authority-verified",
+                sessionKey = GatewayScenario.OtherSessionKey,
+                sessionId = h.Client.GetSessionList().Single(r => r.Key == GatewayScenario.OtherSessionKey).SessionId }));
             await h.Lifetime.Provider!.SendMessageAsync(GatewayScenario.OtherSessionKey, "Fixture current-binding control.");
             await h.Server.WaitForCompletedRequestAsync("chat.send", GatewayScenario.OtherSessionKey).WaitAsync(Deadline);
+            await h.Client.SendWizardRequestAsync("health", new { }).WaitAsync(Deadline);
+            Trace("authorized-chat-send-acknowledged-final-health-barrier");
             var allowed = Assert.Single(h.Server.Requests, request => request.Method == "chat.send");
             Assert.Equal(GatewayScenario.OtherSessionKey, allowed.SessionKey);
             Assert.Equal("ok", allowed.Outcome);
-            output.WriteLine($"final-effect invalidation={(revoked ? "manager-auth-observation" : "wire-profile-identity")}; stale-chat-writes=0; current-chat-writes=1; unchanged-socket-handshake={handshake}");
+            output.WriteLine($"final-effect invalidation={(revoked ? "manager-auth-observation" : "wire-profile-identity")}; stale-chat-writes={staleWrites}; current-chat-writes={h.Server.Requests.Count(r => r.Method == "chat.send")}; unchanged-socket-handshake={handshake}");
         }
         finally { if (held) sendLock.Release(); }
     }

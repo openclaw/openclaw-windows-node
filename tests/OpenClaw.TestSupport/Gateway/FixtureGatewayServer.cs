@@ -16,7 +16,8 @@ public sealed record GatewayFixtureRequest(
     string? ApprovalId = null,
     bool AdvertisesExecApprovals = false,
     string? ModelCatalogView = null,
-    bool? IncludeModelDetails = null);
+    bool? IncludeModelDetails = null,
+    bool AuthorityScoped = false);
 
 public sealed record GatewayFixtureEvent(string Event, int DeliveredConnections);
 
@@ -711,7 +712,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                         method == "models.list" && parameters.ValueKind == JsonValueKind.Object
                             && parameters.TryGetProperty("includeDetails", out var details)
                             && details.ValueKind is JsonValueKind.True or JsonValueKind.False
-                                ? details.GetBoolean() : null);
+                                ? details.GetBoolean() : null,
+                        id!.StartsWith("authority-rpc:", StringComparison.Ordinal));
                     if (!authenticated || method == "connect")
                     {
                         try
@@ -956,13 +958,14 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         string? approvalId = null,
         bool advertisesExecApprovals = false,
         string? modelCatalogView = null,
-        bool? includeModelDetails = null)
+        bool? includeModelDetails = null,
+        bool authorityScoped = false)
     {
         lock (_sync)
         {
             var index = _requests.Count;
             _requests.Add(new GatewayFixtureRequest(method, key, "pending", decision, approvalId,
-                advertisesExecApprovals, modelCatalogView, includeModelDetails));
+                advertisesExecApprovals, modelCatalogView, includeModelDetails, authorityScoped));
             SignalRequestChanged();
             return index;
         }
