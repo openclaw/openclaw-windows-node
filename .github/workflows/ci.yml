@@ -742,6 +742,12 @@ jobs:
         -TrxFileName OpenClawTray.FunctionalUI.Tests.trx
         -Runtime win-x64
 
+    - name: Install UI startup stack tool
+      run: |
+        dotnet tool install dotnet-stack --version 10.0.750501 --tool-path "$env:RUNNER_TEMP\ui-startup-tools"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        ./scripts/test-ui-startup-stack-capture.ps1 -StackTool "$env:RUNNER_TEMP\ui-startup-tools\dotnet-stack.exe"
+
     - name: Run Tray UI Tests
       timeout-minutes: 15
       run: >
@@ -752,6 +758,7 @@ jobs:
         -Runtime win-x64
         -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"
         -HangTimeoutSeconds 300
+        -UiStartupStackTool "${{ runner.temp }}\ui-startup-tools\dotnet-stack.exe"
 
     - name: Run mock Gateway application scenarios
       id: gateway-fixture

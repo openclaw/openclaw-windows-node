@@ -1,4 +1,7 @@
 using System;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -98,13 +101,54 @@ public sealed class UIThreadFixture : IDisposable
         if (!_ready.Wait(TimeSpan.FromSeconds(timeoutSeconds)))
         {
             var threadState = _uiThread.IsAlive ? _uiThread.ThreadState.ToString() : "stopped";
+            CaptureStartupTimeout();
             throw new InvalidOperationException(
                 $"UIThreadFixture failed to initialize within {timeoutSeconds}s; phase='{_startupPhase}', threadState='{threadState}'");
         }
 
-        if (_startupError != null)
-            throw new InvalidOperationException("UIThreadFixture initialization failed", _startupError);
-    }
+            if (_startupError != null)
+                throw new InvalidOperationException("UIThreadFixture initialization failed", _startupError);
+        }
+
+        private void CaptureStartupTimeout()
+        {
+            var directory = Environment.GetEnvironmentVariable("OPENCLAW_UI_STARTUP_DIAGNOSTICS_DIR");
+            if (string.IsNullOrWhiteSpace(directory))
+                return;
+
+            try
+            {
+                using var current = Process.GetCurrentProcess();
+                var start = new ProcessStartInfo("pwsh")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                foreach (var argument in new[]
+                {
+                    "-NoProfile", "-NonInteractive", "-File",
+                    Path.Combine(Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
+                        ?? throw new InvalidOperationException("OPENCLAW_REPO_ROOT is required."),
+                        "scripts", "Capture-UiStartupStacks.ps1"),
+                    "-TesthostId", Environment.ProcessId.ToString(CultureInfo.InvariantCulture),
+                    "-ExpectedStartTicks", current.StartTime.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture),
+                    "-Phase", _startupPhase,
+                    "-OutputDirectory", directory,
+                    "-StackTool", Environment.GetEnvironmentVariable("OPENCLAW_UI_STACK_TOOL")
+                        ?? throw new InvalidOperationException("OPENCLAW_UI_STACK_TOOL is required."),
+                })
+                    start.ArgumentList.Add(argument);
+
+                // The helper has its own bound. Never delay or replace the original startup failure.
+                using var helper = Process.Start(start)
+                    ?? throw new InvalidOperationException("UI startup stack helper did not start.");
+                Console.Error.WriteLine($"UIThreadFixture: startup stack capture launched (helper PID {helper.Id})");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"UIThreadFixture: startup stack capture could not start ({ex.GetType().Name})");
+            }
+        }
 
     private static uint ResolveWinAppSdkMajorMinor()
     {

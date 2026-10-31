@@ -10,7 +10,8 @@ param(
     [Parameter(Mandatory)][string]$TrxFileName,
     [string]$Runtime,
     [string]$Filter,
-    [ValidateRange(0, 3600)][int]$HangTimeoutSeconds = 0
+    [ValidateRange(0, 3600)][int]$HangTimeoutSeconds = 0,
+    [string]$UiStartupStackTool
 )
 
 Set-StrictMode -Version Latest
@@ -58,19 +59,35 @@ if ($HangTimeoutSeconds -gt 0) {
     ) | ForEach-Object { $testArguments.Add($_) }
 }
 
-$collectCoverage = $env:OPENCLAW_CI_COLLECT_COVERAGE -eq "true"
-if ($collectCoverage) {
-    $coverageOutput = Join-Path $ResultsDirectory "coverage.cobertura.xml"
-    & dotnet-coverage collect `
-        --output $coverageOutput `
-        --output-format cobertura `
-        dotnet @testArguments
-} else {
-    & dotnet @testArguments
+$previousStackTool = $env:OPENCLAW_UI_STACK_TOOL
+$previousStartupDirectory = $env:OPENCLAW_UI_STARTUP_DIAGNOSTICS_DIR
+try {
+    if (-not [string]::IsNullOrWhiteSpace($UiStartupStackTool)) {
+        if (-not (Test-Path -LiteralPath $UiStartupStackTool -PathType Leaf)) {
+            throw "UI startup stack tool was not installed."
+        }
+        $env:OPENCLAW_UI_STACK_TOOL = [IO.Path]::GetFullPath($UiStartupStackTool)
+        $env:OPENCLAW_UI_STARTUP_DIAGNOSTICS_DIR = Join-Path $ResultsDirectory "startup"
+    }
+
+    $collectCoverage = $env:OPENCLAW_CI_COLLECT_COVERAGE -eq "true"
+    if ($collectCoverage) {
+        $coverageOutput = Join-Path $ResultsDirectory "coverage.cobertura.xml"
+        & dotnet-coverage collect `
+            --output $coverageOutput `
+            --output-format cobertura `
+            dotnet @testArguments
+    } else {
+        & dotnet @testArguments
+    }
+    $testExitCode = $LASTEXITCODE
+} finally {
+    $env:OPENCLAW_UI_STACK_TOOL = $previousStackTool
+    $env:OPENCLAW_UI_STARTUP_DIAGNOSTICS_DIR = $previousStartupDirectory
 }
 
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+if ($testExitCode -ne 0) {
+    exit $testExitCode
 }
 $result = Read-TestResultContract -Path $invocation.report -StartedUtc $invocation.startedUtc -ExitCode 0 -AllowSkipped
 Write-Host ("CI test results: " + ($result | ConvertTo-Json -Compress))

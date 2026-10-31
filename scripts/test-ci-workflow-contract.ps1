@@ -572,6 +572,13 @@ Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
     -Message "Tray UI tests must collect the interrupted test sequence on a five-minute hang."
+Assert-Contains -Text $trayUiStep -Expected '-UiStartupStackTool "${{ runner.temp }}\ui-startup-tools\dotnet-stack.exe"' `
+    -Message "Only the framework UI invocation must opt into startup method-stack capture."
+$stackToolStep = Get-StepBlock -Text $uiJob -Name "Install UI startup stack tool"
+Assert-Contains -Text $stackToolStep -Expected 'dotnet-stack --version 10.0.750501' `
+    -Message "UI startup diagnostics must use a pinned stack tool."
+Assert-Contains -Text $stackToolStep -Expected 'test-ui-startup-stack-capture.ps1' `
+    -Message "The real stack tool and process-identity guards must be exercised before the UI tests."
 
 $fixtureStep = Get-StepBlock -Text $uiJob -Name "Run mock Gateway application scenarios"
 foreach ($token in @(
