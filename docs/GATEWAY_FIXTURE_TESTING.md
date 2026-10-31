@@ -49,6 +49,16 @@ fields, returns a server-assigned ID, and exposes it through subsequent
 remain rejected. The test verifies the refreshed selector while retaining the
 existing session and unsent draft. Normal interactive browse runs remain read-only.
 
+`AgentCreationServiceTests` also drives the production creation service and
+WebSocket client against this fixture. It checks the server-assigned ID in a
+subsequent agent listing, rejection without administrator authority, duplicate
+creation errors without catalog growth, and rejection of a dialog or dispatch
+epoch retained across reconnect. Unit cases cover replacement clients, authority
+loss during the request and incomplete acknowledgements. Creation stays bound
+to the connection that opened the dialog; close and reopen it after reconnect.
+The fixture creates no workspace on disk and does not prove a published
+Gateway's config application, onboarding, or persistence behavior.
+
 Chat cancellation tests explicitly opt into the `chat-send` scenario. It issues
 synthetic run IDs and accepts `chat.abort` only for a run belonging to the supplied
 fixture session. The server can hold send acknowledgements and abort replies,

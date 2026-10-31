@@ -1762,6 +1762,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     // Agent methods
 
+    public Task<JsonElement> CreateAgentConfirmedAsync(
+        string name, string workspace, long connectionEpoch, int timeoutMs = 30000)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspace);
+        if (!GrantedOperatorScopes.Contains("operator.admin", StringComparer.Ordinal))
+            throw new InvalidOperationException("Agent creation requires operator.admin permission.");
+        return SendResponseRequestAsync("agents.create", new { name, workspace }, timeoutMs, connectionEpoch);
+    }
+
     public async Task RequestAgentsListAsync()
     {
         if (_agentsListUnsupported) return;
