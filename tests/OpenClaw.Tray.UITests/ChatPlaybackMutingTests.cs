@@ -1,16 +1,48 @@
+using System.Reflection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.TestSupport;
 using OpenClawTray.Chat;
 using OpenClawTray.Services;
+using Windows.Storage.Streams;
 
 namespace OpenClaw.Tray.UITests;
 
-// Only the external synthesis/player is controlled. These tests run the real
-// coordinator, resolver and VoiceService without opening a microphone or model.
+// Coordinator tests replace synthesis/player. Cancelled admission exercises
+// the real player boundary without opening a device or model.
 public sealed class ChatPlaybackMutingTests
 {
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(5);
+
+    [Fact]
+    public async Task CancelledNativePlayback_DoesNotInterruptRecoveryAlreadyPlaying()
+    {
+        using var directory = new TempDirectory();
+        var settings = new SettingsManager(directory.Path);
+        using var speech = new TextToSpeechService(NullLogger.Instance, settings);
+        var recovery = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var activeCompletion = typeof(TextToSpeechService).GetField("_activeCompletion",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        activeCompletion.SetValue(speech, recovery);
+        try
+        {
+            using var stream = new InMemoryRandomAccessStream();
+            var play = typeof(TextToSpeechService).GetMethod("PlayStreamAsync",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var retiring = (Task)play.Invoke(speech,
+                [stream, "audio/wav", true, new CancellationToken(canceled: true)])!;
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => retiring.WaitAsync(TestTimeout));
+            Assert.False(recovery.Task.IsCompleted);
+            speech.StopSpeaking();
+            await Assert.ThrowsAsync<InvalidOperationException>(() => recovery.Task);
+        }
+        finally
+        {
+            activeCompletion.SetValue(speech, null);
+            if (recovery.Task.IsFaulted) _ = recovery.Task.Exception;
+        }
+    }
 
     [Fact]
     public async Task VoiceService_RetainsMuteBeforeAnyPipelineExists()
@@ -141,6 +173,9 @@ public sealed class ChatPlaybackMutingTests
         var settings = new SettingsManager(directory.Path);
         await using var voice = new VoiceService(NullLogger.Instance, settings);
         var recoveryPlayback = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var callbackFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var recoveryEntered = new ManualResetEventSlim();
+        CancellationToken retiringToken = default;
         Task? recovery = null;
         OpenClawChatCoordinator? owner = null;
         var calls = 0;
@@ -148,19 +183,34 @@ public sealed class ChatPlaybackMutingTests
         {
             if (++calls == 1)
             {
+                retiringToken = token;
                 // Cancellation callbacks run in reverse registration order.
                 // Admit recovery before the delay continuation can dispose
                 // this registration while unwinding the retiring playback.
                 var cancelledPlayback = Task.Delay(Timeout.Infinite, token);
                 using var registration = token.Register(() =>
-                    recovery = owner!.SpeakResponseAsync("Synthetic concurrent recovery."));
+                {
+                    try
+                    {
+                        recovery = Task.Run(() => owner!.SpeakResponseAsync("Synthetic concurrent recovery."));
+                        Assert.True(recoveryEntered.Wait(TestTimeout));
+                        callbackFinished.SetResult();
+                    }
+                    catch (Exception ex) { callbackFinished.SetException(ex); }
+                });
                 await cancelledPlayback;
             }
-            else await recoveryPlayback.Task.WaitAsync(token);
+            else
+            {
+                Assert.True(retiringToken.IsCancellationRequested);
+                recoveryEntered.Set();
+                await recoveryPlayback.Task.WaitAsync(token);
+            }
         }, () => recoveryPlayback.TrySetException(new InvalidOperationException("global interrupt")));
         owner = coordinator;
         var retiring = coordinator.SpeakResponseAsync("Synthetic retiring generation.");
         coordinator.StopSpeaking();
+        await callbackFinished.Task.WaitAsync(TestTimeout);
         await retiring.WaitAsync(TestTimeout);
         Assert.NotNull(recovery);
         Assert.False(recoveryPlayback.Task.IsCompleted);

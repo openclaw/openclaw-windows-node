@@ -134,21 +134,31 @@ public sealed class OpenClawChatCoordinator : IDisposable
         return SpeakConfiguredTextAsync(text, muteVoiceCapture: true, bypassMute: true);
     }
 
-    /// <summary>Stops any currently playing TTS audio immediately.</summary>
+    /// <summary>Requests cancellation of the current chat speech generation.</summary>
     public void StopSpeaking()
     {
         CancellationTokenSource retiring;
+        Task cancellation;
         lock (_gate)
         {
             if (_disposed) return;
             retiring = _speechCancellation;
             _speechCancellation = new CancellationTokenSource();
+            // Mark retirement before a fresh generation can enter. Callbacks
+            // run asynchronously so they can admit recovery without this lock.
+            cancellation = retiring.CancelAsync();
         }
         // Each chat playback already receives this token. Cancel only the
         // retiring generation; a global player interrupt could stop a newer
         // request admitted while cancellation callbacks are running.
-        retiring.Cancel();
-        retiring.Dispose();
+        _ = DisposeRetiredSpeechCancellationAsync(retiring, cancellation);
+    }
+
+    private async Task DisposeRetiredSpeechCancellationAsync(CancellationTokenSource retiring, Task cancellation)
+    {
+        try { await cancellation.ConfigureAwait(false); }
+        catch (Exception ex) { _logger.Debug($"OpenClawChatCoordinator: cancellation callback failed: {ex.Message}"); }
+        finally { retiring.Dispose(); }
     }
 
     public Task SpeakResponseAsync(string text) => SpeakConfiguredTextAsync(text, muteVoiceCapture: true, bypassMute: false);
