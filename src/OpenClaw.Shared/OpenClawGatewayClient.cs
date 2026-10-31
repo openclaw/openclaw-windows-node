@@ -5684,15 +5684,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             if (!byIdentity.TryAdd(identity, CloneModelInfo(source))) continue;
 
             var configuredModel = byIdentity[identity];
+            // View membership is a legacy fallback, never an override of explicit readiness.
+            configuredModel.IsConfigured = !configuredModel.HasConfiguredFlag || configuredModel.IsConfigured;
             configuredModel.HasConfiguredFlag = true;
-            configuredModel.IsConfigured = true;
             result.Models.Add(configuredModel);
         }
 
         foreach (var source in catalog.Models)
         {
             if (source is null || string.IsNullOrWhiteSpace(source.Id)) continue;
-            if (!source.IsAvailable && !source.RequiresAuth) continue;
 
             var identity = GetModelIdentity(source);
             if (byIdentity.TryGetValue(identity, out var configuredModel))

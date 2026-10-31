@@ -5,7 +5,7 @@ namespace OpenClaw.Shared.Tests;
 public class ModelCatalogMergeTests
 {
     [Fact]
-    public void MergeModelCatalog_KeepsConfiguredFirstAndAddsAvailableCatalogModels()
+    public void MergeModelCatalog_KeepsConfiguredFirstAndRetainsUnavailableCatalogModels()
     {
         var configured = new ModelsListInfo
         {
@@ -69,7 +69,55 @@ public class ModelCatalogMergeTests
                 Assert.False(model.IsConfigured);
                 Assert.True(model.HasConfiguredFlag);
                 Assert.True(model.IsAvailable);
+            },
+            model =>
+            {
+                Assert.Equal("claude-opus-4-8", model.Id);
+                Assert.Equal("anthropic", model.Provider);
+                Assert.False(model.IsConfigured);
+                Assert.True(model.HasConfiguredFlag);
+                Assert.False(model.IsAvailable);
             });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MergeModelCatalog_PreservesExplicitConfiguredReadinessWithoutMutatingSnapshots(bool configuredFlag)
+    {
+        var source = new ModelInfo
+        {
+            Id = "restricted",
+            Provider = "fixture",
+            HasConfiguredFlag = true,
+            IsConfigured = configuredFlag,
+            IsAvailable = false,
+            ManualSelectionAllowed = false,
+        };
+        var configured = new ModelsListInfo { Models = { source } };
+        var catalogSource = new ModelInfo
+        {
+            Id = "restricted",
+            Provider = "fixture",
+            ContextWindow = 64_000,
+            IsAvailable = true,
+            ManualSelectionAllowed = true,
+        };
+        var catalog = new ModelsListInfo { Models = { catalogSource } };
+
+        var merged = OpenClawGatewayClient.MergeModelCatalog(configured, catalog);
+
+        var model = Assert.Single(merged.Models);
+        Assert.NotSame(source, model);
+        Assert.True(model.HasConfiguredFlag);
+        Assert.Equal(configuredFlag, model.IsConfigured);
+        Assert.False(model.IsAvailable);
+        Assert.False(model.ManualSelectionAllowed);
+        Assert.Equal(64_000, model.ContextWindow);
+        Assert.Equal(configuredFlag, source.IsConfigured);
+        Assert.Null(source.ContextWindow);
+        Assert.True(catalogSource.IsAvailable);
+        Assert.True(catalogSource.ManualSelectionAllowed);
     }
 
     [Fact]

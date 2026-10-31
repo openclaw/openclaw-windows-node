@@ -53,6 +53,8 @@ public sealed partial class GatewayScenario
 
     private readonly bool _allowAgentCreation;
     private readonly bool _publishedModelCatalog;
+    private readonly bool _modelCatalogReadiness;
+    private readonly bool _legacyModelConfigurationFlags;
     private readonly bool _allowSessionMutations;
     private readonly bool _allowChatSend;
     public bool IsInteractive { get; }
@@ -63,7 +65,7 @@ public sealed partial class GatewayScenario
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _modelCatalogReadiness ? "model-catalog-readiness" : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -76,13 +78,16 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        bool modelCatalogReadiness = false, bool legacyModelConfigurationFlags = false)
     {
         _sessions = sessions;
         _reads = reads;
         _setup = setup;
         _allowAgentCreation = allowAgentCreation;
         _publishedModelCatalog = publishedModelCatalog;
+        _modelCatalogReadiness = modelCatalogReadiness;
+        _legacyModelConfigurationFlags = legacyModelConfigurationFlags;
         _allowSessionMutations = allowSessionMutations;
         IsInteractive = interactive;
         _allowChatSend = allowChatSend;
@@ -100,7 +105,8 @@ public sealed partial class GatewayScenario
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
-            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog,
+            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog, modelCatalogReadiness,
+            legacyModelConfigurationFlags,
             sessions = sessions.Select(s => new { s.Row, s.Messages }), reads, cronJobs
         });
         Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant();
@@ -117,6 +123,13 @@ public sealed partial class GatewayScenario
     {
         var browse = CreateBrowse();
         return new(browse._sessions, browse._reads, interactive: true);
+    }
+
+    public static GatewayScenario CreateModelCatalogReadiness(bool legacyConfigurationFlags = false)
+    {
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, modelCatalogReadiness: true,
+            legacyModelConfigurationFlags: legacyConfigurationFlags);
     }
 
     public static GatewayScenario CreateContextUsage(ContextUsageFixture contextUsage)
@@ -583,6 +596,30 @@ public sealed partial class GatewayScenario
         OptionalBoolean(p, "includeDetails");
         if (!_publishedModelCatalog && p.TryGetProperty("includeDetails", out _))
             throw new FixtureRequestException("INVALID_PARAMS", "Fixture does not advertise published-model-catalog.");
+        if (_modelCatalogReadiness && sessionKey is null)
+        {
+            // Pinned model-catalog.ts readiness fields, not real provider health.
+            var current = JsonSerializer.SerializeToNode(new
+            {
+                id = "browse", name = "Fixture Browse", provider = "fixture",
+                available = false, manualSelectionAllowed = false, unavailableReason = "cooldown",
+            })!.AsObject();
+            if (_legacyModelConfigurationFlags)
+                current["configured"] = false;
+            return new
+            {
+                models = view == "all" ? new object[]
+                {
+                    current,
+                    new
+                    {
+                        id = "offline", name = "Fixture Offline", provider = "fixture",
+                        available = false, manualSelectionAllowed = false, unavailableReason = "missing-auth",
+                        contextWindow = 32_000,
+                    },
+                } : [current],
+            };
+        }
         if (sessionKey == EdgeSessionKey)
         {
             // Configured reads retain current-model metadata without granting manual selection.

@@ -145,6 +145,20 @@ The Shared browser-proxy regression runs the production client and a default-han
 control in separate test-host processes with explicit proxy settings. It does not
 change the test runner's environment or cached default proxy.
 
+`GatewayScenario.CreateModelCatalogReadiness()` is a protocol-only scenario.
+It returns distinct configured and full model snapshots over the same authenticated
+socket fixture. `RequestModelsListAsync` must publish the configured snapshot first,
+then retain unavailable catalog rows and their manual-selection restrictions in the
+merged snapshot. Its `legacyConfigurationFlags: true` variant also proves that an
+explicit legacy `configured: false` flag is not overridden by view membership;
+omitted flags still use configured-view membership as the fallback.
+The readiness fields follow the
+[pinned model catalog schema](https://github.com/openclaw/openclaw/blob/098e991549b7986bcfaebdbe427aeaaf95afb926/packages/gateway-protocol/src/schema/model-catalog.ts).
+This proves the production client parser, merge and event boundary, not native
+picker rendering, real provider authentication, or compatibility with a published
+Gateway package. It does not implement or verify the seven `models.auth*` /
+`models.probe` account-management methods.
+
 The tests use local MCP for discovery, startup state and page navigation, and
 UI Automation for the actual agent selector, Workspace session sidebar, scrolling and settings
 controls. They verify:
