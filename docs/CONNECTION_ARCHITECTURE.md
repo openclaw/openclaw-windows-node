@@ -871,6 +871,75 @@ When **another** device or node requests pairing, the gateway broadcasts `device
 
 `PairingApprovalCoordinator` (tray) reconciles those snapshots through the pure `PairingApprovalQueue` (OpenClaw.Connection) into add/resolve deltas, de-duplicating, suppressing already-decided requests, and filtering out the local node's own pending request (handled by the auto-approve path above). For genuinely new requests - when `ShowPairingApprovalDialog` is enabled and the operator holds pairing scope - it raises `ApprovalRequested`, and the app presents a focused **`PairingApprovalDialog`** plus an awareness toast (with a "Review" action). The dialog shows the requester's identity and the **operator scopes being granted** (mapped to friendly text by `PairingScopeDescriptions`), with Approve / Reject / Decide-later. Approve is briefly disabled on each new request to prevent click-through. Approve/Reject call the `IOperatorGatewayClient.{Device,Node}Pair{Approve,Reject}Async` RPCs; the queue advances and the dialog closes when empty. The existing Connections-page "Pending approvals" banner remains as the passive fallback when the dialog is disabled. Pure queue/scope logic is unit-tested in `OpenClaw.Connection.Tests`.
 
+### Device decision acknowledgement
+
+`OpenClawGatewayClient` waits for the correlated application response before
+returning success from `DevicePairApproveAsync` or `DevicePairRejectAsync`.
+Sending a WebSocket frame alone is not approval or rejection. Both calls require
+a nonblank request ID and a completed handshake, bind dispatch to the captured
+socket generation, and discard a result after that generation changes.
+Only an acknowledged decision on the same ready connection triggers the client
+list refresh. Gateway denials, unknown methods, disconnects and response timeouts
+return false with a warning. No mutation is automatically replayed after an
+uncertain response. Re-read the original Gateway's pending list before deciding
+again; a lost acknowledgement can follow a successful mutation.
+
+The existing dialog, Connection page and local pairing handlers consume this
+boolean. Their presentation is unchanged. The tray approval queue still waits
+for list reconciliation to confirm that a submitted request disappeared; the
+client acknowledgement does not replace that queue contract.
+
+### Device RPC parity baseline
+
+This bounded seam follows pinned OpenClaw source
+[`098e991`](https://github.com/openclaw/openclaw/tree/098e991549b7986bcfaebdbe427aeaaf95afb926),
+not an assertion of compatibility with a separately published or live Gateway.
+Mac native `PairingPromptSupport.decide` waits for a response using its captured
+server lease and discards stale results. `DevicePairingApprovalPrompter` reads
+the pending list and presents decisions. The web Dashboard has additional
+inventory, credential-lifecycle and scope-upgrade flows; those are not evidence
+that the native Mac app exposes the same controls.
+
+The pinned [device schemas](https://github.com/openclaw/openclaw/blob/098e991549b7986bcfaebdbe427aeaaf95afb926/packages/gateway-protocol/src/schema/devices.ts)
+and [handlers](https://github.com/openclaw/openclaw/blob/098e991549b7986bcfaebdbe427aeaaf95afb926/src/gateway/server-methods/devices.ts)
+define these eleven methods. Scope below is the entry-point minimum, not authority
+to manage any identity: device ownership, requested roles, scope ceilings and
+administrator checks also apply.
+
+| Method | Pinned request and minimum scope | Windows disposition |
+| --- | --- | --- |
+| `device.pair.list` | `{}`; `operator.pairing` | Existing pending-approval production owner. Real-client socket coverage reads and refreshes pending state. |
+| `device.pair.approve` | `{ requestId }`; `operator.pairing` | Existing native decision. Response-aware, now socket-generation fenced; unit and socket decision coverage. |
+| `device.pair.reject` | `{ requestId }`; `operator.pairing` | Existing native decision now waits for Gateway acknowledgement rather than transport-send success; unit and socket coverage. |
+| `device.pair.remove` | `{ deviceId }`; `operator.pairing` | Deferred Dashboard inventory seam. No native Mac dispatch located in this source audit; no Windows production/test verification added. |
+| `device.pair.rename` | `{ deviceId, label }`, label 1-64 characters; `operator.pairing` | Deferred Dashboard alias seam, distinct from node rename. No Windows production/test verification added. |
+| `device.pair.setupCode` | Optional `publicUrl`, `preferRemoteUrl`, `includeQr`, `bootstrapProfile`, `joinUrl`; `operator.admin` | Registered but deliberately unadvertised by pinned core policy, not proven removed. Dashboard bootstrap-credential creation is separate from Windows setup-code consumption. Deferred. |
+| `device.pair.setupStatus` | `{ setupId }`; `operator.admin` | Registered but unadvertised. Reconciles completion versus uncertain delivery for one setup credential. Deferred with setup-code generation. |
+| `device.scopes.requestUpgrade` | `{ scopes }`, 1-8 unique scopes; `operator.read` | Deferred explicit-consent/credential-lifecycle seam. Requires a paired identity, current-scope inclusion and assigned-role ceiling. Never an automatic privilege upgrade. |
+| `device.scopes.waitUpgrade` | `{ requestId }`; `operator.read` | Deferred identity-bound observation. Approved result contains replacement device token and scopes; rejected/expired results do not. |
+| `device.token.revoke` | `{ deviceId, role }`; `operator.pairing` | Deferred explicit credential-management seam. Must reconcile captured identity and potentially disconnected owner before changing local credentials. |
+| `device.token.rotate` | `{ deviceId, role, scopes? }`; `operator.pairing` | Deferred with token persistence/recovery. Self-rotation may return a bearer; cross-device rotation withholds it. Never rotate just to obtain verification credit. |
+
+Setup profiles accept `limited`, `node` or `voice-node`; `joinUrl`, when present,
+must be true. Setup responses carry credential-bearing setup codes and optional
+lifecycle metadata, so they must not be logged as ordinary diagnostics. Scope
+upgrade approval and token rotation likewise need protected storage, exact
+Gateway/device binding and recovery after lost acknowledgement. This change does
+not alter stored-token precedence, request new scopes, or persist any tokens.
+
+`DevicePairDecisionTests` covers failed admission;
+`PairingApprovalCoordinatorTests` covers queue preservation, duplicate decisions
+and changed-client results. `GatewayFixtureDevicePairingTests` drives the real
+client over loopback WebSockets, including delayed replies, protocol denials,
+unsupported methods, cross-device denial, lost acknowledgement and reconnect
+without replay. The explicit memory-only `DevicePairingFixture` is opt-in through
+`GatewayScenario.CreateDevicePairing`; default browsing remains read-only.
+It models the pinned request/response and list-state subset, not real pairing
+cryptography, device-token issuance, broadcast ordering or durable Gateway state.
+These source/unit/fixture results do not verify the actual published Gateway or
+visible native dialog. All eleven methods retain that live-proof limit; the
+remaining eight also lack implemented Windows production flows in this seam.
+
 ## SSH tunnel integration
 
 The Connection page and Connection Status validate remote and local forward
