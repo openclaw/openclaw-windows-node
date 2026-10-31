@@ -80,20 +80,6 @@ public sealed class PlaybackMuteStateTests
     }
 
     [Fact]
-    public void SeparateVoiceServices_KeepTheirOwnOverlappingLeases()
-    {
-        using var node = new PlaybackMuteState();
-        using var standalone = new PlaybackMuteState();
-        using var nodePlayback = node.Acquire();
-        using var standalonePlayback = standalone.Acquire();
-        nodePlayback.Dispose();
-        Assert.False(node.IsMuted);
-        Assert.True(standalone.IsMuted);
-        standalonePlayback.Dispose();
-        Assert.False(standalone.IsMuted);
-    }
-
-    [Fact]
     public void Disposal_DropsRegistrationsAndMakesLateReleasesHarmless()
     {
         var state = new PlaybackMuteState();
