@@ -487,6 +487,11 @@ test("live-shaped tooling/source discrepancy collects partial evidence without r
     assert.ok(result.capabilities.assessments.length > 0);
     assert.equal(calls.filter((url) => url.includes("/git/trees/")).length, 1);
     assert.match(monitor.render(result), /Investigation only/);
+    const savedReport = fs.readFileSync(path.join(outputDir, "report.md"), "utf8");
+    assert.equal(savedReport, monitor.render(result), "published Markdown must use the same granular assessment");
+    assert.match(savedReport, /\| RPC methods \|/);
+    assert.match(savedReport, /Coverage incomplete/);
+    assert.match(savedReport, /not discovered by ranking the pending inventory/);
     const malformed = structuredClone(result);
     malformed.publicationProvenance.declaredSourceCommit = sha;
     assert.throws(() => monitor.validateReport(malformed), /publication provenance mismatch/);

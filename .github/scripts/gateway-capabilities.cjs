@@ -5,6 +5,28 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFileSync } = require("node:child_process");
 const policy = require("./gateway-capability-policy.json");
+const REPORT_EXAMPLE_LIMIT = 3;
+const PROTOCOL_DISPATCH_HELPERS = {
+  "src/OpenClaw.Shared/OpenClawGatewayClient.cs": [
+    "SendResponseRequestAsync", "SendPairingDecisionAsync", "SendCronMutationAsync",
+  ],
+  "src/OpenClaw.Shared/OpenClawGatewayClient.Protocol.cs": ["SendResponseRequestAsync"],
+  "src/OpenClaw.Shared/CronDetails.cs": ["SendCronDetailsRequestAsync"],
+  "src/OpenClaw.Shared/Models/ModelSignInSession.cs": ["RequestAsync"],
+  "src/OpenClaw.Shared/ChannelPairing.cs": ["_request"],
+  "src/OpenClaw.Shared/Sessions/ChatPlacement.cs": ["RequestAsync"],
+};
+const PROTOCOL_HANDLER_OWNERS = {
+  "src/OpenClaw.Shared/OpenClawGatewayClient.cs": [
+    ["HandleKnownResponse", "method", "method"],
+    ["HandleRequestError", "method", "method"],
+    ["HandleEventForConnection", "eventType", "event"],
+  ],
+  "src/OpenClaw.Shared/WindowsNodeClient.cs": [
+    ["HandleRequestAsync", "method", "method"],
+    ["HandleEventForConnectionAsync", "eventType", "event"],
+  ],
+};
 
 function digest(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -22,7 +44,7 @@ function sourceViews(text) {
   const blank = (target, start, end) => {
     for (let i = start; i < end; i++) if (!/[\r\n]/.test(target[i])) target[i] = " ";
   };
-  const tokens = /\/\/[^\r\n]*|\/\*[\s\S]*?\*\/|\$*"{3,}[\s\S]*?"{3,}|(?:\$@|@\$|@)"(?:""|[^"])*"|\$?"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g;
+  const tokens = /\/\/[^\r\n]*|\/\*[\s\S]*?\*\/|\$*("{3,})[\s\S]*?\1|(?:\$@|@\$|@)"(?:""|[^"])*"|\$?"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g;
   for (const match of text.matchAll(tokens)) {
     blank(masked, match.index, match.index + match[0].length);
     if (match[0].startsWith("//") || match[0].startsWith("/*"))
@@ -31,24 +53,74 @@ function sourceViews(text) {
   return { code: code.join(""), masked: masked.join("") };
 }
 
+function closingBrace(masked, open) {
+  let depth = 0;
+  for (let index = open; index < masked.length; index++) {
+    if (masked[index] === "{") depth++;
+    if (masked[index] === "}" && --depth === 0) return index;
+  }
+  return -1;
+}
+
+function handlerCandidates(file, views) {
+  const candidates = [];
+  // A case label is protocol evidence only in a known router's discriminant switch.
+  // Keep events distinct from RPCs even when they share an exact wire name.
+  for (const [owner, discriminant, surfaceKind] of PROTOCOL_HANDLER_OWNERS[file] ?? []) {
+    const declaration = new RegExp(`\\b(?:private|internal)\\s+(?:async\\s+)?(?:bool|void|Task)\\s+${owner}\\s*\\([^{};]*\\)\\s*\\{`, "g");
+    for (const match of views.masked.matchAll(declaration)) {
+      const open = match.index + match[0].length - 1;
+      const close = closingBrace(views.masked, open);
+      check(close >= 0, `Unbalanced protocol handler: ${file}:${owner}`);
+      const body = views.masked.slice(open + 1, close);
+      const switches = new RegExp(`\\bswitch\\s*\\(\\s*${discriminant}\\s*\\)\\s*\\{`, "g");
+      for (const statement of body.matchAll(switches)) {
+        const switchOpen = open + 1 + statement.index + statement[0].length - 1;
+        const switchClose = closingBrace(views.masked, switchOpen);
+        check(switchClose >= 0, `Unbalanced protocol switch: ${file}:${owner}`);
+        let depth = 0;
+        const labels = /\bcase\s*"([A-Za-z][A-Za-z0-9_.-]*)"\s*:|[{}]/g;
+        for (const label of views.code.slice(switchOpen + 1, switchClose).matchAll(labels)) {
+          const index = switchOpen + 1 + label.index;
+          if (label[1]) {
+            if (depth === 0 && views.masked.slice(index, index + 4) === "case")
+              candidates.push({ kind: "handler", name: label[1], index, surfaceKind });
+          } else if (views.masked[index] === "{") depth++;
+          else if (views.masked[index] === "}") depth--;
+        }
+      }
+    }
+  }
+  return candidates;
+}
+
 function wiringCandidates(files) {
   const evidence = [];
   for (const [file, text] of Object.entries(files)) {
     if (!file.startsWith("src/") || !file.endsWith(".cs")) continue;
     const views = sourceViews(text);
     const patterns = [
-      ["dispatch", /\b(?:SendTrackedRequestAsync|TrySendTrackedRequestAsync|TryRequestPayloadAsync|RequestPayloadAsync|MutateCompactionAsync)\s*\(\s*"([A-Za-z][A-Za-z0-9_.]*)"/g],
-      ["handler", /\bcase\s*"([A-Za-z][A-Za-z0-9_.]*)"\s*:/g],
-      ["construction", /\bmethod\s*=\s*"([A-Za-z][A-Za-z0-9_.]*)"/g],
+      ["dispatch", /\b(?:SendTrackedRequestAsync|TrySendTrackedRequestAsync|TryRequestPayloadAsync|RequestPayloadAsync|MutateCompactionAsync|SendWizardRequestAsync)\s*\(\s*"([A-Za-z][A-Za-z0-9_.-]*)"/g],
+      ["construction", /\bmethod\s*=\s*"([A-Za-z][A-Za-z0-9_.-]*)"/g],
     ];
-    for (const [kind, regex] of patterns) {
+    const helpers = PROTOCOL_DISPATCH_HELPERS[file];
+    if (helpers)
+      patterns.push(["dispatch", new RegExp(`(?<![\\w.])(?:${helpers.join("|")})\\s*\\(\\s*"([A-Za-z][A-Za-z0-9_.-]*)"`, "g"), true]);
+    if (file === "src/OpenClaw.SetupEngine/GatewayAiSetupClient.cs")
+      patterns.push(["dispatch", /(?<![\w.])ExecuteAsync\s*<\s*[A-Za-z_][\w.]*\s*>\s*\(\s*"([A-Za-z][A-Za-z0-9_.-]*)"/g, true]);
+    if (file === "src/OpenClaw.Shared/OpenClawGatewayClient.cs")
+      patterns.push(["construction", /(?<![\w.])SerializeRequest\s*\(\s*[A-Za-z_]\w*\s*,\s*"([A-Za-z][A-Za-z0-9_.-]*)"/g, true]);
+    for (const [kind, regex, unqualified] of patterns) {
       for (const match of views.code.matchAll(regex)) {
+        if (unqualified && /\.\s*$/.test(views.masked.slice(0, match.index))) continue;
         // An apparent call embedded inside a literal is not executable syntax.
         if (!/\S/.test(views.masked.slice(match.index, match.index + match[0].indexOf('"')))) continue;
         evidence.push({ kind, name: match[1], file,
           line: text.slice(0, match.index).split("\n").length, sha256: digest(text) });
       }
     }
+    for (const { index, ...candidate } of handlerCandidates(file, views))
+      evidence.push({ ...candidate, file, line: text.slice(0, index).split("\n").length, sha256: digest(text) });
   }
   return evidence;
 }
@@ -129,7 +201,8 @@ function assess({ schema, local, upstreamHash, hash, supportPolicy = policy }) {
   }
   const assessments = surfaces.map((surface) => {
     const decision = supportPolicy.decisions.find((entry) => entry.surface === surface.id);
-    const evidence = candidates.filter((entry) => entry.name === surface.name);
+    const evidence = candidates.filter((entry) => entry.name === surface.name
+      && (entry.surfaceKind ?? "method") === surface.kind);
     let status = "pending";
     let reason = evidence.length
       ? "Wiring candidates found. Reachability, payload semantics, authorization and behavioral tests still require review."
@@ -176,21 +249,76 @@ function assess({ schema, local, upstreamHash, hash, supportPolicy = policy }) {
 function renderAssessment(value) {
   const counts = {};
   for (const item of value.assessments) counts[item.status] = (counts[item.status] ?? 0) + 1;
+  const pending = value.assessments.filter((item) => item.status === "pending");
+  const wired = pending.filter((item) => item.evidence.length > 0);
+  const unwired = pending.filter((item) => item.evidence.length === 0);
+  const tracked = new Set(value.families.flatMap((family) => family.surfaces));
+  const trackedPending = pending.filter((item) => tracked.has(item.id)).length;
+  const untrackedPending = pending.length - trackedPending;
+  const safe = (text) => String(text).replace(/[|`<>\r\n]/g, " ").replace(/@/g, "(at)");
+  const examples = (items) => items.slice(0, REPORT_EXAMPLE_LIMIT).map((item) => `\`${safe(item.name)}\``).join(", ") || "none";
   const lines = ["", "## Windows capability assessment", "",
     `Local head: \`${value.localHead}\`; dirty evidence: ${value.dirty}.`,
     `Input evidence: \`${value.inputHash}\`; support policy: \`${value.policyHash}\`.`,
-    `Supported: ${counts.supported ?? 0}; intentionally unsupported: ${counts["intentionally-unsupported"] ?? 0}; pending: ${counts.pending ?? 0}.`,
+    `Reviewed decisions: supported: ${counts.supported ?? 0}; intentionally unsupported: ${counts["intentionally-unsupported"] ?? 0}.`,
+    `Awaiting assessment: **${pending.length} protocol entries**, not a count of missing features.`,
+    "",
+    "| Surface | Recognized wiring, unreviewed | No recognized wiring, unreviewed | Total awaiting assessment |",
+    "| --- | ---: | ---: | ---: |"];
+  for (const [kind, label] of [["method", "RPC methods"], ["event", "Explicit lifecycle events"], ["definition", "Event schema definitions"]]) {
+    const withWiring = wired.filter((item) => item.kind === kind).length;
+    const withoutWiring = unwired.filter((item) => item.kind === kind).length;
+    lines.push(`| ${label} | ${withWiring} | ${withoutWiring} | ${withWiring + withoutWiring} |`);
+  }
+  lines.push("",
+    `Examples with recognized wiring: ${examples(wired)}.`,
+    `Examples without recognized wiring: ${examples(unwired)}.`,
+    `Examples are limited to ${REPORT_EXAMPLE_LIMIT} per evidence bucket; every entry, reason and evidence location is in report.json under capabilities.assessments.`,
+    "Recognized wiring is not proof of reachable or correct behavior. No recognized wiring can mean missing support, irrelevant functionality, or a scanner limitation; relevance remains unassessed.",
+    "Event schema definitions are data shapes, not additional feature counts. Explicit lifecycle events come from tracked families, not a complete upstream event inventory.");
+  const namespaces = new Map();
+  for (const item of value.assessments.filter((item) => item.kind === "method")) {
+    const namespace = item.name.includes(".") ? item.name.split(".")[0] : "top-level";
+    if (!namespaces.has(namespace)) namespaces.set(namespace, { supported: 0, unsupported: 0, wired: 0, unwired: 0, total: 0 });
+    const row = namespaces.get(namespace);
+    row.total++;
+    if (item.status === "supported") row.supported++;
+    else if (item.status === "intentionally-unsupported") row.unsupported++;
+    else if (item.evidence.length) row.wired++;
+    else row.unwired++;
+  }
+  lines.push("", "### RPC namespace breakdown", "",
+    `${namespaces.size} RPC namespaces, including reviewed decisions. These are wire-name prefixes, not feature-completion claims. Names without a dot are grouped under \`top-level\`.`,
+    "Supported means current reviewed evidence, not just a recognized call. Lifecycle events and event definitions are excluded from this table.",
+    "",
+    "| RPC namespace | Supported, reviewed | Intentionally unsupported, reviewed | Recognized wiring, unreviewed | No recognized wiring, unreviewed | Total RPC methods |",
+    "| --- | ---: | ---: | ---: | ---: | ---: |");
+  for (const namespace of [...namespaces.keys()].sort()) {
+    const row = namespaces.get(namespace);
+    lines.push(`| \`${safe(namespace)}\` | ${row.supported} | ${row.unsupported} | ${row.wired} | ${row.unwired} | ${row.total} |`);
+  }
+  lines.push("",
+    "### Tracked capability candidates",
+    "Families are explicitly selected by gateway-capability-policy.json, not discovered by ranking the pending inventory. A pending family is an investigation candidate, not a confirmed missing feature.",
     `Tracked gap candidates: ${value.pendingGaps.length}. Unassessed surfaces are review backlog, not automatic implementation tasks.`,
+    `${trackedPending} pending method/event entries belong to explicitly tracked families; ${untrackedPending} other pending entries remain outside that candidate selection.`);
+  if (untrackedPending) lines.push(
+    "**Coverage incomplete:** untracked pending entries are unknowns, not accepted exclusions. Review Windows relevance and behavior, then record evidence-backed support/exemptions or add a tracked family for an actionable investigation.");
+  lines.push(
+    "A green workflow means collection succeeded, not Windows compatibility or an acceptable backlog.",
     "Pending counts include unassessed relevance and behavior, not confirmed defects. Implement at most one evidenced production capability gap per PR.",
-    "", value.limitation, "", "| Capability | Status | Evidence / outstanding obligations |", "| --- | --- | --- |"];
+    "", value.limitation);
   if (value.pendingGaps.length) lines.splice(1, 0, "<!-- windows-capability-pending -->");
-  const safe = (text) => String(text).replace(/[|`<>\r\n]/g, " ").replace(/@/g, "(at)");
+  if (value.families.length) lines.push("", "| Capability | Status | Evidence / outstanding obligations |", "| --- | --- | --- |");
+  else lines.push("", "No explicitly tracked capability families are present in this observation.");
   for (const family of value.families)
     lines.push(`| ${safe(family.id)} | **${family.status}** | ${family.obligations.map(safe).join("; ")} |`);
-  // Bound issue size; the complete per-method assessment stays in report.json.
-  for (const item of value.assessments.filter((item) => item.status === "intentionally-unsupported"))
-    lines.push(`| ${safe(item.id)} | ${item.status} | ${safe(item.reason)} |`);
-  lines.push("", "All method classifications and exact production/test file hashes are in report.json. Closing an exact candidate acknowledges that evidence without claiming complete Windows support.",
+  const reviewed = value.assessments.filter((item) => item.status === "supported" || item.status === "intentionally-unsupported");
+  if (reviewed.length) lines.push("", "### Reviewed surface decisions", "",
+    "| Surface | Status | Evidence / rationale |", "| --- | --- | --- |");
+  for (const item of reviewed)
+    lines.push(`| ${safe(item.id)} | ${safe(item.status)} | ${safe(item.reason)} |`);
+  lines.push("", "All surface classifications and exact production/test file hashes are in report.json. Closing an exact candidate acknowledges that evidence without claiming complete Windows support.",
     "Check existing chat parity and interactive fixture PRs before implementation; link them rather than duplicating work.");
   return lines.join("\n") + "\n";
 }

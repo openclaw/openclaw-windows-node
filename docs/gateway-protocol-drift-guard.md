@@ -254,6 +254,85 @@ Windows compatibility; released package-to-source binding remains unverified.
 After merging, run the workflow with `report_only: true` (the default) and inspect
 its summary and `upstream-gateway-protocol-report` artifact. Writes stay disabled
 until an owner sets Actions variable `UPSTREAM_GATEWAY_MONITOR_ENABLED=true`.
+
+### Reading the capability assessment
+
+The summary separates reviewed support/exemption decisions from entries awaiting
+assessment. Its table splits pending RPC methods, explicit lifecycle events, and
+event schema definitions by whether the scanner recognized production wiring.
+Examples are bounded; `report.json` contains every entry under
+`capabilities.assessments`, including its status, reason, and evidence locations.
+Event definitions are data shapes, not separate missing features, and explicit
+lifecycle events cover tracked families rather than every upstream event.
+
+The RPC namespace table lists categories alphabetically by the wire-name prefix
+before the first dot. Dotless methods, including `last-heartbeat`, share the
+`top-level` category. Each row separates reviewed support and intentional
+exclusions from unreviewed RPCs with or without recognized wiring. Reviewed
+methods remain in the category totals; events and data-shape definitions do not.
+These are namespace groups, not feature-completion or implementation claims.
+
+Dispatch scanning includes the response-backed `SendWizardRequestAsync` helper,
+which also carries non-wizard RPCs. Unqualified `RequestAsync` calls in
+[`ChatPlacement.cs`](../src/OpenClaw.Shared/Sessions/ChatPlacement.cs) are
+recognized because that owner's helper forwards to the Gateway transport.
+The `PROTOCOL_DISPATCH_HELPERS` file/helper allowlist also covers the response,
+pairing-decision and Cron forwarders on the Gateway client, Cron details,
+model sign-in's captured transport, and the channel-pairing request delegate.
+These patterns recognize literal first arguments in unqualified calls only.
+The same helper name in another file or on an unrelated receiver is not
+Gateway evidence. New owner/helper pairs require an explicit scanner update
+after tracing their transport, with positive and negative regression cases.
+Some allowlist pairs recognize already-authored, **unmerged category drafts**:
+[Cron details and mutations](https://github.com/openclaw/openclaw-windows-node/blob/cd445e0e88a20da0b36a255f0a7ae048b3552f21/src/OpenClaw.Shared/CronDetails.cs),
+[model sign-in](https://github.com/openclaw/openclaw-windows-node/blob/6fe6dcb8b2deab48bf1a6468eb536bef8a6ad850/src/OpenClaw.Shared/Models/ModelSignInSession.cs),
+[channel pairing](https://github.com/openclaw/openclaw-windows-node/blob/91f378ee624a3a6ba5f706e8c08655ab97a4f57e/src/OpenClaw.Shared/ChannelPairing.cs),
+and [node](https://github.com/openclaw/openclaw-windows-node/blob/6c2991defd6e89063ef0b640534cd17de691f037/src/OpenClaw.Shared/OpenClawGatewayClient.cs)
+and [device pairing decisions](https://github.com/openclaw/openclaw-windows-node/blob/b86206ea2f04d460561884ee4dc9ea56150cf0b7/src/OpenClaw.Shared/OpenClawGatewayClient.cs).
+These source pins identify the traced implementations, not merged support.
+Only files actually present in the scanned tree contribute candidates; an
+allowlist entry alone cannot change main's wiring count or support status.
+Literal-method `ExecuteAsync<T>` calls in
+[`GatewayAiSetupClient.cs`](../src/OpenClaw.SetupEngine/GatewayAiSetupClient.cs)
+also forward to that owner's Gateway transport. Unqualified `SerializeRequest`
+calls in `OpenClawGatewayClient.cs` supply frame-construction evidence when the
+second argument is a literal method name and the first is a request-ID variable.
+Arbitrary request, execution or serialization helpers elsewhere are not Gateway
+evidence. Capability-advertisement checks and variable-selected methods are not
+resolved by these patterns. Method names can contain dots, underscores and
+hyphens, including upstream names such as `last-heartbeat`.
+
+Handler evidence is limited to the named Gateway response/error and Windows node
+request routers in `PROTOCOL_HANDLER_OWNERS` in
+[`gateway-capabilities.cjs`](../.github/scripts/gateway-capabilities.cjs).
+Only direct case labels in their method-dispatch switches count as RPC handlers.
+Event-dispatch switches produce event evidence, never evidence for a same-named
+RPC. Tray actions, deep links, unrelated switches, nested non-protocol cases,
+comments and string literals do not count as protocol handlers. Evidence retains
+the source file, line and hash; handlers also record `surfaceKind` as `method`
+or `event`. Renamed or new routers require an explicit scanner update and tests;
+this is a conservative source scan, not a full C# semantic analyzer.
+
+Recognized wiring is not proof of reachable, authorized, correctly tested
+behavior. No recognized wiring can mean missing support, an irrelevant API, or
+a scanner limitation. Neither bucket is automatically safe or supported.
+A green workflow means evidence collection succeeded, not that Windows
+compatibility is complete or the unreviewed backlog is acceptable.
+
+Investigation candidates come from explicitly named families in
+[`gateway-capability-policy.json`](../.github/scripts/gateway-capability-policy.json),
+not automatic ranking of all pending entries. For example, `question-answer`
+groups operator list/get/resolve methods and requested/resolved events with
+behavioral obligations. Its pending status requires investigation; it does not
+itself confirm a defect. Pending entries outside those families remain a visible
+coverage gap, not accepted exclusions. Review their Windows relevance and behavior,
+record evidence-backed support or justified exemptions, and add a tracked family
+when an actionable capability warrants investigation. Supported decisions require
+current source/test hashes and dispatch, handler, construction, and behavioral-test
+evidence; matching a method name alone cannot establish support.
+
+### Enabling investigation writes
+
 Before enabling writes, configure `COPILOT_GITHUB_TOKEN` with Agent tasks
 read/write and verify the user's Copilot cloud-agent eligibility and repo access.
 The token is used only for task API calls; issue writes use the workflow token.
