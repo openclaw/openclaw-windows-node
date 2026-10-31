@@ -2,6 +2,7 @@ using OpenClaw.Connection.NativeGateway;
 
 namespace OpenClaw.SetupEngine.Tests;
 
+[Collection(EnvironmentVariableCollection.Name)]
 public sealed class NativeGatewayPackageAcquisitionTests
 {
     private static readonly NativeGatewayPackage Package = new(
@@ -269,6 +270,66 @@ public sealed class NativeGatewayPackageAcquisitionTests
             NativeGatewayPackageAcquisition.EnsureAsync(resolver, _ => Task.CompletedTask,
                 timeout: TimeSpan.FromMilliseconds(timeout), pollInterval: TimeSpan.FromMilliseconds(interval)));
         Assert.Equal(0, resolver.Calls);
+    }
+
+    [Fact]
+    public void Timeout_DefaultsTo30Minutes()
+    {
+        var previous = Environment.GetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, null);
+            Assert.Equal(TimeSpan.FromMinutes(30), NativeGatewayPackageAcquisition.ResolveTimeout());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, previous);
+        }
+    }
+
+    [Theory]
+    [InlineData(" 90 ", 90)]
+    [InlineData("0", null)]
+    [InlineData("not-a-number", null)]
+    [InlineData("2147484", null)]
+    public void Timeout_EnvironmentOverride_IsUsedOnlyForValidValues(string value, int? expectedSeconds)
+    {
+        var previous = Environment.GetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, value);
+            Assert.Equal(expectedSeconds is { } seconds
+                ? TimeSpan.FromSeconds(seconds)
+                : NativeGatewayPackageAcquisition.DefaultTimeout,
+                NativeGatewayPackageAcquisition.ResolveTimeout());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, previous);
+        }
+    }
+
+    [Fact]
+    public async Task EnsureAsync_ExplicitTimeoutStillWinsOverEnvironment()
+    {
+        var previous = Environment.GetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, "300");
+            var resolver = new Resolver(_ => Missing());
+            // Bound the wait well below the environment's 300 s so an env-wins regression fails
+            // fast: WaitAsync's own TimeoutException lacks the acquisition retry guidance below.
+            var exception = await Assert.ThrowsAsync<TimeoutException>(() =>
+                NativeGatewayPackageAcquisition.EnsureAsync(resolver, _ => Task.CompletedTask,
+                    timeout: TimeSpan.FromMilliseconds(50), pollInterval: TimeSpan.FromMilliseconds(1))
+                    .WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.Contains("Check WinGet and Microsoft Store access", exception.Message);
+            Assert.Contains("retry native setup", exception.Message);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(NativeGatewayPackageAcquisition.TimeoutEnvironmentVariable, previous);
+        }
     }
 
     private static Task<NativeGatewayPackage> Missing() =>

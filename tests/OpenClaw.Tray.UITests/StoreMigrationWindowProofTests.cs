@@ -473,6 +473,60 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
         });
     }
 
+    [Fact]
+    public Task AwaitingRemoval_ShowsExactAppLabelsAndClearsThemAfterReinspection()
+    {
+        var operations = new Operations
+        {
+            Consent = true, StoreDisplayName = "OpenClaw", StoreVersion = "2026.10.502.0"
+        };
+        operations.Admission = operations.Admission with
+        {
+            Installation = operations.Admission.Installation! with
+            { Version = new Version(2026, 10, 8, 0), DisplayName = "OpenClaw Companion version 2026.10.8" }
+        };
+        return WithWindowAsync(operations, async (window, workflow, completion) =>
+        {
+            await WaitForStageAsync(workflow, StoreMigrationStage.AwaitingRemoval);
+            await ui.RunOnUIAsync(() =>
+            {
+                var status = Control<TextBlock>(window, "Status");
+                var expected = string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                    Localized("Migration2_AwaitingRemovalWithApps"),
+                    "OpenClaw Companion version 2026.10.8", "OpenClaw", "2026.10.502.0");
+                Assert.Equal(expected, status.Text);
+                Assert.True(status.IsTextSelectionEnabled);
+                Assert.Equal(TextWrapping.Wrap, status.TextWrapping);
+                Assert.Equal(Visibility.Visible, Control<Button>(window, "InstalledApps").Visibility);
+                Assert.Equal(Localized("Migration2_RemovalWarning"), Control<InfoBar>(window, "Safety").Message);
+            });
+            await CaptureAsync(window, "AwaitingRemovalNamedApps");
+            // Retry must clear app labels when reinspection no longer supplies them.
+            await ui.RunOnUIAsync(() =>
+            {
+                operations.Admission = new(StoreMigrationStartupState.AwaitingInnoRemoval, operations.Admission.Installation);
+                operations.StoreDisplayName = null;
+            });
+            await InvokeAsync(window, "Primary");
+            await WaitForStageAsync(workflow, StoreMigrationStage.AwaitingRemoval);
+            await ui.RunOnUIAsync(() =>
+                Assert.Equal(Localized("Migration2_AwaitingRemoval"), Control<TextBlock>(window, "Status").Text));
+            await ui.RunOnUIAsync(() =>
+                operations.Admission = new(StoreMigrationStartupState.UnsupportedInstallation));
+            await InvokeAsync(window, "Primary");
+            await WaitForStageAsync(workflow, StoreMigrationStage.Unsupported);
+            await ui.RunOnUIAsync(() =>
+            {
+                var status = Control<TextBlock>(window, "Status").Text;
+                Assert.Equal(Localized("Migration2_Unsupported"), status);
+                Assert.DoesNotContain("2026.10.8", status);
+                Assert.DoesNotContain("2026.10.502.0", status);
+            });
+            await InvokeAsync(window, "Dismiss");
+            Assert.False(await completion.WaitAsync(TimeSpan.FromSeconds(10)));
+        });
+    }
+
     private async Task WithWindowAsync(
         Operations operations,
         Func<StoreMigrationWindow, StoreMigrationWorkflow, Task<bool>, Task> test)
@@ -726,6 +780,8 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
     private sealed class Operations : IStoreMigrationOperations
     {
         public List<string> Calls { get; } = [];
+        public string? StoreDisplayName { get; set; }
+        public string? StoreVersion { get; set; }
         public StoreMigrationStartupDecision Admission { get; set; } = new(
             StoreMigrationStartupState.ConsentRequired,
             new InnoInstallation(@"C:\ui-proof-only", @"C:\ui-proof-only\app.exe",

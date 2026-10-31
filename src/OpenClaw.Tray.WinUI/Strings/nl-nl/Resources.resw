@@ -7711,6 +7711,18 @@ Kies {1} om dit voorbeeld te sluiten zonder de migratie te starten en de vorige 
 
 Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>Uw configuratie is gevalideerd en de voltooiing van de migratie is vastgelegd.
+
+1. Open Geïnstalleerde apps.
+Verwijderen: {0} (desktopinstallatie)
+Behouden: {1}, versie {2} (Microsoft Store)
+Laat alle andere apps geïnstalleerd.
+
+2. Keer hier terug en kies Opnieuw proberen om de verwijdering te verifiëren en af te ronden.
+
+Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>Verwijder de vorige app</value>
   </data>
@@ -7773,6 +7785,17 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Migration2_InnoGranted" xml:space="preserve">
     <value>De toestemming voor migratie is opgeslagen. Installeer en open de Store-versie om door te gaan. Laat deze app geïnstalleerd totdat de voltooiing van de migratie is bevestigd.</value>
   </data>
+  <data name="Migration2_InnoRepairRequired" xml:space="preserve">
+    <value>Vereiste installatiebestanden ontbreken of zijn ongeldig. Download het volledige OpenClaw-installatieprogramma. Sluit OpenClaw af, voer het installatieprogramma over deze installatie uit als dezelfde Windows-gebruiker en open de app opnieuw om de migratie nogmaals te proberen. Verwijder OpenClaw niet vooraf.
+
+Het installatieprogramma herstelt de installatiebestanden. De migratie moet nog steeds voldoen aan de compatibiliteitscontroles van de Store-app.</value>
+  </data>
+  <data name="Migration2_InnoSetupLinkFailed" xml:space="preserve">
+    <value>Windows kon de downloadlink voor het installatieprogramma niet openen. Kopieer dit adres naar uw browser: {0}. Verwijder OpenClaw niet vooraf.</value>
+  </data>
+  <data name="Migration2_InnoDownloadSetup.Content" xml:space="preserve">
+    <value>Installatieprogramma voor herstel downloaden</value>
+  </data>
   <data name="Migration2_InnoFailed" xml:space="preserve">
     <value>OpenClaw kon de toestemming voor migratie niet opslaan of de Store-pagina niet openen. Bekijk het applogboek en probeer het opnieuw. Verwijder deze app niet.</value>
   </data>
@@ -7787,13 +7810,13 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Een lokale WSL Gateway installeren</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Ondersteuning voor de native Gateway controleren...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>De native Gateway wordt ondersteund op dit apparaat.</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Als u de native Gateway wilt gebruiken, werkt u uw apparaat bij naar een Windows-versie die dit ondersteunt.
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Windows meldt dat de isolatiesessiefunctionaliteit die de native Gateway nodig heeft niet beschikbaar is. Een nieuwere Windows-versie garandeert niet dat deze beschikbaar is. U kunt in plaats daarvan een lokale WSL-Gateway installeren of verbinding maken met een bestaande Gateway.
 
-Ondersteuning voor de native Gateway is binnenkort beschikbaar op alle apparaten. Totdat deze algemeen beschikbaar is, neemt u deel aan het Windows Insider-programma, selecteert u het Beta- of Experimental-kanaal en kiest u tijdens de inschrijving Windows 11, versie 26H1 onder Geavanceerde opties. Terugkeren naar Windows 11, versie 25H2/26H2 vereist een schone herinstallatie.
+Als u Windows moet bijwerken, kunt u deelnemen aan het Windows Insider-programma, het Beta- of Experimental-kanaal selecteren en tijdens de inschrijving Windows 11, versie 26H1 onder Geavanceerde opties kiezen. Terugkeren naar Windows 11, versie 25H2/26H2 vereist een schone herinstallatie.
 
-Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op updates. Het kan enkele minuten duren voordat de update wordt weergegeven. De beschikbaarheid van deze functie kan per apparaat verschillen. Open deze pagina na de update opnieuw om de ondersteuning nogmaals te controleren.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Als u de native Gateway wilt gebruiken, werkt u uw apparaat bij naar een Windows-versie die dit ondersteunt.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>is binnenkort beschikbaar op alle apparaten.</value></data>
+Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op updates. Het kan enkele minuten duren voordat de update wordt weergegeven. De beschikbaarheid van deze functie kan per apparaat verschillen. Open deze pagina opnieuw om de ondersteuning nogmaals te controleren.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Windows meldt dat de isolatiesessiefunctionaliteit die de native Gateway nodig heeft niet beschikbaar is.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableAlternatives" xml:space="preserve"><value>U kunt in plaats daarvan een lokale WSL-Gateway installeren of verbinding maken met een bestaande Gateway.</value></data>
   <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Windows Insider-programma</value></data>
   <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta- of Experimental</value></data>
   <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11, versie 26H1</value></data>
@@ -7807,6 +7830,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Ga verder met dezelfde Gateway-wizard als voor WSL, hier in Companion. Configuratie en gezondheid worden vóór het verbinden gecontroleerd. Bestaande WSL-Gateways en uw standaard OpenClaw-profiel worden niet vervangen.</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Als de Gateway niet is geïnstalleerd, installeert de instelling deze vanuit Microsoft Store met WinGet en controleert het pakket voordat automatisch wordt doorgegaan.</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>De Gateway installeren vanuit Microsoft Store met WinGet...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>De Gateway wordt nog steeds geïnstalleerd vanuit Microsoft Store. Dit kan enkele minuten duren ({0} min verstreken).</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet is klaar. Gateway-registratie en uitvoeringsaliassen controleren voordat wordt doorgegaan...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion bereidt uw Gateway voor en helpt u daarna uw AI te verbinden.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway herstellen</value></data>

@@ -529,6 +529,24 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     }
 
     [Fact]
+    public async Task NormalGatewayReview_HidesCompetingLocalAiSelectionWithoutChangingTheDraft()
+    {
+        await WithWindowAsync(async (window, frame, _) =>
+        {
+            RecordInspection(window.AccessDraft, replacement: false);
+            Assert.False(window.AccessDraft.Config.LocalAi.Enabled);
+            window.NavigateToGatewaySetup();
+            var review = await MountedPageAsync<GatewaySetupPage>(window, frame);
+            await ui.YieldToRenderAsync();
+
+            Assert.Equal(Visibility.Collapsed, Find<SettingsCard>(review, "LocalAiCard").Visibility);
+            Assert.False(window.AccessDraft.Config.LocalAi.Enabled);
+            Assert.Same(review, frame.Content);
+            Assert.True(FooterButton(review, next: true).IsEnabled);
+        });
+    }
+
+    [Fact]
     public async Task ReplacementConsent_IsInlineAndNeverInstallsOrNavigatesOnCheck()
     {
         await WithWindowAsync(async (window, frame, _) =>

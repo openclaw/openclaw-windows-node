@@ -30,7 +30,7 @@ internal static class InnoMigrationHandoff
             {
                 try
                 {
-                    var (binding, installation) = InspectOwnInstallation();
+                    var (binding, installation) = InspectOwnInstallation(out _);
                     if (!new InnoMigrationConsentStore(binding, new AppLogger())
                             .HasValidConsent(installation.Version.ToString()))
                     {
@@ -47,6 +47,9 @@ internal static class InnoMigrationHandoff
                 Logger.Warn("Migration shutdown rejected: UI dispatcher is unavailable.");
         } : null;
 
+    public static Uri InstallerUri => StoreMigrationListing.CreateInstallerUri(
+        System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant());
+
     public static async Task<string> GrantAndLaunchAsync()
     {
         if (!IsAvailable || !StoreMigrationListing.TryCreateUri(
@@ -56,9 +59,10 @@ internal static class InnoMigrationHandoff
             return "Migration2_InnoFailed";
         }
 
+        var requiresInstallerRepair = false;
         try
         {
-            var (binding, installation) = InspectOwnInstallation();
+            var (binding, installation) = InspectOwnInstallation(out requiresInstallerRepair);
             new InnoMigrationConsentStore(binding, new AppLogger()).Grant(installation.Version.ToString());
             if (!await global::Windows.System.Launcher.LaunchUriAsync(uri!))
                 throw new InvalidOperationException("Windows declined the Store listing URI.");
@@ -67,20 +71,24 @@ internal static class InnoMigrationHandoff
         catch (Exception exception)
         {
             Logger.Error($"Migration consent handoff failed: {exception}");
-            return "Migration2_InnoFailed";
+            return requiresInstallerRepair ? "Migration2_InnoRepairRequired" : "Migration2_InnoFailed";
         }
     }
 
-    private static (MigrationBinding Binding, InnoInstallation Installation) InspectOwnInstallation()
+    private static (MigrationBinding Binding, InnoInstallation Installation) InspectOwnInstallation(
+        out bool requiresInstallerRepair)
     {
+        requiresInstallerRepair = false;
         if (!IsEnabled)
             throw new InvalidOperationException("Inno migration is disabled.");
         var binding = MigrationEnvironment.CreateBinding();
         var detected = MigrationEnvironment.CreateDetector().Detect();
+        var isOwnProcess = string.Equals(Path.GetFullPath(Environment.ProcessPath ?? ""),
+            Path.Combine(binding.InstallDirectory, "OpenClaw.Tray.WinUI.exe"), StringComparison.OrdinalIgnoreCase);
+        requiresInstallerRepair = isOwnProcess && detected.Status == InnoInstallationStatus.Unsupported &&
+            detected.RequiresInstallerRepair;
         if (detected.Status != InnoInstallationStatus.Detected || detected.Installation is not { } installation ||
-            installation.Architecture != binding.Architecture ||
-            !string.Equals(Path.GetFullPath(Environment.ProcessPath ?? ""),
-                Path.Combine(binding.InstallDirectory, "OpenClaw.Tray.WinUI.exe"), StringComparison.OrdinalIgnoreCase))
+            installation.Architecture != binding.Architecture || !isOwnProcess)
             throw new InvalidOperationException("This process is not the supported current-user Inno installation.");
         return (binding, installation);
     }

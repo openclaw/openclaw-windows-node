@@ -31,6 +31,40 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
     [Trait("Category", "NativeOnboardingProof")]
+    public async Task UnavailableWelcome_AllScrollViewports_WithManualForegroundAdmission(ElementTheme theme)
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        _manualForegroundPending = Environment.GetEnvironmentVariable("OPENCLAW_UI_GALLERY_MANUAL_FOCUS") == "1";
+        Assert.True(_manualForegroundPending, "This bounded proof requires explicit manual foreground admission.");
+        _directory = OnboardingNativeProof.RequireProofDirectory();
+        OnboardingNativeProof.AssertSourceUnchanged();
+        var result = new SceneResult(new Scene("unavailable-welcome", "welcome", "unavailable"), theme);
+        _results.Add(result);
+        try
+        {
+            await CaptureSceneAsync(result);
+            Assert.NotEmpty(result.Frames);
+            Assert.True(result.AllViewportsCaptured);
+            OnboardingNativeProof.AssertSourceUnchanged();
+            _sourceVerifiedAfterCapture = true;
+            result.Status = "captured";
+        }
+        catch (Exception error)
+        {
+            result.Status = "failed";
+            result.Failure = _failure = error.ToString();
+            throw;
+        }
+        finally
+        {
+            WriteManifest();
+        }
+    }
+
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task FollowupProof_CapabilitiesAndWelcome(ElementTheme theme)
     {
         OnboardingNativeProof.AssertIsolatedRoots();
@@ -579,6 +613,13 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                                     available ? Visibility.Collapsed : Visibility.Visible;
                                 Assert.True(VisualStateManager.GoToState(welcome,
                                     available ? "NativeRecommendedState" : "WslRecommendedState", false));
+                                if (!available)
+                                {
+                                    Assert.False(nativeChoice.IsEnabled);
+                                    Assert.True(Find<ListViewItem>(welcome, "InstallChoice").IsEnabled);
+                                    Assert.True(Find<ListViewItem>(welcome, "ConnectChoice").IsEnabled);
+                                    Assert.Equal(nativeStatus.Text, AutomationProperties.GetName(nativeStatus));
+                                }
                                 result.Facts.Add("Synthetic availability projection using production visual states, not host eligibility proof.");
                             }
                             if (scene.State == "existing")
@@ -837,7 +878,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         }
         if (state == "api-key")
         {
-            await OnboardingNativeProof.InvokeSettingsCardAsync(window, Find<SettingsCard>(page, "ApiKeysButton"));
+            await OnboardingNativeProof.InvokeSettingsCardAsync(window, Find<SetupActionCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible,
                 "API Keys card opens the separate manual form");
             Assert.Null(page.FindName("ApiKeysChoices"));

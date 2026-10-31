@@ -11,15 +11,31 @@ internal sealed class StoreMigrationOperations(string pipeName) : IStoreMigratio
     private readonly AppLogger _logger = new();
     private MigrationBinding? _binding;
     private IInnoInstallationDetector? _detector;
+    public string? StoreDisplayName { get; private set; }
+    public string? StoreVersion { get; private set; }
 
     public StoreMigrationStartupDecision Inspect()
     {
-        var identity = global::Windows.ApplicationModel.Package.Current.Id;
+        StoreDisplayName = StoreVersion = null;
+        var package = global::Windows.ApplicationModel.Package.Current;
+        var identity = package.Id;
         if (identity.Name != MigrationRecordCodec.PackageName ||
             identity.Publisher != MigrationRecordCodec.PackagePublisher || MigrationEnvironment.HasPathOverride)
         {
             Logger.Error("Store migration requires the production package identity and default data paths.");
             return new(StoreMigrationStartupState.UnsupportedInstallation);
+        }
+        try
+        {
+            // Package.DisplayName is the Installed apps name, not the window product title.
+            StoreDisplayName = package.DisplayName;
+            var version = identity.Version;
+            StoreVersion = $"{version.Major}.{version.Minor}.{version.Build}.{version.Revision}";
+        }
+        catch (Exception)
+        {
+            // Optional labels must not block the existing migration workflow.
+            Logger.Warn("Store app labels are unavailable; using generic removal guidance.");
         }
         _binding ??= MigrationEnvironment.CreateBinding();
         _detector ??= MigrationEnvironment.CreateDetector();

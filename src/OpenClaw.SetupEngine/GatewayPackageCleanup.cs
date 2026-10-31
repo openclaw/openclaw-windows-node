@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -58,15 +59,10 @@ public static class GatewayPackageCleanup
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             OpenClawAppIdentity.CompanionHomeDirectoryName, "cleanup", family.ToString());
         if (!register && !preserve && !File.Exists(Path.Combine(directory, "owned.json"))) return directory;
-        Directory.CreateDirectory(directory);
         var scriptPath = Path.Combine(directory, "cleanup.ps1");
-        using var source = typeof(GatewayPackageCleanup).Assembly.GetManifestResourceStream(
-            "OpenClaw.SetupEngine.GatewayPackageCleanup.ps1")
-            ?? throw new InvalidOperationException("The Gateway cleanup helper is missing.");
-        using var reader = new StreamReader(source);
-        await AtomicFile.WriteAllTextAsync(scriptPath, await reader.ReadToEndAsync(ct), ct);
+        var hostPath = await DeployAsync(directory, ct);
         var arguments = new List<string> { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-            "-File", scriptPath, "-Family", family.ToString() };
+            "-File", scriptPath, "-Family", family.ToString(), "-CleanupHostPath", hostPath };
         if (register) arguments.Add("-Register");
         if (preserve) arguments.Add("-Preserve");
         if (createdDistro) arguments.Add("-CreatedDistro");
@@ -88,6 +84,42 @@ public static class GatewayPackageCleanup
                 : "Previous managed Gateway cleanup remains pending. Reopen Companion to retry. " + diagnostic[..Math.Min(diagnostic.Length, 2048)]);
         }
         return directory;
+    }
+
+    internal static async Task<string> DeployAsync(string directory, CancellationToken ct = default)
+    {
+        Directory.CreateDirectory(directory);
+        string hostPath;
+        using (var host = typeof(GatewayPackageCleanup).Assembly.GetManifestResourceStream(
+            "OpenClaw.SetupEngine.GatewayCleanupHost.exe")
+            ?? throw new InvalidOperationException("The Gateway cleanup host is missing."))
+        {
+            using var content = new MemoryStream();
+            await host.CopyToAsync(content, ct);
+            var bytes = content.ToArray();
+            // Immutable versioned paths allow refresh while the previous task's executable is running.
+            hostPath = Path.Combine(directory, "cleanup-host-" + Convert.ToHexString(SHA256.HashData(bytes)) + ".exe");
+            var existing = File.Exists(hostPath) ? await File.ReadAllBytesAsync(hostPath, ct) : [];
+            if (!bytes.AsSpan().SequenceEqual(existing))
+            {
+                var temporary = hostPath + ".tmp";
+                await File.WriteAllBytesAsync(temporary, bytes, ct);
+                File.Move(temporary, hostPath, overwrite: true);
+            }
+        }
+        foreach (var (resource, file) in new[]
+        {
+            ("GatewayPackageCleanup.ps1", "cleanup.ps1"),
+            ("GatewayPackageCleanup.Task.ps1", "cleanup-task.ps1")
+        })
+        {
+            using var source = typeof(GatewayPackageCleanup).Assembly.GetManifestResourceStream(
+                "OpenClaw.SetupEngine." + resource)
+                ?? throw new InvalidOperationException("The Gateway cleanup helper is missing.");
+            using var reader = new StreamReader(source);
+            await AtomicFile.WriteAllTextAsync(Path.Combine(directory, file), await reader.ReadToEndAsync(ct), ct);
+        }
+        return hostPath;
     }
 
     private sealed record Removal(string? DistroName, string? InstallPath, string? NativeFamily);

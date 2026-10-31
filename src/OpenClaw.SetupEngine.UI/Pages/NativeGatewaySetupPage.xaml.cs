@@ -33,6 +33,7 @@ public sealed partial class NativeGatewaySetupPage : Page
     private readonly List<SetupPhaseStatus> _rows = [];
     private int _currentStep;
     internal bool IsBusy => _operation is { IsCompleted: false };
+    private static readonly TimeSpan WaitingProgressInterval = TimeSpan.FromMinutes(1);
 
     public NativeGatewaySetupPage()
     {
@@ -290,7 +291,43 @@ public sealed partial class NativeGatewaySetupPage : Page
         {
             missing = true;
         }
-        await _installer.InstallAsync(commands, cancellationToken);
+        var stopwatch = Stopwatch.StartNew();
+        using var progress = new PeriodicTimer(WaitingProgressInterval);
+        async Task Pump()
+        {
+            try
+            {
+                while (await progress.WaitForNextTickAsync(cancellationToken))
+                {
+                    var minutes = (int)Math.Round(stopwatch.Elapsed.TotalMinutes);
+                    var message = SetupLocalization.Format("Onboarding_Native_InstallingPackageWaiting", minutes);
+                    var dispatcher = DispatcherQueue;
+                    if (dispatcher.HasThreadAccess)
+                    {
+                        if (!IsLoaded || cancellationToken.IsCancellationRequested)
+                            continue;
+                        StatusText.Text = message;
+                    }
+                    else if (!dispatcher.TryEnqueue(() =>
+                    {
+                        if (IsLoaded && !cancellationToken.IsCancellationRequested)
+                            StatusText.Text = message;
+                    }))
+                        Trace.TraceWarning("The native setup progress update could not be dispatched.");
+                }
+            }
+            catch (OperationCanceledException) { }
+        }
+        var pump = Pump();
+        try
+        {
+            await _installer.InstallAsync(commands, cancellationToken);
+        }
+        finally
+        {
+            progress.Dispose();
+            await pump;
+        }
         return missing;
     }
 

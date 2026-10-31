@@ -92,7 +92,7 @@ public sealed class NativeGatewayEligibilityTextTests(UIThreadFixture ui, ITestO
         Assert.Equal(text, Peer(target).GetName());
         var emphasized = runs.Where(run => run.FontWeight == FontWeights.SemiBold).ToArray();
         Assert.Equal(6, emphasized.Length);
-        foreach (string suffix in new[] { "Lead", "ComingSoon", "InsiderProgram", "Channels", "WindowsVersion", "WindowsUpdate" })
+        foreach (string suffix in new[] { "Lead", "Alternatives", "InsiderProgram", "Channels", "WindowsVersion", "WindowsUpdate" })
         {
             string key = $"Onboarding_Native_SupportUnavailable{suffix}";
             string emphasis = NativeGatewayEligibilityTextTestAccess.GetString(key);

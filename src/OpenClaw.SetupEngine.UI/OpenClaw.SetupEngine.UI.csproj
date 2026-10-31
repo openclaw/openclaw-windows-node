@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.SetupEngine\OpenClaw.SetupEngine.csproj" />
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+    <InternalsVisibleTo Include="OpenClaw.Tray.UITests" />
   </ItemGroup>
 
   <!-- Reuse Setup assets from the Tray project -->

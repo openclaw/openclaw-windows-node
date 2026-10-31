@@ -27,15 +27,15 @@
                     </InfoBar.ActionButton>
                 </InfoBar>
                 <StackPanel x:Name="Choices" Spacing="8" Visibility="Collapsed">
-                    <tk:SettingsCard x:Name="ChatChoice" x:Uid="Onboarding_Ready_Chat" Header="Talk to my agent"
-                                     Description="Open Chat with your agent." Tag="Chat" IsClickEnabled="True" Click="Choose_Click"
+                    <controls:SetupActionCard x:Name="ChatChoice" x:Uid="Onboarding_Ready_Chat" Header="Talk to my agent"
+                                     Description="Open Chat with your agent." Tag="Chat" IsClickEnabled="True" InvokeRequested="Choose_Click"
                                      AutomationProperties.Name="Talk to my agent, recommended">
                         <controls:RecommendedBadge x:Name="RecommendedBadge" />
-                    </tk:SettingsCard>
-                    <tk:SettingsCard x:Name="ChannelsChoice" x:Uid="Onboarding_Ready_Channels" Header="Connect channels"
-                                     Description="WhatsApp, Telegram, and more. You choose when to sign in." Tag="Channels" IsClickEnabled="True" Click="Choose_Click" />
-                    <tk:SettingsCard x:Name="SkillsChoice" x:Uid="Onboarding_Ready_Skills" Header="Explore skills"
-                                     Description="Browse skills for your agent. Nothing is installed automatically." Tag="Skills" IsClickEnabled="True" Click="Choose_Click" />
+                    </controls:SetupActionCard>
+                    <controls:SetupActionCard x:Name="ChannelsChoice" x:Uid="Onboarding_Ready_Channels" Header="Connect channels"
+                                     Description="WhatsApp, Telegram, and more. You choose when to sign in." Tag="Channels" IsClickEnabled="True" InvokeRequested="Choose_Click" />
+                    <controls:SetupActionCard x:Name="SkillsChoice" x:Uid="Onboarding_Ready_Skills" Header="Explore skills"
+                                     Description="Browse skills for your agent. Nothing is installed automatically." Tag="Skills" IsClickEnabled="True" InvokeRequested="Choose_Click" />
                 </StackPanel>
                 <ProgressBar x:Name="BusyProgress" IsIndeterminate="True" Visibility="Collapsed" />
                 <TextBlock x:Name="StatusText" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"

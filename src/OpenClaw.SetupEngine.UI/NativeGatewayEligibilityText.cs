@@ -10,7 +10,7 @@ internal static class NativeGatewayEligibilityText
     private static readonly string[] UnavailableEmphasisKeys =
     [
         "Onboarding_Native_SupportUnavailableLead",
-        "Onboarding_Native_SupportUnavailableComingSoon",
+        "Onboarding_Native_SupportUnavailableAlternatives",
         "Onboarding_Native_SupportUnavailableInsiderProgram",
         "Onboarding_Native_SupportUnavailableChannels",
         "Onboarding_Native_SupportUnavailableWindowsVersion",

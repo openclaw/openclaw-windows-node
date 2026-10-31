@@ -212,6 +212,105 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void TailReflowCorrection_AllowsOnlyOneCorrectionPerResize()
+    {
+        var correction = new TailReflowCorrection();
+
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        correction.Arm();
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+
+        correction.Arm();
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Fact]
+    public void TailReflowCorrection_DoesNotPullBackAReaderOrConsumeAnUnneededCorrection()
+    {
+        var correction = new TailReflowCorrection();
+        correction.Arm();
+
+        Assert.False(correction.TryConsume(following: false, nearBottom: false, initialPending: false));
+        Assert.False(correction.TryConsume(following: true, nearBottom: true, initialPending: false));
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Fact]
+    public void TailReflowCorrection_CancellationRejectsLateExtentChanges()
+    {
+        var correction = new TailReflowCorrection();
+        correction.Arm();
+        correction.Clear();
+
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Fact]
+    public void TailReflowCorrection_DoesNotStartWhileInitialPositioningIsPending()
+    {
+        var correction = new TailReflowCorrection();
+        correction.Arm();
+
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: true));
+        // The resize budget survives, so reflow after the initial bring lands can still correct once.
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)]
+    public void TailNavigationPolicy_OnlyReflowCorrectionRequiresFollowingAtDispatch(
+        bool reflowCorrection, bool following, bool expected)
+    {
+        Assert.Equal(expected, TailNavigationPolicy.CanDispatch(reflowCorrection, following));
+    }
+
+    [Fact]
+    public void ReactorTimeline_ReflowNavigationDetachesRenderingAndInputSubscriptions()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+
+        Assert.Contains("CompositionTarget.Rendering += _rendering", binding);
+        Assert.Contains("CompositionTarget.Rendering -= _rendering", binding);
+        Assert.Contains("itemsView.SizeChanged += OnSizeChanged", binding);
+        Assert.Contains("itemsView.SizeChanged -= OnSizeChanged", binding);
+        Assert.Contains("_scrollView.ExtentChanged += OnExtentChanged", binding);
+        Assert.Contains("_scrollView.ExtentChanged -= OnExtentChanged", binding);
+        Assert.Contains("itemsView.PreviewKeyDown += OnNavigationKeyDown", binding);
+        Assert.Contains("itemsView.PreviewKeyDown -= OnNavigationKeyDown", binding);
+        Assert.Contains("itemsView.AddHandler(UIElement.PointerWheelChangedEvent", binding);
+        Assert.Contains("itemsView.RemoveHandler(UIElement.PointerWheelChangedEvent", binding);
+    }
+
+    [Fact]
+    public void ReactorTimeline_ReflowDispatchRechecksFollowEligibility()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        var dispatchStart = binding.IndexOf("private void DispatchTailRequest", StringComparison.Ordinal);
+        var attachStart = binding.IndexOf("private void AttachScrollView", dispatchStart, StringComparison.Ordinal);
+        var dispatch = binding[dispatchStart..attachStart];
+        var bringStart = dispatch.IndexOf("StartTailRequest(request)", StringComparison.Ordinal);
+
+        Assert.True(bringStart > 0);
+        Assert.Contains("TailNavigationPolicy.CanDispatch(renderAfterLayout, _following)", dispatch[..bringStart]);
+        Assert.Contains("TryConsume(_following, IsNearBottom(sender), _initialPending)", binding);
+
+        var cancelStart = binding.IndexOf("private void CancelPendingNavigation", StringComparison.Ordinal);
+        var cancelEnd = binding.IndexOf("private void OnViewChanged", cancelStart, StringComparison.Ordinal);
+        var cancel = binding[cancelStart..cancelEnd];
+        Assert.Contains("_following = _scrollView is { } scrollView && IsNearBottom(scrollView);", cancel);
+        Assert.DoesNotContain("_following = false;", cancel);
+    }
+
+    [Fact]
     public void ReactorTimeline_RequeuesOnlyForCompletedHistoryReplacement()
     {
         var provider = File.ReadAllText(Path.Combine(

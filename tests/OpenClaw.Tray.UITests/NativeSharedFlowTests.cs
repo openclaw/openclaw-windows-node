@@ -9,6 +9,7 @@ using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.SetupEngine.UI.Pages;
 using OpenClaw.Shared;
 using OpenClaw.TestSupport;
@@ -80,6 +81,11 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     var choices = Find<StackPanel>(ready, "Choices");
                     Assert.Equal(["Chat", "Channels", "Skills"],
                         choices.Children.Cast<FrameworkElement>().Select(element => element.Tag));
+                    AssertNoCompletionFooterActions(ready);
+                    Assert.Null(ready.FindName("SkipButton"));
+                    Assert.Null(ready.FindName("FinishButton"));
+                    Assert.False(Find<InfoBar>(ready, "ErrorBar").IsOpen);
+                    Assert.Same(Find<Button>(ready, "RecoveryButton"), Find<InfoBar>(ready, "ErrorBar").ActionButton);
                     Assert.Empty(navigated);
                     Assert.Null(ready.FindName("NativeSummary"));
                     Assert.Null(ready.FindName("NativeGatewaySummary"));
@@ -90,7 +96,18 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     var stops = normalRuntime.Stops;
                     var target = Assert.Single(choices.Children.Cast<SettingsCard>(),
                         choice => (string)choice.Tag == destination.ToString());
-                    TestSupport.InvokeSettingsCardAction(ready, target, "Choose_Click");
+                    var handle = WinRT.Interop.WindowNative.GetWindowHandle(readyWindow);
+                    var automationId = target.Name;
+                    await Task.Run(() =>
+                    {
+                        var nativeWindow = System.Windows.Automation.AutomationElement.FromHandle(handle);
+                        var nativeChoice = nativeWindow.FindFirst(System.Windows.Automation.TreeScope.Descendants,
+                            new System.Windows.Automation.PropertyCondition(
+                                System.Windows.Automation.AutomationElement.AutomationIdProperty, automationId));
+                        Assert.NotNull(nativeChoice);
+                        Assert.IsType<System.Windows.Automation.InvokePattern>(nativeChoice.GetCurrentPattern(
+                            System.Windows.Automation.InvokePattern.Pattern)).Invoke();
+                    });
                     await WaitAsync(() => navigated.Count == 1, "native destination navigation");
                     Assert.Equal(destination, Assert.Single(navigated).Target.Destination);
                     Assert.Single(completed);
@@ -189,6 +206,18 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         }, supported: false);
     }
 
+    private static void AssertNoCompletionFooterActions(AiReadyPage page)
+    {
+        var root = Assert.IsType<Grid>(page.Content);
+        var progress = Find<SetupProgressIndicator>(page, "FlowProgress");
+        var footerContent = root.Children.OfType<FrameworkElement>()
+            .Where(element => Grid.GetRow(element) == Grid.GetRow(progress)).ToArray();
+        Assert.Empty(footerContent.OfType<Button>());
+        Assert.Empty(footerContent.SelectMany(element => TestSupport.FindDescendants<Button>(element)));
+        Assert.Empty(footerContent.OfType<SettingsCard>());
+        Assert.Empty(footerContent.SelectMany(element => TestSupport.FindDescendants<SettingsCard>(element)));
+    }
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
@@ -231,8 +260,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.IsType<AiCompletionPage>(frame.Content);
             Assert.Equal(failOnce ? [selectedStartup, selectedStartup] : new[] { selectedStartup }, applications);
             Assert.Equal("native-ui", registry.ActiveGatewayId);
-            var data = Assert.IsType<string>(typeof(SetupWindow).GetProperty("DataDir",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window));
+            var data = window.DataDir;
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(data, "settings.json")));
             Assert.Equal(selectedStartup, saved.RootElement.GetProperty("AutoStart").GetBoolean());
         }, isolated: isolated, startupRegistrationAllowed: true,
@@ -348,7 +376,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
             Invoke(Assert.Single(TestSupport.FindDescendants<Button>(recovery), button => (string?)button.Tag == "CancelSetup"));
             await WaitAsync(() => frame.Content is CapabilitiesPage { IsLoaded: true }, "native cancel returns to access");
-            Assert.Null(typeof(SetupWindow).GetProperty("NativeSetupSession", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window));
+            Assert.Null(window.NativeSetupSession);
             Assert.False(runtime.Running);
             Assert.Empty(completed);
             Assert.Empty(registry.GetAll());
@@ -730,7 +758,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Single(server.Requests, request => request.Method == "wizard.next");
             Assert.Single(server.Requests, request => request.Method == "wizard.cancel");
             Assert.Equal(0, runtime.Disposals);
-            Assert.NotNull(typeof(SetupWindow).GetProperty("NativeSetupSession", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window));
+            Assert.NotNull(window.NativeSetupSession);
             Assert.Empty(registry.GetAll());
             Assert.Empty(completed);
         }, supported: false, wizardReply: (method, _) => method == "wizard.cancel"

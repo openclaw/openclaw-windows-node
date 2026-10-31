@@ -253,15 +253,15 @@
             <!-- Only confirmed unsupported Windows disables saved sandbox controls. -->
             <ContentControl x:Name="SandboxPermissionsControls" HorizontalContentAlignment="Stretch">
             <StackPanel x:Name="SandboxControlsContainer" Spacing="16">
-                <Expander IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                          AutomationProperties.AutomationId="SandboxFoldersExpander"
-                          AutomationProperties.LabeledBy="{Binding ElementName=SandboxFoldersLabel}">
+                <Expander AutomationProperties.AutomationId="SandboxFoldersExpander"
+                          AutomationProperties.LabeledBy="{Binding ElementName=FoldersExpanderLabel}"
+                          IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="📁"
                                        AutomationProperties.AccessibilityView="Raw"
                                        Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock x:Uid="SandboxPage_FolderList" x:Name="SandboxFoldersLabel" Text="Folders"
+                            <TextBlock x:Uid="SandboxPage_FolderList" x:Name="FoldersExpanderLabel" Text="Folders"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         </StackPanel>
                     </Expander.Header>
@@ -323,11 +323,11 @@
                 </Expander>
 
                 <!-- Clipboard -->
-                <Expander IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                          AutomationProperties.AutomationId="SandboxClipboardExpander"
-                          AutomationProperties.LabeledBy="{Binding ElementName=SandboxClipboardLabel}">
+                <Expander AutomationProperties.AutomationId="SandboxClipboardExpander"
+                          AutomationProperties.LabeledBy="{Binding ElementName=ClipboardExpanderLabel}"
+                          IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                     <Expander.Header>
-                        <TextBlock x:Uid="SandboxPage_Clipboard" x:Name="SandboxClipboardLabel" Text="📋 Clipboard" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock x:Uid="SandboxPage_Clipboard" x:Name="ClipboardExpanderLabel" Text="📋 Clipboard" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     </Expander.Header>
                     <StackPanel Spacing="8" Padding="4">
                         <TextBlock x:Uid="SandboxPage_ClipboardOftenContainsPasswords" Text="Clipboard often contains passwords, tokens, and private text. Read access may leak this to the agent (and over the internet, if enabled)."
@@ -341,11 +341,11 @@
                 </Expander>
 
                 <!-- Network -->
-                <Expander IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                          AutomationProperties.AutomationId="SandboxNetworkExpander"
-                          AutomationProperties.LabeledBy="{Binding ElementName=SandboxNetworkLabel}">
+                <Expander AutomationProperties.AutomationId="SandboxNetworkExpander"
+                          AutomationProperties.LabeledBy="{Binding ElementName=NetworkExpanderLabel}"
+                          IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                     <Expander.Header>
-                        <TextBlock x:Uid="SandboxPage_Network" x:Name="SandboxNetworkLabel" Text="📡 Network" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock x:Uid="SandboxPage_Network" x:Name="NetworkExpanderLabel" Text="📡 Network" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     </Expander.Header>
                     <StackPanel Spacing="12" Padding="4">
                         <ToggleSwitch x:Uid="SandboxPage_AllowInternet" x:Name="NetInternetToggle"
@@ -365,11 +365,11 @@
                 </Expander>
 
                 <!-- Limits -->
-                <Expander IsExpanded="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                          AutomationProperties.AutomationId="SandboxLimitsExpander"
-                          AutomationProperties.LabeledBy="{Binding ElementName=SandboxLimitsLabel}">
+                <Expander AutomationProperties.AutomationId="SandboxLimitsExpander"
+                          AutomationProperties.LabeledBy="{Binding ElementName=LimitsExpanderLabel}"
+                          IsExpanded="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                     <Expander.Header>
-                        <TextBlock x:Uid="SandboxPage_Limits" x:Name="SandboxLimitsLabel" Text="⏱ Limits" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock x:Uid="SandboxPage_Limits" x:Name="LimitsExpanderLabel" Text="⏱ Limits" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     </Expander.Header>
                     <StackPanel Spacing="12" Padding="4">
                         <StackPanel Spacing="4">

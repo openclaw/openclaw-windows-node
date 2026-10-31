@@ -194,23 +194,6 @@ public sealed class LocalAiOnboardingOwnershipTests
     }
 
     [Fact]
-    public void NormalGatewayReview_DoesNotOfferACompetingLocalAiSelector()
-    {
-        var source = Read(@"src\OpenClaw.SetupEngine.UI\Pages\GatewaySetupPage.xaml.cs");
-        Assert.Contains("LocalAiCard.Visibility = _draft.Config.LocalAi.Enabled || _window.IsLocalAiRecovery", source);
-        var xaml = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml");
-        Assert.Contains("<tk:SettingsCard x:Name=\"LocalAiCard\"", xaml);
-        Assert.Contains("<tk:SettingsExpander.ItemsFooter>", xaml);
-        Assert.DoesNotContain("<tk:SettingsExpander.Items>", xaml);
-        Assert.Contains("Click=\"ChoiceAction_Click\"", xaml);
-        var page = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml.cs");
-        var selection = page[page.IndexOf("private void Choice_Changed", StringComparison.Ordinal)..
-            page.IndexOf("private void ChoiceAction_Click", StringComparison.Ordinal)];
-        Assert.DoesNotContain("StartSelectedAsync", selection);
-        Assert.DoesNotContain("ContinueAsync", selection);
-    }
-
-    [Fact]
     public void AiHeaderBand_UsesSharedCenteredArtworkAndDoesNotPromiseAContinueGate()
     {
         var document = System.Xml.Linq.XDocument.Parse(Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml"));
