@@ -5919,6 +5919,52 @@ public class OpenClawGatewayClientTests
     // --- HandleRequestError: pairing required ---
 
     [Fact]
+    public void StartupUnavailable_UntrackedAndNonConnectResponsesCannotChangeStartupState()
+    {
+        using var identity = new TempDirectory("startup-response-");
+        var helper = new GatewayClientTestHelper(identityPath: identity.Path);
+        using var client = helper.Client;
+        var startups = new List<GatewayStartupUnavailable>();
+        client.StartupUnavailableReceived += (_, startup) => startups.Add(startup);
+        const string response = """
+            {"type":"res","id":"startup","ok":false,"error":{"code":"UNAVAILABLE","retryable":true,"details":{"reason":"startup-sidecars"}}}
+            """;
+
+        helper.ProcessRawMessage(response);
+        helper.TrackPendingRequest("startup", "health");
+        helper.ProcessRawMessage(response);
+        Assert.Empty(startups);
+        Assert.Null(client.StartupUnavailable);
+
+        helper.TrackPendingRequest("startup", "connect");
+        helper.ProcessRawMessage(response);
+        Assert.Single(startups);
+        Assert.Equal(500, client.StartupUnavailable?.RetryAfterMs);
+    }
+
+    [Theory]
+    [InlineData("AUTH_TOKEN_MISMATCH", GatewayErrorKind.Auth)]
+    [InlineData("AUTH_DEVICE_TOKEN_MISMATCH", GatewayErrorKind.DeviceTokenMismatch)]
+    [InlineData("PROTOCOL_MISMATCH", GatewayErrorKind.ProtocolMismatch)]
+    public void StartupReason_CannotOverrideStructuredTerminalFailure(string code, GatewayErrorKind expected)
+    {
+        using var identity = new TempDirectory("startup-terminal-");
+        var helper = new GatewayClientTestHelper(identityPath: identity.Path);
+        using var client = helper.Client;
+        var failures = helper.CaptureConnectionFailures();
+        helper.TrackPendingRequest("startup", "connect");
+        helper.ProcessRawMessage(JsonSerializer.Serialize(new
+        {
+            type = "res", id = "startup", ok = false,
+            error = new { code = "UNAVAILABLE", retryable = true, details = new { reason = "startup-sidecars", code } }
+        }));
+
+        Assert.Null(client.StartupUnavailable);
+        Assert.Contains(expected, failures);
+        Assert.False(helper.ShouldAutoReconnectForTest());
+    }
+
+    [Fact]
     public void HandleRequestError_PairingRequired_SetsPairingBlockFlag()
     {
         var helper = new GatewayClientTestHelper();

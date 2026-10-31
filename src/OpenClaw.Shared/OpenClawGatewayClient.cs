@@ -202,6 +202,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override Task OnConnectedAsync()
     {
+        Volatile.Write(ref _startupRejection, null);
         CancelScheduledSessionRefresh();
         lock (_sessionsLock)
         {
@@ -232,6 +233,23 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         return !_authFailed && !_protocolMismatch;
     }
 
+    private sealed record StartupRejection(long Generation, GatewayStartupUnavailable Startup);
+    private StartupRejection? _startupRejection;
+
+    /// <summary>Current structured startup rejection. Cleared when a fresh transport opens.</summary>
+    public GatewayStartupUnavailable? StartupUnavailable => Volatile.Read(ref _startupRejection)?.Startup;
+
+    /// <summary>Transient application startup, not authentication failure or pairing admission.</summary>
+    public event EventHandler<GatewayStartupUnavailable>? StartupUnavailableReceived;
+
+    protected override int? GetReconnectDelayMs(long sourceConnectionGeneration)
+    {
+        var rejection = Volatile.Read(ref _startupRejection);
+        return rejection?.Generation == sourceConnectionGeneration &&
+            IsCurrentConnectionGeneration(sourceConnectionGeneration)
+                ? rejection.Startup.RetryAfterMs : null;
+    }
+
     protected override void OnDisconnected()
     {
         CancelScheduledSessionRefresh();
@@ -257,6 +275,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnDisposing()
     {
+        Volatile.Write(ref _startupRejection, null);
         CancelScheduledSessionRefresh();
         Volatile.Write(ref _pendingSigningIdentity, null);
         Volatile.Write(ref _authenticatedSigningIdentity, null);
@@ -399,6 +418,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnConnectionException(Exception exception)
     {
+        Volatile.Write(ref _startupRejection, null);
         RaiseConnectionFailure(GatewayErrorClassifier.Classify(exception.ToString()));
     }
 
@@ -2612,6 +2632,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             }
 
             _logger.Info($"[HANDSHAKE] Received hello-ok!");
+            Volatile.Write(ref _startupRejection, null);
             Volatile.Write(ref _pairingRequiredAwaitingApproval, false);
             Volatile.Write(ref _pairingRequiredRequestId, null);
             _authFailed = false;
@@ -2940,6 +2961,17 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         if (method == "connect")
         {
+            if (!_authFailed && !_protocolMismatch && detailCode is null &&
+                _handshakeChallengeGate.IsAuthorized(sourceConnectionGeneration) &&
+                GatewayStartupUnavailable.Parse(root) is { } startup)
+            {
+                Volatile.Write(ref _startupRejection, new(sourceConnectionGeneration, startup));
+                _logger.Info($"[HANDSHAKE] Gateway startup pending; retry in {startup.RetryAfterMs}ms.");
+                StartupUnavailableReceived?.Invoke(this, startup);
+                RaiseStatusChanged(ConnectionStatus.Connecting);
+                return;
+            }
+
             _logger.Warn($"[HANDSHAKE] Connect error from gateway: message=\"{message}\", detailCode={detailCode ?? "none"}");
             // Log raw JSON for debugging (truncated)
             var rawJson = root.ToString() ?? "";

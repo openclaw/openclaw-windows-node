@@ -14,6 +14,78 @@ public sealed class NativeGatewaySetupConnectionTests
     private const string Model = "fixture/native-model";
     private const string StaleDeviceToken = "stale-operator-device-token-not-a-production-credential";
 
+    [Fact]
+    public async Task StartupRejections_RetryWithinSetupLifetimeWithoutRetiringAcceptedCredential()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        server.StartupRejectionsRemaining = 3;
+        server.AcceptedDeviceToken = StaleDeviceToken;
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var owner = await fixture.PrepareAsync();
+        var identity = new DeviceIdentity(owner.IdentityDirectory);
+        identity.Initialize();
+        identity.StoreDeviceToken(StaleDeviceToken);
+
+        await using var connection = await NativeGatewaySetupConnection.ConnectAsync(owner);
+
+        Assert.True(connection.IsConnected);
+        Assert.Equal(4, server.ConnectionCount);
+        Assert.Equal(StaleDeviceToken, DeviceIdentity.TryReadStoredDeviceToken(owner.IdentityDirectory));
+        Assert.Equal(0, server.SharedCredentialConnects);
+        Assert.Null(fixture.Host.ApprovedId);
+    }
+
+    [Fact]
+    public async Task StartupRetry_RechecksNativeOwnershipBeforeSendingCredentials()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        server.StartupRejectionsRemaining = 1;
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var owner = await fixture.PrepareAsync();
+        server.StartupRejected = () => fixture.Runtime.Provenance = GatewayEndpointProvenanceKind.UnknownListener;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => NativeGatewaySetupConnection.ConnectAsync(owner));
+
+        Assert.Equal(1, server.ConnectionCount);
+        Assert.Equal(0, server.SharedCredentialConnects);
+        Assert.Null(fixture.Host.ApprovedId);
+    }
+
+    [Fact]
+    public async Task StartupRetry_ExistingSetupDeadlineRemainsFiniteAndReportsTypedStartup()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        server.StartupRejectionsRemaining = int.MaxValue;
+        server.StartupRetryAfterMs = 2000;
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var owner = await fixture.PrepareAsync();
+
+        var error = await Assert.ThrowsAsync<GatewayStartupUnavailableException>(
+            () => NativeGatewaySetupConnection.ConnectAsync(owner).WaitAsync(TimeSpan.FromSeconds(30)));
+
+        Assert.Equal(2000, error.Startup.RetryAfterMs);
+        Assert.Equal(0, server.SharedCredentialConnects);
+        Assert.Null(fixture.Host.ApprovedId);
+    }
+
+    [Fact]
+    public async Task StartupRetry_CallerCancellationStopsRecovery()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        server.StartupRejectionsRemaining = 1;
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var owner = await fixture.PrepareAsync();
+        using var cancellation = new CancellationTokenSource();
+        server.StartupRejected = cancellation.Cancel;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => NativeGatewaySetupConnection.ConnectAsync(owner, cancellation.Token));
+
+        Assert.Equal(1, server.ConnectionCount);
+        Assert.Equal(0, server.SharedCredentialConnects);
+        Assert.Null(fixture.Host.ApprovedId);
+    }
+
     /// <summary>
     /// A gateway that no longer honours the stored operator device token must not wedge
     /// onboarding: the rejected credential is retired and the shared setup token reconnects.

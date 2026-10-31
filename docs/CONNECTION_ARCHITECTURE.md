@@ -406,6 +406,23 @@ orchestration. Three narrower owners sit behind it:
 interfaces/DTOs/enums remain separate. This project has zero WinUI dependencies
 and is independently testable.
 
+Operator connect responses are transient application-startup state only when a
+correlated current-socket rejection has `error.code=UNAVAILABLE`,
+`retryable=true`, and `details.reason=startup-sidecars`, without a competing
+structured detail code. `OpenClawGatewayClient.StartupUnavailable` and
+`StartupUnavailableReceived` retain that typed state without raising auth,
+pairing, or terminal error events. The reconnect loop honors `retryAfterMs`
+after the Gateway closes the socket, flooring finite numbers and clamping them
+to 100 through 2000 milliseconds (500 when absent or invalid). Other
+`UNAVAILABLE` responses and close code 1013 alone retain ordinary behavior.
+Fresh transports and successful handshakes clear the startup state; failed
+transport attempts clear it rather than relabeling a network error as startup.
+Reconnect and pre-credential handshake authorization still run on every fresh
+socket. Native setup retains its existing 20-second handshake wait and linked
+cancellation lifetime. If that deadline expires while a typed startup rejection
+is current, it throws `GatewayStartupUnavailableException`, not an auth or
+pairing failure, without extending the deadline or changing credentials.
+
 `ChatNavigationReadiness` settles operator readiness, its real deadline, and
 caller cancellation through one atomic completion source. A connected event
 that completes first cannot become a timeout just because notification or UI

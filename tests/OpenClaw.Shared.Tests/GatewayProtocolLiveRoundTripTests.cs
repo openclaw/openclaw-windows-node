@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
+using OpenClaw.TestSupport.Gateway;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -618,6 +619,61 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             _output.WriteLine("[trace] gate reopened after reconnect; sessions.reset on the wire: " + reset2);
             Assert.Contains("sessions.reset", reset2);
         }
+
+    [Fact]
+    public async Task StartupUnavailable_RetriesFreshAuthorizedSocketsWithoutAuthOrPairingFailure()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), "test-token");
+        server.StartupRejectionsRemaining = 3;
+        var logger = new TestLogger();
+        using var client = new OpenClawGatewayClient(
+            server.Endpoint.ToString(), "test-token", logger, identityPath: _identityDir);
+        var startups = new ConcurrentQueue<GatewayStartupUnavailable>();
+        var failures = new ConcurrentQueue<GatewayErrorKind>();
+        var authFailures = new ConcurrentQueue<string>();
+        var pairings = new ConcurrentQueue<string?>();
+        var statuses = new ConcurrentQueue<ConnectionStatus>();
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reconnectChecks = 0;
+        var handshakeChecks = 0;
+        client.ReconnectAuthorizationAsync = _ =>
+        {
+            Interlocked.Increment(ref reconnectChecks);
+            return Task.FromResult(ReconnectAuthorizationResult.AllowedResult);
+        };
+        client.HandshakeAuthorizationAsync = _ =>
+        {
+            Interlocked.Increment(ref handshakeChecks);
+            return Task.FromResult(ReconnectAuthorizationResult.AllowedResult);
+        };
+        client.StartupUnavailableReceived += (_, startup) => startups.Enqueue(startup);
+        client.ConnectionFailure += (_, failure) => failures.Enqueue(failure);
+        client.AuthenticationFailed += (_, failure) => authFailures.Enqueue(failure);
+        client.PairingRequired += (_, id) => pairings.Enqueue(id);
+        client.StatusChanged += (_, status) =>
+        {
+            statuses.Enqueue(status);
+            if (status == ConnectionStatus.Connected) ready.TrySetResult();
+        };
+
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(client.IsConnectedToGateway);
+        Assert.Null(client.StartupUnavailable);
+        Assert.Equal(4, server.ConnectionCount);
+        Assert.Equal(3, startups.Count);
+        Assert.All(startups, startup => Assert.Equal(100, startup.RetryAfterMs));
+        Assert.Equal(3, reconnectChecks);
+        Assert.Equal(4, handshakeChecks);
+        Assert.Empty(failures);
+        Assert.Empty(authFailures);
+        Assert.Empty(pairings);
+        Assert.DoesNotContain(ConnectionStatus.Error, statuses);
+        for (var attempt = 1; attempt <= 3; attempt++)
+            Assert.Contains(logger.Logs, entry => entry.Contains($"reconnecting in 100ms (attempt {attempt})"));
+        _output.WriteLine("Three startup-sidecars / 1013 rejections retried at 100ms on fresh authorized sockets; hello-ok connected. No auth, pairing or Error events.");
+    }
 
     private static async Task ConnectAndWaitAsync(OpenClawGatewayClient client, LoopbackGatewayServer server,
         bool configureHandshake = true)

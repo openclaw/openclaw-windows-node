@@ -213,6 +213,9 @@ public abstract class WebSocketClientBase : IDisposable
     /// <summary>Maximum time allowed for one WebSocket HTTP upgrade attempt.</summary>
     protected virtual TimeSpan ConnectAttemptTimeout => DefaultConnectAttemptTimeout;
 
+    /// <summary>A protocol-specific retry delay for the rejected socket, or normal transport backoff.</summary>
+    protected virtual int? GetReconnectDelayMs(long sourceConnectionGeneration) => null;
+
     protected WebSocketClientBase(string gatewayUrl, string token, IOpenClawLogger? logger = null)
     {
         if (string.IsNullOrEmpty(gatewayUrl))
@@ -622,16 +625,18 @@ public abstract class WebSocketClientBase : IDisposable
                 && ShouldAutoReconnect()
                 && IsReconnectOwner(ownerSocket, ownerGeneration))
             {
-                var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
-                // Add 0-25% jitter to prevent thundering herd when multiple clients
-                // (operator + node) reconnect on the same schedule
-                var jitter = Random.Shared.Next(0, delay / 4);
-                delay += jitter;
+                var delay = GetReconnectDelayMs(ownerGeneration);
+                if (delay is null)
+                {
+                    var backoff = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
+                    // Preserve transport jitter, but honor a bounded application retry hint exactly.
+                    delay = backoff + Random.Shared.Next(0, backoff / 4);
+                }
                 _reconnectAttempts++;
                 _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
                 RaiseStatusChanged(ConnectionStatus.Connecting);
 
-                await Task.Delay(delay, _cts.Token);
+                await Task.Delay(delay.Value, _cts.Token);
 
                 if (_cts.Token.IsCancellationRequested
                     || _disposed
