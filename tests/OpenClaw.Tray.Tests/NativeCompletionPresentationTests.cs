@@ -119,6 +119,13 @@ public sealed class NativeCompletionPresentationTests
         Assert.Contains("_presentation.CompleteMount(generation)", ready);
         Assert.Contains("_presentation.IsReady", ready);
         Assert.Contains("page.ShowFailure(_presentation.ReceiptConsumed ? Recover : retryReceipt, _returnToConnection)", ready);
+        // retirement_condition: replace with a mounted completion-timeout navigation test
+        // when SetupWindow can be hosted independently of process-global WinUI startup.
+        var setup = Read(@"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml.cs");
+        var returnGuard = setup[setup.IndexOf("private bool CanReturnFromFinishing", StringComparison.Ordinal)..
+            setup.IndexOf("private void ReturnFromFinishing()", StringComparison.Ordinal)];
+        Assert.Contains("_completionPreparation?.HasPendingWork != true", returnGuard);
+        Assert.Contains("NativeSetupSession?.IsPublished != true", returnGuard);
     }
 
     [Fact]

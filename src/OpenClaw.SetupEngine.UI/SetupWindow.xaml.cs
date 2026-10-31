@@ -791,7 +791,8 @@ public sealed partial class SetupWindow : Window
         }
     }
 
-    private bool CanReturnFromFinishing => !_nativeContextFinalized && NativeSetupSession?.IsPublished != true;
+    private bool CanReturnFromFinishing => _completionPreparation?.HasPendingWork != true &&
+        !_nativeContextFinalized && NativeSetupSession?.IsPublished != true;
 
     private void ReturnFromFinishing()
     {

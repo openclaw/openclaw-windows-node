@@ -34,6 +34,19 @@ deadlines from earlier versions also remain unchanged. A restart with a differen
 startup override retains the stored deadline within supported bounds: 27 to 141
 minutes for new preparations, and 13.5 to 141 minutes for destination and legacy
 receipts.
+Before that restart, `SetupCompletionPreparation` bounds the production finishing
+operation, including finalization and restart publication, with one execution
+window using the same startup-derived budget (27 minutes by default). Failed
+attempts and explicit retries share its original monotonic deadline. Deadline or
+window cancellation ends the presentation wait, not ownership of an admitted
+write or restart. Delegates receive cooperative cancellation, but cleanup still
+joins the actual work and prior page drain.
+Retry and Back are unavailable while that work remains pending, and expiry cannot
+admit another attempt. An uncertain finalization cannot replay unless the existing
+owner confirms that only committed finalization remains to resume. A late restart
+publication, including a committed-publication failure, never authorizes a second
+launch. This in-process budget is separate from the persisted post-restart
+handoff deadline described above.
 A failed attempt remains available for explicit Retry,
 but automatic reactivation does not show the same failure dialog again. Successful
 runtime checks alone do not prove that a full, potentially longer chat turn has finished.

@@ -9,7 +9,7 @@ public sealed class SetupPreparationCommittedException : InvalidOperationExcepti
 
 /// <summary>
 /// Window-owned completion, admitted by the explicit AI action. Start returns before
-/// draining that action's page. Teardown must join ActiveTask before releasing ownership.
+/// draining that action's page. Teardown must join CleanupCompleted before releasing ownership.
 /// </summary>
 public sealed class SetupCompletionPreparation(
     GatewayAiSetupCompletion proof,
@@ -26,12 +26,21 @@ public sealed class SetupCompletionPreparation(
     private bool _finalizationUncertain;
     private bool _publicationCommitted;
     private Task? _draining;
+    private Task _execution = Task.CompletedTask;
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+    private CancellationTokenSource? _deadline;
+    private CancellationTokenSource? _executionLifetime;
+    private long _startedAt;
     private GatewayAiSetupCompletion? _verified;
     private Task _cleanup = Task.CompletedTask;
     public Task ActiveTask { get; private set; } = Task.CompletedTask;
     public Task CleanupCompleted => _cleanup;
-    public bool CanRetry => !_disposed && !IsCompleted && ActiveTask.IsCompleted &&
-        !_publicationCommitted &&
+    public bool HasPendingWork => !_execution.IsCompleted || _draining is { IsCompleted: false };
+    private bool ExecutionExpired => _deadline is not null &&
+        (_deadline.IsCancellationRequested ||
+         _clock.GetElapsedTime(_startedAt) >= SetupNativeCompletionTiming.Execution);
+    public bool CanRetry => _started && !_disposed && !IsCompleted && ActiveTask.IsCompleted &&
+        !HasPendingWork && !ExecutionExpired && !_publicationCommitted &&
         (!_finalizationUncertain || canResumeCommittedFinalization?.Invoke() == true) &&
         (_draining?.IsCompletedSuccessfully ?? true);
     public SetupNativeCompletionStage Stage { get; private set; }
@@ -43,6 +52,9 @@ public sealed class SetupCompletionPreparation(
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_started) return ActiveTask;
         _started = true;
+        _startedAt = _clock.GetTimestamp();
+        _deadline = new(SetupNativeCompletionTiming.Execution, _clock);
+        _executionLifetime = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, _deadline.Token);
         return ActiveTask = RunAsync();
     }
 
@@ -57,7 +69,23 @@ public sealed class SetupCompletionPreparation(
     {
         // The caller is still inside AiSetupPage._activeRequest.
         await Task.Yield();
-        var ct = _lifetime.Token;
+        var ct = _executionLifetime!.Token;
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            // Request cooperative cancellation, but bound only the presentation wait.
+            // Retain an admitted write or restart through its actual settlement.
+            _execution = RunCoreAsync(ct);
+            await _execution.WaitAsync(ct);
+        }
+        catch (OperationCanceledException error) when (ExecutionExpired && !_lifetime.IsCancellationRequested)
+        {
+            throw new SetupNativeCompletionTimeoutException(SetupNativeCompletionPhase.Execution, error);
+        }
+    }
+
+    private async Task RunCoreAsync(CancellationToken ct)
+    {
         ct.ThrowIfCancellationRequested();
         if (!new SetupNativePreparation(proof, proof.SessionKey ?? "").IsValid)
             throw new SetupNativeOwnershipException();
@@ -88,6 +116,7 @@ public sealed class SetupCompletionPreparation(
                 throw new InvalidOperationException("The admitted finalization must be reconciled before it can continue.");
             Stage = SetupNativeCompletionStage.Finalizing;
             StateChanged?.Invoke();
+            ct.ThrowIfCancellationRequested();
             _finalizationUncertain = true;
             await finalize(_verified!, ct);
             _finalized = true;
@@ -96,6 +125,7 @@ public sealed class SetupCompletionPreparation(
         ct.ThrowIfCancellationRequested();
         Stage = SetupNativeCompletionStage.Opening;
         StateChanged?.Invoke();
+        ct.ThrowIfCancellationRequested();
         try
         {
             await publish(new(_verified!, _verified!.SessionKey!), ct);
@@ -125,9 +155,22 @@ public sealed class SetupCompletionPreparation(
             // Drain admission may still be returning its task when cancellation arrives.
             // Join the owner before reading the drain it retained.
             try { await ActiveTask; }
-            finally { await (_draining ?? Task.CompletedTask); }
+            finally
+            {
+                try { await _execution; }
+                finally { await (_draining ?? Task.CompletedTask); }
+            }
         }
-        catch (Exception) { /* ActiveTask reports failure; disposal still joins retained ownership. */ }
-        finally { _lifetime.Dispose(); }
+        catch (Exception error)
+        {
+            System.Diagnostics.Trace.TraceWarning("Setup completion cleanup settled with failure ({0}).",
+                error.GetType().Name);
+        }
+        finally
+        {
+            _executionLifetime?.Dispose();
+            _deadline?.Dispose();
+            _lifetime.Dispose();
+        }
     }
 }
