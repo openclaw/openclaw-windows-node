@@ -15,7 +15,13 @@ internal sealed class UpdatumUpdateBackend : IUpdateBackend
         InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
     };
 
-    public Task<bool> CheckForUpdatesAsync() => _updater.CheckForUpdatesAsync();
+    public Task<bool> CheckForUpdatesAsync()
+    {
+        var allowAlpha = UpdateCheckPipeline.IsAlphaChannelEnabled;
+        _updater.FetchOnlyLatestRelease = !allowAlpha;
+        _updater.AllowPreReleases = allowAlpha;
+        return _updater.CheckForUpdatesAsync();
+    }
 
     public string? GetChangelog() => _updater.GetChangelog(true);
 
