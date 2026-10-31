@@ -132,6 +132,7 @@ public sealed class ChatComposerSessionTests
     [Fact]
     public async Task RetainedHostSuspension_OverridesVisibleProjectionAndFencesCaptureAfterResume()
     {
+        var speechTargets = new List<string>();
         var capture = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var cleanedUp = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         CancellationToken captureToken = default;
@@ -148,7 +149,7 @@ public sealed class ChatComposerSessionTests
                 captureToken = token;
                 recordingStarted = started;
                 return capture.Task;
-            }, null), initialSpeakerMuted: false);
+            }, null, SpeechTargetChanged: speechTargets.Add), initialSpeakerMuted: false);
         session.ApplyInputs(MakeInputs("first"));
         session.ViewModel.SetDraft("Retain this draft");
         var attachment = new ChatAttachment { FileName = "keep.png" };
@@ -159,8 +160,9 @@ public sealed class ChatComposerSessionTests
         session.ViewModel.SetVoiceAudioLevel(0.7f);
 
         session.SetHostVisible(false);
-        session.ApplyInputs(MakeInputs("first"));
+        session.ApplyInputs(MakeInputs("hidden-thread"));
         session.Controller.StartVoiceRecording();
+        Assert.Equal(new[] { "first", "hidden-thread" }, speechTargets);
         Assert.True(captureToken.IsCancellationRequested);
         Assert.Equal(1, calls);
         Assert.False(session.ViewModel.IsRecording);
@@ -176,7 +178,7 @@ public sealed class ChatComposerSessionTests
         Assert.Equal("Retain this draft", session.ViewModel.Draft);
         Assert.Same(attachment, Assert.Single(session.ViewModel.PendingAttachments));
 
-        session.ApplyInputs(MakeInputs("first") with { IsVisible = false });
+        session.ApplyInputs(MakeInputs("hidden-thread") with { IsVisible = false });
         session.SetHostVisible(false);
         session.SetHostVisible(true);
         session.Controller.StartVoiceRecording();
