@@ -21,8 +21,9 @@ public sealed class OpenClawChatCoordinator : IDisposable
     private string? _lastManualSpeechText;
     private DateTimeOffset _lastManualSpeechAt;
     private readonly Dictionary<VoiceService, int> _voiceCaptureMutes = new();
-    private readonly GatewaySpeechPlayback _gatewaySpeech = new();
+    private readonly GatewaySpeechPlayback _gatewaySpeech;
     private bool _gatewayVoiceEnabled;
+    private bool _ttsPlaybackAllowed;
     private string? _speechTarget;
     public GatewaySpeechPlaybackState SpeechState { get; private set; } = new(GatewaySpeechPhase.Idle);
     public event Action<GatewaySpeechPlaybackState>? SpeechStateChanged;
@@ -62,15 +63,20 @@ public sealed class OpenClawChatCoordinator : IDisposable
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _post = post;
         _gatewayVoiceEnabled = settings.UseGatewayVoice;
+        _ttsPlaybackAllowed = SpeechSetupReadiness.IsChatTtsPlaybackReady(settings);
+        _gatewaySpeech = new(() => SpeechSetupReadiness.IsChatTtsPlaybackReady(_settings));
         _gatewaySpeech.Changed += PublishSpeechState;
         settings.Saved += OnSettingsSaved;
     }
 
     private void OnSettingsSaved(object? sender, EventArgs e)
     {
-        if (_gatewayVoiceEnabled == _settings.UseGatewayVoice) return;
+        var playbackAllowed = SpeechSetupReadiness.IsChatTtsPlaybackReady(_settings);
+        var retire = _gatewayVoiceEnabled != _settings.UseGatewayVoice
+            || (_ttsPlaybackAllowed && !playbackAllowed);
         _gatewayVoiceEnabled = _settings.UseGatewayVoice;
-        StopSpeaking();
+        _ttsPlaybackAllowed = playbackAllowed;
+        if (retire) StopSpeaking();
     }
 
     private void PublishSpeechState(GatewaySpeechPlaybackState state)
@@ -174,7 +180,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
     private async Task SpeakConfiguredTextAsync(string text, bool muteVoiceCapture, bool bypassMute = false,
         bool forceGateway = false, string? responseTarget = null, CancellationToken cancellationToken = default)
     {
-        if (!bypassMute && IsMuted) return;
+        if (!SpeechSetupReadiness.IsChatTtsPlaybackReady(_settings) || (!bypassMute && IsMuted)) return;
         var useGatewayVoice = forceGateway || _settings.UseGatewayVoice;
         var voiceService = _nodeServiceAccessor()?.VoiceService;
         var mutedVoiceCapture = false;

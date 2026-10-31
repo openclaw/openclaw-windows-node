@@ -14,6 +14,7 @@ public sealed record GatewaySpeechPlaybackState(
 public sealed class GatewaySpeechPlayback : IDisposable
 {
     private readonly object _gate = new();
+    private readonly Func<bool> _playbackAllowed;
     private IOperatorGatewayClient? _client;
     private string? _target;
     private CancellationTokenSource? _active;
@@ -21,6 +22,9 @@ public sealed class GatewaySpeechPlayback : IDisposable
     private bool _muted;
     private bool _disposed;
     public event Action<GatewaySpeechPlaybackState>? Changed;
+
+    public GatewaySpeechPlayback(Func<bool>? playbackAllowed = null) =>
+        _playbackAllowed = playbackAllowed ?? (() => true);
 
     public void SetClient(IOperatorGatewayClient? client)
     {
@@ -79,7 +83,7 @@ public sealed class GatewaySpeechPlayback : IDisposable
         CancellationTokenSource operation;
         lock (_gate)
         {
-            if (_disposed || (!manual && _muted)) return;
+            if (_disposed || !_playbackAllowed() || (!manual && _muted)) return;
             if (!manual && (_target is null || (responseTarget is not null
                 && !string.Equals(responseTarget, _target, StringComparison.Ordinal)))) return;
             client = _client;
@@ -164,6 +168,9 @@ public sealed class GatewaySpeechPlayback : IDisposable
     {
         lock (_gate)
         {
+            // A settings save can still be pending when the awaited response
+            // arrives. Check current permission before admitting the next effect.
+            if (!_playbackAllowed()) operation.Cancel();
             operation.Token.ThrowIfCancellationRequested();
             if (_disposed || !ReferenceEquals(_active, operation) || !ReferenceEquals(_client, client)
                 || !string.Equals(_target, target, StringComparison.Ordinal)
