@@ -20,8 +20,47 @@ internal sealed record ConfigEditorSnapshot(JsonElement Root, string? BaseHash)
     public bool HasRoot => Root.ValueKind is not JsonValueKind.Undefined and not JsonValueKind.Null;
 }
 
+internal readonly record struct ConfigSchemaSection(string Name, JsonElement Schema, JsonElement? Config);
+
 internal static class ConfigEditorModel
 {
+    public static bool HasSchemaFields(JsonElement schema) =>
+        schema.ValueKind == JsonValueKind.Object &&
+        schema.TryGetProperty("properties", out var properties) &&
+        properties.ValueKind == JsonValueKind.Object && properties.EnumerateObject().MoveNext();
+
+    public static bool CanTraverseObjectConfig(JsonElement config) =>
+        config.ValueKind is JsonValueKind.Object or JsonValueKind.Undefined;
+
+    // A Gateway may redact a whole object to its native mask. Keep that value
+    // on the section itself, but never invent editable descendants beneath it.
+    public static IEnumerable<ConfigSchemaSection> ReadSchemaSections(JsonElement schema, JsonElement? config)
+    {
+        if (schema.ValueKind != JsonValueKind.Object ||
+            !schema.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != JsonValueKind.Object ||
+            (config.HasValue && !CanTraverseObjectConfig(config.Value)))
+            yield break;
+
+        foreach (var property in properties.EnumerateObject())
+        {
+            var child = property.Value;
+            if (child.ValueKind != JsonValueKind.Object)
+                continue;
+            var objectType = child.TryGetProperty("type", out var type) &&
+                (type.ValueKind == JsonValueKind.String && type.GetString() == "object" ||
+                 type.ValueKind == JsonValueKind.Array &&
+                 System.Linq.Enumerable.Any(type.EnumerateArray(), item =>
+                     item.ValueKind == JsonValueKind.String && item.GetString() == "object"));
+            if (!objectType && !child.TryGetProperty("properties", out _))
+                continue;
+
+            var childConfig = config.HasValue && config.Value.TryGetProperty(property.Name, out var value)
+                ? (JsonElement?)value : null;
+            yield return new ConfigSchemaSection(property.Name, child, childConfig);
+        }
+    }
+
     public static ConfigEditorSnapshot CaptureSnapshot(JsonElement configResponse)
     {
         var root = ExtractConfigRoot(configResponse);

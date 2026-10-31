@@ -1647,10 +1647,10 @@ Use uma destas opções:
     <value>JSON bruto</value>
   </data>
   <data name="ConfigPage_TextBlock_95.Text" xml:space="preserve">
-    <value>Esquema indisponível</value>
+    <value>Configuração indisponível</value>
   </data>
   <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
-    <value>Não foi possível carregar o esquema de configuração do Gateway. Use o painel web para editar as configurações.</value>
+    <value>Atualize para tentar carregar a configuração e o esquema do gateway novamente. Você também pode abrir o painel do gateway.</value>
   </data>
   <data name="OpenDashboardButton.Content" xml:space="preserve">
     <value>Abrir painel</value>
@@ -6369,13 +6369,13 @@ Certifique-se de que o Gateway está em execução.</value>
     <value>Configuração indisponível</value>
   </data>
   <data name="ConfigPage_RenderConfigUnavailableMessage" xml:space="preserve">
-    <value>Não foi possível renderizar a configuração do Gateway. Atualize e tente novamente.</value>
+    <value>Não foi possível carregar ou exibir a configuração do gateway. Atualize e tente novamente.</value>
   </data>
   <data name="ConfigPage_RenderSchemaUnavailableTitle" xml:space="preserve">
     <value>Esquema indisponível</value>
   </data>
   <data name="ConfigPage_RenderSchemaUnavailableMessage" xml:space="preserve">
-    <value>Não foi possível renderizar o esquema do Gateway. O JSON bruto continua disponível como visualização somente leitura.</value>
+    <value>Não foi possível carregar ou exibir o esquema do gateway. Atualize e tente novamente.</value>
   </data>
   <data name="ConfigPage_StatusGatewayRestartingTitle" xml:space="preserve">
     <value>Gateway reiniciando</value>
@@ -8264,4 +8264,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Esta pergunta está sendo resolvida. Atualize para verificar seu status.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Escolha uma resposta válida para cada pergunta.</value></data>
+  <data name="ConfigPage_DraftConnectionChanged" xml:space="preserve">
+    <value>A conexão ou o perfil mudou. Seu rascunho foi mantido, mas não pode ser aplicado aqui. Descarte-o e carregue a configuração do gateway atual.</value>
+  </data>
 </root>
