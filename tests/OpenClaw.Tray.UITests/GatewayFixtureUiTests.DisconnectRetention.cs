@@ -17,7 +17,9 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => RenderConsumedHistory(run, GatewayScenario.LongSessionKey), "loaded conversation before explicit Disconnect");
             const string draft = "Unsent draft retained across explicit Disconnect.";
             ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
-            await ScrollToAsync(run, 50);
+            await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.LongHistoryFinalMarker) &&
+                TimelineScroll(run).Current.VerticalScrollPercent >= 99, "settled visible initial tail before reader scrolling");
+            await MoveReaderAwayFromTailAsync(run);
             var beforeScroll = TimelineScroll(run).Current.VerticalScrollPercent;
             Assert.InRange(beforeScroll, 5, 95);
             var inputIdentity = FindById(run, "ChatComposerInput")!.GetRuntimeId();
@@ -51,7 +53,29 @@ public sealed partial class GatewayFixtureUiTests
             Invoke(FindById(run, "ChatComposerPrimaryAction")!);
             var sent = await run.Gateway.WaitForCompletedRequestAsync("chat.send", GatewayScenario.LongSessionKey);
             Assert.Equal("ok", sent.Outcome);
+            await CaptureIfRequestedAsync(run, "explicit-disconnect-sent.png");
         }, scenario: GatewayScenario.CreateBrowse(allowChatSend: true));
+    }
+
+    private static async Task MoveReaderAwayFromTailAsync(GatewayFixtureRun run)
+    {
+        const int maxReaderPages = 30;
+        const double readerTargetPercent = 80;
+        // UIA SetScrollPercent over a still-realizing virtualized extent reported
+        // 50% -> 0% in the original CI run. Drive ordinary page-up semantics only
+        // after the actual tail is visible, and await each native scroll effect.
+        for (var page = 0; page < maxReaderPages; page++)
+        {
+            var before = TimelineScroll(run).Current.VerticalScrollPercent;
+            if (before <= readerTargetPercent) return;
+            TimelineScroll(run).Scroll(ScrollAmount.NoAmount, ScrollAmount.LargeDecrement);
+            await WaitUiAsync(run, () =>
+            {
+                var current = TimelineScroll(run).Current.VerticalScrollPercent;
+                return current >= 0 && current < before;
+            }, "native reader page-up scroll effect");
+        }
+        Assert.InRange(TimelineScroll(run).Current.VerticalScrollPercent, 5, readerTargetPercent);
     }
 
     private static ScrollPattern TimelineScroll(GatewayFixtureRun run)

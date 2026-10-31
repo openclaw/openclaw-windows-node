@@ -1,0 +1,14 @@
+{
+  "classification": "public synthetic test identity and fixture tokens; never production credentials",
+  "release": "v2026.9.8-1",
+  "sourceCommit": "2ba89f377ce8ce3f5ddfc452e4d509329f109114",
+  "asset": "OpenClawTray-2026.9.8-1-win-x64.zip",
+  "assetSha256": "c50955809afdd07c0d2c17f30bf7c45cf06bed09d751a915bd92945be27f2047",
+  "sharedAssemblySha256": "23dafc92803377c58e11bee1212f4971d268883711c603d9669fbe2f512d2bcc",
+  "connectionAssemblySha256": "c3c445a78bfb15de27152978b4d5a62a901e628fbae2cb2098930e4e7846df71",
+  "files": {
+    "gateways.json": "c737b53605c7e26bd0d98e01cb3d9d8056b3222bd89ef296dc6e371401be10c0",
+    "device-key-ed25519.json": "8bdfde702654c654b9e0dfe0bd2aa26092e2b8fca205b2b666beffb88d4a8359",
+    "producer.cs.txt": "d5cd80d02f2bc40c3d40558dc5ac73f9707da17193285d5158d87d83088d7c1c"
+  }
+}

@@ -171,13 +171,20 @@ An already-loaded ordinary native conversation remains in memory when its
 operator connection is temporarily lost or explicitly disconnected. The retained
 provider publishes the existing disconnected composer state instead of replacing
 the transcript with initial connection guidance. Offline ports reject mutations
-and cancel pending reads; no transcript persistence cache is introduced.
+and cancel pending reads and writes through the client request lifetime. The
+transport rechecks cancellation under its send lock before writing. No transcript
+persistence cache is introduced.
 
 A replacement connection may reuse that provider only after fresh endpoint,
 local signing-device, authenticated `users.self` profile and session identities
-are confirmed. Gateway or credential-record changes, revocation, profile changes,
-and authoritative removal invalidate reuse. An older Gateway without a confirmed
-profile can mount fresh chat, but cannot reactivate retained history. Setup-bound
+are confirmed. Session identities come from the correlated requested
+`sessions.list` response, not a cached roster notification from live activity.
+Retired scoped RPC replies are discarded before generic cache/event parsing.
+Gateway or credential-record changes, revocation, profile changes, and
+authoritative removal invalidate reuse. An older Gateway explicitly rejecting
+`users.self` as unsupported can mount fresh chat, but cannot reactivate retained
+history. Authentication failures, malformed rosters and timeouts do not take
+that compatibility fallback. Setup-bound
 chat keeps its additional receipt/authority checks and hidden-host behavior.
 
 `ExplicitDisconnectRetainsLoadedTranscriptDraftAndScrollAcrossRecovery` exercises

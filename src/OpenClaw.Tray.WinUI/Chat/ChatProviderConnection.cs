@@ -82,7 +82,7 @@ internal sealed class ChatProviderConnection : IDisposable
         EventHandler<ConnectionStatus> status = (_, state) =>
         {
             if (!Current(client, version)) return;
-            if (state != ConnectionStatus.Connected) Suspend();
+            if (state != ConnectionStatus.Connected) { CancelVerification(); Suspend(); }
             _post(() =>
             {
                 if (!Current(client, version)) return;
@@ -93,6 +93,7 @@ internal sealed class ChatProviderConnection : IDisposable
         EventHandler profile = (_, _) =>
         {
             if (!Current(client, version)) return;
+            CancelVerification();
             Suspend();
             _post(() =>
             {
@@ -104,6 +105,7 @@ internal sealed class ChatProviderConnection : IDisposable
         EventHandler<GatewayErrorKind> failure = (_, kind) =>
         {
             if (!InvalidatesAuthority(kind) || !Current(client, version)) return;
+            CancelVerification();
             Suspend();
             _post(() => { if (Current(client, version)) Forget(); });
         };
@@ -123,6 +125,7 @@ internal sealed class ChatProviderConnection : IDisposable
     {
         if (snapshot.OperatorErrorKind is not { } kind || !InvalidatesAuthority(kind)) return;
         var version = _version;
+        CancelVerification();
         Suspend();
         _post(() => { if (!_disposed && version == _version) Forget(); });
     }
@@ -135,6 +138,7 @@ internal sealed class ChatProviderConnection : IDisposable
     private void OnRegistryChanged(object? sender, GatewayRegistryChangedEventArgs args)
     {
         if (_disposed || CaptureScope() == _scope) return;
+        CancelVerification();
         Suspend();
         _post(() =>
         {
@@ -162,8 +166,9 @@ internal sealed class ChatProviderConnection : IDisposable
         CancelVerification();
         Suspend();
         var cancellation = new CancellationTokenSource();
-        _verification = cancellation;
-        _ = VerifyAsync(client, version, cancellation.Token, client.ServerHandshakeGeneration, CaptureScope());
+        var token = cancellation.Token;
+        Interlocked.Exchange(ref _verification, cancellation);
+        _ = VerifyAsync(client, version, token, client.ServerHandshakeGeneration, CaptureScope());
     }
 
     private async Task VerifyAsync(OpenClawGatewayClient client, int version, CancellationToken token,
@@ -171,38 +176,40 @@ internal sealed class ChatProviderConnection : IDisposable
     {
         ChatConnectionAuthority? authority = null;
         SessionInfo[]? sessions = null;
+        var rejected = false;
         try
         {
-            var response = await client.SendWizardRequestAsync("users.self", new { }, timeoutMs: ReadinessTimeoutMs)
-                .WaitAsync(token).ConfigureAwait(false);
-            if (scope is not null && response.ValueKind == JsonValueKind.Object &&
-                response.TryGetProperty("profile", out var profile) && profile.ValueKind == JsonValueKind.Object &&
-                profile.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String &&
-                client.AuthenticatedSigningDeviceId is { Length: > 0 } signingId && id.GetString() is { Length: > 0 } profileId)
-                authority = new(scope.Id, GatewayDashboardBinding.Capture(scope), signingId, profileId);
-            var roster = new TaskCompletionSource<SessionInfo[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-            void OnSessions(object? sender, SessionInfo[] rows) => roster.TrySetResult(rows);
-            client.SessionsUpdated += OnSessions;
-            try
-            {
-                await client.RequestSessionsAsync().WaitAsync(token).ConfigureAwait(false);
-                sessions = await roster.Task.WaitAsync(TimeSpan.FromMilliseconds(ReadinessTimeoutMs), token).ConfigureAwait(false);
-            }
-            finally { client.SessionsUpdated -= OnSessions; }
+            var response = await client.RunWithRequestCancellationAsync(token,
+                () => client.SendWizardRequestAsync("users.self", new { }, timeoutMs: ReadinessTimeoutMs)).ConfigureAwait(false);
+            if (response.ValueKind != JsonValueKind.Object ||
+                !response.TryGetProperty("profile", out var profile) || profile.ValueKind != JsonValueKind.Object ||
+                !profile.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(id.GetString()))
+                throw new JsonException("Invalid users.self profile identity.");
+            if (scope is not null && client.AuthenticatedSigningDeviceId is { Length: > 0 } signingId)
+                authority = new(scope.Id, GatewayDashboardBinding.Capture(scope), signingId, id.GetString()!);
+            sessions = await client.RequestAuthoritativeSessionsAsync(ReadinessTimeoutMs, token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+        catch (InvalidOperationException ex) when (authority is null &&
+            ex.Message.Contains("unknown method", StringComparison.OrdinalIgnoreCase))
+        {
+            // Only explicit unsupported-method compatibility admits fresh chat.
+            // Auth denials, timeouts and malformed rosters must remain blocked.
+            Logger.Debug("[ChatConnection] Profile confirmation is unsupported; retained history cannot be reused.");
+        }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or JsonException or OperationCanceledException)
         {
-            // Older Gateways may lack users.self. They may mount a fresh provider,
-            // but unknown authority must never reactivate the retained transcript.
+            rejected = true;
             Logger.Debug("[ChatConnection] Retained conversation authority could not be confirmed.");
         }
         _post(() =>
         {
             if (!Current(client, version) || token.IsCancellationRequested || !client.IsConnectedToGateway ||
                 client.ServerHandshakeGeneration != handshake || CaptureScope() != scope) return;
+            if (rejected) { Forget(); return; }
             if (_authority?.CanRetain(authority) != true || sessions is null ||
-                Provider?.CanRetainHistory(client.GetSessionList()) == false) DropProvider();
+                Provider?.CanRetainHistory(sessions) == false) DropProvider();
             _authority = authority;
             _scope = scope;
             _bridge.Attach(new GatewayClientChatBridge(client));
@@ -223,10 +230,9 @@ internal sealed class ChatProviderConnection : IDisposable
 
     private void CancelVerification()
     {
-        var previous = _verification;
-        _verification = null;
-        previous?.Cancel();
-        previous?.Dispose();
+        var previous = Interlocked.Exchange(ref _verification, null);
+        try { previous?.Cancel(); }
+        finally { previous?.Dispose(); }
     }
 
     private void Forget()

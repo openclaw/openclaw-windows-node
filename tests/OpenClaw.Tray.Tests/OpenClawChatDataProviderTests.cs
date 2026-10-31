@@ -66,8 +66,13 @@ public partial class OpenClawChatDataProviderTests
         public void Dispose() => _listener.Dispose();
     }
 
-    private sealed class FakeBridge : IChatGatewayBridge
+    private sealed class FakeBridge : IChatGatewayBridge, IChatGatewayRequestScope
     {
+        public async Task<T> RunWithRequestCancellationAsync<T>(CancellationToken token, Func<Task<T>> operation)
+        {
+            token.ThrowIfCancellationRequested();
+            return await operation().WaitAsync(token);
+        }
         public bool IsConnected { get; set; }
         public ConnectionStatus CurrentStatus { get; set; }
         public string? MainSessionKey { get; set; }

@@ -40,6 +40,9 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
             var generation = ++_generation;
             cancellation = _cancellation;
             _cancellation = new();
+            // Cancellation is part of retiring the binding, before observers run
+            // or another serialized transport write can use the old authority.
+            cancellation.Cancel();
             StatusChanged?.Invoke(this, ConnectionStatus.Disconnected);
             if (next is not null)
             {
@@ -85,7 +88,6 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
                 if (next.IsConnected) SessionsUpdated?.Invoke(this, next.GetSessionList());
             }
         }
-        cancellation.Cancel();
         cancellation.Dispose();
         previous?.Dispose();
     }
@@ -108,7 +110,8 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
                 : throw new InvalidOperationException(LocalizationHelper.GetString("Chat_Composer_Placeholder_NotConnected"));
             generation = _generation;
             token = _cancellation.Token;
-            pending = action(inner, token);
+            if (inner is not IChatGatewayRequestScope requestScope) throw new NotSupportedException();
+            pending = requestScope.RunWithRequestCancellationAsync(token, () => action(inner, token));
         }
         var result = await pending.WaitAsync(token).ConfigureAwait(false);
         lock (_gate)
