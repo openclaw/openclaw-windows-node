@@ -156,9 +156,12 @@ public sealed class NativeGatewayPackageClient
         string? readinessState = OptionalState(gateway, "readiness",
             ["absent", "not-ready", "startup-eligible", "unavailable", "unknown"]);
         string? readinessReason = OptionalString(gateway, "readiness", "reason");
+        bool supportsLaunch = SupportsLaunchReceipts(root);
+        IsolatedGatewayLaunch? launch = ReadLaunch(root, supportsLaunch);
         if (state != "running")
             return new IsolatedGatewayStatus(
-                state, null, null, [], sessionState, readinessState, readinessReason);
+                state, null, null, [], sessionState, readinessState, readinessReason)
+                { SupportsLaunchReceipts = supportsLaunch, Launch = launch };
 
         int port = RequiredInt(gateway, "port");
         if (!gateway.TryGetProperty("ownership", out JsonElement ownership) ||
@@ -189,7 +192,53 @@ public sealed class NativeGatewayPackageClient
         if (!listeners.Any(listener => listener.Port == port))
             throw new InvalidOperationException("The Gateway package did not attribute the observed port to its session.");
         return new IsolatedGatewayStatus(
-            state, port, sid, listeners, sessionState, readinessState, readinessReason);
+            state, port, sid, listeners, sessionState, readinessState, readinessReason)
+            { SupportsLaunchReceipts = supportsLaunch, Launch = launch };
+    }
+
+    public async Task<IsolatedGatewayLaunch> StartAsync(
+        NativeGatewayPackage package, string attemptId, CancellationToken cancellationToken)
+    {
+        RequireAttemptId(attemptId);
+        var result = await _invoke(package,
+            ["gateway-service", "start", "--attempt-id", attemptId, "--json"], null, cancellationToken)
+            .ConfigureAwait(false);
+        using var document = Parse(result.StandardOutput);
+        var root = document.RootElement;
+        RequireIntegration(root, "gateway-service start");
+        if (!SupportsLaunchReceipts(root)) throw Unsupported();
+        var launch = ReadLaunch(root, true, requireDisposition: true) ?? throw Unsupported();
+        if (launch.Disposition == "created" && launch.AttemptId != attemptId) throw Unsupported();
+        RequireSuccess(root, result.ExitCode);
+        return launch;
+    }
+
+    public async Task StopAsync(
+        NativeGatewayPackage package, string attemptId, CancellationToken cancellationToken)
+    {
+        RequireAttemptId(attemptId);
+        var result = await _invoke(package,
+            ["gateway-service", "stop", "--if-attempt-id", attemptId, "--json"], null, cancellationToken)
+            .ConfigureAwait(false);
+        using var document = Parse(result.StandardOutput);
+        var root = document.RootElement;
+        RequireIntegration(root, "gateway-service stop");
+        if (!SupportsLaunchReceipts(root)) throw Unsupported();
+        var launch = RequiredObject(RequiredObject(root, "gateway"), "launch");
+        if (RequiredInt(launch, "version") != 1 || RequiredString(launch, "attemptId") != attemptId)
+            throw Unsupported();
+        var outcome = RequiredString(launch, "stopOutcome");
+        if (outcome == "refused")
+        {
+            var reason = RequiredString(launch, "refusal");
+            if (reason is not ("attempt-mismatch" or "ownership-unverified") ||
+                result.ExitCode == 0 || !root.TryGetProperty("ok", out var ok) || ok.ValueKind != JsonValueKind.False ||
+                RequiredString(RequiredObject(root, "error"), "type") != "launch_ownership_refused")
+                throw Unsupported();
+            throw new NativeGatewayLaunchOwnershipException(reason);
+        }
+        if (outcome is not ("stopped" or "not-running")) throw Unsupported();
+        RequireSuccess(root, result.ExitCode);
     }
 
     public async Task StartAsync(NativeGatewayPackage package, CancellationToken cancellationToken) =>
@@ -253,6 +302,41 @@ public sealed class NativeGatewayPackageClient
             RequiredString(root, "command") != command ||
             RequiredString(RequiredObject(root, "integration"), "kind") != "isolated-session" ||
             RequiredInt(RequiredObject(root, "integration"), "version") != 1)
+            throw Unsupported();
+        _ = SupportsLaunchReceipts(root);
+    }
+
+    private static bool SupportsLaunchReceipts(JsonElement root)
+    {
+        var integration = RequiredObject(root, "integration");
+        if (!integration.TryGetProperty("gatewayLaunch", out var advertised)) return false;
+        if (advertised.ValueKind != JsonValueKind.Object || RequiredInt(advertised, "version") != 1)
+            throw Unsupported();
+        return true;
+    }
+
+    private static IsolatedGatewayLaunch? ReadLaunch(
+        JsonElement root, bool supported, bool requireDisposition = false)
+    {
+        var gateway = RequiredObject(root, "gateway");
+        if (!gateway.TryGetProperty("launch", out var launch)) return null;
+        if (!supported || launch.ValueKind != JsonValueKind.Object || RequiredInt(launch, "version") != 1)
+            throw Unsupported();
+        var id = RequiredString(launch, "attemptId");
+        RequireAttemptId(id);
+        string? disposition = null;
+        if (requireDisposition || launch.TryGetProperty("disposition", out _))
+        {
+            disposition = RequiredString(launch, "disposition");
+            if (disposition is not ("created" or "adopted")) throw Unsupported();
+        }
+        return new(id, disposition);
+    }
+
+    private static void RequireAttemptId(string id)
+    {
+        if (!Guid.TryParseExact(id, "N", out var parsed) || parsed == Guid.Empty ||
+            parsed.ToString("N") != id)
             throw Unsupported();
     }
 

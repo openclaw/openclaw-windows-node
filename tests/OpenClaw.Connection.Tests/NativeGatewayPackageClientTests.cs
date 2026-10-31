@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OpenClaw.Connection.NativeGateway;
 
 namespace OpenClaw.Connection.Tests;
@@ -9,6 +10,71 @@ public sealed class NativeGatewayPackageClientTests
     private static readonly NativeGatewayPackage s_package =
         new("OpenClaw.Gateway_123456789abcd", "2026.9.5.5",
             @"C:\package\openclaw.exe", @"C:\package\clawctl.exe");
+
+    [Theory]
+    [InlineData("starting", 0)]
+    [InlineData("unknown", 1)]
+    [InlineData("stopped", 0)]
+    [InlineData("unhealthy", 1)]
+    public async Task StatusPreservesReceiptBeforeListenerReadinessAndOnFailedInspection(string state, int exitCode)
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(
+            new NativeGatewayCommandResult(exitCode, JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1, command = "gateway-service status", ok = exitCode == 0,
+                integration = new { kind = "isolated-session", version = 1, gatewayLaunch = new { version = 1 } },
+                gateway = new { state, launch = new { version = 1, attemptId = "11111111111111111111111111111111" } }
+            }))));
+        var status = await client.StatusAsync(s_package, default);
+        Assert.True(status.SupportsLaunchReceipts);
+        Assert.Equal("11111111111111111111111111111111", status.Launch!.AttemptId);
+        Assert.Empty(status.Listeners);
+        Assert.Null(status.Port);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("{\"version\":2}")]
+    [InlineData("{\"version\":\"1\"}")]
+    public async Task MalformedAdvertisedExtensionCannotDowngradeToLegacy(string advertisement)
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(
+            new NativeGatewayCommandResult(0,
+                """{"schemaVersion":1,"command":"gateway-service status","integration":{"kind":"isolated-session","version":1,"gatewayLaunch":ADVERTISEMENT},"gateway":{"state":"stopped"}}"""
+                    .Replace("ADVERTISEMENT", advertisement, StringComparison.Ordinal))));
+        await Assert.ThrowsAsync<NativeGatewayContractException>(() => client.StatusAsync(s_package, default));
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("{\"version\":2,\"attemptId\":\"11111111111111111111111111111111\",\"disposition\":\"created\"}")]
+    [InlineData("{\"version\":1,\"attemptId\":\"00000000000000000000000000000000\",\"disposition\":\"created\"}")]
+    [InlineData("{\"version\":1,\"attemptId\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"disposition\":\"created\"}")]
+    [InlineData("{\"version\":1,\"attemptId\":\"22222222222222222222222222222222\",\"disposition\":\"created\"}")]
+    [InlineData("{\"version\":1,\"attemptId\":\"11111111111111111111111111111111\",\"disposition\":\"unknown\"}")]
+    public async Task ReceiptStartRejectsMissingMalformedAndMismatchedCreatedReceipt(string receipt)
+    {
+        var root = JsonNode.Parse(
+            """{"schemaVersion":1,"command":"gateway-service start","ok":true,"integration":{"kind":"isolated-session","version":1,"gatewayLaunch":{"version":1}},"gateway":{}}""")!;
+        if (receipt != "missing") root["gateway"]!["launch"] = JsonNode.Parse(receipt);
+        var client = new NativeGatewayPackageClient((_, _, _) =>
+            Task.FromResult(new NativeGatewayCommandResult(0, root.ToJsonString())));
+        await Assert.ThrowsAsync<NativeGatewayContractException>(() =>
+            client.StartAsync(s_package, "11111111111111111111111111111111", default));
+    }
+
+    [Fact]
+    public async Task CapabilityAbsentStatusRemainsShippingV1WithoutReceipt()
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(new NativeGatewayCommandResult(0,
+            """{"schemaVersion":1,"command":"gateway-service status","integration":{"kind":"isolated-session","version":1},"gateway":{"state":"stopped"}}""")));
+        var status = await client.StatusAsync(s_package, default);
+        Assert.False(status.SupportsLaunchReceipts);
+        Assert.Null(status.Launch);
+    }
 
     [Fact]
     public async Task DetectAcceptsOnlyVersionedIsolatedContract()

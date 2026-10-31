@@ -487,6 +487,26 @@ The startup budget defaults to three minutes. Set `OPENCLAW_NATIVE_GATEWAY_START
 to whole seconds (30 to 3600) before starting Companion to change it; the published
 connection phase and credential handoff budgets grow with a longer value.
 
+Staged native setup shares the existing 210-second default admission allowance
+from initial runtime preparation through the first authenticated operator hello.
+Start-command time, listener verification, challenge authorization, startup-sidecar
+retry hints and pairing all consume that same remaining time. No reconnect or
+credential recovery grants a fresh window. A current typed startup rejection
+reports startup still pending at expiry; terminal authentication, protocol and
+ownership failures do not retry. Caller cancellation remains cancellation.
+An exhausted session needs new setup preparation rather than another connection retry.
+This does not require the Gateway's broad `/startupz` sidecar readiness to finish
+before an operator connection is attempted.
+
+On newer packages advertising `integration.gatewayLaunch={version:1}`, Companion
+also correlates its launch before dispatch and conditionally stops only that
+attempt, including after a lost start acknowledgement. An adopted launch grants
+no cleanup ownership. A refused conditional stop never retries unconditionally.
+Shipping isolated-session-v1 packages without that optional advertisement retain
+their existing lifecycle behavior; malformed advertised support is an error,
+not a legacy fallback. Listener/process-sequence proof is required independently
+on both paths. See the [native lifecycle contract](ARCHITECTURE.md#isolated-listener-proof-and-legacy-process-ownership).
+
 When native setup fails after the package is installed, the setup page keeps the
 failed step, shows the typed failure (for a startup timeout: the phase, budget and
 last package status) and offers recovery actions:

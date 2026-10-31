@@ -563,6 +563,34 @@ for the older package's ambiguous failed-start response, which is not admitted.
 The pending-start fixtures are conditional client-contract tests, not proof that
 the installed package can acknowledge a pending launch.
 
+`NativeGatewaySetupSession` starts one monotonic admission budget before its
+initial runtime preparation. `NativeGatewaySetupConnection` consumes the remainder
+through preparation, challenge authorization, startup-sidecar retries, pairing and
+operator hello. The default is the existing 210-second native allowance
+(180-second start, ten-second confirmation, twenty-second admission margin).
+Reconnects, failed connections and credential recovery do not renew it.
+Successful admission ends that operation. Exhausted unadmitted sessions require
+new setup preparation, not another connection retry. Terminal handshake errors still fail immediately, caller/session
+cancellation stays cancellation, and deadline expiry reports timeout with the
+current typed startup rejection when available. `/startupz` is not a universal
+preconnect gate: supported Gateways can admit operators before sidecars finish.
+
+The optional package advertisement `integration.gatewayLaunch={version:1}`
+enables attempt-owned cleanup. `NativeGatewayPackageClient` validates the
+advertisement and receipts, including on non-running/failed status responses.
+`IsolatedGatewayRuntime` chooses a fresh lowercase nonzero GUID-N before start
+dispatch and retains it even if the acknowledgement is lost. A `created`
+receipt describes persisted intent, not listener readiness; an `adopted` receipt
+never grants detach or rollback ownership. Cleanup uses only
+`stop --if-attempt-id` for receipt-capable starts. Replacement, unverified
+ownership, missing/malformed responses and conditional-stop refusal cannot fall
+back to unconditional stop. The package still verifies its process under its
+lifecycle lock, independently of Companion's fresh listener proof.
+Genuinely absent advertisement preserves shipping isolated-session-v1 behavior
+and its weaker unconditional cleanup guarantee. These stronger receipt guarantees
+require the newer packaging producer; they are not claims about the released
+Store package or proof from mocked contracts.
+
 `IsolatedGatewayRuntime` accepts a running Gateway only after a fresh
 package-qualified `clawctl gateway-service status --json` attributes its
 listener process IDs, creation times, and OS sequence numbers to the

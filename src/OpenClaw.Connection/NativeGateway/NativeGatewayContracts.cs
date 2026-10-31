@@ -25,6 +25,12 @@ public sealed record IsolatedGatewayConfiguration(int Port, string Token);
 public sealed record IsolatedGatewayListener(
     int Port, int ProcessId, DateTime ProcessStartTimeUtc, ulong SequenceNumber);
 
+public sealed record IsolatedGatewayLaunch(string AttemptId, string? Disposition = null);
+
+/// <summary>A conditional stop was refused; it must never fall back to an unconditional stop.</summary>
+public sealed class NativeGatewayLaunchOwnershipException(string reason)
+    : InvalidOperationException($"The Gateway package refused attempt-owned cleanup ({reason}). No unconditional stop was requested.");
+
 public sealed record IsolatedGatewayStatus(
     string State,
     int? Port,
@@ -34,6 +40,9 @@ public sealed record IsolatedGatewayStatus(
     string? ReadinessState = null,
     string? ReadinessReason = null)
 {
+    public bool SupportsLaunchReceipts { get; init; }
+    public IsolatedGatewayLaunch? Launch { get; init; }
+
     /// <summary>Display-safe summary: lifecycle states are validated sets; a reason is kept only when it is a token-shaped code.</summary>
     public string Describe()
     {

@@ -17,7 +17,8 @@ public sealed class NativeGatewaySetupSession(
     NativeGatewayPackage package,
     IReadOnlyDictionary<string, string> environment,
     INativeGatewaySetupHost host,
-    INativeGatewayRuntime runtime) : IAsyncDisposable
+    INativeGatewayRuntime runtime,
+    TimeProvider? timeProvider = null) : IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
@@ -29,6 +30,18 @@ public sealed class NativeGatewaySetupSession(
     private string? _identityBinding;
     private IDisposable? _terminal;
     private long _connectionAttempt;
+    private long? _admissionStartedAt;
+    internal TimeProvider AdmissionTimeProvider { get; } = timeProvider ?? TimeProvider.System;
+
+    internal TimeSpan BeginAdmission()
+    {
+        _admissionStartedAt ??= AdmissionTimeProvider.GetTimestamp();
+        var remaining = IsolatedGatewayRuntime.AdmissionTimeout -
+            AdmissionTimeProvider.GetElapsedTime(_admissionStartedAt.Value);
+        return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+    }
+
+    internal void EndAdmission() => _admissionStartedAt = null;
 
     internal long NextConnectionAttempt() => Interlocked.Increment(ref _connectionAttempt);
 
@@ -76,15 +89,29 @@ public sealed class NativeGatewaySetupSession(
 
     internal async Task PrepareAsync(CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken);
+        var remaining = BeginAdmission();
+        using var deadline = new CancellationTokenSource(remaining, AdmissionTimeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token, deadline.Token);
         try
         {
-            if (!IsIsolated)
-                SuspendReload();
-            await host.ValidateConfigurationAsync(package, environment, cancellationToken);
-            await AuthorizeCoreAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (remaining == TimeSpan.Zero)
+                throw new TimeoutException("The native Gateway connection budget expired during preparation.");
+            await _gate.WaitAsync(linked.Token);
+            try
+            {
+                if (!IsIsolated)
+                    SuspendReload();
+                await host.ValidateConfigurationAsync(package, environment, linked.Token);
+                await AuthorizeCoreAsync(linked.Token);
+            }
+            finally { _gate.Release(); }
         }
-        finally { _gate.Release(); }
+        catch (OperationCanceledException error) when (
+            deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
+        {
+            throw new TimeoutException("The native Gateway did not finish preparation within its connection budget.", error);
+        }
     }
 
     public async Task AuthorizeAsync(CancellationToken cancellationToken)

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.Shared;
 using OpenClaw.TestSupport;
@@ -51,6 +52,11 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     private bool _configMissing;
     private string _restoredToken = "fixture-token";
     private Action? _duringSetup;
+    private bool _supportsLaunchReceipts;
+    private string? _launchAttemptId;
+    private bool _adoptStart;
+    private bool _loseStartAcknowledgement;
+    private bool _refuseConditionalStop;
 
     public IsolatedGatewayRuntimeTests()
     {
@@ -68,8 +74,10 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                 if (_duringStatus is not null) await _duringStatus(ct);
                 _beforeStatus?.Invoke();
             }
-            if (args.SequenceEqual(["gateway-service", "start", "--json"]))
+            if (args.Take(2).SequenceEqual(["gateway-service", "start"]))
             {
+                if (_supportsLaunchReceipts && !_adoptStart)
+                    _launchAttemptId = args[3];
                 if (_duringStart is not null) await _duringStart(ct);
                 _clock.Advance(_startDuration);
                 if (_failStart)
@@ -80,6 +88,8 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                 if (_listenOnStart)
                     _listeners = [.. _listeners.Where(l => l.Port != port),
                         new(IPAddress.Loopback, port, processId, "fixture", null)];
+                if (_loseStartAcknowledgement)
+                    throw new TimeoutException("fixture lost start acknowledgement");
             }
             if (args.SequenceEqual(["setup", "--json"]))
             {
@@ -102,10 +112,28 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                         companion = new { port = Port, token = _restoredToken }
                     }));
             }
-            if (args.SequenceEqual(["gateway-service", "stop", "--json"]))
+            if (args.Take(2).SequenceEqual(["gateway-service", "stop"]))
             {
                 if (_stopFailure is not null)
                     throw _stopFailure;
+                if (args.Contains("--if-attempt-id"))
+                {
+                    bool refused = _refuseConditionalStop || args[3] != _launchAttemptId;
+                    if (!refused)
+                    {
+                        _state = "stopped";
+                        _listeners = [];
+                    }
+                    return new NativeGatewayCommandResult(refused ? 1 : 0, JsonSerializer.Serialize(new
+                    {
+                        ok = !refused, schemaVersion = 1, command = "gateway-service stop",
+                        integration = new { kind = "isolated-session", version = 1, gatewayLaunch = new { version = 1 } },
+                        gateway = new { launch = new { version = 1, attemptId = args[3],
+                            stopOutcome = refused ? "refused" : "stopped",
+                            refusal = _refuseConditionalStop ? "ownership-unverified" : "attempt-mismatch" } },
+                        error = new { type = "launch_ownership_refused" }
+                    }));
+                }
                 if (!_stopKeepsRunning)
                 {
                     if (other) _otherState = "stopped";
@@ -143,6 +171,18 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                 response["session"] = new { state = _sessionState };
             if (_sessionState == "stale")
                 response["error"] = new { message = "The isolated session is stale." };
+            if (_supportsLaunchReceipts)
+            {
+                response["integration"] = new { kind = "isolated-session", version = 1, gatewayLaunch = new { version = 1 } };
+                var gatewayJson = JsonSerializer.SerializeToNode(gateway)!.AsObject();
+                if (_launchAttemptId is not null)
+                {
+                    var launch = new JsonObject { ["version"] = 1, ["attemptId"] = _launchAttemptId };
+                    if (args[1] == "start") launch["disposition"] = _adoptStart ? "adopted" : "created";
+                    gatewayJson["launch"] = launch;
+                }
+                response["gateway"] = gatewayJson;
+            }
             return new NativeGatewayCommandResult(_sessionState == "stale" ? 1 : 0,
                 JsonSerializer.Serialize(response));
         });
@@ -150,6 +190,76 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             () => new WindowsTcpListenerSnapshotResult(_listeners, _snapshotComplete, true),
             () => new Dictionary<int, ulong> { [ProcessId] = _hostSequence, [4567] = 88 },
             _ => true, timeProvider: _clock);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReceiptCreatedStartRetainsPreselectedIdAcrossLostAcknowledgement(bool lostAcknowledgement)
+    {
+        _supportsLaunchReceipts = true;
+        _state = "stopped";
+        _listeners = [];
+        _listenOnStart = true;
+        _loseStartAcknowledgement = lostAcknowledgement;
+        if (lostAcknowledgement)
+            await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => _runtime.EnsureRunningAsync(_record, default));
+        else
+        {
+            await _runtime.EnsureRunningAsync(_record, default);
+            await _runtime.StopAsync(default);
+        }
+
+        var start = Assert.Single(_calls, call => call.StartsWith("gateway-service start "));
+        var id = start.Split(' ')[3];
+        Assert.True(Guid.TryParseExact(id, "N", out var guid));
+        Assert.NotEqual(Guid.Empty, guid);
+        Assert.Equal(id, _launchAttemptId);
+        Assert.Single(_calls, $"gateway-service stop --if-attempt-id {id} --json");
+        Assert.DoesNotContain("gateway-service stop --json", _calls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AdoptedReceiptNeverConfersDetachOrRollbackOwnership(bool invalidListener)
+    {
+        _supportsLaunchReceipts = true;
+        _launchAttemptId = "11111111111111111111111111111111";
+        _adoptStart = true;
+        _state = "stopped";
+        _listeners = [];
+        _listenOnStart = true;
+        if (invalidListener)
+        {
+            _hostSequence = 99;
+            await Assert.ThrowsAsync<NativeGatewayListenerException>(() => _runtime.EnsureRunningAsync(_record, default));
+        }
+        else
+            await _runtime.EnsureRunningAsync(_record, default);
+        await _runtime.StopAsync(default);
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop "));
+        Assert.Equal("running", _state);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReplacementOrUnverifiedOwnershipRefusesCleanupWithoutUnconditionalFallback(bool unverified)
+    {
+        _supportsLaunchReceipts = true;
+        _state = "stopped";
+        _listeners = [];
+        _listenOnStart = true;
+        await _runtime.EnsureRunningAsync(_record, default);
+        if (unverified) _refuseConditionalStop = true;
+        else _launchAttemptId = "22222222222222222222222222222222";
+
+        var error = await Assert.ThrowsAsync<AggregateException>(() => _runtime.StopAsync(default));
+        Assert.IsType<NativeGatewayLaunchOwnershipException>(Assert.Single(error.InnerExceptions));
+        Assert.Equal("running", _state);
+        Assert.DoesNotContain("gateway-service stop --json", _calls);
+        await _runtime.ReleaseAsync(default);
     }
 
     [Fact]

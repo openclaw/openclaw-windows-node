@@ -501,7 +501,7 @@ public sealed class NativeGatewaySetupUxContractTests
         var gatewaySession = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "SetupGatewaySession.cs"));
         Assert.Contains("if (record.NativePackageFamilyName is not null)", gatewaySession);
         var adapter = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "NativeGatewaySetupConnection.cs"));
-        Assert.Contains("await owner.PrepareConnectionAsync(ct)", adapter);
+        Assert.Contains("await owner.PrepareConnectionAsync(linked.Token)", adapter);
         Assert.Contains("owner.AuthorizeAsync", adapter);
         Assert.Contains("NativeGatewaySetupSession.GetPairingGuidance(requestId)", adapter);
         Assert.Contains("await owner.ApproveWizardPairingAsync(error.RequestId, linked.Token)", adapter);
