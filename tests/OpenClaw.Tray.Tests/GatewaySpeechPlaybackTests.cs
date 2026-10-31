@@ -116,6 +116,82 @@ public sealed class GatewaySpeechPlaybackTests
         Assert.Equal(0, wire.SynthesisCalls);
     }
 
+    [Theory]
+    [InlineData(false, "conversation-a")]
+    [InlineData(false, null)]
+    [InlineData(true, "conversation-a")]
+    [InlineData(true, null)]
+    public async Task AutomaticSpeechWithoutAnActiveTargetDoesNotDispatch(bool targetWasCleared, string? responseTarget)
+    {
+        var (client, wire) = SpeechGatewayProxy.Create();
+        using var speech = new GatewaySpeechPlayback();
+        speech.SetClient(client);
+        if (targetWasCleared)
+        {
+            speech.SetTarget("conversation-a");
+            speech.SetTarget(null);
+        }
+        var states = new List<GatewaySpeechPlaybackState>();
+        speech.Changed += states.Add;
+
+        await speech.SpeakAsync("Late automatic reply.", false,
+            (_, _) => throw new Exception("Must not play"), responseTarget).WaitAsync(Deadline);
+
+        Assert.Equal(0, wire.SynthesisCalls);
+        Assert.Empty(states);
+    }
+
+    [Theory]
+    [InlineData("conversation-a")]
+    [InlineData(null)]
+    public async Task AutomaticSpeechForTheActiveTargetStillPlays(string? responseTarget)
+    {
+        var (client, wire) = SpeechGatewayProxy.Create();
+        using var speech = new GatewaySpeechPlayback();
+        speech.SetClient(client);
+        speech.SetTarget("conversation-a");
+        var plays = 0;
+
+        await speech.SpeakAsync("Active reply.", false,
+            (_, _) => { plays++; return Task.CompletedTask; }, responseTarget).WaitAsync(Deadline);
+
+        Assert.Equal(1, wire.SynthesisCalls);
+        Assert.Equal(1, plays);
+    }
+
+    [Theory]
+    [InlineData("conversation-a")]
+    [InlineData(null)]
+    public async Task LateAutomaticReplyCannotInterruptManualPreviewWithoutAnActiveTarget(string? responseTarget)
+    {
+        var (client, wire) = SpeechGatewayProxy.Create();
+        var audio = new TaskCompletionSource<GatewaySpeechAudio>(TaskCreationOptions.RunContinuationsAsynchronously);
+        wire.Synthesis = audio.Task;
+        using var speech = new GatewaySpeechPlayback();
+        speech.SetClient(client);
+        var plays = 0;
+        var preview = speech.SpeakAsync("Manual preview.", true,
+            (_, ct) => { ct.ThrowIfCancellationRequested(); plays++; return Task.CompletedTask; });
+        Assert.Equal(1, wire.SynthesisCalls);
+        var previewToken = wire.LastCancellation;
+
+        var automatic = speech.SpeakAsync("Late automatic reply.", false,
+            (_, _) => throw new Exception("Must not play"), responseTarget);
+        try
+        {
+            Assert.True(automatic.IsCompleted);
+            Assert.Equal(1, wire.SynthesisCalls);
+            Assert.False(previewToken.IsCancellationRequested);
+        }
+        finally
+        {
+            audio.SetResult(SpeechGatewayProxy.Clip);
+            await Task.WhenAll(preview, automatic).WaitAsync(Deadline);
+        }
+
+        Assert.Equal(1, plays);
+    }
+
     [Fact]
     public async Task MissingConfiguredProviderFailsBeforeSynthesisWithoutLocalFallback()
     {

@@ -80,8 +80,8 @@ public sealed class GatewaySpeechPlayback : IDisposable
         lock (_gate)
         {
             if (_disposed || (!manual && _muted)) return;
-            if (!manual && responseTarget is not null && _target is not null
-                && !string.Equals(responseTarget, _target, StringComparison.Ordinal)) return;
+            if (!manual && (_target is null || (responseTarget is not null
+                && !string.Equals(responseTarget, _target, StringComparison.Ordinal)))) return;
             client = _client;
             epoch = client?.SessionMutationConnectionEpoch;
             Retire();
