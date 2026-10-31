@@ -170,6 +170,12 @@ public partial class App
             }));
         }
 
+        steps.Add(new AppShutdownStep("voice playback mute", () =>
+        {
+            _voicePlaybackMute.Dispose();
+            return ValueTask.CompletedTask;
+        }));
+
         steps.Add(new AppShutdownStep("ssh tunnel service", () =>
         {
             _sshTunnelService?.Dispose();

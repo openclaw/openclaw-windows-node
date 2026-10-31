@@ -105,7 +105,12 @@ public sealed class AudioPipeline : IAsyncDisposable
     public AudioPipelineState State => _state;
 
     /// <summary>When true, incoming audio is ignored (prevents echo during TTS playback).</summary>
-    public bool IsMuted { get; set; }
+    private volatile bool _isMuted;
+    public bool IsMuted
+    {
+        get => _isMuted;
+        set => _isMuted = value;
+    }
 
     public AudioPipeline(IOpenClawLogger logger, SpeechToTextService stt)
         : this(logger, (ISpeechToTextService)stt)
