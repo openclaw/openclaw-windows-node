@@ -55,6 +55,7 @@ public sealed partial class GatewayScenario
     private readonly bool _publishedModelCatalog;
     private readonly bool _allowSessionMutations;
     private readonly bool _allowChatSend;
+    private readonly TranscriptSearchFixtureMode _transcriptSearchMode;
     public bool IsInteractive { get; }
     private readonly ContextUsageFixture? _contextUsage;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
@@ -76,7 +77,8 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        TranscriptSearchFixtureMode transcriptSearchMode = TranscriptSearchFixtureMode.Ready)
     {
         _sessions = sessions;
         _reads = reads;
@@ -86,21 +88,23 @@ public sealed partial class GatewayScenario
         _allowSessionMutations = allowSessionMutations;
         IsInteractive = interactive;
         _allowChatSend = allowChatSend;
+        _transcriptSearchMode = transcriptSearchMode;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         _contextUsage = contextUsage;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
-            "sessions.list", "sessions.subscribe", "sessions.preview", "chat.history",
+            "sessions.list", "sessions.subscribe", "sessions.preview", "sessions.search", "chat.history",
             "models.list", "usage.cost"
         }.Concat(reads.Keys).Concat(setup is null ? [] : advertiseSetup
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
+            .Where(method => method != "sessions.search" || transcriptSearchMode != TranscriptSearchFixtureMode.Unsupported)
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
-            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog,
+            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog, transcriptSearchMode,
             sessions = sessions.Select(s => new { s.Row, s.Messages }), reads, cronJobs
         });
         Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant();
@@ -433,6 +437,7 @@ public sealed partial class GatewayScenario
             "sessions.list" => ListSessions(parameters),
             "sessions.subscribe" => Subscribe(parameters),
             "sessions.preview" => Preview(parameters),
+            "sessions.search" => SearchTranscripts(parameters),
             "chat.history" => History(parameters),
             "models.list" => Models(parameters, containsModelSession ?? ContainsSession),
             "usage.cost" => Cost(parameters),

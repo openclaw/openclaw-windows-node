@@ -1,5 +1,14 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <data name="SessionsPage_SearchButton.Content" xml:space="preserve"><value>Rechercher</value></data>
+  <data name="SessionsPage_TranscriptQuery.PlaceholderText" xml:space="preserve"><value>Rechercher dans les conversations actives. Appuyez sur Entrée.</value></data>
+  <data name="SessionsPage_TranscriptQuery.AutomationProperties.Name" xml:space="preserve"><value>Rechercher dans les messages des conversations actives</value></data>
+  <data name="SessionsPage_SearchLoading" xml:space="preserve"><value>Recherche dans les messages...</value></data>
+  <data name="SessionsPage_SearchUnsupported" xml:space="preserve"><value>Cette passerelle ne prend pas en charge la recherche dans les messages.</value></data>
+  <data name="SessionsPage_SearchFailed" xml:space="preserve"><value>Échec de la recherche. Vérifiez la connexion à la passerelle et relancez la recherche (4096 caractères maximum).</value></data>
+  <data name="SessionsPage_SearchIndexing" xml:space="preserve"><value>La passerelle indexe encore les messages. Relancez la recherche pour actualiser les résultats.</value></data>
+  <data name="SessionsPage_SearchPartial" xml:space="preserve"><value>Certains résultats ne sont pas affichés. Précisez la recherche. Les messages archivés peuvent être exclus.</value></data>
+  <data name="SessionsPage_SearchReady" xml:space="preserve"><value>Recherche terminée : {0} messages trouvés. Sélectionnez une conversation pour l'ouvrir.</value></data>
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
       <xs:complexType>

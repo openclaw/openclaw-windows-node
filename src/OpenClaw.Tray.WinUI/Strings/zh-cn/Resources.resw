@@ -1,5 +1,14 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <data name="SessionsPage_SearchButton.Content" xml:space="preserve"><value>搜索</value></data>
+  <data name="SessionsPage_TranscriptQuery.PlaceholderText" xml:space="preserve"><value>搜索活跃会话消息。按 Enter 键搜索。</value></data>
+  <data name="SessionsPage_TranscriptQuery.AutomationProperties.Name" xml:space="preserve"><value>搜索活跃会话消息</value></data>
+  <data name="SessionsPage_SearchLoading" xml:space="preserve"><value>正在搜索会话消息...</value></data>
+  <data name="SessionsPage_SearchUnsupported" xml:space="preserve"><value>此网关不支持消息记录搜索。</value></data>
+  <data name="SessionsPage_SearchFailed" xml:space="preserve"><value>搜索失败。请检查网关连接并重新搜索（最多 4096 个字符）。</value></data>
+  <data name="SessionsPage_SearchIndexing" xml:space="preserve"><value>网关仍在为消息建立索引。请重新搜索以更新结果。</value></data>
+  <data name="SessionsPage_SearchPartial" xml:space="preserve"><value>部分匹配结果未显示。请缩小搜索范围。已归档的消息记录可能被排除。</value></data>
+  <data name="SessionsPage_SearchReady" xml:space="preserve"><value>搜索完成：找到 {0} 条匹配消息。选择会话即可打开。</value></data>
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
       <xs:complexType>

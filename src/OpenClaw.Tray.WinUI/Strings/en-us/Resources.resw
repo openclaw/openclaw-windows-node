@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
+  <data name="SessionsPage_SearchButton.Content" xml:space="preserve"><value>Search</value></data>
+  <data name="SessionsPage_TranscriptQuery.PlaceholderText" xml:space="preserve"><value>Search active conversation messages. Press Enter.</value></data>
+  <data name="SessionsPage_TranscriptQuery.AutomationProperties.Name" xml:space="preserve"><value>Search active conversation messages</value></data>
+  <data name="SessionsPage_SearchLoading" xml:space="preserve"><value>Searching conversation messages...</value></data>
+  <data name="SessionsPage_SearchUnsupported" xml:space="preserve"><value>This Gateway does not support transcript search.</value></data>
+  <data name="SessionsPage_SearchFailed" xml:space="preserve"><value>Search failed. Check the Gateway connection and submit the search again (maximum 4096 characters).</value></data>
+  <data name="SessionsPage_SearchIndexing" xml:space="preserve"><value>The Gateway is still indexing messages. Submit the search again for updated results.</value></data>
+  <data name="SessionsPage_SearchPartial" xml:space="preserve"><value>Some matches are not shown. Narrow the query to see more results. Archived transcripts may be excluded.</value></data>
+  <data name="SessionsPage_SearchReady" xml:space="preserve"><value>Search complete: {0} message matches. Select a conversation to open it.</value></data>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
       <xsd:complexType>

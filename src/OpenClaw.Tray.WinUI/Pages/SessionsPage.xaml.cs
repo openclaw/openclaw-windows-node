@@ -31,10 +31,13 @@ public sealed partial class SessionsPage : Page
     private bool _syncingShowCompletedToggle;
     private bool _showBackgroundSessions;
     private readonly ArchivedSessionsSource _archived;
+    private readonly SessionTranscriptSearch _transcriptSearch;
 
     public SessionsPage()
     {
         InitializeComponent();
+        _transcriptSearch = new SessionTranscriptSearch(ApplyTranscriptSearch,
+            ex => new AppLogger().Warn($"[Sessions] Transcript search failed ({ex.GetType().Name})."));
         _archived = new ArchivedSessionsSource(ApplyArchivedSessions,
             ex => new AppLogger().Warn($"[Sessions] Archived sessions unavailable ({ex.GetType().Name})."));
         ArchivedSection.Header = LocalizationHelper.GetString("SessionsPage_Archived");
@@ -42,6 +45,7 @@ public sealed partial class SessionsPage : Page
         Unloaded += (_, _) =>
         {
             _unloaded = true;
+            _transcriptSearch.Clear();
             _archived.Clear();
             _refreshTimer?.Stop(); _refreshTimer = null;
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
@@ -56,6 +60,7 @@ public sealed partial class SessionsPage : Page
     public void Initialize()
     {
         _unloaded = false;
+        _transcriptSearch.Clear();
         // Guard against duplicate subscriptions (NavigationCacheMode reuses page)
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
         _appState = CurrentApp.AppState!;
@@ -318,6 +323,7 @@ public sealed partial class SessionsPage : Page
     private void OnShowBackgroundToggled(object sender, RoutedEventArgs e)
     {
         _showBackgroundSessions = ShowBackgroundToggle.IsOn;
+        _transcriptSearch?.Clear();
         RebuildChannelTabs();
         ApplyFilter();
     }
@@ -331,12 +337,47 @@ public sealed partial class SessionsPage : Page
                 _ = _archived.RefreshAsync(CurrentApp.GatewayClient);
                 break;
             case nameof(AppState.Status):
+                _transcriptSearch.Clear();
                 if (_appState!.Status != ConnectionStatus.Connected)
                     _archived.Clear();
                 ApplyArchivedSessions();
                 _ = _archived.RefreshAsync(CurrentApp.GatewayClient);
                 break;
         }
+    }
+
+    private void OnTranscriptQueryChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+        => _transcriptSearch?.Clear();
+
+    private void OnTranscriptQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+        => RunTranscriptSearch(args.QueryText);
+
+    private void OnTranscriptSearchClick(object sender, RoutedEventArgs args)
+        => RunTranscriptSearch(TranscriptQuery.Text);
+
+    private void RunTranscriptSearch(string query)
+        => AsyncEventHandlerGuard.Run(() => _transcriptSearch.SearchAsync(CurrentApp.GatewayClient,
+            () => _unloaded ? null : CurrentApp.GatewayClient, query, _showBackgroundSessions),
+            new AppLogger(), nameof(RunTranscriptSearch));
+
+    private void ApplyTranscriptSearch()
+    {
+        var result = _transcriptSearch.Result;
+        TranscriptSearchResults.ItemsSource = result?.Results;
+        TranscriptSearchResults.Visibility = result?.Results.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var key = _transcriptSearch.Status switch
+        {
+            SessionSearchStatus.Loading => "SessionsPage_SearchLoading",
+            SessionSearchStatus.Unsupported => "SessionsPage_SearchUnsupported",
+            SessionSearchStatus.Failed => "SessionsPage_SearchFailed",
+            SessionSearchStatus.Ready when result?.Indexing == true => "SessionsPage_SearchIndexing",
+            SessionSearchStatus.Ready when result?.Truncated == true || result?.ArchivedTranscriptsExcluded > 0
+                => "SessionsPage_SearchPartial",
+            SessionSearchStatus.Ready => "SessionsPage_SearchReady",
+            _ => null
+        };
+        TranscriptSearchStatus.Text = key is null ? "" :
+            LocalizationHelper.Format(key, result?.Results.Count ?? 0);
     }
 
     private void OnArchivedExpanding(Expander sender, ExpanderExpandingEventArgs args)
