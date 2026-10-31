@@ -48,6 +48,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private JsonElement? _profilePayloadOverride;
     private TaskCompletionSource? _sessionListCaptured;
     private TaskCompletionSource? _allSessionListsGate;
+    private TaskCompletionSource? _userProfilesGate;
     private JsonElement? _sessionListOverride;
     private string? _profileOverride;
     private bool _profileUnsupported;
@@ -353,6 +354,26 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 message = new { role = "assistant", content }
             }
         }, cancellationToken);
+    }
+
+    /// <summary>Hold profile responses while the authenticated socket stays alive.</summary>
+    public void HoldUserProfiles()
+    {
+        lock (_sync)
+        {
+            if (_userProfilesGate is not null) throw new InvalidOperationException("Profile responses are already held.");
+            _userProfilesGate = NewSignal();
+        }
+    }
+
+    public void ReleaseUserProfiles()
+    {
+        lock (_sync)
+        {
+            var held = _userProfilesGate ?? throw new InvalidOperationException("Profile responses are not held.");
+            _userProfilesGate = null;
+            held.TrySetResult();
+        }
     }
 
     /// <summary>Hold every listing response, including reconnect bootstrap reads.</summary>
@@ -728,6 +749,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                             ? _sessionMutationGate?.Task
                             : method == "chat.send"
                                 ? _chatSendGate?.Task
+                            : method == "users.self" ? _userProfilesGate?.Task
                             : method == "sessions.list" ? (_allSessionListsGate ?? _nextSessionListGate)?.Task
                             : method == "chat.history" && key is not null && _historyGates.TryGetValue(key, out var held)
                                 ? held.Task : null;

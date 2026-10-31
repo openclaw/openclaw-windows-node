@@ -8236,4 +8236,7 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在處理此問題。請重新整理以查看其狀態。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>請為每個問題選擇有效的答案。</value></data>
+  <data name="Chat_Verification_Checking" xml:space="preserve"><value>Gateway 已連線。正在驗證聊天存取權限...</value></data>
+  <data name="Chat_Verification_Failed" xml:space="preserve"><value>Gateway 已連線，但無法驗證聊天存取權限。請重試。</value></data>
+  <data name="Chat_Verification_Retry" xml:space="preserve"><value>重試</value></data>
 </root>

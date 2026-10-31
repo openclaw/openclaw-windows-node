@@ -107,6 +107,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var rows = BuildRows(props with { ViewportWidth = viewportWidth });
         var initialTailRequestKey =
             $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.HistoryRevision}|{props.Timeline.ScrollToBottomToken}";
+        // A completed history refresh still schedules positioning, but only a
+        // session/reset selection or explicit Send may reset reader intent.
+        var explicitTailRequestKey =
+            $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.Timeline.ScrollToBottomToken}";
         var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null;
         void SetEntryHovered(string entryId, bool isHovered)
         {
@@ -175,6 +179,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     rows.Count - 1,
                     rows.Count,
                     initialTailRequestKey,
+                    explicitTailRequestKey,
                     displayedTailKey)
                 .Grid(column: 0)
                 .Margin(0, ChatVisuals.TranscriptTopInset, 0, 0)

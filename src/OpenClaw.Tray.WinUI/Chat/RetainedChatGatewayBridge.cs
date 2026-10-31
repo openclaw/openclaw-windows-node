@@ -19,7 +19,12 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
     private long _generation;
     private bool _disposed;
 
-    internal RetainedChatGatewayBridge() => _placement = new(this);
+    internal RetainedChatGatewayBridge(IChatVerificationRecovery? recovery = null)
+    {
+        Recovery = recovery;
+        _placement = new(this);
+    }
+    internal IChatVerificationRecovery? Recovery { get; }
     internal bool IsAttached { get { lock (_gate) return !_disposed && _inner is not null; } }
     internal bool IsBoundTo(IOperatorGatewayClient client) => Read(inner =>
         inner is GatewayClientChatBridge gateway && gateway.IsBoundTo(client), false);

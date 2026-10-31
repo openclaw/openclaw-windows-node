@@ -124,6 +124,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     public string? PendingChatSessionKey { get; set; }
 
     public OpenClawTray.Chat.OpenClawChatDataProvider? ChatProvider => _chatCoordinator?.Provider;
+    internal OpenClawTray.Chat.ChatVerificationState ChatVerificationState =>
+        _chatCoordinator?.VerificationState ?? OpenClawTray.Chat.ChatVerificationState.None;
+    internal bool RetryChatVerification(OpenClaw.Shared.IOperatorGatewayClient? expectedClient = null) =>
+        _chatCoordinator?.RetryVerification(expectedClient) == true;
     /// <summary>
     /// Raised after the tray-wide settings have been saved (either via the
     /// SettingsPage Save button or a direct toggle from the tray menu).

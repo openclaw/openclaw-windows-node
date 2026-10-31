@@ -19,6 +19,7 @@ file sealed record ItemsViewVerticalScrollControllerElement(
     int InitialTailIndex,
     int ItemCount,
     string InitialTailRequestKey,
+    string ExplicitTailRequestKey,
     string? DisplayedTailKey) : Element
 {
     static ItemsViewVerticalScrollControllerElement() =>
@@ -66,7 +67,9 @@ file sealed class ItemsViewVerticalScrollControllerHandler
                 newElement.InitialTailIndex,
                 newElement.ItemCount,
                 newElement.InitialTailRequestKey,
-                newElement.DisplayedTailKey);
+                newElement.DisplayedTailKey,
+                explicitNavigation: !string.Equals(oldElement.ExplicitTailRequestKey,
+                    newElement.ExplicitTailRequestKey, StringComparison.Ordinal));
         else if (Positioners.TryGetValue(itemsView, out var existingPositioner))
             existingPositioner.UpdateTail(
                 newElement.InitialTailIndex,
@@ -123,11 +126,12 @@ file sealed class InitialTailPositioner : IDisposable
         itemsView.Unloaded += OnUnloaded;
     }
 
-    public void Request(int tailIndex, int itemCount, string requestKey, string? displayedTailKey)
+    public void Request(int tailIndex, int itemCount, string requestKey, string? displayedTailKey, bool explicitNavigation = true)
     {
         if (_disposed || string.Equals(_requestKey, requestKey, StringComparison.Ordinal))
             return;
 
+        var navigate = TailNavigationPolicy.ShouldNavigate(explicitNavigation, _following, _initialPending, _valid);
         _requestKey = requestKey;
         _version++;
         _reflowCorrection.Clear();
@@ -135,10 +139,10 @@ file sealed class InitialTailPositioner : IDisposable
         _tailIndex = tailIndex;
         _itemCount = itemCount;
         _displayedTailKey = displayedTailKey;
-        _following = true;
+        _following = navigate;
         _initialPending = false;
         _valid = TailNavigationPolicy.TryCapture(tailIndex, displayedTailKey, itemCount, out _);
-        if (!_valid)
+        if (!_valid || !navigate)
             return;
 
         _initialPending = true;
@@ -464,6 +468,7 @@ internal static class ItemsViewScrollControllerExtensions
         int initialTailIndex,
         int itemCount,
         string initialTailRequestKey,
+        string explicitTailRequestKey,
         string? displayedTailKey) =>
         new ItemsViewVerticalScrollControllerElement(
             itemsView,
@@ -471,5 +476,6 @@ internal static class ItemsViewScrollControllerExtensions
             initialTailIndex,
             itemCount,
             initialTailRequestKey,
+            explicitTailRequestKey,
             displayedTailKey);
 }

@@ -5,6 +5,14 @@ using OpenClawTray.Services;
 
 namespace OpenClawTray.Chat;
 
+internal enum ChatVerificationState { None, Verifying, Failed }
+
+internal interface IChatVerificationRecovery
+{
+    ChatVerificationState VerificationState { get; }
+    bool RetryVerification();
+}
+
 internal interface IChatConnectionBoundProvider
 {
     bool IsBoundTo(IOperatorGatewayClient client);
@@ -22,12 +30,12 @@ internal sealed record ChatConnectionAuthority(string GatewayId, string Endpoint
 /// conversation. A replacement route must independently confirm endpoint, signing
 /// device, profile and session identities before it can reuse that conversation.
 /// </summary>
-internal sealed class ChatProviderConnection : IDisposable
+internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRecovery
 {
     private const int DefaultReadinessTimeoutMs = 12_000;
     private readonly Action<Action> _post;
     private readonly Func<IChatGatewayBridge, OpenClawChatDataProvider> _createProvider;
-    private RetainedChatGatewayBridge _bridge = new();
+    private RetainedChatGatewayBridge _bridge;
     private GatewayRegistry? _registry;
     private GatewayRecord? _scope;
     private OpenClawGatewayClient? _client;
@@ -39,11 +47,32 @@ internal sealed class ChatProviderConnection : IDisposable
 
     internal ChatProviderConnection(Action<Action>? post, Func<IChatGatewayBridge, OpenClawChatDataProvider>? createProvider = null)
     {
+        _bridge = new(this);
         _post = post ?? (action => action());
         _createProvider = createProvider ?? (bridge => new OpenClawChatDataProvider(bridge, post));
     }
 
     internal OpenClawChatDataProvider? Provider { get; private set; }
+    public ChatVerificationState VerificationState { get; private set; }
+
+    public bool RetryVerification() => RetryVerificationForClient(null);
+
+    internal bool RetryVerificationForClient(IOperatorGatewayClient? expectedClient)
+    {
+        if (expectedClient is not null && !ReferenceEquals(_client, expectedClient)) return false;
+        if (_disposed || VerificationState != ChatVerificationState.Failed ||
+            _client is not { IsConnectedToGateway: true } client || CaptureScope() != _scope) return false;
+        BeginVerification(client, _version);
+        return true;
+    }
+
+    private void SetVerificationState(ChatVerificationState state)
+    {
+        if (VerificationState == state) return;
+        VerificationState = state;
+        Provider?.NotifyVerificationChanged();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
     internal event EventHandler? Changed;
     private static int ReadinessTimeoutMs =>
         int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_CHAT_RECOVERY_TIMEOUT_MS"), out var value) && value > 0
@@ -77,7 +106,7 @@ internal sealed class ChatProviderConnection : IDisposable
         _scope = scope;
         _client = client;
         var version = ++_version;
-        if (client is null) return;
+        if (client is null) { SetVerificationState(ChatVerificationState.None); return; }
 
         EventHandler<ConnectionStatus> status = (_, state) =>
         {
@@ -87,7 +116,7 @@ internal sealed class ChatProviderConnection : IDisposable
             {
                 if (!Current(client, version)) return;
                 if (state == ConnectionStatus.Connected && client.IsConnectedToGateway) BeginVerification(client, version);
-                else CancelVerification();
+                else { CancelVerification(); SetVerificationState(ChatVerificationState.None); }
             });
         };
         EventHandler profile = (_, _) =>
@@ -165,9 +194,12 @@ internal sealed class ChatProviderConnection : IDisposable
     {
         CancelVerification();
         Suspend();
+        if (_authority is { } previous && client.AuthenticatedSigningDeviceId is { Length: > 0 } signingId &&
+            previous.SigningDeviceId != signingId) Forget();
         var cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
         Interlocked.Exchange(ref _verification, cancellation);
+        SetVerificationState(ChatVerificationState.Verifying);
         _ = VerifyAsync(client, version, token, client.ServerHandshakeGeneration, CaptureScope());
     }
 
@@ -177,6 +209,7 @@ internal sealed class ChatProviderConnection : IDisposable
         ChatConnectionAuthority? authority = null;
         SessionInfo[]? sessions = null;
         var rejected = false;
+        var timedOut = false;
         try
         {
             var response = await client.RunWithRequestCancellationAsync(token,
@@ -188,6 +221,18 @@ internal sealed class ChatProviderConnection : IDisposable
                 throw new JsonException("Invalid users.self profile identity.");
             if (scope is not null && client.AuthenticatedSigningDeviceId is { Length: > 0 } signingId)
                 authority = new(scope.Id, GatewayDashboardBinding.Capture(scope), signingId, id.GetString()!);
+            _post(() =>
+            {
+                if (!Current(client, version) || token.IsCancellationRequested ||
+                    client.ServerHandshakeGeneration != handshake || CaptureScope() != scope) return;
+                // A fresh profile response can disprove reuse before the roster
+                // completes. Do not retain that known-foreign history on timeout.
+                if (_authority?.CanRetain(authority) == false)
+                {
+                    _authority = null;
+                    DropProvider();
+                }
+            });
             sessions = await client.RequestAuthoritativeSessionsAsync(ReadinessTimeoutMs, token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
@@ -198,7 +243,8 @@ internal sealed class ChatProviderConnection : IDisposable
             // Auth denials, timeouts and malformed rosters must remain blocked.
             Logger.Debug("[ChatConnection] Profile confirmation is unsupported; retained history cannot be reused.");
         }
-        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or JsonException or OperationCanceledException)
+        catch (TimeoutException) { timedOut = true; }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException or OperationCanceledException)
         {
             rejected = true;
             Logger.Debug("[ChatConnection] Retained conversation authority could not be confirmed.");
@@ -207,7 +253,15 @@ internal sealed class ChatProviderConnection : IDisposable
         {
             if (!Current(client, version) || token.IsCancellationRequested || !client.IsConnectedToGateway ||
                 client.ServerHandshakeGeneration != handshake || CaptureScope() != scope) return;
-            if (rejected) { Forget(); return; }
+            if (rejected || timedOut)
+            {
+                // A timeout does not disprove the previously confirmed identity.
+                // Keep readable state suspended, but retire this verification and
+                // require an explicit fresh check before any port can reattach.
+                if (rejected) Forget(); else CancelVerification();
+                SetVerificationState(ChatVerificationState.Failed);
+                return;
+            }
             if (_authority?.CanRetain(authority) != true || sessions is null ||
                 Provider?.CanRetainHistory(sessions) == false) DropProvider();
             _authority = authority;
@@ -218,6 +272,7 @@ internal sealed class ChatProviderConnection : IDisposable
                 Provider = _createProvider(_bridge);
             }
             else _bridge.StartProactiveBootstrap();
+            SetVerificationState(ChatVerificationState.None);
             Changed?.Invoke(this, EventArgs.Empty);
         });
     }
@@ -240,6 +295,7 @@ internal sealed class ChatProviderConnection : IDisposable
         CancelVerification();
         _authority = null;
         DropProvider();
+        SetVerificationState(ChatVerificationState.None);
     }
 
     private void DropProvider()
@@ -248,7 +304,7 @@ internal sealed class ChatProviderConnection : IDisposable
         Provider = null;
         if (previous is null) return;
         previous.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        _bridge = new();
+        _bridge = new(this);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

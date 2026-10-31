@@ -4,6 +4,9 @@ internal readonly record struct TailNavigationRequest(int Index, string Displaye
 
 internal static class TailNavigationPolicy
 {
+    public static bool ShouldNavigate(bool explicitNavigation, bool following, bool initialPending, bool hadValidTail) =>
+        explicitNavigation || following || initialPending || !hadValidTail;
+
     public static bool TryCapture(
         int tailIndex,
         string? displayedTailKey,

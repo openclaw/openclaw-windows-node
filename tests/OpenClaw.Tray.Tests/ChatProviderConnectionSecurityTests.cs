@@ -14,11 +14,54 @@ using Xunit.Abstractions;
 namespace OpenClaw.Tray.Tests;
 
 [Collection("Chat telemetry")]
-public sealed class ChatProviderConnectionSecurityTests(ITestOutputHelper output)
+public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelper output)
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan NegativeObservation = TimeSpan.FromMilliseconds(250);
     private const int QueueTurnMs = 10;
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VerificationTimeoutRetainsReadableConversationWithBlockedIo(bool profileRead)
+    {
+        await using var h = await Harness.StartAsync();
+        var retained = h.Lifetime.Provider!;
+        var before = await retained.LoadAsync();
+        using var timeout = new EnvironmentScope("OPENCLAW_CHAT_RECOVERY_TIMEOUT_MS", "150");
+        h.Lifetime.SetClient(null);
+        var captured = profileRead ? Task.CompletedTask : h.Server.HoldNextSessionList();
+        if (profileRead) h.Server.HoldUserProfiles();
+        var held = true;
+        try
+        {
+            h.Lifetime.SetClient(h.Client);
+            await captured.WaitAsync(Deadline);
+            await h.PumpUntilAsync(() => h.Lifetime.VerificationState == ChatVerificationState.Failed);
+            Assert.True(h.Client.IsConnectedToGateway);
+            Assert.Same(retained, h.Lifetime.Provider);
+            Assert.Equal(before.Timelines[GatewayScenario.OtherSessionKey].Entries,
+                (await retained.LoadAsync()).Timelines[GatewayScenario.OtherSessionKey].Entries);
+            Assert.False(h.IsBound);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => retained.SendMessageAsync(GatewayScenario.OtherSessionKey, "Must remain offline."));
+            Assert.DoesNotContain(h.Server.Requests, request => request.Method == "chat.send");
+            if (profileRead) h.Server.ReleaseUserProfiles(); else h.Server.ReleaseSessionList();
+            held = false;
+            await h.Client.SendWizardRequestAsync("health", new { }).WaitAsync(Deadline);
+            Assert.False(h.IsBound);
+            Assert.Equal(ChatVerificationState.Failed, h.Lifetime.VerificationState);
+            timeout.Set("OPENCLAW_CHAT_RECOVERY_TIMEOUT_MS", null);
+            Assert.True(retained.RetryVerification());
+            Assert.False(retained.RetryVerification());
+            await h.PumpUntilAsync(() => h.IsBound);
+            Assert.Same(retained, h.Lifetime.Provider);
+            Assert.Equal(ChatVerificationState.None, retained.VerificationState);
+            await retained.SendMessageAsync(GatewayScenario.OtherSessionKey, "Current explicit-retry control.");
+            Assert.Equal("ok", (await h.Server.WaitForCompletedRequestAsync("chat.send", GatewayScenario.OtherSessionKey).WaitAsync(Deadline)).Outcome);
+            output.WriteLine($"verification-timeout method={(profileRead ? "users.self" : "sessions.list")}; automatic-rebind=false; explicit-retry=true; same-provider=true; current-send=ok");
+        }
+        finally { if (held) { if (profileRead) h.Server.ReleaseUserProfiles(); else h.Server.ReleaseSessionList(); } }
+    }
 
     [Theory]
     [InlineData("unchanged")]
@@ -203,7 +246,7 @@ public sealed class ChatProviderConnectionSecurityTests(ITestOutputHelper output
         h.Lifetime.SetClient(null);
         h.Lifetime.SetClient(h.Client);
         // Let the completed verification queue its UI commit, but do not apply it.
-        await h.WaitForQueuedActionAsync();
+        await h.WaitForQueuedActionAsync(minimum: 2);
         var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         void ProfileChanged(object? sender, EventArgs args) => observed.TrySetResult();
         h.Client.SelfProfileChanged += ProfileChanged;
@@ -363,6 +406,7 @@ public sealed class ChatProviderConnectionSecurityTests(ITestOutputHelper output
         public OpenClawGatewayClient Client { get; }
         public ChatProviderConnection Lifetime { get; }
         public GatewayRecord Record { get; }
+        public GatewayRegistry Registry { get; }
         public bool IsBound => Lifetime.Provider is IChatConnectionBoundProvider bound && bound.IsBoundTo(Client);
         private Harness(TempDirectory temp, FixtureGatewayServer server, string token)
         {
@@ -372,7 +416,7 @@ public sealed class ChatProviderConnectionSecurityTests(ITestOutputHelper output
                 identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
             Lifetime = new(action => _queue.Enqueue(action), bridge => new OpenClawChatDataProvider(bridge, null,
                 temp.Combine("tools.json"), temp.Combine("attachments.json"), temp.Combine("last-chat.json")));
-            var registry = new GatewayRegistry(temp.Combine("profile"));
+            var registry = Registry = new GatewayRegistry(temp.Combine("profile"));
             Record = new GatewayRecord { Id = "fixture-security", Url = server.Endpoint.AbsoluteUri };
             registry.AddOrUpdate(Record);
             registry.SetActive(Record.Id);
@@ -401,10 +445,10 @@ public sealed class ChatProviderConnectionSecurityTests(ITestOutputHelper output
         {
             while (_queue.TryDequeue(out var action)) action();
         }
-        public async Task WaitForQueuedActionAsync()
+        public async Task WaitForQueuedActionAsync(int minimum = 1)
         {
             using var deadline = new CancellationTokenSource(Deadline);
-            while (_queue.IsEmpty) await Task.Delay(QueueTurnMs, deadline.Token);
+            while (_queue.Count < minimum) await Task.Delay(QueueTurnMs, deadline.Token);
         }
         public async Task PumpUntilAsync(Func<bool> condition)
         {

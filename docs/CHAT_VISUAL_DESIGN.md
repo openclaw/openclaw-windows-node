@@ -184,8 +184,16 @@ Gateway or credential-record changes, revocation, profile changes, and
 authoritative removal invalidate reuse. An older Gateway explicitly rejecting
 `users.self` as unsupported can mount fresh chat, but cannot reactivate retained
 history. Authentication failures, malformed rosters and timeouts do not take
-that compatibility fallback. Setup-bound
-chat keeps its additional receipt/authority checks and hidden-host behavior.
+that compatibility fallback. A timed-out check keeps previously confirmed history
+readable and the port suspended. The existing composer connection-status area
+shows a localized failure and explicit retry; without a provider, the existing
+waiting/retry panel shows that state instead of initial connection guidance.
+Retry performs fresh verification on the same connected client, never changes
+the manager connection status, and cannot reactivate late canceled responses.
+Known profile/signing changes, malformed identity and revocation still discard
+old history. Setup-bound chat keeps its additional receipt/authority checks and
+hidden-host behavior; explicit recheck must validate that receipt and pass its
+exact manager client before retrying chat verification.
 
 `ExplicitDisconnectRetainsLoadedTranscriptDraftAndScrollAcrossRecovery` exercises
 the native Connection toggle, retained controls, draft, scroll and ordinary Send

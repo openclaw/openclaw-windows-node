@@ -17,6 +17,8 @@ namespace OpenClaw.Tray.Tests;
 internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
 {
     public bool SupportsNativeLifecycle { get; set; } = true;
+    public int RetryVerificationCalls { get; private set; }
+    public bool RetryConnectionVerification() { RetryVerificationCalls++; return true; }
     public bool SupportsSessionScopedModelCatalog { get; set; }
     public long ModelCatalogRevision { get; set; }
     public List<string> RequestedSessionModelKeys { get; } = new();

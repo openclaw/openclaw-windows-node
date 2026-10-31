@@ -96,6 +96,30 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void HistoryRefreshDoesNotIssueAnExplicitTailRequestForTheSameConversation()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs"));
+        var start = source.IndexOf("var explicitTailRequestKey =", StringComparison.Ordinal);
+        var end = source.IndexOf("var displayedTailKey", start, StringComparison.Ordinal);
+        var identity = source[start..end];
+        Assert.Contains("props.Timeline.SessionId", identity);
+        Assert.Contains("props.Timeline.TimelineGeneration", identity);
+        Assert.Contains("props.Timeline.ScrollToBottomToken", identity);
+        Assert.DoesNotContain("props.HistoryRevision", identity);
+    }
+
+    [Fact]
+    public void TailNavigationPolicy_HistoryRefreshPreservesAnEstablishedReader()
+    {
+        Assert.False(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: false, initialPending: false, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: true, initialPending: false, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: true, following: false, initialPending: false, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: false, initialPending: true, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: false, initialPending: false, hadValidTail: false));
+    }
+
+    [Fact]
     public void ReactorTimeline_UsesStableBottomAnchoringAndDiscreteTailRequests()
     {
         var binding = File.ReadAllText(Path.Combine(
@@ -117,6 +141,9 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("_tailNavigationQueue.Enqueue(version, request)", binding);
         Assert.Contains("_tailNavigationQueue.TryDequeue(_version, out var queuedRequest)", binding);
         Assert.Contains("_valid = TailNavigationPolicy.TryCapture", binding);
+        Assert.Contains("TailNavigationPolicy.ShouldNavigate(explicitNavigation, _following, _initialPending, _valid)", binding);
+        Assert.Contains("oldElement.ExplicitTailRequestKey", binding);
+        Assert.Contains("newElement.ExplicitTailRequestKey", binding);
         Assert.Contains("_itemCount = itemCount", binding);
         Assert.Contains("TailNavigationPolicy.CanExecute(", binding);
         Assert.Contains("itemsView.Unloaded += OnUnloaded", binding);

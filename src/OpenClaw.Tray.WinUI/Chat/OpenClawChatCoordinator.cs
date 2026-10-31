@@ -58,6 +58,9 @@ public sealed class OpenClawChatCoordinator : IDisposable
 
     public OpenClawChatDataProvider? Provider => _connection.Provider;
     public event EventHandler? ProviderChanged;
+    internal ChatVerificationState VerificationState => _connection.VerificationState;
+    internal bool RetryVerification(IOperatorGatewayClient? expectedClient = null) =>
+        _connection.RetryVerificationForClient(expectedClient);
     internal void ConfigureRegistry(OpenClaw.Connection.GatewayRegistry registry) => _connection.ConfigureRegistry(registry);
     internal void ObserveConnection(OpenClaw.Connection.GatewayConnectionSnapshot snapshot) => _connection.ObserveConnection(snapshot);
     public void SetOperatorClient(OpenClawGatewayClient? client) => _connection.SetClient(client);

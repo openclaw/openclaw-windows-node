@@ -102,7 +102,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             props.Session.ApplyInputs(inputs);
             _ = controller.ReconcileModelCatalogAsync(inputs);
             return static () => { };
-        }), props.InputSnapshot, inputs.CurrentThread, inputs.ModelCatalogRevision, inputs.ShowPlacementPickers, inputs.PlacementTargetIsEmpty, inputs.IsVisible);
+        }), props.InputSnapshot, inputs.CurrentThread, inputs.ModelCatalogRevision, inputs.ShowPlacementPickers, inputs.PlacementTargetIsEmpty, inputs.IsVisible, inputs.VerificationState);
 
         var text = vm.Draft;
         var isSending = vm.IsSending;
@@ -732,11 +732,22 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
 
         var composerChildren = new List<Element>();
         if (inputs.ConnectionState != "connected")
-            composerChildren.Add(TextBlock(PlaceholderFor(inputs.ConnectionState))
+            composerChildren.Add(TextBlock(inputs.VerificationState switch
+                {
+                    ChatVerificationState.Verifying => Localized("Chat_Verification_Checking", "The Gateway is connected. Verifying chat access..."),
+                    ChatVerificationState.Failed => Localized("Chat_Verification_Failed", "The Gateway is connected, but chat access could not be verified. Try again."),
+                    _ => PlaceholderFor(inputs.ConnectionState),
+                })
                 .FontSize(12).TextWrapping(TextWrapping.Wrap)
                 .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                 .AutomationId("ChatComposerConnectionStatus")
                 .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite));
+        if (inputs.VerificationState == ChatVerificationState.Failed)
+            composerChildren.Add(Button(TextBlock(Localized("Chat_Verification_Retry", "Try again")))
+                .OnClick(() => controller.RetryConnectionVerification())
+                .HAlign(HorizontalAlignment.Left)
+                .AutomationId("ChatComposerRetryVerification")
+                .AutomationName(Localized("Chat_Verification_Retry", "Try again")));
         if (isRecording)
             composerChildren.Add(voiceFeedback);
         if (placement?.State is { Error: { } placementError })
