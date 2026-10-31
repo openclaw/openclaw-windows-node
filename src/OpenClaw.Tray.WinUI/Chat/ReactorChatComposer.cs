@@ -743,8 +743,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .AutomationId("ChatComposerConnectionStatus")
                 .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite));
         if (inputs.VerificationState == ChatVerificationState.Failed)
-            composerChildren.Add(Button(TextBlock(Localized("Chat_Verification_Retry", "Try again")))
-                .OnClick(() => controller.RetryConnectionVerification())
+            composerChildren.Add(Button(TextBlock(Localized("Chat_Verification_Retry", "Try again")),
+                () => { controller.RetryConnectionVerification(); })
                 .HAlign(HorizontalAlignment.Left)
                 .AutomationId("ChatComposerRetryVerification")
                 .AutomationName(Localized("Chat_Verification_Retry", "Try again")));
