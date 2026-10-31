@@ -93,6 +93,20 @@ use the card fill above that content layer.
 
 ## Controls and states
 
+Initial transcript tail navigation retains its native layout gate. A viewport
+resize can arm one additional discrete tail request if realizing variable-height
+rows moves the extent away from a followed tail. This correction waits for
+layout, a rendering boundary, and an idle scroll view. Resizing does not itself
+start a bring, and this is not a continuous extent-follow loop. A correction does
+not start while initial positioning is still pending, so it cannot impose its
+follow requirement on that initial request. A reader who has scrolled up is not
+pulled back down. Pointer, keyboard, touch, and scrollbar interaction cancel
+pending navigation; follow state is then taken from the current position, so a
+click or key press at the tail keeps following new replies. The correction
+rechecks follow eligibility at dispatch so a newer UI Automation scroll-away also
+takes precedence. Session replacement, unload, and disposal fence late callbacks.
+Native bottom anchoring and the existing follow threshold are unchanged.
+
 Pending agent questions replace the writing surface visually, not structurally.
 The same mounted composer and unsent draft return when the question is collapsed
 or resolved. Expanding the dock cancels voice capture and rejects late transcripts
@@ -152,6 +166,25 @@ hover/pressed resources. Disabled and keyboard-focus states remain native.
 Gateway dashboard management lives in a Connection settings card rather than
 occupying a row above the chat surface. Settings' Chat rail action opens Workspace
 without changing the selected Settings page or discarding the chat draft.
+
+An already-loaded ordinary native conversation remains in memory when its
+operator connection is temporarily lost or explicitly disconnected. The retained
+provider publishes the existing disconnected composer state instead of replacing
+the transcript with initial connection guidance. Offline ports reject mutations
+and cancel pending reads; no transcript persistence cache is introduced.
+
+A replacement connection may reuse that provider only after fresh endpoint,
+local signing-device, authenticated `users.self` profile and session identities
+are confirmed. Gateway or credential-record changes, revocation, profile changes,
+and authoritative removal invalidate reuse. An older Gateway without a confirmed
+profile can mount fresh chat, but cannot reactivate retained history. Setup-bound
+chat keeps its additional receipt/authority checks and hidden-host behavior.
+
+`ExplicitDisconnectRetainsLoadedTranscriptDraftAndScrollAcrossRecovery` exercises
+the native Connection toggle, retained controls, draft, scroll and ordinary Send
+against the isolated Gateway fixture. It is a required interactive proof case,
+not a claim that native rendering or a live provider was tested on a non-Windows
+host.
 
 An authoritative empty conversation shows **Recent chats** instead of quick-start
 suggestions when the active agent has eligible conversations. The list includes

@@ -35,6 +35,14 @@ public sealed partial class GatewayFixtureUiTests
             var identity = composer.GetRuntimeId();
             const string draft = "Keep this draft behind the shared-root dialog";
             ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+            // Native text can update before the controlled composer accepts the draft.
+            await WaitUiAsync(run, () =>
+                FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false } input
+                && input.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
+                && ((ValuePattern)pattern).Current.Value == draft
+                && FindById(run, "ChatComposerPrimaryAction") is
+                    { Current.Name: "Send", Current.IsEnabled: true },
+                "composer draft accepted before modal navigation");
             if (settingsOrigin)
             {
                 await run.InvokeAsync("app.navigate", new { page = "sessions" });

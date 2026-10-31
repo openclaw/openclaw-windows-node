@@ -767,6 +767,7 @@ jobs:
     # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)
       id: a11y
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       run: >
         dotnet test tests/OpenClaw.Tray.UITests
         --no-build

@@ -7710,6 +7710,18 @@
 
 您的设置、网关、文件和模型将保留在原处。</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>您的配置已通过验证，迁移完成状态已记录。
+
+1. 打开“已安装的应用”。
+卸载：{0}（桌面安装版）
+保留：{1}，版本 {2}（Microsoft Store）
+保留所有其他应用。
+
+2. 返回此处并选择“重试”以验证移除状态并完成迁移。
+
+您的设置、网关、文件和模型将保留在原处。</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>卸载旧版应用</value>
   </data>
@@ -7772,6 +7784,17 @@
   <data name="Migration2_InnoGranted" xml:space="preserve">
     <value>已保存迁移授权。请安装并打开 Store 版本以继续。在确认迁移完成之前，请保留此应用。</value>
   </data>
+  <data name="Migration2_InnoRepairRequired" xml:space="preserve">
+    <value>所需的安装文件缺失或无效。请下载完整的 OpenClaw 安装程序。退出 OpenClaw，以同一 Windows 用户运行安装程序覆盖此安装，然后重新打开应用并重试迁移。请勿先卸载 OpenClaw。
+
+安装程序会修复安装文件。迁移仍须通过 Store 应用的兼容性检查。</value>
+  </data>
+  <data name="Migration2_InnoSetupLinkFailed" xml:space="preserve">
+    <value>Windows 无法打开安装程序下载链接。请将此地址复制到浏览器中：{0}。请勿先卸载 OpenClaw。</value>
+  </data>
+  <data name="Migration2_InnoDownloadSetup.Content" xml:space="preserve">
+    <value>下载安装程序以修复</value>
+  </data>
   <data name="Migration2_InnoFailed" xml:space="preserve">
     <value>OpenClaw 无法保存迁移授权或打开 Store 中的应用页面。请查看应用日志并重试。请勿卸载此应用。</value>
   </data>
@@ -7786,13 +7809,13 @@
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>安装本地 WSL Gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>正在检查原生 Gateway 支持情况...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>此设备支持原生 Gateway。</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>若要使用原生 Gateway，请将设备更新到支持该功能的 Windows 版本。
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Windows 报告原生 Gateway 所需的隔离会话功能不可用。较新的 Windows 版本本身并不保证此功能可用。您可以改为安装本地 WSL Gateway 或连接到现有 Gateway。
 
-原生 Gateway 支持即将在所有设备上推出。在全面推出之前，请加入 Windows 预览体验计划，选择 Beta 或 Experimental 渠道，并在加入时通过“高级选项”选择 Windows 11 版本 26H1。若要返回 Windows 11 版本 25H2/26H2，必须全新安装系统。
+如果需要更新 Windows，您可以加入 Windows 预览体验计划，选择 Beta 或 Experimental 渠道，并在加入时通过“高级选项”选择 Windows 11 版本 26H1。若要返回 Windows 11 版本 25H2/26H2，必须全新安装系统。
 
-加入后，请返回“设置 &gt; Windows 更新”并检查更新。更新可能需要几分钟才会显示。功能可用性可能因设备而异。更新后，请重新打开此页面以再次检查支持情况。</value></data>
-  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>若要使用原生 Gateway，请将设备更新到支持该功能的 Windows 版本。</value></data>
-  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>即将在所有设备上推出。</value></data>
+加入后，请返回“设置 &gt; Windows 更新”并检查更新。更新可能需要几分钟才会显示。功能可用性可能因设备而异。您可以重新打开此页面以再次检查支持情况。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Windows 报告原生 Gateway 所需的隔离会话功能不可用。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableAlternatives" xml:space="preserve"><value>您可以改为安装本地 WSL Gateway 或连接到现有 Gateway。</value></data>
   <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Windows 预览体验计划</value></data>
   <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta 或 Experimental</value></data>
   <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11 版本 26H1</value></data>
@@ -7806,6 +7829,7 @@
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>在 Companion 中继续使用与 WSL 相同的 Gateway 设置向导。连接前将验证配置和健康状态。现有 WSL Gateway 和默认 OpenClaw 配置不会被替换。</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>如果尚未安装 Gateway，设置程序将使用 WinGet 从 Microsoft Store 安装，并在验证包后自动继续。</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>正在使用 WinGet 从 Microsoft Store 安装 Gateway...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>仍在从 Microsoft Store 安装 Gateway。这可能需要几分钟（已用时 {0} 分钟）。</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet 已完成。正在验证 Gateway 注册和执行别名，然后继续...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion 将准备您的 Gateway，然后帮助您连接 AI。</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway 恢复</value></data>

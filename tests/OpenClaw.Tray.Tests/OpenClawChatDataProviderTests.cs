@@ -14,7 +14,7 @@ using System.Text.Json;
 namespace OpenClaw.Tray.Tests;
 
 [Collection("Chat telemetry")]
-public class OpenClawChatDataProviderTests
+public partial class OpenClawChatDataProviderTests
 {
     private sealed class ChatActivityCollector : IDisposable
     {

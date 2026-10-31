@@ -231,6 +231,8 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         try { _ = _client.RequestSessionsAsync(); } catch (Exception ex) { Logger.Warn($"[ChatBridge] proactive sessions.list failed: {ex.Message}"); }
     }
 
+    internal bool IsBoundTo(IOperatorGatewayClient client) => !_disposed && ReferenceEquals(_client, client);
+
     public bool IsConnected => _client.IsConnectedToGateway;
     public IChatPlacementGateway PlacementGateway { get; }
     public event EventHandler<GatewayQuestionEvent>? QuestionReceived

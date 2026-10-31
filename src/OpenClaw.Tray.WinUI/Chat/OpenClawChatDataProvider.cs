@@ -74,7 +74,7 @@ internal static class LocalizationHelper
 /// subsequent <see cref="SendMessageAsync"/> calls.
 /// </para>
 /// </remarks>
-public sealed class OpenClawChatDataProvider : IChatDataProvider
+public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatConnectionBoundProvider
 {
     internal const int MaxEntryTextBytes = 256 * 1024;
     private readonly IChatGatewayBridge _bridge;
@@ -207,9 +207,19 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         cancellationToken.ThrowIfCancellationRequested();
         Questions?.Start();
+        // A retired transport has no roster. Re-entering the retained page must
+        // read the existing conversation state, not replace it with that empty cache.
+        if (_bridge is RetainedChatGatewayBridge { IsAttached: false })
+            return Task.FromResult(_state.RetainedSnapshot(ProjectionContext()));
         var sessions = _bridge.GetSessionList() ?? Array.Empty<SessionInfo>();
         return Task.FromResult(_state.Load(sessions, ProjectionContext()));
     }
+
+    bool IChatConnectionBoundProvider.IsBoundTo(IOperatorGatewayClient client) =>
+        _bridge is RetainedChatGatewayBridge retained ? retained.IsBoundTo(client) :
+        _bridge is GatewayClientChatBridge direct && direct.IsBoundTo(client);
+
+    internal bool CanRetainHistory(SessionInfo[] sessions) => _state.CanRetainHistory(sessions);
 
     internal void RememberSelectedThread(string? threadId)
     {
