@@ -423,6 +423,37 @@ cancellation lifetime. If that deadline expires while a typed startup rejection
 is current, it throws `GatewayStartupUnavailableException`, not an auth or
 pairing failure, without extending the deadline or changing credentials.
 
+`OpenClawGatewayClient.HandshakeObserved` exposes a separate, typed local
+observation stream. Each socket attempt has its transport generation, including
+attempts rejected before authentication. Observations report transport opening,
+challenge receipt, pre-credential authorization, connect dispatch admission
+(`ConnectSending`), accepted/rejected connect results, and transport loss/failure.
+Reconnect authorization is timed against the preceding transport generation,
+before a new socket exists, so provenance work between retries remains visible.
+`ConnectSending` means the authorized connect is about to enter the existing
+generation-fenced send path, not that the server received it. Startup results
+reuse `GatewayStartupUnavailable` and its bounded retry hint. Error categories
+use `GatewayErrorKind`; an authorization callback exception reports a denial
+with `Unknown`, not a guessed provenance or transport cause.
+
+Elapsed and previous-phase durations use a monotonic clock and restart for each
+transport generation. Stale generations, canceled client lifetimes and disposed
+clients cannot publish observations. Native setup forwards this stream through
+its session and host to the existing `SetupLogger` as `native.gateway.handshake`.
+The log's run ID, a session-local `connection_attempt` counter and
+`transport_generation` distinguish new clients (pairing or credential recovery)
+from socket retries. The connection owns one subscription across reconnects and
+removes it on failure or disposal. Only phase/category enums, counters, durations
+and bounded retry hints enter this stream. It carries no endpoint, identity,
+nonce, credential, response body, exception message or operation name, and does
+not forward the general Shared client logger. These observations do not prove
+application readiness before `hello-ok`, change deadlines or alter admission.
+The sink retains the existing synchronous setup-log behavior, so elapsed values
+can include time spent writing earlier observations. The logger projects this
+private typed payload directly to allowlisted primitive fields, preserving enum
+names such as `AuthorizationStarted` and `TokenDrift`; arbitrary log data still
+uses the existing free-text redactor.
+
 `ChatNavigationReadiness` settles operator readiness, its real deadline, and
 caller cancellation through one atomic completion source. A connected event
 that completes first cannot become a timeout just because notification or UI

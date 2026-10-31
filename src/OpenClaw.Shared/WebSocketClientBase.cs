@@ -192,6 +192,11 @@ public abstract class WebSocketClientBase : IDisposable
 
     // --- Virtual hooks (subclass MAY override) ---
 
+    /// <summary>Observation only, retaining the source attempt even before authentication.</summary>
+    protected virtual void OnTransportObservation(
+        long connectionGeneration, GatewayHandshakePhase phase,
+        Exception? error = null, GatewayErrorKind? failureKind = null) { }
+
     /// <summary>Called after WebSocket connects, before the listen loop starts.</summary>
     protected virtual Task OnConnectedAsync() => Task.CompletedTask;
 
@@ -275,6 +280,7 @@ public abstract class WebSocketClientBase : IDisposable
                 return null;
             }
 
+            OnTransportObservation(connectGeneration, GatewayHandshakePhase.TransportConnecting);
             RaiseStatusChanged(ConnectionStatus.Connecting);
             _logger.Info($"Connecting to {ClientRole}: {GatewayUrlForDisplay}");
 
@@ -332,6 +338,7 @@ public abstract class WebSocketClientBase : IDisposable
             // completes (subclass calls ResetReconnectAttempts after hello-ok).
             _logger.Info($"{ClientRole} connected, waiting for challenge...");
 
+            OnTransportObservation(connectGeneration, GatewayHandshakePhase.TransportConnected);
             await OnConnectedAsync();
             if (!IsCurrentConnection(ws, connectGeneration))
             {
@@ -378,6 +385,7 @@ public abstract class WebSocketClientBase : IDisposable
                 _logger.Warn(ex.Message);
             }
             _logger.Error($"{ClientRole} connection failed", ex);
+            OnTransportObservation(connectGeneration, GatewayHandshakePhase.Failed, ex);
             OnConnectionException(ex);
             RaiseStatusChanged(ConnectionStatus.Error);
 
@@ -560,6 +568,7 @@ public abstract class WebSocketClientBase : IDisposable
                         Volatile.Write(
                             ref _remoteCloseStatusDescription,
                             result.CloseStatusDescription);
+                        OnTransportObservation(connectionGeneration, GatewayHandshakePhase.Disconnected);
                         OnDisconnected();
                         RaiseStatusChanged(ConnectionStatus.Disconnected);
                     }
@@ -572,6 +581,7 @@ public abstract class WebSocketClientBase : IDisposable
             _logger.Warn("Connection closed prematurely");
             if (IsCurrentConnection(ws, connectionGeneration))
             {
+                OnTransportObservation(connectionGeneration, GatewayHandshakePhase.Disconnected);
                 OnDisconnected();
                 RaiseStatusChanged(ConnectionStatus.Disconnected);
             }
@@ -583,6 +593,7 @@ public abstract class WebSocketClientBase : IDisposable
             _logger.Error($"{ClientRole} listen error", ex);
             if (IsCurrentConnection(ws, connectionGeneration))
             {
+                OnTransportObservation(connectionGeneration, GatewayHandshakePhase.Failed, ex);
                 OnError(ex);
                 RaiseStatusChanged(ConnectionStatus.Error);
             }
@@ -618,6 +629,7 @@ public abstract class WebSocketClientBase : IDisposable
 
         var ownerSocket = expectedSocket;
         var ownerGeneration = expectedGeneration;
+        var authorizing = false;
         try
         {
             while (!_disposed
@@ -648,8 +660,11 @@ public abstract class WebSocketClientBase : IDisposable
 
                 if (ReconnectAuthorizationAsync is not null)
                 {
+                    OnTransportObservation(ownerGeneration, GatewayHandshakePhase.ReconnectAuthorizationStarted);
+                    authorizing = true;
                     var authorization =
                         await ReconnectAuthorizationAsync(_cts.Token).ConfigureAwait(false);
+                    authorizing = false;
                     if (_cts.Token.IsCancellationRequested
                         || _disposed
                         || !ShouldAutoReconnect()
@@ -660,6 +675,8 @@ public abstract class WebSocketClientBase : IDisposable
 
                     if (!authorization.Allowed)
                     {
+                        OnTransportObservation(ownerGeneration, GatewayHandshakePhase.ReconnectAuthorizationDenied,
+                            failureKind: authorization.FailureKind);
                         _logger.Warn(
                             $"{ClientRole} reconnect blocked by endpoint authorization policy: " +
                             (authorization.Detail ?? authorization.FailureKind.ToString()));
@@ -667,6 +684,7 @@ public abstract class WebSocketClientBase : IDisposable
                         RaiseStatusChanged(ConnectionStatus.Error);
                         break;
                     }
+                    OnTransportObservation(ownerGeneration, GatewayHandshakePhase.ReconnectAuthorizationSucceeded);
                 }
 
                 // Safely dispose old socket
@@ -710,6 +728,9 @@ public abstract class WebSocketClientBase : IDisposable
         catch (ObjectDisposedException) { /* CTS disposed mid-loop during shutdown — expected. */ }
         catch (Exception ex)
         {
+            if (authorizing)
+                OnTransportObservation(ownerGeneration, GatewayHandshakePhase.ReconnectAuthorizationDenied,
+                    failureKind: GatewayErrorKind.Unknown);
             _logger.Error($"{ClientRole} reconnect failed", ex);
             RaiseStatusChanged(ConnectionStatus.Error);
         }

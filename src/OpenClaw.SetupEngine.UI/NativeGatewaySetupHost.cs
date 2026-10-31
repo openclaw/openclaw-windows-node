@@ -12,6 +12,9 @@ internal sealed class NativeGatewaySetupHost(
     private static readonly TimeSpan PairingCommandTimeout = TimeSpan.FromMinutes(2);
     private readonly NativeGatewayPackageClient _packageClient = new();
 
+    public void ReportHandshakeObservation(long connectionAttempt, OpenClaw.Shared.GatewayHandshakeObservation observation) =>
+        log?.HandshakeObservation(connectionAttempt, observation);
+
     public Task<NativeGatewayContract> DetectContractAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken) =>
         _packageClient.DetectAsync(package, cancellationToken);
