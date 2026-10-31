@@ -1092,7 +1092,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false,
         bool requireAgentSelection = false, bool allowSessionMutations = false, GatewayScenario? scenario = null,
         Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null, bool postSetupRestart = false,
-        Action? releasePendingResponses = null)
+        Action? releasePendingResponses = null,
+        Func<GatewayFixtureRun, Exception, Task>? captureFailure = null)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
@@ -1118,6 +1119,14 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         {
             releasePendingResponses?.Invoke();
             await run.WriteReportAsync("failed", ex);
+            if (captureFailure is not null)
+            {
+                try { await captureFailure(run, ex); }
+                catch (Exception captureError)
+                {
+                    output.WriteLine($"Failure diagnostics unavailable: {captureError.GetType().Name}.");
+                }
+            }
             if (run.IsRunning)
             {
                 try { await CaptureIfRequestedAsync(run, "failure.png"); }
