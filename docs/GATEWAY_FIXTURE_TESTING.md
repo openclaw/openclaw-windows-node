@@ -73,6 +73,11 @@ test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
 orders work; this is deliberately not sequential packet playback.
 
+MCP startup retries transient sharing and lock violations when reading the
+published token file, within the existing startup deadline. Missing-file,
+permission and other I/O failures are not hidden.
+The token value is never included in readiness diagnostics.
+
 ## Run the application smoke
 
 ```powershell

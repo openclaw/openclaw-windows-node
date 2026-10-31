@@ -41,6 +41,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
     private TaskCompletionSource? _sessionMutationGate;
     private TaskCompletionSource? _chatSendGate;
+    private TaskCompletionSource? _connectionHandshakeGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
     private int _chatEventSequence;
     private TaskCompletionSource? _nextSessionListGate;
@@ -155,6 +156,28 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         // Zero recipients is expected during a scripted disconnect. Histories remain
         // authoritative for reconnect; never retain message or question content here.
         lock (_sync) _events.Add(new GatewayFixtureEvent(eventName, delivered));
+    }
+
+    /// <summary>Holds new handshakes so native reconnect UI can be observed without racing the server.</summary>
+    public void HoldConnectionHandshakes()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (_connectionHandshakeGate is not null)
+                throw new InvalidOperationException("Connection handshakes are already held.");
+            _connectionHandshakeGate = NewSignal();
+        }
+    }
+
+    public void ReleaseConnectionHandshakes()
+    {
+        lock (_sync)
+        {
+            var gate = _connectionHandshakeGate ?? throw new InvalidOperationException("Connection handshakes are not held.");
+            _connectionHandshakeGate = null;
+            gate.TrySetResult();
+        }
     }
 
     public async Task CloseConnectionsAsync(CancellationToken cancellationToken = default)
@@ -629,6 +652,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 throw new FixtureRequestException("INVALID_REQUEST", "Operator is already connected.");
                             if (method != "connect")
                                 throw new FixtureRequestException("AUTH_REQUIRED", "Operator connect is required before reading fixture data.");
+                            Task? handshakeGate;
+                            lock (_sync) handshakeGate = _connectionHandshakeGate?.Task;
+                            if (handshakeGate is not null) await handshakeGate.WaitAsync(connection.Token);
                             var role = Authenticate(parameters, nonce);
                             await SendAsync(socket, sendLock, new
                             {
@@ -988,6 +1014,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             _sessionMutationGate = null;
             _chatSendGate?.TrySetCanceled();
             _chatSendGate = null;
+            _connectionHandshakeGate?.TrySetCanceled();
+            _connectionHandshakeGate = null;
             _chatAbortGate?.TrySetCanceled();
             _chatAbortGate = null;
         }

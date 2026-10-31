@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Immutable;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -219,6 +220,44 @@ public class SettingsManager
         set => _data = _data with { A2UIImageHosts = value ?? new() };
     }
     public bool HasSeenActivityStreamTip { get => _data.HasSeenActivityStreamTip; set => _data = _data with { HasSeenActivityStreamTip = value }; }
+    /// <summary>Detached copy of the local per-Gateway page pins; edits never alias persisted state.</summary>
+    public System.Collections.Immutable.ImmutableDictionary<string, System.Collections.Immutable.ImmutableArray<string>> PinnedPagesByGateway =>
+        ClonePinnedPages(_data.PinnedPagesByGateway)
+            .ToImmutableDictionary(entry => entry.Key, entry => entry.Value.ToImmutableArray(), StringComparer.Ordinal);
+    public System.Collections.Immutable.ImmutableArray<string> GetPinnedPages(string scopeKey) =>
+        PinnedPagesByGateway.TryGetValue(OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey), out var pins) ? pins : [];
+    public void TogglePinnedPage(string scopeKey, string tag, bool pinned)
+    {
+        var key = OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey);
+        var all = ClonePinnedPages(_data.PinnedPagesByGateway);
+        all.TryGetValue(key, out var current);
+        var next = OpenClawTray.Presentation.PinnedPages.Toggle(current, tag, pinned);
+        if (next.IsEmpty) all.Remove(key); else all[key] = [.. next];
+        _data = _data with { PinnedPagesByGateway = all.Count == 0 ? null : all };
+    }
+    public void SetPinnedPages(string scopeKey, IEnumerable<string>? tags)
+    {
+        var key = OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey);
+        var all = ClonePinnedPages(_data.PinnedPagesByGateway);
+        var normalized = OpenClawTray.Presentation.PinnedPages.Normalize(tags);
+        if (normalized.IsEmpty) all.Remove(key); else all[key] = [.. normalized];
+        _data = _data with { PinnedPagesByGateway = all.Count == 0 ? null : all };
+    }
+    private static Dictionary<string, List<string>>? NullIfEmpty(Dictionary<string, List<string>> pins) =>
+        pins.Count == 0 ? null : pins;
+
+    private static Dictionary<string, List<string>> ClonePinnedPages(Dictionary<string, List<string>>? source)
+    {
+        var clone = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        if (source is null) return clone;
+        foreach (var (key, tags) in source)
+        {
+            if (string.IsNullOrWhiteSpace(key)) continue;
+            var normalized = OpenClawTray.Presentation.PinnedPages.Normalize(tags);
+            if (!normalized.IsEmpty) clone[key.Trim()] = [.. normalized];
+        }
+        return clone;
+    }
     public string SkippedUpdateTag { get => _data.SkippedUpdateTag ?? ""; set => _data = _data with { SkippedUpdateTag = value }; }
     public string? PreferredGatewayId { get => _data.PreferredGatewayId; set => _data = _data with { PreferredGatewayId = value }; }
 
@@ -380,6 +419,7 @@ public class SettingsManager
         TtsKokoroAutoDownload = true,
         EnableMcpServer = false,
         A2UIImageHosts = new(),
+        PinnedPagesByGateway = null,
         HasSeenActivityStreamTip = false,
         SkippedUpdateTag = "",
         PreferredGatewayId = null,
@@ -429,6 +469,7 @@ public class SettingsManager
             TtsPiperVoiceId = string.IsNullOrWhiteSpace(loaded.TtsPiperVoiceId) ? defaults.TtsPiperVoiceId : loaded.TtsPiperVoiceId,
             TtsKokoroVoiceId = string.IsNullOrWhiteSpace(loaded.TtsKokoroVoiceId) ? defaults.TtsKokoroVoiceId : loaded.TtsKokoroVoiceId,
             A2UIImageHosts = loaded.A2UIImageHosts is { Count: > 0 } hosts ? new List<string>(hosts) : new(),
+            PinnedPagesByGateway = NullIfEmpty(ClonePinnedPages(loaded.PinnedPagesByGateway)),
             SkippedUpdateTag = loaded.SkippedUpdateTag ?? defaults.SkippedUpdateTag,
             PreferredGatewayId = loaded.PreferredGatewayId ?? defaults.PreferredGatewayId,
             AppTheme = NormalizeAppTheme(loaded.AppTheme),
@@ -592,6 +633,7 @@ public class SettingsManager
         OpenTelemetryEndpoint = NormalizeOptionalString(OpenTelemetryEndpoint),
         OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.Normalize(OpenTelemetryProtocol),
         A2UIImageHosts = A2UIImageHosts.Count == 0 ? null : new List<string>(A2UIImageHosts),
+        PinnedPagesByGateway = NullIfEmpty(ClonePinnedPages(_data.PinnedPagesByGateway)),
         SkippedUpdateTag = string.IsNullOrWhiteSpace(SkippedUpdateTag) ? null : SkippedUpdateTag,
         PreferredGatewayId = string.IsNullOrWhiteSpace(PreferredGatewayId) ? null : PreferredGatewayId,
         UserRules = new List<UserNotificationRule>(UserRules),

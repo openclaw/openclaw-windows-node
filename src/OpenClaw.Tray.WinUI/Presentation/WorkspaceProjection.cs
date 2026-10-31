@@ -59,14 +59,33 @@ internal static class WorkspaceProjection
         root.TryGetProperty("selectionRequired", out var required) && required.ValueKind == JsonValueKind.True &&
         SelectedAgentId(data, agents, selectedId) is null;
 
-    public static IReadOnlyList<WorkspaceSession> Sessions(IEnumerable<SessionInfo> source, string? agentId, WorkspaceSessionOrder order)
+    public static string? HomeSessionKey(IEnumerable<SessionInfo> source, string? agentId, string? mainSessionKey = null)
     {
+        if (!string.IsNullOrWhiteSpace(mainSessionKey) &&
+            (agentId is null || SessionDisplayResolver.Resolve(
+                source.FirstOrDefault(session => session.Key == mainSessionKey) ?? new SessionInfo { Key = mainSessionKey }).AgentId == agentId))
+            return mainSessionKey;
+        if (agentId is null)
+        {
+            var main = source.Where(session => session.IsMain).Take(2).ToArray();
+            return main.Length == 1 ? main[0].Key : null;
+        }
+        return source.FirstOrDefault(session => session.IsMain &&
+                SessionDisplayResolver.Resolve(session).AgentId == agentId)?.Key
+            ?? $"agent:{agentId}:main";
+    }
+
+    public static IReadOnlyList<WorkspaceSession> Sessions(IEnumerable<SessionInfo> source, string? agentId,
+        WorkspaceSessionOrder order, string? mainSessionKey = null)
+    {
+        var rows = source.ToArray();
+        var homeKey = HomeSessionKey(rows, agentId, mainSessionKey);
         // Pinned rows first (most recently pinned on top); everything else keeps creation order (WorkspaceSessionOrder), so new input or activity never reorders the sidebar.
-        var sessions = order.Sort(Visible(source, agentId))
+        var sessions = order.Sort(Visible(rows, agentId))
             .OrderByDescending(s => s.Pinned)
             .ThenByDescending(s => s.Pinned ? s.PinnedAt ?? 0 : 0)
             .ToArray();
-        return Project(sessions);
+        return Project(sessions).Where(session => session.Key != homeKey).ToArray();
     }
 
     // The active sidebar hides archived rows; Settings archives must never

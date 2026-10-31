@@ -14,6 +14,7 @@ namespace OpenClaw.GatewayFixtureHost;
 /// <summary>One real app, one fixture server and one disposable profile. Artifacts outlive the run.</summary>
 public sealed class GatewayFixtureRun : IAsyncDisposable
 {
+    private static readonly TimeSpan McpReadinessPollInterval = TimeSpan.FromMilliseconds(100);
     private readonly string _gatewayToken;
     private readonly string _appPath;
     private Process? _process;
@@ -179,7 +180,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
                 EnsureRunning();
                 if (File.Exists(tokenPath))
                 {
-                    _mcpToken = (await File.ReadAllTextAsync(tokenPath, deadline.Token)).Trim();
+                    _mcpToken = await ReadPublishedMcpTokenAsync(tokenPath, deadline.Token);
                     if (_mcpToken.Length != 0)
                     {
                         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _mcpToken);
@@ -216,12 +217,27 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
                         }
                     }
                 }
-                await Task.Delay(100, deadline.Token);
+                await Task.Delay(McpReadinessPollInterval, deadline.Token);
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException($"Fixture MCP did not become ready. Last error: {lastError?.Message}. Artifacts: {ArtifactsDirectory}");
+        }
+    }
+
+    internal static async Task<string> ReadPublishedMcpTokenAsync(string path, CancellationToken cancellationToken)
+    {
+        // A published token file can still be transiently locked. Retry only sharing/lock
+        // violations within the caller's deadline; do not hide other I/O failures.
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try { return (await File.ReadAllTextAsync(path, cancellationToken)).Trim(); }
+            catch (IOException ex) when ((ex.HResult & 0xffff) is 32 or 33)
+            {
+                await Task.Delay(McpReadinessPollInterval, cancellationToken);
+            }
         }
     }
 

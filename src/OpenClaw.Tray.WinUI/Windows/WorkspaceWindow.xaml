@@ -123,19 +123,36 @@
                 </StackPanel>
             </NavigationView.PaneHeader>
             <NavigationView.MenuItems>
-                <NavigationViewItem x:Name="HomeItem" Tag="home" Padding="0" AutomationProperties.AutomationId="WorkspaceNavHome">
+                <NavigationViewItem x:Name="HomeItem" Tag="home" Padding="0" HorizontalContentAlignment="Stretch" AutomationProperties.AutomationId="WorkspaceNavHome">
                     <NavigationViewItem.Resources>
-                        <Thickness x:Key="NavigationViewItemContentPresenterMargin">0,-1,8,-1</Thickness>
+                        <!-- Cancel the native presenter's 14-DIP trailing gutter for this inline action.
+                             This keeps its right edge aligned with Sessions + without replacing the template. -->
+                        <Thickness x:Key="NavigationViewItemContentPresenterMargin">0,-1,-14,-1</Thickness>
                     </NavigationViewItem.Resources>
                     <!-- The native iconless presenter already reserves an 8-DIP leading column. -->
-                    <StackPanel Orientation="Horizontal" Spacing="16">
-                        <Grid Width="24">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Grid>
                             <ImageIcon x:Name="HomeIcon" Source="{StaticResource Chat_Icon}" Width="22" Height="22"
                                        AutomationProperties.AccessibilityView="Raw"/>
                         </Grid>
-                        <TextBlock x:Name="HomeLabel" VerticalAlignment="Center"/>
-                    </StackPanel>
+                        <TextBlock x:Name="HomeLabel" Grid.Column="1" VerticalAlignment="Center"/>
+                        <Button x:Name="PagesCustomizeButton" x:Uid="WorkspaceShell_PagesCustomize" Grid.Column="2"
+                                Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}"
+                                Padding="0"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                Style="{StaticResource SubtleButtonStyle}" AutomationProperties.AutomationId="WorkspacePagesCustomize">
+                            <Viewbox Width="12" Height="12">
+                                <SymbolIcon Symbol="Edit" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            AutomationProperties.AccessibilityView="Raw"/>
+                            </Viewbox>
+                            <Button.Flyout>
+                                <MenuFlyout x:Name="PagesFlyout" Placement="BottomEdgeAlignedRight" Opening="OnPagesFlyoutOpening" Closed="OnPagesFlyoutClosed"/>
+                            </Button.Flyout>
+                        </Button>
+                    </Grid>
                 </NavigationViewItem>
+                <NavigationViewItemSeparator x:Name="SessionsSeparator" AutomationProperties.AutomationId="WorkspaceSessionsSeparator"/>
                 <NavigationViewItemHeader x:Name="SessionsHeader" IsEnabled="True">
                     <NavigationViewItemHeader.Resources>
                         <Thickness x:Key="NavigationViewItemInnerHeaderMargin">16,0,4,0</Thickness>
@@ -222,7 +239,8 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <Grid x:Name="ReopenPaneSlot" Height="56" Visibility="Collapsed"/>
-                <InfoBar x:Name="OperationInfo" Grid.Row="1" IsOpen="False" IsClosable="True" Severity="Error"/>
+                <InfoBar x:Name="OperationInfo" Grid.Row="1" IsOpen="False" IsClosable="True" Severity="Error"
+                         AutomationProperties.AutomationId="WorkspaceOperationFeedback"/>
                 <Grid x:Name="ContentHost" Grid.Row="2" AutomationProperties.AutomationId="WorkspaceContent"/>
             </Grid>
         </NavigationView>
@@ -240,7 +258,13 @@
         </Button>
         </Grid>
         <Grid x:Name="SettingsSection" Grid.Row="1" Visibility="Collapsed"
-              AutomationProperties.AutomationId="WorkspaceSettingsHost"/>
+              AutomationProperties.AutomationId="WorkspaceSettingsHost">
+            <Border x:Name="EmbeddedPageBackground" Canvas.ZIndex="-1" Visibility="Collapsed"
+                    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" IsHitTestVisible="False"/>
+            <InfoBar x:Name="EmbeddedOperationInfo" Canvas.ZIndex="1" IsOpen="False" IsClosable="True"
+                     Severity="Error" VerticalAlignment="Top" Closed="OnEmbeddedOperationClosed"
+                     AutomationProperties.AutomationId="WorkspaceEmbeddedOperationFeedback"/>
+        </Grid>
         <StackPanel x:Name="SettingsHistoryBar" Grid.Row="1" Orientation="Horizontal" Spacing="4"
                     Margin="48,8,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
             <Button x:Name="SettingsBackButton" x:Uid="NavBackButton" Click="OnBack"
