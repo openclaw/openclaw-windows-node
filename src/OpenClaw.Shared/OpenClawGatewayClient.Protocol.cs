@@ -192,7 +192,8 @@ public partial class OpenClawGatewayClient
         new GatewayChatPlacementClient(
             () => SessionMutationConnectionEpoch,
             (method, parameters, timeoutMs, epoch) =>
-                SendResponseRequestAsync(method, parameters, timeoutMs, epoch));
+                SendResponseRequestAsync(method, parameters, timeoutMs, epoch),
+            () => AdvertisedServerMethods);
 
     /// <summary>
     /// Creates a distinct gateway session. Unsupported gateways return a typed

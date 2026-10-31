@@ -2872,7 +2872,7 @@ Use uma destas opções:
     <value>Bem-vindo ao OpenClaw</value>
   </data>
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
-    <value>Escolha onde esta sessão será executada e diga o que fazer.</value>
+    <value>Diga o que você gostaria de fazer.</value>
   </data>
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>Concluído</value>

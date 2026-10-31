@@ -25,7 +25,18 @@ internal sealed record ChatPlacementState(
     bool Browsing = false,
     bool BrowsingLoading = false,
     ChatWorkspaceDirectory? Directory = null,
-    bool SelectionIsKnown = false);
+    bool SelectionIsKnown = false)
+{
+    internal bool HasEnvironmentChoices => Catalog is { } catalog &&
+        (catalog.Environments.Where(item => item.IsSelectable).Select(item => item.Id)
+            .Distinct(StringComparer.Ordinal).Take(2).Count() > 1 ||
+         Selection?.Environment.IsSelectable == false && catalog.Environments.Any(item => item.IsSelectable));
+
+    internal bool HasWorkspaceChoices => Catalog is { } catalog &&
+        (catalog.CanBrowseFolders || catalog.CanAddRepository || catalog.Workspaces.Any(item =>
+        item.Id != catalog.DefaultWorkspace.Id &&
+        (item.Path is null || catalog.DefaultWorkspace.Path is null || item.Path != catalog.DefaultWorkspace.Path)));
+}
 
 /// <summary>Host-local first-turn location intent. Opening or choosing a row never mutates the Gateway.</summary>
 internal sealed class ChatPlacementController(
@@ -105,10 +116,22 @@ internal sealed class ChatPlacementController(
                 if (_state.Error == ChatPlacementError.HistoryPending)
                     _state = _state with { Error = _intent?.Error };
             }
-            if (_targetNew && !inputs.PlacementTargetIsNew && _intent is null)
-                _state = _state with { SelectionIsKnown = false };
+            var canEdit = inputs.ShowPlacementPickers && inputs.CanChangeSessionOptions && _historyReady;
+            if (_intent is null && !inputs.PlacementTargetIsNew &&
+                (_targetNew || !_canEdit && canEdit))
+            {
+                // A real session or freshly empty history needs its own location read, not
+                // the defaults/description retained from the previous compose state.
+                if (previous is null)
+                {
+                    _generation++;
+                    previous = _scopeCancellation;
+                    _scopeCancellation = new();
+                }
+                _state = _state with { Catalog = null, Loading = false, SelectionIsKnown = false };
+            }
             _targetNew = inputs.PlacementTargetIsNew;
-            _canEdit = inputs.ShowPlacementPickers && inputs.CanChangeSessionOptions && _historyReady;
+            _canEdit = canEdit;
             if (_targetEmpty && _canChangeSessionOptions &&
                 (!targetEmpty || !_historyReady && _materializationHistory is null || !inputs.CanChangeSessionOptions) &&
                 _state.Preparing && previous is null)
@@ -121,7 +144,7 @@ internal sealed class ChatPlacementController(
             if (!_canEdit && _state.Error is ChatPlacementError.DiscoveryFailed or ChatPlacementError.BrowseFailed)
                 _state = _state with { Error = _intent?.Error };
             load = _canEdit && _epoch.HasValue && _state.Catalog is null &&
-                !_state.Loading && _state.Error is null;
+                !_state.Loading && (_state.Error is null or ChatPlacementError.Interrupted);
         }
         CancelAndDispose(previous);
         Notify();
@@ -132,12 +155,14 @@ internal sealed class ChatPlacementController(
     {
         int generation;
         string agent;
+        string? existingSession;
         CancellationToken token;
         lock (_gate)
         {
             if (_disposed || !_canEdit || _state.Loading || _state.Preparing) return;
             generation = _generation;
             agent = _agentId;
+            existingSession = _targetNew || _intent is not null ? null : _threadId;
             token = _scopeCancellation.Token;
             _state = _state with { Loading = true, Error = _intent?.Error };
         }
@@ -145,10 +170,28 @@ internal sealed class ChatPlacementController(
         try
         {
             var catalog = await gateway.LoadAsync(agent, token).ConfigureAwait(false);
+            ChatPlacementSelection? resolved = null;
+            if (existingSession is not null)
+            {
+                try
+                {
+                    resolved = await gateway.ResolveAsync(existingSession, catalog, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    // Older Gateways or read-scoped connections may not expose the location.
+                    // Keep their catalog usable, but do not present defaults as verified facts.
+                    System.Diagnostics.Trace.WriteLine($"[chat] Existing location could not be read ({ex.GetType().Name}).");
+                }
+            }
             Update(generation, state =>
             {
+                if (resolved is { Workspace: { } workspace } && workspace.Id != catalog.DefaultWorkspace.Id &&
+                    !catalog.Workspaces.Any(item => item.Id == workspace.Id))
+                    catalog = catalog with { Workspaces = [.. catalog.Workspaces, workspace] };
                 var local = catalog.Environments.FirstOrDefault(environment => environment.IsLocal);
-                var selected = state.Selection;
+                var selected = _intent is null ? resolved : state.Selection;
                 if (selected is null && local is not null)
                     selected = new(local, catalog.DefaultWorkspace);
                 else if (selected is not null)
@@ -164,7 +207,7 @@ internal sealed class ChatPlacementController(
                 return state with
                 {
                     Catalog = catalog, Selection = selected, Loading = false, Error = _intent?.Error,
-                    SelectionIsKnown = state.SelectionIsKnown || _targetNew
+                    SelectionIsKnown = _intent is not null || resolved is not null || _targetNew
                 };
             });
         }
@@ -198,7 +241,7 @@ internal sealed class ChatPlacementController(
                 : catalog.Workspaces.FirstOrDefault(item => item.Id == workspace.Id);
             if (current is not null)
                 workspace = current;
-            else if (workspace.GitUrl is { } url && IsGitUrl(url))
+            else if (catalog.CanAddRepository && workspace.GitUrl is { } url && IsGitUrl(url))
                 workspace = new("repository:" + url, url, GitUrl: url);
             else if (!(_state is { Browsing: true, BrowsingLoading: false, Directory: { } directory } &&
                 (workspace.Path == directory.Path || directory.Folders.Any(folder => folder == workspace))))
@@ -239,7 +282,7 @@ internal sealed class ChatPlacementController(
         CancellationToken token;
         lock (_gate)
         {
-            if (!CanEdit || _epoch is not { } currentEpoch) return;
+            if (!CanEdit || _state.Catalog?.CanBrowseFolders != true || _epoch is not { } currentEpoch) return;
             generation = _generation;
             browseGeneration = ++_browseGeneration;
             epoch = currentEpoch;

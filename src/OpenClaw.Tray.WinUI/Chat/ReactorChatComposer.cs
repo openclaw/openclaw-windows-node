@@ -238,7 +238,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             bool enabled,
             double maxLabelWidth,
             string? itemStatus = null,
-            string? leadingGlyph = null)
+            string? leadingGlyph = null,
+            string? helpText = null)
         {
             return Button(
                     Grid(
@@ -278,7 +279,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .IsEnabled(enabled)
                 .BorderThickness(0)
                 .AutomationId(automationId)
-                .ToolTip(automationName)
+                .ToolTip(helpText ?? automationName)
+                .HelpText(helpText ?? automationName)
                 .Set(button =>
                 {
                     button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
@@ -784,28 +786,60 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             : Empty());
         if (inputs.ShowPlacementPickers && placement is not null)
         {
-            Element LocationPicker(bool environment)
+            Element LocationControl(bool environment)
             {
                 var title = environment
                     ? Localized("Chat_Placement_Environment", "Environment")
                     : Localized("Chat_Placement_Workspace", "Workspace");
-                var selection = placement.State.Selection;
-                var label = !placement.State.SelectionIsKnown
-                    ? Localized("Chat_Placement_Unknown", "Not verified")
+                var state = placement.State;
+                var selection = state.Selection;
+                var hasChoices = environment ? state.HasEnvironmentChoices : state.HasWorkspaceChoices;
+                var label = !state.SelectionIsKnown
+                    ? state.Loading ? Localized("Chat_Placement_Loading", "Loading locations...")
+                        : Localized("Chat_Placement_Unknown", "Not verified")
                     : environment ? selection?.Environment.Label
-                    : selection is null ? null : NativeChatPlacementPicker.WorkspaceLabel(selection.Workspace);
-                var target = PickerButton(label ?? title, $"{title}: {label ?? title}",
+                    : selection is null ? null : !hasChoices && selection.Workspace.Path is { } path
+                        ? path : NativeChatPlacementPicker.WorkspaceLabel(selection.Workspace);
+                label ??= title;
+                var name = $"{title}: {label}";
+                var detail = !environment && state.SelectionIsKnown && selection?.Workspace.Path is { } workspacePath
+                    ? $"{name}\n{workspacePath}" : name;
+                var glyph = environment ? FluentIconCatalog.System : FluentIconCatalog.Folder;
+                if (!hasChoices)
+                {
+                    return Border(Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                            TextBlock(glyph).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                                .FontSize(16).Margin(0, 0, 8, 0).VAlign(VerticalAlignment.Center)
+                                .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                                .AccessibilityView(AccessibilityView.Raw)
+                                .Set(text => text.IsTextScaleFactorEnabled = false).Grid(column: 0),
+                            TextBlock(label).FontSize(13).TextTrimming(TextTrimming.CharacterEllipsis)
+                                .TextWrapping(TextWrapping.NoWrap).VAlign(VerticalAlignment.Center)
+                                .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                                .AutomationName(name)
+                                .HelpText(detail)
+                                .Grid(column: 1)))
+                        .MinHeight(32).Padding(8, 4).ToolTip(detail)
+                        .AutomationId(environment ? "ChatEnvironmentLocation" : "ChatWorkspaceLocation");
+                }
+                var target = PickerButton(label, name,
                     environment ? "ChatEnvironmentPicker" : "ChatWorkspacePicker",
-                    placement.CanEdit, Math.Max(40, (viewportWidth - 148) / 2),
-                    leadingGlyph: environment ? FluentIconCatalog.System : FluentIconCatalog.Folder);
+                    placement.CanEdit && !state.Loading, Math.Max(40, (viewportWidth - 148) / 2),
+                    leadingGlyph: glyph, helpText: detail);
                 return Component<ChatPlacementPicker, ChatPlacementPickerProps>(
                     new(target, placement, environment, viewportWidth));
             }
             surfaces.Add(Grid([GridSize.Star(), GridSize.Star()], [GridSize.Auto],
-                LocationPicker(true).Grid(column: 0),
-                LocationPicker(false).Margin(8, 0, 0, 0).Grid(column: 1))
+                LocationControl(true).Grid(column: 0),
+                LocationControl(false).Margin(8, 0, 0, 0).Grid(column: 1))
                 .MaxWidth(480).HAlign(HorizontalAlignment.Left)
                 .AutomationId("ChatPlacementPickers"));
+            if (placement.State.Error == ChatPlacementError.DiscoveryFailed)
+                surfaces.Add(Button(Localized("Chat_Placement_Retry", "Retry"), () => { _ = placement.RefreshAsync(); })
+                    .AutomationId("ChatPlacementDiscoveryRetry")
+                    .AutomationName(Localized("Chat_Placement_Retry", "Retry"))
+                    .IsEnabled(placement.CanEdit && !placement.State.Loading)
+                    .HAlign(HorizontalAlignment.Left));
         }
         else
         {

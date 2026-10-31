@@ -2818,7 +2818,7 @@ Use one of these options:
     <value>Welcome to OpenClaw</value>
   </data>
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
-    <value>Pick where this session works, then say what to do.</value>
+    <value>Say what you’d like to do.</value>
   </data>
   <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>Recent chats</value></data>
   <data name="Chat_Placement_Environment" xml:space="preserve">

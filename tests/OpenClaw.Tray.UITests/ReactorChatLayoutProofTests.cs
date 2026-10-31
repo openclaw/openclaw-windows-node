@@ -42,12 +42,12 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         "Would you like me to turn this into a schedule?";
 
     [Theory]
-    [InlineData("en-us", "Pick where this session works, then say what to do.", "What can you do?")]
-    [InlineData("fr-fr", "Choisissez où cette session s’exécute, puis indiquez quoi faire.", "Que pouvez-vous faire ?")]
-    [InlineData("nl-nl", "Kies waar deze sessie werkt en geef vervolgens aan wat er moet gebeuren.", "Wat kun je doen?")]
-    [InlineData("pt-br", "Escolha onde esta sessão será executada e diga o que fazer.", "O que você pode fazer?")]
-    [InlineData("zh-cn", "选择此会话的运行位置，然后说明要执行的任务。", "你能做什么？")]
-    [InlineData("zh-tw", "選擇此工作階段的執行位置，再說明要做什麼。", "你能做什麼？")]
+    [InlineData("en-us", "Say what you’d like to do.", "What can you do?")]
+    [InlineData("fr-fr", "Indiquez ce que vous souhaitez faire.", "Que pouvez-vous faire ?")]
+    [InlineData("nl-nl", "Vertel wat je wilt doen.", "Wat kun je doen?")]
+    [InlineData("pt-br", "Diga o que você gostaria de fazer.", "O que você pode fazer?")]
+    [InlineData("zh-cn", "说说你想做什么。", "你能做什么？")]
+    [InlineData("zh-tw", "說說你想做什麼。", "你能做什麼？")]
     public async Task Welcome_BundledCopyUsesUiLanguageAndSendsSelectedPrompt(string language, string hint, string prompt)
     {
         var previousLanguage = LocalizationHelper.CurrentLanguage;
@@ -103,7 +103,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.InRange(avatarBounds.Left + avatarBounds.Width / 2, width / 2d - 1, width / 2d + 1);
                 Assert.Equal(ChatVisuals.WelcomeAvatarSize(width), avatarBounds.Width);
                 Assert.True(avatarBounds.Bottom < Bounds(header, surface).Top);
-                Assert.Equal("Pick where this session works, then say what to do.",
+                Assert.Equal("Say what you’d like to do.",
                     FindControl<TextBlock>(surface, "ChatWelcomeHint").Text);
                 var prompts = FindDescendants<Button>(surface).Where(button =>
                     AutomationProperties.GetAutomationId(button).StartsWith("ChatSuggestion_", StringComparison.Ordinal)).ToArray();
@@ -521,6 +521,68 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     [Theory]
     [InlineData(320)]
     [InlineData(800)]
+    public async Task PlacementSingleTarget_ShowsVerifiedLocationWithoutRedundantPickersAndKeepsDraft(int width)
+    {
+        var gateway = new PlacementProofGateway { SingleTarget = true, ResolveExistingLocation = true };
+        await WithChatAsync(width, async (surface, _, session, provider) =>
+        {
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => session.Placement?.State.SelectionIsKnown == true &&
+                    FindDescendants<Border>(surface).Any(control =>
+                        AutomationProperties.GetAutomationId(control) == "ChatWorkspaceLocation") &&
+                    FindDescendants<Border>(surface).Any(control =>
+                        AutomationProperties.GetAutomationId(control) == "ChatEnvironmentLocation" &&
+                        FindDescendants<TextBlock>(control).Any(text => text.Text == "Gateway machine")),
+                "verified single-target chat location"));
+            TextBox? input = null;
+            await ui.RunOnUIAsync(() =>
+            {
+                input = FindControl<TextBox>(surface, "ChatComposerInput");
+                input.SelectionStart = 4;
+                input.SelectionLength = 2;
+                Assert.DoesNotContain(FindDescendants<Button>(surface), button =>
+                    AutomationProperties.GetAutomationId(button) is "ChatEnvironmentPicker" or "ChatWorkspacePicker");
+                var environment = FindControl<Border>(surface, "ChatEnvironmentLocation");
+                var workspace = FindControl<Border>(surface, "ChatWorkspaceLocation");
+                Assert.Contains(FindDescendants<TextBlock>(environment), text => text.Text == "Gateway machine");
+                var path = Assert.Single(FindDescendants<TextBlock>(workspace), text => text.Text == "/gateway/workspace");
+                Assert.Contains("/gateway/workspace", AutomationProperties.GetHelpText(path));
+                foreach (var control in new[] { environment, workspace })
+                {
+                    Assert.InRange(Bounds(control, surface).Left, 0, width);
+                    Assert.InRange(Bounds(control, surface).Right, 0, width);
+                }
+                Assert.Equal(Draft, input.Text);
+            });
+            Assert.Equal(0, gateway.Preparations);
+            Assert.Empty(provider.SentMessages);
+            await CaptureAsync(surface, $"SingleLocation-{width}");
+
+            await ui.RunOnUIAsync(async () =>
+            {
+                gateway.SingleTarget = false;
+                await session.Placement!.RefreshAsync();
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindDescendants<Button>(surface).Any(button =>
+                    AutomationProperties.GetAutomationId(button) == "ChatWorkspacePicker"),
+                "multiple valid chat location choices"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(FindControl<Button>(surface, "ChatEnvironmentPicker").IsEnabled);
+                Assert.True(FindControl<Button>(surface, "ChatWorkspacePicker").IsEnabled);
+                Assert.Same(input, FindControl<TextBox>(surface, "ChatComposerInput"));
+                Assert.Equal(Draft, input!.Text);
+                Assert.Equal(4, input.SelectionStart);
+                Assert.Equal(2, input.SelectionLength);
+            });
+            Assert.Equal(0, gateway.Preparations);
+        }, "empty", placementGateway: gateway);
+    }
+
+    [Theory]
+    [InlineData(320)]
+    [InlineData(800)]
     public async Task PlacementPickers_SearchSelectAndPrepareOnlyOnSend(int width)
     {
         var gateway = new PlacementProofGateway();
@@ -741,9 +803,9 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task PlacementWorkspace_BrowsesGatewayFoldersAndKeepsDraft()
+    public async Task PlacementWorkspace_EmptyProjectCatalogKeepsRepositoryAndFolderActionsAndDraft()
     {
-        var gateway = new PlacementProofGateway();
+        var gateway = new PlacementProofGateway { Projects = [] };
         await WithChatAsync(800, async (surface, _, session, provider) =>
         {
             await Task.Delay(1000);
@@ -757,7 +819,17 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             var popup = await ui.RunOnUIAsync(() => Task.FromResult(
                 Assert.IsType<NativeChatPlacementPicker>(
                     Assert.IsType<Flyout>(FindControl<Button>(surface, "ChatWorkspacePicker").Flyout).Content)));
-            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(popup, "ChatWorkspaceBrowse")));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Empty(session.Placement!.State.Catalog!.Workspaces);
+                var search = FindControl<AutoSuggestBox>(popup, "ChatWorkspaceSearch");
+                search.Text = "https://github.com/example/repository";
+                var repository = FindControl<Button>(popup, "ChatWorkspaceClone");
+                Assert.Equal(Visibility.Visible, repository.Visibility);
+                Assert.True(repository.IsEnabled);
+                search.Text = "";
+                Invoke(FindControl<Button>(popup, "ChatWorkspaceBrowse"));
+            });
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
@@ -3453,13 +3525,27 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         internal ChatPlacementSelection? Selection { get; private set; }
         internal TaskCompletionSource? PrepareCompletion { get; init; }
         internal Exception? PrepareFailure { get; init; }
-        public Task<ChatPlacementCatalog> LoadAsync(string agentId, CancellationToken cancellationToken) =>
-            Task.FromResult(new ChatPlacementCatalog(5, agentId,
+        internal bool SingleTarget { get; set; }
+        internal bool ResolveExistingLocation { get; init; }
+        internal ChatWorkspace[]? Projects { get; init; }
+        public Task<ChatPlacementCatalog> LoadAsync(string agentId, CancellationToken cancellationToken)
+        {
+            var catalog = new ChatPlacementCatalog(5, agentId,
                 [new("local:gateway", "Gateway machine", true, ChatEnvironmentUnavailable.None),
                  new("node:windows", "Windows host", false, ChatEnvironmentUnavailable.None),
                  new("node:unavailable", "Windows node", false, ChatEnvironmentUnavailable.HostingDisabled)],
                 new("default", "workspace", "/gateway/workspace"),
-                [new("project:one", "Repository", "/gateway/repository", "one")], agentName, emoji, avatarUrl));
+                Projects ?? [new("project:one", "Repository", "/gateway/repository", "one")], agentName, emoji, avatarUrl);
+            return Task.FromResult(SingleTarget
+                ? catalog with
+                {
+                    Environments = [catalog.Environments[0]], Workspaces = [],
+                    CanBrowseFolders = false, CanAddRepository = false
+                } : catalog);
+        }
+        public Task<ChatPlacementSelection?> ResolveAsync(string sessionKey, ChatPlacementCatalog catalog,
+            CancellationToken cancellationToken) => Task.FromResult<ChatPlacementSelection?>(ResolveExistingLocation
+                ? new(catalog.Environments[0], catalog.DefaultWorkspace) : null);
         public Task<ChatWorkspaceDirectory> BrowseAsync(string? path, long connectionEpoch, CancellationToken cancellationToken)
         {
             BrowsedPath = path;
