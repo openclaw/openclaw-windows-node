@@ -1,6 +1,4 @@
-using System.Diagnostics;
 using System.Security.AccessControl;
-using System.Text.Json;
 using Microsoft.Mxc.Sdk.V1;
 using OpenClaw.Shared.Mxc;
 
@@ -40,9 +38,13 @@ public sealed class MxcRuntimeNamespaceNativeTests
         var allReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var artifacts = Environment.GetEnvironmentVariable("OPENCLAW_MXC_PROOF_ROOT")!;
         Directory.CreateDirectory(artifacts);
+        var captures = new MxcNamespaceProofCapture?[count];
+        Exception? failure = null;
+        Task? execution = null;
+        var cleanupFailures = new List<Exception>();
         try
         {
-            await Task.WhenAll(Enumerable.Range(0, count).Select(ExecuteAsync));
+            await (execution = Task.WhenAll(Enumerable.Range(0, count).Select(ExecuteAsync)));
             Assert.All(operations, operation =>
             {
                 Assert.Equal("sibling", File.ReadAllText(Path.Combine(operation, "sentinel")));
@@ -52,7 +54,22 @@ public sealed class MxcRuntimeNamespaceNativeTests
             Assert.Equal("sensitive", File.ReadAllText(Path.Combine(sensitive, "sentinel")));
             Assert.All(acls, pair => Assert.Equal(pair.Value, Acl(pair.Key)));
         }
-        finally { Directory.Delete(root, true); }
+        catch (Exception ex)
+        {
+            failure = execution?.Exception is { InnerExceptions.Count: > 1 } concurrentFailures ? concurrentFailures : ex;
+        }
+        foreach (var capture in captures.OfType<MxcNamespaceProofCapture>())
+            cleanupFailures.AddRange(capture.RecordCase("before-fixture-cleanup", failure, cleanupFailures));
+        try
+        {
+            if (captures.OfType<MxcNamespaceProofCapture>().Any(capture => !capture.Settled))
+                throw new InvalidOperationException("Namespace process cleanup was not confirmed. Retaining the synthetic fixture: " + root);
+            Directory.Delete(root, true);
+        }
+        catch (Exception ex) { cleanupFailures.Add(ex); }
+        foreach (var capture in captures.OfType<MxcNamespaceProofCapture>())
+            cleanupFailures.AddRange(capture.RecordCase("case-result", failure, cleanupFailures));
+        MxcNamespaceProofCapture.ThrowFailures(failure, cleanupFailures);
 
         async Task ExecuteAsync(int index)
         {
@@ -109,52 +126,40 @@ public sealed class MxcRuntimeNamespaceNativeTests
                 Ui = new() { Disable = false, Clipboard = ClipboardPolicy.None, AllowInputInjection = false },
                 WorkingDirectory = scratch,
             };
-            var probe = MxcContainer.Probe(request);
-            Assert.Null(probe.Error);
-            Assert.Equal(IsolationTier.BaseContainer, probe.Tier);
-            Assert.False(probe.NeedsDaclAugmentation);
-            Assert.True(probe.Probes.BaseContainerSupportsDenyPaths);
-            Assert.DoesNotContain(Path.GetPathRoot(root)!, request.Filesystem!.ReadonlyPaths);
-            using var process = await MxcContainer.SpawnAsync(request,
-                new SpawnOptions { Telemetry = new() { Enabled = false } }, CancellationToken.None);
-            using var os = Process.GetProcessById((int)process.Id);
-            var identity = new
+            var name = $"namespace-{(productionPolicy ? "builder" : "sdk")}";
+            var capture = captures[index] = new(artifacts, name, index, new
             {
-                Pid = process.Id, StartTimeUtc = os.StartTime.ToUniversalTime().ToString("O"), Executable = powershell,
-                CommandLine = request.Command, Root = root, Port = (int?)null, productionPolicy, index,
-            };
-            var name = $"namespace-{(productionPolicy ? "builder" : "sdk")}-{index}";
-            File.WriteAllText(Path.Combine(artifacts, name + "-process.json"), JsonSerializer.Serialize(identity));
-            using var reader = new StreamReader(process.StandardOutput!);
-            var readyRead = Task.Run(reader.ReadLine);
-            var stderr = Task.Run(() => new StreamReader(process.StandardError!).ReadToEnd());
-            Task<string>? stdout = null;
-            try
+                RunId = Path.GetFileName(root), Root = root, Executable = powershell, Argv = argv,
+                Request = request, Script = File.ReadAllText(script), Port = (int?)null,
+                ProductionPolicy = productionPolicy, ConcurrentProcesses = count,
+            });
+            await capture.RunAsync(async evidence =>
             {
-                Assert.Equal("READY", await readyRead.WaitAsync(TimeSpan.FromSeconds(15)));
+                evidence.Phase = "probe admission";
+                var probe = MxcContainer.Probe(request);
+                evidence.Probe = probe;
+                Assert.Null(probe.Error);
+                Assert.Equal(IsolationTier.BaseContainer, probe.Tier);
+                Assert.False(probe.NeedsDaclAugmentation);
+                Assert.True(probe.Probes.BaseContainerSupportsDenyPaths);
+                Assert.DoesNotContain(Path.GetPathRoot(root)!, request.Filesystem!.ReadonlyPaths);
+                await evidence.StartAsync(async () => await MxcContainer.SpawnAsync(request,
+                    new SpawnOptions { Telemetry = new() { Enabled = false } }, CancellationToken.None));
+                Assert.Equal("READY", await evidence.ReadReadinessAsync());
                 if (Interlocked.Increment(ref readyCount) == count) allReady.SetResult();
+                evidence.Phase = "concurrent readiness";
                 await allReady.Task.WaitAsync(TimeSpan.FromSeconds(15));
-                using (var input = new StreamWriter(process.StandardInput!)) { input.WriteLine("go"); input.Flush(); }
-                stdout = Task.Run(reader.ReadToEnd);
-                var result = await process.WaitAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
-                var output = await stdout;
-                var error = await stderr;
-                File.WriteAllText(Path.Combine(artifacts, name + "-result.json"),
-                    JsonSerializer.Serialize(new { identity, result, output, error, Exited = os.HasExited, ConcurrentProcesses = count }));
+                evidence.Phase = "release handshake";
+                using (var input = new StreamWriter(evidence.StandardInput)) { input.WriteLine("go"); input.Flush(); }
+                var result = await evidence.FinishAsync();
+                var output = evidence.Output;
+                evidence.Phase = "behavior assertions";
                 Assert.Equal(0, result.ExitCode);
                 Assert.Contains("OWN_SCRATCH_OK", output);
                 foreach (var check in new[] { "code-write", "code-add", "namespace-list", "sibling-read", "sibling-write",
                              "sibling-add", "sibling-code", "sibling-scratch", "protected-read", "protected-write" })
                     Assert.Contains("DENIED:" + check, output);
-            }
-            finally
-            {
-                if (!os.HasExited) process.Kill();
-                await process.WaitAsync(CancellationToken.None);
-                await readyRead;
-                if (stdout is not null) await stdout;
-                await stderr;
-            }
+            });
         }
     }
 
