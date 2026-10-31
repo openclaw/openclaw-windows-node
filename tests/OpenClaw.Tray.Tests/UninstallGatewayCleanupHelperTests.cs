@@ -1,3 +1,4 @@
+using OpenClaw.Connection;
 using OpenClaw.TestSupport;
 
 namespace OpenClaw.Tray.Tests;
@@ -83,6 +84,67 @@ public sealed class UninstallGatewayCleanupHelperTests
         Assert.Equal("remaining", remaining!["id"]!.GetValue<string>());
         Assert.False(Directory.Exists(temp.Combine("gateways", "legacy")));
         Assert.True(Directory.Exists(temp.Combine("gateways", "remaining")));
+    }
+
+    [Fact]
+    public async Task RegistryCleanup_LeavesUnrelatedRecordsLoadableByGatewayRegistry()
+    {
+        using var temp = new TempDirectory("uninstall-gateway-");
+        var remote = new GatewayRecord
+        {
+            Id = "remote",
+            Url = "wss://gateway.example",
+            FriendlyName = "Ofis ağ geçidi",
+            SharedGatewayToken = "test-token-placeholder",
+            LastConnected = new DateTime(2026, 10, 1, 12, 0, 0, DateTimeKind.Utc),
+            RequiresV2Signature = true,
+        };
+        var tunnel = new GatewayRecord
+        {
+            Id = "tunnel",
+            Url = "ws://localhost:28789",
+            FriendlyName = "Tunnel",
+            SshTunnel = new SshTunnelConfig("user", "host.example", 18789, 28789, IncludeBrowserProxyForward: true, SshPort: 2222),
+            BrowserControlPort = 28791,
+        };
+        var saved = new GatewayRegistry(temp.Path);
+        saved.AddOrUpdate(new GatewayRecord
+        {
+            Id = "managed",
+            Url = "ws://localhost:18789",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        });
+        saved.AddOrUpdate(remote);
+        saved.AddOrUpdate(tunnel);
+        saved.SetActive("remote");
+        saved.Save();
+        Directory.CreateDirectory(saved.GetIdentityDirectory("managed"));
+        Directory.CreateDirectory(saved.GetIdentityDirectory("remote"));
+        Directory.CreateDirectory(saved.GetIdentityDirectory("tunnel"));
+
+        var stdout = await UninstallScriptHost.RunAsync(
+            temp,
+            [
+                "Ensure-AppRoot", "Write-GatewayLog", "Add-CleanupWarning", "Get-JsonPropertyValue",
+                "Read-JsonFile", "Write-JsonFileAtomic", "Test-LocalGatewayUrl",
+                "Test-SetupManagedLocalRecord", "Test-ExternalGatewayRecord",
+                "Remove-SetupManagedGatewayRecords",
+            ],
+            """
+            $DistroName = 'OpenClawGateway'
+            $result = Remove-SetupManagedGatewayRecords -DataDir $AppRoot
+            Write-Output "$($result.RemainingCount)|$($result.HasExternalGateways)|$($cleanupWarnings.Count)"
+            """);
+
+        Assert.Equal(["2|True|0"], ReadLines(stdout));
+        var loaded = new GatewayRegistry(temp.Path);
+        loaded.Load();
+        Assert.Equal([remote, tunnel], loaded.GetAll());
+        Assert.Equal("remote", loaded.GetActive()?.Id);
+        Assert.False(Directory.Exists(loaded.GetIdentityDirectory("managed")));
+        Assert.True(Directory.Exists(loaded.GetIdentityDirectory("remote")));
+        Assert.True(Directory.Exists(loaded.GetIdentityDirectory("tunnel")));
     }
 
     [Theory]
