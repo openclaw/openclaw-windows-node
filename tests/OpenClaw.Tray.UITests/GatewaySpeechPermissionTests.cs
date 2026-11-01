@@ -108,12 +108,14 @@ public sealed class GatewaySpeechPermissionTests
         var audio = new TaskCompletionSource<GatewaySpeechAudio>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!playing) wire.Audio = audio.Task;
         CancellationToken playbackToken = default;
+        var generation = Assert.IsType<CancellationTokenSource>(typeof(OpenClawChatCoordinator)
+            .GetField("_speechCancellation", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(coordinator));
         var run = playing
             ? speech.SpeakAsync("Synthetic playback.", true, (_, token) =>
             {
                 playbackToken = token;
                 return Task.Delay(Timeout.InfiniteTimeSpan, token);
-            })
+            }, cancellationToken: generation.Token)
             : coordinator.SpeakChatTextAsync("Synthetic synthesis.");
         Assert.Equal(1, wire.SynthesisCalls);
         var token = playing ? playbackToken : wire.LastCancellation;
