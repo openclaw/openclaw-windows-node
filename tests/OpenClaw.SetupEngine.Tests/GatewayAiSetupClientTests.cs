@@ -54,6 +54,45 @@ public sealed class GatewayAiSetupClientTests
         Assert.Equal("openclaw.setup.detect", transport.Calls[0].Method);
     }
 
+    [Fact]
+    public async Task LlamaAppDetectedModel_UsesPublicActivationAndNeverBecomesCompanionManaged()
+    {
+        const string model = "llama-app/ggml-org/model:Q4_K_M";
+        var transport = new FakeTransport();
+        transport.Replies.Enqueue(Json("""
+            {"candidates":[
+              {"kind":"existing-model","label":"Managed","detail":"","modelRef":"llamacpp/managed","recommended":true},
+              {"kind":"provider-auto:llama-app","label":"Llama.app","detail":"App API","modelRef":"llama-app/ggml-org/model:Q4_K_M","recommended":false}],
+             "manualProviders":[],"workspace":"/home/test","setupComplete":false}
+            """));
+        var client = new GatewayAiSetupClient(transport);
+        await client.DetectAsync();
+        Assert.Null(client.Selection);
+        Assert.Single(transport.Calls);
+        Assert.Equal("llamacpp/managed", client.Detection!.Candidates[0].ModelRef);
+        client.SelectCandidate("provider-auto:llama-app", model);
+        await client.StartSelectedAsync();
+        Assert.Equal("openclaw.setup.activate.start", transport.Calls.Last().Method);
+        Assert.Equal(model, transport.Calls.Last().Parameters.GetProperty("modelRef").GetString());
+        transport.Replies.Enqueue(JsonSerializer.SerializeToElement(new
+        {
+            sessionId = client.SessionId, done = true, status = "done",
+            modelActivation = new { modelRef = model },
+        }));
+        await client.RefreshAsync();
+        Assert.Throws<InvalidOperationException>(() => client.GetVerifiedCompletion());
+        transport.Replies.Enqueue(Json("""
+            {"candidates":[],"manualProviders":[],"workspace":"/home/test","setupComplete":true,
+             "configuredModel":"llama-app/ggml-org/model:Q4_K_M"}
+            """));
+        transport.Replies.Enqueue(Json("""{"ok":true,"modelRef":"llama-app/ggml-org/model:Q4_K_M","latencyMs":12}"""));
+        Assert.True((await client.VerifyAsync()).Ok);
+        var completion = client.GetVerifiedCompletion();
+        Assert.Equal(model, completion.ModelRef);
+        Assert.False(completion.RequiresManagedLocalAi);
+        Assert.DoesNotContain(transport.Calls, call => call.Method.StartsWith("config.", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("operator.read")]

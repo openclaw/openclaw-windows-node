@@ -115,6 +115,10 @@
                     <TextBlock x:Name="LocalGroupHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
                     <TextBlock x:Name="LocalGroupDescription" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
                 </StackPanel>
+                <StackPanel x:Name="LlamaAppSection" Spacing="8" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="OnboardingLlamaApp">
+                    <ItemsControl x:Name="LlamaAppChoices" ItemTemplate="{StaticResource ChoiceTemplate}" />
+                </StackPanel>
                 <StackPanel x:Name="LocalAiSection" Spacing="8">
                     <tk:SettingsCard x:Name="LocalAiCard" IsClickEnabled="False" Click="LocalAi_Click"
                                      AutomationProperties.AutomationId="OnboardingLocalAiCard">

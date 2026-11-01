@@ -263,6 +263,39 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         });
     }
 
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task LlamaApp_AdvertisedAuthStaysLocalAndRequiresExplicitRowAction(ElementTheme theme)
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            var choices = Find<ItemsControl>(page, "LlamaAppChoices");
+            Assert.Single(choices.Items);
+            Assert.Empty(Find<ItemsControl>(page, "FeaturedSignInChoices").Items);
+            Assert.Empty(Find<ItemsControl>(page, "MoreSignInChoices").Items);
+            Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "LlamaAppSection").Visibility);
+            Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+            Assert.Equal(0, completed());
+            using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"llama-app-local-option-{theme}", output,
+                ["Llama.app"], requiredContent: page)) { }
+            await InvokeChoiceAsync(page, "LlamaAppChoices");
+            await WaitAsync(() => transport.MethodCalls.Contains("openclaw.setup.auth.start"));
+            Assert.Equal("llama-app", transport.LastActivation.GetProperty("authChoice").GetString());
+            Assert.DoesNotContain("openclaw.setup.activate.start", transport.MethodCalls);
+            Assert.Equal(0, completed());
+        }, nativeProof: true, theme: theme, configure: transport =>
+        {
+            transport.DetectionOverride = new()
+            {
+                Candidates = [], ManualProviders = [], Workspace = "/synthetic-workspace", SetupComplete = false,
+                AuthOptions = [new("llama-app", "Llama.app", BrandId: "llama-app", Kind: "custom", Featured: true)],
+            };
+            transport.WizardStep = new() { Id = "llama-endpoint", Type = "text", Title = "Llama.app API endpoint" };
+        });
+    }
+
     [Fact]
     [Trait("Category", "NativeOnboardingProof")]
     public async Task FocusedAi_RequiredNotesAndConfirmationStayInOneDialogThroughVerification()
@@ -2578,6 +2611,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         public bool IncludeMoreProvider { get; set; }
         public bool IncludeAdditionalCandidate { get; set; }
         public bool IncludeDensityChoices { get; set; }
+        public GatewayAiSetupDetection? DetectionOverride { get; set; }
         public Queue<GatewayAiSetupWizardStep> FollowingSteps { get; } = [];
         public GatewayAiSetupWizardStep? WizardStep { get; set; }
         public string CancelStatus { get; set; } = "cancelled";
@@ -2637,6 +2671,9 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             {
                 if (FailDetection)
                     throw new IOException("Synthetic discovery failure.");
+                if (DetectionOverride is { } detection)
+                    return DetectionAsync(JsonSerializer.SerializeToElement(detection,
+                        new JsonSerializerOptions(JsonSerializerDefaults.Web)), cancellationToken);
                 return DetectionAsync(JsonSerializer.SerializeToElement(new
                 {
                     candidates = new[] { new { kind = "existing-model", label = "Existing AI",
@@ -2660,7 +2697,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     nativeSessionCatalogPreferenceRequired = RequireCatalogConsent,
                 }), cancellationToken);
             }
-            if (method == "openclaw.setup.activate.start")
+            if (method is "openclaw.setup.activate.start" or "openclaw.setup.auth.start" or "openclaw.setup.prepare.start")
             {
                 LastActivation = JsonSerializer.SerializeToElement(parameters);
                 if (FailActivation)
