@@ -110,6 +110,14 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         LocalGroupDescription.Text = S("LocalGroupDescription");
         SignInHeading.Text = S("ConnectProvider");
         CloudDescription.Text = S("CloudDetail");
+        LlamaAppDescription.Text = S("LlamaAppDetail");
+        LlamaAppTopology.Text = S("LlamaAppWslDetail");
+        LlamaAppGatewayRequired.Text = S("LlamaAppGatewayRequired");
+        GetLlamaAppButton.Content = S("GetLlamaApp");
+        LlamaAppGuideButton.Content = S("LlamaAppGuide");
+        LlamaAppArtwork.Descriptor = GatewayAiSetupPresentation.GetProviderArtwork(
+            "llama-app", "llama-app", null, ProviderArtworkFallback.Install);
+        LlamaAppArtwork.Session = _artworkSession;
         LocalAiTitle.Text = S("LocalTitle");
         LocalAiCard.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Devices, 20);
         AutomationProperties.SetName(LocalAiCard, S("LocalTitle"));
@@ -589,9 +597,14 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         providers.Select(option =>
         {
             var localService = kind == GatewayAiSetupChoiceKind.Prepare &&
-                (option.Id is "lmstudio" or "ollama");
+                (option.Id is "lmstudio" or "ollama" or "llama-app");
             return new ChoiceRow(kind, option.Id, option.Label,
-                localService ? S(option.Id == "lmstudio" ? "LmStudioDetail" : "OllamaDetail") : option.Hint ?? "",
+                localService ? S(option.Id switch
+                {
+                    "llama-app" => "LlamaAppProviderDetail",
+                    "lmstudio" => "LmStudioDetail",
+                    _ => "OllamaDetail",
+                }) : option.Hint ?? "",
                 _artworkSession, BrandId: option.BrandId, Icon: option.Icon, ProviderKind: option.Kind,
                 MetadataActionLabel: localService ? S("ManualConnect") : option.ActionLabel, Website: option.Website);
         }).ToArray();
@@ -939,6 +952,18 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private void ProviderExternalLinkRequested(string? url) =>
         AsyncEventHandlerGuard.Run(() => OpenExternalLinkAsync(url), onError: ReportFailure);
 
+    private void LlamaAppWebsite_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_closed && !_busy && !BackdropLocked)
+            ProviderExternalLinkRequested(LlamaAppSetupPresentation.Website);
+    }
+
+    private void LlamaAppGuide_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_closed && !_busy && !BackdropLocked)
+            ProviderExternalLinkRequested(LlamaAppSetupPresentation.ApiGuide);
+    }
+
     private void RecommendedInstall_Click(object sender, RoutedEventArgs e)
     {
         if (!_closed && !_busy && !BackdropLocked && sender is FrameworkElement { Tag: string website })
@@ -1176,7 +1201,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             var backgroundEnabled = !_busy && !_localActionBusy && !BackdropLocked && !ManagerRecoveryBlocked;
             CandidateChoices.IsEnabled = PrepareChoices.IsEnabled = FeaturedSignInChoices.IsEnabled =
                 MoreSignInChoices.IsEnabled = ApiProviderPicker.IsEnabled = ApiKeyInput.IsEnabled =
-                LlamaAppChoices.IsEnabled =
+                LlamaAppChoices.IsEnabled = GetLlamaAppButton.IsEnabled = LlamaAppGuideButton.IsEnabled =
                 ApiKeysButton.IsEnabled = CatalogPreference.IsEnabled = RecommendedInstalls.IsEnabled =
                 MoreExpander.IsEnabled = RecommendedSection.IsEnabled = CheckAgainButton.IsEnabled =
                 RefreshButton.IsEnabled = LegacyButton.IsEnabled = backgroundEnabled;
@@ -1318,9 +1343,17 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         LocalAiSection.Visibility = Visible(_args?.ExpectedConfiguredModelRef is null && _localExpectedModel is null &&
             AiSetupReadinessPresentation.ShowLocalChoice(
                 _args?.NativeSession is not null || _managedNative, _nativeLocalAiTransport is not null, snapshot));
+        var preferLlama = _choicesPrepared && LlamaAppSetupPresentation.PreferForFreshSetup(Client?.Detection, snapshot) &&
+            (_nativeLocalAiTransport is not null || snapshot.Target is not null);
+        var detectedLlama = _presentation.Candidates.Any(candidate => LlamaAppSetupPresentation.IsModel(candidate.ModelRef));
+        var hasLlamaSetup = _presentation.LocalAppOptions.Count > 0;
         LlamaAppSection.Visibility = Visible(_choicesPrepared && _args?.ExpectedConfiguredModelRef is null &&
-            _localExpectedModel is null && _presentation.LocalAppOptions.Count > 0 &&
+            _localExpectedModel is null && (preferLlama || detectedLlama || hasLlamaSetup) &&
             phase is GatewayAiSetupPhase.Choosing or GatewayAiSetupPhase.Cancelled or GatewayAiSetupPhase.Rejected);
+        LlamaAppRecommendedBadge.Visibility = Visible(preferLlama);
+        LlamaAppTopology.Visibility = Visible(_args?.NativeSession is null && !_managedNative);
+        LlamaAppGatewayRequired.Visibility = Visible(!hasLlamaSetup && !detectedLlama);
+        GetLlamaAppButton.Visibility = Visible(!detectedLlama);
         var state = snapshot.State;
         var detail = string.Join(" · ", new[]
         {
@@ -1333,7 +1366,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         LocalAiTitle.Text = state == LocalAiOnboardingState.SetUp ? S("OtherLocal") : S("LocalTitle");
         AutomationProperties.SetName(LocalAiCard, LocalAiTitle.Text);
         LocalAiDescription.Text = state == LocalAiOnboardingState.SetUp ? S("LocalSetUpDescription") : detail;
-        LocalAiRecommendedBadge.Visibility = Visible(state == LocalAiOnboardingState.SetUp);
+        LocalAiRecommendedBadge.Visibility = Visible(state == LocalAiOnboardingState.SetUp && !preferLlama);
         LocalAiActionText.Text = state switch
         {
             LocalAiOnboardingState.SetUp => S("LocalSetUp"),

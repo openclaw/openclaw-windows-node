@@ -7498,7 +7498,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V3_ProfileCustomDescription.Text" xml:space="preserve"><value>Start with your current choices and adjust them below.</value></data>
   <data name="Onboarding_AiSetup_OnThisPc" xml:space="preserve"><value>On this PC</value></data>
   <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>Local AI</value></data>
-  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>Set up a model on this PC, or connect to LM Studio or Ollama.</value></data>
+  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>Use Llama.app for a fresh local model setup, or keep your existing local AI service.</value></data>
   <data name="Onboarding_AiSetup_LocalSetUpDescription" xml:space="preserve"><value>Runs on this PC without provider usage charges. We'll help you set up a model suited to your hardware.</value></data>
   <data name="Onboarding_AiSetup_CloudDetail" xml:space="preserve"><value>Use AI from an online service.</value></data>
   <data name="Onboarding_AiSetup_LmStudioDetail" xml:space="preserve"><value>Connect a model you already use in LM Studio.</value></data>
@@ -8303,4 +8303,10 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>This question is being resolved. Refresh to check its status.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choose a valid answer for each question.</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppDetail" xml:space="preserve"><value>Llama.app owns its server and model downloads. Install or open it, choose a model and enable its API (127.0.0.1:9931 by default). Then check again and explicitly choose a detected model or Llama.app setup.</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppWslDetail" xml:space="preserve"><value>For a WSL Gateway, Windows loopback is not automatically reachable. Use verified mirrored-loopback reachability, or an explicitly configured private Windows endpoint with an app-owned bearer key. Companion does not change networking or firewall settings.</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppGatewayRequired" xml:space="preserve"><value>This Gateway has not offered Llama.app setup or a usable model. These links open the installation and model-selection instructions, not completed AI setup.</value></data>
+  <data name="Onboarding_AiSetup_GetLlamaApp" xml:space="preserve"><value>Get Llama.app</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppGuide" xml:space="preserve"><value>API setup guide</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppProviderDetail" xml:space="preserve"><value>Connect to the app-owned API. Existing models, providers and defaults are preserved until you explicitly choose a model.</value></data>
 </root>

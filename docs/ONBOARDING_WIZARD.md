@@ -122,6 +122,53 @@ entry from the original configuration; the generated template does not reproduce
 that entry or its value. The bundled configuration leaves setup mode and search
 provider unspecified so policy can choose among the actual offered values.
 
+### Llama.app local model setup
+
+Llama.app is the preferred **fresh** local-model handoff. Companion recommends
+it only after successful Gateway discovery and conclusive local observation show
+no configured/default/utility model, detected or unavailable provider candidate,
+managed installation or recovery receipt. An incomplete check is not proof of a
+fresh installation. Existing managed Local AI setup, repair, ownership and model
+selection remain available and are not migrated to Llama.app.
+
+Companion uses the existing authenticated Gateway setup contract:
+
+1. Gateway-provided `llama-app` auth or preparation options appear in the local
+   app section, not cloud sign-in. Only advertised, main-model options with a
+   supported action are shown. Companion does not synthesize an actionable
+   provider when the Gateway does not offer one.
+2. An installed app's Gateway-detected `llama-app/<model-id>` candidate uses the
+   existing explicit **Use this model** action and exact-model verification.
+   Discovery is not activation. Existing candidates retain their server order.
+   A successful external-model completion never acquires Companion-managed
+   runtime ownership merely because its name contains "llama".
+3. With no usable model or setup option, **Get Llama.app** and **API setup guide**
+   open the official installation/model-selection instructions. Install or open
+   the Windows app, select/download a model in that app, enable its API, then use
+   **Check again**. This is a handoff, not a turnkey installation or verified AI
+   setup. A listening endpoint alone does not prove a usable installed model.
+
+Llama.app owns its server, downloads, cache and API credentials. Companion does
+not start a second llama-server, install a second model, copy its cache or read
+its credential files. The Windows API defaults to `127.0.0.1:9931`. App discovery
+and inference run on the Gateway's side of the existing provider contract;
+Companion does not equate its own Windows loopback with Gateway reachability.
+
+For a WSL Gateway, Windows loopback is not automatically reachable. Use a
+verified mirrored-network loopback path, or an explicitly configured private
+Windows address with the app-owned bearer key required for non-loopback access.
+The app's [API serving guide](https://llama.app/docs/serve) owns those choices.
+Companion changes no WSL networking, firewall rule or global API exposure. A
+native isolated Gateway also requires actual Gateway-side discovery and exact
+inference proof; a Windows-side health response cannot satisfy that gate.
+
+The existing Companion-managed `models.providers.llamacpp` configuration and
+`llamacpp/<model-id>` identities remain distinct from `llama-app`. Their credentials,
+receipts, recovery and managed models are untouched. This integration adds no
+Windows node or MCP command. Windows `llama://` supports chat and existing model
+handoff, not the macOS install route; the Windows setup does not launch a guessed
+`llama://install` action.
+
 ### Native Gateway MSIX (isolated or legacy)
 
 For an authenticated isolated native Gateway, **Install and use Local AI** captures

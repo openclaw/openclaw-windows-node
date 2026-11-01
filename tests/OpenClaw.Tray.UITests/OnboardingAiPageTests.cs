@@ -296,6 +296,33 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         });
     }
 
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task LlamaApp_FreshUnsupportedGpuShowsHonestHandoffWithoutMutation(ElementTheme theme)
+    {
+        var host = new PageLocalAiHost(LocalAiOnboardingState.Unsupported) { FreshUnsupported = true };
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            await WaitAsync(() => Find<StackPanel>(page, "LlamaAppSection").Visibility == Visibility.Visible);
+            Assert.Equal(Visibility.Visible, Find<RecommendedBadge>(page, "LlamaAppRecommendedBadge").Visibility);
+            Assert.Equal(Visibility.Visible, Find<TextBlock>(page, "LlamaAppGatewayRequired").Visibility);
+            Assert.Equal(Visibility.Visible, Find<TextBlock>(page, "LlamaAppTopology").Visibility);
+            Assert.Empty(Find<ItemsControl>(page, "LlamaAppChoices").Items);
+            Assert.Equal("Get Llama.app", Find<HyperlinkButton>(page, "GetLlamaAppButton").Content);
+            Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+            Assert.Equal(0, host.Actions);
+            Assert.Equal(0, completed());
+            using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"llama-app-fresh-handoff-{theme}", output,
+                ["Llama.app", "Get Llama.app", "API setup guide"], requiredContent: page)) { }
+        }, nativeProof: true, theme: theme, localAiHost: host,
+            configure: transport => transport.DetectionOverride = new()
+            {
+                Candidates = [], ManualProviders = [], Workspace = "/synthetic-workspace", SetupComplete = false,
+            });
+    }
+
     [Fact]
     [Trait("Category", "NativeOnboardingProof")]
     public async Task FocusedAi_RequiredNotesAndConfirmationStayInOneDialogThroughVerification()
