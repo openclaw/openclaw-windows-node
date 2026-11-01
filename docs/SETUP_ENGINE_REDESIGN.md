@@ -667,7 +667,24 @@ Shared state bag passed to all steps. Contains:
 
 A single concrete runner executes Windows processes and WSL scripts (`wsl.exe -d <distro> -- bash -lc ...`) with timeouts, bounded output collection, and environment injection.
 
-Every command is logged with exe, sanitized args, timeout, exit code, sanitized stdout/stderr, and elapsed time.
+Commands start with `cmd.start` (exe, sanitized args and timeout). Non-timeout
+direct-child exit is observed separately as `cmd.exit`, before waiting for
+stdout/stderr EOF. Normal and runner-timeout results retain `cmd.done` (exit
+code, sanitized stdout/stderr and elapsed time).
+
+Caller cancellation instead emits `cmd.cancelled` and rethrows the original
+cancellation exception. Its state-only fields identify the interrupted phase
+(`execution` or `output-drain`), whether direct-child exit and each output EOF
+have been observed at that instant, elapsed time, and whether the runner's own
+timeout had already occurred. Cancellation during execution retains the
+existing best-effort kill; cancellation during post-exit drain does not add
+cleanup or waiting. These observations are not an atomic snapshot, do not
+confirm process-tree cleanup or guest process exit, and do not identify why a
+validator stalled. The new records contain no executable paths, arguments,
+configuration, identities, or raw/partial output. A caller-linked deadline is
+caller cancellation here, not a runner timeout.
+The `timed_out` field retains the existing catch-time classification; simultaneous
+caller cancellation and runner timeout cannot establish which happened first.
 
 ### TransactionJournal
 
