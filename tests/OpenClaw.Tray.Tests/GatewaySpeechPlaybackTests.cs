@@ -26,7 +26,7 @@ public sealed class GatewaySpeechPlaybackTests
         using var release = new ManualResetEventSlim();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         // Register last so CancelAsync pauses before notifying its linked child.
-        using var barrier = parent.Token.Register(() => { entered.TrySetResult(); release.Wait(Deadline); });
+        using var barrier = parent.Token.Register(() => { entered.TrySetResult(); Assert.True(release.Wait(Deadline)); });
         var cancellation = parent.CancelAsync();
         try
         {
