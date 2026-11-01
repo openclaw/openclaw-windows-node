@@ -491,7 +491,7 @@ begin
     if CompareText(RemoveQuotes(RunCommand), ExecutablePath) = 0 then
     begin
       if RegWriteStringValue(HKCU, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
-          '{#MyAutoStartName}', AddQuotes(ExecutablePath) + ' --background') then
+          '{#MyAutoStartName}', '"' + ExecutablePath + '" --background') then
         Log('Migrated existing Run registration to background launch.')
       else
         Log('Could not migrate Run registration. Re-enable Start with Windows in Settings.');

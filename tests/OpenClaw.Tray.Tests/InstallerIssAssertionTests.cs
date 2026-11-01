@@ -93,6 +93,19 @@ public sealed class InstallerIssAssertionTests
     }
 
     [Fact]
+    public void Installer_ArgumentFreeRunMigrationAlwaysQuotesTheExecutable()
+    {
+        var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
+        var start = iss.IndexOf("procedure MigrateLegacyBackgroundLaunch;", StringComparison.Ordinal);
+        var end = iss.IndexOf("  try", start, StringComparison.Ordinal);
+        var runMigration = iss[start..end];
+
+        Assert.Contains("CompareText(RemoveQuotes(RunCommand), ExecutablePath) = 0", runMigration);
+        Assert.Contains("""'{#MyAutoStartName}', '"' + ExecutablePath + '" --background')""", runMigration);
+        Assert.DoesNotContain("AddQuotes(ExecutablePath)", runMigration);
+    }
+
+    [Fact]
     public void Installer_DoesNotMigrateAWindowsDisabledStartupShortcut()
     {
         var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
