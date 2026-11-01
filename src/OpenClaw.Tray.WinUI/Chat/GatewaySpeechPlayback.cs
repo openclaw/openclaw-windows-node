@@ -19,7 +19,6 @@ public sealed class GatewaySpeechPlayback : IDisposable
     private string? _target;
     private CancellationTokenSource? _active;
     private long? _activeEpoch;
-    private bool _muted;
     private bool _disposed;
     public event Action<GatewaySpeechPlaybackState>? Changed;
 
@@ -45,15 +44,6 @@ public sealed class GatewaySpeechPlayback : IDisposable
             if (string.Equals(target, _target, StringComparison.Ordinal)) return;
             _target = target;
             Retire();
-        }
-    }
-
-    public void SetMuted(bool muted)
-    {
-        lock (_gate)
-        {
-            _muted = muted;
-            if (muted) Retire();
         }
     }
 
@@ -83,7 +73,7 @@ public sealed class GatewaySpeechPlayback : IDisposable
         CancellationTokenSource operation;
         lock (_gate)
         {
-            if (_disposed || !_playbackAllowed() || (!manual && _muted)) return;
+            if (_disposed || cancellationToken.IsCancellationRequested || !_playbackAllowed()) return;
             if (!manual && (_target is null || (responseTarget is not null
                 && !string.Equals(responseTarget, _target, StringComparison.Ordinal)))) return;
             client = _client;
@@ -106,12 +96,12 @@ public sealed class GatewaySpeechPlayback : IDisposable
             Publish(operation, new(GatewaySpeechPhase.Synthesizing));
             var audio = await client.SynthesizeSpeechAsync(text, epoch.Value, token)
                 .WaitAsync(TimeSpan.FromMilliseconds(GatewaySpeech.SynthesisTimeoutMs), token).ConfigureAwait(false);
-            EnsureCurrent(operation, client, epoch.Value, target);
+            EnsureCurrent(operation, client, epoch.Value, target, cancellationToken);
             Publish(operation, new(GatewaySpeechPhase.Playing, audio.Provider));
             Task playback;
             lock (_gate)
             {
-                EnsureCurrent(operation, client, epoch.Value, target);
+                EnsureCurrent(operation, client, epoch.Value, target, cancellationToken);
                 playback = play(audio, token);
             }
             try
@@ -127,7 +117,7 @@ public sealed class GatewaySpeechPlayback : IDisposable
         {
             lock (_gate)
             {
-                // Caller cancellation (for example unloading Preview) is terminal.
+                // Caller cancellation (for example stopping Read Aloud) is terminal.
                 // Stop/switch/disposal already detached this operation and own their state.
                 if (!_disposed && ReferenceEquals(_active, operation))
                     Changed?.Invoke(new(GatewaySpeechPhase.Idle));
@@ -160,13 +150,13 @@ public sealed class GatewaySpeechPlayback : IDisposable
         }
     }
 
-    private void EnsureCurrent(CancellationTokenSource operation, IOperatorGatewayClient client, long epoch, string? target)
+    private void EnsureCurrent(CancellationTokenSource operation, IOperatorGatewayClient client, long epoch, string? target, CancellationToken callerCancellation)
     {
         lock (_gate)
         {
             // A settings save can still be pending when the awaited response
             // arrives. Check current permission before admitting the next effect.
-            if (!_playbackAllowed()) operation.Cancel();
+            if (callerCancellation.IsCancellationRequested || !_playbackAllowed()) operation.Cancel();
             operation.Token.ThrowIfCancellationRequested();
             if (_disposed || !ReferenceEquals(_active, operation) || !ReferenceEquals(_client, client)
                 || !string.Equals(_target, target, StringComparison.Ordinal)

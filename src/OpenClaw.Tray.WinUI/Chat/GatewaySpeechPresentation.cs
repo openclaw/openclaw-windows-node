@@ -10,7 +10,6 @@ public static class GatewaySpeechPresentation
         GatewaySpeechFailure.Disconnected => "GatewayVoice_Disconnected",
         GatewaySpeechFailure.Unsupported => "GatewayVoice_Unsupported",
         GatewaySpeechFailure.PermissionRequired => "GatewayVoice_PermissionRequired",
-        GatewaySpeechFailure.ProviderUnavailable => "GatewayVoice_ProviderUnavailable",
         GatewaySpeechFailure.TextTooLong => "GatewayVoice_TextTooLong",
         GatewaySpeechFailure.InvalidAudio => "GatewayVoice_InvalidAudio",
         GatewaySpeechFailure.UnsupportedAudio => "GatewayVoice_UnsupportedAudio",

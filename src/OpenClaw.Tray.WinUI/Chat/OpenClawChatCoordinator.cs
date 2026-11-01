@@ -41,14 +41,13 @@ public sealed class OpenClawChatCoordinator : IDisposable
     private bool _isMuted;
     public bool IsMuted
     {
-        get => _isMuted;
+        get { lock (_gate) return _isMuted; }
         set
         {
-            _isMuted = value;
-            _gatewaySpeech.SetMuted(value);
-            if (value)
+            lock (_gate)
             {
-                StopSpeaking();
+                _isMuted = value;
+                if (value) StopSpeaking();
             }
         }
     }
@@ -189,7 +188,6 @@ public sealed class OpenClawChatCoordinator : IDisposable
     /// <summary>Requests cancellation of the current chat speech generation.</summary>
     public void StopSpeaking()
     {
-        StopGatewaySpeaking();
         CancellationTokenSource retiring;
         Task cancellation;
         lock (_gate)
@@ -226,13 +224,15 @@ public sealed class OpenClawChatCoordinator : IDisposable
         try
         {
             CancellationToken cancellationToken;
+            bool useGatewayVoice;
             lock (_gate)
             {
-                if (_disposed) return;
+                if (_disposed || !SpeechSetupReadiness.IsChatTtsPlaybackReady(_settings) || (!bypassMute && _isMuted)) return;
                 cancellationToken = _speechCancellation.Token;
+                useGatewayVoice = _settings.UseGatewayVoice;
                 // Intent belongs to the App capture domain even when STT is
                 // disabled and no VoiceService may be created yet.
-                if (muteVoiceCapture)
+                if (muteVoiceCapture && !useGatewayVoice)
                     playbackMute = _acquirePlaybackMute();
             }
 
@@ -247,11 +247,16 @@ public sealed class OpenClawChatCoordinator : IDisposable
                 Interrupt = true
             };
 
-            if (_settings.UseGatewayVoice)
+            if (useGatewayVoice)
             {
                 var tts = _nodeServiceAccessor()?.TextToSpeech ?? GetFallbackTextToSpeechService();
                 await _gatewaySpeech.SpeakAsync(speakText, manual: bypassMute,
-                    tts.PlayGatewayAudioAsync, responseTarget, cancellationToken).ConfigureAwait(false);
+                    (audio, token) =>
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (muteVoiceCapture) playbackMute = _acquirePlaybackMute();
+                        return tts.PlayGatewayAudioAsync(audio, token);
+                    }, responseTarget, cancellationToken).ConfigureAwait(false);
             }
             else
             {

@@ -8245,7 +8245,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>Connectez une Gateway dans les paramètres de connexion pour utiliser sa voix.</value></data>
   <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>Cette Gateway n’annonce pas les RPC vocaux requis. Mettez-la à jour ou désactivez la voix Gateway.</value></data>
   <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>La voix Gateway nécessite les droits operator.write. Vérifiez l’approbation de cet appareil sur la Gateway. Companion ne modifie pas les autorisations.</value></data>
-  <data name="GatewayVoice_ProviderUnavailable" xml:space="preserve"><value>Aucun fournisseur vocal configuré n’est prêt sur la Gateway. Configurez sa synthèse vocale ou désactivez la voix Gateway.</value></data>
   <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>Le texte est vide ou dépasse la limite de 4096 caractères de Companion. Choisissez un message plus court.</value></data>
   <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>La Gateway a renvoyé un son vide, invalide ou trop volumineux. Vérifiez sa configuration vocale. Aucun son n’a été lu.</value></data>
   <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>Ce format audio n’est pas pris en charge. Configurez une sortie MP3 ou WAV sur la Gateway.</value></data>

@@ -8246,7 +8246,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>Verbind een Gateway in de verbindingsinstellingen om de stem te gebruiken.</value></data>
   <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>Deze Gateway biedt de vereiste spraak-RPC’s niet aan. Werk de Gateway bij of schakel Gateway-spraak uit.</value></data>
   <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>Gateway-spraak vereist operator.write. Controleer de apparaatgoedkeuring op de Gateway. Companion wijzigt geen rechten.</value></data>
-  <data name="GatewayVoice_ProviderUnavailable" xml:space="preserve"><value>Geen ingestelde Gateway-spraakprovider is gereed. Configureer TTS op de Gateway of schakel Gateway-spraak uit.</value></data>
   <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>De tekst is leeg of langer dan de limiet van 4096 tekens van Companion. Kies een korter bericht.</value></data>
   <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>De Gateway gaf lege, ongeldige of te grote audio terug. Controleer de TTS-instellingen. Er is niets afgespeeld.</value></data>
   <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>Dit Gateway-audioformaat wordt niet ondersteund. Configureer MP3- of WAV-uitvoer op de Gateway.</value></data>

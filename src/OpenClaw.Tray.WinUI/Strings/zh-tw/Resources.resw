@@ -8245,7 +8245,6 @@
   <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>請在連線設定中連接 Gateway 以使用其語音。</value></data>
   <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>此 Gateway 未宣告必要的語音 RPC。請更新 Gateway 或關閉 Gateway 語音。</value></data>
   <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>Gateway 語音需要 operator.write 權限。請檢查 Gateway 對此裝置的核准。Companion 不會變更權限。</value></data>
-  <data name="GatewayVoice_ProviderUnavailable" xml:space="preserve"><value>沒有已就緒的 Gateway 語音供應商。請在 Gateway 上設定 TTS 或關閉 Gateway 語音。</value></data>
   <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>語音文字為空或超過 Companion 的 4096 字元限制。請選擇較短的訊息。</value></data>
   <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>Gateway 傳回空白、無效或過大的音訊。請檢查其 TTS 設定。未播放任何音訊。</value></data>
   <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>不支援此 Gateway 音訊格式。請在 Gateway 上設定 MP3 或 WAV 輸出。</value></data>

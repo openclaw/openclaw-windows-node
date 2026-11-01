@@ -11,6 +11,90 @@ public sealed class GatewaySpeechPermissionTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
 
+    [Fact]
+    public async Task MuteStopsAutomaticSpeechButStillAllowsManualReadAloud()
+    {
+        using var temp = new TempDirectory();
+        var settings = new SettingsManager(temp.Path) { UseGatewayVoice = true, NodeTtsEnabled = true };
+        using var coordinator = new OpenClawChatCoordinator(settings, () => null, NullLogger.Instance, null, () => null);
+        var (speech, wire) = Connect(coordinator);
+        coordinator.SetSpeechTarget("conversation-a");
+        wire.Audio = new TaskCompletionSource<GatewaySpeechAudio>(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        var automatic = coordinator.SpeakResponseAsync("Allowed automatic reply.", "conversation-a");
+        Assert.Equal(1, wire.SynthesisCalls);
+        coordinator.IsMuted = true;
+        await automatic.WaitAsync(Deadline);
+        await coordinator.SpeakResponseAsync("Muted automatic reply.", "conversation-a");
+        Assert.Equal(1, wire.SynthesisCalls);
+        var manual = coordinator.SpeakChatTextAsync("Manual reply while muted.");
+        Assert.Equal(2, wire.SynthesisCalls);
+        speech.Stop();
+        await manual.WaitAsync(Deadline);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StopOrMuteDoesNotCancelReentrantManualRecovery(bool mute)
+    {
+        using var temp = new TempDirectory();
+        var settings = new SettingsManager(temp.Path) { UseGatewayVoice = true, NodeTtsEnabled = true };
+        using var coordinator = new OpenClawChatCoordinator(settings, () => null, NullLogger.Instance, null, () => null);
+        var (speech, wire) = Connect(coordinator);
+        wire.Audio = new TaskCompletionSource<GatewaySpeechAudio>(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        var retiring = coordinator.SpeakChatTextAsync("Retiring synthetic request.");
+        Task? recovery = null;
+        var entered = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var callback = wire.LastCancellation.Register(() =>
+        {
+            recovery = coordinator.SpeakChatTextAsync("New synthetic manual recovery.");
+            entered.TrySetResult(wire.LastCancellation);
+        });
+        try
+        {
+            if (mute) coordinator.IsMuted = true;
+            else coordinator.StopSpeaking();
+            var recoveryToken = await entered.Task.WaitAsync(Deadline);
+            await retiring.WaitAsync(Deadline);
+            Assert.Equal(2, wire.SynthesisCalls);
+            Assert.False(recoveryToken.IsCancellationRequested);
+            Assert.NotNull(recovery);
+            Assert.False(recovery.IsCompleted);
+            Assert.Equal(GatewaySpeechPhase.Synthesizing, coordinator.SpeechState.Phase);
+        }
+        finally
+        {
+            speech.Stop();
+            await retiring.WaitAsync(Deadline);
+            if (recovery is not null) await recovery.WaitAsync(Deadline);
+        }
+    }
+
+    [Fact]
+    public async Task RejectedBackgroundReplyDoesNotAcquireCaptureMute()
+    {
+        using var temp = new TempDirectory();
+        var settings = new SettingsManager(temp.Path) { UseGatewayVoice = true, NodeTtsEnabled = true };
+        using var mute = new PlaybackMuteState();
+        var transitions = new List<bool>();
+        using var capture = mute.RegisterCapture(transitions.Add);
+        transitions.Clear();
+        var acquisitions = 0;
+        using var coordinator = new OpenClawChatCoordinator(settings, () => null, NullLogger.Instance, null, () =>
+        {
+            acquisitions++;
+            return mute.Acquire();
+        });
+        var (_, wire) = Connect(coordinator);
+        coordinator.SetSpeechTarget("conversation-a");
+
+        await coordinator.SpeakResponseAsync("Background synthetic reply.", "conversation-b").WaitAsync(Deadline);
+
+        Assert.Equal(0, wire.SynthesisCalls);
+        Assert.Equal(0, acquisitions);
+        Assert.Empty(transitions);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -38,8 +122,8 @@ public sealed class GatewaySpeechPermissionTests
             settings.NodeTtsEnabled = false;
             settings.SaveOrThrow();
             Assert.False(new SettingsManager(temp.Path).NodeTtsEnabled);
-            Assert.True(token.IsCancellationRequested);
             await run.WaitAsync(Deadline);
+            Assert.True(token.IsCancellationRequested);
             Assert.Equal(GatewaySpeechPhase.Idle, coordinator.SpeechState.Phase);
         }
         finally

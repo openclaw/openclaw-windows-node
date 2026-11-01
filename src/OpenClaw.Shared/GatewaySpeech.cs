@@ -4,7 +4,7 @@ namespace OpenClaw.Shared;
 
 public enum GatewaySpeechFailure
 {
-    Disconnected, Unsupported, PermissionRequired, ProviderUnavailable,
+    Disconnected, Unsupported, PermissionRequired,
     TextTooLong, InvalidAudio, UnsupportedAudio, TimedOut, SynthesisFailed, PlaybackFailed
 }
 

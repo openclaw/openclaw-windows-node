@@ -11,9 +11,66 @@ public sealed class GatewaySpeechPlaybackTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
 
+    [Fact]
+    public async Task ParentRetirementRejectsAudioBeforeLinkedCancellationPropagates()
+    {
+        var (client, wire) = SpeechGatewayProxy.Create();
+        var audio = new TaskCompletionSource<GatewaySpeechAudio>(TaskCreationOptions.RunContinuationsAsynchronously);
+        wire.Synthesis = audio.Task;
+        using var speech = new GatewaySpeechPlayback();
+        speech.SetClient(client);
+        using var parent = new CancellationTokenSource();
+        var plays = 0;
+        var run = speech.SpeakAsync("Synthetic pending reply.", true,
+            (_, _) => { plays++; return Task.CompletedTask; }, cancellationToken: parent.Token);
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Register last so CancelAsync pauses before notifying its linked child.
+        using var barrier = parent.Token.Register(() => { entered.TrySetResult(); release.Wait(Deadline); });
+        var cancellation = parent.CancelAsync();
+        try
+        {
+            await entered.Task.WaitAsync(Deadline);
+            Assert.False(wire.LastCancellation.IsCancellationRequested);
+            audio.SetResult(SpeechGatewayProxy.Clip);
+            await run.WaitAsync(Deadline);
+            Assert.Equal(0, plays);
+        }
+        finally
+        {
+            release.Set();
+            await cancellation.WaitAsync(Deadline);
+            speech.Stop();
+            await run.WaitAsync(Deadline);
+        }
+    }
+
+    [Fact]
+    public async Task PreCanceledAdmissionCannotRetireNewerSpeech()
+    {
+        var (client, wire) = SpeechGatewayProxy.Create();
+        wire.Synthesis = new TaskCompletionSource<GatewaySpeechAudio>(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        using var speech = new GatewaySpeechPlayback();
+        speech.SetClient(client);
+        var current = speech.SpeakAsync("Current synthetic request.", true, (_, _) => Task.CompletedTask);
+        var currentToken = wire.LastCancellation;
+        try
+        {
+            await speech.SpeakAsync("Retired synthetic request.", true,
+                (_, _) => throw new Exception("Must not play"), cancellationToken: new CancellationToken(canceled: true));
+            Assert.False(currentToken.IsCancellationRequested);
+            Assert.False(current.IsCompleted);
+            Assert.Equal(1, wire.SynthesisCalls);
+        }
+        finally
+        {
+            speech.Stop();
+            await current.WaitAsync(Deadline);
+        }
+    }
+
     [Theory]
     [InlineData("stop")]
-    [InlineData("mute")]
     [InlineData("target")]
     [InlineData("gateway")]
     [InlineData("disconnect")]
@@ -32,7 +89,6 @@ public sealed class GatewaySpeechPlaybackTests
         switch (retirement)
         {
             case "stop": speech.Stop(); break;
-            case "mute": speech.SetMuted(true); break;
             case "target": speech.SetTarget("conversation-b"); break;
             case "gateway": speech.SetClient(SpeechGatewayProxy.Create().Client); break;
             case "disconnect": wire.Disconnect(); break;
@@ -90,23 +146,6 @@ public sealed class GatewaySpeechPlaybackTests
     }
 
     [Fact]
-    public async Task MutedAutomaticSpeechIsSuppressedButManualReadAloudStillWorks()
-    {
-        var (client, wire) = SpeechGatewayProxy.Create();
-        using var speech = new GatewaySpeechPlayback();
-        speech.SetClient(client);
-        speech.SetTarget("conversation-a");
-        speech.SetMuted(true);
-        var plays = 0;
-        Task Play(GatewaySpeechAudio _, CancellationToken ct) { plays++; return Task.CompletedTask; }
-        await speech.SpeakAsync("Automatic.", false, Play);
-        Assert.Equal(0, wire.SynthesisCalls);
-        await speech.SpeakAsync("Manual.", true, Play);
-        Assert.Equal(1, wire.SynthesisCalls);
-        Assert.Equal(1, plays);
-    }
-
-    [Fact]
     public async Task ResponseFromAnotherChatTargetDoesNotDispatch()
     {
         var (client, wire) = SpeechGatewayProxy.Create();
@@ -158,7 +197,7 @@ public sealed class GatewaySpeechPlaybackTests
     [Theory]
     [InlineData("conversation-a")]
     [InlineData(null)]
-    public async Task LateAutomaticReplyCannotInterruptManualPreviewWithoutAnActiveTarget(string? responseTarget)
+    public async Task LateAutomaticReplyCannotInterruptManualReadAloudWithoutAnActiveTarget(string? responseTarget)
     {
         var (client, wire) = SpeechGatewayProxy.Create();
         var audio = new TaskCompletionSource<GatewaySpeechAudio>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -282,7 +321,7 @@ public sealed class GatewaySpeechPlaybackTests
     }
 
     [Fact]
-    public async Task ExternalPreviewCancellationPublishesIdleWithoutLateFailure()
+    public async Task ExternalReadAloudCancellationPublishesIdleWithoutLateFailure()
     {
         var (client, wire) = SpeechGatewayProxy.Create();
         var late = new TaskCompletionSource<GatewaySpeechAudio>(TaskCreationOptions.RunContinuationsAsynchronously);
