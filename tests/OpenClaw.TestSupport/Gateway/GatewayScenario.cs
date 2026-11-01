@@ -51,6 +51,7 @@ public sealed partial class GatewayScenario
         "logs.tail",
     ];
 
+    private readonly bool _accessibilityBaseline;
     private readonly bool _allowAgentCreation;
     private readonly bool _publishedModelCatalog;
     private readonly bool _allowSessionMutations;
@@ -63,7 +64,7 @@ public sealed partial class GatewayScenario
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -76,8 +77,10 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
+        bool accessibilityBaseline = false)
     {
+        _accessibilityBaseline = accessibilityBaseline;
         _sessions = sessions;
         _reads = reads;
         _setup = setup;
@@ -110,6 +113,7 @@ public sealed partial class GatewayScenario
     {
         BrowseName => CreateBrowse(),
         InteractiveName => CreateInteractive(),
+        "accessibility-baseline" => CreateAccessibilityBaseline(),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
 
@@ -347,7 +351,7 @@ public sealed partial class GatewayScenario
                     ? Array.Empty<string>()
                     : IsInteractive
                         ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
-                        : _contextUsage is not null ? new[] { "operator.read", "operator.write" }
+                        : _contextUsage is not null || _accessibilityBaseline ? new[] { "operator.read", "operator.write" }
                         : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null
                             ? new[] { "operator.admin", "operator.read" }
                             : new[] { _setup is null ? "operator.read" : "operator.admin" }
@@ -435,7 +439,7 @@ public sealed partial class GatewayScenario
             "sessions.preview" => Preview(parameters),
             "chat.history" => History(parameters),
             "models.list" => Models(parameters, containsModelSession ?? ContainsSession),
-            "usage.cost" => Cost(parameters),
+            "usage.cost" => _accessibilityBaseline ? AccessibilityCost(parameters) : Cost(parameters),
             _ when _reads.ContainsKey(method) => Read(method, parameters),
             _ => throw new FixtureRequestException("METHOD_NOT_FOUND", "Unknown fixture Gateway method.", unexpected: true)
         };
