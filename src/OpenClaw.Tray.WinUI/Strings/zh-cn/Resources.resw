@@ -7430,7 +7430,7 @@
   <data name="Onboarding_V3_ProfileCustomDescription.Text" xml:space="preserve"><value>保留当前选择，并在下方进行调整。</value></data>
   <data name="Onboarding_AiSetup_OnThisPc" xml:space="preserve"><value>在此电脑上</value></data>
   <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>本地 AI</value></data>
-  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>在这台电脑上设置模型，或连接到 LM Studio 或 Ollama。</value></data>
+  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>全新本地模型设置优先使用 Llama.app，或保留现有本地 AI 服务。</value></data>
   <data name="Onboarding_AiSetup_LocalSetUpDescription" xml:space="preserve"><value>在这台电脑上运行，无需支付服务商按量使用费。我们会帮助你设置适合硬件的模型。</value></data>
   <data name="Onboarding_AiSetup_CloudDetail" xml:space="preserve"><value>使用在线服务提供的 AI。</value></data>
   <data name="Onboarding_AiSetup_LmStudioDetail" xml:space="preserve"><value>连接你已在 LM Studio 中使用的模型。</value></data>
@@ -8236,4 +8236,10 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在处理此问题。请刷新以查看其状态。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>请为每个问题选择有效的答案。</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppDetail" xml:space="preserve"><value>Llama.app 自行管理服务器和模型下载。安装或打开应用，选择模型并启用 API（默认为 127.0.0.1:9931），然后重新检测，并明确选择检测到的模型或 Llama.app 设置。</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppWslDetail" xml:space="preserve"><value>对于 WSL 网关，Windows 回环地址并非自动可达。请使用已验证可达的镜像网络回环连接，或明确配置的 Windows 私有地址端点及应用管理的 Bearer 密钥。Companion 不会更改网络或防火墙设置。</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppGatewayRequired" xml:space="preserve"><value>此网关尚未提供 Llama.app 设置或可用模型。这些链接用于打开安装和模型选择说明，并不表示 AI 设置已完成。</value></data>
+  <data name="Onboarding_AiSetup_GetLlamaApp" xml:space="preserve"><value>获取 Llama.app</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppGuide" xml:space="preserve"><value>API 设置指南</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppProviderDetail" xml:space="preserve"><value>连接应用管理的 API。在您明确选择模型之前，现有模型、提供商和默认设置保持不变。</value></data>
 </root>

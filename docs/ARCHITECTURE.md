@@ -176,6 +176,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Interactive onboarding routes and installation-step selection | `OnboardingFlowPolicy` | authoritative |
 | Accessible provider/model and completion-card invocation | `SetupActionCard` supplies the native Invoke provider; `AiSetupPage` and `AiReadyPage` retain their guarded selection and completion actions | authoritative |
 | Setup-lifetime capability/profile/explicit Custom intent/consent draft and ordered installation requirements | `SetupAccessDraft` + `SetupCapabilityProfiles`, owned by `SetupWindow` | authoritative |
+| External Llama.app onboarding presentation | `LlamaAppSetupPresentation` owns fresh-only preference and model identity; `AiSetupPresentationModel` groups only Gateway-advertised supported main-model actions. `AiSetupPage` applies the localized handoff and existing choice/verification flow, never process, cache, credential or managed-provider ownership | authoritative |
 | Setup provider artwork resolution and bounded page-owned download lifetime | `GatewayAiSetupPresentation` + `ProviderArtworkSession` + `ProviderArtworkLoader`, rendered by `ProviderArtwork` | authoritative |
 | Native setup editor mounting and committed-result routing | `SetupWindow` through `ISetupNativeConnectionHost` + `SetupNativeConnectionPage` | authoritative |
 | Setup-only Windows privacy preview and probing | Retired; current Permissions settings and runtime consent retain their existing owners | closed |
