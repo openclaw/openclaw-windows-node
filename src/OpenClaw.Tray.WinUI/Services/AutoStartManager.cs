@@ -13,6 +13,7 @@ namespace OpenClawTray.Services;
 public static class AutoStartManager
 {
     private const string RegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+    private const string StartupApprovalRegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
     private static readonly string AppName = AppIdentity.AutoStartRegistryName;
     // Deliberately no legacy-autostart cleanup here. The scheduled task named
     // AppIdentity.StartupTaskName is created by installer.iss and removed by the Inno
@@ -170,12 +171,30 @@ public static class AutoStartManager
             return Task.FromResult(false);
 
         if (!PackageHelper.IsPackaged)
-            return Task.FromResult(configured);
+            return AutoStartReconciliation.ReconcileUnpackagedAsync(configured, () => Task.Run(IsInstallerRunEnabled));
 
         return AutoStartReconciliation.ReconcileAsync(
             configured,
             QueryPackagedAutoStartAsync,
             SetPackagedAutoStartAsync);
+    }
+
+    private static bool IsInstallerRunEnabled()
+    {
+        // This startup-only adoption path is deliberately narrower than the display query.
+        // A disabled scheduled task still exists, so presence must never enable a preference.
+        try
+        {
+            using var run = Registry.CurrentUser.OpenSubKey(RegistryKey, writable: false);
+            using var approval = Registry.CurrentUser.OpenSubKey(StartupApprovalRegistryKey, writable: false);
+            return AutoStartReconciliation.IsEnabledInstallerRun(
+                run?.GetValue(AppName), Environment.ProcessPath, approval?.GetValue(AppName));
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Could not inspect installer startup registration: {ex.Message}");
+            return false;
+        }
     }
 
     private static void ThrowIfFixtureMutation()

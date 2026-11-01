@@ -24,6 +24,70 @@ public sealed class AutoStartReconciliationTests
 
     private static Func<bool, Task> SetThrows(Exception ex) => _ => Task.FromException(ex);
 
+    [Theory]
+    [InlineData(-1, true)]
+    [InlineData(2, true)]
+    [InlineData(6, true)]
+    [InlineData(3, false)]
+    [InlineData(7, false)]
+    [InlineData(0, false)]
+    [InlineData(1, false)]
+    [InlineData(258, false)]
+    public void InstallerRun_OnlyAdoptsAnOwnedCommandWithoutWindowsDisablement(int approvalState, bool expected)
+    {
+        const string executable = @"C:\Program Files\OpenClaw\OpenClaw.Tray.WinUI.exe";
+        byte[]? approval = null;
+        if (approvalState >= 0)
+        {
+            approval = new byte[12];
+            BitConverter.GetBytes(approvalState).CopyTo(approval, 0);
+        }
+
+        Assert.Equal(expected, AutoStartReconciliation.IsEnabledInstallerRun(
+            $"\"{executable}\" --background", executable, approval));
+    }
+
+    [Fact]
+    public void InstallerRun_RejectsMissingForeignOrMalformedRegistrations()
+    {
+        const string executable = @"C:\OpenClaw\OpenClaw.Tray.WinUI.exe";
+        var command = $"\"{executable}\" --background";
+        foreach (var value in new object?[] { null, 42, "", @"C:\other.exe --background", $"\"{executable}\"" })
+            Assert.False(AutoStartReconciliation.IsEnabledInstallerRun(value, executable, null));
+        foreach (var approval in new object[] { "enabled", new byte[0], new byte[] { 2 }, new byte[16] })
+            Assert.False(AutoStartReconciliation.IsEnabledInstallerRun(command, executable, approval));
+        Assert.False(AutoStartReconciliation.IsEnabledInstallerRun(command, null, null));
+    }
+
+    [Fact]
+    public void UnpackagedReconciliation_DoesNotPersistScheduledTaskPresence()
+    {
+        var manager = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "AutoStartManager.cs"));
+        var start = manager.IndexOf("public static Task<bool> ReconcileAutoStartAsync", StringComparison.Ordinal);
+        var end = manager.IndexOf("private static void ThrowIfFixtureMutation", start, StringComparison.Ordinal);
+        var reconciliation = manager[start..end];
+        Assert.DoesNotContain("Task.Run(IsAutoStartEnabled)", reconciliation);
+        Assert.DoesNotContain("WindowsStartupTaskRegistration.Exists", reconciliation);
+        Assert.Contains("Task.Run(IsInstallerRunEnabled)", reconciliation);
+        Assert.Contains("AutoStartReconciliation.IsEnabledInstallerRun", reconciliation);
+        Assert.Contains(@"Explorer\StartupApproved\Run", manager);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    public async Task Unpackaged_ReportsAnExistingRegistrationAndKeepsAnEnabledPreference(
+        bool configured, bool registered, bool expected)
+    {
+        var result = await AutoStartReconciliation.ReconcileUnpackagedAsync(
+            configured, () => Task.FromResult(registered));
+
+        Assert.Equal(expected, result);
+    }
+
     [Fact]
     public async Task QueryThrows_KeepsEnabledPreference()
     {
