@@ -5,7 +5,7 @@ namespace OpenClawTray.Chat;
 public enum GatewaySpeechPhase { Idle, Synthesizing, Playing, Completed, Failed }
 
 public sealed record GatewaySpeechPlaybackState(
-    GatewaySpeechPhase Phase, string? Provider = null, string? ConfiguredProvider = null, GatewaySpeechFailure? Failure = null);
+    GatewaySpeechPhase Phase, string? Provider = null, GatewaySpeechFailure? Failure = null);
 
 /// <summary>
 /// Owns pending delegated speech across Stop, mute, target and connection changes.
@@ -104,14 +104,10 @@ public sealed class GatewaySpeechPlayback : IDisposable
             if (string.IsNullOrWhiteSpace(text) || text.Length > GatewaySpeech.MaximumTextLength)
                 throw new GatewaySpeechException(GatewaySpeechFailure.TextTooLong);
             Publish(operation, new(GatewaySpeechPhase.Synthesizing));
-            var status = await client.GetSpeechStatusAsync(epoch.Value, token)
-                .WaitAsync(TimeSpan.FromMilliseconds(GatewaySpeech.StatusTimeoutMs), token).ConfigureAwait(false);
-            EnsureCurrent(operation, client, epoch.Value, target);
-            if (!status.IsReady) throw new GatewaySpeechException(GatewaySpeechFailure.ProviderUnavailable);
             var audio = await client.SynthesizeSpeechAsync(text, epoch.Value, token)
                 .WaitAsync(TimeSpan.FromMilliseconds(GatewaySpeech.SynthesisTimeoutMs), token).ConfigureAwait(false);
             EnsureCurrent(operation, client, epoch.Value, target);
-            Publish(operation, new(GatewaySpeechPhase.Playing, audio.Provider, status.Provider));
+            Publish(operation, new(GatewaySpeechPhase.Playing, audio.Provider));
             Task playback;
             lock (_gate)
             {
@@ -125,7 +121,7 @@ public sealed class GatewaySpeechPlayback : IDisposable
             catch (OperationCanceledException) { throw; }
             catch (TimeoutException) { throw; }
             catch (Exception) { throw new GatewaySpeechException(GatewaySpeechFailure.PlaybackFailed); }
-            Publish(operation, new(GatewaySpeechPhase.Completed, audio.Provider, status.Provider));
+            Publish(operation, new(GatewaySpeechPhase.Completed, audio.Provider));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {

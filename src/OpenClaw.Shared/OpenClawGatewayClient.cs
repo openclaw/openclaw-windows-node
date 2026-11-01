@@ -2529,7 +2529,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     okWiz.ValueKind == JsonValueKind.False)
                 {
                     var message = TryGetErrorMessage(root) ?? "wizard request failed";
-                    wizardCompletion.TryFault(requestMethod is "tts.speak" or "tts.status"
+                    wizardCompletion.TryFault(requestMethod == "tts.speak"
                         ? new GatewaySpeechException(ClassifySpeechRejection(message))
                         : QuestionRequestError(pending.Method, root)
                             ?? new InvalidOperationException(message));

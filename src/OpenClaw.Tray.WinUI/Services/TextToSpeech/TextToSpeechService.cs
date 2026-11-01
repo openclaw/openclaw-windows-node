@@ -485,7 +485,7 @@ public sealed class TextToSpeechService : IDisposable
         CancellationToken cancellationToken)
     {
         if (interrupt)
-            InterruptActivePlayback();
+            InterruptActivePlayback(cancellationToken);
 
         await _playbackGate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -542,11 +542,13 @@ public sealed class TextToSpeechService : IDisposable
         }
     }
 
-    private void InterruptActivePlayback()
+    private void InterruptActivePlayback(CancellationToken cancellationToken = default)
     {
         TaskCompletionSource<bool>? completion;
         lock (_activeLock)
         {
+            // Retired synthesis must not select a newer player to interrupt.
+            cancellationToken.ThrowIfCancellationRequested();
             completion = _activeCompletion;
         }
 

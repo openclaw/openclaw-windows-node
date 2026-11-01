@@ -38,6 +38,8 @@ public class SettingsRoundTripTests
 
             Assert.Equal(useGatewayVoice, settings.UseGatewayVoice);
             Assert.Equal(provider, settings.TtsProvider);
+            Assert.Equal(provider, OpenClaw.Shared.Capabilities.TtsCapability.ResolveProvider(null, settings.TtsProvider));
+            Assert.DoesNotContain("gateway", OpenClaw.Shared.Capabilities.TtsCapability.AllProviders);
             Assert.True(settings.NodeTtsEnabled);
             Assert.False(settings.VoiceTtsEnabled);
         }

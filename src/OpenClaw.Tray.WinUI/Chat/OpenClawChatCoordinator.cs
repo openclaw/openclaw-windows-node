@@ -12,6 +12,9 @@ public sealed class OpenClawChatCoordinator : IDisposable
 {
     private readonly SettingsManager _settings;
     private readonly Func<NodeService?> _nodeServiceAccessor;
+    private readonly Func<IDisposable?> _acquirePlaybackMute;
+    private readonly Func<TtsSpeakArgs, CancellationToken, Task> _speakAsync;
+    private readonly Action _stopPlayback;
     private readonly IOpenClawLogger _logger;
     private readonly Action<Action>? _post;
     private readonly object _gate = new();
@@ -20,7 +23,8 @@ public sealed class OpenClawChatCoordinator : IDisposable
     private TextToSpeechService? _fallbackTextToSpeech;
     private string? _lastManualSpeechText;
     private DateTimeOffset _lastManualSpeechAt;
-    private readonly Dictionary<VoiceService, int> _voiceCaptureMutes = new();
+    private CancellationTokenSource _speechCancellation = new();
+    internal static readonly TimeSpan PlaybackMuteTail = TimeSpan.FromMilliseconds(300);
     private readonly GatewaySpeechPlayback _gatewaySpeech;
     private bool _gatewayVoiceEnabled;
     private bool _ttsPlaybackAllowed;
@@ -44,10 +48,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
             _gatewaySpeech.SetMuted(value);
             if (value)
             {
-                PublishSpeechState(new(GatewaySpeechPhase.Idle));
-                // Stop any currently playing speech immediately
-                try { (_nodeServiceAccessor()?.TextToSpeech ?? GetFallbackTextToSpeechService()).StopSpeaking(); }
-                catch (Exception ex) { _logger.Debug($"OpenClawChatCoordinator: StopSpeaking during mute failed: {ex.Message}"); }
+                StopSpeaking();
             }
         }
     }
@@ -56,12 +57,35 @@ public sealed class OpenClawChatCoordinator : IDisposable
         SettingsManager settings,
         Func<NodeService?> nodeServiceAccessor,
         IOpenClawLogger logger,
-        Action<Action>? post)
+        Action<Action>? post,
+        Func<IDisposable?> acquirePlaybackMute)
+        : this(settings, nodeServiceAccessor, logger, post, acquirePlaybackMute, null, null)
+    {
+    }
+
+    // The native synthesis/player boundary is replaceable without replacing
+    // coordinator mute, cancellation or resolver behavior.
+    internal OpenClawChatCoordinator(
+        SettingsManager settings,
+        Func<NodeService?> nodeServiceAccessor,
+        IOpenClawLogger logger,
+        Action<Action>? post,
+        Func<IDisposable?> acquirePlaybackMute,
+        Func<TtsSpeakArgs, CancellationToken, Task>? speakAsync,
+        Action? stopPlayback)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _nodeServiceAccessor = nodeServiceAccessor ?? throw new ArgumentNullException(nameof(nodeServiceAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _post = post;
+        _acquirePlaybackMute = acquirePlaybackMute ?? throw new ArgumentNullException(nameof(acquirePlaybackMute));
+        _speakAsync = speakAsync ?? (async (args, token) =>
+        {
+            var tts = _nodeServiceAccessor()?.TextToSpeech ?? GetFallbackTextToSpeechService();
+            await tts.SpeakAsync(args, token).ConfigureAwait(false);
+        });
+        _stopPlayback = stopPlayback ?? (() =>
+            (_nodeServiceAccessor()?.TextToSpeech ?? _fallbackTextToSpeech)?.StopSpeaking());
         _gatewayVoiceEnabled = settings.UseGatewayVoice;
         _ttsPlaybackAllowed = SpeechSetupReadiness.IsChatTtsPlaybackReady(settings);
         _gatewaySpeech = new(() => SpeechSetupReadiness.IsChatTtsPlaybackReady(_settings));
@@ -100,10 +124,6 @@ public sealed class OpenClawChatCoordinator : IDisposable
         _speechTarget = target;
         PublishSpeechState(new(GatewaySpeechPhase.Idle));
     }
-
-    public Task PreviewGatewayVoiceAsync(string text, CancellationToken cancellationToken) =>
-        SpeakConfiguredTextAsync(text, muteVoiceCapture: true, bypassMute: true,
-            forceGateway: true, cancellationToken: cancellationToken);
 
     public OpenClawChatDataProvider? Provider
     {
@@ -160,42 +180,60 @@ public sealed class OpenClawChatCoordinator : IDisposable
         return SpeakConfiguredTextAsync(text, muteVoiceCapture: true, bypassMute: true);
     }
 
-    /// <summary>Stops any currently playing TTS audio immediately.</summary>
     public void StopGatewaySpeaking()
     {
         _gatewaySpeech.Stop();
         PublishSpeechState(new(GatewaySpeechPhase.Idle));
     }
 
+    /// <summary>Requests cancellation of the current chat speech generation.</summary>
     public void StopSpeaking()
     {
         StopGatewaySpeaking();
-        try { (_nodeServiceAccessor()?.TextToSpeech ?? GetFallbackTextToSpeechService()).StopSpeaking(); }
-        catch (Exception ex) { _logger.Debug($"OpenClawChatCoordinator.StopSpeaking failed: {ex.Message}"); }
+        CancellationTokenSource retiring;
+        Task cancellation;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            retiring = _speechCancellation;
+            _speechCancellation = new CancellationTokenSource();
+            // Mark retirement before a fresh generation can enter. Callbacks
+            // run asynchronously so they can admit recovery without this lock.
+            cancellation = retiring.CancelAsync();
+        }
+        // Each chat playback already receives this token. Cancel only the
+        // retiring generation; a global player interrupt could stop a newer
+        // request admitted while cancellation callbacks are running.
+        _ = DisposeRetiredSpeechCancellationAsync(retiring, cancellation);
+    }
+
+    private async Task DisposeRetiredSpeechCancellationAsync(CancellationTokenSource retiring, Task cancellation)
+    {
+        try { await cancellation.ConfigureAwait(false); }
+        catch (Exception ex) { _logger.Debug($"OpenClawChatCoordinator: cancellation callback failed: {ex.Message}"); }
+        finally { retiring.Dispose(); }
     }
 
     public Task SpeakResponseAsync(string text, string? sessionKey = null) =>
         SpeakConfiguredTextAsync(text, muteVoiceCapture: true, bypassMute: false, responseTarget: sessionKey);
 
     private async Task SpeakConfiguredTextAsync(string text, bool muteVoiceCapture, bool bypassMute = false,
-        bool forceGateway = false, string? responseTarget = null, CancellationToken cancellationToken = default)
+        string? responseTarget = null)
     {
         if (!SpeechSetupReadiness.IsChatTtsPlaybackReady(_settings) || (!bypassMute && IsMuted)) return;
-        var useGatewayVoice = forceGateway || _settings.UseGatewayVoice;
-        var voiceService = _nodeServiceAccessor()?.VoiceService;
-        var mutedVoiceCapture = false;
+        IDisposable? playbackMute = null;
 
         try
         {
-            if (muteVoiceCapture && voiceService is not null)
+            CancellationToken cancellationToken;
+            lock (_gate)
             {
-                lock (_gate)
-                {
-                    _voiceCaptureMutes.TryGetValue(voiceService, out var count);
-                    _voiceCaptureMutes[voiceService] = count + 1;
-                    voiceService.IsMutedForPlayback = true;
-                    mutedVoiceCapture = true;
-                }
+                if (_disposed) return;
+                cancellationToken = _speechCancellation.Token;
+                // Intent belongs to the App capture domain even when STT is
+                // disabled and no VoiceService may be created yet.
+                if (muteVoiceCapture)
+                    playbackMute = _acquirePlaybackMute();
             }
 
             var speakText = SanitizeForSpeech(text);
@@ -209,44 +247,31 @@ public sealed class OpenClawChatCoordinator : IDisposable
                 Interrupt = true
             };
 
-            var ttsService = _nodeServiceAccessor()?.TextToSpeech
-                ?? GetFallbackTextToSpeechService();
-            if (useGatewayVoice)
+            if (_settings.UseGatewayVoice)
             {
+                var tts = _nodeServiceAccessor()?.TextToSpeech ?? GetFallbackTextToSpeechService();
                 await _gatewaySpeech.SpeakAsync(speakText, manual: bypassMute,
-                    ttsService.PlayGatewayAudioAsync, responseTarget, cancellationToken).ConfigureAwait(false);
+                    tts.PlayGatewayAudioAsync, responseTarget, cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                await ttsService.SpeakAsync(speakArgs, cancellationToken).ConfigureAwait(false);
+                await _speakAsync(speakArgs, cancellationToken).ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        catch (GatewaySpeechException ex)
-        {
-            if (useGatewayVoice) PublishSpeechState(new(GatewaySpeechPhase.Failed, Failure: ex.Failure));
-            _logger.Warn($"Gateway speech failed ({ex.Failure}).");
-        }
+        catch (OperationCanceledException) { }
         catch (Exception)
         {
-            if (useGatewayVoice) PublishSpeechState(new(GatewaySpeechPhase.Failed, Failure: GatewaySpeechFailure.PlaybackFailed));
+            if (_settings.UseGatewayVoice) PublishSpeechState(new(GatewaySpeechPhase.Failed, Failure: GatewaySpeechFailure.PlaybackFailed));
             _logger.Warn("TTS response playback failed.");
         }
         finally
         {
-            if (mutedVoiceCapture && voiceService is not null)
+            if (playbackMute is not null)
             {
-                await Task.Delay(300).ConfigureAwait(false);
-                lock (_gate)
-                {
-                    if (_voiceCaptureMutes.TryGetValue(voiceService, out var count) && count > 1)
-                        _voiceCaptureMutes[voiceService] = count - 1;
-                    else
-                    {
-                        _voiceCaptureMutes.Remove(voiceService);
-                        voiceService.IsMutedForPlayback = false;
-                    }
-                }
+                // Keep capture suppressed while the native player drains. This
+                // tail is intentionally not cancelled by Stop or disposal.
+                try { await Task.Delay(PlaybackMuteTail).ConfigureAwait(false); }
+                finally { playbackMute.Dispose(); }
             }
         }
     }
@@ -319,9 +344,12 @@ public sealed class OpenClawChatCoordinator : IDisposable
     {
         OpenClawChatDataProvider? provider;
         TextToSpeechService? fallbackTextToSpeech;
+        CancellationTokenSource speechCancellation;
 
         lock (_gate)
         {
+            if (_disposed) return;
+            speechCancellation = _speechCancellation;
             provider = _provider;
             fallbackTextToSpeech = _fallbackTextToSpeech;
             _provider = null;
@@ -331,6 +359,10 @@ public sealed class OpenClawChatCoordinator : IDisposable
 
         _settings.Saved -= OnSettingsSaved;
         _gatewaySpeech.Dispose();
+        speechCancellation.Cancel();
+        speechCancellation.Dispose();
+        try { _stopPlayback(); }
+        catch (Exception ex) { _logger.Debug($"OpenClawChatCoordinator: StopSpeaking during disposal failed: {ex.Message}"); }
         provider?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         fallbackTextToSpeech?.Dispose();
     }

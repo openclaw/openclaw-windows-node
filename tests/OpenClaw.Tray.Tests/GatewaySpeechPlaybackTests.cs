@@ -95,6 +95,7 @@ public sealed class GatewaySpeechPlaybackTests
         var (client, wire) = SpeechGatewayProxy.Create();
         using var speech = new GatewaySpeechPlayback();
         speech.SetClient(client);
+        speech.SetTarget("conversation-a");
         speech.SetMuted(true);
         var plays = 0;
         Task Play(GatewaySpeechAudio _, CancellationToken ct) { plays++; return Task.CompletedTask; }
@@ -117,20 +118,15 @@ public sealed class GatewaySpeechPlaybackTests
     }
 
     [Theory]
-    [InlineData(false, "conversation-a")]
-    [InlineData(false, null)]
-    [InlineData(true, "conversation-a")]
-    [InlineData(true, null)]
-    public async Task AutomaticSpeechWithoutAnActiveTargetDoesNotDispatch(bool targetWasCleared, string? responseTarget)
+    [InlineData("conversation-a")]
+    [InlineData(null)]
+    public async Task AutomaticSpeechAfterClearingTheTargetDoesNotDispatch(string? responseTarget)
     {
         var (client, wire) = SpeechGatewayProxy.Create();
         using var speech = new GatewaySpeechPlayback();
         speech.SetClient(client);
-        if (targetWasCleared)
-        {
-            speech.SetTarget("conversation-a");
-            speech.SetTarget(null);
-        }
+        speech.SetTarget("conversation-a");
+        speech.SetTarget(null);
         var states = new List<GatewaySpeechPlaybackState>();
         speech.Changed += states.Add;
 
@@ -193,24 +189,9 @@ public sealed class GatewaySpeechPlaybackTests
     }
 
     [Fact]
-    public async Task MissingConfiguredProviderFailsBeforeSynthesisWithoutLocalFallback()
+    public async Task ActualProviderIsReportedFromTheAudioResult()
     {
         var (client, wire) = SpeechGatewayProxy.Create();
-        wire.Status = new GatewaySpeechStatus("fish-audio", Array.Empty<string>());
-        using var speech = new GatewaySpeechPlayback();
-        speech.SetClient(client);
-        var states = new List<GatewaySpeechPlaybackState>();
-        speech.Changed += states.Add;
-        await speech.SpeakAsync("Synthetic.", true, (_, _) => throw new Exception("Must not play"));
-        Assert.Contains(states, state => state.Failure == GatewaySpeechFailure.ProviderUnavailable);
-        Assert.Equal(0, wire.SynthesisCalls);
-    }
-
-    [Fact]
-    public async Task GatewayFallbackIsReportedFromTheActualAudioResult()
-    {
-        var (client, wire) = SpeechGatewayProxy.Create();
-        wire.Status = new GatewaySpeechStatus("fish-audio", ["fish-audio", "openai"]);
         wire.Synthesis = Task.FromResult(SpeechGatewayProxy.Clip with { Provider = "openai" });
         using var speech = new GatewaySpeechPlayback();
         speech.SetClient(client);
@@ -219,8 +200,7 @@ public sealed class GatewaySpeechPlaybackTests
         await speech.SpeakAsync("Synthetic.", true, (_, _) => Task.CompletedTask);
         var completed = Assert.Single(states, state => state.Phase == GatewaySpeechPhase.Completed);
         Assert.Equal("openai", completed.Provider);
-        Assert.Equal("fish-audio", completed.ConfiguredProvider);
-        Assert.Equal("GatewayVoice_ActualFallback", GatewaySpeechPresentation.Format(completed, key => key));
+        Assert.Equal("GatewayVoice_ActualProvider", GatewaySpeechPresentation.Format(completed, key => key));
     }
 
     [Fact]
@@ -288,7 +268,7 @@ public sealed class GatewaySpeechPlaybackTests
     }
 
     [Fact]
-    public async Task UnknownSynthesisOutcomeIsReportedWithoutRetryOrPlayback()
+    public async Task SynthesisTimeoutFailureIsReportedWithoutRetryOrPlayback()
     {
         var (client, wire) = SpeechGatewayProxy.Create();
         wire.Synthesis = Task.FromException<GatewaySpeechAudio>(new GatewaySpeechException(GatewaySpeechFailure.TimedOut));
@@ -321,21 +301,7 @@ public sealed class GatewaySpeechPlaybackTests
         Assert.DoesNotContain(states, state => state.Phase == GatewaySpeechPhase.Failed);
     }
 
-    [Fact]
-    public void GatewayOptInRoundTripsWithoutChangingTheLocalNodeProvider()
-    {
-        using var temp = new TempDirectory("gateway-voice-settings-");
-        var settings = new SettingsManager(temp.Path);
-        Assert.False(settings.UseGatewayVoice);
-        settings.TtsProvider = "windows";
-        settings.UseGatewayVoice = true;
-        settings.Save();
-        var reloaded = new SettingsManager(temp.Path);
-        Assert.True(reloaded.UseGatewayVoice);
-        Assert.Equal("windows", reloaded.TtsProvider);
-        Assert.Equal("windows", TtsCapability.ResolveProvider(null, reloaded.TtsProvider));
-        Assert.DoesNotContain("gateway", TtsCapability.AllProviders);
-    }
+
 }
 
 // Supplies only transport inputs and records calls. All cancellation, target,
@@ -343,7 +309,6 @@ public sealed class GatewaySpeechPlaybackTests
 public class SpeechGatewayProxy : DispatchProxy
 {
     public static readonly GatewaySpeechAudio Clip = new([1, 2, 3], "audio/mpeg", "fish-audio");
-    public GatewaySpeechStatus Status { get; set; } = new("fish-audio", ["fish-audio"]);
     public Task<GatewaySpeechAudio> Synthesis { get; set; } = Task.FromResult(Clip);
     public bool Connected { get; set; } = true;
     public long Epoch { get; set; } = 1;
@@ -372,10 +337,9 @@ public class SpeechGatewayProxy : DispatchProxy
             case "get_IsConnectedToGateway": return Connected;
             case "get_SessionMutationConnectionEpoch": return Connected ? (long?)Epoch : null;
             case "get_GrantedOperatorScopes": return new[] { "operator.read", "operator.write" };
-            case "get_AdvertisedServerMethods": return new[] { "tts.status", "tts.speak" };
+            case "get_AdvertisedServerMethods": return new[] { "tts.speak" };
             case "add_StatusChanged": _status += (EventHandler<ConnectionStatus>)args![0]!; return null;
             case "remove_StatusChanged": _status -= (EventHandler<ConnectionStatus>)args![0]!; return null;
-            case "GetSpeechStatusAsync": return Task.FromResult(Status);
             case "SynthesizeSpeechAsync":
                 SynthesisCalls++;
                 LastEpoch = (long)args![1]!;

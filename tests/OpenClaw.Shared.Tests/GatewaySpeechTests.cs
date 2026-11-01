@@ -11,26 +11,6 @@ public sealed class GatewaySpeechTests
     private static readonly byte[] Mp3 = [73, 68, 51, 4, 0, 0, 0, 0, 0, 1, 0];
 
     [Fact]
-    public void StatusUsesConfiguredProviderFactsNotAutomaticReplyEnablement()
-    {
-        using var json = JsonDocument.Parse("""{"enabled":false,"provider":"fish-audio","prefsPath":"private-path","providerStates":[{"id":"fish-audio","configured":true},{"id":"openai","configured":false}]}""");
-        var status = GatewaySpeech.ParseStatus(json.RootElement);
-        Assert.True(status.IsReady);
-        Assert.Equal("fish-audio", status.Provider);
-        Assert.Equal(["fish-audio"], status.ConfiguredProviders);
-    }
-
-    [Theory]
-    [InlineData("""{"provider":"fish-audio","providerStates":[{"id":"openai","configured":true}]}""", false)]
-    [InlineData("""{"provider":"fish-audio","providerStates":[{"id":"openai","configured":true}],"fallbackProviders":["openai"]}""", true)]
-    [InlineData("""{"provider":"openai","providerStates":[{"id":"openai","configured":false}],"fallbackProviders":["voice-model-only"]}""", true)]
-    public void ReadinessRequiresTheSelectedProviderOrItsConfiguredFallback(string payload, bool expected)
-    {
-        using var json = JsonDocument.Parse(payload);
-        Assert.Equal(expected, GatewaySpeech.ParseStatus(json.RootElement).IsReady);
-    }
-
-    [Fact]
     public void MalformedAudioMetadataCannotMasqueradeAsMissingMetadata()
     {
         var payload = JsonSerializer.SerializeToElement(new
@@ -42,34 +22,13 @@ public sealed class GatewaySpeechTests
     }
 
     [Theory]
-    [InlineData("""{"provider":"fish-audio","providerStates":[]}""")]
-    [InlineData("""{"provider":"fish-audio","providerStates":[{"id":"fish-audio","configured":false}]}""")]
-    [InlineData("""{"provider":"fish-audio"}""")]
-    public void MissingProviderReadinessIsNotInvented(string payload)
-    {
-        using var json = JsonDocument.Parse(payload);
-        Assert.False(GatewaySpeech.ParseStatus(json.RootElement).IsReady);
-    }
-
-    [Theory]
-    [InlineData("null")]
-    [InlineData("{}")]
-    [InlineData("""{"provider":"secret/path"}""")]
-    public void MissingOrMalformedProviderIsRejected(string payload)
-    {
-        using var json = JsonDocument.Parse(payload);
-        Assert.Equal(GatewaySpeechFailure.ProviderUnavailable,
-            Assert.Throws<GatewaySpeechException>(() => GatewaySpeech.ParseStatus(json.RootElement)).Failure);
-    }
-
-    [Theory]
     [InlineData("", "audio/mpeg", "mp3", ".mp3", GatewaySpeechFailure.InvalidAudio)]
     [InlineData("not base64", "audio/mpeg", "mp3", ".mp3", GatewaySpeechFailure.InvalidAudio)]
     [InlineData("AQIDBA==", "audio/mpeg", "mp3", ".mp3", GatewaySpeechFailure.InvalidAudio)]
     [InlineData("SUQzBAAAAAAAAAA=", "audio/ogg", "opus", ".opus", GatewaySpeechFailure.UnsupportedAudio)]
     [InlineData("SUQzBAAAAAAAAAA=", "audio/mpeg", "pcm_24000", ".mp3", GatewaySpeechFailure.UnsupportedAudio)]
     [InlineData("SUQzBAAAAAAAAAA=", "audio/mpeg", "mp3", ".wav", GatewaySpeechFailure.InvalidAudio)]
-    public void InvalidOrUnsupportedAudioNeverReachesPlayback(string audioBase64, string mimeType,
+    public void InvalidOrUnsupportedAudioPayloadIsRejected(string audioBase64, string mimeType,
         string outputFormat, string fileExtension, GatewaySpeechFailure expected)
     {
         var payload = JsonSerializer.SerializeToElement(new { provider = "fish-audio", audioBase64, mimeType, outputFormat, fileExtension });
@@ -77,7 +36,7 @@ public sealed class GatewaySpeechTests
     }
 
     [Fact]
-    public void OversizedEncodedAudioIsRejectedBeforeDecode()
+    public void OversizedEncodedAudioIsRejected()
     {
         var payload = JsonSerializer.SerializeToElement(new
         {
@@ -100,7 +59,25 @@ public sealed class GatewaySpeechTests
     }
 
     [Fact]
-    public async Task SpeakUsesOnlyTextAndAcceptsActualGatewayFallbackProvider()
+    public void InlineWavPreservesActualProviderAndBytesAndNormalizesMimeType()
+    {
+        // A complete mono 16-bit PCM WAV with one silent sample at 16 kHz.
+        var wav = Convert.FromHexString("524946462600000057415645666D74201000000001000100803E0000007D00000200100064617461020000000000");
+        var payload = JsonSerializer.SerializeToElement(new
+        {
+            provider = "openai", audioBase64 = Convert.ToBase64String(wav),
+            mimeType = "audio/x-wav", outputFormat = "wav", fileExtension = ".wav"
+        });
+
+        var result = GatewaySpeech.ParseAudio(payload);
+
+        Assert.Equal("openai", result.Provider);
+        Assert.Equal("audio/wav", result.MimeType);
+        Assert.Equal(wav, result.Bytes);
+    }
+
+    [Fact]
+    public async Task SpeakUsesOnlyTextAndPreservesTheActualGatewayProvider()
     {
         using var server = new LoopbackWebSocketServer();
         using var identity = new TempDirectory("gateway-speech-");
@@ -141,19 +118,39 @@ public sealed class GatewaySpeechTests
         Assert.Null(error.InnerException);
     }
 
-    [Theory]
-    [InlineData(false, true, GatewaySpeechFailure.Unsupported)]
-    [InlineData(true, false, GatewaySpeechFailure.PermissionRequired)]
-    public async Task MissingAdvertisementOrGrantedWriteScopePreventsDispatch(bool method, bool scope, GatewaySpeechFailure expected)
+    [Fact]
+    public async Task AdmissionFailuresLeaveTheNextSocketRequestUnchanged()
     {
         using var server = new LoopbackWebSocketServer();
         using var identity = new TempDirectory("gateway-speech-");
         await server.StartAsync();
         using var client = await ReadyClient(server, identity.Path);
-        Set(client, "_advertisedServerMethods", method ? new[] { "tts.speak", "tts.status" } : Array.Empty<string>());
-        Set(client, "_grantedOperatorScopes", scope ? new[] { "operator.write" } : new[] { "operator.read" });
-        var error = await Assert.ThrowsAsync<GatewaySpeechException>(() => client.SynthesizeSpeechAsync("Synthetic.", client.SessionMutationConnectionEpoch!.Value));
-        Assert.Equal(expected, error.Failure);
+        var epoch = client.SessionMutationConnectionEpoch!.Value;
+
+        Set(client, "_advertisedServerMethods", Array.Empty<string>());
+        await AssertRejected("Unadvertised method.", epoch, GatewaySpeechFailure.Unsupported);
+        Set(client, "_advertisedServerMethods", new[] { "tts.speak" });
+        Set(client, "_grantedOperatorScopes", new[] { "operator.read" });
+        await AssertRejected("Read-only scope.", epoch, GatewaySpeechFailure.PermissionRequired);
+        Set(client, "_grantedOperatorScopes", new[] { "operator.write" });
+        await AssertRejected("Stale connection epoch.", epoch + 1, GatewaySpeechFailure.Disconnected);
+        await AssertRejected(new string('a', 4097), epoch, GatewaySpeechFailure.TextTooLong);
+
+        // WebSocket request order makes this accepted call a barrier: an earlier
+        // rejected input must not have left a synthesis request ahead of it.
+        var accepted = client.SynthesizeSpeechAsync("Admitted synthetic check.", epoch);
+        using var request = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(Deadline));
+        Assert.Equal("tts.speak", request.RootElement.GetProperty("method").GetString());
+        Assert.Equal("Admitted synthetic check.", request.RootElement.GetProperty("params").GetProperty("text").GetString());
+        await Reply(server, request, AudioPayload("openai"));
+        Assert.Equal("openai", (await accepted.WaitAsync(Deadline)).Provider);
+
+        async Task AssertRejected(string text, long connectionEpoch, GatewaySpeechFailure expected)
+        {
+            var error = await Assert.ThrowsAsync<GatewaySpeechException>(() =>
+                client.SynthesizeSpeechAsync(text, connectionEpoch).WaitAsync(Deadline));
+            Assert.Equal(expected, error.Failure);
+        }
     }
 
     [Fact]
@@ -210,17 +207,6 @@ public sealed class GatewaySpeechTests
     }
 
     [Fact]
-    public async Task ChangedEpochIsRejectedBeforeSending()
-    {
-        using var server = new LoopbackWebSocketServer();
-        using var identity = new TempDirectory("gateway-speech-");
-        await server.StartAsync();
-        using var client = await ReadyClient(server, identity.Path);
-        var error = await Assert.ThrowsAsync<GatewaySpeechException>(() => client.SynthesizeSpeechAsync("Synthetic.", client.SessionMutationConnectionEpoch!.Value + 1));
-        Assert.Equal(GatewaySpeechFailure.Disconnected, error.Failure);
-    }
-
-    [Fact]
     public async Task DisposalRetiresAnInFlightSpeechRequest()
     {
         using var server = new LoopbackWebSocketServer();
@@ -232,18 +218,6 @@ public sealed class GatewaySpeechTests
         client.Dispose();
         var error = await Assert.ThrowsAsync<GatewaySpeechException>(() => task.WaitAsync(Deadline));
         Assert.Equal(GatewaySpeechFailure.Disconnected, error.Failure);
-    }
-
-    [Fact]
-    public async Task TextOverTheCompanionLimitIsRejectedBeforeSynthesis()
-    {
-        using var server = new LoopbackWebSocketServer();
-        using var identity = new TempDirectory("gateway-speech-");
-        await server.StartAsync();
-        using var client = await ReadyClient(server, identity.Path);
-        var error = await Assert.ThrowsAsync<GatewaySpeechException>(() =>
-            client.SynthesizeSpeechAsync(new string('a', 4097), client.SessionMutationConnectionEpoch!.Value));
-        Assert.Equal(GatewaySpeechFailure.TextTooLong, error.Failure);
     }
 
     private static JsonElement AudioPayload(string provider, string outputFormat = "mp3") =>
@@ -263,7 +237,7 @@ public sealed class GatewaySpeechTests
         Set(client, "_handshakeConnectionGeneration", generation);
         Set(client, "_hasHandshakeSnapshot", true);
         Set(client, "_grantedOperatorScopes", new[] { "operator.read", "operator.write" });
-        Set(client, "_advertisedServerMethods", new[] { "tts.status", "tts.speak" });
+        Set(client, "_advertisedServerMethods", new[] { "tts.speak" });
         return client;
     }
 

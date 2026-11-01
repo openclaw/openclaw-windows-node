@@ -14,15 +14,6 @@ public sealed class GatewaySpeechException(GatewaySpeechFailure failure) : Excep
     public GatewaySpeechFailure Failure { get; } = failure;
 }
 
-public sealed record GatewaySpeechStatus(string Provider, IReadOnlyList<string> ConfiguredProviders,
-    IReadOnlyList<string>? FallbackProviders = null)
-{
-    // The Gateway reports only configured fallbacks, including model-backed
-    // providers that can be absent from its providerStates catalog.
-    public bool IsReady => ConfiguredProviders.Contains(Provider, StringComparer.Ordinal)
-        || FallbackProviders is { Count: > 0 };
-}
-
 public sealed record GatewaySpeechAudio(byte[] Bytes, string MimeType, string Provider);
 
 /// <summary>Validates the inline tts.speak contract, not the inward Windows node command.</summary>
@@ -32,49 +23,21 @@ public static class GatewaySpeech
     public const int MaximumTextLength = 4096;
     public const int MaximumAudioBytes = 8 * 1024 * 1024;
     public const int SynthesisTimeoutMs = 60_000;
-    public const int StatusTimeoutMs = 10_000;
     public const int PlaybackTimeoutMs = 300_000;
     private const int MaximumBase64Length = ((MaximumAudioBytes + 2) / 3) * 4;
 
-    public static void RequireAccess(IOperatorGatewayClient client, long epoch, bool status = false)
+    public static void RequireAccess(IOperatorGatewayClient client, long epoch)
     {
         if (!client.IsConnectedToGateway || client.SessionMutationConnectionEpoch != epoch)
             throw new GatewaySpeechException(GatewaySpeechFailure.Disconnected);
-        var method = status ? "tts.status" : "tts.speak";
+        const string method = "tts.speak";
         if (!client.AdvertisedServerMethods.Contains(method, StringComparer.Ordinal))
             throw new GatewaySpeechException(GatewaySpeechFailure.Unsupported);
         var scopes = client.GrantedOperatorScopes;
-        var required = status ? "operator.read" : "operator.write";
+        const string required = "operator.write";
         if (!scopes.Contains("operator.admin", StringComparer.Ordinal)
-            && !scopes.Contains(required, StringComparer.Ordinal)
-            && !(status && scopes.Contains("operator.write", StringComparer.Ordinal)))
+            && !scopes.Contains(required, StringComparer.Ordinal))
             throw new GatewaySpeechException(GatewaySpeechFailure.PermissionRequired);
-    }
-
-    public static GatewaySpeechStatus ParseStatus(JsonElement payload)
-    {
-        var provider = Identifier(payload, "provider");
-        if (provider is null) throw new GatewaySpeechException(GatewaySpeechFailure.ProviderUnavailable);
-        var configured = new List<string>();
-        if (payload.TryGetProperty("providerStates", out var states) && states.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var state in states.EnumerateArray().Take(128))
-            {
-                var id = Identifier(state, "id");
-                if (id is not null && state.TryGetProperty("configured", out var ready)
-                    && ready.ValueKind == JsonValueKind.True)
-                    configured.Add(id);
-            }
-        }
-        // Old status responses do not establish provider readiness. Do not invent it.
-        var fallbacks = new List<string>();
-        if (payload.TryGetProperty("fallbackProviders", out var fallbackArray) && fallbackArray.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var candidate in fallbackArray.EnumerateArray().Take(128))
-                if (candidate.ValueKind == JsonValueKind.String && SafeIdentifier(candidate.GetString()) is { } id)
-                    fallbacks.Add(id);
-        }
-        return new GatewaySpeechStatus(provider, configured.AsReadOnly(), fallbacks.AsReadOnly());
     }
 
     public static GatewaySpeechAudio ParseAudio(JsonElement payload)

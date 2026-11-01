@@ -25,9 +25,6 @@ public static class GatewaySpeechPresentation
         if (state.Phase == GatewaySpeechPhase.Failed)
             return localize(FailureKey(state.Failure ?? GatewaySpeechFailure.SynthesisFailed));
         if (state.Phase == GatewaySpeechPhase.Synthesizing) return localize("GatewayVoice_Synthesizing");
-        var fallback = state.ConfiguredProvider is not null && state.Provider != state.ConfiguredProvider;
-        return fallback
-            ? string.Format(CultureInfo.CurrentCulture, localize("GatewayVoice_ActualFallback"), state.Provider, state.ConfiguredProvider)
-            : string.Format(CultureInfo.CurrentCulture, localize("GatewayVoice_ActualProvider"), state.Provider);
+        return string.Format(CultureInfo.CurrentCulture, localize("GatewayVoice_ActualProvider"), state.Provider);
     }
 }

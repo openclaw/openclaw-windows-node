@@ -36,7 +36,6 @@ public sealed partial class VoiceSettingsPage : Page
     public VoiceSettingsPage()
     {
         InitializeComponent();
-        InitializeGatewaySpeech();
         Loaded += (_, _) =>
         {
             UpdateModelStatus();
@@ -1136,6 +1135,14 @@ public sealed partial class VoiceSettingsPage : Page
             CurrentApp.Settings.TtsWindowsVoiceId = voiceId;
             CurrentApp.Settings.Save();
         }
+    }
+
+    private void OnGatewayVoiceToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressEvents || CurrentApp.Settings is not { } settings) return;
+        settings.UseGatewayVoice = GatewayVoiceToggle.IsOn;
+        settings.Save();
+        GatewayVoicePanel.Visibility = settings.UseGatewayVoice ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnPreviewVoiceClick(object sender, RoutedEventArgs e) =>
