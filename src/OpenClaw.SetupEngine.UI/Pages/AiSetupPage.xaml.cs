@@ -554,6 +554,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             CandidateChoices.ItemsSource = _presentation.Candidates.Select(candidate =>
                 new ChoiceRow(GatewayAiSetupChoiceKind.Candidate, candidate.Kind, candidate.Label, candidate.Detail,
                     _artworkSession, candidate.ModelRef, candidate.BrandId, candidate.Icon, candidate.Kind)).ToArray();
+            LlamaAppChoices.ItemsSource = _presentation.LocalAppOptions
+                .SelectMany(option => ProviderRows([option.Provider], option.Kind)).ToArray();
             PrepareChoices.ItemsSource = ProviderRows(_presentation.PrepareOptions, GatewayAiSetupChoiceKind.Prepare);
             FeaturedSignInChoices.ItemsSource = ProviderRows(_presentation.FeaturedSignIn, GatewayAiSetupChoiceKind.Auth);
             MoreSignInChoices.ItemsSource = ProviderRows(_presentation.MoreSignIn, GatewayAiSetupChoiceKind.Auth);
@@ -1159,7 +1161,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                     (phase is GatewayAiSetupPhase.Choosing or GatewayAiSetupPhase.Cancelled or GatewayAiSetupPhase.Rejected));
                 CandidatesSection.Visibility = Visible(ChoicePanel.Visibility == Visibility.Visible &&
                     _presentation.Candidates.Count > 0);
-                LocalGroupHeader.Visibility = Visible(LocalAiSection.Visibility == Visibility.Visible ||
+                LocalGroupHeader.Visibility = Visible(LlamaAppSection.Visibility == Visibility.Visible ||
+                    LocalAiSection.Visibility == Visibility.Visible ||
                     ChoicePanel.Visibility == Visibility.Visible && PrepareSection.Visibility == Visibility.Visible);
                 LegacyButton.Visibility = phase == GatewayAiSetupPhase.ClassicWizardRequired ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -1173,6 +1176,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             var backgroundEnabled = !_busy && !_localActionBusy && !BackdropLocked && !ManagerRecoveryBlocked;
             CandidateChoices.IsEnabled = PrepareChoices.IsEnabled = FeaturedSignInChoices.IsEnabled =
                 MoreSignInChoices.IsEnabled = ApiProviderPicker.IsEnabled = ApiKeyInput.IsEnabled =
+                LlamaAppChoices.IsEnabled =
                 ApiKeysButton.IsEnabled = CatalogPreference.IsEnabled = RecommendedInstalls.IsEnabled =
                 MoreExpander.IsEnabled = RecommendedSection.IsEnabled = CheckAgainButton.IsEnabled =
                 RefreshButton.IsEnabled = LegacyButton.IsEnabled = backgroundEnabled;
@@ -1314,6 +1318,9 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         LocalAiSection.Visibility = Visible(_args?.ExpectedConfiguredModelRef is null && _localExpectedModel is null &&
             AiSetupReadinessPresentation.ShowLocalChoice(
                 _args?.NativeSession is not null || _managedNative, _nativeLocalAiTransport is not null, snapshot));
+        LlamaAppSection.Visibility = Visible(_choicesPrepared && _args?.ExpectedConfiguredModelRef is null &&
+            _localExpectedModel is null && _presentation.LocalAppOptions.Count > 0 &&
+            phase is GatewayAiSetupPhase.Choosing or GatewayAiSetupPhase.Cancelled or GatewayAiSetupPhase.Rejected);
         var state = snapshot.State;
         var detail = string.Join(" · ", new[]
         {

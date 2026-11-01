@@ -15,12 +15,13 @@ public sealed record AiSetupPresentationModel
     public IReadOnlyList<GatewayAiSetupProvider> FeaturedSignIn { get; init; } = [];
     public IReadOnlyList<GatewayAiSetupProvider> ManualProviders { get; init; } = [];
     public IReadOnlyList<GatewayAiSetupProvider> MoreSignIn { get; init; } = [];
+    public IReadOnlyList<GatewayAiSetupLocalAppOption> LocalAppOptions { get; init; } = [];
     public bool NativeSessionCatalogPreferenceRequired { get; init; }
     public bool HasLocalChoice { get; init; }
     public bool NoUsableCandidates => HasDetection && !DiscoveryFailed && Candidates.Count == 0 && !HasLocalChoice;
     public bool ShowApiKeyForm { get; init; }
     public bool HasUtilityChoices { get; init; }
-    public bool HasChoices => HasLocalChoice || Candidates.Count + PrepareOptions.Count + FeaturedSignIn.Count +
+    public bool HasChoices => HasLocalChoice || Candidates.Count + LocalAppOptions.Count + PrepareOptions.Count + FeaturedSignIn.Count +
         ManualProviders.Count + MoreSignIn.Count > 0;
 
     public static AiSetupPresentationModel Create(
@@ -39,6 +40,8 @@ public sealed record AiSetupPresentationModel
                   candidate.ModelRef == localModelRef)).ToArray() : [];
         var auth = supportedChoices.Contains(GatewayAiSetupChoiceKind.Auth)
             ? detection.AuthOptions.Where(option => option.ModelTarget is null).ToArray() : [];
+        var prepare = supportedChoices.Contains(GatewayAiSetupChoiceKind.Prepare)
+            ? detection.PrepareOptions.Where(option => option.ModelTarget is null).ToArray() : [];
         var manual = supportedChoices.Contains(GatewayAiSetupChoiceKind.ManualProvider)
             ? detection.ManualProviders.Where(option => option.ModelTarget is null).ToArray() : [];
         return new()
@@ -53,13 +56,18 @@ public sealed record AiSetupPresentationModel
                 ? detection.RecommendedInstalls.Where(option =>
                     GatewayAiSetupPresentation.TryGetExternalUri(option.Website, out _)).ToArray() : [],
             UnavailableCandidates = detection.UnavailableCandidates.ToArray(),
-            PrepareOptions = supportedChoices.Contains(GatewayAiSetupChoiceKind.Prepare)
-                ? detection.PrepareOptions.Where(option => option.ModelTarget is null).ToArray() : [],
-            FeaturedSignIn = auth.Where(option => option.Featured).ToArray(),
-            MoreSignIn = auth.Where(option => !option.Featured).ToArray(),
+            LocalAppOptions = prepare.Where(option => option.Id == "llama-app")
+                .Select(option => new GatewayAiSetupLocalAppOption(option, GatewayAiSetupChoiceKind.Prepare))
+                .Concat(auth.Where(option => option.Id == "llama-app")
+                    .Select(option => new GatewayAiSetupLocalAppOption(option, GatewayAiSetupChoiceKind.Auth))).ToArray(),
+            PrepareOptions = prepare.Where(option => option.Id != "llama-app").ToArray(),
+            FeaturedSignIn = auth.Where(option => option.Featured && option.Id != "llama-app").ToArray(),
+            MoreSignIn = auth.Where(option => !option.Featured && option.Id != "llama-app").ToArray(),
             ManualProviders = manual.ToArray(),
             NativeSessionCatalogPreferenceRequired = detection.NativeSessionCatalogPreferenceRequired,
             ShowApiKeyForm = manual.Length > 0 && (candidates.Length == 0 && !hasLocalChoice || apiKeyFormRequested),
         };
     }
 }
+
+public sealed record GatewayAiSetupLocalAppOption(GatewayAiSetupProvider Provider, GatewayAiSetupChoiceKind Kind);
