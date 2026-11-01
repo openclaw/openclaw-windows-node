@@ -681,7 +681,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             new AppLogger(),
             _dispatcherQueue is null
                 ? null
-                : OpenClawTray.Chat.ReactorChatHostExtensions.AsPost(_dispatcherQueue));
+                : OpenClawTray.Chat.ReactorChatHostExtensions.AsPost(_dispatcherQueue),
+            _voicePlaybackMute.Acquire);
         DiagnosticsJsonlService.Configure(DataPath);
 
         // Central observable model + gateway event handler.
@@ -1180,6 +1181,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     // Voice overlay disabled — inline chat voice mode is used instead.
     // private VoiceOverlayWindow? _voiceOverlayWindow;
     private VoiceService? _standaloneVoiceService;
+    private readonly PlaybackMuteState _voicePlaybackMute = new();
 
     /// <summary>
     /// Gets the current VoiceService instance (from the node service or standalone).
@@ -1230,7 +1232,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (_settings?.NodeSttEnabled != true)
             return null;
 
-        return _standaloneVoiceService ??= new VoiceService(new AppLogger(), _settings);
+        return _standaloneVoiceService ??= new VoiceService(new AppLogger(), _settings, _voicePlaybackMute);
     }
 
     private void OnTrayMenuItemClicked(object? sender, string action)
@@ -2376,6 +2378,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 _dispatcherQueue,
                 DataPath,
                 settings: settings,
+                voiceServiceFactory: (logger, voiceSettings) => new VoiceService(logger, voiceSettings, _voicePlaybackMute),
                 enableMcpServer: settings.EnableMcpServer,
                 identityDataPath: IdentityDataPath,
                 sharedGatewayTokenResolver: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken,
