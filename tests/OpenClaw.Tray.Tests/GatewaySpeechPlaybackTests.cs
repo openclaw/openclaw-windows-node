@@ -11,6 +11,32 @@ public sealed class GatewaySpeechPlaybackTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InvalidReplacementCannotRetireCurrentSpeech(bool oversized)
+    {
+        var (client, wire) = SpeechGatewayProxy.Create();
+        wire.Synthesis = new TaskCompletionSource<GatewaySpeechAudio>(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        using var speech = new GatewaySpeechPlayback();
+        speech.SetClient(client);
+        var current = speech.SpeakAsync("Current synthetic speech.", true, (_, _) => Task.CompletedTask);
+        var currentToken = wire.LastCancellation;
+        try
+        {
+            await speech.SpeakAsync(oversized ? new string('a', 4097) : " ", true,
+                (_, _) => throw new Exception("Must not play"));
+            Assert.False(currentToken.IsCancellationRequested);
+            Assert.False(current.IsCompleted);
+            Assert.Equal(1, wire.SynthesisCalls);
+        }
+        finally
+        {
+            speech.Stop();
+            await current.WaitAsync(Deadline);
+        }
+    }
+
     [Fact]
     public async Task ParentRetirementRejectsAudioBeforeLinkedCancellationPropagates()
     {

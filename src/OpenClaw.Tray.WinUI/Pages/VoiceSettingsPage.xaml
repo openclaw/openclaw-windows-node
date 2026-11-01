@@ -217,7 +217,7 @@
 
                     <ToggleSwitch x:Name="GatewayVoiceToggle" x:Uid="VoiceSettingsPage_GatewayVoice"
                                   Header="Use connected Gateway voice" Toggled="OnGatewayVoiceToggled"/>
-                    <StackPanel x:Name="GatewayVoicePanel" Spacing="8" Visibility="Collapsed">
+                    <StackPanel Spacing="8">
                         <TextBlock x:Uid="VoiceSettingsPage_GatewayVoiceDescription" TextWrapping="Wrap"
                                    Text="Chat Read Aloud and automatic replies use the Gateway's configured voice. Text is sent to the Gateway and its speech provider. Keys stay on the Gateway. Local node and MCP speech are unchanged."
                                    Style="{StaticResource CaptionTextBlockStyle}"/>

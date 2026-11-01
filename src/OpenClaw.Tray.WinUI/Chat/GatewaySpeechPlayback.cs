@@ -78,6 +78,20 @@ public sealed class GatewaySpeechPlayback : IDisposable
                 && !string.Equals(responseTarget, _target, StringComparison.Ordinal)))) return;
             client = _client;
             epoch = client?.SessionMutationConnectionEpoch;
+            try
+            {
+                if (client is null || epoch is null)
+                    throw new GatewaySpeechException(GatewaySpeechFailure.Disconnected);
+                GatewaySpeech.RequireAccess(client, epoch.Value);
+                if (string.IsNullOrWhiteSpace(text) || text.Length > GatewaySpeech.MaximumTextLength)
+                    throw new GatewaySpeechException(GatewaySpeechFailure.TextTooLong);
+            }
+            catch (GatewaySpeechException ex)
+            {
+                // Rejected replacements cannot interrupt current speech or its UI.
+                if (_active is null) Changed?.Invoke(new(GatewaySpeechPhase.Failed, Failure: ex.Failure));
+                return;
+            }
             Retire();
             target = _target;
             operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -88,11 +102,6 @@ public sealed class GatewaySpeechPlayback : IDisposable
         try
         {
             token.ThrowIfCancellationRequested();
-            if (client is null || epoch is null)
-                throw new GatewaySpeechException(GatewaySpeechFailure.Disconnected);
-            GatewaySpeech.RequireAccess(client, epoch.Value);
-            if (string.IsNullOrWhiteSpace(text) || text.Length > GatewaySpeech.MaximumTextLength)
-                throw new GatewaySpeechException(GatewaySpeechFailure.TextTooLong);
             Publish(operation, new(GatewaySpeechPhase.Synthesizing));
             var audio = await client.SynthesizeSpeechAsync(text, epoch.Value, token)
                 .WaitAsync(TimeSpan.FromMilliseconds(GatewaySpeech.SynthesisTimeoutMs), token).ConfigureAwait(false);
