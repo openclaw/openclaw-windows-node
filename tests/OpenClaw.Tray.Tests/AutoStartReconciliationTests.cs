@@ -48,6 +48,17 @@ public sealed class AutoStartReconciliationTests
     }
 
     [Fact]
+    public void InstallerRun_RequiresQuotedExecutableEvenWhenPathHasNoSpaces()
+    {
+        const string executable = @"C:\Users\Test\AppData\Local\OpenClawTray-Dev\OpenClaw.Tray.WinUI.exe";
+
+        Assert.True(AutoStartReconciliation.IsEnabledInstallerRun(
+            $"\"{executable}\" --background", executable, null));
+        Assert.False(AutoStartReconciliation.IsEnabledInstallerRun(
+            $"{executable} --background", executable, null));
+    }
+
+    [Fact]
     public void InstallerRun_RejectsMissingForeignOrMalformedRegistrations()
     {
         const string executable = @"C:\OpenClaw\OpenClaw.Tray.WinUI.exe";

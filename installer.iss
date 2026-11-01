@@ -151,6 +151,9 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent; Check: ShouldLaunchTray
 
 [Code]
+const
+  StartupRunKey = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run';
+
 var
   VCRuntimeInstallSucceeded: Boolean;
   LocalGatewayCleanupChoiceInitialized: Boolean;
@@ -574,8 +577,6 @@ begin
 end;
 
 procedure MigrateLegacyStartupShortcut;
-const
-  RunKey = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run';
 var
   ShortcutPath: string;
   RunCommand: string;
@@ -591,15 +592,16 @@ begin
   if not StartupEntryMayRun('Run', '{#MyAutoStartName}') then
     Exit;
 
-  ExpectedRunCommand := AddQuotes(ExpandConstant('{app}\{#MyAppExeName}')) + ' --background';
-  if RegValueExists(HKCU, RunKey, '{#MyAutoStartName}') then
+  { Match the always-quoted [Registry] writer and app reader, even for paths without spaces. }
+  ExpectedRunCommand := '"' + ExpandConstant('{app}\{#MyAppExeName}') + '" --background';
+  if RegValueExists(HKCU, StartupRunKey, '{#MyAutoStartName}') then
   begin
-    if not RegQueryStringValue(HKCU, RunKey, '{#MyAutoStartName}', RunCommand) then
+    if not RegQueryStringValue(HKCU, StartupRunKey, '{#MyAutoStartName}', RunCommand) then
       Exit;
     if CompareText(RunCommand, ExpectedRunCommand) <> 0 then
       Exit;
   end
-  else if not RegWriteStringValue(HKCU, RunKey, '{#MyAutoStartName}', ExpectedRunCommand) then
+  else if not RegWriteStringValue(HKCU, StartupRunKey, '{#MyAutoStartName}', ExpectedRunCommand) then
   begin
     Log('Could not migrate the Startup folder shortcut. It was left in place.');
     Exit;

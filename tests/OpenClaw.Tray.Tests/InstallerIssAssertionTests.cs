@@ -80,6 +80,19 @@ public sealed class InstallerIssAssertionTests
     }
 
     [Fact]
+    public void Installer_StartupShortcutMigrationAlwaysQuotesTheExecutable()
+    {
+        var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
+        var start = iss.IndexOf("procedure MigrateLegacyStartupShortcut;", StringComparison.Ordinal);
+        var end = iss.IndexOf("procedure CurStepChanged", start, StringComparison.Ordinal);
+        var migration = iss[start..end];
+
+        // AddQuotes only quotes paths containing spaces, unlike the Run writer and app reader.
+        Assert.Contains("""ExpectedRunCommand := '"' + ExpandConstant('{app}\{#MyAppExeName}') + '" --background';""", migration);
+        Assert.DoesNotContain("AddQuotes(", migration);
+    }
+
+    [Fact]
     public void Installer_DoesNotMigrateAWindowsDisabledStartupShortcut()
     {
         var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
