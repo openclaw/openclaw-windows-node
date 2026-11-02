@@ -171,6 +171,13 @@ public sealed class ReactorMarkdownDisclosureProofTests(UIThreadFixture ui)
                 Assert.Contains("Streamed continuation.", FindLogical<RichTextBlock>(host!).Select(CollectText));
                 Assert.Contains("Streamed evidence.", FindLogical<RichTextBlock>(host!).Select(CollectText));
                 Assert.InRange(disclosure.ActualWidth, 1, 240);
+                // Reactor owns Markdown list layout: a long list item must wrap inside the narrowed host
+                // instead of being measured at unbounded width on one clipped line.
+                var listText = Assert.Single(FindLogical<RichTextBlock>(host!),
+                    text => CollectText(text).Contains("plugin purpose and default activation", StringComparison.Ordinal));
+                Assert.InRange(listText.ActualWidth, 1, 240);
+                Assert.True(listText.ActualHeight > 2 * listText.FontSize,
+                    $"List item did not wrap: {listText.ActualWidth}x{listText.ActualHeight}.");
                 ExpandCollapse(disclosure).Collapse();
             });
             await ui.YieldToRenderAsync();
