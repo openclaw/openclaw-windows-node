@@ -1,3 +1,7 @@
+using OpenClaw.Tray.Tests.Presentation;
+using OpenClawTray.Presentation;
+using OpenClawTray.Services;
+
 namespace OpenClaw.Tray.Tests;
 
 public sealed class PermissionSettingsWriterRoutingTests
@@ -5,22 +9,120 @@ public sealed class PermissionSettingsWriterRoutingTests
     [Fact]
     public void HubCommandPalette_PermissionToggles_UseSettingsStore_AndRaiseSettingsSaved()
     {
-        var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
+        var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
         var buildCommandList = ExtractMethodBodyBySignature(source, "internal ImmutableArray<HubCommand> BuildCommandList()");
-        var toggleHelper = ExtractMethodBodyBySignature(source, "private void ToggleCommandPalettePermission(HubSettingToggle toggle)");
-        var executeCommand = ExtractMethodBodyBySignature(source, "private void ExecuteCommand(HubCommand command)");
+        var executor = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "HubCommandExecutor.cs");
+        var toggleHelper = ExtractMethodBodyBySignature(executor, "private bool ToggleSetting(HubSettingToggle toggle)");
 
         Assert.Contains("HubCommandCatalog.Build", buildCommandList);
         var catalog = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "HubCommandCatalog.cs");
         Assert.Contains("HubPageRegistry.BuildCommands", catalog);
         Assert.DoesNotContain("settings.Save();", catalog);
         Assert.DoesNotContain("settings.Save();", buildCommandList);
-        Assert.Contains("ToggleCommandPalettePermission(toggle);", executeCommand);
+        Assert.Contains("_commandExecutor.Execute(command, NavigateTo, RaiseSettingsSaved)", source);
 
-        Assert.Contains("CurrentApp.SettingsStore", toggleHelper);
-        Assert.Contains("_commandPaletteSettingsOrigin ??= store.CreateOrigin();", toggleHelper);
-        Assert.Contains("store.Update(_commandPaletteSettingsOrigin", toggleHelper);
-        Assert.Contains("RaiseSettingsSaved();", toggleHelper);
+        Assert.Contains("_store()", toggleHelper);
+        Assert.Contains("_settingsOrigin ??= store.CreateOrigin();", toggleHelper);
+        Assert.Contains("store.Update(_settingsOrigin", toggleHelper);
+        Assert.Contains("return true;", toggleHelper);
+    }
+
+    private static HubCommand Toggle(HubSettingToggle toggle) =>
+        new("", "t", null, HubCommandAction.ToggleSetting(toggle));
+
+    [Theory]
+    [InlineData("ScreenCapture")]
+    [InlineData("Camera")]
+    [InlineData("Canvas")]
+    [InlineData("BrowserControl")]
+    [InlineData("NodeMode")]
+    public void Executor_Toggle_PersistsExactValue_AndAppliesRuntimeOnce_WithoutNavigating(string toggleName)
+    {
+        var toggle = Enum.Parse<HubSettingToggle>(toggleName);
+        using var temp = new TempDir();
+        var settings = new SettingsManager(temp.Path);
+        using var store = new SettingsStore(settings, new RecordingUiDispatcher());
+        var executor = new HubCommandExecutor(() => settings, () => store, _ => { });
+        var before = Read(settings, toggle);
+        int saved = 0, navigated = 0;
+
+        executor.Execute(Toggle(toggle), _ => navigated++, () => saved++);
+
+        Assert.Equal(!before, Read(settings, toggle));
+        Assert.Equal(!before, Read(new SettingsManager(temp.Path), toggle));
+        Assert.Equal(1, saved);
+        Assert.Equal(0, navigated);
+    }
+
+    [Fact]
+    public void Executor_Toggle_WithoutSettings_DoesNotReportASave()
+    {
+        var executor = new HubCommandExecutor(() => null, () => null, _ => { });
+        var saved = 0;
+        executor.Execute(Toggle(HubSettingToggle.Camera), _ => { }, () => saved++);
+        Assert.Equal(0, saved);
+    }
+
+    [Fact]
+    public void Executor_Toggle_ContainsRuntimeApplyFailure()
+    {
+        using var temp = new TempDir();
+        var settings = new SettingsManager(temp.Path);
+        using var store = new SettingsStore(settings, new RecordingUiDispatcher());
+        var executor = new HubCommandExecutor(() => settings, () => store, _ => { });
+        var applied = 0;
+        executor.Execute(Toggle(HubSettingToggle.ScreenCapture), _ => { },
+            () => { applied++; throw new InvalidOperationException("apply"); });
+        Assert.Equal(1, applied);
+    }
+
+    [Fact]
+    public void Executor_NavigateAndDashboard_NeverApplySettings()
+    {
+        var dashboards = new List<string?>();
+        var executor = new HubCommandExecutor(() => null, () => null, dashboards.Add);
+        var tags = new List<string>();
+        var saved = 0;
+        executor.Execute(new("", "n", null, HubCommandAction.Navigate("connection")), tags.Add, () => saved++);
+        executor.Execute(new("", "d", null, HubCommandAction.OpenDashboard("/x")), tags.Add, () => saved++);
+        Assert.Equal(["connection"], tags);
+        Assert.Equal(["/x"], dashboards);
+        Assert.Equal(0, saved);
+    }
+
+    private static bool Read(SettingsManager s, HubSettingToggle t) => t switch
+    {
+        HubSettingToggle.NodeMode => s.EnableNodeMode,
+        HubSettingToggle.Camera => s.NodeCameraEnabled,
+        HubSettingToggle.Canvas => s.NodeCanvasEnabled,
+        HubSettingToggle.ScreenCapture => s.NodeScreenEnabled,
+        _ => s.NodeBrowserProxyEnabled,
+    };
+
+    [Fact]
+    public void MainAndSettingsSearch_ShareCatalogExecutorAndLabel_WithoutChangingTheVisibleSurface()
+    {
+        var workspace = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs");
+        var xaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml");
+        var open = ExtractMethodBodyBySignature(workspace, "internal void OpenCommandCenter()");
+        var submitted = ExtractMethodBodyBySignature(workspace, "private void OnWorkspaceSearchQuerySubmitted(");
+        var keyDown = ExtractMethodBodyBySignature(workspace, "private void OnKeyDown(");
+
+        Assert.Contains("WorkspaceSearchButton", xaml);
+        Assert.Contains("WorkspaceSearchFlyout", xaml);
+        Assert.DoesNotContain("Navigate(", open);
+        Assert.Contains("_settings.OpenCommandCenter()", open);
+        Assert.Contains("WorkspaceSearchFlyout.ShowAt", open);
+        Assert.Contains("Root.IsLoaded", open);
+        Assert.Contains("OpenModalDialog() is { } dialog", open);
+        Assert.Contains("_commandCenterPending", open);
+        Assert.Contains("dialog.Closed +=", open);
+        Assert.Contains("HubCommandCatalog.Build(_state", workspace);
+        Assert.Contains("_commandExecutor.Execute(command, OnSettingsWorkspaceRoute, () => SettingsSaved?.Invoke(this, EventArgs.Empty))", submitted);
+        Assert.Contains("TitleSearchBox.PlaceholderText", workspace);
+        Assert.Contains("VirtualKey.E", keyDown);
+        Assert.Contains("(IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)", keyDown);
+        Assert.DoesNotContain("Ctrl+F", workspace);
     }
 
     [Fact]

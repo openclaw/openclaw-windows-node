@@ -117,4 +117,116 @@ public sealed class SetupCompletionAuthorityTests
         await Assert.ThrowsAnyAsync<InvalidOperationException>(() =>
             SetupNativeCompletionVerifier.VerifyAsync(temp.Path, proof, timeout.Token));
     }
+
+    [Fact]
+    public async Task ClosingDuringAdmittedDrainRetainsOwnershipUntilCleanupEnds()
+    {
+        var drain = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var returnDrain = new ManualResetEventSlim();
+        using var owner = new SetupCompletionPreparation(Proof, _ =>
+        {
+            entered.SetResult();
+            Assert.True(returnDrain.Wait(TimeSpan.FromSeconds(10)));
+            return drain.Task;
+        },
+            (_, _) => throw new InvalidOperationException("Must not verify"),
+            (_, _) => throw new InvalidOperationException("Must not finalize"),
+            (_, _) => throw new InvalidOperationException("Must not publish"));
+        var completion = owner.StartAsync();
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            owner.Dispose();
+            returnDrain.Set();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => completion);
+            Assert.False(owner.CleanupCompleted.IsCompleted);
+        }
+        finally
+        {
+            returnDrain.Set();
+            drain.TrySetResult();
+        }
+        await owner.CleanupCompleted;
+    }
+
+    [Fact]
+    public async Task UncertainFinalizationCannotReplayGatewayWrite()
+    {
+        var writes = 0;
+        using var owner = new SetupCompletionPreparation(Proof, _ => Task.CompletedTask,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Proof.SessionKey!)),
+            (_, _) => { writes++; throw new IOException("Unknown write outcome"); },
+            (_, _) => throw new InvalidOperationException("Must not publish"));
+        await Assert.ThrowsAsync<IOException>(owner.StartAsync);
+        await Assert.ThrowsAsync<IOException>(owner.StartAsync);
+        Assert.False(owner.CanRetry);
+        await Assert.ThrowsAsync<InvalidOperationException>(owner.RetryAsync);
+        Assert.Equal(1, writes);
+    }
+
+    [Fact]
+    public async Task LaunchedRestartCannotBePublishedAgainAfterShutdownSchedulingFails()
+    {
+        var launches = 0;
+        using var owner = new SetupCompletionPreparation(Proof, _ => Task.CompletedTask,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Proof.SessionKey!)),
+            (_, _) => Task.CompletedTask,
+            (_, _) =>
+            {
+                launches++;
+                throw new SetupPreparationCommittedException();
+            });
+
+        await Assert.ThrowsAsync<SetupPreparationCommittedException>(owner.StartAsync);
+        Assert.False(owner.CanRetry);
+        Assert.False(owner.IsCompleted);
+        await Assert.ThrowsAsync<InvalidOperationException>(owner.RetryAsync);
+        Assert.Equal(1, launches);
+    }
+
+    [Fact]
+    public async Task CancellationAfterPublicationCannotLaunchASecondRestart()
+    {
+        var launches = 0;
+        SetupCompletionPreparation? owner = null;
+        using (owner = new SetupCompletionPreparation(Proof, _ => Task.CompletedTask,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Proof.SessionKey!)),
+            (_, _) => Task.CompletedTask,
+            (_, _) =>
+            {
+                launches++;
+                owner!.Dispose();
+                return Task.CompletedTask;
+            }))
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(owner.StartAsync);
+            Assert.False(owner.CanRetry);
+            Assert.Equal(1, launches);
+            await owner.CleanupCompleted;
+        }
+    }
+
+    [Fact]
+    public async Task RetryAfterVerificationFailurePublishesWithoutRepeatingFinalization()
+    {
+        var verifies = 0;
+        var finalizes = 0;
+        var publishes = 0;
+        using var owner = new SetupCompletionPreparation(Proof, _ => Task.CompletedTask,
+            (_, _) => ++verifies == 1
+                ? Task.FromException<SetupVerifiedNativeRoute>(new IOException("Transient"))
+                : Task.FromResult(new SetupVerifiedNativeRoute(Proof, Proof.SessionKey!)),
+            (_, _) => { finalizes++; return Task.CompletedTask; },
+            (_, _) => ++publishes == 1
+                ? Task.FromException(new IOException("Publish failed"))
+                : Task.CompletedTask);
+        await Assert.ThrowsAsync<IOException>(owner.StartAsync);
+        await Assert.ThrowsAsync<IOException>(owner.RetryAsync);
+        await owner.RetryAsync();
+        Assert.Equal(2, verifies);
+        Assert.Equal(1, finalizes);
+        Assert.Equal(2, publishes);
+        Assert.True(owner.IsCompleted);
+    }
 }

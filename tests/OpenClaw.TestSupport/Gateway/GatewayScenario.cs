@@ -255,13 +255,29 @@ public sealed partial class GatewayScenario
                 selectionRequired = requireAgentSelection,
                 agents = new[]
                 {
-                    new { id = "main", name = "Fixture Main", identity = new { name = "Fixture Main" } },
-                    new { id = "research", name = "Fixture Research", identity = new { name = "Fixture Research" } }
+                    new { id = "main", name = "Fixture Main", workspace = "/fixture/workspace", identity = new { name = "Fixture Main" } },
+                    new { id = "research", name = "Fixture Research", workspace = "/fixture/research", identity = new { name = "Fixture Research" } }
                 }
             }),
             ["node.list"] = JsonSerializer.SerializeToElement(new { ts = Epoch.ToUnixTimeMilliseconds(), nodes = Array.Empty<object>() }),
+            ["question.list"] = JsonSerializer.SerializeToElement(new { questions = Array.Empty<object>() }),
+            ["projects.list"] = JsonSerializer.SerializeToElement(new { projects = Array.Empty<object>(), recents = Array.Empty<object>() }),
+            ["environments.list"] = JsonSerializer.SerializeToElement(new
+            {
+                environments = new[]
+                {
+                    new { id = "gateway:fixture", type = "local", label = "Fixture Gateway", status = "available" }
+                }
+            }),
             ["node.pair.list"] = JsonSerializer.SerializeToElement(new { pending = Array.Empty<object>(), paired = Array.Empty<object>() }),
             ["device.pair.list"] = JsonSerializer.SerializeToElement(new { pending = Array.Empty<object>(), paired = Array.Empty<object>() }),
+            ["question.list"] = JsonSerializer.SerializeToElement(new { questions = Array.Empty<object>() }),
+            ["channels.status"] = JsonSerializer.SerializeToElement(new
+            {
+                ts = Epoch.ToUnixTimeMilliseconds(), channelOrder = Array.Empty<string>(),
+                channels = new { }, channelAccounts = new { }
+            }),
+            ["skills.status"] = JsonSerializer.SerializeToElement(new { skills = Array.Empty<object>() }),
             ["usage.status"] = JsonSerializer.SerializeToElement(new
             {
                 updatedAt = Epoch.ToUnixTimeMilliseconds(), providers = Array.Empty<object>()
@@ -617,11 +633,28 @@ public sealed partial class GatewayScenario
 
     private JsonElement Read(string method, JsonElement p)
     {
-        ValidateProperties(p, method == "health" ? ["deep", "probe"] : []);
+        ValidateProperties(p, method switch
+        {
+            "health" => ["deep", "probe"],
+            "channels.status" => ["probe", "timeoutMs"],
+            "skills.status" => ["agentId"],
+            _ => []
+        });
         if (method == "health")
         {
             OptionalBoolean(p, "deep");
             OptionalBoolean(p, "probe");
+        }
+        else if (method == "channels.status")
+        {
+            OptionalBoolean(p, "probe");
+            PositiveInt(p, "timeoutMs", 10000);
+        }
+        else if (method == "skills.status")
+        {
+            var agent = OptionalString(p, "agentId");
+            if (agent is not null and not ("main" or "research"))
+                throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agentId.");
         }
         return _reads[method];
     }
@@ -639,7 +672,8 @@ public sealed partial class GatewayScenario
         or "sessions.compaction.branch" or "node.invoke" or "exec.approval.resolve" or "node.rename"
         or "node.pair.approve" or "node.pair.reject" or "node.pair.remove" or "device.pair.approve"
         or "device.pair.reject" or "device.token.rotate" or "device.token.revoke" or "update.run"
-        or "cron.add" or "cron.update" or "cron.remove" or "cron.run" or "skills.install" or "skills.update";
+        or "cron.add" or "cron.update" or "cron.remove" or "cron.run" or "skills.install" or "skills.update"
+        or "projects.add";
 
     internal static void ValidateProperties(JsonElement p, params string[] names)
     {

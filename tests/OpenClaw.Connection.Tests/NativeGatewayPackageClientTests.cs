@@ -236,4 +236,41 @@ public sealed class NativeGatewayPackageClientTests
             () => client.StatusAsync(s_package, CancellationToken.None));
         Assert.Equal(expectedException, error?.GetType());
     }
+
+    [Fact]
+    public async Task CollectLogsReturnsPackageReportedBundle()
+    {
+        var client = new NativeGatewayPackageClient((_, args, _) =>
+        {
+            Assert.Equal(["collect-logs", "--json"], args);
+            return Task.FromResult(new NativeGatewayCommandResult(0,
+                """
+                {"ok":true,"schemaVersion":1,"command":"collect-logs",
+                 "integration":{"kind":"isolated-session","version":1},
+                 "bundle":{"path":"C:\\pkg\\state\\openclaw-diagnostics-x.zip","included":"host-only",
+                           "notes":["agent/x: not collected"]}}
+                """));
+        });
+
+        NativeGatewayDiagnosticsBundle bundle = await client.CollectLogsAsync(s_package, CancellationToken.None);
+
+        Assert.Equal(@"C:\pkg\state\openclaw-diagnostics-x.zip", bundle.Path);
+        Assert.Equal("host-only", bundle.Included);
+        Assert.Equal(["agent/x: not collected"], bundle.Notes);
+    }
+
+    [Theory]
+    [InlineData(1, """{"ok":false,"schemaVersion":1,"command":"collect-logs","integration":{"kind":"isolated-session","version":1},"error":{"type":"cli_error","message":"fixture failure"}}""", typeof(InvalidOperationException))]
+    [InlineData(0, """{"ok":true,"schemaVersion":1,"command":"status","integration":{"kind":"isolated-session","version":1},"bundle":{"path":"C:\\x.zip","included":"host-only","notes":[]}}""", typeof(NativeGatewayContractException))]
+    public async Task CollectLogsRejectsFailureAndForeignCommand(int exitCode, string response, Type expectedException)
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) =>
+            Task.FromResult(new NativeGatewayCommandResult(exitCode, response)));
+
+        Exception? error = await Record.ExceptionAsync(
+            () => client.CollectLogsAsync(s_package, CancellationToken.None));
+        Assert.Equal(expectedException, error?.GetType());
+        if (exitCode != 0)
+            Assert.Contains("fixture failure", error!.Message, StringComparison.Ordinal);
+    }
 }

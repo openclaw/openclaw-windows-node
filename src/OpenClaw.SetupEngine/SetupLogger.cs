@@ -13,30 +13,42 @@ public enum LogLevel { Trace, Debug, Info, Warn, Error }
 
 public sealed partial class SetupLogger : IDisposable
 {
-    private readonly StreamWriter? _writer;
+    private TextWriter? _writer;
     private readonly string? _filePath;
     private readonly LogLevel _minLevel;
     private readonly string _runId;
     private readonly ConcurrentQueue<LogEntry> _recentEntries = new();
     private readonly object _writeLock = new();
     private const int MaxRecentEntries = 256;
+    // The native setup page hands its log to a runtime and host that can outlive it.
+    private bool _disposed;
+    private bool _fileSinkFailed;
 
     public event EventHandler<LogEntry>? LogEmitted;
     public string RunId => _runId;
     public string? FilePath => _filePath;
 
     public SetupLogger(string? filePath, LogLevel minLevel = LogLevel.Trace)
+        : this(filePath, OpenFile(filePath), minLevel)
+    {
+    }
+
+    // Tests inject a writer to simulate a sink that opens and later fails.
+    internal SetupLogger(string? filePath, TextWriter? writer, LogLevel minLevel = LogLevel.Trace)
     {
         _minLevel = minLevel;
         _runId = Guid.NewGuid().ToString("N")[..12];
+        _filePath = filePath;
+        _writer = writer;
+    }
 
-        if (filePath != null)
-        {
-            _filePath = filePath;
-            var dir = Path.GetDirectoryName(filePath);
-            if (dir != null) Directory.CreateDirectory(dir);
-            _writer = new StreamWriter(filePath, append: false) { AutoFlush = true };
-        }
+    private static StreamWriter? OpenFile(string? filePath)
+    {
+        if (filePath is null)
+            return null;
+        var dir = Path.GetDirectoryName(filePath);
+        if (dir != null) Directory.CreateDirectory(dir);
+        return new StreamWriter(filePath, append: false) { AutoFlush = true };
     }
 
     public void Trace(string message, object? data = null) => Write(LogLevel.Trace, message, data);
@@ -89,11 +101,7 @@ public sealed partial class SetupLogger : IDisposable
 
         var sanitizedMessage = NormalizeLogString(Sanitize(message));
         var entry = new LogEntry(DateTimeOffset.UtcNow, _runId, level, sanitizedMessage, SanitizeData(data));
-        _recentEntries.Enqueue(entry);
-        while (_recentEntries.Count > MaxRecentEntries)
-            _recentEntries.TryDequeue(out _);
-
-        LogEmitted?.Invoke(this, entry);
+        Publish(entry);
 
         var json = JsonSerializer.Serialize(new
         {
@@ -104,13 +112,33 @@ public sealed partial class SetupLogger : IDisposable
             data = entry.Data
         }, _jsonOptions);
 
+        Exception? sinkFailure = null;
         lock (_writeLock)
         {
-            _writer?.WriteLine(json);
+            if (!_disposed && !_fileSinkFailed && _writer is not null)
+            {
+                try { _writer.WriteLine(json); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ObjectDisposedException)
+                {
+                    sinkFailure = ex;
+                    StopFileSink();
+                }
+            }
         }
+        if (sinkFailure is not null)
+            ReportFileSinkFailure(sinkFailure);
+    }
+
+    private void Publish(LogEntry entry)
+    {
+        _recentEntries.Enqueue(entry);
+        while (_recentEntries.Count > MaxRecentEntries)
+            _recentEntries.TryDequeue(out _);
+
+        LogEmitted?.Invoke(this, entry);
 
         // Also write to console for headless mode
-        var color = level switch
+        var color = entry.Level switch
         {
             LogLevel.Error => ConsoleColor.Red,
             LogLevel.Warn => ConsoleColor.Yellow,
@@ -119,8 +147,28 @@ public sealed partial class SetupLogger : IDisposable
         };
         var prev = Console.ForegroundColor;
         Console.ForegroundColor = color;
-        Console.WriteLine($"[{entry.Timestamp:HH:mm:ss.fff}] [{level}] {entry.Message}");
+        Console.WriteLine($"[{entry.Timestamp:HH:mm:ss.fff}] [{entry.Level}] {entry.Message}");
         Console.ForegroundColor = prev;
+    }
+
+    // Caller holds _writeLock. Diagnostics must never control setup cleanup or recovery, so a failed sink is dropped.
+    private void StopFileSink()
+    {
+        _fileSinkFailed = true;
+        var writer = _writer;
+        _writer = null;
+        // slopwatch-ignore: SW003 A dispose failure on an already failed sink has nothing left to report.
+        try { writer?.Dispose(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ObjectDisposedException) { }
+    }
+
+    // Type and HRESULT only: IO exception messages can carry user-profile paths.
+    private void ReportFileSinkFailure(Exception failure)
+    {
+        var detail = $"{failure.GetType().Name} (0x{failure.HResult:X8})";
+        System.Diagnostics.Trace.TraceWarning($"Setup log file writes stopped after {detail}.");
+        Publish(new LogEntry(DateTimeOffset.UtcNow, _runId, LogLevel.Warn,
+            $"Setup log file writes stopped after {detail}; later entries stay in memory only.", null));
     }
 
     // ─── Secret Redaction ───
@@ -243,7 +291,16 @@ public sealed partial class SetupLogger : IDisposable
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
-    public void Dispose() => _writer?.Dispose();
+    public void Dispose()
+    {
+        lock (_writeLock)
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            StopFileSink();
+        }
+    }
 }
 
 public sealed record LogEntry(DateTimeOffset Timestamp, string RunId, LogLevel Level, string Message, object? Data);

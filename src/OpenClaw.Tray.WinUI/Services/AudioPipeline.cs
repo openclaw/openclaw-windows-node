@@ -18,7 +18,7 @@ namespace OpenClawTray.Services;
 public sealed class AudioPipeline : IAsyncDisposable
 {
     private readonly IOpenClawLogger _logger;
-    private readonly SpeechToTextService _stt;
+    private readonly ISpeechToTextService _stt;
     private readonly object _captureGate = new();
     private readonly SemaphoreSlim _stopGate = new(1, 1);
     private readonly Func<IAudioCapture> _captureFactory;
@@ -108,6 +108,11 @@ public sealed class AudioPipeline : IAsyncDisposable
     public bool IsMuted { get; set; }
 
     public AudioPipeline(IOpenClawLogger logger, SpeechToTextService stt)
+        : this(logger, (ISpeechToTextService)stt)
+    {
+    }
+
+    internal AudioPipeline(IOpenClawLogger logger, ISpeechToTextService stt)
         : this(
             logger,
             stt,
@@ -121,7 +126,7 @@ public sealed class AudioPipeline : IAsyncDisposable
 
     internal AudioPipeline(
         IOpenClawLogger logger,
-        SpeechToTextService stt,
+        ISpeechToTextService stt,
         Func<IAudioCapture> captureFactory,
         Func<TimeSpan, CancellationToken, Task> delayAsync,
         TimeSpan firstAudioTimeout,

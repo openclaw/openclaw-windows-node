@@ -12,7 +12,7 @@
     </Page.Resources>
 
     <Grid>
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto">
             <!--
                 Grid wrapper is required: ScrollViewer measures its direct
                 child with infinite available width, which makes
@@ -97,7 +97,14 @@
                     bottom settings row past the scroll viewport clip.
                 -->
                 <InfoBar x:Name="StoreMigrationStatus" Visibility="Collapsed"
-                         IsOpen="False" IsClosable="True" Closed="OnStoreMigrationStatusClosed"/>
+                         IsOpen="False" IsClosable="True" Closed="OnStoreMigrationStatusClosed">
+                    <InfoBar.ActionButton>
+                        <HyperlinkButton x:Name="StoreMigrationDownloadSetup"
+                                         x:Uid="Migration2_InnoDownloadSetup"
+                                         Visibility="Collapsed" Click="OnDownloadMigrationSetup"
+                                         AutomationProperties.AutomationId="SettingsStoreMigrationDownloadSetup"/>
+                    </InfoBar.ActionButton>
+                </InfoBar>
 
                 <TextBlock x:Uid="SettingsPage_General" Text="General" Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>

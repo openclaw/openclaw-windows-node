@@ -119,7 +119,7 @@ public static class LocalAiGatewayProviderDefinition
                     id = install.Manifest.ModelAlias,
                     name = model.DisplayName,
                     reasoning = true,
-                    input = new[] { "text" },
+                    input = model.SupportsVision ? new[] { "text", "image" } : new[] { "text" },
                     cost = new { input = 0, output = 0, cacheRead = 0, cacheWrite = 0 },
                     contextWindow = install.Manifest.ContextLength,
                     contextTokens = install.Manifest.ContextLength,

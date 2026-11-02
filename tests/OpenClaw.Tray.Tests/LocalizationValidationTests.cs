@@ -254,7 +254,6 @@ public class LocalizationValidationTests
         // the PermissionsPage / InstancesPage / SessionsPage runtime keys above.
         "CronPage_JobCompleted",
         "CronPage_JobCompletedRanSuccessfully",
-        "BindingsPage_CouldNotLoadBindings",
         "ConfigPage_CheckingConfigPermissions",
         "ConfigPage_ConfigUnavailable",
         "ConfigPage_ConfigIsReadOnly",
@@ -296,8 +295,6 @@ public class LocalizationValidationTests
         "Command_GoToConfig_Subtitle",
         "Command_GoToUsage_Title",
         "Command_GoToUsage_Subtitle",
-        "Command_GoToBindings_Title",
-        "Command_GoToBindings_Subtitle",
         "Command_GoToPermissions_Title",
         "Command_GoToPermissions_Subtitle",
         "Command_GoToSettings_Title",
@@ -1143,5 +1140,18 @@ public class LocalizationValidationTests
         Assert.True(identicalWithoutRationale.Count == 0,
             "Resources identical to en-us in every non-English locale need an invariant/deferred rationale. Entries: " +
             string.Join("; ", identicalWithoutRationale.Take(20)));
+    }
+
+    [Fact]
+    public void SandboxComposer_UsesExistingLocalizedSurfaceNames()
+    {
+        foreach (var localeDirectory in Directory.EnumerateDirectories(GetStringsDirectory()))
+        {
+            var resources = LoadResw(Path.Combine(localeDirectory, "Resources.resw"));
+            var title = resources["Chat_Composer_Sandbox_Title"];
+            Assert.Contains(title, resources["SandboxPage_StatusOnTitle"], StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(resources["HubWindow_NavigationViewItem_Sandbox.Content"],
+                resources["Chat_Composer_Sandbox_OpenSettings"], StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

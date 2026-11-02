@@ -1,3 +1,6 @@
+using OpenClaw.Connection;
+using OpenClaw.Connection.NativeGateway;
+
 namespace OpenClaw.SetupEngine;
 
 public enum SetupNativeCompletionPhase { PageDrain, Connection, ModelRecovery, ModelVerification, Verification }
@@ -26,12 +29,34 @@ public sealed class SetupNativeCompletionTimeoutException : TimeoutException
 /// <summary>Finite phase budgets for an already selected native setup destination.</summary>
 public static class SetupNativeCompletionTiming
 {
-    public static readonly TimeSpan Connection = TimeSpan.FromSeconds(210);
-    public static readonly TimeSpan ModelRecovery = TimeSpan.FromSeconds(210);
+    private static readonly TimeSpan MinimumConnection = TimeSpan.FromSeconds(210);
+    // WSL Local AI startup can withdraw and republish its route with two guarded
+    // 420-second Gateway restarts, plus 90 seconds for the router to become healthy.
+    public static readonly TimeSpan ModelRecovery = TimeSpan.FromSeconds(1020);
     public static readonly TimeSpan ModelVerification = TimeSpan.FromSeconds(150);
     public static readonly TimeSpan Navigation = TimeSpan.FromSeconds(30);
+    // The published borrow includes the native start budget (OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT) plus handshake.
+    // Static initializers run in textual order: keep the constants above the values derived from them.
+    public static readonly TimeSpan Connection = ConnectionFor(IsolatedGatewayRuntime.StartupTimeout);
     public static readonly TimeSpan PublishedVerification = Connection + ModelRecovery + Connection + ModelVerification;
-    public static readonly TimeSpan Execution = PublishedVerification + Navigation;
+    public static readonly TimeSpan Execution = ExecutionFor(Connection);
+    /// <summary>
+    /// Bounds of an execution window any supported startup override can persist. A process restarted with a
+    /// different override must keep, never recompute, a stored window inside these bounds.
+    /// </summary>
+    public static readonly TimeSpan MinimumExecution =
+        ExecutionFor(ConnectionFor(TimeSpan.FromSeconds(IsolatedGatewayRuntime.MinimumStartupTimeoutSeconds)));
+    public static readonly TimeSpan MaximumExecution =
+        ExecutionFor(ConnectionFor(TimeSpan.FromSeconds(IsolatedGatewayRuntime.MaximumStartupTimeoutSeconds)));
+
+    internal static TimeSpan ConnectionFor(TimeSpan startupTimeout)
+    {
+        var handoff = NativeGatewayEndpointSecurity.CredentialHandoffTimeoutFor(startupTimeout);
+        return handoff > MinimumConnection ? handoff : MinimumConnection;
+    }
+
+    internal static TimeSpan ExecutionFor(TimeSpan connection) =>
+        connection + ModelRecovery + connection + ModelVerification + Navigation;
 
     internal static async Task<T> RunAsync<T>(
         Func<CancellationToken, Task<T>> operation, TimeSpan budget, SetupNativeCompletionPhase phase,

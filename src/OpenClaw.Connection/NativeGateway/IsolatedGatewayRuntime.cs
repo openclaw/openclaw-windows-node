@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Runtime.InteropServices;
 using OpenClaw.Shared;
@@ -17,7 +18,18 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly TimeSpan _inspectionTimeout;
     private readonly TimeProvider _timeProvider;
-    internal static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(3);
+    private readonly IOpenClawLogger _logger;
+
+    /// <summary>
+    /// Whole seconds; read once at process start. Invalid or out-of-range values warn and keep the default.
+    /// Kept under the log sanitizer's long-token redaction length so the name stays readable in logs.
+    /// </summary>
+    public const string StartupTimeoutEnvironmentVariable = "OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT";
+    internal const int DefaultStartupTimeoutSeconds = 180;
+    internal const int MinimumStartupTimeoutSeconds = 30;
+    internal const int MaximumStartupTimeoutSeconds = 3600;
+    internal static readonly TimeSpan StartupTimeout =
+        ResolveStartupTimeout(Environment.GetEnvironmentVariable(StartupTimeoutEnvironmentVariable));
     internal static readonly TimeSpan StartupConfirmationTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan StartupPollInterval = TimeSpan.FromSeconds(2);
     private readonly Dictionary<string, VerifiedGateway> _proofs = new(StringComparer.Ordinal);
@@ -25,9 +37,9 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     private bool _disposed;
     private sealed record VerifiedGateway(GatewayRecord Record, NativeGatewayPackage Package, IsolatedGatewayStatus Status);
 
-    public IsolatedGatewayRuntime(INativeGatewayPackageResolver resolver)
+    public IsolatedGatewayRuntime(INativeGatewayPackageResolver resolver, IOpenClawLogger? logger = null)
         : this(resolver, new NativeGatewayPackageClient(), WindowsTcpListenerSnapshot.Capture,
-            WindowsProcessSequenceSnapshot.Capture, File.Exists)
+            WindowsProcessSequenceSnapshot.Capture, File.Exists, logger: logger)
     {
     }
 
@@ -38,7 +50,8 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         Func<IReadOnlyDictionary<int, ulong>> captureSequences,
         Func<string, bool> aliasExists,
         TimeSpan? inspectionTimeout = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IOpenClawLogger? logger = null)
     {
         _resolver = resolver;
         _client = client;
@@ -47,6 +60,21 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         _aliasExists = aliasExists;
         _inspectionTimeout = inspectionTimeout ?? TimeSpan.FromSeconds(5);
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _logger = logger ?? NullLogger.Instance;
+    }
+
+    internal static TimeSpan ResolveStartupTimeout(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return TimeSpan.FromSeconds(DefaultStartupTimeoutSeconds);
+        if (int.TryParse(raw.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int seconds) &&
+            seconds is >= MinimumStartupTimeoutSeconds and <= MaximumStartupTimeoutSeconds)
+            return TimeSpan.FromSeconds(seconds);
+        Trace.TraceWarning(
+            $"Ignoring {StartupTimeoutEnvironmentVariable}='{raw}': expected whole seconds from " +
+            $"{MinimumStartupTimeoutSeconds} to {MaximumStartupTimeoutSeconds}. " +
+            $"Using the default {DefaultStartupTimeoutSeconds}s.");
+        return TimeSpan.FromSeconds(DefaultStartupTimeoutSeconds);
     }
 
     public async Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken)
@@ -100,12 +128,13 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             {
                 try
                 {
+                    _logger.Info("Rolling back the Gateway start requested by this attempt.");
                     await _client.StopAsync(startedThisCall, CancellationToken.None).ConfigureAwait(false);
                     _ownedStarts.Remove(startedThisCall.PackageFamilyName);
                 }
                 catch (Exception cleanupFailure) when (IsInspectionFailure(cleanupFailure))
                 {
-                    Trace.TraceError($"Isolated Gateway start rollback failed ({cleanupFailure.GetType().Name}); stop ownership retained.");
+                    _logger.Warn($"Isolated Gateway start rollback failed ({cleanupFailure.GetType().Name}); stop ownership retained.");
                 }
             }
             throw;
@@ -151,14 +180,20 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         NativeGatewayPackage package, int port, CancellationToken cancellationToken)
     {
         var startedAt = _timeProvider.GetTimestamp();
+        bool acknowledged = false;
+        IsolatedGatewayStatus? lastStatus = null;
+        string? lastSummary = null;
         using var deadline = new CancellationTokenSource(StartupTimeout, _timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {
+            _logger.Info($"Native Gateway start requested on port {port} (budget {(int)StartupTimeout.TotalSeconds}s).");
             // A failed/ambiguous start response is not a pending-start acknowledgement.
             // In particular, older packages omit the lifecycle state on exit 1.
             await _client.StartAsync(package, linked.Token).ConfigureAwait(false);
             linked.Token.ThrowIfCancellationRequested();
+            acknowledged = true;
+            _logger.Info($"Native Gateway start acknowledged after {_timeProvider.GetElapsedTime(startedAt).TotalSeconds:0.0}s.");
             // A late successful acknowledgement still gets one bounded status window.
             // This can extend the total startup ceiling by at most ten seconds.
             var remaining = StartupTimeout - _timeProvider.GetElapsedTime(startedAt);
@@ -167,6 +202,13 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             {
                 var status = await _client.StatusAsync(package, linked.Token).ConfigureAwait(false);
                 linked.Token.ThrowIfCancellationRequested();
+                lastStatus = status;
+                var summary = status.Describe();
+                if (summary != lastSummary)
+                {
+                    _logger.Info($"Native Gateway startup status: {summary}.");
+                    lastSummary = summary;
+                }
                 if (status.State is not ("starting" or "unhealthy"))
                     return status;
 
@@ -178,6 +220,7 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                 {
                     var confirmation = await _client.StatusAsync(package, linked.Token).ConfigureAwait(false);
                     linked.Token.ThrowIfCancellationRequested();
+                    lastStatus = confirmation;
                     if (confirmation.State == "running")
                         return confirmation;
                     throw new NativeGatewayListenerException(provenance);
@@ -188,12 +231,49 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         catch (OperationCanceledException error) when (
             deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            throw new NativeGatewayStartupTimeoutException(error);
+            throw await CreateTimeoutAsync(package, acknowledged, lastStatus, error, cancellationToken).ConfigureAwait(false);
         }
         catch (TimeoutException error)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            throw new NativeGatewayStartupTimeoutException(error);
+            throw await CreateTimeoutAsync(package, acknowledged, lastStatus, error, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<NativeGatewayStartupTimeoutException> CreateTimeoutAsync(
+        NativeGatewayPackage package,
+        bool acknowledged,
+        IsolatedGatewayStatus? lastStatus,
+        Exception error,
+        CancellationToken cancellationToken)
+    {
+        // An unacknowledged start has no polled status; one bounded read explains what the package saw.
+        // After an acknowledged start a hung status read is the likely cause, so never snapshot again.
+        if (!acknowledged && lastStatus is null)
+            lastStatus = await TryReadTimeoutStatusAsync(package, cancellationToken).ConfigureAwait(false);
+        var timeout = new NativeGatewayStartupTimeoutException(
+            acknowledged ? NativeGatewayStartupTimeoutPhase.Readiness : NativeGatewayStartupTimeoutPhase.StartRequest,
+            StartupTimeout, lastStatus, error);
+        _logger.Warn(timeout.Message);
+        return timeout;
+    }
+
+    private async Task<IsolatedGatewayStatus?> TryReadTimeoutStatusAsync(
+        NativeGatewayPackage package, CancellationToken cancellationToken)
+    {
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        bounded.CancelAfter(_inspectionTimeout);
+        try
+        {
+            return await _client.StatusAsync(package, bounded.Token).WaitAsync(bounded.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception ex) when (IsInspectionFailure(ex))
+        {
+            return null;
         }
     }
 
@@ -477,7 +557,7 @@ public sealed class NativeGatewayRuntimeRouter(
     public static NativeGatewayRuntimeRouter Create(
         GatewayRegistry registry, INativeGatewayPackageResolver resolver, IOpenClawLogger logger) =>
         new(new NativeGatewayRuntime(registry, resolver, logger),
-            new IsolatedGatewayRuntime(resolver), resolver, new NativeGatewayPackageClient());
+            new IsolatedGatewayRuntime(resolver, logger), resolver, new NativeGatewayPackageClient());
 
     public async Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken)
     {

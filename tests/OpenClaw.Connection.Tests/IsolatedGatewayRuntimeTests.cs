@@ -371,7 +371,8 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         var result = await authorization.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(result.Allowed);
         Assert.Equal(GatewayErrorKind.Network, result.FailureKind);
-        Assert.Contains("startup or listener confirmation timed out", result.Detail);
+        Assert.Contains("did not finish its start request", result.Detail);
+        Assert.Contains("Last status: gateway stopped", result.Detail);
         Assert.DoesNotContain("fixture-token", result.Detail);
     }
 
@@ -489,9 +490,61 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         var start = _runtime.EnsureRunningAsync(_record, default);
         _clock.Advance(TimeSpan.FromSeconds(90));
 
-        await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+        var error = await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(NativeGatewayStartupTimeoutPhase.Readiness, error.Phase);
+        Assert.Equal("starting", error.LastStatus?.State);
+        Assert.Contains("gateway starting", error.Message);
         Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
         Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, _runtime.Inspect(_record).Kind);
+    }
+
+    [Fact]
+    public async Task ReadinessTimeoutReportsTokenShapedReasonCode()
+    {
+        _state = "stopped";
+        _listeners = [];
+        _startState = "unhealthy";
+        _configMissing = true;
+        _startDuration = TimeSpan.FromSeconds(90);
+        var start = _runtime.EnsureRunningAsync(_record, default);
+        _clock.Advance(TimeSpan.FromSeconds(90));
+
+        var error = await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(NativeGatewayStartupTimeoutPhase.Readiness, error.Phase);
+        Assert.Equal("config-file-missing", error.LastStatus!.ReadinessReason);
+        Assert.Contains("readiness absent (config-file-missing)", error.Message);
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
+    }
+
+    [Theory]
+    [InlineData("Token abc is invalid", false)]
+    [InlineData("gateway-mode-local", true)]
+    [InlineData("-x", false)]
+    public void StatusDescriptionDropsNonCodeReasons(string reason, bool shown)
+    {
+        var text = new IsolatedGatewayStatus("unhealthy", null, null, [], "running", "not-ready", reason).Describe();
+        Assert.StartsWith("gateway unhealthy, session running, readiness not-ready", text);
+        if (shown)
+            Assert.EndsWith($"({reason})", text);
+        else
+            Assert.DoesNotContain(reason, text);
+    }
+
+    [Theory]
+    [InlineData(null, 180)]
+    [InlineData("", 180)]
+    [InlineData("  ", 180)]
+    [InlineData("abc", 180)]
+    [InlineData("-5", 180)]
+    [InlineData("29", 180)]
+    [InlineData("3601", 180)]
+    [InlineData("1.5", 180)]
+    [InlineData("30", 30)]
+    [InlineData(" 600 ", 600)]
+    [InlineData("3600", 3600)]
+    public void StartupTimeoutOverrideAcceptsOnlyBoundedWholeSeconds(string? raw, int expectedSeconds)
+    {
+        Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), IsolatedGatewayRuntime.ResolveStartupTimeout(raw));
     }
 
     [Fact]

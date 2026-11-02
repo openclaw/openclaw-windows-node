@@ -30,6 +30,28 @@
                            Style="{StaticResource BodyTextBlockStyle}"
                            AutomationProperties.AutomationId="NativeGatewaySetupStatus"
                            AutomationProperties.LiveSetting="Polite" />
+                <StackPanel x:Name="RecoveryPanel" Spacing="8" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="NativeGatewaySetupRecovery">
+                    <TextBlock x:Name="RecoveryGuidance" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Button x:Name="CollectDiagnosticsButton" x:Uid="Onboarding_Native_CollectDiagnostics"
+                            Content="Collect Gateway diagnostics" HorizontalAlignment="Left"
+                            AutomationProperties.AutomationId="NativeGatewaySetupCollectDiagnostics"
+                            Click="CollectDiagnostics_Click" />
+                    <Button x:Name="OpenTerminalButton" x:Uid="Onboarding_Native_Terminal" Content="Open terminal"
+                            HorizontalAlignment="Left"
+                            AutomationProperties.AutomationId="NativeGatewaySetupOpenTerminal"
+                            Click="OpenTerminal_Click" />
+                    <Button x:Name="ViewLogButton" x:Uid="Onboarding_Native_ViewLog" Content="View setup log"
+                            HorizontalAlignment="Left"
+                            AutomationProperties.AutomationId="NativeGatewaySetupViewLog"
+                            Click="ViewLog_Click" />
+                    <TextBlock x:Name="RecoveryResult" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               AutomationProperties.AutomationId="NativeGatewaySetupRecoveryResult"
+                               AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
         <Grid x:Name="NavigationFooter" Grid.Row="2" RowDefinitions="Auto,Auto"

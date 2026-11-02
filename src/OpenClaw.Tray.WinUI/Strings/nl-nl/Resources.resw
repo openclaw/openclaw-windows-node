@@ -1486,15 +1486,6 @@ Gebruik een van deze opties:
   <data name="ClearButton.Text" xml:space="preserve">
     <value>Wissen</value>
   </data>
-  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
-    <value>Koppelingen</value>
-  </data>
-  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Regels voor berichtroutering</value>
-  </data>
-  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
-    <value>Vernieuwen</value>
-  </data>
   <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
     <value>🖥️ Deze computer</value>
   </data>
@@ -2275,9 +2266,6 @@ Gebruik een van deze opties:
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
     <value>Instanties</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
-    <value>Koppelingen</value>
-  </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Configuratie</value>
   </data>
@@ -2391,18 +2379,6 @@ Gebruik een van deze opties:
   </data>
   <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
     <value>Wacht terwijl de verbinding tot stand wordt gebracht...</value>
-  </data>
-  <data name="PriorityInfoBar.Title" xml:space="preserve">
-    <value>Routeringsprioriteit</value>
-  </data>
-  <data name="PriorityInfoBar.Message" xml:space="preserve">
-    <value>Koppelingen bepalen welke agent berichten van elk kanaal verwerkt. Prioriteit: peer &gt; account &gt; kanaal &gt; standaard.</value>
-  </data>
-  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
-    <value>Modus met één agent</value>
-  </data>
-  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
-    <value>Alle berichten worden naar de standaardagent gerouteerd. Voeg koppelingen toe voor routering met meerdere agents.</value>
   </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
     <value>Bewerk gatewayconfiguratie (openclaw.json) met een schemagestuurd formulier.</value>
@@ -3118,6 +3094,12 @@ Gebruik een van deze opties:
   </data>
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Redenering</value>
+  </data>
+  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
+    <value>Tokens per seconde: laatste modelantwoord, gemiddelde (μ) en 95e percentiel (p95) van recente modelaanroepen in deze sessie. ~ geeft een live schatting tijdens het streamen aan.</value>
+  </data>
+  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
+    <value>Gebruik van het contextvenster</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
     <value>Bericht aan assistent (Enter om te verzenden)</value>
@@ -4170,18 +4152,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
     <value>Connection Status</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>Gateway losgekoppeld</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>Maak verbinding met een gateway om bindingen te laden.</value>
-  </data>
-  <data name="BindingsPage_OpenConnection.Content" xml:space="preserve">
-    <value>Verbinding openen</value>
-  </data>
-  <data name="BindingsPage_LoadingBindings.Text" xml:space="preserve">
-    <value>Bindingen worden geladen…</value>
   </data>
   <data name="ConnectionPage_ApprovalsWaitingOnYou.Text" xml:space="preserve">
     <value>Goedkeuringen wachten op u</value>
@@ -5742,6 +5712,9 @@ Controleer of de gateway actief is.</value>
   <data name="ConnectionPage_InvalidUrl" xml:space="preserve">
     <value>Ongeldige URL</value>
   </data>
+  <data name="ConnectionPage_SavedDashboardInvalidAddress" xml:space="preserve">
+    <value>Dit opgeslagen gatewayadres kan het dashboard niet openen. Bewerk de opgeslagen gateway en gebruik een http-, https-, ws- of wss-adres.</value>
+  </data>
   <data name="ConnectionPage_ConnectionFailed" xml:space="preserve">
     <value>Verbinding mislukt</value>
   </data>
@@ -6195,20 +6168,11 @@ Controleer of de gateway actief is.</value>
   <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
     <value>Niet verbonden</value>
   </data>
-  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
-    <value>Could not load bindings</value>
-  </data>
   <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
     <value>Agent event log</value>
   </data>
   <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
     <value>Go to Agent Events</value>
-  </data>
-  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
-    <value>Gateway bindings</value>
-  </data>
-  <data name="Command_GoToBindings_Title" xml:space="preserve">
-    <value>Go to Bindings</value>
   </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
@@ -6631,7 +6595,7 @@ Controleer of de gateway actief is.</value>
     <value>Opdrachten worden op de host uitgevoerd zonder sandboxbescherming zolang sandboxing niet beschikbaar is.</value>
   </data>
   <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
-    <value>Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strikte fallbackblokkering is ingeschakeld.</value>
+    <value>Node-sandbox is ingeschakeld. Opdrachten worden geblokkeerd totdat isolatie beschikbaar is.</value>
   </data>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Kan de beschikbaarheid van de sandbox niet verifiëren</value>
@@ -7441,6 +7405,7 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>Lokale AI instellen</value></data>
   <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>De Gateway of de status van lokale AI is gewijzigd. Ga terug naar AI verbinden en controleer opnieuw voordat je installeert.</value></data>
   <data name="Onboarding_AiSetup_LocalStartFailed" xml:space="preserve"><value>Lokale AI kon niet starten. Het opruimen is voltooid. Herstel lokale AI of kies een andere provider.</value></data>
+  <data name="Onboarding_AiSetup_OpenLocalAiLogs" xml:space="preserve"><value>Logboeken van lokale AI openen</value></data>
   <data name="Onboarding_AiSetup_LocalState_Checking" xml:space="preserve"><value>Deze pc wordt gecontroleerd. Je kunt nog steeds een AI-provider kiezen.</value></data>
   <data name="Onboarding_AiSetup_LocalState_SetUp" xml:space="preserve"><value>Compatibele pc. Controleer de instellingen vóór installatie.</value></data>
   <data name="Onboarding_AiSetup_LocalState_StartAndUse" xml:space="preserve"><value>Geïnstalleerd, niet actief</value></data>
@@ -7483,7 +7448,34 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Bekijk vaardigheden voor je agent. Er wordt niets automatisch geïnstalleerd.</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Kanalen verbinden</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram en meer. Jij kiest wanneer je je aanmeldt.</value></data>
-  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Terug naar AI</value></data>
+  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Gereedheid opnieuw controleren</value></data>
+  <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>Je AI-keuzes voorbereiden</value></data>
+  <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>Gateway voorbereiden</value></data>
+  <data name="Onboarding_Loading_StartGateway" xml:space="preserve"><value>De gateway starten en de listener controleren...</value></data>
+  <data name="Onboarding_Loading_PairGateway" xml:space="preserve"><value>Companion koppelen aan de gateway...</value></data>
+  <data name="Onboarding_Loading_AcquireArtifacts" xml:space="preserve"><value>Bestanden voor lokale AI ophalen...</value></data>
+  <data name="Onboarding_Loading_ApplyCapabilities" xml:space="preserve"><value>Je beoordeelde Windows-mogelijkheden toepassen...</value></data>
+  <data name="Onboarding_Loading_CheckConfiguration" xml:space="preserve"><value>De opgeslagen gatewayconfiguratie controleren...</value></data>
+  <data name="Onboarding_Loading_RestartGateway" xml:space="preserve"><value>De geconfigureerde gateway opnieuw starten...</value></data>
+  <data name="Onboarding_Loading_CheckHealth" xml:space="preserve"><value>De gatewaystatus via een geauthenticeerde verbinding controleren...</value></data>
+  <data name="Onboarding_Loading_ReconcileLocalAi" xml:space="preserve"><value>De geselecteerde lokale AI-configuratie afstemmen...</value></data>
+  <data name="Onboarding_Loading_PublishGateway" xml:space="preserve"><value>Het geverifieerde gatewayprofiel opslaan...</value></data>
+  <data name="Onboarding_Loading_SaveSettings" xml:space="preserve"><value>Je configuratiekeuzes opslaan...</value></data>
+  <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>Je voorkeur voor starten bij aanmelden toepassen...</value></data>
+  <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>Companion-services starten vóór de laatste AI-controle...</value></data>
+  <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>Wachten op herstel van de geselecteerde lokale AI-runtime...</value></data>
+  <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>De oude lokale AI-runtime veilig stoppen...</value></data>
+  <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>De oude gatewayverbinding en runtime vrijgeven...</value></data>
+  <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>Je AI controleren</value></data>
+  <data name="Onboarding_AiSetup_VerificationFailedTitle" xml:space="preserve"><value>Je AI heeft aandacht nodig</value></data>
+  <data name="Onboarding_AiSetup_ManagerRecoveryBlocked" xml:space="preserve"><value>De gatewayverbinding is gewijzigd tijdens de configuratie. Sluit dit venster, controleer Verbinding en open de AI-configuratie opnieuw om het opgeslagen resultaat te verifiëren. Herhaal de provideractie niet zolang de uitkomst onzeker is. Sluiten wacht totdat een toegelaten bewerking is afgerond.</value></data>
+  <data name="Onboarding_Finishing_Draining" xml:space="preserve"><value>De vorige configuratiebewerking veilig afsluiten...</value></data>
+  <data name="Onboarding_Finishing_Restarting" xml:space="preserve"><value>OpenClaw opnieuw starten vóór de laatste controle...</value></data>
+  <data name="Onboarding_Finishing_Recovery" xml:space="preserve"><value>De configuratie is niet gereed. Gebruik een beschikbare herstelactie of sluit dit venster. Geen provideractie wordt automatisch herhaald.</value></data>
+  <data name="Onboarding_Ai_CompletionConsent.Text" xml:space="preserve"><value>Door een AI te selecteren of de configuratie voort te zetten, geef je OpenClaw toestemming om je beoordeelde keuzes toe te passen en opnieuw te starten voordat Gereed verschijnt.</value></data>
+  <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>Configuratie voltooien</value></data>
+  <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>Je keuzes toepassen, OpenClaw opnieuw starten en je AI controleren. Dit kan enkele minuten duren.</value></data>
+  <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>De configuratie heeft aandacht nodig. Geen AI-actie wordt automatisch herhaald. Sluit dit venster, controleer de opgeslagen gateway in Verbinding en open de AI-configuratie expliciet opnieuw om deze te verifiëren.</value></data>
   <data name="Onboarding_Ready_Model" xml:space="preserve"><value>Geverifieerd model: {0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>Dezelfde Gateway, agent en hetzelfde model opnieuw controleren...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>Uw Windows-instellingen afronden...</value></data>
@@ -7499,7 +7491,7 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows-configuratie kon niet worden afgerond. Uw bestemming is niet geopend. Probeer opnieuw of ga terug naar AI-instellingen.</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>De app kon uw bestemming niet openen. Kies opnieuw om te proberen. Er is geen kanaalaanmelding gestart.</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>Uw gekozen bestemming kon niet worden geopend</value></data>
-  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>Deze configuratieoverdracht is verlopen, al gebruikt of niet beschikbaar. Open de configuratie opnieuw en verifieer uw AI.</value></data>
+  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>Deze configuratieoverdracht is onderbroken, incompatibel, verlopen of al gebruikt. Deze kan niet opnieuw worden uitgevoerd. Controleer de opgeslagen gateway in Verbinding en open de AI-configuratie expliciet opnieuw om deze te verifiëren. Eerdere acties worden niet automatisch herhaald.</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>De geverifieerde Gateway of agent is gewijzigd. Ga terug naar de oorspronkelijke Gateway en open AI-instellingen opnieuw. Er is geen ander account geopend.</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>De geverifieerde Gateway of app-pagina is niet klaar. Controleer Connection en probeer expliciet opnieuw.</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
@@ -7671,6 +7663,18 @@ Kies {1} om dit voorbeeld te sluiten zonder de migratie te starten en de vorige 
 
 Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>Uw configuratie is gevalideerd en de voltooiing van de migratie is vastgelegd.
+
+1. Open Geïnstalleerde apps.
+Verwijderen: {0} (desktopinstallatie)
+Behouden: {1}, versie {2} (Microsoft Store)
+Laat alle andere apps geïnstalleerd.
+
+2. Keer hier terug en kies Opnieuw proberen om de verwijdering te verifiëren en af te ronden.
+
+Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>Verwijder de vorige app</value>
   </data>
@@ -7733,6 +7737,17 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Migration2_InnoGranted" xml:space="preserve">
     <value>De toestemming voor migratie is opgeslagen. Installeer en open de Store-versie om door te gaan. Laat deze app geïnstalleerd totdat de voltooiing van de migratie is bevestigd.</value>
   </data>
+  <data name="Migration2_InnoRepairRequired" xml:space="preserve">
+    <value>Vereiste installatiebestanden ontbreken of zijn ongeldig. Download het volledige OpenClaw-installatieprogramma. Sluit OpenClaw af, voer het installatieprogramma over deze installatie uit als dezelfde Windows-gebruiker en open de app opnieuw om de migratie nogmaals te proberen. Verwijder OpenClaw niet vooraf.
+
+Het installatieprogramma herstelt de installatiebestanden. De migratie moet nog steeds voldoen aan de compatibiliteitscontroles van de Store-app.</value>
+  </data>
+  <data name="Migration2_InnoSetupLinkFailed" xml:space="preserve">
+    <value>Windows kon de downloadlink voor het installatieprogramma niet openen. Kopieer dit adres naar uw browser: {0}. Verwijder OpenClaw niet vooraf.</value>
+  </data>
+  <data name="Migration2_InnoDownloadSetup.Content" xml:space="preserve">
+    <value>Installatieprogramma voor herstel downloaden</value>
+  </data>
   <data name="Migration2_InnoFailed" xml:space="preserve">
     <value>OpenClaw kon de toestemming voor migratie niet opslaan of de Store-pagina niet openen. Bekijk het applogboek en probeer het opnieuw. Verwijder deze app niet.</value>
   </data>
@@ -7747,13 +7762,13 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Een lokale WSL Gateway installeren</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Ondersteuning voor de native Gateway controleren...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>De native Gateway wordt ondersteund op dit apparaat.</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Als u de native Gateway wilt gebruiken, werkt u uw apparaat bij naar een Windows-versie die dit ondersteunt.
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Windows meldt dat de isolatiesessiefunctionaliteit die de native Gateway nodig heeft niet beschikbaar is. Een nieuwere Windows-versie garandeert niet dat deze beschikbaar is. U kunt in plaats daarvan een lokale WSL-Gateway installeren of verbinding maken met een bestaande Gateway.
 
-Ondersteuning voor de native Gateway is binnenkort beschikbaar op alle apparaten. Totdat deze algemeen beschikbaar is, neemt u deel aan het Windows Insider-programma, selecteert u het Beta- of Experimental-kanaal en kiest u tijdens de inschrijving Windows 11, versie 26H1 onder Geavanceerde opties. Terugkeren naar Windows 11, versie 25H2/26H2 vereist een schone herinstallatie.
+Als u Windows moet bijwerken, kunt u deelnemen aan het Windows Insider-programma, het Beta- of Experimental-kanaal selecteren en tijdens de inschrijving Windows 11, versie 26H1 onder Geavanceerde opties kiezen. Terugkeren naar Windows 11, versie 25H2/26H2 vereist een schone herinstallatie.
 
-Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op updates. Het kan enkele minuten duren voordat de update wordt weergegeven. De beschikbaarheid van deze functie kan per apparaat verschillen. Open deze pagina na de update opnieuw om de ondersteuning nogmaals te controleren.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Als u de native Gateway wilt gebruiken, werkt u uw apparaat bij naar een Windows-versie die dit ondersteunt.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>is binnenkort beschikbaar op alle apparaten.</value></data>
+Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op updates. Het kan enkele minuten duren voordat de update wordt weergegeven. De beschikbaarheid van deze functie kan per apparaat verschillen. Open deze pagina opnieuw om de ondersteuning nogmaals te controleren.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Windows meldt dat de isolatiesessiefunctionaliteit die de native Gateway nodig heeft niet beschikbaar is.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableAlternatives" xml:space="preserve"><value>U kunt in plaats daarvan een lokale WSL-Gateway installeren of verbinding maken met een bestaande Gateway.</value></data>
   <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Windows Insider-programma</value></data>
   <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta- of Experimental</value></data>
   <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11, versie 26H1</value></data>
@@ -7767,6 +7782,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Ga verder met dezelfde Gateway-wizard als voor WSL, hier in Companion. Configuratie en gezondheid worden vóór het verbinden gecontroleerd. Bestaande WSL-Gateways en uw standaard OpenClaw-profiel worden niet vervangen.</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Als de Gateway niet is geïnstalleerd, installeert de instelling deze vanuit Microsoft Store met WinGet en controleert het pakket voordat automatisch wordt doorgegaan.</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>De Gateway installeren vanuit Microsoft Store met WinGet...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>De Gateway wordt nog steeds geïnstalleerd vanuit Microsoft Store. Dit kan enkele minuten duren ({0} min verstreken).</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet is klaar. Gateway-registratie en uitvoeringsaliassen controleren voordat wordt doorgegaan...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion bereidt uw Gateway voor en helpt u daarna uw AI te verbinden.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway herstellen</value></data>
@@ -7778,6 +7794,15 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>Uw Gateway-profiel voorbereiden</value></data>
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>De Gateway starten en controleren</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Instelling opnieuw proberen</value></data>
+  <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>Gateway-diagnostiek verzamelen</value></data>
+  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>Instellingslogboek weergeven</value></data>
+  <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>Verzamel Gateway-diagnostiek voor een geschoonde ZIP die u kunt bekijken of delen, of open een terminal in de geïsoleerde Gateway. Kies daarna Instelling opnieuw proberen.</value></data>
+  <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>De Gateway was niet binnen {0} seconden gereed. De eerste start kan traag zijn. Verzamel Gateway-diagnostiek om te zien waarom en kies daarna Instelling opnieuw proberen. Stel voor een langere start de omgevingsvariabele {1} in op een aantal seconden en start Companion opnieuw.</value></data>
+  <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>Geschoonde Gateway-diagnostiek verzamelen...</value></data>
+  <data name="Onboarding_Native_DiagnosticsSaved" xml:space="preserve"><value>Gateway-diagnostiek opgeslagen in {0}.</value></data>
+  <data name="Onboarding_Native_DiagnosticsNoPath" xml:space="preserve"><value>Het Gateway-pakket heeft diagnostiek verzameld, maar niet gemeld waar deze is opgeslagen.</value></data>
+  <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>Gateway-diagnostiek kon niet worden verzameld: {0}</value></data>
+  <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>De Gateway-terminal kon niet worden geopend: {0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Alleen een voorbeeld. Er wordt geen pakket geïnstalleerd of Gateway gestart.</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Deze Windows-functies zijn bruikbaar nadat de nodemodus verbinding heeft gemaakt en met de Gateway is gekoppeld. Windows-machtigingen en opdrachtgoedkeuringen blijven van toepassing.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway geconfigureerd</value></data>
@@ -7835,7 +7860,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
   <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
-  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
@@ -8074,9 +8098,94 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>Deze sessie is niet meer leeg, dus de wachtende locatiekeuze is geannuleerd. Controleer de sessie en verzend opnieuw om op de huidige locatie door te gaan.</value>
   </data>
+  <data name="Chat_Questions_Refresh" xml:space="preserve"><value>Vragen vernieuwen</value></data>
+  <data name="Chat_Questions_Answered" xml:space="preserve"><value>Vraag beantwoord</value></data>
+  <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>Vraag geannuleerd</value></data>
+  <data name="Chat_Questions_Expired" xml:space="preserve"><value>Vraag verlopen</value></data>
+  <data name="Chat_Questions_Waiting" xml:space="preserve"><value>Wachten op uw antwoord</value></data>
+  <data name="Chat_Questions_WebRequired" xml:space="preserve"><value>Open de webchat om deze vraag te beantwoorden. Hiervoor zijn resourceselectie of besturingselementen voor geheimenopslag nodig.</value></data>
+  <data name="Chat_Questions_Answer" xml:space="preserve"><value>Uw antwoord</value></data>
+  <data name="Chat_Questions_OpenLink" xml:space="preserve"><value>Vraaglink openen</value></data>
+  <data name="Chat_Questions_LinkFailed" xml:space="preserve"><value>De vraaglink kon niet worden geopend.</value></data>
+  <data name="Chat_Questions_SendFailed" xml:space="preserve"><value>Het antwoord kon niet worden verzonden. Vernieuw en probeer opnieuw.</value></data>
+  <data name="Chat_Questions_Reconnect" xml:space="preserve"><value>Maak opnieuw verbinding en vernieuw de vragen voordat u antwoordt.</value></data>
+  <data name="Chat_Questions_Submitting" xml:space="preserve"><value>Verzenden...</value></data>
+  <data name="Chat_Questions_Submit" xml:space="preserve"><value>Antwoord verzenden</value></data>
+  <data name="Chat_Questions_Cancel" xml:space="preserve"><value>Vraag annuleren</value></data>
+  <data name="Chat_Questions_RefreshFailed" xml:space="preserve"><value>Vragen konden niet worden vernieuwd. Probeer opnieuw of open de webchat.</value></data>
+  <data name="Chat_Questions_Unavailable" xml:space="preserve"><value>Deze vraag is verlopen of de verbinding is verbroken. Vernieuw voordat u antwoordt.</value></data>
+  <data name="Chat_Questions_Unconfirmed" xml:space="preserve"><value>Het antwoord is niet bevestigd. Vernieuw om de status te controleren voordat u opnieuw probeert.</value></data>
+  <data name="Chat_Questions_Invalid" xml:space="preserve"><value>Een vraag van de agent kon niet worden gelezen. Vernieuw of open de webchat om te antwoorden.</value></data>
+  <data name="Chat_Run_Finished" xml:space="preserve"><value>Voltooid</value></data>
+  <data name="Chat_Run_Approval" xml:space="preserve"><value>Wachten op goedkeuring</value></data>
+  <data name="Chat_Run_Answer" xml:space="preserve"><value>Wachten op uw antwoord</value></data>
+  <data name="Chat_Run_Compacting" xml:space="preserve"><value>Context comprimeren</value></data>
+  <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>Opnieuw proberen na contextcompressie</value></data>
+  <data name="Chat_Run_Retry" xml:space="preserve"><value>Modelaanvraag opnieuw proberen</value></data>
+  <data name="Chat_Run_Thinking" xml:space="preserve"><value>Nadenken</value></data>
+  <data name="Chat_Run_Responding" xml:space="preserve"><value>Antwoorden</value></data>
+  <data name="Chat_Run_Working" xml:space="preserve"><value>Bezig</value></data>
+  <data name="Chat_Run_Tool" xml:space="preserve"><value>{0} uitvoeren</value></data>
+  <data name="Chat_Questions_NoLongerAvailable" xml:space="preserve"><value>Vraag niet meer beschikbaar</value></data>
+  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0:N0} uitvoertokens</value></data>
+  <data name="Chat_Questions_OtherPlaceholder" xml:space="preserve"><value>Typ hier je eigen antwoord</value></data>
+  <data name="Chat_Questions_KeyboardHint" xml:space="preserve"><value>Enter voegt een regel toe / Ctrl+Enter om door te gaan</value></data>
+  <data name="Chat_Questions_Expand" xml:space="preserve"><value>Vraag uitvouwen</value></data>
+  <data name="Chat_Questions_Collapse" xml:space="preserve"><value>Vraag samenvouwen</value></data>
+  <data name="Chat_Questions_PreviousRequest" xml:space="preserve"><value>Vorig verzoek</value></data>
+  <data name="Chat_Questions_NextRequest" xml:space="preserve"><value>Volgend verzoek</value></data>
+  <data name="Chat_Questions_Back" xml:space="preserve"><value>Terug</value></data>
+  <data name="Chat_Questions_Skip" xml:space="preserve"><value>Overslaan</value></data>
+  <data name="Chat_Questions_SubmitShort" xml:space="preserve"><value>Verzenden</value></data>
+  <data name="Chat_Questions_Next" xml:space="preserve"><value>Volgende</value></data>
   <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>Ondersteuning krijgen</value></data>
   <data name="Chat_Welcome_WhatCanYouDo" xml:space="preserve"><value>Wat kun je doen?</value></data>
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
+    <value>Node-sandbox</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OpenSettings" xml:space="preserve">
+    <value>Instellingen voor sandboxomgeving</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
+    <value>Beschikbaar</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
+    <value>Compatibiliteit</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Unavailable" xml:space="preserve">
+    <value>Niet beschikbaar</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Disabled" xml:space="preserve">
+    <value>Tools uit</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Checking" xml:space="preserve">
+    <value>Controleren</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_AvailableDescription" xml:space="preserve">
+    <value>Windows ondersteunt sandboxing. Elke opdracht wordt vóór uitvoering gecontroleerd.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_CompatibilityDescription" xml:space="preserve">
+    <value>Deze Windows-versie ondersteunt geen sandboxing. Goedgekeurde opdrachten worden zonder sandbox uitgevoerd.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_UnavailableDescription" xml:space="preserve">
+    <value>Sandboxing kon niet worden geverifieerd. Opdrachten worden geblokkeerd.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_DisabledDescription" xml:space="preserve">
+    <value>Systeemtools staan uit. Opdrachten kunnen niet op deze node worden uitgevoerd.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
+    <value>Windows-sandboxondersteuning controleren.</value>
+  </data>
+  <data name="Chat_Status_PrimaryRestored" xml:space="preserve"><value>Primair model hersteld</value></data>
+  <data name="Chat_Status_FallbackSwitching" xml:space="preserve"><value>Overschakelen naar een reservemodel</value></data>
+  <data name="Chat_Status_FallbackModel" xml:space="preserve"><value>Reservemodel in gebruik: {0}</value></data>
+  <data name="Chat_Status_StreamIncomplete" xml:space="preserve"><value>De live reactie is onvolledig. Maak opnieuw verbinding of laad de gespreksgeschiedenis opnieuw om deze te herstellen.</value></data>
+  <data name="Chat_Run_ElapsedHours" xml:space="preserve"><value>{0} u {1} min {2} s</value></data>
+  <data name="Chat_Run_ElapsedMinutes" xml:space="preserve"><value>{1} min {2} s</value></data>
+  <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
+  <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Deze vraag wordt afgehandeld. Vernieuw om de status te controleren.</value></data>
+  <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Kies een geldig antwoord voor elke vraag.</value></data>
 </root>

@@ -219,7 +219,7 @@ public sealed class GatewayConnectionManager :
     public ConnectionDiagnostics Diagnostics => _diagnostics;
 
     internal async Task<OpenClawGatewayClient> RequireNativeSetupClientAsync(
-        GatewayRecord expected, CancellationToken ct)
+        GatewayRecord expected, CancellationToken ct, bool allowRuntimeStart = true)
     {
         var client = ConcreteOperatorClient;
         void RequireCurrent()
@@ -234,7 +234,8 @@ public sealed class GatewayConnectionManager :
                 throw new InvalidOperationException("The native Gateway connection is not ready for setup verification.");
         }
         RequireCurrent();
-        var authorization = await NativeGatewayEndpointSecurity.AuthorizeAsync(_nativeGatewayRuntime, expected, ct);
+        var authorization = await NativeGatewayEndpointSecurity.AuthorizeAsync(_nativeGatewayRuntime, expected, ct,
+            allowStart: allowRuntimeStart);
         RequireCurrent();
         if (!authorization.Allowed)
             throw new InvalidOperationException(authorization.Detail);

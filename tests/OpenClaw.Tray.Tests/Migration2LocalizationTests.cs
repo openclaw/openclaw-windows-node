@@ -26,6 +26,42 @@ public sealed class Migration2LocalizationTests
     };
 
     [Theory]
+    [InlineData("en-us", "same Windows user", "Do not uninstall OpenClaw first",
+        "Setup repairs the installation files", "Migration must still pass the Store app’s compatibility checks")]
+    [InlineData("fr-fr", "même utilisateur Windows", "Ne désinstallez pas OpenClaw au préalable",
+        "répare les fichiers d’installation", "La migration doit encore satisfaire aux vérifications de compatibilité")]
+    [InlineData("nl-nl", "dezelfde Windows-gebruiker", "Verwijder OpenClaw niet vooraf",
+        "herstelt de installatiebestanden", "De migratie moet nog steeds voldoen aan de compatibiliteitscontroles")]
+    [InlineData("pt-br", "mesmo usuário do Windows", "Não desinstale o OpenClaw antes",
+        "repara os arquivos da instalação", "A migração ainda precisa passar pelas verificações de compatibilidade")]
+    [InlineData("zh-cn", "同一 Windows 用户", "请勿先卸载 OpenClaw",
+        "安装程序会修复安装文件", "迁移仍须通过 Store 应用的兼容性检查")]
+    [InlineData("zh-tw", "同一 Windows 使用者", "請勿先解除安裝 OpenClaw",
+        "安裝程式會修復安裝檔案", "移轉仍須通過 Store 應用程式的相容性檢查")]
+    public void InnoRepairGuidance_DisclosesInPlaceRecoveryAndHasADownloadAction(
+        string locale, string sameUser, string keepInstalled,
+        string repairScope, string compatibilityChecks)
+    {
+        var resources = ReadResources(locale);
+        var repair = resources["Migration2_InnoRepairRequired"];
+        Assert.Contains(sameUser, repair);
+        Assert.Contains(keepInstalled, repair);
+        Assert.Contains(repairScope, repair);
+        Assert.Contains(compatibilityChecks, repair);
+        Assert.NotEqual(resources["Migration2_InnoFailed"], repair);
+        Assert.False(string.IsNullOrWhiteSpace(resources["Migration2_InnoDownloadSetup.Content"]));
+        Assert.Contains("{0}", resources["Migration2_InnoSetupLinkFailed"]);
+        foreach (var key in new[]
+        {
+            "Migration2_InnoRepairRequired", "Migration2_InnoSetupLinkFailed"
+        })
+        {
+            Assert.False(string.IsNullOrWhiteSpace(resources[key]));
+            Assert.DoesNotContain("\u2014", resources[key]);
+        }
+    }
+
+    [Theory]
     [InlineData("en-us", "Microsoft Store opens", "close this app",
         "without asking again", "settings, gateway, files, and models stay where they are")]
     [InlineData("fr-fr", "Le Microsoft Store s'ouvre", "fermer cette application",
@@ -153,6 +189,37 @@ public sealed class Migration2LocalizationTests
     }
 
     [Theory]
+    [InlineData("en-us", "Remove:", "Keep:", "Leave all other apps installed")]
+    [InlineData("fr-fr", "À désinstaller :", "À conserver :", "Laissez les autres applications installées")]
+    [InlineData("nl-nl", "Verwijderen:", "Behouden:", "Laat alle andere apps geïnstalleerd")]
+    [InlineData("pt-br", "Remover:", "Manter:", "Mantenha todos os outros aplicativos instalados")]
+    [InlineData("zh-cn", "卸载：", "保留：", "保留所有其他应用")]
+    [InlineData("zh-tw", "解除安裝：", "保留：", "保留所有其他應用程式")]
+    public void NamedRemovalGuidance_IdentifiesOnlyTheSourceAndStoreApp(
+        string locale, string remove, string keep, string leaveOthers)
+    {
+        var resources = ReadResources(locale);
+        var template = resources["Migration2_AwaitingRemovalWithApps"];
+        foreach (var placeholder in new[] { "{0}", "{1}", "{2}" })
+            Assert.Single(Regex.Matches(template, Regex.Escape(placeholder)));
+        var rendered = string.Format(System.Globalization.CultureInfo.InvariantCulture, template,
+            "OpenClaw Companion version 2026.9.8-1", "OpenClaw", "2026.10.502.0");
+        Assert.Matches(Regex.Escape(remove) + @"\s*" + Regex.Escape("OpenClaw Companion version 2026.9.8-1"), rendered);
+        Assert.Matches(Regex.Escape(keep) + @"\s*" + Regex.Escape("OpenClaw"), rendered);
+        Assert.Contains("2026.10.502.0", rendered);
+        Assert.Contains(leaveOthers, rendered);
+        Assert.Contains(resources["Migration_StoreRetry"], rendered);
+        Assert.DoesNotContain("{0}", rendered);
+        Assert.DoesNotContain("\u2014", rendered);
+        var parts = Regex.Split(template.Trim(), @"\r?\n\s*\r?\n");
+        Assert.Equal(4, parts.Length);
+        Assert.StartsWith("1. ", parts[1]);
+        Assert.StartsWith("2. ", parts[2]);
+        if (locale != "en-us")
+            Assert.NotEqual(ReadResources("en-us")["Migration2_AwaitingRemovalWithApps"], template);
+    }
+
+    [Theory]
     [InlineData("en-us", "setup has been validated", "migration completion recorded",
         "Installed apps", "uninstall only the previous OpenClaw Companion app", "Keep the Store version",
         "Return here", "verify removal and finish", "settings, gateway, files, and models stay in place",
@@ -256,6 +323,7 @@ public sealed class Migration2LocalizationTests
         AssertWordBudget(110, StoreConsentBodyKeys);
         AssertWordBudget(40, "Migration2_CloseInno", "Migration2_CloseInnoWarning");
         AssertWordBudget(75, "Migration2_AwaitingRemoval", "Migration2_RemovalWarning");
+        AssertWordBudget(75, "Migration2_AwaitingRemovalWithApps", "Migration2_RemovalWarning");
 
         void AssertWordBudget(int maximum, params string[] keys)
         {

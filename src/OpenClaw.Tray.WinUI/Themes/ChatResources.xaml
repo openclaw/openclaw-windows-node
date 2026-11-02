@@ -4,12 +4,20 @@
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Default">
             <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemAccentColorLight2}" />
+            <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemAccentColorLight2}" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
             <SolidColorBrush x:Key="ChatCardBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
             <SolidColorBrush x:Key="ChatStrokeBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
+            <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatClawBrush" Color="{ThemeResource SystemAccentColorLight2}" />
+            <SolidColorBrush x:Key="ChatQuestionOptionBrush" Color="{ThemeResource ControlFillColorDefault}" />
+            <SolidColorBrush x:Key="ChatQuestionOptionHoverBrush" Color="{ThemeResource ControlFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatQuestionSelectedBrush" Color="{ThemeResource SystemAccentColorLight2}" Opacity="0.12" />
+            <SolidColorBrush x:Key="ChatQuestionSelectedStrokeBrush" Color="{ThemeResource SystemAccentColorLight2}" />
+            <SolidColorBrush x:Key="ChatQuestionCardStrokeBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
             <SolidColorBrush x:Key="ChatUserBrush" Color="{ThemeResource SystemAccentColorLight2}" Opacity="0.12" />
             <SolidColorBrush x:Key="ChatPendingUserBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatUserTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
@@ -41,12 +49,20 @@
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
             <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemAccentColorDark1}" />
+            <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemAccentColorDark1}" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
             <SolidColorBrush x:Key="ChatCardBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
             <SolidColorBrush x:Key="ChatStrokeBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
+            <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatClawBrush" Color="{ThemeResource SystemAccentColorDark1}" />
+            <SolidColorBrush x:Key="ChatQuestionOptionBrush" Color="{ThemeResource ControlFillColorDefault}" />
+            <SolidColorBrush x:Key="ChatQuestionOptionHoverBrush" Color="{ThemeResource ControlFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatQuestionSelectedBrush" Color="{ThemeResource SystemAccentColorDark1}" Opacity="0.08" />
+            <SolidColorBrush x:Key="ChatQuestionSelectedStrokeBrush" Color="{ThemeResource SystemAccentColorDark1}" />
+            <SolidColorBrush x:Key="ChatQuestionCardStrokeBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
             <SolidColorBrush x:Key="ChatUserBrush" Color="{ThemeResource SystemAccentColorDark1}" Opacity="0.08" />
             <SolidColorBrush x:Key="ChatPendingUserBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatUserTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
@@ -78,12 +94,20 @@
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
             <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatCardBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatClawBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatQuestionOptionBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ChatQuestionOptionHoverBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ChatQuestionSelectedBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ChatQuestionSelectedStrokeBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ChatQuestionCardStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatUserBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="ChatPendingUserBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatUserTextBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
@@ -114,6 +138,131 @@
             </Style>
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
+    <ControlTemplate x:Key="ChatWorkingClawTemplate" TargetType="Control">
+        <ContentPresenter x:Name="ClawRoot" />
+    </ControlTemplate>
+    <Style x:Key="ChatClawShapeStyle" TargetType="Path">
+        <Setter Property="Fill" Value="{ThemeResource ChatClawBrush}" />
+        <Setter Property="StrokeThickness" Value="0" />
+    </Style>
+    <Style x:Key="ChatClawSparkStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource ChatClawBrush}" />
+    </Style>
+    <Style x:Key="ChatCanvasStyle" TargetType="Grid">
+        <Setter Property="Background" Value="{ThemeResource ChatCanvasBrush}" />
+    </Style>
+    <Style x:Key="ChatPrimaryTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource ChatStrongTextBrush}" />
+    </Style>
+    <ControlTemplate x:Key="ChatQuestionOptionTemplate" TargetType="ToggleButton">
+        <Grid Background="Transparent">
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Target="Surface.Background" Value="{ThemeResource ChatQuestionOptionHoverBrush}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Target="Surface.Background" Value="{ThemeResource ChatQuestionOptionHoverBrush}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters><Setter Target="Surface.Opacity" Value="0.7" /></VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="CheckStates">
+                    <VisualState x:Name="Unchecked" />
+                    <VisualState x:Name="Checked">
+                        <VisualState.Setters>
+                            <Setter Target="SelectedSurface.Visibility" Value="Visible" />
+                            <Setter Target="Check.Visibility" Value="Visible" />
+                            <Setter Target="Marker.BorderBrush" Value="{ThemeResource ChatClawBrush}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Indeterminate" />
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+            <Border x:Name="Surface" Background="{ThemeResource ChatQuestionOptionBrush}"
+                    BorderBrush="{ThemeResource ChatStrokeBrush}" BorderThickness="1" CornerRadius="11" />
+            <Border x:Name="SelectedSurface" Background="{ThemeResource ChatQuestionSelectedBrush}"
+                    BorderBrush="{ThemeResource ChatQuestionSelectedStrokeBrush}" BorderThickness="1"
+                    CornerRadius="11" Visibility="Collapsed" />
+            <Grid Padding="11,10" ColumnSpacing="9">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border x:Name="Marker" Width="16" Height="16" CornerRadius="{TemplateBinding CornerRadius}"
+                        BorderThickness="1" BorderBrush="{ThemeResource ChatStrokeBrush}" VerticalAlignment="Center">
+                    <TextBlock x:Name="Check" Text="&#xE73E;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                               FontSize="10" Foreground="{ThemeResource ChatClawBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+                </Border>
+                <ContentPresenter Grid.Column="1" Content="{TemplateBinding Content}"
+                                  HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" />
+            </Grid>
+        </Grid>
+    </ControlTemplate>
+    <Style x:Key="ChatQuestionOptionStyle" TargetType="ToggleButton">
+        <Setter Property="Template" Value="{StaticResource ChatQuestionOptionTemplate}" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+    </Style>
+    <Style x:Key="ChatQuestionOtherStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource ChatQuestionOptionBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ChatStrokeBrush}" />
+    </Style>
+    <Style x:Key="ChatQuestionInputStyle" TargetType="TextBox">
+        <Setter Property="Foreground" Value="{ThemeResource ChatTextBrush}" />
+        <Setter Property="PlaceholderForeground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <ControlTemplate x:Key="ChatQuestionActionTemplate" TargetType="Button">
+        <Grid>
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters><Setter Target="ActionSurface.Opacity" Value="0.85" /></VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters><Setter Target="ActionSurface.Opacity" Value="0.7" /></VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters><Setter Target="ActionSurface.Opacity" Value="0.5" /></VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+            <Border x:Name="ActionSurface" Background="{TemplateBinding Background}" CornerRadius="10"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                    Padding="{TemplateBinding Padding}">
+                <ContentPresenter Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
+                                  FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}"
+                                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+            </Border>
+        </Grid>
+    </ControlTemplate>
+    <Style x:Key="ChatQuestionQuietButtonStyle" TargetType="Button">
+        <Setter Property="Template" Value="{StaticResource ChatQuestionActionTemplate}" />
+        <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+    </Style>
+    <Style x:Key="ChatQuestionSubmitStyle" TargetType="Button" BasedOn="{StaticResource ChatQuestionQuietButtonStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+    </Style>
     <ControlTemplate x:Key="ChatModelPickerControlTemplate" TargetType="Control">
         <ContentPresenter x:Name="PickerRoot" />
     </ControlTemplate>
@@ -159,6 +308,13 @@
     </DataTemplate>
     <Style x:Key="ChatPickerAccentTextStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource ChatPickerAccentBrush}" />
+    </Style>
+    <Style x:Key="ChatSecondaryTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+    </Style>
+    <Style x:Key="ChatQuestionCardStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource ChatCardBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ChatQuestionCardStrokeBrush}" />
     </Style>
     <Style x:Key="ChatPickerFlyoutStyle" TargetType="FlyoutPresenter">
         <Setter Property="Padding" Value="0" />

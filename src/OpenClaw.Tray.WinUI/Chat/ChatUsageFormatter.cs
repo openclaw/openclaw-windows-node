@@ -5,9 +5,53 @@ using System.Globalization;
 
 namespace OpenClawTray.Chat;
 
+/// <summary>Resolved context-window usage; shared by the usage pill and the throughput strip.</summary>
+internal readonly record struct ChatContextUsage(long UsedTokens, long ContextTokens, int? Percent);
+
 public static class ChatUsageFormatter
 {
-    public static string? Format(ChatThread? thread)
+    public static string? Format(ChatThread? thread) => Render(Resolve(thread));
+
+    public static string? Format(
+        IReadOnlyList<ChatTimelineItem>? entries,
+        IReadOnlyDictionary<string, ChatEntryMetadata>? metadata)
+        => Render(ResolveLatest(entries, metadata));
+
+    public static string? Format(ChatEntryMetadata? metadata) => Render(Resolve(metadata));
+
+    public static string? Format(int? inputTokens, int? outputTokens, int? responseTokens, int? contextPercent)
+        => Format(inputTokens, outputTokens, responseTokens, contextPercent, 0);
+
+    public static string? Format(int? inputTokens, int? outputTokens, int? responseTokens, int? contextPercent, long fallbackContextTokens)
+        => Render(Resolve(inputTokens, outputTokens, responseTokens, contextPercent, fallbackContextTokens));
+
+    public static string? Format(long usedTokens, long contextTokens, int? contextPercent = null)
+        => Render(Normalize(usedTokens, contextTokens, contextPercent));
+
+    /// <summary>
+    /// Context usage for the throughput strip: the same source the usage pill uses, but only
+    /// when the window size is known so a bar can be drawn.
+    /// </summary>
+    internal static ChatContextUsage? ResolveContext(
+        IReadOnlyList<ChatTimelineItem>? entries,
+        IReadOnlyDictionary<string, ChatEntryMetadata>? metadata,
+        ChatThread? thread)
+        => (ResolveLatest(entries, metadata) ?? Resolve(thread)) is { ContextTokens: > 0 } usage ? usage : null;
+
+    internal static string FormatThroughput(ChatThroughputStats stats, bool turnActive)
+    {
+        var current = turnActive && stats.LiveTokensPerSecond is { } live
+            ? "~" + Rate(live)
+            : stats.LatestTokensPerSecond is { } latest ? Rate(latest) : "—";
+        return $"{current} tps · μ {RateOrDash(stats.MeanTokensPerSecond)} · p95 {RateOrDash(stats.P95TokensPerSecond)}";
+    }
+
+    private static string Rate(double value)
+        => value.ToString(value >= 100 ? "0" : "0.0", CultureInfo.InvariantCulture);
+
+    private static string RateOrDash(double? value) => value is { } v ? Rate(v) : "—";
+
+    private static ChatContextUsage? Resolve(ChatThread? thread)
     {
         if (thread is null) return null;
 
@@ -15,10 +59,10 @@ public static class ChatUsageFormatter
         if (usedTokens <= 0)
             usedTokens = thread.InputTokens + thread.OutputTokens;
 
-        return Format(usedTokens, thread.ContextTokens);
+        return Normalize(usedTokens, thread.ContextTokens, null);
     }
 
-    public static string? Format(
+    private static ChatContextUsage? ResolveLatest(
         IReadOnlyList<ChatTimelineItem>? entries,
         IReadOnlyDictionary<string, ChatEntryMetadata>? metadata)
     {
@@ -30,26 +74,19 @@ public static class ChatUsageFormatter
             if (entry.Kind != ChatTimelineItemKind.Assistant)
                 continue;
 
-            if (!metadata.TryGetValue(entry.Id, out var meta))
-                continue;
-
-            var summary = Format(meta);
-            if (!string.IsNullOrWhiteSpace(summary))
-                return summary;
+            if (metadata.TryGetValue(entry.Id, out var meta) && Resolve(meta) is { } usage)
+                return usage;
         }
 
         return null;
     }
 
-    public static string? Format(ChatEntryMetadata? metadata)
+    private static ChatContextUsage? Resolve(ChatEntryMetadata? metadata)
         => metadata is null
             ? null
-            : Format(metadata.InputTokens, metadata.OutputTokens, metadata.ResponseTokens, metadata.ContextPercent, metadata.ContextTokens ?? 0);
+            : Resolve(metadata.InputTokens, metadata.OutputTokens, metadata.ResponseTokens, metadata.ContextPercent, metadata.ContextTokens ?? 0);
 
-    public static string? Format(int? inputTokens, int? outputTokens, int? responseTokens, int? contextPercent)
-        => Format(inputTokens, outputTokens, responseTokens, contextPercent, 0);
-
-    public static string? Format(int? inputTokens, int? outputTokens, int? responseTokens, int? contextPercent, long fallbackContextTokens)
+    private static ChatContextUsage? Resolve(int? inputTokens, int? outputTokens, int? responseTokens, int? contextPercent, long fallbackContextTokens)
     {
         long? usedTokens = null;
         if (fallbackContextTokens > 0 && contextPercent is int pct)
@@ -58,11 +95,11 @@ public static class ChatUsageFormatter
             ?? (inputTokens is int input && outputTokens is int output ? input + output : null);
 
         return usedTokens is long used
-            ? Format(used, fallbackContextTokens, contextPercent)
+            ? Normalize(used, fallbackContextTokens, contextPercent)
             : null;
     }
 
-    public static string? Format(long usedTokens, long contextTokens, int? contextPercent = null)
+    private static ChatContextUsage? Normalize(long usedTokens, long contextTokens, int? contextPercent)
     {
         if (usedTokens < 0) usedTokens = 0;
         if (contextTokens < 0) contextTokens = 0;
@@ -80,12 +117,18 @@ public static class ChatUsageFormatter
         if (usedTokens == 0 && contextTokens == 0)
             return null;
 
-        if (contextTokens > 0)
-            return $"{FormatCount(usedTokens)}/{FormatCount(contextTokens)} ({percent ?? 0}%)";
+        if (contextTokens <= 0 && percent is null)
+            return null;
 
-        return percent is int pct
-            ? $"{FormatCount(usedTokens)} ({pct}%)"
-            : null;
+        return new ChatContextUsage(usedTokens, contextTokens, contextTokens > 0 ? percent ?? 0 : percent);
+    }
+
+    private static string? Render(ChatContextUsage? usage)
+    {
+        if (usage is not { } u) return null;
+        return u.ContextTokens > 0
+            ? $"{FormatCount(u.UsedTokens)}/{FormatCount(u.ContextTokens)} ({u.Percent ?? 0}%)"
+            : $"{FormatCount(u.UsedTokens)} ({u.Percent}%)";
     }
 
     private static string FormatCount(long value)

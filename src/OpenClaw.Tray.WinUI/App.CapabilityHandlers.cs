@@ -223,10 +223,10 @@ public partial class App
 
         app.SearchHandler = (query) =>
         {
-            var commands = ActiveHubWindow is OpenClawTray.Windows.HubWindow hubWindow
-                ? hubWindow.BuildCommandList()
-                : HubCommandCatalog.Build(_appState, _settings,
-                    (ActiveHubWindow as OpenClawTray.Windows.WorkspaceWindow)?.SelectedAgentId ?? "main");
+            var workspace = ActiveHubWindow as OpenClawTray.Windows.WorkspaceWindow;
+            var commands = workspace is { IsSettingsVisible: true, SettingsView: { } settingsView }
+                ? settingsView.BuildCommandList()
+                : HubCommandCatalog.Build(_appState, _settings, workspace?.SelectedAgentId ?? "main");
             var matches = commands
                 .Where(c => c.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                     || (c.Subtitle?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
@@ -241,11 +241,14 @@ public partial class App
             if (!TryResolveChatCredentials(out var gatewayUrl, out var token, out var credentialSource, out var isBootstrapToken))
                 return new { error = "Gateway URL or credential is not configured" };
 
-            var url = GatewayDashboardUrlBuilder.Build(
-                gatewayUrl,
-                path,
-                token,
-                !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken);
+            if (!GatewayDashboardUrlBuilder.TryBuild(
+                    gatewayUrl,
+                    path,
+                    token,
+                    !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken,
+                    out var url,
+                    out var urlError))
+                return new { error = urlError };
 
             return new
             {

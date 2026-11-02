@@ -3,6 +3,7 @@ namespace OpenClaw.Shared;
 /// <summary>
 /// Simple logger interface for the gateway client.
 /// Implementations can write to file, console, debug output, etc.
+/// Implementations must not throw for sink failures: callers log on cleanup, rollback and failure paths.
 /// </summary>
 public interface IOpenClawLogger
 {
