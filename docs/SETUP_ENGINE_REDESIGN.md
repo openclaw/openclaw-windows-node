@@ -706,6 +706,12 @@ Structured JSONL logger. Records sanitized entries for:
 
 Log path defaults to `%APPDATA%\OpenClawTray\Logs\Setup\setup-engine-<yyyyMMdd-HHmmss>.jsonl` for setup and `uninstall-engine-<yyyyMMdd-HHmmss>.jsonl` for uninstall.
 
+The setup window owns the native Gateway `native-setup-*.jsonl` file sink and
+keeps it available while the staged session is active. When the window requests
+disposal, an active setup operation retains the sink through cancellation
+cleanup. The sink closes after the final operation lease ends. A missing or
+failed file sink still leaves entries in memory only.
+
 ### Uninstall onboarding reset
 
 The Inno uninstaller invokes `scripts\Uninstall-LocalGateway.ps1` directly,
