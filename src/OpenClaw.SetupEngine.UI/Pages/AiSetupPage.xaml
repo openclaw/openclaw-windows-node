@@ -119,21 +119,30 @@
                             AutomationProperties.AutomationId="OnboardingLlamaApp">
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
                         <controls:ProviderArtwork x:Name="LlamaAppArtwork" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="Llama.app" Style="{StaticResource BodyStrongTextBlockStyle}"
+                        <TextBlock Grid.Column="1" Text="Llama app" Style="{StaticResource BodyStrongTextBlockStyle}"
                                    TextWrapping="Wrap" VerticalAlignment="Center" />
                         <controls:RecommendedBadge x:Name="LlamaAppRecommendedBadge" Grid.Column="2" />
                     </Grid>
                     <TextBlock x:Name="LlamaAppDescription" Style="{StaticResource CaptionTextBlockStyle}"
                                TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBlock x:Name="LlamaAppTopology" Style="{StaticResource CaptionTextBlockStyle}"
-                               TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBlock x:Name="LlamaAppGatewayRequired" Style="{StaticResource CaptionTextBlockStyle}"
-                               TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <ItemsControl x:Name="LlamaAppChoices" ItemTemplate="{StaticResource ChoiceTemplate}" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <HyperlinkButton x:Name="GetLlamaAppButton" Click="LlamaAppWebsite_Click" Padding="0" />
-                        <HyperlinkButton x:Name="LlamaAppGuideButton" Click="LlamaAppGuide_Click" Padding="0" />
-                    </StackPanel>
+                    <HyperlinkButton x:Name="GetLlamaAppButton" Click="LlamaAppWebsite_Click"
+                            AutomationProperties.AutomationId="OnboardingLlamaAppDownload"
+                            Padding="0" HorizontalAlignment="Left" />
+                    <tk:SettingsExpander x:Name="LlamaAppConnectionDetails" IsExpanded="False"
+                                         HorizontalAlignment="Stretch">
+                        <tk:SettingsExpander.ItemsFooter>
+                            <StackPanel Spacing="8">
+                                <TextBlock x:Name="LlamaAppTechnicalDescription" Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock x:Name="LlamaAppTopology" Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock x:Name="LlamaAppGatewayRequired" Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <HyperlinkButton x:Name="LlamaAppGuideButton" Click="LlamaAppGuide_Click" Padding="0" />
+                            </StackPanel>
+                        </tk:SettingsExpander.ItemsFooter>
+                    </tk:SettingsExpander>
                 </StackPanel>
                 <StackPanel x:Name="LocalAiSection" Spacing="8">
                     <tk:SettingsCard x:Name="LocalAiCard" IsClickEnabled="False" Click="LocalAi_Click"
