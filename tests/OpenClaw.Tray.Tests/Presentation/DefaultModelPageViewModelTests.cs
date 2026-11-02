@@ -90,6 +90,39 @@ public sealed class DefaultModelPageViewModelTests
 
         Assert.Equal(["fallback:anthropic/claude-sonnet-5", "start"], runtime.Calls);
         Assert.Empty(gateway.PrimaryWrites);
+        Assert.Equal(0, gateway.AgentModelClears);
+    }
+
+    [Fact]
+    public async Task DefaultAgentOwnModel_IsShownAsCurrentAndChoosingTheDefaultsPrimaryStillApplies()
+    {
+        // Gateway setup left the default agent on its own model; agents.defaults already names GPT.
+        var gateway = new FakeGateway { State = State(Gpt.SelectionId, localRoute: false) with { DefaultAgentModel = Sonnet.SelectionId } };
+        using var viewModel = Create(gateway, new RecordingRuntime(Installed(LocalAiRuntimeState.Stopped)));
+
+        Assert.Equal(Sonnet.SelectionId, viewModel.CurrentOptionId);
+        viewModel.SelectedOptionId = Gpt.SelectionId;
+        Assert.True(viewModel.CanApply);
+        Assert.True(await viewModel.ApplyAsync(), viewModel.Error);
+
+        Assert.Equal(["openai/gpt-6"], gateway.PrimaryWrites);
+    }
+
+    [Fact]
+    public async Task LocalAiChoiceWithDefaultAgentOwnModel_ClearsItAfterStarting()
+    {
+        var gateway = new FakeGateway { State = State(Sonnet.SelectionId, localRoute: true) with { DefaultAgentModel = Gpt.SelectionId } };
+        var runtime = new RecordingRuntime(Installed(LocalAiRuntimeState.Stopped))
+        {
+            StartResult = Installed(LocalAiRuntimeState.Healthy) with { GatewayRouteRequiresResolution = false },
+        };
+        using var viewModel = Create(gateway, runtime);
+
+        viewModel.SelectedOptionId = DefaultModelPageViewModel.LocalAiOptionId;
+        Assert.True(await viewModel.ApplyAsync(), viewModel.Error);
+
+        Assert.Equal(["fallback:anthropic/claude-sonnet-5", "start"], runtime.Calls);
+        Assert.Equal(1, gateway.AgentModelClears);
     }
 
     [Fact]
@@ -170,13 +203,57 @@ public sealed class DefaultModelPageViewModelTests
         Assert.Equal("h1", hash);
         Assert.Equal("anthropic/claude", GatewayConfigEnvelope.ReadPrimaryModel(config));
 
-        string patch = GatewayConfigEnvelope.BuildPrimaryPatch(config, "openai/gpt-6").ToJsonString();
+        string patch = GatewayConfigEnvelope.BuildPrimaryPatch(config, "openai/gpt-6", "main").ToJsonString();
         Assert.Equal("""{"agents":{"defaults":{"model":{"primary":"openai/gpt-6"},"models":{"openai/gpt-6":{}}}}}""", patch);
 
         using JsonDocument noAllowlist = JsonDocument.Parse("""{"agents":{"defaults":{"model":"anthropic/claude"}}}""");
         Assert.Equal("anthropic/claude", GatewayConfigEnvelope.ReadPrimaryModel(noAllowlist.RootElement));
         Assert.Equal("""{"agents":{"defaults":{"model":{"primary":"openai/gpt-6"}}}}""",
-            GatewayConfigEnvelope.BuildPrimaryPatch(noAllowlist.RootElement, "openai/gpt-6").ToJsonString());
+            GatewayConfigEnvelope.BuildPrimaryPatch(noAllowlist.RootElement, "openai/gpt-6", "main").ToJsonString());
+        Assert.Null(GatewayConfigEnvelope.BuildClearAgentModelPatch(noAllowlist.RootElement, "main"));
+    }
+
+    [Theory]
+    // Gateway setup writes the configured agent's model as a string, which outranks agents.defaults.
+    [InlineData("""
+        "entries":{"main":{"model":"vllm/qwen3@vllm:p1"}}
+        """,
+        """{"entries":{"main":{"model":null}},"defaults":{"model":{"primary":"openai/gpt-6"}}}""")]
+    // Object form keeps the agent's fallbacks.
+    [InlineData("""
+        "entries":{"main":{"model":{"primary":"vllm/qwen3@vllm:p1","fallbacks":["a/b"]}}}
+        """,
+        """{"entries":{"main":{"model":{"primary":null}}},"defaults":{"model":{"primary":"openai/gpt-6"}}}""")]
+    // The legacy list roster is patched by id.
+    [InlineData("""
+        "list":[{"id":"other","model":"x/y"},{"id":"main","model":"vllm/qwen3@vllm:p1"}]
+        """,
+        """{"list":[{"id":"main","model":null}],"defaults":{"model":{"primary":"openai/gpt-6"}}}""")]
+    public void Envelope_PrimaryPatchDropsTheDefaultAgentsOwnModel(string roster, string expectedAgentsPatch)
+    {
+        using JsonDocument document = JsonDocument.Parse(
+            "{\"agents\":{" + roster + ",\"defaults\":{\"model\":\"openai/gpt-6\"}}}");
+        using JsonDocument agentsList = JsonDocument.Parse("""{"defaultId":"main","agents":[{"id":"main"},{"id":"other"}]}""");
+        JsonElement config = document.RootElement;
+
+        string? agentId = GatewayConfigEnvelope.ResolveDefaultAgentId(config, agentsList.RootElement);
+        Assert.Equal("main", agentId);
+        Assert.Equal("vllm/qwen3@vllm:p1", GatewayConfigEnvelope.ReadAgentPrimaryModel(config, agentId));
+        Assert.Equal("{\"agents\":" + expectedAgentsPatch + "}",
+            GatewayConfigEnvelope.BuildPrimaryPatch(config, "openai/gpt-6", agentId).ToJsonString());
+    }
+
+    [Fact]
+    public void Envelope_DefaultAgentComesFromAgentsListThenSoleRosterAgent()
+    {
+        using JsonDocument two = JsonDocument.Parse("""{"agents":{"entries":{"main":{},"research":{}}}}""");
+        using JsonDocument one = JsonDocument.Parse("""{"agents":{"entries":{"main":{"model":"a/b"}}}}""");
+        using JsonDocument choose = JsonDocument.Parse("""{"selectionRequired":true,"defaultId":"main"}""");
+
+        Assert.Null(GatewayConfigEnvelope.ResolveDefaultAgentId(two.RootElement, null));
+        Assert.Equal("main", GatewayConfigEnvelope.ResolveDefaultAgentId(one.RootElement, null));
+        // Without a default agent the Gateway asks which agent to use, so no agent model is touched.
+        Assert.Null(GatewayConfigEnvelope.ResolveDefaultAgentId(one.RootElement, choose.RootElement));
     }
 
     private static DefaultModelPageViewModel Create(FakeGateway gateway, RecordingRuntime runtime)
@@ -208,11 +285,18 @@ public sealed class DefaultModelPageViewModelTests
         public void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
         public DefaultModelGatewayState State { get; set; } = DefaultModelGatewayState.Disconnected;
         public List<string> PrimaryWrites { get; } = [];
+        public int AgentModelClears { get; private set; }
         public DefaultModelGatewayState Current => State;
         public Task RefreshAsync() => Task.CompletedTask;
         public Task SetPrimaryModelAsync(string modelRef)
         {
             PrimaryWrites.Add(modelRef);
+            return Task.CompletedTask;
+        }
+
+        public Task ClearDefaultAgentModelAsync()
+        {
+            AgentModelClears++;
             return Task.CompletedTask;
         }
     }

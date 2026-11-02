@@ -7,14 +7,23 @@ using OpenClaw.Chat;
 namespace OpenClawTray.Presentation;
 
 /// <summary>What the Default model page knows about the active Gateway's model configuration.</summary>
+/// <param name="PrimaryModel"><c>agents.defaults.model.primary</c>; Local AI publishes and withdraws here.</param>
+/// <param name="DefaultAgentModel">
+/// The default agent's own primary model, which the Gateway prefers over <paramref name="PrimaryModel"/>
+/// for new conversations (Gateway setup writes one for the agent it configures).
+/// </param>
 internal sealed record DefaultModelGatewayState(
     bool IsConnected,
     bool CanWriteConfig,
     IReadOnlyList<ChatModelChoice> Models,
     string? PrimaryModel,
-    bool LocalAiRouteAvailable)
+    bool LocalAiRouteAvailable,
+    string? DefaultAgentModel = null)
 {
     public static DefaultModelGatewayState Disconnected { get; } = new(false, false, [], null, false);
+
+    /// <summary>The model new conversations on the default agent use.</summary>
+    public string? EffectiveModel => DefaultAgentModel ?? PrimaryModel;
 }
 
 /// <summary>Reads and changes the Gateway's default (primary) agent model.</summary>
@@ -23,7 +32,10 @@ internal interface IDefaultModelGatewayService
     event EventHandler? Changed;
     DefaultModelGatewayState Current { get; }
     Task RefreshAsync();
+    /// <summary>Sets <c>agents.defaults.model.primary</c> and drops the default agent's own primary.</summary>
     Task SetPrimaryModelAsync(string modelRef);
+    /// <summary>Drops the default agent's own primary so it follows <c>agents.defaults.model.primary</c>.</summary>
+    Task ClearDefaultAgentModelAsync();
 }
 
 /// <summary>Pure helpers for the <c>config.get</c> envelope and the primary-model patch.</summary>
@@ -51,26 +63,41 @@ internal static class GatewayConfigEnvelope
         return config.ValueKind == JsonValueKind.Object;
     }
 
-    public static string? ReadPrimaryModel(JsonElement config)
-    {
-        if (config.ValueKind != JsonValueKind.Object ||
-            !config.TryGetProperty("agents", out JsonElement agents) || agents.ValueKind != JsonValueKind.Object ||
-            !agents.TryGetProperty("defaults", out JsonElement defaults) || defaults.ValueKind != JsonValueKind.Object ||
-            !defaults.TryGetProperty("model", out JsonElement model))
-            return null;
-        if (model.ValueKind == JsonValueKind.String)
-            return model.GetString();
-        return model.ValueKind == JsonValueKind.Object &&
-               model.TryGetProperty("primary", out JsonElement primary) && primary.ValueKind == JsonValueKind.String
-            ? primary.GetString()
+    public static string? ReadPrimaryModel(JsonElement config) =>
+        config.ValueKind == JsonValueKind.Object &&
+        config.TryGetProperty("agents", out JsonElement agents) && agents.ValueKind == JsonValueKind.Object &&
+        agents.TryGetProperty("defaults", out JsonElement defaults)
+            ? ReadModelPrimary(defaults)
             : null;
+
+    /// <summary>
+    /// The agent new conversations go to: the <c>agents.list</c> <c>defaultId</c>, else the sole
+    /// configured roster agent. Null when the Gateway requires an explicit agent choice.
+    /// </summary>
+    public static string? ResolveDefaultAgentId(JsonElement config, JsonElement? agentsList)
+    {
+        if (agentsList is { ValueKind: JsonValueKind.Object } list)
+        {
+            if (list.TryGetProperty("selectionRequired", out JsonElement required) && required.ValueKind == JsonValueKind.True)
+                return null;
+            if (list.TryGetProperty("defaultId", out JsonElement id) && id.ValueKind == JsonValueKind.String &&
+                id.GetString() is { } defaultId && !string.IsNullOrWhiteSpace(defaultId))
+                return defaultId.Trim();
+        }
+        string[] roster = RosterAgents(config).Take(2).Select(agent => agent.Id).ToArray();
+        return roster.Length == 1 ? roster[0] : null;
     }
+
+    /// <summary>The agent's own primary model (<c>agents.entries.&lt;id&gt;.model</c> or legacy <c>agents.list[]</c>).</summary>
+    public static string? ReadAgentPrimaryModel(JsonElement config, string? agentId) =>
+        FindAgent(config, agentId) is { } agent ? ReadModelPrimary(agent.Entry) : null;
 
     /// <summary>
     /// Partial patch setting <c>agents.defaults.model.primary</c>. An existing model allowlist
-    /// is extended additively, never replaced, so unrelated entries are untouched.
+    /// is extended additively, never replaced, so unrelated entries are untouched. The default
+    /// agent's own primary is removed in the same patch; otherwise the Gateway keeps using it.
     /// </summary>
-    public static JsonObject BuildPrimaryPatch(JsonElement config, string modelRef)
+    public static JsonObject BuildPrimaryPatch(JsonElement config, string modelRef, string? defaultAgentId)
     {
         var defaults = new JsonObject { ["model"] = new JsonObject { ["primary"] = modelRef } };
         if (config.ValueKind == JsonValueKind.Object &&
@@ -81,6 +108,69 @@ internal static class GatewayConfigEnvelope
         {
             defaults["models"] = new JsonObject { [modelRef] = new JsonObject() };
         }
-        return new JsonObject { ["agents"] = new JsonObject { ["defaults"] = defaults } };
+        JsonObject agentsPatch = BuildAgentModelClear(config, defaultAgentId) ?? new JsonObject();
+        agentsPatch["defaults"] = defaults;
+        return new JsonObject { ["agents"] = agentsPatch };
     }
+
+    /// <summary>Partial patch removing the agent's own primary model; null when it has none.</summary>
+    public static JsonObject? BuildClearAgentModelPatch(JsonElement config, string? agentId) =>
+        BuildAgentModelClear(config, agentId) is { } agentsPatch ? new JsonObject { ["agents"] = agentsPatch } : null;
+
+    // Mirrors the Gateway's model shape: "provider/model" or { primary, fallbacks }.
+    private static string? ReadModelPrimary(JsonElement holder)
+    {
+        if (holder.ValueKind != JsonValueKind.Object || !holder.TryGetProperty("model", out JsonElement model))
+            return null;
+        if (model.ValueKind == JsonValueKind.String)
+            return model.GetString();
+        return model.ValueKind == JsonValueKind.Object &&
+               model.TryGetProperty("primary", out JsonElement primary) && primary.ValueKind == JsonValueKind.String
+            ? primary.GetString()
+            : null;
+    }
+
+    // Only the primary is removed: per-agent fallbacks and other agent settings stay.
+    private static JsonObject? BuildAgentModelClear(JsonElement config, string? agentId)
+    {
+        if (FindAgent(config, agentId) is not { } agent || ReadModelPrimary(agent.Entry) is null)
+            return null;
+        JsonNode? model = agent.Entry.GetProperty("model").ValueKind == JsonValueKind.Object
+            ? new JsonObject { ["primary"] = null }
+            : null;
+        // The Gateway merges id-keyed arrays by id, so a one-element list patch touches only this agent.
+        return agent.Listed
+            ? new JsonObject { ["list"] = new JsonArray(new JsonObject { ["id"] = agent.Id, ["model"] = model }) }
+            : new JsonObject { ["entries"] = new JsonObject { [agent.Id] = new JsonObject { ["model"] = model } } };
+    }
+
+    private static RosterAgent? FindAgent(JsonElement config, string? agentId) =>
+        string.IsNullOrWhiteSpace(agentId)
+            ? null
+            : RosterAgents(config).FirstOrDefault(agent => string.Equals(agent.Id, agentId.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    // The Gateway reads agents.entries (keyed by id) first, then the legacy agents.list array.
+    private static IEnumerable<RosterAgent> RosterAgents(JsonElement config)
+    {
+        if (config.ValueKind != JsonValueKind.Object ||
+            !config.TryGetProperty("agents", out JsonElement agents) || agents.ValueKind != JsonValueKind.Object)
+            yield break;
+        if (agents.TryGetProperty("entries", out JsonElement entries) && entries.ValueKind == JsonValueKind.Object)
+        {
+            foreach (JsonProperty entry in entries.EnumerateObject())
+                if (entry.Value.ValueKind == JsonValueKind.Object)
+                    yield return new RosterAgent(entry.Name, entry.Value, Listed: false);
+            yield break;
+        }
+        if (agents.TryGetProperty("list", out JsonElement list) && list.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement entry in list.EnumerateArray())
+                if (entry.ValueKind == JsonValueKind.Object &&
+                    entry.TryGetProperty("id", out JsonElement id) && id.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(id.GetString()))
+                    yield return new RosterAgent(id.GetString()!, entry, Listed: true);
+        }
+    }
+
+    private sealed record RosterAgent(string Id, JsonElement Entry, bool Listed);
 }

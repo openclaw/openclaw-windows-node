@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OpenClaw.Chat;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
@@ -8,9 +9,11 @@ using OpenClawTray.Presentation;
 namespace OpenClawTray.Services;
 
 /// <summary>
-/// Projects the operator connection's cached models list and config into the Default model
-/// page, and changes <c>agents.defaults.model.primary</c> with a guarded partial
-/// <c>config.patch</c>. Local AI route ownership stays with the Local AI runtime.
+/// Projects the operator connection's cached models list, agents list and config into the
+/// Default model page, and changes <c>agents.defaults.model.primary</c> with a guarded partial
+/// <c>config.patch</c>. The Gateway prefers the default agent's own primary for new
+/// conversations, so every write also drops that primary. Local AI route ownership stays with
+/// the Local AI runtime.
 /// </summary>
 internal sealed class DefaultModelGatewayService : IDefaultModelGatewayService, IDisposable
 {
@@ -40,16 +43,21 @@ internal sealed class DefaultModelGatewayService : IDefaultModelGatewayService, 
         {
             IOperatorGatewayClient? client = _getClient();
             bool connected = client?.IsConnectedToGateway == true;
-            string? primary = _appState.Config is { } envelope &&
-                GatewayConfigEnvelope.TryRead(envelope, out JsonElement config, out _)
-                    ? GatewayConfigEnvelope.ReadPrimaryModel(config)
-                    : null;
+            string? primary = null;
+            string? agentModel = null;
+            if (_appState.Config is { } envelope && GatewayConfigEnvelope.TryRead(envelope, out JsonElement config, out _))
+            {
+                primary = GatewayConfigEnvelope.ReadPrimaryModel(config);
+                agentModel = GatewayConfigEnvelope.ReadAgentPrimaryModel(
+                    config, GatewayConfigEnvelope.ResolveDefaultAgentId(config, _appState.AgentsList));
+            }
             return new DefaultModelGatewayState(
                 connected,
                 connected && OperatorScopeHelper.CanWriteConfig(client!.GrantedOperatorScopes),
                 ChatModelChoice.FromModelsList(_appState.ModelsList),
                 primary,
-                IsLocalAiRouteAvailable());
+                IsLocalAiRouteAvailable(),
+                agentModel);
         }
     }
 
@@ -69,14 +77,26 @@ internal sealed class DefaultModelGatewayService : IDefaultModelGatewayService, 
         if (_getClient() is not { IsConnectedToGateway: true } client)
             return;
         await client.RequestModelsListAsync().ConfigureAwait(false);
+        await client.RequestAgentsListAsync().ConfigureAwait(false);
         await client.RequestConfigAsync().ConfigureAwait(false);
     }
 
-    public async Task SetPrimaryModelAsync(string modelRef)
+    public Task SetPrimaryModelAsync(string modelRef)
     {
         if (string.IsNullOrWhiteSpace(modelRef) || modelRef.Length > 512 ||
             modelRef.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
             throw new InvalidOperationException("Choose a valid model.");
+        return PatchConfigAsync(config => GatewayConfigEnvelope.BuildPrimaryPatch(
+            config, modelRef, GatewayConfigEnvelope.ResolveDefaultAgentId(config, _appState.AgentsList)));
+    }
+
+    public Task ClearDefaultAgentModelAsync() =>
+        PatchConfigAsync(config => GatewayConfigEnvelope.BuildClearAgentModelPatch(
+            config, GatewayConfigEnvelope.ResolveDefaultAgentId(config, _appState.AgentsList)));
+
+    /// <summary>Applies a patch built from fresh config; a null patch means nothing to change.</summary>
+    private async Task PatchConfigAsync(Func<JsonElement, JsonObject?> buildPatch)
+    {
         IOperatorGatewayClient client = _getClient() is { IsConnectedToGateway: true } connected
             ? connected
             : throw new InvalidOperationException("Connect to a Gateway first.");
@@ -88,9 +108,10 @@ internal sealed class DefaultModelGatewayService : IDefaultModelGatewayService, 
             JsonElement response = await client.SendWizardRequestAsync("config.get", new { }, 15_000).ConfigureAwait(false);
             if (!GatewayConfigEnvelope.TryRead(response, out JsonElement config, out string? baseHash))
                 throw new InvalidDataException("The Gateway returned an unreadable configuration.");
+            if (buildPatch(config) is not { } patch)
+                return;
             ConfigPatchResult result = await client.PatchConfigDetailedAsync(
-                    JsonSerializer.SerializeToElement(GatewayConfigEnvelope.BuildPrimaryPatch(config, modelRef)),
-                    baseHash)
+                    JsonSerializer.SerializeToElement(patch), baseHash)
                 .ConfigureAwait(false);
             if (result.Ok)
             {
@@ -104,7 +125,7 @@ internal sealed class DefaultModelGatewayService : IDefaultModelGatewayService, 
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(AppState.ModelsList) or nameof(AppState.Config) or null)
+        if (e.PropertyName is nameof(AppState.ModelsList) or nameof(AppState.Config) or nameof(AppState.AgentsList) or null)
             Changed?.Invoke(this, EventArgs.Empty);
     }
 

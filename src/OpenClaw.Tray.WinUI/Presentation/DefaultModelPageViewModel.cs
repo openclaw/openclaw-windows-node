@@ -171,7 +171,15 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
             _error = started.Detail ?? "Local AI could not start.";
             return false;
         }
+        await ClearDefaultAgentModelAsync();
         return true;
+    }
+
+    // Local AI publishes to agents.defaults, which the default agent's own primary would shadow.
+    private async Task ClearDefaultAgentModelAsync()
+    {
+        if (_state.DefaultAgentModel is not null)
+            await _gateway.ClearDefaultAgentModelAsync();
     }
 
     private async Task<bool> UseCloudModelAsync(string modelRef)
@@ -200,6 +208,7 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
                 _error = stopped.Detail ?? "Local AI could not hand the Gateway back.";
                 return false;
             }
+            await ClearDefaultAgentModelAsync();
             return true;
         }
 
@@ -258,7 +267,8 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
             options.Add(new DefaultModelOption(LocalAiOptionId, _localAi.Snapshot.ModelId ?? string.Empty, null, true));
 
         string? previousCurrent = _currentOptionId;
-        string? primary = _state.PrimaryModel;
+        // The default agent's own primary wins over agents.defaults for new conversations.
+        string? primary = _state.EffectiveModel;
         if (primary is not null && IsLocalAiPrimary(primary))
         {
             _currentOptionId = hasLocalAi ? LocalAiOptionId : null;
