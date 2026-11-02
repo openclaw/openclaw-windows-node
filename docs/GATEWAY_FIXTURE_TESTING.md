@@ -131,20 +131,6 @@ The `test-results-ui` ZIP remains the complete diagnostic download, including
 TRX, request logs, run receipts and original screenshot paths. If no capture was
 produced, the summary says so; inspect the fixture step for a build/startup failure.
 
-The repeated-session-switch responsiveness case also writes
-`session-switch-diagnostics.json` only when the case fails. It records the
-cycle, phase, elapsed time, expected and rendered session IDs, loaded-history
-IDs, and available native UIA geometry, runtime IDs, child counts and scroll
-percent/view size. It excludes message text and control names. The provider
-entry count is limited to the snapshot's last 30 entries, not the full history;
-UIA does not expose the native pixel scroll extent. Each diagnostic probe has a
-bounded wait and records an error type if unavailable. Collection runs after
-the outer test deadline has selected and recorded the original failure, so it
-does not consume that deadline. A timed-out UIA read cannot be cancelled, but
-its worker performs no file writes. The normal `failure.png` and its separate
-receipt remain owned by the fixture failure handler. These diagnostics
-supplement, never replace, the unchanged visible-history assertions.
-
 The browse fixture also supplies placement discovery reads: empty projects and
 recents, each agent's synthetic workspace, and one available local Gateway
 environment. Composer-created empty conversations can load their location
