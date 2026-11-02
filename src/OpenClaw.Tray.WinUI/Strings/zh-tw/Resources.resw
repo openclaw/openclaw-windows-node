@@ -7794,7 +7794,6 @@
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>啟動並驗證 Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重試設定</value></data>
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>收集 Gateway 診斷資訊</value></data>
-  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>檢視設定記錄</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>收集 Gateway 診斷資訊以取得可檢視或分享的已遮蔽 ZIP，或在隔離的 Gateway 中開啟終端機。然後選擇「重試設定」。</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>Gateway 未在 {0} 秒內就緒。首次啟動可能較慢。請收集 Gateway 診斷資訊查看原因，然後選擇「重試設定」。若要允許更長的啟動時間，請將環境變數 {1} 設為秒數並重新啟動 Companion。</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>正在收集已遮蔽的 Gateway 診斷資訊...</value></data>

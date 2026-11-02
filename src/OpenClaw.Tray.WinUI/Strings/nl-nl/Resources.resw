@@ -7795,7 +7795,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>De Gateway starten en controleren</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Instelling opnieuw proberen</value></data>
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>Gateway-diagnostiek verzamelen</value></data>
-  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>Instellingslogboek weergeven</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>Verzamel Gateway-diagnostiek voor een geschoonde ZIP die u kunt bekijken of delen, of open een terminal in de geïsoleerde Gateway. Kies daarna Instelling opnieuw proberen.</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>De Gateway was niet binnen {0} seconden gereed. De eerste start kan traag zijn. Verzamel Gateway-diagnostiek om te zien waarom en kies daarna Instelling opnieuw proberen. Stel voor een langere start de omgevingsvariabele {1} in op een aantal seconden en start Companion opnieuw.</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>Geschoonde Gateway-diagnostiek verzamelen...</value></data>

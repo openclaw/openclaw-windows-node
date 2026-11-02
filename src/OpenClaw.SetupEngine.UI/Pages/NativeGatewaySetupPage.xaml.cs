@@ -97,7 +97,6 @@ public sealed partial class NativeGatewaySetupPage : Page
 
     private void OpenLog_Click(object sender, RoutedEventArgs e) => LogFileLauncher.RevealInExplorer(_log?.FilePath);
 
-
     private void StartOperation()
     {
         if (IsBusy)
@@ -453,14 +452,14 @@ public sealed partial class NativeGatewaySetupPage : Page
         var packageVisibility = packageActions ? Visibility.Visible : Visibility.Collapsed;
         CollectDiagnosticsButton.Visibility = packageVisibility;
         OpenTerminalButton.Visibility = packageVisibility;
-        ViewLogButton.Visibility = _log?.FilePath is not null ? Visibility.Visible : Visibility.Collapsed;
+        var hasLogFile = _log?.FilePath is not null;
         RecoveryGuidance.Text = ex is NativeGatewayStartupTimeoutException timeout
             ? SetupLocalization.Format("Onboarding_Native_StartTimeoutGuidance",
                 (int)timeout.Budget.TotalSeconds, IsolatedGatewayRuntime.StartupTimeoutEnvironmentVariable)
             : packageActions ? SetupLocalization.GetString("Onboarding_Native_RecoveryGuidance") : "";
         RecoveryGuidance.Visibility = RecoveryGuidance.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         RecoveryResult.Text = "";
-        RecoveryPanel.Visibility = packageActions || ViewLogButton.Visibility == Visibility.Visible
+        RecoveryPanel.Visibility = packageActions || hasLogFile
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
@@ -552,8 +551,6 @@ public sealed partial class NativeGatewaySetupPage : Page
                     SetupLogger.Sanitize(ex.Message));
         }
     }
-
-    private void ViewLog_Click(object sender, RoutedEventArgs e) => LogFileLauncher.RevealInExplorer(_log?.FilePath);
 
     private NativeGatewaySetupHost RecoveryHost() => new(_log ?? new SetupLogger(filePath: null));
 

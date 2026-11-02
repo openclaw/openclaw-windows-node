@@ -43,10 +43,6 @@
                             HorizontalAlignment="Left"
                             AutomationProperties.AutomationId="NativeGatewaySetupOpenTerminal"
                             Click="OpenTerminal_Click" />
-                    <Button x:Name="ViewLogButton" x:Uid="Onboarding_Native_ViewLog" Content="View setup log"
-                            HorizontalAlignment="Left"
-                            AutomationProperties.AutomationId="NativeGatewaySetupViewLog"
-                            Click="ViewLog_Click" />
                     <TextBlock x:Name="RecoveryResult" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                Style="{StaticResource BodyTextBlockStyle}"
                                AutomationProperties.AutomationId="NativeGatewaySetupRecoveryResult"

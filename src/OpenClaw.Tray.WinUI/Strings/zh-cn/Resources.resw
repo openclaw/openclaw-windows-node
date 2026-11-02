@@ -7794,7 +7794,6 @@
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>启动并验证 Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重试设置</value></data>
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>收集 Gateway 诊断信息</value></data>
-  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>查看设置日志</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>收集 Gateway 诊断信息以获取可查看或共享的已脱敏 ZIP，或在隔离的 Gateway 中打开终端。然后选择“重试设置”。</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>Gateway 未在 {0} 秒内就绪。首次启动可能较慢。请收集 Gateway 诊断信息查看原因，然后选择“重试设置”。如需允许更长的启动时间，请将环境变量 {1} 设置为秒数并重启 Companion。</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>正在收集已脱敏的 Gateway 诊断信息...</value></data>
