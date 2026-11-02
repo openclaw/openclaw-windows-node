@@ -8,7 +8,7 @@ internal enum WorkspacePageId
 internal enum CompanionPageId
 {
     Connection, Sessions, Skills, Channels, Instances, Cron, AgentEvents, Agents,
-    Bindings, Config, Usage, LocalAi, Voice, Permissions, Sandbox, Debug, Settings, About
+    Config, Usage, LocalAi, Voice, Permissions, Sandbox, Debug, Settings, About
 }
 
 /// <summary>
