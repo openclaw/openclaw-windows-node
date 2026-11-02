@@ -257,8 +257,10 @@ Microsoft Store owns architecture/package selection, signature validation and
 deployment. WinGet runs through the signed-in user's App Installer execution alias,
 without a shell or elevation. Companion verifies actual package registration and aliases, then
 automatically prepares the profile and opens **Connect your AI**.
-Installation and verification share a cancellable five-minute deadline. Cancellation
-stops the WinGet request, but Windows may still finish an in-progress deployment.
+Installation and verification share a cancellable 30-minute deadline by default.
+Set `OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT` to override it in seconds
+(1 through 2147483). Invalid values warn and keep the default.
+Cancellation stops the WinGet request, but Windows may still finish an in-progress deployment.
 If WinGet reports stale Microsoft Store certificate pins (`0x8A15005E`), Companion
 runs one current-user `Repair-WinGetPackageManager -Force -Latest` bootstrap and retries once.
 The repair installs Microsoft's WinGet client module; it never bypasses certificate validation.
@@ -850,17 +852,19 @@ outside the disabled native option so the Windows Update action stays usable.
 The support card is hidden when native capability is available.
 
 When capability is unavailable, **Open Windows Update** opens
-`ms-settings:windowsupdate`. Guidance tells users to update to a Windows version
-that supports the native Gateway. It says support is coming soon to all devices
-and, until broad availability, directs users to join the Windows Insider
-Program, select the Beta or Experimental channel, and choose Windows 11, version
+`ms-settings:windowsupdate`. Guidance names the unavailable isolation-session
+capability and explains that a newer Windows version alone does not guarantee
+availability. It offers installing a local WSL gateway or connecting to an existing
+gateway instead. For users who need to update Windows, it describes joining the Windows Insider
+Program, selecting the Beta or Experimental channel, and choosing Windows 11, version
 26H1 under **Advanced options** during enrollment. The guidance warns that
 returning to Windows 11, version 25H2/26H2 requires a clean reinstall, as described
 in [Microsoft's Windows core version guidance](https://learn.microsoft.com/en-us/windows-insider/flighting#understanding-windows-core-versions).
 After enrolling, users return to **Settings > Windows Update**, check for
 updates, and may need to wait a few minutes for the update to appear. The copy
 notes that feature availability can vary by device and tells users to reopen
-the page after updating to check support again. The Welcome page has no
+the page to check support again, even if Windows is already up to date. It does
+not promise a rollout or that updating fixes the capability. The Welcome page has no
 **Check again** button. `NativeGatewayEligibilityTextTests` exercises the production
 rich-text renderer, complete automation name, and repeated rich/plain transitions
 on real WinUI `TextBlock` controls; the gallery also uses that renderer.
@@ -1008,6 +1012,23 @@ band with an 80-DIP mascot beside the wrapping title/status; earlier setup
 pages retain their large centered heroes. Each provider has one native command
 surface, not a selectable ListViewItem wrapped around another clickable card.
 The page-local compact row style does not alter global Toolkit resources.
+
+Gateway-supplied provider/model choices and the final next-step cards use
+`SetupActionCard`, retaining the Toolkit card visuals while supplying a real
+UI Automation Invoke provider. Native UIA invocation and ordinary clicks enter
+the same guarded page action. Disabled or non-clickable choices cannot activate
+setup. The pinned Toolkit peer advertises Invoke without implementing its
+provider, so using that peer directly is not a supported automation path.
+The API Keys entry and recommended setup-link cards use the same adapter.
+Their existing actions, visibility, and consent requirements are unchanged.
+
+Mounted behavioral tests also preserve the independent ownership boundaries:
+normal Gateway review hides the competing Local AI choice, changing the API
+provider selection performs no activation, and the verified completion page
+has no footer action that can bypass its coordinator. A completion failure
+exposes recovery inside the error bar; that action returns through the owning
+AI setup flow without publishing a destination. These checks exercise actual
+controls and protocol effects rather than matching XAML or method text.
 
 1. **Local AI on this PC** is a concise native choice row beside the detected
    Gateway choices, with actual GPU/model facts and its trailing action. It has

@@ -201,6 +201,43 @@ public sealed class InnoMigrationContractTests
     }
 
     [Fact]
+    public void InnoHandoff_OffersSetupRecoveryOnlyForTheRecognizedPayloadFailure()
+    {
+        var helper = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "InnoMigrationHandoff.cs");
+        Assert.Contains("requiresInstallerRepair ? \"Migration2_InnoRepairRequired\" : \"Migration2_InnoFailed\"", helper);
+        Assert.Contains("isOwnProcess && detected.Status == InnoInstallationStatus.Unsupported", helper);
+        Assert.Contains("detected.RequiresInstallerRepair", helper);
+        var settings = Read("src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs");
+        Assert.DoesNotContain("InnoMigrationHandoff.Check", settings);
+        Assert.Contains("canDownloadSetup: messageKey == \"Migration2_InnoRepairRequired\"", settings);
+        var download = settings[settings.IndexOf("private async Task DownloadMigrationSetupAsync()", StringComparison.Ordinal)..];
+        download = download[..download.IndexOf("private void ShowStoreMigrationStatus", StringComparison.Ordinal)];
+        Assert.Contains("Launcher.LaunchUriAsync(InnoMigrationHandoff.InstallerUri)", download);
+        Assert.DoesNotContain("Process.Start", download);
+        Assert.DoesNotContain("GrantAndLaunchAsync", download);
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml");
+        Assert.Contains("x:Uid=\"Migration2_InnoDownloadSetup\"", xaml);
+        Assert.Contains("Click=\"OnDownloadMigrationSetup\"", xaml);
+    }
+
+    [Fact]
+    public void RemovalLabels_UseValidatedRegistrationAndPackageMetadata()
+    {
+        var detector = Read("src", "OpenClaw.Connection", "Migration", "InnoInstallationDetector.cs");
+        Assert.Contains("architecture, version, registration.DisplayName)", detector);
+        var operations = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "StoreMigrationOperations.cs");
+        Assert.Contains("StoreDisplayName = package.DisplayName", operations);
+        Assert.True(operations.IndexOf("identity.Name != MigrationRecordCodec.PackageName", StringComparison.Ordinal)
+            < operations.IndexOf("StoreDisplayName = package.DisplayName", StringComparison.Ordinal));
+        var window = Read("src", "OpenClaw.Tray.WinUI", "Windows", "StoreMigrationWindow.xaml.cs");
+        Assert.Contains("Migration2_AwaitingRemovalWithApps", window);
+        Assert.Contains("string.IsNullOrWhiteSpace(_workflow.RemovalSourceDisplayName)", window);
+        Assert.Contains("string.IsNullOrWhiteSpace(_workflow.RemovalStoreDisplayName)", window);
+        Assert.Contains("string.IsNullOrWhiteSpace(_workflow.RemovalStoreVersion)", window);
+        Assert.DoesNotContain("Process.Start", window);
+    }
+
+    [Fact]
     public void MigrationWindow_HasAccessibleNamedActionsAndNoInventedProgress()
     {
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "StoreMigrationWindow.xaml");
