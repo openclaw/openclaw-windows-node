@@ -175,7 +175,7 @@ public sealed class InnoInstallationDetectorTests
         Assert.Equal(InnoInstallationStatus.Detected, result.Status);
         Assert.Equal(new InnoInstallation(fixture.InstallDirectory,
             fixture.Payload("OpenClaw.Tray.WinUI.exe"), fixture.Payload("unins000.exe"),
-            architecture, new Version(2026, 9, 17, 0)), result.Installation);
+            architecture, new Version(2026, 9, 17, 0), fixture.Registration.DisplayName), result.Installation);
         Assert.Null(result.Reason);
         Assert.Equal(4, fixture.Source.RegistryReads.Count);
     }
@@ -199,8 +199,9 @@ public sealed class InnoInstallationDetectorTests
         Assert.Equal(InnoInstallationStatus.Detected, result.Status);
         Assert.Equal(new InnoInstallation(fixture.InstallDirectory,
             fixture.Payload("OpenClaw.Tray.WinUI.exe"), fixture.Payload("unins000.exe"),
-            "x64", new Version(2026, 9, 5, 0)), result.Installation);
+            "x64", new Version(2026, 9, 5, 0), registration.DisplayName), result.Installation);
         Assert.Empty(fixture.Logger.Warnings);
+        Assert.False(result.RequiresInstallerRepair);
     }
 
     [Fact]
@@ -257,6 +258,7 @@ public sealed class InnoInstallationDetectorTests
         using var fixture = new Fixture();
         File.Delete(fixture.Payload(name));
         fixture.AssertUnsupported();
+        Assert.True(fixture.Detect().RequiresInstallerRepair);
     }
 
     [Fact]
@@ -408,6 +410,7 @@ public sealed class InnoInstallationDetectorTests
 
         Assert.Equal(InnoInstallationStatus.Detected, result.Status);
         Assert.Equal(new Version(2026, 9, 17, 1), result.Installation!.Version);
+        Assert.Equal("OpenClaw Companion version 2026.9.17-1", result.Installation.DisplayName);
     }
 
     [Theory]
@@ -540,6 +543,7 @@ public sealed class InnoInstallationDetectorTests
         using var fixture = new Fixture();
         fixture.Registration = fixture.Registration with { DisplayName = name, Publisher = publisher };
         fixture.AssertUnsupported();
+        Assert.False(fixture.Detect().RequiresInstallerRepair);
     }
 
     [Theory]

@@ -10,7 +10,6 @@ public sealed class NativeGatewayMsixInstaller
     public const string StoreProductId = "9NV70LV3D6XC";
     private const int PinnedCertificateMismatch = unchecked((int)0x8A15005E);
     private const int NoApplicableUpdate = unchecked((int)0x8A15002B);
-    private static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(5);
     private const string RepairScript = """
         $ErrorActionPreference = 'Stop'
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -37,7 +36,7 @@ public sealed class NativeGatewayMsixInstaller
                 "--silent", "--accept-package-agreements", "--accept-source-agreements",
                 "--disable-interactivity",
             ],
-            CommandTimeout,
+            NativeGatewayPackageAcquisition.ResolveTimeout(),
             ct: cancellationToken);
 
         var result = await Install();
@@ -64,7 +63,7 @@ public sealed class NativeGatewayMsixInstaller
         var repair = await commands.RunAsync(
             powershellPath,
             ["-NoProfile", "-NonInteractive", "-Command", RepairScript],
-            CommandTimeout,
+            NativeGatewayPackageAcquisition.ResolveTimeout(),
             ct: cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         if (repair.TimedOut)

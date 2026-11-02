@@ -155,4 +155,9 @@ if ($errors.Count -gt 0) {
     exit 1
 }
 
+& (Join-Path $PSScriptRoot 'Test-CleanupHostSignature.ps1') `
+    -AssemblyPath (Join-Path $payloadRoot 'OpenClaw.SetupEngine.dll') `
+    -RequireSigned:$RequireSignedOpenClaw -SignerSubject $OpenClawSignerSubject
+if ($LASTEXITCODE -ne 0) { throw 'Embedded cleanup helper signing policy failed.' }
+
 Write-Host "Release binary signing policy passed." -ForegroundColor Green

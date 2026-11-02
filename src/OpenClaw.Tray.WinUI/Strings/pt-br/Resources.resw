@@ -1517,15 +1517,6 @@ Use uma destas opções:
   <data name="ClearButton.Text" xml:space="preserve">
     <value>Limpar</value>
   </data>
-  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
-    <value>Vinculações</value>
-  </data>
-  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Regras de roteamento de mensagens</value>
-  </data>
-  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
-    <value>Atualizar</value>
-  </data>
   <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
     <value>🖥️ Este computador</value>
   </data>
@@ -2293,9 +2284,6 @@ Use uma destas opções:
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
     <value>Instâncias</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
-    <value>Vinculações</value>
-  </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Configuração</value>
   </data>
@@ -2409,18 +2397,6 @@ Use uma destas opções:
   </data>
   <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
     <value>Aguarde enquanto a conexão é estabelecida...</value>
-  </data>
-  <data name="PriorityInfoBar.Title" xml:space="preserve">
-    <value>Prioridade de roteamento</value>
-  </data>
-  <data name="PriorityInfoBar.Message" xml:space="preserve">
-    <value>As vinculações controlam qual agente trata as mensagens de cada canal. Prioridade: peer &gt; conta &gt; canal &gt; padrão.</value>
-  </data>
-  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
-    <value>Modo de agente único</value>
-  </data>
-  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
-    <value>Todas as mensagens são roteadas para o agente padrão. Adicione vinculações para roteamento com múltiplos agentes.</value>
   </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
     <value>Edite a configuração do Gateway (openclaw.json) com um formulário guiado por esquema.</value>
@@ -4167,18 +4143,6 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
     <value>Connection Status</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>Gateway desconectado</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>Conecte-se a um Gateway para carregar as vinculações.</value>
-  </data>
-  <data name="BindingsPage_OpenConnection.Content" xml:space="preserve">
-    <value>Abrir Conexão</value>
-  </data>
-  <data name="BindingsPage_LoadingBindings.Text" xml:space="preserve">
-    <value>Carregando vinculações...</value>
   </data>
   <data name="ConnectionPage_ApprovalsWaitingOnYou.Text" xml:space="preserve">
     <value>Aprovações aguardando você</value>
@@ -6125,23 +6089,11 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
     <value>Desconectado</value>
   </data>
-  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
-    <value>Could not load bindings</value>
-  </data>
-  <data name="BindingsPage_ConfigRequestFailed.Message" xml:space="preserve">
-    <value>O gateway não retornou os vínculos. Atualize para tentar novamente.</value>
-  </data>
   <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
     <value>Agent event log</value>
   </data>
   <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
     <value>Go to Agent Events</value>
-  </data>
-  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
-    <value>Gateway bindings</value>
-  </data>
-  <data name="Command_GoToBindings_Title" xml:space="preserve">
-    <value>Go to Bindings</value>
   </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
@@ -7685,6 +7637,18 @@ Escolha {1} para sair desta prévia sem iniciar a migração e continuar usando 
 
 Suas configurações, gateway, arquivos e modelos permanecem no mesmo local.</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>Sua configuração foi validada e a conclusão da migração foi registrada.
+
+1. Abra Aplicativos instalados.
+Remover: {0} (instalação para desktop)
+Manter: {1}, versão {2} (Microsoft Store)
+Mantenha todos os outros aplicativos instalados.
+
+2. Volte aqui e selecione Tentar novamente para verificar a remoção e finalizar.
+
+Suas configurações, gateway, arquivos e modelos permanecem no mesmo local.</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>Remova o aplicativo anterior</value>
   </data>
@@ -7747,6 +7711,17 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Migration2_InnoGranted" xml:space="preserve">
     <value>O consentimento para migração foi salvo. Instale e abra a versão da Store para continuar. Mantenha este aplicativo instalado até que a conclusão da migração seja confirmada.</value>
   </data>
+  <data name="Migration2_InnoRepairRequired" xml:space="preserve">
+    <value>Arquivos necessários da instalação estão ausentes ou são inválidos. Baixe o instalador completo do OpenClaw. Encerre o OpenClaw, execute o instalador sobre esta instalação com o mesmo usuário do Windows e reabra o aplicativo para tentar a migração novamente. Não desinstale o OpenClaw antes.
+
+O instalador repara os arquivos da instalação. A migração ainda precisa passar pelas verificações de compatibilidade do aplicativo da Store.</value>
+  </data>
+  <data name="Migration2_InnoSetupLinkFailed" xml:space="preserve">
+    <value>O Windows não conseguiu abrir o link de download do instalador. Copie este endereço para o navegador: {0}. Não desinstale o OpenClaw antes.</value>
+  </data>
+  <data name="Migration2_InnoDownloadSetup.Content" xml:space="preserve">
+    <value>Baixar instalador para reparar</value>
+  </data>
   <data name="Migration2_InnoFailed" xml:space="preserve">
     <value>O OpenClaw não conseguiu salvar o consentimento para migração ou abrir a página do aplicativo na Store. Consulte o log do aplicativo e tente novamente. Não desinstale este aplicativo.</value>
   </data>
@@ -7761,13 +7736,13 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Instalar um Gateway WSL local</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Verificando o suporte ao Gateway nativo...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>O suporte ao Gateway nativo está disponível neste dispositivo.</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Para usar o Gateway nativo, atualize seu dispositivo para uma versão do Windows compatível.
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>O Windows informa que a capacidade de sessão isolada exigida pelo Gateway nativo está indisponível. Uma versão mais recente do Windows não garante sua disponibilidade. Você pode instalar um Gateway WSL local ou conectar-se a um Gateway existente.
 
-O suporte ao Gateway nativo estará disponível em breve para todos os dispositivos. Até que esteja amplamente disponível, ingresse no Programa Windows Insider, selecione o canal Beta ou Experimental e escolha Windows 11, versão 26H1 em Opções avançadas durante a inscrição. Voltar ao Windows 11, versão 25H2/26H2 exige uma reinstalação limpa.
+Se precisar atualizar o Windows, você pode ingressar no Programa Windows Insider, selecionar o canal Beta ou Experimental e escolher Windows 11, versão 26H1 em Opções avançadas durante a inscrição. Voltar ao Windows 11, versão 25H2/26H2 exige uma reinstalação limpa.
 
-Após a inscrição, volte para Configurações &gt; Windows Update e verifique se há atualizações. Pode levar alguns minutos para a atualização aparecer. A disponibilidade do recurso pode variar conforme o dispositivo. Após a atualização, reabra esta página para verificar o suporte novamente.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Para usar o Gateway nativo, atualize seu dispositivo para uma versão do Windows compatível.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>estará disponível em breve para todos os dispositivos.</value></data>
+Após a inscrição, volte para Configurações &gt; Windows Update e verifique se há atualizações. Pode levar alguns minutos para a atualização aparecer. A disponibilidade do recurso pode variar conforme o dispositivo. Você pode reabrir esta página para verificar o suporte novamente.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>O Windows informa que a capacidade de sessão isolada exigida pelo Gateway nativo está indisponível.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableAlternatives" xml:space="preserve"><value>Você pode instalar um Gateway WSL local ou conectar-se a um Gateway existente.</value></data>
   <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Programa Windows Insider</value></data>
   <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta ou Experimental</value></data>
   <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11, versão 26H1</value></data>
@@ -7781,6 +7756,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Continue com o mesmo assistente Gateway usado para WSL, aqui no Companion. A configuração e a integridade são verificadas antes da conexão. Os Gateways WSL existentes e seu perfil OpenClaw padrão não são substituídos.</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Se o Gateway não estiver instalado, a configuração o instalará pela Microsoft Store usando WinGet e verificará o pacote antes de continuar automaticamente.</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>Instalando o Gateway pela Microsoft Store usando WinGet...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>Ainda instalando o Gateway pela Microsoft Store. Isso pode levar vários minutos ({0} min decorridos).</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet concluído. Verificando o registro do Gateway e seus aliases de execução antes de continuar...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>O Companion preparará seu Gateway e ajudará você a conectar sua IA.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Recuperação do Gateway</value></data>
@@ -7857,7 +7833,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
   <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
-  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>

@@ -39,6 +39,7 @@ public sealed class HubPageRegistryTests
     }
 
     [Theory]
+    [InlineData("bindings")]
     [InlineData("chat")]
     [InlineData("PERMISSIONS")]
     [InlineData("Agent:main")]
@@ -61,7 +62,6 @@ public sealed class HubPageRegistryTests
     [InlineData("channels")]
     [InlineData("instances")]
     [InlineData("agentevents")]
-    [InlineData("bindings")]
     [InlineData("config")]
     [InlineData("usage")]
     [InlineData("cron")]
@@ -77,6 +77,8 @@ public sealed class HubPageRegistryTests
     [InlineData("local-ai")]
     [InlineData("debug")]
     [InlineData("skills")]
+    [InlineData("bindings")]
+    [InlineData("BINDINGS")]
     [InlineData(null)]
     public void GatewayClassification_RejectsNonGatewayTags(string? tag)
     {
@@ -103,17 +105,17 @@ public sealed class HubPageRegistryTests
             {
                 "connection", "local-ai", "chat", "sessions", "agentevents",
                 "agent:alpha:cron", "agent:alpha", "channels", "instances", "config",
-                "usage", "bindings", "permissions", "settings", "notifications", null
+                "usage", "permissions", "settings", "notifications", null
             },
             commands.Select(CommandValue).ToArray());
         Assert.Equal(
-            ["🔌", "AI", "💬", "🧠", "🧠", "🧠", "🧠", "📡", "📡", "📡", "📡", "📡", "🛡️", "⚙️", "🔔", "🌐"],
+            ["🔌", "AI", "💬", "🧠", "🧠", "🧠", "🧠", "📡", "📡", "📡", "📡", "🛡️", "⚙️", "🔔", "🌐"],
             commands.Select(command => command.Icon).ToArray());
         Assert.Equal("Command_GoToConnection_Title", commands[0].Title);
         Assert.Equal("Command_GoToConnection_Subtitle", commands[0].Subtitle);
         Assert.Equal("Cron alpha", commands[5].Title);
-        Assert.Equal(HubCommandActionKind.OpenDashboard, commands[15].Action.Kind);
-        Assert.Null(commands[15].Action.Value);
+        Assert.Equal(HubCommandActionKind.OpenDashboard, commands[14].Action.Kind);
+        Assert.Null(commands[14].Action.Value);
         Assert.Single(commands, command => command.Action == HubCommandAction.Navigate("chat"));
     }
 
@@ -125,7 +127,7 @@ public sealed class HubPageRegistryTests
             toggles: new HubCommandToggleState(true, false, true, false, true),
             sessions: ["session/z", "session/a"]));
 
-        Assert.Equal("debug", CommandValue(commands[16]));
+        Assert.Equal("debug", CommandValue(commands[15]));
         Assert.Equal(
             [
                 HubSettingToggle.NodeMode,
@@ -134,10 +136,10 @@ public sealed class HubPageRegistryTests
                 HubSettingToggle.ScreenCapture,
                 HubSettingToggle.BrowserControl
             ],
-            commands.Skip(17).Take(5).Select(command => command.Action.Toggle).ToArray());
+            commands.Skip(16).Take(5).Select(command => command.Action.Toggle).ToArray());
         Assert.Equal(
             new string?[] { "Command_Subtitle_CurrentlyOn", "Command_Subtitle_CurrentlyOff", "Command_Subtitle_CurrentlyOn", "Command_Subtitle_CurrentlyOff", "Command_Subtitle_CurrentlyOn" },
-            commands.Skip(17).Take(5).Select(command => command.Subtitle).ToArray());
+            commands.Skip(16).Take(5).Select(command => command.Subtitle).ToArray());
         Assert.Equal(["Go to session: session/z", "Go to session: session/a"], commands.TakeLast(2).Select(command => command.Title).ToArray());
         Assert.Equal(new string?[] { "sessions/session/z", "sessions/session/a" }, commands.TakeLast(2).Select(command => command.Action.Value).ToArray());
         Assert.All(commands.TakeLast(2), command => Assert.Equal("Open in dashboard", command.Subtitle));

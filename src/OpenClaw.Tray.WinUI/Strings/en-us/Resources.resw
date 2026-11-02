@@ -1520,15 +1520,6 @@ Use one of these options:
   <data name="ClearButton.Text" xml:space="preserve">
     <value>Clear</value>
   </data>
-  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
-    <value>Bindings</value>
-  </data>
-  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Message routing rules</value>
-  </data>
-  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
   <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
     <value>🖥️ This Computer</value>
   </data>
@@ -2294,9 +2285,6 @@ Use one of these options:
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
     <value>Instances</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
-    <value>Bindings</value>
-  </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Config</value>
   </data>
@@ -2410,18 +2398,6 @@ Use one of these options:
   </data>
   <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
     <value>Please wait while the connection is established...</value>
-  </data>
-  <data name="PriorityInfoBar.Title" xml:space="preserve">
-    <value>Routing priority</value>
-  </data>
-  <data name="PriorityInfoBar.Message" xml:space="preserve">
-    <value>Bindings control which agent handles messages from each channel. Priority: peer &gt; account &gt; channel &gt; default.</value>
-  </data>
-  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
-    <value>Single-agent mode</value>
-  </data>
-  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
-    <value>All messages route to the default agent. Add bindings for multi-agent routing.</value>
   </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
     <value>Edit gateway configuration (openclaw.json) with a schema-guided form.</value>
@@ -4195,18 +4171,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
     <value>Connection Status</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>Gateway disconnected</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>Connect to a gateway to load bindings.</value>
-  </data>
-  <data name="BindingsPage_OpenConnection.Content" xml:space="preserve">
-    <value>Open Connection</value>
-  </data>
-  <data name="BindingsPage_LoadingBindings.Text" xml:space="preserve">
-    <value>Loading bindings...</value>
   </data>
   <data name="ConnectionPage_ApprovalsWaitingOnYou.Text" xml:space="preserve">
     <value>Approvals waiting on you</value>
@@ -6153,23 +6117,11 @@ Make sure the gateway is running.</value>
   <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
     <value>Offline</value>
   </data>
-  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
-    <value>Could not load bindings</value>
-  </data>
-  <data name="BindingsPage_ConfigRequestFailed.Message" xml:space="preserve">
-    <value>The gateway did not return bindings. Refresh to try again.</value>
-  </data>
   <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
     <value>Agent event log</value>
   </data>
   <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
     <value>Go to Agent Events</value>
-  </data>
-  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
-    <value>Gateway bindings</value>
-  </data>
-  <data name="Command_GoToBindings_Title" xml:space="preserve">
-    <value>Go to Bindings</value>
   </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
@@ -7702,6 +7654,18 @@ Choose {1} to exit this preview without starting migration and continue using th
 
 Your settings, gateway, files, and models stay in place.</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>Your setup has been validated and migration completion recorded.
+
+1. Open Installed apps.
+Remove: {0} (desktop installer)
+Keep: {1}, version {2} (Microsoft Store)
+Leave all other apps installed.
+
+2. Return here and choose Retry to verify removal and finish.
+
+Your settings, gateway, files, and models stay in place.</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>Remove the previous app</value>
   </data>
@@ -7764,6 +7728,17 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Migration2_InnoGranted" xml:space="preserve">
     <value>Migration consent was saved. Install and open the Store version to continue. Keep this app installed until migration completion is confirmed.</value>
   </data>
+  <data name="Migration2_InnoRepairRequired" xml:space="preserve">
+    <value>Required installation files are missing or invalid. Download the full OpenClaw Setup installer. Exit OpenClaw, run Setup over this installation as the same Windows user, then reopen the app and retry migration. Do not uninstall OpenClaw first.
+
+Setup repairs the installation files. Migration must still pass the Store app’s compatibility checks.</value>
+  </data>
+  <data name="Migration2_InnoSetupLinkFailed" xml:space="preserve">
+    <value>Windows could not open the Setup download link. Copy this address into your browser: {0}. Do not uninstall OpenClaw first.</value>
+  </data>
+  <data name="Migration2_InnoDownloadSetup.Content" xml:space="preserve">
+    <value>Download Setup to repair</value>
+  </data>
   <data name="Migration2_InnoFailed" xml:space="preserve">
     <value>OpenClaw could not save migration consent or open the Store listing. Check the app log and retry. Do not uninstall this app.</value>
   </data>
@@ -7778,13 +7753,13 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Install a local WSL gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Checking native gateway support...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>Native gateway support is available on this device.</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>To use the native gateway, update your device to a Windows version that supports it.
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Windows reports that the isolation-session capability required by the native gateway is unavailable. A newer Windows version alone does not guarantee availability. You can install a local WSL gateway or connect to an existing gateway instead.
 
-Native gateway support is coming soon to all devices. Until it is broadly available, join the Windows Insider Program, select the Beta or Experimental channel, and choose Windows 11, version 26H1 under Advanced options during enrollment. Returning to Windows 11, version 25H2/26H2 requires a clean reinstall.
+If you need to update Windows, you can join the Windows Insider Program, select the Beta or Experimental channel, and choose Windows 11, version 26H1 under Advanced options during enrollment. Returning to Windows 11, version 25H2/26H2 requires a clean reinstall.
 
-After enrolling, return to Settings &gt; Windows Update and check for updates. It may take a few minutes for the update to appear. Feature availability can vary by device. After updating, reopen this page to check support again.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>To use the native gateway, update your device to a Windows version that supports it.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>coming soon to all devices.</value></data>
+After enrolling, return to Settings &gt; Windows Update and check for updates. It may take a few minutes for the update to appear. Feature availability can vary by device. You can reopen this page to check support again.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Windows reports that the isolation-session capability required by the native gateway is unavailable.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableAlternatives" xml:space="preserve"><value>You can install a local WSL gateway or connect to an existing gateway instead.</value></data>
   <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Windows Insider Program</value></data>
   <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta or Experimental</value></data>
   <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11, version 26H1</value></data>
@@ -7798,6 +7773,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Continue with the same Gateway setup wizard used for WSL, here in Companion. Companion validates configuration and health before connecting. Existing WSL gateways and your default OpenClaw profile are not replaced.</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>If the Gateway is not installed, setup installs it from Microsoft Store using WinGet, then verifies the package before continuing automatically.</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>Installing the Gateway from Microsoft Store using WinGet...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>Still installing the Gateway from Microsoft Store. This can take several minutes ({0} min elapsed).</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet completed. Verifying Gateway registration and execution aliases before continuing...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion will prepare your Gateway, then help you connect your AI.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway recovery</value></data>
@@ -7873,7 +7849,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
   <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
-  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>

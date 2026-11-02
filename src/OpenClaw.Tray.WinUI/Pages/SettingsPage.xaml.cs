@@ -82,7 +82,8 @@ public sealed partial class SettingsPage : Page
                 return;
             var messageKey = await InnoMigrationHandoff.GrantAndLaunchAsync();
             ShowStoreMigrationStatus(messageKey, messageKey == "Migration2_InnoGranted"
-                ? InfoBarSeverity.Success : InfoBarSeverity.Error);
+                ? InfoBarSeverity.Success : InfoBarSeverity.Error,
+                canDownloadSetup: messageKey == "Migration2_InnoRepairRequired");
         }
         catch (Exception exception)
         {
@@ -95,9 +96,37 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void ShowStoreMigrationStatus(string messageKey, InfoBarSeverity severity)
+    private void OnDownloadMigrationSetup(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(DownloadMigrationSetupAsync, new AppLogger(), nameof(OnDownloadMigrationSetup));
+
+    private async Task DownloadMigrationSetupAsync()
     {
-        StoreMigrationStatus.Message = LocalizationHelper.GetString(messageKey);
+        StoreMigrationDownloadSetup.IsEnabled = false;
+        try
+        {
+            // Browser download only. The user runs Setup after exiting the app; we do not
+            // launch executables, uninstall anything, or infer that repair has succeeded.
+            if (!await global::Windows.System.Launcher.LaunchUriAsync(InnoMigrationHandoff.InstallerUri))
+                throw new InvalidOperationException("Windows declined the installer download URI.");
+        }
+        catch (Exception exception)
+        {
+            Logger.Error($"Could not open migration Setup download: {exception.Message}");
+            ShowStoreMigrationStatus("Migration2_InnoSetupLinkFailed", InfoBarSeverity.Error,
+                canDownloadSetup: true, address: InnoMigrationHandoff.InstallerUri.AbsoluteUri);
+        }
+        finally
+        {
+            StoreMigrationDownloadSetup.IsEnabled = true;
+        }
+    }
+
+    private void ShowStoreMigrationStatus(string messageKey, InfoBarSeverity severity,
+        bool canDownloadSetup = false, string? address = null)
+    {
+        var message = LocalizationHelper.GetString(messageKey);
+        StoreMigrationStatus.Message = address is null ? message : string.Format(CultureInfo.CurrentCulture, message, address);
+        StoreMigrationDownloadSetup.Visibility = canDownloadSetup ? Visibility.Visible : Visibility.Collapsed;
         StoreMigrationStatus.Severity = severity;
         // Re-open a bar the user never dismissed so a second result is announced
         // rather than silently swapping the text of the first one.

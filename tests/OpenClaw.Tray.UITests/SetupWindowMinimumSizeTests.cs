@@ -63,6 +63,12 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 var frame = Assert.IsType<Frame>(root.FindName("RootFrame"));
                 await TestSupport.WaitForRenderedConditionAsync(() => frame.Content is CompletePage { IsLoaded: true }, "configuration error mounted");
                 var page = Assert.IsType<CompletePage>(frame.Content);
+                // Users must be able to copy failure output (for example npm errors) to report it.
+                var errorText = Assert.IsType<TextBlock>(page.FindName("ErrorText"));
+                Assert.True(errorText.IsTextSelectionEnabled);
+                errorText.SelectAll();
+                Assert.False(string.IsNullOrEmpty(errorText.Text));
+                Assert.Equal(errorText.Text, errorText.SelectedText);
                 root.UpdateLayout();
                 OnboardingNativeProof.AssertFullyVisible(Assert.IsType<Button>(page.FindName("LaunchButton")), root);
                 Assert.True(Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>()).ViewportHeight > 100);
