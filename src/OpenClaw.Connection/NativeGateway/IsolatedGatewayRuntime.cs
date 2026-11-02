@@ -523,11 +523,15 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         {
             return Unknown(ex.Message, GatewayEndpointProvenanceFailureReason.ProcessIdentityUnavailable);
         }
-        if (listeners.Any(listener => !IPAddress.IsLoopback(listener.Address) ||
+        // The port can carry several listeners (for example an attested IPv4 listener beside an
+        // unattested IPv6 one). Name the first listener that fails a check, not the first listener.
+        WindowsTcpListenerInfo? failing = listeners.FirstOrDefault(listener =>
+            !IPAddress.IsLoopback(listener.Address) ||
             !firstSequences.TryGetValue(listener.ProcessId, out ulong sequence) ||
             !status.Listeners.Any(owned => owned.Port == port &&
-                owned.ProcessId == listener.ProcessId && owned.SequenceNumber == sequence)))
-            return Unknown("The listener is not owned by the verified isolated Gateway session." + Owner(listeners[0]));
+                owned.ProcessId == listener.ProcessId && owned.SequenceNumber == sequence));
+        if (failing is not null)
+            return Unknown("The listener is not owned by the verified isolated Gateway session." + Owner(failing));
         WindowsTcpListenerSnapshotResult second = _capture();
         WindowsTcpListenerInfo[] current = second.Listeners.Where(listener => listener.Port == port).ToArray();
         IReadOnlyDictionary<int, ulong> secondSequences;

@@ -562,6 +562,24 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task MixedVerifiedAndUnverifiedListenersNameTheFailingOne()
+    {
+        _state = "running";
+        // The attested IPv4 listener is legitimate; the IPv6 listener belongs to another process.
+        _listeners =
+        [
+            new(IPAddress.Loopback, Port, ProcessId, "fixture", null),
+            new(IPAddress.IPv6Loopback, Port, 4567, "stray", null)
+        ];
+
+        var error = await Assert.ThrowsAsync<NativeGatewayListenerException>(
+            () => _runtime.EnsureRunningAsync(_record, default));
+
+        Assert.Contains("stray (PID 4567)", error.Provenance.Detail);
+        Assert.DoesNotContain("fixture", error.Provenance.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CancellingPendingOwnedStartRollsBackAndReleasesGate()
     {
         _state = "stopped";
