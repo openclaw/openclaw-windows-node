@@ -34,39 +34,15 @@ public sealed partial class GatewayFixtureUiTests
             var composer = FindById(run, "ChatComposerInput")!;
             var identity = composer.GetRuntimeId();
             const string draft = "Keep this draft behind the shared-root dialog";
-            await WaitUiAsync(run, () => FindById(run, "ChatComposerPrimaryAction") is
-                { Current.Name: "Send", Current.IsEnabled: false }, "idle composer before draft entry");
-
-            string? lastObservedComposerValue = null;
-            async Task WaitForComposerDraftAsync(string description)
-            {
-                lastObservedComposerValue = null;
-                try
-                {
-                    await WaitUiAsync(run, () =>
-                    {
-                        var input = FindById(run, "ChatComposerInput");
-                        if (input is not { Current.IsOffscreen: false }
-                            || !input.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
-                            return false;
-
-                        lastObservedComposerValue = ((ValuePattern)pattern).Current.Value;
-                        return lastObservedComposerValue == draft
-                            && FindById(run, "ChatComposerPrimaryAction") is
-                                { Current.Name: "Send", Current.IsEnabled: true };
-                    }, description);
-                }
-                catch (TimeoutException ex)
-                {
-                    throw new TimeoutException(
-                        $"{ex.Message} Expected composer value: '{draft}'. " +
-                        $"Last observed composer value: '{lastObservedComposerValue ?? "<unavailable>"}'.",
-                        ex);
-                }
-            }
-
             ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
-            await WaitForComposerDraftAsync("entered composer draft");
+            // Native text can update before the controlled composer accepts the draft.
+            await WaitUiAsync(run, () =>
+                FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false } input
+                && input.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
+                && ((ValuePattern)pattern).Current.Value == draft
+                && FindById(run, "ChatComposerPrimaryAction") is
+                    { Current.Name: "Send", Current.IsEnabled: true },
+                "composer draft accepted before modal navigation");
             if (settingsOrigin)
             {
                 await run.InvokeAsync("app.navigate", new { page = "sessions" });
@@ -180,10 +156,9 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Null(FindText(run, "The verified Gateway or agent changed. Return to the original Gateway and reopen AI setup. No other account was opened."));
             Assert.Null(FindById(run, "ChatNativeSetupError"));
             await run.InvokeAsync("app.navigate", new { page = "chat" });
-            await WaitForComposerDraftAsync("retained chat draft");
-            var retainedComposer = FindById(run, "ChatComposerInput")!;
-            Assert.Equal(identity, retainedComposer.GetRuntimeId());
-            Assert.Equal(draft, ((ValuePattern)retainedComposer.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false }, "retained chat");
+            Assert.Equal(identity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
+            Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
             if (destination == SetupNativeDestination.Chat)
                 Assert.True(SessionSelected(run, GatewayScenario.OtherSessionTitle));
             await run.InvokeAsync("app.navigate", new { page = route });

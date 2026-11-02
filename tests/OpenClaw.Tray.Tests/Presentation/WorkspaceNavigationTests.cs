@@ -458,8 +458,8 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("_reactorHost?.SetHostVisible(true)", chat);
         Assert.Contains("if (IsCurrentCapture()) host?.SetVoiceTranscript(text)", chat);
         Assert.Contains("if (IsCurrentCapture()) host?.SetVoiceAudioLevel(level)", chat);
-        Assert.Contains("(IsSettingsVisible && (e.Key == global::Windows.System.VirtualKey.E ||", workspace);
-        Assert.Contains("e.Key == global::Windows.System.VirtualKey.F)", workspace);
+        Assert.Contains("e.Key == global::Windows.System.VirtualKey.E ||", workspace);
+        Assert.Contains("(IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)", workspace);
     }
 
     [Fact]

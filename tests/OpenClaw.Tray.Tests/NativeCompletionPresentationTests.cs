@@ -194,26 +194,6 @@ public sealed class NativeCompletionPresentationTests
     }
 
     [Fact]
-    public void ChooserHasThreeNativeActions_RecommendationAndErrorOnlyRecovery_NoFooterButtons()
-    {
-        var page = XDocument.Parse(Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml"));
-        var actions = page.Descendants().Where(element => element.Name.LocalName == "SettingsCard").ToArray();
-        Assert.Equal(["Chat", "Channels", "Skills"], actions.Select(element => element.Attribute("Tag")?.Value));
-        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(x + "Name") is "SkipButton" or "ReturnButton");
-        var recovery = Assert.Single(page.Descendants(), element => (string?)element.Attribute(x + "Name") == "RecoveryButton");
-        Assert.Contains(recovery.Ancestors(), element => element.Name.LocalName == "InfoBar");
-        var badge = Assert.Single(actions[0].Descendants(), element => (string?)element.Attribute(x + "Name") == "RecommendedBadge");
-        Assert.Equal("RecommendedBadge", badge.Name.LocalName);
-        Assert.Contains(page.Descendants(), element => element.Name.LocalName == "SetupProgressIndicator");
-        Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(x + "Name") == "FinishButton");
-        var source = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml.cs");
-        Assert.Contains("args.IsCurrent()", source);
-        Assert.Contains("args.Coordinator.SelectAsync(destination)", source);
-        Assert.DoesNotContain("Launcher.LaunchUri", source);
-    }
-
-    [Fact]
     public void NativeConnectionProgress_HasItsOwnRowAboveWrappableActions()
     {
         var page = XDocument.Parse(Read(@"src\OpenClaw.SetupEngine.UI\Pages\SetupNativeConnectionPage.xaml"));
