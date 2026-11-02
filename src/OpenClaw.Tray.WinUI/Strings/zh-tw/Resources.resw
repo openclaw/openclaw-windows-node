@@ -7430,7 +7430,7 @@
   <data name="Onboarding_V3_ProfileCustomDescription.Text" xml:space="preserve"><value>保留目前選擇，並在下方進行調整。</value></data>
   <data name="Onboarding_AiSetup_OnThisPc" xml:space="preserve"><value>在此電腦上</value></data>
   <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>本機 AI</value></data>
-  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>全新本機模型設定優先使用 Llama.app，或保留現有本機 AI 服務。</value></data>
+  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>全新本機模型設定優先使用 Llama app，或保留現有本機 AI 服務。</value></data>
   <data name="Onboarding_AiSetup_LocalSetUpDescription" xml:space="preserve"><value>在這台電腦上執行，無需支付供應商按用量計費的費用。我們會協助你設定適合硬體的模型。</value></data>
   <data name="Onboarding_AiSetup_CloudDetail" xml:space="preserve"><value>使用線上服務提供的 AI。</value></data>
   <data name="Onboarding_AiSetup_LmStudioDetail" xml:space="preserve"><value>連接你已在 LM Studio 中使用的模型。</value></data>
@@ -7438,7 +7438,6 @@
   <data name="Onboarding_AiSetup_LocalExplanation" xml:space="preserve"><value>受管理的 Windows llama-server 使用此電腦的 GPU。這與 NVIDIA 的雲端 API 不同。</value></data>
   <data name="Onboarding_AiSetup_GatewayModels" xml:space="preserve"><value>Gateway 上可用的模型</value></data>
   <data name="Onboarding_AiSetup_ConnectProvider" xml:space="preserve"><value>雲端 AI</value></data>
-  <data name="Onboarding_AiSetup_OtherLocal" xml:space="preserve"><value>設定本機模型</value></data>
   <data name="Onboarding_AiSetup_OtherLocalDetail" xml:space="preserve"><value>透過 Gateway 設定並使用模型。繼續前請檢閱下載或權限要求。</value></data>
   <data name="Onboarding_AiSetup_UtilityNotice" xml:space="preserve"><value>Gateway 也提供設定或輔助工作模型。此頁面僅連線主助理，因此不顯示僅供輔助工作使用的選項。</value></data>
   <data name="Onboarding_AiSetup_LocalSetUp" xml:space="preserve"><value>設定</value></data>
@@ -8236,10 +8235,14 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在處理此問題。請重新整理以查看其狀態。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>請為每個問題選擇有效的答案。</value></data>
-  <data name="Onboarding_AiSetup_LlamaAppDetail" xml:space="preserve"><value>Llama.app 自行管理伺服器與模型下載。安裝或開啟應用程式，選擇模型並啟用 API（預設為 127.0.0.1:9931），然後重新偵測，並明確選擇偵測到的模型或 Llama.app 設定。</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppDetail" xml:space="preserve"><value>如有需要，請從網站取得 Llama app。安裝和連線需要手動完成。按照下方步驟操作，然後再次檢查。</value></data>
   <data name="Onboarding_AiSetup_LlamaAppWslDetail" xml:space="preserve"><value>對於 WSL 閘道，Windows 回送位址並非自動可達。請使用已驗證可達的鏡像網路回送連線，或明確設定的 Windows 私有位址端點及應用程式管理的 Bearer 金鑰。Companion 不會變更網路或防火牆設定。</value></data>
-  <data name="Onboarding_AiSetup_LlamaAppGatewayRequired" xml:space="preserve"><value>此閘道尚未提供 Llama.app 設定或可用模型。這些連結用於開啟安裝與模型選擇說明，不代表 AI 設定已完成。</value></data>
-  <data name="Onboarding_AiSetup_GetLlamaApp" xml:space="preserve"><value>取得 Llama.app</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppGatewayRequired" xml:space="preserve"><value>此 Gateway 尚未確認可用的 Llama app 模型。這並不表示 Windows 應用程式未安裝或未執行。</value></data>
+  <data name="Onboarding_AiSetup_GetLlamaApp" xml:space="preserve"><value>取得 Llama app</value></data>
   <data name="Onboarding_AiSetup_LlamaAppGuide" xml:space="preserve"><value>API 設定指南</value></data>
   <data name="Onboarding_AiSetup_LlamaAppProviderDetail" xml:space="preserve"><value>連線至應用程式管理的 API。在您明確選擇模型之前，現有模型、提供者與預設設定保持不變。</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppTechnicalDetail" xml:space="preserve"><value>Llama app 自行管理伺服器與模型下載。安裝或開啟應用程式，選擇模型並啟用 API（預設為 127.0.0.1:9931），然後重新偵測，並明確選擇偵測到的模型或 Llama app 設定。</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppConnectionDetails" xml:space="preserve"><value>連線詳細資料</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppSetupAvailable" xml:space="preserve"><value>使用現有的本機應用程式，或取得應用程式後手動設定。</value></data>
+  <data name="Onboarding_AiSetup_LlamaCppSetup" xml:space="preserve"><value>llama.cpp（Companion 設定）</value></data>
 </root>

@@ -122,14 +122,14 @@ entry from the original configuration; the generated template does not reproduce
 that entry or its value. The bundled configuration leaves setup mode and search
 provider unspecified so policy can choose among the actual offered values.
 
-### Llama.app local model setup
+### Llama app local model setup
 
-Llama.app is the preferred **fresh** local-model handoff. Companion recommends
+Llama app is the preferred **fresh** local-model handoff. Companion recommends
 it only after successful Gateway discovery and conclusive local observation show
 no configured/default/utility model, detected or unavailable provider candidate,
 managed installation or recovery receipt. An incomplete check is not proof of a
 fresh installation. Existing managed Local AI setup, repair, ownership and model
-selection remain available and are not migrated to Llama.app.
+selection remain available and are not migrated to Llama app.
 
 Companion uses the existing authenticated Gateway setup contract:
 
@@ -142,13 +142,17 @@ Companion uses the existing authenticated Gateway setup contract:
    Discovery is not activation. Existing candidates retain their server order.
    A successful external-model completion never acquires Companion-managed
    runtime ownership merely because its name contains "llama".
-3. With no usable model or setup option, **Get Llama.app** and **API setup guide**
-   open the official installation/model-selection instructions. Install or open
+3. With no usable model or setup option, **Get Llama app** opens the official
+   website. Installation and connection remain manual. **Connection details** is collapsed at
+   first and contains the API guide, Gateway status and WSL guidance. Install or open
    the Windows app, select/download a model in that app, enable its API, then use
    **Check again**. This is a handoff, not a turnkey installation or verified AI
    setup. A listening endpoint alone does not prove a usable installed model.
+   An empty Gateway response does not establish whether the Windows app is
+   installed or running. The initial screen keeps that distinction explicit
+   and does not show an empty-options fallback alongside this useful handoff.
 
-Llama.app owns its server, downloads, cache and API credentials. Companion does
+Llama app owns its server, downloads, cache and API credentials. Companion does
 not start a second llama-server, install a second model, copy its cache or read
 its credential files. The Windows API defaults to `127.0.0.1:9931`. App discovery
 and inference run on the Gateway's side of the existing provider contract;

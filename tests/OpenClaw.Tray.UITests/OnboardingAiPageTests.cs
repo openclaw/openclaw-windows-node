@@ -276,10 +276,11 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Empty(Find<ItemsControl>(page, "FeaturedSignInChoices").Items);
             Assert.Empty(Find<ItemsControl>(page, "MoreSignInChoices").Items);
             Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "LlamaAppSection").Visibility);
+            Assert.Equal(Visibility.Collapsed, Find<HyperlinkButton>(page, "GetLlamaAppButton").Visibility);
             Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
             Assert.Equal(0, completed());
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"llama-app-local-option-{theme}", output,
-                ["Llama.app"], requiredContent: page)) { }
+                ["Llama app"], requiredContent: page)) { }
             await InvokeChoiceAsync(page, "LlamaAppChoices");
             await WaitAsync(() => transport.MethodCalls.Contains("openclaw.setup.auth.start"));
             Assert.Equal("llama-app", transport.LastActivation.GetProperty("authChoice").GetString());
@@ -290,9 +291,80 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             transport.DetectionOverride = new()
             {
                 Candidates = [], ManualProviders = [], Workspace = "/synthetic-workspace", SetupComplete = false,
-                AuthOptions = [new("llama-app", "Llama.app", BrandId: "llama-app", Kind: "custom", Featured: true)],
+                AuthOptions = [new("llama-app", "Llama app", BrandId: "llama-app", Kind: "custom", Featured: true)],
             };
             transport.WizardStep = new() { Id = "llama-endpoint", Type = "text", Title = "Llama.app API endpoint" };
+        });
+    }
+
+    [Theory]
+    [InlineData("llama-app", "Llama app", "Set up", "Set up")]
+    [InlineData("ollama", "Ollama", "Set up", "Set up")]
+    [InlineData("llama-app", "Llama app", null, "Set up")]
+    [InlineData("ollama", "Ollama", null, "Set up")]
+    [InlineData("llama-app", "Llama app", "Configure existing app", "Configure existing app")]
+    [InlineData("ollama", "Ollama", "Configure existing app", "Configure existing app")]
+    public async Task LocalPrepareRows_HonorAdvertisedActionAndDispatchPreparation(
+        string providerId, string label, string? actionLabel, string expectedAction)
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            var group = providerId == "llama-app" ? "LlamaAppChoices" : "PrepareChoices";
+            var choices = Find<ItemsControl>(page, group);
+            Assert.Single(choices.Items);
+            choices.UpdateLayout();
+            await ui.YieldToRenderAsync();
+            var card = Assert.Single(TestSupport.FindDescendants<SetupActionCard>(choices));
+            Assert.Equal(expectedAction, Assert.IsType<TextBlock>(card.Content).Text);
+            Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+            await InvokeChoiceAsync(page, group);
+            await WaitAsync(() => transport.MethodCalls.Contains("openclaw.setup.prepare.start"));
+            Assert.Equal(providerId, transport.LastActivation.GetProperty("authChoice").GetString());
+            Assert.DoesNotContain("openclaw.setup.auth.start", transport.MethodCalls);
+            Assert.DoesNotContain("openclaw.setup.activate.start", transport.MethodCalls);
+            Assert.Equal(0, completed());
+        }, configure: transport =>
+        {
+            transport.DetectionOverride = new()
+            {
+                Candidates = [], ManualProviders = [], Workspace = "/synthetic-workspace", SetupComplete = false,
+                PrepareOptions = [new(providerId, label, BrandId: providerId, ActionLabel: actionLabel)],
+            };
+            transport.WizardStep = new() { Id = "local-prepare", Type = "text", Title = "Local app setup" };
+        });
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LlamaApp_EmptyFallbackAppearsOnlyWithoutAUsefulLocalHandoff(bool freshLocalTarget)
+    {
+        var host = freshLocalTarget
+            ? new PageLocalAiHost(LocalAiOnboardingState.Unsupported) { FreshUnsupported = true } : null;
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            await WaitAsync(() => freshLocalTarget
+                ? Find<StackPanel>(page, "LlamaAppSection").Visibility == Visibility.Visible
+                : Find<TextBlock>(page, "NoChoicesText").Visibility == Visibility.Visible);
+            Assert.Equal(freshLocalTarget ? Visibility.Collapsed : Visibility.Visible,
+                Find<TextBlock>(page, "NoChoicesText").Visibility);
+            if (freshLocalTarget)
+            {
+                Assert.Equal("Get Llama app", Find<HyperlinkButton>(page, "GetLlamaAppButton").Content);
+                var details = Find<SettingsExpander>(page, "LlamaAppConnectionDetails");
+                Assert.False(details.IsExpanded);
+                details.IsExpanded = true;
+                await ui.YieldToRenderAsync();
+                Assert.Equal("This Gateway has not confirmed a usable Llama app model. " +
+                    "This does not tell us whether the Windows app is installed or running.",
+                    Find<TextBlock>(page, "LlamaAppGatewayRequired").Text);
+            }
+            Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+            Assert.Equal(0, host?.Actions ?? 0);
+            Assert.Equal(0, completed());
+        }, localAiHost: host, configure: transport => transport.DetectionOverride = new()
+        {
+            Candidates = [], ManualProviders = [], Workspace = "/synthetic-workspace", SetupComplete = false,
         });
     }
 
@@ -307,15 +379,22 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         {
             await WaitAsync(() => Find<StackPanel>(page, "LlamaAppSection").Visibility == Visibility.Visible);
             Assert.Equal(Visibility.Visible, Find<RecommendedBadge>(page, "LlamaAppRecommendedBadge").Visibility);
-            Assert.Equal(Visibility.Visible, Find<TextBlock>(page, "LlamaAppGatewayRequired").Visibility);
-            Assert.Equal(Visibility.Visible, Find<TextBlock>(page, "LlamaAppTopology").Visibility);
+            var details = Find<SettingsExpander>(page, "LlamaAppConnectionDetails");
+            Assert.False(details.IsExpanded);
+            var technical = Assert.IsType<StackPanel>(details.ItemsFooter);
+            Assert.Contains(Find<TextBlock>(page, "LlamaAppTechnicalDescription"), technical.Children);
+            Assert.Contains(Find<TextBlock>(page, "LlamaAppGatewayRequired"), technical.Children);
+            Assert.Contains(Find<TextBlock>(page, "LlamaAppTopology"), technical.Children);
+            Assert.Equal(Visibility.Collapsed, Find<TextBlock>(page, "NoChoicesText").Visibility);
+            Assert.Equal("Use an existing local app, or get one to set up manually.", Find<TextBlock>(page, "StatusText").Text);
             Assert.Empty(Find<ItemsControl>(page, "LlamaAppChoices").Items);
-            Assert.Equal("Get Llama.app", Find<HyperlinkButton>(page, "GetLlamaAppButton").Content);
+            Assert.Equal("Get Llama app", Find<HyperlinkButton>(page, "GetLlamaAppButton").Content);
+            Assert.Equal("Check again", Find<Button>(page, "RefreshButton").Content);
             Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
             Assert.Equal(0, host.Actions);
             Assert.Equal(0, completed());
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"llama-app-fresh-handoff-{theme}", output,
-                ["Llama.app", "Get Llama.app", "API setup guide"], requiredContent: page)) { }
+                ["Llama app", "Get Llama app", "Connection details"], requiredContent: page)) { }
         }, nativeProof: true, theme: theme, localAiHost: host,
             configure: transport => transport.DetectionOverride = new()
             {
@@ -1355,8 +1434,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Null(page.FindName("LocalAiHeading"));
             Assert.Equal(state == LocalAiOnboardingState.SetUp ? "Set up" : "Use this model",
                 Find<TextBlock>(page, "LocalAiActionText").Text);
-            Assert.Equal(state == LocalAiOnboardingState.SetUp ? "Set up a local model" : "Local AI",
-                Find<TextBlock>(page, "LocalAiTitle").Text);
+            Assert.Equal("llama.cpp (Companion setup)", Find<TextBlock>(page, "LocalAiTitle").Text);
             Assert.Equal(Find<TextBlock>(page, "LocalAiTitle").Text,
                 AutomationProperties.GetName(card));
             Assert.Equal(state == LocalAiOnboardingState.SetUp ? Visibility.Visible : Visibility.Collapsed,

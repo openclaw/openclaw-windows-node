@@ -7430,7 +7430,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_V3_ProfileCustomDescription.Text" xml:space="preserve"><value>Partez de vos choix actuels et ajustez-les ci-dessous.</value></data>
   <data name="Onboarding_AiSetup_OnThisPc" xml:space="preserve"><value>Sur ce PC</value></data>
   <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>IA locale</value></data>
-  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>Utilisez Llama.app pour une nouvelle configuration de modèle local, ou conservez votre service d’IA local existant.</value></data>
+  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>Utilisez Llama app pour une nouvelle configuration de modèle local, ou conservez votre service d’IA local existant.</value></data>
   <data name="Onboarding_AiSetup_LocalSetUpDescription" xml:space="preserve"><value>S’exécute sur ce PC sans frais d’utilisation du fournisseur. Nous vous aidons à configurer un modèle adapté à votre matériel.</value></data>
   <data name="Onboarding_AiSetup_CloudDetail" xml:space="preserve"><value>Connectez-vous à un service d’IA en ligne.</value></data>
   <data name="Onboarding_AiSetup_LmStudioDetail" xml:space="preserve"><value>Connectez un modèle que vous utilisez déjà dans LM Studio.</value></data>
@@ -7438,7 +7438,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_AiSetup_LocalExplanation" xml:space="preserve"><value>Le llama-server Windows géré utilise le GPU de ce PC. Il est distinct de l’API hébergée de NVIDIA.</value></data>
   <data name="Onboarding_AiSetup_GatewayModels" xml:space="preserve"><value>Disponible sur votre Gateway</value></data>
   <data name="Onboarding_AiSetup_ConnectProvider" xml:space="preserve"><value>IA dans le cloud</value></data>
-  <data name="Onboarding_AiSetup_OtherLocal" xml:space="preserve"><value>Configurer un modèle local</value></data>
   <data name="Onboarding_AiSetup_OtherLocalDetail" xml:space="preserve"><value>Configurez et utilisez un modèle via votre Gateway. Vérifiez toute demande de téléchargement ou d’autorisation avant de continuer.</value></data>
   <data name="Onboarding_AiSetup_UtilityNotice" xml:space="preserve"><value>Votre Gateway propose aussi des modèles de configuration ou utilitaires. Cette page connecte uniquement l’assistant principal ; les choix uniquement utilitaires sont masqués.</value></data>
   <data name="Onboarding_AiSetup_LocalSetUp" xml:space="preserve"><value>Configurer</value></data>
@@ -8236,10 +8235,14 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Cette question est en cours de résolution. Actualisez pour vérifier son état.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choisissez une réponse valide pour chaque question.</value></data>
-  <data name="Onboarding_AiSetup_LlamaAppDetail" xml:space="preserve"><value>Llama.app gère son serveur et les téléchargements de modèles. Installez ou ouvrez l’application, choisissez un modèle et activez son API (127.0.0.1:9931 par défaut). Relancez la détection et choisissez explicitement un modèle détecté ou la configuration Llama.app.</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppDetail" xml:space="preserve"><value>Téléchargez Llama app depuis son site si nécessaire. L’installation et la connexion sont manuelles. Suivez les étapes ci-dessous, puis vérifiez à nouveau.</value></data>
   <data name="Onboarding_AiSetup_LlamaAppWslDetail" xml:space="preserve"><value>Pour une passerelle WSL, la boucle locale Windows n’est pas automatiquement accessible. Utilisez un accès vérifié en réseau miroir, ou un point de terminaison Windows privé explicitement configuré avec une clé Bearer appartenant à l’application. Companion ne modifie ni le réseau ni le pare-feu.</value></data>
-  <data name="Onboarding_AiSetup_LlamaAppGatewayRequired" xml:space="preserve"><value>Cette passerelle n’a proposé ni configuration Llama.app ni modèle utilisable. Ces liens ouvrent les instructions d’installation et de sélection de modèle, mais ne terminent pas la configuration de l’IA.</value></data>
-  <data name="Onboarding_AiSetup_GetLlamaApp" xml:space="preserve"><value>Obtenir Llama.app</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppGatewayRequired" xml:space="preserve"><value>Ce Gateway n’a pas confirmé de modèle Llama app utilisable. Cela n’indique pas si l’application Windows est installée ou en cours d’exécution.</value></data>
+  <data name="Onboarding_AiSetup_GetLlamaApp" xml:space="preserve"><value>Obtenir Llama app</value></data>
   <data name="Onboarding_AiSetup_LlamaAppGuide" xml:space="preserve"><value>Guide de configuration API</value></data>
   <data name="Onboarding_AiSetup_LlamaAppProviderDetail" xml:space="preserve"><value>Connectez l’API gérée par l’application. Les modèles, fournisseurs et valeurs par défaut existants sont conservés jusqu’à votre choix explicite d’un modèle.</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppTechnicalDetail" xml:space="preserve"><value>Llama app gère son serveur et les téléchargements de modèles. Installez ou ouvrez l’application, choisissez un modèle et activez son API (127.0.0.1:9931 par défaut). Relancez la détection et choisissez explicitement un modèle détecté ou la configuration Llama app.</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppConnectionDetails" xml:space="preserve"><value>Détails de connexion</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppSetupAvailable" xml:space="preserve"><value>Utilisez une application locale existante ou obtenez-en une à configurer manuellement.</value></data>
+  <data name="Onboarding_AiSetup_LlamaCppSetup" xml:space="preserve"><value>llama.cpp (configuration Companion)</value></data>
 </root>

@@ -7431,7 +7431,7 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_V3_ProfileCustomDescription.Text" xml:space="preserve"><value>Begin met je huidige keuzes en pas ze hieronder aan.</value></data>
   <data name="Onboarding_AiSetup_OnThisPc" xml:space="preserve"><value>Op deze pc</value></data>
   <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>Lokale AI</value></data>
-  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>Gebruik Llama.app voor een nieuwe lokale modelconfiguratie, of behoud uw bestaande lokale AI-service.</value></data>
+  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>Gebruik Llama app voor een nieuwe lokale modelconfiguratie, of behoud uw bestaande lokale AI-service.</value></data>
   <data name="Onboarding_AiSetup_LocalSetUpDescription" xml:space="preserve"><value>Draait op deze pc zonder gebruikskosten van een provider. We helpen je een model in te stellen dat bij je hardware past.</value></data>
   <data name="Onboarding_AiSetup_CloudDetail" xml:space="preserve"><value>Gebruik AI van een online dienst.</value></data>
   <data name="Onboarding_AiSetup_LmStudioDetail" xml:space="preserve"><value>Verbind een model dat je al gebruikt in LM Studio.</value></data>
@@ -7439,7 +7439,6 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_AiSetup_LocalExplanation" xml:space="preserve"><value>De beheerde Windows llama-server gebruikt de GPU van deze pc. Dit staat los van de gehoste API van NVIDIA.</value></data>
   <data name="Onboarding_AiSetup_GatewayModels" xml:space="preserve"><value>Beschikbaar op je Gateway</value></data>
   <data name="Onboarding_AiSetup_ConnectProvider" xml:space="preserve"><value>AI in de cloud</value></data>
-  <data name="Onboarding_AiSetup_OtherLocal" xml:space="preserve"><value>Een lokaal model instellen</value></data>
   <data name="Onboarding_AiSetup_OtherLocalDetail" xml:space="preserve"><value>Stel een model in en gebruik het via je Gateway. Controleer download- en toestemmingsverzoeken voordat je doorgaat.</value></data>
   <data name="Onboarding_AiSetup_UtilityNotice" xml:space="preserve"><value>Je Gateway biedt ook installatie- of hulpmodellen. Deze pagina verbindt alleen de hoofdassistent; keuzes voor alleen hulptaken worden niet getoond.</value></data>
   <data name="Onboarding_AiSetup_LocalSetUp" xml:space="preserve"><value>Instellen</value></data>
@@ -8237,10 +8236,14 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Deze vraag wordt afgehandeld. Vernieuw om de status te controleren.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Kies een geldig antwoord voor elke vraag.</value></data>
-  <data name="Onboarding_AiSetup_LlamaAppDetail" xml:space="preserve"><value>Llama.app beheert de eigen server en modeldownloads. Installeer of open de app, kies een model en schakel de API in (standaard 127.0.0.1:9931). Controleer daarna opnieuw en kies expliciet een gevonden model of de Llama.app-configuratie.</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppDetail" xml:space="preserve"><value>Download Llama app zo nodig via de website. Installatie en verbinding stelt u handmatig in. Volg de stappen hieronder en controleer opnieuw.</value></data>
   <data name="Onboarding_AiSetup_LlamaAppWslDetail" xml:space="preserve"><value>Voor een WSL-gateway is Windows-loopback niet automatisch bereikbaar. Gebruik geverifieerde bereikbaarheid via gespiegelde loopback, of een expliciet geconfigureerd privé-Windows-eindpunt met een Bearer-sleutel van de app. Companion wijzigt geen netwerk- of firewallinstellingen.</value></data>
-  <data name="Onboarding_AiSetup_LlamaAppGatewayRequired" xml:space="preserve"><value>Deze gateway heeft geen Llama.app-configuratie of bruikbaar model aangeboden. Deze links openen installatie- en modelkeuze-instructies, maar voltooien de AI-configuratie niet.</value></data>
-  <data name="Onboarding_AiSetup_GetLlamaApp" xml:space="preserve"><value>Llama.app downloaden</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppGatewayRequired" xml:space="preserve"><value>Deze Gateway heeft geen bruikbaar Llama app-model bevestigd. Dit zegt niet of de Windows-app is geïnstalleerd of actief is.</value></data>
+  <data name="Onboarding_AiSetup_GetLlamaApp" xml:space="preserve"><value>Llama app downloaden</value></data>
   <data name="Onboarding_AiSetup_LlamaAppGuide" xml:space="preserve"><value>API-configuratiegids</value></data>
   <data name="Onboarding_AiSetup_LlamaAppProviderDetail" xml:space="preserve"><value>Verbind met de API die de app beheert. Bestaande modellen, providers en standaardinstellingen blijven behouden totdat u expliciet een model kiest.</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppTechnicalDetail" xml:space="preserve"><value>Llama app beheert de eigen server en modeldownloads. Installeer of open de app, kies een model en schakel de API in (standaard 127.0.0.1:9931). Controleer daarna opnieuw en kies expliciet een gevonden model of de Llama app-configuratie.</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppConnectionDetails" xml:space="preserve"><value>Verbindingsdetails</value></data>
+  <data name="Onboarding_AiSetup_LlamaAppSetupAvailable" xml:space="preserve"><value>Gebruik een bestaande lokale app of download er een om handmatig in te stellen.</value></data>
+  <data name="Onboarding_AiSetup_LlamaCppSetup" xml:space="preserve"><value>llama.cpp (instellen met Companion)</value></data>
 </root>

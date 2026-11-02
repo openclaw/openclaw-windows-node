@@ -111,6 +111,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         SignInHeading.Text = S("ConnectProvider");
         CloudDescription.Text = S("CloudDetail");
         LlamaAppDescription.Text = S("LlamaAppDetail");
+        LlamaAppTechnicalDescription.Text = S("LlamaAppTechnicalDetail");
+        LlamaAppConnectionDetails.Header = S("LlamaAppConnectionDetails");
         LlamaAppTopology.Text = S("LlamaAppWslDetail");
         LlamaAppGatewayRequired.Text = S("LlamaAppGatewayRequired");
         GetLlamaAppButton.Content = S("GetLlamaApp");
@@ -118,9 +120,9 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         LlamaAppArtwork.Descriptor = GatewayAiSetupPresentation.GetProviderArtwork(
             "llama-app", "llama-app", null, ProviderArtworkFallback.Install);
         LlamaAppArtwork.Session = _artworkSession;
-        LocalAiTitle.Text = S("LocalTitle");
+        LocalAiTitle.Text = S("LlamaCppSetup");
         LocalAiCard.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Devices, 20);
-        AutomationProperties.SetName(LocalAiCard, S("LocalTitle"));
+        AutomationProperties.SetName(LocalAiCard, S("LlamaCppSetup"));
         UtilityNotice.Message = S("UtilityNotice");
         ApiKeysTitle.Text = S("ApiKeys");
         ApiKeysDescription.Text = ApiKeyFormHeading.Text = S("ManualHeading");
@@ -584,7 +586,6 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             ApiKeyForm.Visibility = Visible(_presentation.ShowApiKeyForm);
             MoreExpander.Visibility = Visible(_presentation.MoreSignIn.Count > 0);
             MoreExpander.IsExpanded = false;
-            NoChoicesText.Visibility = Visible(!_presentation.HasChoices);
             ApiKeyInput.Password = "";
             CatalogPreference.Visibility = Visible(_presentation.NativeSessionCatalogPreferenceRequired);
             CatalogPreference.IsChecked = catalogConsent;
@@ -606,7 +607,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                     _ => "OllamaDetail",
                 }) : option.Hint ?? "",
                 _artworkSession, BrandId: option.BrandId, Icon: option.Icon, ProviderKind: option.Kind,
-                MetadataActionLabel: localService ? S("ManualConnect") : option.ActionLabel, Website: option.Website);
+                MetadataActionLabel: option.ActionLabel ?? (localService ? S("LocalSetUp") : null), Website: option.Website);
         }).ToArray();
 
     private void ApiKeys_Click(object sender, RoutedEventArgs e)
@@ -1151,6 +1152,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             CloseBlockedSetupButton.Visibility = Visible(ManagerRecoveryBlocked && _args?.CloseSetupWindow is not null);
             var freezeBackdrop = _providerBackdrop is not null;
             if (!freezeBackdrop) RenderLocalAi(phase);
+            var hasLlamaPresentation = LlamaAppSection.Visibility == Visibility.Visible;
             MascotHero.Mood = phase == GatewayAiSetupPhase.Verified ? OnboardingMascotMood.Celebrating
                 : _busy || phase is GatewayAiSetupPhase.Running or GatewayAiSetupPhase.VerificationRequired
                     ? OnboardingMascotMood.Thinking
@@ -1169,7 +1171,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 GatewayAiSetupPhase.Cancelled => "Cancelled",
                 GatewayAiSetupPhase.Running => "Running",
                 _ => _busy ? (_providerOperationActive ? "Starting" : "Connecting") : _presentation.DiscoveryFailed ? "DiscoveryFailed" :
-                    _presentation.NoUsableCandidates ? "NoUsableCandidates" : "Choose"
+                    _presentation.NoUsableCandidates ? (hasLlamaPresentation ? "LlamaAppSetupAvailable" : "NoUsableCandidates") : "Choose"
             });
             if (!freezeBackdrop)
             {
@@ -1186,6 +1188,9 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                     (phase is GatewayAiSetupPhase.Choosing or GatewayAiSetupPhase.Cancelled or GatewayAiSetupPhase.Rejected));
                 CandidatesSection.Visibility = Visible(ChoicePanel.Visibility == Visibility.Visible &&
                     _presentation.Candidates.Count > 0);
+                NoChoicesText.Visibility = Visible(_choicesPrepared && !_presentation.HasChoices && !hasLlamaPresentation);
+                LocalGroupDescription.Visibility = Visible(!hasLlamaPresentation);
+                RefreshButton.Content = S(hasLlamaPresentation ? "CheckAgain" : "Refresh.Content");
                 LocalGroupHeader.Visibility = Visible(LlamaAppSection.Visibility == Visibility.Visible ||
                     LocalAiSection.Visibility == Visibility.Visible ||
                     ChoicePanel.Visibility == Visibility.Visible && PrepareSection.Visibility == Visibility.Visible);
@@ -1202,6 +1207,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             CandidateChoices.IsEnabled = PrepareChoices.IsEnabled = FeaturedSignInChoices.IsEnabled =
                 MoreSignInChoices.IsEnabled = ApiProviderPicker.IsEnabled = ApiKeyInput.IsEnabled =
                 LlamaAppChoices.IsEnabled = GetLlamaAppButton.IsEnabled = LlamaAppGuideButton.IsEnabled =
+                LlamaAppConnectionDetails.IsEnabled =
                 ApiKeysButton.IsEnabled = CatalogPreference.IsEnabled = RecommendedInstalls.IsEnabled =
                 MoreExpander.IsEnabled = RecommendedSection.IsEnabled = CheckAgainButton.IsEnabled =
                 RefreshButton.IsEnabled = LegacyButton.IsEnabled = backgroundEnabled;
@@ -1353,7 +1359,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         LlamaAppRecommendedBadge.Visibility = Visible(preferLlama);
         LlamaAppTopology.Visibility = Visible(_args?.NativeSession is null && !_managedNative);
         LlamaAppGatewayRequired.Visibility = Visible(!hasLlamaSetup && !detectedLlama);
-        GetLlamaAppButton.Visibility = Visible(!detectedLlama);
+        GetLlamaAppButton.Visibility = LlamaAppDescription.Visibility = Visible(!hasLlamaSetup && !detectedLlama);
         var state = snapshot.State;
         var detail = string.Join(" · ", new[]
         {
@@ -1363,7 +1369,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 ? LocalAiSetupControl.DescribeLocalAiUnavailable(eligibility) : null,
             state == LocalAiOnboardingState.ManagementBlocked && snapshot.ReasonKey is { } reason ? S(reason) : null,
         }.Where(value => !string.IsNullOrWhiteSpace(value)));
-        LocalAiTitle.Text = state == LocalAiOnboardingState.SetUp ? S("OtherLocal") : S("LocalTitle");
+        LocalAiTitle.Text = S("LlamaCppSetup");
         AutomationProperties.SetName(LocalAiCard, LocalAiTitle.Text);
         LocalAiDescription.Text = state == LocalAiOnboardingState.SetUp ? S("LocalSetUpDescription") : detail;
         LocalAiRecommendedBadge.Visibility = Visible(state == LocalAiOnboardingState.SetUp && !preferLlama);
