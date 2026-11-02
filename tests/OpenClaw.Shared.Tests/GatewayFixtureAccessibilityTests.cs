@@ -8,8 +8,9 @@ public sealed partial class GatewayFixtureProtocolTests
     [Fact]
     public async Task AccessibilityScenario_PopulatesReadDataButStillRefusesConfigWrites()
     {
+        var scenario = GatewayScenario.CreateAccessibilityBaseline();
         var token = CreateToken();
-        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAccessibilityBaseline(), token);
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
         await using var connected = await ConnectedClient.OpenAsync(server, token);
         var client = connected.Client;
         var config = await client.SendWizardRequestAsync("config.get");
@@ -27,6 +28,11 @@ public sealed partial class GatewayFixtureProtocolTests
             Assert.Equal(1.25, cost.GetProperty("daily")[0].GetProperty("totalCost").GetDouble());
             Assert.Equal(1.75, cost.GetProperty("totals").GetProperty("totalCost").GetDouble());
         }
+        scenario.AdvanceAccessibilityUsage();
+        var changed = await client.SendWizardRequestAsync("usage.status");
+        Assert.Equal(53, changed.GetProperty("providers")[0].GetProperty("windows")[0].GetProperty("usedPercent").GetInt32());
+        var changedCost = await client.SendWizardRequestAsync("usage.cost", new { days = 30 });
+        Assert.Equal(2.50, changedCost.GetProperty("daily")[0].GetProperty("totalCost").GetDouble());
         foreach (var method in new[] { "config.set", "config.patch", "config.apply" })
         {
             var error = await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync(method, new { }));

@@ -135,10 +135,32 @@ public sealed partial class GatewayFixtureUiTests
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "config" });
-            await WaitUiAsync(run, () => FindById(run, "ConfigTree") is not null && FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "📁 Messages")) is not null, "fixture config tree");
-            Invoke(FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "📁 Messages"))!);
-            await WaitUiAsync(run, () => FindText(run, "Fixture labels") is not null, "synthetic scalar array editor");
-            var edits = FindHub(run).FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
+            await WaitUiAsync(run, () => FindById(run, "ConfigPageMarker") is not null, "Config page navigation");
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await run.Gateway.WaitForCompletedRequestAsync("config.schema", cancellationToken: deadline.Token);
+            await run.Gateway.WaitForCompletedRequestAsync("config.get", cancellationToken: deadline.Token);
+            output.WriteLine("Config schema and config.get responses completed.");
+            var marker = new PropertyCondition(AutomationElement.AutomationIdProperty, "ConfigPageMarker");
+            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants, marker) is not null);
+            var treeCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Tree);
+            await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants, treeCondition) is not null, "mounted Config tree");
+            var tree = window.FindFirst(TreeScope.Descendants, treeCondition);
+            Assert.NotNull(tree);
+            var itemCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem);
+            AutomationElement? messages = null;
+            await WaitUiAsync(run, () => (messages = tree.FindAll(TreeScope.Descendants, itemCondition).Cast<AutomationElement>()
+                .SingleOrDefault(e => e.Current.Name.EndsWith("Messages", StringComparison.Ordinal))) is not null, "Messages tree item");
+            output.WriteLine($"Config tree peer id=[{tree.Current.AutomationId}], Messages peer type=[{messages!.Current.ControlType.ProgrammaticName}].");
+            var hwnd = new IntPtr(window.Current.NativeWindowHandle);
+            await NativeKeyboardProof.ActivateAsync(hwnd);
+            messages.SetFocus();
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
+            await WaitUiAsync(run, () => window.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Cast<AutomationElement>()
+                .Any(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
+                    && ((ValuePattern)pattern).Current.Value == "alpha"), "Messages item invoked and alpha editor mounted");
+            output.WriteLine("Messages activation mounted the alpha editor.");
+            var edits = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
             var alpha = edits.Cast<AutomationElement>().FirstOrDefault(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var value)
                 && ((ValuePattern)value).Current.Value == "alpha");
             Assert.NotNull(alpha);
@@ -151,6 +173,449 @@ public sealed partial class GatewayFixtureUiTests
             output.WriteLine($"Config save: name=[{save.Current.Name}], id=[{save.Current.AutomationId}]");
             Assert.DoesNotContain(run.Gateway.Requests, r => r.Method is "config.set" or "config.patch" or "config.apply");
             Assert.Equal("Save Changes", save.Current.Name);
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task ConfigRemove_ExposesNameAndDistinctRowAssociation()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "config" });
+            await WaitUiAsync(run, () => FindById(run, "ConfigPageMarker") is not null, "Config page navigation");
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await run.Gateway.WaitForCompletedRequestAsync("config.schema", cancellationToken: deadline.Token);
+            await run.Gateway.WaitForCompletedRequestAsync("config.get", cancellationToken: deadline.Token);
+            output.WriteLine("Config schema and config.get responses completed.");
+            var marker = new PropertyCondition(AutomationElement.AutomationIdProperty, "ConfigPageMarker");
+            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants, marker) is not null);
+            var treeCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Tree);
+            await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants, treeCondition) is not null, "mounted Config tree");
+            var tree = window.FindFirst(TreeScope.Descendants, treeCondition);
+            Assert.NotNull(tree);
+            var itemCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem);
+            AutomationElement? messages = null;
+            await WaitUiAsync(run, () => (messages = tree.FindAll(TreeScope.Descendants, itemCondition).Cast<AutomationElement>()
+                .SingleOrDefault(e => e.Current.Name.EndsWith("Messages", StringComparison.Ordinal))) is not null, "Messages tree item");
+            output.WriteLine($"Config tree peer id=[{tree.Current.AutomationId}], Messages peer type=[{messages!.Current.ControlType.ProgrammaticName}].");
+            var hwnd = new IntPtr(window.Current.NativeWindowHandle);
+            await NativeKeyboardProof.ActivateAsync(hwnd);
+            messages.SetFocus();
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
+            await WaitUiAsync(run, () => window.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Cast<AutomationElement>()
+                .Any(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
+                    && ((ValuePattern)pattern).Current.Value == "alpha"), "Messages item invoked and alpha editor mounted");
+            output.WriteLine("Messages activation mounted the alpha editor.");
+            var edits = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
+            var alpha = edits.Cast<AutomationElement>().FirstOrDefault(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var value)
+                && ((ValuePattern)value).Current.Value == "alpha");
+            Assert.NotNull(alpha);
+            var bravo = edits.Cast<AutomationElement>().Single(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var value)
+                && ((ValuePattern)value).Current.Value == "bravo");
+            AutomationElement RowButton(AutomationElement edit)
+            {
+                var bounds = edit.Current.BoundingRectangle;
+                var buttons = window.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)).Cast<AutomationElement>()
+                    .Where(button => !button.Current.IsOffscreen)
+                    .Where(button =>
+                    {
+                        var rect = button.Current.BoundingRectangle;
+                        return rect.Left >= bounds.Right - 1 && rect.Top < bounds.Bottom && rect.Bottom > bounds.Top;
+                    }).ToArray();
+                output.WriteLine($"Row geometry: edit=[{bounds}], adjacent buttons={buttons.Length}.");
+                foreach (var button in buttons)
+                    output.WriteLine($"Adjacent button: class=[{button.Current.ClassName}] id=[{button.Current.AutomationId}] name=[{button.Current.Name}] bounds=[{button.Current.BoundingRectangle}].");
+                return Assert.Single(buttons);
+            }
+            var alphaRemove = RowButton(alpha!);
+            var bravoRemove = RowButton(bravo);
+            Assert.False(Automation.Compare(alphaRemove, bravoRemove));
+            output.WriteLine($"Alpha remove: name=[{alphaRemove.Current.Name}], type=[{alphaRemove.Current.ControlType.ProgrammaticName}]; Bravo remove: name=[{bravoRemove.Current.Name}].");
+            Assert.Equal("Remove item", alphaRemove.Current.Name);
+            Assert.Equal("Remove item", bravoRemove.Current.Name);
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task ConfigRemove_KeyboardReachabilityAndDiscardRestoresRows()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "config" });
+            await WaitUiAsync(run, () => FindById(run, "ConfigPageMarker") is not null, "Config page navigation");
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await run.Gateway.WaitForCompletedRequestAsync("config.schema", cancellationToken: deadline.Token);
+            await run.Gateway.WaitForCompletedRequestAsync("config.get", cancellationToken: deadline.Token);
+            output.WriteLine("Config schema and config.get responses completed.");
+            var marker = new PropertyCondition(AutomationElement.AutomationIdProperty, "ConfigPageMarker");
+            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants, marker) is not null);
+            var treeCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Tree);
+            await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants, treeCondition) is not null, "mounted Config tree");
+            var tree = window.FindFirst(TreeScope.Descendants, treeCondition);
+            Assert.NotNull(tree);
+            var itemCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem);
+            AutomationElement? messages = null;
+            await WaitUiAsync(run, () => (messages = tree.FindAll(TreeScope.Descendants, itemCondition).Cast<AutomationElement>()
+                .SingleOrDefault(e => e.Current.Name.EndsWith("Messages", StringComparison.Ordinal))) is not null, "Messages tree item");
+            output.WriteLine($"Config tree peer id=[{tree.Current.AutomationId}], Messages peer type=[{messages!.Current.ControlType.ProgrammaticName}].");
+            var hwnd = new IntPtr(window.Current.NativeWindowHandle);
+            await NativeKeyboardProof.ActivateAsync(hwnd);
+            messages.SetFocus();
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
+            await WaitUiAsync(run, () => window.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Cast<AutomationElement>()
+                .Any(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
+                    && ((ValuePattern)pattern).Current.Value == "alpha"), "Messages item invoked and alpha editor mounted");
+            output.WriteLine("Messages activation mounted the alpha editor.");
+            var edits = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
+            var alpha = edits.Cast<AutomationElement>().FirstOrDefault(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var value)
+                && ((ValuePattern)value).Current.Value == "alpha");
+            Assert.NotNull(alpha);
+            var bravo = edits.Cast<AutomationElement>().Single(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var value)
+                && ((ValuePattern)value).Current.Value == "bravo");
+            AutomationElement RowButton(AutomationElement edit)
+            {
+                var bounds = edit.Current.BoundingRectangle;
+                var buttons = window.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)).Cast<AutomationElement>()
+                    .Where(button => !button.Current.IsOffscreen)
+                    .Where(button =>
+                    {
+                        var rect = button.Current.BoundingRectangle;
+                        return rect.Left >= bounds.Right - 1 && rect.Top < bounds.Bottom && rect.Bottom > bounds.Top;
+                    }).ToArray();
+                output.WriteLine($"Row geometry: edit=[{bounds}], adjacent buttons={buttons.Length}.");
+                foreach (var button in buttons)
+                    output.WriteLine($"Adjacent button: class=[{button.Current.ClassName}] id=[{button.Current.AutomationId}] name=[{button.Current.Name}] bounds=[{button.Current.BoundingRectangle}].");
+                return Assert.Single(buttons);
+            }
+            var alphaRemove = RowButton(alpha!);
+            alpha!.SetFocus();
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+            Assert.True(Automation.Compare(alphaRemove, AutomationElement.FocusedElement), "Tab from alpha must reach its associated remove action.");
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
+            bool HasValue(string expected) => window.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Cast<AutomationElement>()
+                .Any(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
+                    && ((ValuePattern)pattern).Current.Value == expected);
+            await WaitUiAsync(run, () => !HasValue("alpha") && HasValue("bravo"), "alpha removed and bravo retained");
+            var focused = AutomationElement.FocusedElement;
+            Assert.NotNull(focused);
+            Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+            output.WriteLine($"Focus after removal: type=[{focused.Current.ControlType.ProgrammaticName}] id=[{focused.Current.AutomationId}].");
+            var discard = window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "DiscardButton"));
+            Assert.NotNull(discard);
+            var remainingBravo = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))
+                .Cast<AutomationElement>().Single(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var value)
+                    && ((ValuePattern)value).Current.Value == "bravo");
+            var bravoRemove = RowButton(remainingBravo);
+            var reachedBravo = Automation.Compare(bravoRemove, focused);
+            bool reachedDiscard = Automation.Compare(discard, focused);
+            for (var i = 0; i < 40 && !(reachedDiscard && reachedBravo); i++)
+            {
+                NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+                focused = AutomationElement.FocusedElement;
+                Assert.NotNull(focused);
+                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                reachedBravo |= Automation.Compare(bravoRemove, focused);
+                reachedDiscard = Automation.Compare(discard, focused);
+            }
+            Assert.True(reachedBravo, "The remaining row remove action must remain reachable by Tab.");
+            Assert.True(reachedDiscard, "Discard must remain reachable by Tab after removal.");
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
+            await WaitUiAsync(run, () => HasValue("alpha") && HasValue("bravo")
+                && window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "SaveButton"))?.Current.IsEnabled == false,
+                "Discard restored both rows and cleared pending changes");
+            Assert.DoesNotContain(run.Gateway.Requests, r => r.Method is "config.set" or "config.patch" or "config.apply");
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task UsageRows_StayReadableAcrossChangedSnapshotAndPeriodSwitch()
+    {
+        var scenario = GatewayScenario.CreateAccessibilityBaseline();
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "usage" });
+            await WaitUiAsync(run, () => FindText(run, "Fixture Provider") is not null
+                && FindText(run, "Fixture Empty") is not null && FindText(run, "2026-10-31") is not null
+                && FindText(run, "2026-10-30") is not null, "two providers and two daily rows");
+            AutomationElement RowFor(string text)
+            {
+                var current = FindText(run, text) ?? throw new InvalidOperationException($"Missing synthetic row text {text}.");
+                while (current.Current.ControlType != ControlType.ListItem)
+                    current = TreeWalker.ControlViewWalker.GetParent(current)
+                        ?? throw new InvalidOperationException($"No ListItem peer for {text}.");
+                return current;
+            }
+            string ReadRow(string text)
+            {
+                var row = RowFor(text);
+                if (row.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll)) ((ScrollItemPattern)scroll).ScrollIntoView();
+                return row.Current.Name;
+            }
+            var provider = ReadRow("Fixture Provider");
+            var empty = ReadRow("Fixture Empty");
+            var first = ReadRow("2026-10-31");
+            var second = ReadRow("2026-10-30");
+            output.WriteLine($"Initial rows: provider=[{provider}], empty=[{empty}], day1=[{first}], day2=[{second}].");
+            scenario.AdvanceAccessibilityUsage();
+            await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is not null, "leave Usage");
+            await run.InvokeAsync("app.navigate", new { page = "usage" });
+            await WaitUiAsync(run, () => FindText(run, "Fixture changed warning") is not null
+                && FindText(run, "$2.50") is not null, "changed usage snapshot");
+            var changedProvider = ReadRow("Fixture Provider");
+            var changedDay = ReadRow("2026-10-31");
+            var sevenDays = FindById(run, "Period7DaysItem");
+            var thirtyDays = FindById(run, "Period30DaysItem");
+            Assert.NotNull(sevenDays);
+            Assert.NotNull(thirtyDays);
+            Invoke(sevenDays);
+            await WaitUiAsync(run, () => scenario.AccessibilityLastRequestedDays == 7, "7-day request");
+            Invoke(thirtyDays);
+            await WaitUiAsync(run, () => scenario.AccessibilityLastRequestedDays == 30, "30-day request");
+            await WaitUiAsync(run, () => FindText(run, "$2.50") is not null, "30-day rows realized");
+            var switched = ReadRow("2026-10-31");
+            output.WriteLine($"Changed rows: provider=[{changedProvider}], day1=[{changedDay}], after period=[{switched}].");
+            foreach (var expected in new[] { "Fixture Provider", "Pro", "37% used", "Fixture quota warning" })
+                Assert.Contains(expected, provider, StringComparison.Ordinal);
+            Assert.Equal("Fixture Empty", empty);
+            Assert.Contains("2026-10-31", first, StringComparison.Ordinal);
+            Assert.Contains("$1.25", first, StringComparison.Ordinal);
+            Assert.Contains("2026-10-30", second, StringComparison.Ordinal);
+            Assert.Contains("$0.50", second, StringComparison.Ordinal);
+            foreach (var expected in new[] { "Fixture Provider", "Pro", "53% used", "Fixture changed warning" })
+                Assert.Contains(expected, changedProvider, StringComparison.Ordinal);
+            Assert.Contains("2026-10-31", changedDay, StringComparison.Ordinal);
+            Assert.Contains("$2.50", changedDay, StringComparison.Ordinal);
+            Assert.Equal(changedDay, switched);
+        }, scenario: scenario);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task NotificationOptions_ExposeContextAndSupportKeyboardTraversal()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageNotifyHealth") is not null
+                && FindText(run, "Show notifications for:") is not null, "notification context and checkboxes");
+            var heading = FindText(run, "Show notifications for:")!;
+            var first = FindById(run, "SettingsPageNotifyHealth")!;
+            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsPageNotifyHealth")) is not null);
+            string Ancestors(AutomationElement element)
+            {
+                var names = new List<string>();
+                for (var node = element; node is not null && !Automation.Compare(node, window); node = TreeWalker.ControlViewWalker.GetParent(node))
+                    names.Add($"{node.Current.ControlType.ProgrammaticName}:[{node.Current.Name}]");
+                return string.Join(" -> ", names);
+            }
+            output.WriteLine($"Notification heading ancestry: {Ancestors(heading)}");
+            output.WriteLine($"First notification checkbox ancestry: {Ancestors(first)}");
+            var hwnd = new IntPtr(window.Current.NativeWindowHandle);
+            await NativeKeyboardProof.ActivateAsync(hwnd);
+            first.SetFocus();
+            var expected = new[] { "Health alerts", "Urgent messages", "Reminders", "Email summaries", "Calendar events", "Build notifications", "Stock alerts", "Info messages" };
+            var actual = new List<string>();
+            for (var i = 0; i < expected.Length; i++)
+            {
+                var focused = AutomationElement.FocusedElement;
+                Assert.NotNull(focused);
+                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                actual.Add(focused.Current.Name);
+                if (i + 1 < expected.Length) NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+            }
+            output.WriteLine($"Notification Tab sequence: {string.Join(" | ", actual)}");
+            Assert.Equal(expected, actual);
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+            var after = AutomationElement.FocusedElement;
+            Assert.NotNull(after);
+            Assert.DoesNotContain(after.Current.Name, expected);
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: true);
+            Assert.Equal("Info messages", AutomationElement.FocusedElement.Current.Name);
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task ClipboardExpander_SupportsKeyboardSelectionAndCollapse()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "sandbox" });
+            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardExpander") is not null, "Clipboard expander");
+            var expander = FindById(run, "SandboxClipboardExpander")!;
+            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SandboxClipboardExpander")) is not null);
+            Assert.Equal("📋 Clipboard", expander.Current.Name);
+            var pattern = (ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+            if (pattern.Current.ExpandCollapseState != ExpandCollapseState.Expanded) pattern.Expand();
+            var radios = expander.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Cast<AutomationElement>().ToArray();
+            Assert.Equal(4, radios.Length);
+            output.WriteLine($"Clipboard radio enabled states: {string.Join(", ", radios.Select(r => r.Current.IsEnabled))}.");
+            Assert.All(radios, radio => Assert.True(radio.Current.IsEnabled,
+                "Clipboard keyboard proof requires enabled sandbox controls; check this host's support state."));
+            var hwnd = new IntPtr(window.Current.NativeWindowHandle);
+            await NativeKeyboardProof.ActivateAsync(hwnd);
+            radios[0].SetFocus();
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Down);
+            await WaitUiAsync(run, () => ((SelectionItemPattern)radios[1].GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
+                "Down selects the next Clipboard option");
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+            var after = AutomationElement.FocusedElement;
+            Assert.NotNull(after);
+            Assert.DoesNotContain(radios, radio => Automation.Compare(radio, after));
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: true);
+            Assert.True(Automation.Compare(radios[1], AutomationElement.FocusedElement), "Shift+Tab returns to the selected option.");
+            pattern.Collapse();
+            expander.SetFocus();
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+            after = AutomationElement.FocusedElement;
+            Assert.NotNull(after);
+            Assert.DoesNotContain(radios, radio => Automation.Compare(radio, after));
+            pattern.Expand();
+            Assert.Equal(4, expander.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Count);
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task BindingsRefresh_KeyboardRoundTripTriggersFreshConfigRead()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "bindings" });
+            await WaitUiAsync(run, () => FindById(run, "BindingsPageMarker") is not null
+                && FindText(run, "fixture") is not null, "populated binding route");
+            var button = FindById(run, "RefreshButton")!;
+            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "BindingsPageMarker")) is not null);
+            var hwnd = new IntPtr(window.Current.NativeWindowHandle);
+            await NativeKeyboardProof.ActivateAsync(hwnd);
+            button.SetFocus();
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+            Assert.False(Automation.Compare(button, AutomationElement.FocusedElement), "Tab should leave Refresh.");
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: true);
+            Assert.True(Automation.Compare(button, AutomationElement.FocusedElement), "Shift+Tab should return to Refresh.");
+            var occurrence = run.Gateway.Requests.Count(r => r.Method == "config.get") + 1;
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await run.Gateway.WaitForCompletedRequestAsync("config.get", occurrence: occurrence, cancellationToken: deadline.Token);
+            var afterRefresh = AutomationElement.FocusedElement;
+            Assert.NotNull(afterRefresh);
+            output.WriteLine($"Focus after refresh: name=[{afterRefresh.Current.Name}] type=[{afterRefresh.Current.ControlType.ProgrammaticName}] id=[{afterRefresh.Current.AutomationId}] pid=[{afterRefresh.Current.ProcessId}].");
+            Assert.True(Automation.Compare(button, afterRefresh), "Refresh should retain useful focus after activation.");
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task SessionsRows_ArrowNavigationEntersLaterRowActions()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "sessions" });
+            await WaitUiAsync(run, () => FindText(run, GatewayScenario.MainTitle) is not null
+                && FindText(run, GatewayScenario.LongTitle) is not null, "two sessions");
+            AutomationElement Row(string title)
+            {
+                var node = FindText(run, title)!;
+                while (node.Current.ControlType != ControlType.ListItem)
+                    node = TreeWalker.ControlViewWalker.GetParent(node) ?? throw new InvalidOperationException("Session title has no ListItem ancestor.");
+                return node;
+            }
+            var first = Row(GatewayScenario.MainTitle);
+            var second = Row(GatewayScenario.LongTitle);
+            AutomationElement Action(AutomationElement row, string name) => row.FindFirst(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                new PropertyCondition(AutomationElement.NameProperty, name)))
+                ?? throw new InvalidOperationException($"Missing {name} on session row.");
+            Assert.False(Automation.Compare(Action(first, "Open in chat"), Action(second, "Open in chat")));
+            Assert.False(Automation.Compare(Action(first, "More actions"), Action(second, "More actions")));
+            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SessionsPageMarker")) is not null);
+            var hwnd = new IntPtr(window.Current.NativeWindowHandle);
+            await NativeKeyboardProof.ActivateAsync(hwnd);
+            if (first.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll)) ((ScrollItemPattern)scroll).ScrollIntoView();
+            first.SetFocus();
+            var previous = AutomationElement.FocusedElement.GetRuntimeId();
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Down);
+            await WaitUiAsync(run, () => AutomationElement.FocusedElement is { } next
+                && !next.GetRuntimeId().SequenceEqual(previous), "focus changes after Down");
+            var focused = AutomationElement.FocusedElement;
+            output.WriteLine($"After Down: name=[{focused.Current.Name}] type=[{focused.Current.ControlType.ProgrammaticName}] id=[{focused.Current.AutomationId}].");
+            Assert.True(Automation.Compare(second, focused), "Down from the first row should reach the second row.");
+            foreach (var expected in new[] { "Open in chat", "More actions" })
+            {
+                previous = focused.GetRuntimeId();
+                NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+                await WaitUiAsync(run, () => AutomationElement.FocusedElement is { } next
+                    && !next.GetRuntimeId().SequenceEqual(previous), "next session action focus");
+                focused = AutomationElement.FocusedElement;
+                output.WriteLine($"After Tab: name=[{focused.Current.Name}] type=[{focused.Current.ControlType.ProgrammaticName}].");
+                var expectedPeer = second.FindFirst(TreeScope.Descendants, new AndCondition(
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                    new PropertyCondition(AutomationElement.NameProperty, expected)));
+                Assert.NotNull(expectedPeer);
+                Assert.True(Automation.Compare(expectedPeer, focused), $"Tab should reach this row's {expected} action.");
+            }
+            var occurrence = run.Gateway.Requests.Count(r => r.Method == "sessions.list") + 1;
+            Invoke(FindInApp(run, new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                new PropertyCondition(AutomationElement.NameProperty, "Refresh sessions")))!);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await run.Gateway.WaitForCompletedRequestAsync("sessions.list", occurrence: occurrence, cancellationToken: deadline.Token);
+            await WaitUiAsync(run, () => FindText(run, GatewayScenario.MainTitle) is not null
+                && FindText(run, GatewayScenario.LongTitle) is not null, "sessions after refresh");
+            await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is not null, "leave sessions");
+            await run.InvokeAsync("app.navigate", new { page = "sessions" });
+            await WaitUiAsync(run, () => FindText(run, GatewayScenario.MainTitle) is not null
+                && FindText(run, GatewayScenario.LongTitle) is not null, "sessions after re-entry");
+            Assert.NotNull(Action(Row(GatewayScenario.MainTitle), "Open in chat"));
+            Assert.NotNull(Action(Row(GatewayScenario.LongTitle), "More actions"));
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "ConfigDiagnostic")]
+    public async Task ConfigDiagnostic_InspectMountedOwnedTree()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "config" });
+            await WaitUiAsync(run, () => FindById(run, "ConfigPageMarker") is not null, "Config navigation marker");
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await run.Gateway.WaitForCompletedRequestAsync("config.schema", cancellationToken: deadline.Token);
+            await run.Gateway.WaitForCompletedRequestAsync("config.get", cancellationToken: deadline.Token);
+            var markerCondition = new PropertyCondition(AutomationElement.AutomationIdProperty, "ConfigPageMarker");
+            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants, markerCondition) is not null);
+            var condition = new OrCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Tree),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem));
+            var nodes = window.FindAll(TreeScope.Descendants, condition).Cast<AutomationElement>().Select(e =>
+                $"type=[{e.Current.ControlType.ProgrammaticName}] id=[{e.Current.AutomationId}] class=[{e.Current.ClassName}] name=[{e.Current.Name}] offscreen=[{e.Current.IsOffscreen}]").ToArray();
+            await File.WriteAllLinesAsync(Path.Combine(run.ArtifactsDirectory, "config-tree-diagnostic.txt"), nodes);
+            output.WriteLine($"Config UIA diagnostic: {nodes.Length} tree peers in owned PID {run.AppProcessId}.");
+            Assert.NotEmpty(nodes);
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
 

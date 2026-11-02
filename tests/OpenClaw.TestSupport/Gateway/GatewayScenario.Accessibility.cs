@@ -39,19 +39,44 @@ public sealed partial class GatewayScenario
         return new GatewayScenario(browse._sessions, reads, accessibilityBaseline: true);
     }
 
-    private static object AccessibilityCost(JsonElement parameters)
+    public int AccessibilityLastRequestedDays => Volatile.Read(ref _accessibilityLastRequestedDays);
+
+    public void AdvanceAccessibilityUsage()
+    {
+        if (!_accessibilityBaseline) throw new InvalidOperationException("Usage snapshots are available only in the accessibility fixture.");
+        Interlocked.Exchange(ref _accessibilityUsageRevision, 1);
+    }
+
+    private object AccessibilityStatus(JsonElement parameters)
+    {
+        ValidateProperties(parameters);
+        var changed = Volatile.Read(ref _accessibilityUsageRevision) != 0;
+        return new
+        {
+            updatedAt = Epoch.AddSeconds(changed ? 1 : 0).ToUnixTimeMilliseconds(),
+            providers = new object[]
+            {
+                new { provider = "fixture", displayName = "Fixture Provider", plan = "Pro", error = changed ? "Fixture changed warning" : "Fixture quota warning", windows = new[] { new { label = "Quota", usedPercent = changed ? 53 : 37 } } },
+                new { provider = "fixture-empty", displayName = "Fixture Empty" }
+            }
+        };
+    }
+
+    private object AccessibilityCost(JsonElement parameters)
     {
         ValidateProperties(parameters, "days");
         var days = PositiveInt(parameters, "days", 30);
+        Volatile.Write(ref _accessibilityLastRequestedDays, days);
+        var changed = Volatile.Read(ref _accessibilityUsageRevision) != 0;
         return new
         {
-            updatedAt = Epoch.ToUnixTimeMilliseconds(), days,
+            updatedAt = Epoch.AddSeconds(changed ? 1 : 0).ToUnixTimeMilliseconds(), days,
             daily = new[]
             {
-                new { date = "2026-10-31", totalCost = 1.25 },
+                new { date = "2026-10-31", totalCost = changed ? 2.50 : 1.25 },
                 new { date = "2026-10-30", totalCost = 0.50 }
             },
-            totals = new { input = 0, output = 0, cacheRead = 0, cacheWrite = 0, totalTokens = 0, totalCost = 1.75, missingCostEntries = 0 }
+            totals = new { input = 0, output = 0, cacheRead = 0, cacheWrite = 0, totalTokens = 0, totalCost = changed ? 3.00 : 1.75, missingCostEntries = 0 }
         };
     }
 }

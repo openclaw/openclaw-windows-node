@@ -52,6 +52,8 @@ public sealed partial class GatewayScenario
     ];
 
     private readonly bool _accessibilityBaseline;
+    private int _accessibilityUsageRevision;
+    private int _accessibilityLastRequestedDays;
     private readonly bool _allowAgentCreation;
     private readonly bool _publishedModelCatalog;
     private readonly bool _allowSessionMutations;
@@ -440,6 +442,7 @@ public sealed partial class GatewayScenario
             "chat.history" => History(parameters),
             "models.list" => Models(parameters, containsModelSession ?? ContainsSession),
             "usage.cost" => _accessibilityBaseline ? AccessibilityCost(parameters) : Cost(parameters),
+            "usage.status" when _accessibilityBaseline => AccessibilityStatus(parameters),
             _ when _reads.ContainsKey(method) => Read(method, parameters),
             _ => throw new FixtureRequestException("METHOD_NOT_FOUND", "Unknown fixture Gateway method.", unexpected: true)
         };
