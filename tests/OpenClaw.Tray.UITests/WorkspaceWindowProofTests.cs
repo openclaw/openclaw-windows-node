@@ -376,9 +376,9 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal(workspaceHandle, app.HubWindowHandle);
         Capture(app, "System", "retention-02-settings-permissions");
 
-        Invoke(Find(root, "SettingsBack"));
+        await InvokeWhenEnabledAsync(root, "SettingsBack");
         await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
-        Invoke(Find(root, "SettingsBack"));
+        await InvokeWhenEnabledAsync(root, "SettingsBack");
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         AssertComposerRetained();
         await WaitUntilAsync(() => FindOrNull(root, "ChatComposerInput")?.Current.HasKeyboardFocus == true);
@@ -870,6 +870,16 @@ public sealed class WorkspaceWindowProofTests
 
     private static void Invoke(AutomationElement element) =>
         ((InvokePattern)element.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+
+    private static async Task InvokeWhenEnabledAsync(AutomationElement root, string id)
+    {
+        await WaitUntilAsync(() =>
+        {
+            try { return FindOrNull(root, id) is { Current.IsEnabled: true }; }
+            catch (ElementNotAvailableException) { return false; }
+        });
+        Invoke(Find(root, id));
+    }
 
     private static AutomationElement WaitForMenuItem(int pid, string name)
     {

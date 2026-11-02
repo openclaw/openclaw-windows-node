@@ -24,6 +24,13 @@ public sealed class A2UISvgTests
     private readonly UIThreadFixture _ui;
     public A2UISvgTests(UIThreadFixture ui) => _ui = ui;
 
+    private const string SvgDecodeSlackVariable = "OPENCLAW_UI_SVG_DECODE_SLACK_SECONDS";
+    private static readonly TimeSpan SvgDecodeSlack =
+        int.TryParse(Environment.GetEnvironmentVariable(SvgDecodeSlackVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(2);
+    // MediaResolver bounds an SVG load as decode-queue wait plus decode, each up to SvgRenderTimeout.
+    private static readonly TimeSpan SvgDecodeWallClockBound = MediaResolver.SvgRenderTimeout * 2 + SvgDecodeSlack;
+
     private const string MinSvg =
         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>" +
         "<rect width='24' height='24' fill='red'/></svg>";
@@ -244,8 +251,8 @@ public sealed class A2UISvgTests
             // the entity-expansion blowup never happens. The wall-clock cap (SvgRenderTimeout)
             // is the backstop. Either way, decode must complete well under timeout.
             Assert.True(
-                sw.Elapsed < MediaResolver.SvgRenderTimeout + TimeSpan.FromSeconds(2),
-                $"billion-laughs decode took {sw.Elapsed} (>{MediaResolver.SvgRenderTimeout})");
+                sw.Elapsed < SvgDecodeWallClockBound,
+                $"billion-laughs decode took {sw.Elapsed} (>{SvgDecodeWallClockBound})");
             _ = src;
         });
     }
@@ -275,8 +282,8 @@ public sealed class A2UISvgTests
             sw.Stop();
             // Decode (or timeout) must complete within the configured wall-clock bound.
             Assert.True(
-                sw.Elapsed < MediaResolver.SvgRenderTimeout + TimeSpan.FromSeconds(2),
-                $"pathological-geometry decode took {sw.Elapsed} (>{MediaResolver.SvgRenderTimeout})");
+                sw.Elapsed < SvgDecodeWallClockBound,
+                $"pathological-geometry decode took {sw.Elapsed} (>{SvgDecodeWallClockBound})");
             _ = src;
         });
     }
