@@ -130,6 +130,7 @@ public sealed partial class GatewayFixtureUiTests
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
+    [Trait("KeyboardProof", "Required")]
     public async Task ConfigActions_ExposeNamesAfterSyntheticLocalEdit()
     {
         await WithAppAsync(async run =>
@@ -154,6 +155,7 @@ public sealed partial class GatewayFixtureUiTests
             var hwnd = new IntPtr(window.Current.NativeWindowHandle);
             await NativeKeyboardProof.ActivateAsync(hwnd);
             messages.SetFocus();
+            await WaitUiAsync(run, () => Automation.Compare(messages, AutomationElement.FocusedElement), "Messages item focused");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
             await WaitUiAsync(run, () => window.FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Cast<AutomationElement>()
@@ -179,6 +181,7 @@ public sealed partial class GatewayFixtureUiTests
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
+    [Trait("KeyboardProof", "Required")]
     public async Task ConfigRemove_ExposesNameAndDistinctRowAssociation()
     {
         await WithAppAsync(async run =>
@@ -203,6 +206,7 @@ public sealed partial class GatewayFixtureUiTests
             var hwnd = new IntPtr(window.Current.NativeWindowHandle);
             await NativeKeyboardProof.ActivateAsync(hwnd);
             messages.SetFocus();
+            await WaitUiAsync(run, () => Automation.Compare(messages, AutomationElement.FocusedElement), "Messages item focused");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
             await WaitUiAsync(run, () => window.FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Cast<AutomationElement>()
@@ -243,6 +247,7 @@ public sealed partial class GatewayFixtureUiTests
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
+    [Trait("KeyboardProof", "Required")]
     public async Task ConfigRemove_KeyboardReachabilityAndDiscardRestoresRows()
     {
         await WithAppAsync(async run =>
@@ -267,6 +272,7 @@ public sealed partial class GatewayFixtureUiTests
             var hwnd = new IntPtr(window.Current.NativeWindowHandle);
             await NativeKeyboardProof.ActivateAsync(hwnd);
             messages.SetFocus();
+            await WaitUiAsync(run, () => Automation.Compare(messages, AutomationElement.FocusedElement), "Messages item focused");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
             await WaitUiAsync(run, () => window.FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Cast<AutomationElement>()
@@ -297,7 +303,9 @@ public sealed partial class GatewayFixtureUiTests
             }
             var alphaRemove = RowButton(alpha!);
             alpha!.SetFocus();
+            await WaitUiAsync(run, () => Automation.Compare(alpha, AutomationElement.FocusedElement), "alpha editor focused");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+            await WaitUiAsync(run, () => Automation.Compare(alphaRemove, AutomationElement.FocusedElement), "focus reaches alpha remove");
             Assert.True(Automation.Compare(alphaRemove, AutomationElement.FocusedElement), "Tab from alpha must reach its associated remove action.");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
             bool HasValue(string expected) => window.FindAll(TreeScope.Descendants,
@@ -320,7 +328,9 @@ public sealed partial class GatewayFixtureUiTests
             bool reachedDiscard = Automation.Compare(discard, focused);
             for (var i = 0; i < 40 && !(reachedDiscard && reachedBravo); i++)
             {
+                var previousFocus = focused.GetRuntimeId();
                 NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+                await WaitUiAsync(run, () => !previousFocus.SequenceEqual(AutomationElement.FocusedElement.GetRuntimeId()), "focus advances after Tab");
                 focused = AutomationElement.FocusedElement;
                 Assert.NotNull(focused);
                 Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
@@ -405,6 +415,7 @@ public sealed partial class GatewayFixtureUiTests
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
+    [Trait("KeyboardProof", "Required")]
     public async Task NotificationOptions_ExposeContextAndSupportKeyboardTraversal()
     {
         await WithAppAsync(async run =>
@@ -428,6 +439,7 @@ public sealed partial class GatewayFixtureUiTests
             var hwnd = new IntPtr(window.Current.NativeWindowHandle);
             await NativeKeyboardProof.ActivateAsync(hwnd);
             first.SetFocus();
+            await WaitUiAsync(run, () => Automation.Compare(first, AutomationElement.FocusedElement), "first notification focused");
             var expected = new[] { "Health alerts", "Urgent messages", "Reminders", "Email summaries", "Calendar events", "Build notifications", "Stock alerts", "Info messages" };
             var actual = new List<string>();
             for (var i = 0; i < expected.Length; i++)
@@ -436,15 +448,21 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.NotNull(focused);
                 Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
                 actual.Add(focused.Current.Name);
-                if (i + 1 < expected.Length) NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+                if (i + 1 < expected.Length)
+                {
+                    NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+                    await WaitUiAsync(run, () => AutomationElement.FocusedElement.Current.Name == expected[i + 1], $"focus reaches {expected[i + 1]}");
+                }
             }
             output.WriteLine($"Notification Tab sequence: {string.Join(" | ", actual)}");
             Assert.Equal(expected, actual);
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+            await WaitUiAsync(run, () => !expected.Contains(AutomationElement.FocusedElement.Current.Name), "focus leaves notification options");
             var after = AutomationElement.FocusedElement;
             Assert.NotNull(after);
             Assert.DoesNotContain(after.Current.Name, expected);
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: true);
+            await WaitUiAsync(run, () => AutomationElement.FocusedElement.Current.Name == "Info messages", "focus returns to last notification");
             Assert.Equal("Info messages", AutomationElement.FocusedElement.Current.Name);
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
@@ -452,6 +470,7 @@ public sealed partial class GatewayFixtureUiTests
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
+    [Trait("KeyboardProof", "Required")]
     public async Task ClipboardExpander_SupportsKeyboardSelectionAndCollapse()
     {
         await WithAppAsync(async run =>
@@ -473,18 +492,24 @@ public sealed partial class GatewayFixtureUiTests
             var hwnd = new IntPtr(window.Current.NativeWindowHandle);
             await NativeKeyboardProof.ActivateAsync(hwnd);
             radios[0].SetFocus();
+            await WaitUiAsync(run, () => Automation.Compare(radios[0], AutomationElement.FocusedElement), "first Clipboard option focused");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Down);
             await WaitUiAsync(run, () => ((SelectionItemPattern)radios[1].GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
                 "Down selects the next Clipboard option");
+            await WaitUiAsync(run, () => Automation.Compare(radios[1], AutomationElement.FocusedElement), "selected Clipboard option focused");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+            await WaitUiAsync(run, () => !radios.Any(radio => Automation.Compare(radio, AutomationElement.FocusedElement)), "focus leaves Clipboard options");
             var after = AutomationElement.FocusedElement;
             Assert.NotNull(after);
             Assert.DoesNotContain(radios, radio => Automation.Compare(radio, after));
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: true);
+            await WaitUiAsync(run, () => Automation.Compare(radios[1], AutomationElement.FocusedElement), "focus returns to selected Clipboard option");
             Assert.True(Automation.Compare(radios[1], AutomationElement.FocusedElement), "Shift+Tab returns to the selected option.");
             pattern.Collapse();
             expander.SetFocus();
+            await WaitUiAsync(run, () => Automation.Compare(expander, AutomationElement.FocusedElement), "collapsed Clipboard expander focused");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+            await WaitUiAsync(run, () => !Automation.Compare(expander, AutomationElement.FocusedElement), "focus leaves collapsed expander");
             after = AutomationElement.FocusedElement;
             Assert.NotNull(after);
             Assert.DoesNotContain(radios, radio => Automation.Compare(radio, after));
@@ -497,6 +522,7 @@ public sealed partial class GatewayFixtureUiTests
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
+    [Trait("KeyboardProof", "Required")]
     public async Task BindingsRefresh_KeyboardRoundTripTriggersFreshConfigRead()
     {
         await WithAppAsync(async run =>
@@ -510,9 +536,12 @@ public sealed partial class GatewayFixtureUiTests
             var hwnd = new IntPtr(window.Current.NativeWindowHandle);
             await NativeKeyboardProof.ActivateAsync(hwnd);
             button.SetFocus();
+            await WaitUiAsync(run, () => Automation.Compare(button, AutomationElement.FocusedElement), "Refresh focused");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+            await WaitUiAsync(run, () => !Automation.Compare(button, AutomationElement.FocusedElement), "focus leaves Refresh");
             Assert.False(Automation.Compare(button, AutomationElement.FocusedElement), "Tab should leave Refresh.");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: true);
+            await WaitUiAsync(run, () => Automation.Compare(button, AutomationElement.FocusedElement), "focus returns to Refresh");
             Assert.True(Automation.Compare(button, AutomationElement.FocusedElement), "Shift+Tab should return to Refresh.");
             var occurrence = run.Gateway.Requests.Count(r => r.Method == "config.get") + 1;
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
@@ -528,6 +557,7 @@ public sealed partial class GatewayFixtureUiTests
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
+    [Trait("KeyboardProof", "Required")]
     public async Task SessionsRows_ArrowNavigationEntersLaterRowActions()
     {
         await WithAppAsync(async run =>
@@ -556,6 +586,7 @@ public sealed partial class GatewayFixtureUiTests
             await NativeKeyboardProof.ActivateAsync(hwnd);
             if (first.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll)) ((ScrollItemPattern)scroll).ScrollIntoView();
             first.SetFocus();
+            await WaitUiAsync(run, () => Automation.Compare(first, AutomationElement.FocusedElement), "first session row focused");
             var previous = AutomationElement.FocusedElement.GetRuntimeId();
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Down);
             await WaitUiAsync(run, () => AutomationElement.FocusedElement is { } next
@@ -595,28 +626,5 @@ public sealed partial class GatewayFixtureUiTests
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
 
-    [GatewayFixtureUiFact]
-    [Trait("Category", "ConfigDiagnostic")]
-    public async Task ConfigDiagnostic_InspectMountedOwnedTree()
-    {
-        await WithAppAsync(async run =>
-        {
-            await run.InvokeAsync("app.navigate", new { page = "config" });
-            await WaitUiAsync(run, () => FindById(run, "ConfigPageMarker") is not null, "Config navigation marker");
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await run.Gateway.WaitForCompletedRequestAsync("config.schema", cancellationToken: deadline.Token);
-            await run.Gateway.WaitForCompletedRequestAsync("config.get", cancellationToken: deadline.Token);
-            var markerCondition = new PropertyCondition(AutomationElement.AutomationIdProperty, "ConfigPageMarker");
-            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants, markerCondition) is not null);
-            var condition = new OrCondition(
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Tree),
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem));
-            var nodes = window.FindAll(TreeScope.Descendants, condition).Cast<AutomationElement>().Select(e =>
-                $"type=[{e.Current.ControlType.ProgrammaticName}] id=[{e.Current.AutomationId}] class=[{e.Current.ClassName}] name=[{e.Current.Name}] offscreen=[{e.Current.IsOffscreen}]").ToArray();
-            await File.WriteAllLinesAsync(Path.Combine(run.ArtifactsDirectory, "config-tree-diagnostic.txt"), nodes);
-            output.WriteLine($"Config UIA diagnostic: {nodes.Length} tree peers in owned PID {run.AppProcessId}.");
-            Assert.NotEmpty(nodes);
-        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
-    }
 
 }

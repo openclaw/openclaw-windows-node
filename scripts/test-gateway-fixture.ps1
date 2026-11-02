@@ -12,7 +12,8 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Debug',
     [string]$ArtifactsDirectory = (Join-Path ([IO.Path]::GetTempPath()) 'openclaw-gateway-fixture-artifacts'),
-    [switch]$Screenshots
+    [switch]$Screenshots,
+    [switch]$KeyboardProof
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -26,7 +27,7 @@ $rid = if ($arch -eq 'Arm64') { 'win-arm64' } else { 'win-x64' }
 $platform = if ($arch -eq 'Arm64') { 'ARM64' } else { 'x64' }
 
 function Invoke-FixtureTests {
-    param([string]$Project, [string]$Filter, [string]$ResultName)
+    param([string]$Project, [string]$Filter, [string]$ResultName, [switch]$EnableKeyboardProof)
     $start = [Diagnostics.ProcessStartInfo]::new('dotnet')
     $start.UseShellExecute = $false
     $start.WorkingDirectory = $repoRoot
@@ -36,6 +37,8 @@ function Invoke-FixtureTests {
         $start.ArgumentList.Add($argument)
     }
     $start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] = '1'
+    # Prevent inherited settings from authorizing keyboard input in the ordinary lane.
+    $start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] = if ($EnableKeyboardProof) { '1' } else { '0' }
     $start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] = $resolvedApp
     $start.Environment['OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS'] = $artifacts
     $start.Environment['OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS'] = if ($Screenshots) { '1' } else { '0' }
@@ -60,6 +63,9 @@ function Invoke-FixtureTests {
 }
 
 Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureProfileTests|FullyQualifiedName~GatewayFixtureRunTests|FullyQualifiedName~GatewayFixtureAppTests' 'fixture-profile-app'
-Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture' 'fixture-ui'
+Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui'
+if ($KeyboardProof) {
+    Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof
+}
 Write-Host "Fixture smoke passed. Results: $resultsDirectory"
 exit 0
