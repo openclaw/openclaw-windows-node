@@ -113,6 +113,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationRouter.cs" Link="Services\ActivationRouter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StoreMigrationWorkflow.cs" Link="Services\StoreMigrationWorkflow.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StoreMigrationListing.cs" Link="Services\StoreMigrationListing.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StoreMigrationLinkFailure.cs" Link="Services\StoreMigrationLinkFailure.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupDashboardHandoff.cs" Link="Services\SetupDashboardHandoff.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupDashboardHandoffStore.cs" Link="Services\SetupDashboardHandoffStore.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupReadyObservation.cs" Link="Services\SetupReadyObservation.cs" />
