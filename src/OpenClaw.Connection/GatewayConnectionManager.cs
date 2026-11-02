@@ -3084,6 +3084,8 @@ public sealed class GatewayConnectionManager :
                     ? ConnectionTrigger.WebSocketError
                     : ConnectionTrigger.AuthenticationFailed,
                 detail);
+            // A denied handoff no longer represents an accepted relay; drop the stale banner.
+            _stateMachine.Current = _stateMachine.Current with { ManagedRelayTrustWarning = null };
             EmitStateChanged();
         }
         finally
