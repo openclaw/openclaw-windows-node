@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -51,6 +52,18 @@ public sealed class Migration2LocalizationTests
         Assert.NotEqual(resources["Migration2_InnoFailed"], repair);
         Assert.False(string.IsNullOrWhiteSpace(resources["Migration2_InnoDownloadSetup.Content"]));
         Assert.Contains("{0}", resources["Migration2_InnoSetupLinkFailed"]);
+        var linkFailure = StoreMigrationLinkFailure.Present(
+            resources["Migration2_InnoSetupLinkFailed"],
+            "https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-Setup-x64.exe");
+        Assert.Equal(
+            "https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-Setup-x64.exe",
+            linkFailure.SelectableAddress);
+        Assert.DoesNotContain("{0}", linkFailure.Instruction);
+        Assert.DoesNotContain("Setup-x64.exe", linkFailure.Instruction);
+        Assert.DoesNotContain(": .", linkFailure.Instruction);
+        Assert.DoesNotContain(" : .", linkFailure.Instruction);
+        Assert.DoesNotContain("：。", linkFailure.Instruction);
+        Assert.Contains(keepInstalled, linkFailure.Instruction);
         foreach (var key in new[]
         {
             "Migration2_InnoRepairRequired", "Migration2_InnoSetupLinkFailed"

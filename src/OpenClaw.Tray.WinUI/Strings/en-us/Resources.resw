@@ -186,12 +186,6 @@
   <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
     <value>Open channel setup for schema-driven auth, QR, login, and dashboard flows where available.</value>
   </data>
-  <data name="StatusSkillsTitle.Text" xml:space="preserve">
-    <value>Skills</value>
-  </data>
-  <data name="StatusSkillsDescription.Text" xml:space="preserve">
-    <value>Open gateway skills configuration when the connected gateway supports it.</value>
-  </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / schedules</value>
   </data>
@@ -1128,9 +1122,6 @@ Use one of these options:
   <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
     <value>Use Canvas</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
-    <value>Enable Skills</value>
-  </data>
   <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
     <value>Launch OpenClaw at startup</value>
   </data>
@@ -1307,9 +1298,6 @@ Use one of these options:
   </data>
   <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
     <value>Visual workspace</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
-    <value>Settings → Skills</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
     <value>Origin not allowed: gateway rejects this connection</value>
@@ -1531,15 +1519,6 @@ Use one of these options:
   </data>
   <data name="ClearButton.Text" xml:space="preserve">
     <value>Clear</value>
-  </data>
-  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
-    <value>Bindings</value>
-  </data>
-  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Message routing rules</value>
-  </data>
-  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
-    <value>Refresh</value>
   </data>
   <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
     <value>🖥️ This Computer</value>
@@ -2132,18 +2111,6 @@ Use one of these options:
   <data name="CancelButton.Content" xml:space="preserve">
     <value>Cancel</value>
   </data>
-  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>🧩 Skills</value>
-  </data>
-  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
-    <value>All Agents</value>
-  </data>
-  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
-    <value>No skills installed</value>
-  </data>
-  <data name="MarketplaceLink.Content" xml:space="preserve">
-    <value>Browse Skills Marketplace →</value>
-  </data>
   <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
     <value>Total Cost</value>
   </data>
@@ -2306,9 +2273,6 @@ Use one of these options:
   <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
     <value>Event Stream</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
-    <value>Skills</value>
-  </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>Agents</value>
   </data>
@@ -2320,9 +2284,6 @@ Use one of these options:
   </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
     <value>Instances</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
-    <value>Bindings</value>
   </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Config</value>
@@ -2437,18 +2398,6 @@ Use one of these options:
   </data>
   <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
     <value>Please wait while the connection is established...</value>
-  </data>
-  <data name="PriorityInfoBar.Title" xml:space="preserve">
-    <value>Routing priority</value>
-  </data>
-  <data name="PriorityInfoBar.Message" xml:space="preserve">
-    <value>Bindings control which agent handles messages from each channel. Priority: peer &gt; account &gt; channel &gt; default.</value>
-  </data>
-  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
-    <value>Single-agent mode</value>
-  </data>
-  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
-    <value>All messages route to the default agent. Add bindings for multi-agent routing.</value>
   </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
     <value>Edit gateway configuration (openclaw.json) with a schema-guided form.</value>
@@ -4223,18 +4172,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
     <value>Connection Status</value>
   </data>
-  <data name="BindingsPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>Gateway disconnected</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>Connect to a gateway to load bindings.</value>
-  </data>
-  <data name="BindingsPage_OpenConnection.Content" xml:space="preserve">
-    <value>Open Connection</value>
-  </data>
-  <data name="BindingsPage_LoadingBindings.Text" xml:space="preserve">
-    <value>Loading bindings...</value>
-  </data>
   <data name="ConnectionPage_ApprovalsWaitingOnYou.Text" xml:space="preserve">
     <value>Approvals waiting on you</value>
   </data>
@@ -5067,27 +5004,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>Saved</value>
   </data>
-  <data name="SkillsPage_Skills.Text" xml:space="preserve">
-    <value>🧩 Skills</value>
-  </data>
-  <data name="SkillsPage_AllAgents.Content" xml:space="preserve">
-    <value>All Agents</value>
-  </data>
-  <data name="SkillsPage_Enabled.Text" xml:space="preserve">
-    <value>Enabled</value>
-  </data>
-  <data name="SkillsPage_Disabled.Text" xml:space="preserve">
-    <value>Disabled</value>
-  </data>
-  <data name="SkillsPage_LoadingSkills.Text" xml:space="preserve">
-    <value>Loading skills...</value>
-  </data>
-  <data name="SkillsPage_NoSkillsInstalled.Text" xml:space="preserve">
-    <value>No skills installed</value>
-  </data>
-  <data name="SkillsPage_SkillsExtendYourAgent.Text" xml:space="preserve">
-    <value>Skills extend your agent's capabilities. Install skills via the CLI or ClawHub.</value>
-  </data>
   <data name="UsagePage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Gateway disconnected</value>
   </data>
@@ -5264,12 +5180,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
     <value>Open chat</value>
-  </data>
-  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
-    <value>Enabled</value>
-  </data>
-  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
-    <value>Disabled</value>
   </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>Preview</value>
@@ -6207,23 +6117,11 @@ Make sure the gateway is running.</value>
   <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
     <value>Offline</value>
   </data>
-  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
-    <value>Could not load bindings</value>
-  </data>
-  <data name="BindingsPage_ConfigRequestFailed.Message" xml:space="preserve">
-    <value>The gateway did not return bindings. Refresh to try again.</value>
-  </data>
   <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
     <value>Agent event log</value>
   </data>
   <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
     <value>Go to Agent Events</value>
-  </data>
-  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
-    <value>Gateway bindings</value>
-  </data>
-  <data name="Command_GoToBindings_Title" xml:space="preserve">
-    <value>Go to Bindings</value>
   </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
@@ -6290,12 +6188,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
     <value>Go to Settings</value>
-  </data>
-  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
-    <value>Registered skills</value>
-  </data>
-  <data name="Command_GoToSkills_Title" xml:space="preserve">
-    <value>Go to Skills</value>
   </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
@@ -6755,21 +6647,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Open this session in Chat</value>
-  </data>
-  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
-    <value>Disabled</value>
-  </data>
-  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
-    <value>Enabled</value>
-  </data>
-  <data name="SkillsPage_CountFormat" xml:space="preserve">
-    <value>({0}/{1} enabled)</value>
-  </data>
-  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
-    <value>Disabled ({0})</value>
-  </data>
-  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
-    <value>Enabled ({0})</value>
   </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
@@ -7560,8 +7437,6 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Talk to my agent</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Open Chat with your agent.</value></data>
   <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Talk to my agent, recommended</value></data>
-  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>Explore skills</value></data>
-  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Browse skills for your agent. Nothing is installed automatically.</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Connect channels</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram, and more. You choose when to sign in.</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Check readiness again</value></data>
@@ -7960,7 +7835,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
-  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
   <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
@@ -7975,7 +7849,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
   <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
-  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
@@ -8062,7 +7935,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
   <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
   <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
-  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
   <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
   <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
   <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>

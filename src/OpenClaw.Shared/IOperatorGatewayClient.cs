@@ -24,7 +24,6 @@ public interface IOperatorGatewayClient
     event EventHandler<JsonElement>? CronListUpdated;
     event EventHandler<JsonElement>? CronStatusUpdated;
     event EventHandler<JsonElement>? CronRunsUpdated;
-    event EventHandler<JsonElement>? SkillsStatusUpdated;
     event EventHandler<JsonElement>? ConfigUpdated;
     event EventHandler<JsonElement>? ConfigSchemaUpdated;
     event EventHandler<AgentEventInfo>? AgentEventReceived;
@@ -35,6 +34,7 @@ public interface IOperatorGatewayClient
     /// <summary>The authenticated profile changed; consumers should reload users.self.</summary>
     event EventHandler? SelfProfileChanged { add { } remove { } }
     event EventHandler<JsonElement>? AgentsListUpdated;
+    event EventHandler<bool>? AgentsListUnsupportedChanged { add { } remove { } }
     event EventHandler<JsonElement>? AgentFilesListUpdated;
     event EventHandler<JsonElement>? AgentFileContentUpdated;
     event EventHandler<AgentEventInfo>? ChatEventReceived;
@@ -53,6 +53,8 @@ public interface IOperatorGatewayClient
     string? MainSessionKey { get; }
     /// <summary>True once the hello-ok handshake has been processed.</summary>
     bool HasHandshakeSnapshot { get; }
+    /// <summary>True only after the current Gateway explicitly rejects agents.list as unsupported.</summary>
+    bool IsAgentsListUnsupported => false;
     /// <summary>Authenticated transport epoch, used to bind a mutation across an asynchronous dialog.</summary>
     long? SessionMutationConnectionEpoch => null;
 
@@ -121,9 +123,6 @@ public interface IOperatorGatewayClient
     Task<bool> AddCronJobAsync(object jobDefinition);
     Task<bool> UpdateCronJobAsync(string id, object patch);
     Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0);
-    Task RequestSkillsStatusAsync(string? agentId = null);
-    Task<bool> InstallSkillAsync(string skillId);
-    Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled);
     Task RequestConfigAsync();
     Task RequestConfigSchemaAsync();
     Task<bool> SetConfigAsync(string path, object value);

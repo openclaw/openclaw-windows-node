@@ -212,13 +212,11 @@ file sealed class InitialTailPositioner : IDisposable
         }
 
         AttachScrollView();
-        var version = _version;
-        if (!TailNavigationPolicy.TryCapture(_tailIndex, _displayedTailKey, _itemCount, out var request))
-            return;
+        var initialRequest = new InitialTailNavigationRequest(_version);
 
         if (!renderAfterLayout)
         {
-            DispatchTailRequest(version, request);
+            DispatchTailRequest(initialRequest);
             return;
         }
 
@@ -226,7 +224,7 @@ file sealed class InitialTailPositioner : IDisposable
         _rendering = (_, _) =>
         {
             DetachRendering();
-            if (_disposed || !_valid || !itemsView.IsLoaded || version != _version)
+            if (_disposed || !_valid || !itemsView.IsLoaded || initialRequest.Version != _version)
                 return;
             if (_scrollView is not { IsLoaded: true })
             {
@@ -239,18 +237,22 @@ file sealed class InitialTailPositioner : IDisposable
                 return;
             }
 
-            DispatchTailRequest(version, request, renderAfterLayout: true);
+            DispatchTailRequest(initialRequest, renderAfterLayout: true);
         };
         CompositionTarget.Rendering += _rendering;
     }
 
     private void DispatchTailRequest(
-        int version, TailNavigationRequest request, bool renderAfterLayout = false)
+        InitialTailNavigationRequest initialRequest, bool renderAfterLayout = false)
     {
         if (!itemsView.DispatcherQueue.TryEnqueue(() =>
         {
-            if (_disposed || !_valid || !itemsView.IsLoaded || version != _version
+            if (_disposed || !_valid || !itemsView.IsLoaded || initialRequest.Version != _version
                 || !TailNavigationPolicy.CanDispatch(renderAfterLayout, _following))
+                return;
+
+            if (!initialRequest.TryResolve(
+                    _version, _tailIndex, _displayedTailKey, _itemCount, out var request))
                 return;
 
             if (!StartTailRequest(request))

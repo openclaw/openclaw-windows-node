@@ -213,11 +213,20 @@ public sealed class InnoMigrationContractTests
         var download = settings[settings.IndexOf("private async Task DownloadMigrationSetupAsync()", StringComparison.Ordinal)..];
         download = download[..download.IndexOf("private void ShowStoreMigrationStatus", StringComparison.Ordinal)];
         Assert.Contains("Launcher.LaunchUriAsync(InnoMigrationHandoff.InstallerUri)", download);
+        Assert.Contains("StoreMigrationLinkFailure.Present(message, address)", settings);
+        Assert.Contains("StoreMigrationSetupAddress.Text = presented.SelectableAddress", settings);
+        Assert.Contains("StoreMigrationSetupAddress.Visibility = Visibility.Collapsed", settings);
+        Assert.DoesNotContain("string.Format(CultureInfo.CurrentCulture, message, address)", settings);
         Assert.DoesNotContain("Process.Start", download);
         Assert.DoesNotContain("GrantAndLaunchAsync", download);
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml");
         Assert.Contains("x:Uid=\"Migration2_InnoDownloadSetup\"", xaml);
         Assert.Contains("Click=\"OnDownloadMigrationSetup\"", xaml);
+        var statusBar = xaml[
+            xaml.IndexOf("x:Name=\"StoreMigrationStatus\"", StringComparison.Ordinal)..
+            xaml.IndexOf("x:Uid=\"SettingsPage_General\"", StringComparison.Ordinal)];
+        Assert.Contains("x:Name=\"StoreMigrationSetupAddress\"", statusBar);
+        Assert.Contains("IsTextSelectionEnabled=\"True\"", statusBar);
     }
 
     [Fact]

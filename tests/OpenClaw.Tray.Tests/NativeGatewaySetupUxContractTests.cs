@@ -523,8 +523,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.DoesNotContain("client.DisconnectAsync()", nativeConnection);
         Assert.Contains("[\"devices\", \"list\", \"--json\"]", host);
         Assert.Contains("[\"devices\", \"approve\", requestId, \"--json\"]", host);
-        Assert.Contains("PairingCommandTimeout = TimeSpan.FromMinutes(2)", host);
-        Assert.Equal(2, host.Split("environment, PairingCommandTimeout,").Length - 1);
+        Assert.Equal(2, host.Split("environment, CliCommandTimeout, \"").Length - 1);
         Assert.Contains("WizardPayloadHelpers.GetNativeTerminalError(payload)", wizard);
         Assert.Contains("ShowError(SetupLogger.Sanitize(nativeError))", wizard);
         Assert.DoesNotContain("--url", host);

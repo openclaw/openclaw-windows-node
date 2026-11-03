@@ -49,6 +49,11 @@ public sealed class OpenClawChatCoordinator : IDisposable
                 _isMuted = value;
                 if (value) StopSpeaking();
             }
+            if (!value) return;
+            // Speaker mute silences everything on the shared player,
+            // including agent-initiated tts.speak audio.
+            try { _stopPlayback(); }
+            catch (Exception ex) { _logger.Debug($"OpenClawChatCoordinator: stop playback on mute failed: {ex.Message}"); }
         }
     }
 

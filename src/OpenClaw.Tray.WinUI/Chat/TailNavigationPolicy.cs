@@ -2,6 +2,26 @@ namespace OpenClawTray.Chat;
 
 internal readonly record struct TailNavigationRequest(int Index, string DisplayedTailKey);
 
+// Initial navigation defers coordinates until dispatch, but retains the originating generation.
+internal readonly record struct InitialTailNavigationRequest(int Version)
+{
+    public bool TryResolve(
+        int currentVersion,
+        int currentTailIndex,
+        string? currentDisplayedTailKey,
+        int itemCount,
+        out TailNavigationRequest request)
+    {
+        request = default;
+        return Version == currentVersion
+            && TailNavigationPolicy.TryCapture(
+                currentTailIndex,
+                currentDisplayedTailKey,
+                itemCount,
+                out request);
+    }
+}
+
 internal static class TailNavigationPolicy
 {
     public static bool TryCapture(

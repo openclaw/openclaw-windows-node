@@ -88,6 +88,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// as <see cref="OpenClaw.Chat.ChatComposeTarget.IsReady"/>.
     /// </summary>
     public bool HasHandshakeSnapshot => Volatile.Read(ref _hasHandshakeSnapshot);
+    public bool IsAgentsListUnsupported => Volatile.Read(ref _agentsListUnsupported);
     private string? _operatorDeviceId;
     private string[] _grantedOperatorScopes = Array.Empty<string>();
     private string _connectAuthToken;
@@ -129,7 +130,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private bool _authFailed;
     private readonly HandshakeChallengeGate _handshakeChallengeGate = new();
     private bool _protocolMismatch;
-    private string? _lastSkillsStatusAgentId;
     private readonly bool _tokenIsBootstrapToken;
     private readonly bool _bootstrapPairAsNode;
     private readonly bool _ignoreStoredDeviceToken;
@@ -160,6 +160,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private void ResetUnsupportedMethodFlags()
     {
+        var agentsListWasUnsupported = _agentsListUnsupported;
         _usageStatusUnsupported = false;
         _usageCostUnsupported = false;
         _sessionPreviewUnsupported = false;
@@ -171,6 +172,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _agentFilesListUnsupported = false;
         _agentFileGetUnsupported = false;
         _operatorReadScopeUnavailable = false;
+        if (agentsListWasUnsupported)
+            AgentsListUnsupportedChanged?.Invoke(this, false);
     }
 
     /// <summary>
@@ -291,7 +294,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<JsonElement>? CronListUpdated;
     public event EventHandler<JsonElement>? CronStatusUpdated;
     public event EventHandler<JsonElement>? CronRunsUpdated;
-    public event EventHandler<JsonElement>? SkillsStatusUpdated;
     public event EventHandler<JsonElement>? ConfigUpdated;
     public event EventHandler? ConfigurationChanged;
     public event EventHandler<JsonElement>? ConfigSchemaUpdated;
@@ -312,6 +314,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler? ModelCatalogInvalidated;
     public event EventHandler<PresenceEntry[]>? PresenceUpdated;
     public event EventHandler<JsonElement>? AgentsListUpdated;
+    public event EventHandler<bool>? AgentsListUnsupportedChanged;
     public event EventHandler<JsonElement>? AgentFilesListUpdated;
     public event EventHandler<JsonElement>? AgentFileContentUpdated;
 
@@ -1635,28 +1638,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         await SendTrackedRequestAsync("cron.runs", new { id, limit, offset });
     }
 
-    // Skills/plugin management
-
-    public async Task RequestSkillsStatusAsync(string? agentId = null)
-    {
-        _lastSkillsStatusAgentId = string.IsNullOrWhiteSpace(agentId) ? null : agentId;
-
-        if (_lastSkillsStatusAgentId is not null)
-            await SendTrackedRequestAsync("skills.status", new { agentId = _lastSkillsStatusAgentId });
-        else
-            await SendTrackedRequestAsync("skills.status");
-    }
-
-    public Task<bool> InstallSkillAsync(string skillId)
-    {
-        return TrySendTrackedRequestAsync("skills.install", new { id = skillId });
-    }
-
-    public Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled)
-    {
-        return TrySendTrackedRequestAsync("skills.update", new { skillKey, enabled });
-    }
-
     // Gateway config management
 
     public async Task RequestConfigAsync()
@@ -2821,14 +2802,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             case "cron.runs":
                 CronRunsUpdated?.Invoke(this, payload.Clone());
                 return true;
-            case "skills.status":
-                SkillsStatusUpdated?.Invoke(this, payload.Clone());
-                return true;
-            case "skills.install":
-            case "skills.update":
-                // Re-fetch the same skills scope so filtered views do not jump back to all agents.
-                _ = RequestSkillsStatusAsync(_lastSkillsStatusAgentId);
-                return true;
             case "config.get":
                 ConfigUpdated?.Invoke(this, payload.Clone());
                 return true;
@@ -3088,6 +3061,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 case "agents.list":
                     _agentsListUnsupported = true;
                     _logger.Warn("agents.list unsupported on gateway");
+                    AgentsListUnsupportedChanged?.Invoke(this, true);
                     return;
                 case "agents.files.list":
                     _agentFilesListUnsupported = true;
@@ -4702,23 +4676,40 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         GatewaySelfUpdated?.Invoke(this, info);
     }
 
+    private static bool IsSessionMapKey(string key) =>
+        key is not ("recent" or "count" or "path" or "defaults" or "ts") &&
+        (key.Equals("global", StringComparison.OrdinalIgnoreCase) ||
+         key.Contains(':') || key.Contains("agent") || key.Contains("session"));
+
     private void ParseSessions(JsonElement sessions)
     {
         try
         {
+            var envelope = sessions;
+            if (envelope.ValueKind == JsonValueKind.Object &&
+                envelope.TryGetProperty("sessions", out var rows))
+                sessions = rows;
+            if (sessions.ValueKind is not (JsonValueKind.Array or JsonValueKind.Object))
+            {
+                _logger.Warn("[SESSIONS] Ignoring a payload without a session roster.");
+                return;
+            }
+            if (sessions.ValueKind == JsonValueKind.Object &&
+                sessions.EnumerateObject().Any() &&
+                !sessions.EnumerateObject().Any(property => IsSessionMapKey(property.Name)))
+            {
+                _logger.Debug("[SESSIONS] Ignoring session metadata without roster rows.");
+                return;
+            }
             SessionInfo[] snapshot;
-            var timestamp = sessions.ValueKind == JsonValueKind.Object &&
-                sessions.TryGetProperty("ts", out var ts) &&
+            var timestamp = envelope.ValueKind == JsonValueKind.Object &&
+                envelope.TryGetProperty("ts", out var ts) &&
                 ts.ValueKind == JsonValueKind.Number &&
                 ts.TryGetInt64(out var value) && value > 0
                     ? (long?)value
                     : null;
             lock (_sessionsLock)
             {
-                var envelope = sessions;
-                if (envelope.ValueKind == JsonValueKind.Object
-                    && envelope.TryGetProperty("sessions", out var rows))
-                    sessions = rows;
                 _sessionThinkingDefaults = envelope.ValueKind == JsonValueKind.Object
                     && envelope.TryGetProperty("defaults", out var defaults)
                     && defaults.ValueKind == JsonValueKind.Object
@@ -4741,13 +4732,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     {
                         var sessionKey = prop.Name;
 
-                        if (sessionKey is "recent" or "count" or "path" or "defaults" or "ts")
-                            continue;
-
-                        if (!sessionKey.Equals("global", StringComparison.OrdinalIgnoreCase) &&
-                            !sessionKey.Contains(':') &&
-                            !sessionKey.Contains("agent") &&
-                            !sessionKey.Contains("session"))
+                        if (!IsSessionMapKey(sessionKey))
                             continue;
 
                         var item = prop.Value;

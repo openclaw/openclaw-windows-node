@@ -120,7 +120,7 @@ package-contract and profile preparation. `NativeGatewaySetupSession` owns
 staged-record runtime authorization, legacy-only reload suspension/restoration, retry/cancel,
 authenticated health/config gates, and final registry publication.
 Both installations use the shared focused `AiSetupPage` and verified
-three-destination `AiReadyPage`. `WizardPage` remains an explicit compatibility
+two-destination `AiReadyPage`. `WizardPage` remains an explicit compatibility
 fallback when focused setup methods are unavailable. Its native requests retain
 the owned `NativeGatewaySetupConnection` authorization and upstream
 `installDaemon: false` contract.
@@ -208,7 +208,7 @@ selection, activation and recovery; the native AI page renders that state.
 page-owned `ProviderSetupDialog` owns prompt controls and secret clearing,
 without another client, persistence store or top-level setup page.
 `SetupWindow` remains the completion host. Verified AI opens the native chooser;
-an explicit choice restarts into Chat, Channels or Skills with a bound receipt.
+an explicit choice restarts into Chat or Channels with a bound receipt.
 The experimental browser-completion path is removed. See the completion handoff
 in `ONBOARDING_WIZARD.md`.
 Headless setup keeps `SetupStepFactory.BuildDefaultSteps()` and the
@@ -413,6 +413,13 @@ Environment-only knobs without a config-file equivalent:
   command timeout). Default 1800 (30 minutes); a positive integer between 1 and 2147483
   overrides it, and any other value is ignored with a warning and keeps the default.
   An explicit `timeout` argument wins over this variable.
+
+- `OPENCLAW_SETUP_NATIVE_CLI_TIMEOUT`: bound, in seconds, for each packaged
+  `openclaw` CLI call during native Gateway setup (`config validate`, `config set`
+  for node capabilities, `gateway health`, `devices list`, `devices approve`;
+  `NativeGatewayCliTimeout`). Each call includes packaged Node/CLI startup.
+  Default 240 (4 minutes); a positive integer between 1 and 2147483 overrides it,
+  and any other value is ignored with a warning and keeps the default.
 
 ---
 

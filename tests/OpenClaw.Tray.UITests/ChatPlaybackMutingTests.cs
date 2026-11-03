@@ -145,6 +145,20 @@ public sealed class ChatPlaybackMutingTests
     }
 
     [Fact]
+    public async Task SpeakerMute_StopsSharedPlayerIncludingAgentSpeech()
+    {
+        using var directory = new TempDirectory();
+        var settings = new SettingsManager(directory.Path);
+        await using var voice = new VoiceService(NullLogger.Instance, settings);
+        var stopped = 0;
+        using var coordinator = Create(settings, () => voice, (_, _) => Task.CompletedTask, () => stopped++);
+
+        coordinator.IsMuted = true;
+
+        Assert.Equal(1, stopped);
+    }
+
+    [Fact]
     public async Task CancelledPlayback_ReleasesMute_AndSpeakerMutePreservesManualReadAloud()
     {
         using var directory = new TempDirectory();
