@@ -156,6 +156,9 @@ public interface IOperatorGatewayClient
     /// <summary>Long-poll for QR linking completion. Sends web.login.wait { currentQrDataUrl, timeoutMs }.</summary>
     Task<WebLoginWaitResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000);
     Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000);
+    /// <summary>Create an agent only on the authenticated connection captured by the caller.</summary>
+    Task<JsonElement> CreateAgentConfirmedAsync(string name, string workspace, long connectionEpoch, int timeoutMs = 30000)
+        => throw new NotSupportedException("Connection-bound agent creation is not supported by this client.");
 
     // ─── Gateway protocol APIs ───
     // These ship with default implementations so adding them does not source-break

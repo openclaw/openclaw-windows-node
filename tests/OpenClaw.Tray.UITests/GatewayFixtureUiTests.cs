@@ -312,6 +312,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             ((ValuePattern)FindById(run, "AgentCreationName")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture Created");
             ((ValuePattern)FindById(run, "AgentCreationWorkspace")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue("/fixture/new-agent");
             await WaitUiAsync(run, () => FindButton(run, "Create agent")?.Current.IsEnabled == true, "enabled create action");
+            await CaptureIfRequestedAsync(run, "agent-creation-ready.png");
             Invoke(FindButton(run, "Create agent")!);
             await WaitUiAsync(run, () => FindById(run, "AgentCreationDialog") is null, "confirmed creation");
             Assert.Single(run.Gateway.Requests, request => request.Method == "agents.create" && request.Outcome == "ok");
@@ -325,6 +326,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState);
             Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
             Assert.True(SessionSelected(run, GatewayScenario.LongSessionTitle));
+            await CaptureIfRequestedAsync(run, "agent-creation-refreshed-catalog.png");
             ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
         }, allowAgentCreation: true);
     }
