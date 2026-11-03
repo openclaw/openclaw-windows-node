@@ -81,6 +81,12 @@ public sealed partial class ProviderSetupDialog : ContentDialog
         _step = null;
         StepOptions.ItemsSource = null;
         StepMessage.Text = "";
+        // The page owns this session. Detaching cancels only this control and
+        // releases its subscription, without closing artwork on the chooser.
+        ProviderIcon.Session = null;
+        ProviderIcon.Descriptor = null;
+        ProviderIcon.Visibility = Visibility.Collapsed;
+        ProviderHeader.Visibility = Visibility.Collapsed;
         Hide();
     }
 
@@ -93,7 +99,8 @@ public sealed partial class ProviderSetupDialog : ContentDialog
 
     public void Update(GatewayAiSetupWizardStep? step, GatewayAiSetupPhase phase,
         bool busy, bool canCancel, bool cancelling, string status, string? error, string? providerTitle = null,
-        bool isSubmittingAnswer = false)
+        bool isSubmittingAnswer = false, ProviderArtworkDescriptor? providerArtwork = null,
+        ProviderArtworkSession? artworkSession = null)
     {
         if (_closed)
             return;
@@ -102,9 +109,15 @@ public sealed partial class ProviderSetupDialog : ContentDialog
         {
             var showStep = GatewayAiSetupPresentation.ShowProviderStep(step, phase, busy, isSubmittingAnswer);
             Title = step?.Title ?? providerTitle ?? S("Title.Text");
+            ProviderIcon.Descriptor = providerArtwork;
+            ProviderIcon.Session = artworkSession;
+            ProviderIcon.Visibility = providerArtwork is not null ? Visibility.Visible : Visibility.Collapsed;
             ProviderName.Text = providerTitle ?? "";
-            ProviderName.Visibility = step?.Title is not null && !string.IsNullOrWhiteSpace(providerTitle) &&
-                !string.Equals(step.Title, providerTitle, StringComparison.Ordinal)
+            ProviderName.Visibility = !string.IsNullOrWhiteSpace(providerTitle) &&
+                (providerArtwork is not null || step?.Title is not null &&
+                    !string.Equals(step.Title, providerTitle, StringComparison.Ordinal))
+                ? Visibility.Visible : Visibility.Collapsed;
+            ProviderHeader.Visibility = ProviderIcon.Visibility == Visibility.Visible || ProviderName.Visibility == Visibility.Visible
                 ? Visibility.Visible : Visibility.Collapsed;
             DialogStatus.Text = cancelling ? S("Cancelling") : status;
             DialogStatus.Visibility = !cancelling && phase == GatewayAiSetupPhase.Running && step is not null

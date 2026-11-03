@@ -693,6 +693,57 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
         });
     }
 
+    [Fact]
+    public async Task ProviderArtwork_RebindingDetachesThePreviousSessionWithoutClosingTheBorrowedReplacement()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            using var previous = new ProviderArtworkSession();
+            using var replacement = new ProviderArtworkSession();
+            var artwork = new ProviderArtwork
+            {
+                Session = previous,
+                Descriptor = GatewayAiSetupPresentation.GetProviderArtwork("llama-app", null, null, ProviderArtworkFallback.Install),
+            };
+            try
+            {
+                ui.Container.Children.Add(artwork);
+                var image = Assert.IsType<Image>(artwork.FindName("ArtworkImage"));
+                var fallback = Assert.IsType<FontIcon>(artwork.FindName("FallbackIcon"));
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => artwork.IsLoaded && fallback.Visibility == Visibility.Collapsed, "initial artwork decoded");
+                artwork.Session = replacement;
+                artwork.Descriptor = GatewayAiSetupPresentation.GetProviderArtwork("ollama", null, null, ProviderArtworkFallback.Install);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => fallback.Visibility == Visibility.Collapsed, "replacement artwork decoded");
+                var decoded = Assert.IsType<SvgImageSource>(image.Source);
+                Assert.EndsWith("/ProviderIcon-ollama.svg", decoded.UriSource.AbsoluteUri);
+                previous.Dispose();
+                Assert.Same(decoded, image.Source);
+                artwork.Session = null;
+                Assert.Null(image.Source);
+                artwork.Session = replacement;
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => fallback.Visibility == Visibility.Collapsed, "borrowed replacement remains usable after detaching");
+                var unloaded = false;
+                void Unloaded(object sender, RoutedEventArgs args) => unloaded = true;
+                artwork.Unloaded += Unloaded;
+                try
+                {
+                    ui.Container.Children.Remove(artwork);
+                    await TestSupport.WaitForRenderedConditionAsync(() => unloaded && !artwork.IsLoaded,
+                        "artwork Unloaded callback observed");
+                }
+                finally { artwork.Unloaded -= Unloaded; }
+                Assert.Null(image.Source);
+                replacement.Dispose();
+                Assert.Null(image.Source);
+            }
+            finally { ui.Container.Children.Clear(); }
+        });
+    }
+
     internal static async Task SaveNativeWindowProofAsync(Window window, string name, ITestOutputHelper output,
         FrameworkElement requiredContent)
     {

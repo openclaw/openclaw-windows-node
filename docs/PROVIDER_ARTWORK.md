@@ -4,6 +4,11 @@
 discovery and setup workflows. `AiSetupPage` forwards `brandId`, provider/candidate
 ID, `icon`, provider `kind` and `actionLabel`. `ProviderArtwork` owns the WinUI
 image and `ProviderArtworkSession` owns the AI page's download/cache lifetime.
+The manual-provider picker uses the same row artwork as the action cards. The
+provider dialog retains the explicitly invoked row's descriptor alongside its
+text title through notes, inputs and confirmation. It borrows the page session;
+dismissal detaches its control without disposing the session used by the chooser.
+The existing page close path cancels all artwork before connection cleanup.
 
 ## Pinned platform comparison
 
