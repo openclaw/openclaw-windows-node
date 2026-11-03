@@ -38,7 +38,10 @@ public sealed class UpdateDownloadDeadlineTests
         var coordinator = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "UpdateCoordinator.cs"));
         var dialog = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Dialogs", "DownloadProgressDialog.cs"));
 
-        Assert.Contains("DownloadUpdateAsync(cancellationToken)", backend, StringComparison.Ordinal);
+        var downloadAt = backend.IndexOf("DownloadUpdateAsync(cancellationToken)", StringComparison.Ordinal);
+        var cancelAt = backend.IndexOf("cancellationToken.ThrowIfCancellationRequested()", StringComparison.Ordinal);
+        var completedAt = backend.IndexOf("downloadCompleted()", StringComparison.Ordinal);
+        Assert.True(downloadAt >= 0 && cancelAt > downloadAt && completedAt > cancelAt);
         Assert.DoesNotContain("DownloadUpdateAsync()", backend, StringComparison.Ordinal);
         Assert.Contains("UpdateDownloadDeadline.Resolve()", coordinator, StringComparison.Ordinal);
         Assert.Contains("progressDialog.Closed += CancelBecauseWindowClosed", coordinator, StringComparison.Ordinal);

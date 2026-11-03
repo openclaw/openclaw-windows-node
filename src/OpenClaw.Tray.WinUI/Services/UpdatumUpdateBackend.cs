@@ -22,6 +22,11 @@ internal sealed class UpdatumUpdateBackend : IUpdateBackend
     public async Task<bool> DownloadAndInstallAsync(Action downloadCompleted, CancellationToken cancellationToken = default)
     {
         var downloadedAsset = await _updater.DownloadUpdateAsync(cancellationToken);
+        // A close or deadline can win after the last body read and before this
+        // continuation. Installing then would restart the app for a canceled update.
+        // The success path closes the window, which cancels this same token, so
+        // the check has to happen before that close.
+        cancellationToken.ThrowIfCancellationRequested();
         downloadCompleted();
         if (downloadedAsset == null || !File.Exists(downloadedAsset.FilePath))
         {
