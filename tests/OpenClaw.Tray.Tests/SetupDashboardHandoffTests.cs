@@ -165,6 +165,26 @@ public sealed class SetupDashboardHandoffTests
         Assert.Equal(1, failures);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PersonalDashboardNeverFallsBackToBrowserOrSavedCredentials(bool available)
+    {
+        var failures = 0;
+        var opened = 0;
+        string? path = null;
+        var launcher = new GatewayDashboardLauncher(
+            () => throw new InvalidOperationException("Personal mode accessed the shared tunnel route."),
+            () => throw new InvalidOperationException("Personal mode resolved saved credentials."),
+            _ => throw new InvalidOperationException("Personal mode opened the shared browser route."),
+            () => failures++, () => opened++, () => true,
+            target => { path = target; return Task.FromResult(available); });
+        Assert.Equal(available, await launcher.OpenAsync("channels"));
+        Assert.Equal("channels", path);
+        Assert.Equal(available ? 0 : 1, failures);
+        Assert.Equal(available ? 1 : 0, opened);
+    }
+
     [Fact]
     public void EndpointBinding_ExcludesRotatingTokensButIncludesSshRealm()
     {

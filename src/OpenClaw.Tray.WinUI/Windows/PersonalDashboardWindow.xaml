@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="OpenClawTray.Windows.PersonalDashboardWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    Title="OpenClaw Dashboard">
+    <Grid>
+        <controls:WebView2 x:Name="DashboardWebView"/>
+        <Border x:Name="RecoveryPanel"
+                Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+                Visibility="Collapsed">
+            <StackPanel MaxWidth="520" Spacing="12"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24">
+                <TextBlock x:Uid="PersonalDashboard_RecoveryTitle"
+                           Style="{StaticResource SubtitleTextBlockStyle}"
+                           AutomationProperties.HeadingLevel="Level1"/>
+                <TextBlock x:Uid="PersonalDashboard_RecoveryDetail"
+                           TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

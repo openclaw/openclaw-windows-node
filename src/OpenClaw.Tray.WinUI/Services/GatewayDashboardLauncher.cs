@@ -11,13 +11,22 @@ internal sealed class GatewayDashboardLauncher(
     Func<InteractiveGatewayCredential?> resolveCredential,
     Func<string, Task<bool>> launchBrowser,
     Action reportFailure,
-    Action? reportOpened = null)
+    Action? reportOpened = null,
+    Func<bool>? isPersonalMode = null,
+    Func<string?, Task<bool>>? openPersonalDashboard = null)
 {
     internal const string FailureNotificationId = "setup-dashboard-launch";
     public async Task<bool> OpenAsync(string? path = null)
     {
         try
         {
+            if (isPersonalMode?.Invoke() == true)
+            {
+                if (openPersonalDashboard is null || !await openPersonalDashboard(path))
+                    throw new InvalidOperationException("Personal Gateway identity is unavailable.");
+                reportOpened?.Invoke();
+                return true;
+            }
             if (!ensureTunnel())
                 throw new InvalidOperationException("The Gateway tunnel is unavailable.");
             var credential = resolveCredential()

@@ -1007,6 +1007,15 @@
                                  TextChanged="OnDirectInputChanged"
                                  LostFocus="OnDirectUrlLostFocus"
                                  AutomationProperties.AutomationId="AddDirectUrl"/>
+                        <ComboBox x:Name="DirectOperatorAuthentication" x:Uid="ConnectionPage_OperatorAuthentication"
+                                  SelectedIndex="0" SelectionChanged="OnDirectOperatorAuthenticationChanged"
+                                  AutomationProperties.AutomationId="AddDirectAuthentication">
+                            <ComboBoxItem x:Uid="ConnectionPage_SharedAuthentication" Content="Gateway credentials"/>
+                            <ComboBoxItem x:Uid="ConnectionPage_PersonalAuthentication" Content="Personal Tailscale"/>
+                        </ComboBox>
+                        <TextBlock x:Name="DirectPersonalHint" x:Uid="ConnectionPage_PersonalHint" Visibility="Collapsed"
+                                   Text="Uses your verified Tailscale identity on this Gateway. No shared token is sent."
+                                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"/>
                         <TextBox x:Uid="ConnectionPage_SharedToken" x:Name="DirectTokenBox"
                                  Header="Shared token"
                                  PlaceholderText="Paste shared gateway token"

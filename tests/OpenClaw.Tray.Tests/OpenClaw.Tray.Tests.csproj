@@ -209,6 +209,10 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\DiagnosticsGate.cs" Link="Helpers\DiagnosticsGate.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\TrayTooltipFormatter.cs" Link="Helpers\TrayTooltipFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayDashboardUrlBuilder.cs" Link="Helpers\GatewayDashboardUrlBuilder.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\PersonalGatewayAuthChallenge.cs" Link="Helpers\PersonalGatewayAuthChallenge.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\PersonalGatewayNativeBridgeScript.cs" Link="Helpers\PersonalGatewayNativeBridgeScript.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\PersonalDashboardWindowReusePolicy.cs" Link="Helpers\PersonalDashboardWindowReusePolicy.cs" />
+
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\CommandCenterTextHelper.cs" Link="Helpers\CommandCenterTextHelper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\ChatReadinessClient.cs" Link="Helpers\ChatReadinessClient.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\StatusBadgeIconFactory.cs" Link="Helpers\StatusBadgeIconFactory.cs" />

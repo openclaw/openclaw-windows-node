@@ -8187,4 +8187,12 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在处理此问题。请刷新以查看其状态。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>请为每个问题选择有效的答案。</value></data>
+  <data name="ConnectionPage_OperatorAuthentication.Header" xml:space="preserve"><value>操作员身份验证</value></data>
+  <data name="ConnectionPage_SharedAuthentication.Content" xml:space="preserve"><value>网关凭据</value></data>
+  <data name="ConnectionPage_PersonalAuthentication.Content" xml:space="preserve"><value>个人 Tailscale 身份</value></data>
+  <data name="ConnectionPage_PersonalHint.Text" xml:space="preserve"><value>需要安全的 Tailscale 网关地址，且网关支持个人身份。不会发送共享令牌。</value></data>
+  <data name="PersonalDashboard_RecoveryTitle.Text" xml:space="preserve"><value>个人登录已更改</value></data>
+  <data name="PersonalDashboard_RecoveryDetail.Text" xml:space="preserve"><value>请在 OpenClaw Companion 中重新连接此网关，然后重新打开仪表板。</value></data>
+  <data name="PersonalDashboard_Unavailable" xml:space="preserve"><value>个人登录不可用。请在应用中重新连接。</value></data>
+  <data name="ConnectionPage_PersonalRouteRequired" xml:space="preserve"><value>个人登录需要以 .ts.net 结尾的安全 wss:// Tailscale Gateway 地址，且不能使用 SSH 隧道。</value></data>
 </root>
