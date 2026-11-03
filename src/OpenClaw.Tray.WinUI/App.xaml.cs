@@ -540,19 +540,21 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             return; // Environment.Exit called inside; defensive return
         }
 
-        if (await StoreMigrationStartupGuard.ShouldStopLaunchAsync(DeepLinkPipeName))
-        {
-            Exit();
-            return;
-        }
-
         // CLI headless setup: explicit dev/automation command; never shows tray or windows.
-        // Runs after the Store migration admission guard. It does not take the single-instance
-        // mutex; CliSetupHandler refuses while a tray for this data dir holds it.
+        // Runs before the Store migration admission guard, which presents a window: CliSetupHandler
+        // refuses in packaged builds, where that guard applies, and checks Inno migration completion
+        // without UI. It does not take the single-instance mutex; CliSetupHandler refuses while a
+        // tray for this data dir holds it.
         if (_startupArgs.Contains(CliSetupCommandLine.HeadlessSetupFlag, StringComparer.OrdinalIgnoreCase))
         {
             await CliSetupHandler.RunAsync(_startupArgs);
             return; // Environment.Exit called inside; defensive return
+        }
+
+        if (await StoreMigrationStartupGuard.ShouldStopLaunchAsync(DeepLinkPipeName))
+        {
+            Exit();
+            return;
         }
 
         var activation = GetLaunchActivation();
