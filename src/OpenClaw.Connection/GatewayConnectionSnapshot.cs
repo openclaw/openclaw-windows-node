@@ -21,6 +21,7 @@ public sealed record GatewayConnectionSnapshot
     public OpenClaw.Shared.GatewayErrorKind? OperatorErrorKind { get; init; }
     public bool OperatorPairingRequired { get; init; }
     public string? OperatorDeviceId { get; init; }
+    public string? PersonalIdentityProfileId { get; init; }
     public string? OperatorCredentialSource { get; init; }
     public GatewayCredentialResolutionStatus? OperatorCredentialStatus { get; init; }
     public bool OperatorCredentialFallbackUsed { get; init; }

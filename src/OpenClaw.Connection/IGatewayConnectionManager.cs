@@ -12,6 +12,10 @@ public interface IGatewayConnectionManager : IDisposable, IAsyncDisposable
     // ─── State ───
     GatewayConnectionSnapshot CurrentSnapshot { get; }
     string? ActiveGatewayUrl { get; }
+    PersonalOperatorLease? CurrentPersonalOperatorLease => null;
+    Task<string?> CreatePersonalBrowserAuthResponseAsync(
+        string nonce, long signedAt, CancellationToken cancellationToken = default) =>
+        Task.FromResult<string?>(null);
 
     // ─── Events ───
     event EventHandler<GatewayConnectionSnapshot> StateChanged;

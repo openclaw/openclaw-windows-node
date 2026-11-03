@@ -13,6 +13,7 @@ public static class InteractiveGatewayCredentialResolver
     internal static GatewayCredential? ResolveForAssistantMediaHttpSurface(
         GatewayRecord record,
         GatewayCredential? fallback) =>
+        record.OperatorAuthentication == OperatorAuthenticationMode.PersonalTailscale ? null :
         !string.IsNullOrWhiteSpace(record.SharedGatewayToken)
             ? new GatewayCredential(
                 record.SharedGatewayToken!,
@@ -60,6 +61,11 @@ public static class InteractiveGatewayCredentialResolver
         var active = registry?.GetActive();
         if (active != null && !string.IsNullOrWhiteSpace(active.Url))
         {
+            if (active.OperatorAuthentication != OperatorAuthenticationMode.GatewayCredential)
+            {
+                credential = null;
+                return false;
+            }
             if (active.NativePackageFamilyName is not null && authorizeCredential is null)
             {
                 credential = null;

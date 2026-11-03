@@ -6,6 +6,8 @@ namespace OpenClaw.Connection;
 /// </summary>
 public sealed record GatewayRecord
 {
+    public OpenClaw.Shared.OperatorAuthenticationMode OperatorAuthentication { get; init; }
+
     /// <summary>Stable GUID, primary key.</summary>
     public string Id { get; init; } = "";
 

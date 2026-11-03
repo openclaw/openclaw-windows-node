@@ -353,7 +353,7 @@ public sealed class UIThreadFixture : IDisposable
 /// All UI tests share one Application/Window — declare them in this collection
 /// so xUnit serializes them and reuses the fixture.
 /// </summary>
-[CollectionDefinition(Name)]
+[CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class UICollection : ICollectionFixture<UIThreadFixture>
 {
     public const string Name = "UI";

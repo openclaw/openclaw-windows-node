@@ -213,11 +213,11 @@ public abstract class WebSocketClientBase : IDisposable
     /// <summary>Maximum time allowed for one WebSocket HTTP upgrade attempt.</summary>
     protected virtual TimeSpan ConnectAttemptTimeout => DefaultConnectAttemptTimeout;
 
-    protected WebSocketClientBase(string gatewayUrl, string token, IOpenClawLogger? logger = null)
+    protected WebSocketClientBase(string gatewayUrl, string token, IOpenClawLogger? logger = null, bool allowEmptyToken = false)
     {
         if (string.IsNullOrEmpty(gatewayUrl))
             throw new ArgumentException("Gateway URL is required.", nameof(gatewayUrl));
-        if (string.IsNullOrEmpty(token))
+        if (!allowEmptyToken && string.IsNullOrEmpty(token))
             throw new ArgumentException("Token is required.", nameof(token));
 
         _gatewayUrl = GatewayUrlHelper.NormalizeForWebSocket(gatewayUrl);

@@ -4041,7 +4041,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     () => _windowManager?.ShowDashboardLaunchFailureAsync(
                         () => OpenDashboard(path))
                         ?? Task.CompletedTask, new AppLogger(), "Dashboard launch error"),
-                () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId));
+                () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId),
+                isPersonalMode: () => _gatewayRegistry?.GetActive()?.OperatorAuthentication == OperatorAuthenticationMode.PersonalTailscale,
+                openPersonalDashboard: target => _windowManager?.ShowPersonalDashboardAsync(target) ?? Task.FromResult(false));
             await launcher.OpenAsync(path);
         }, new AppLogger(), nameof(OpenDashboard));
     }

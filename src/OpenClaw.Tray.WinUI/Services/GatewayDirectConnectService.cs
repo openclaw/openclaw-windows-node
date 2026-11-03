@@ -18,7 +18,8 @@ internal sealed record GatewayDirectConnectRequest(
     string? EditingGatewayId = null,
     bool PreserveExistingSharedTokenWhenMissing = false,
     string? BootstrapToken = null,
-    bool NativeSetup = false);
+    bool NativeSetup = false,
+    OperatorAuthenticationMode OperatorAuthentication = OperatorAuthenticationMode.GatewayCredential);
 
 internal sealed record GatewayDirectConnectResult(
     GatewayDirectConnectOutcome Outcome,
@@ -63,6 +64,14 @@ internal sealed class GatewayDirectConnectService
         CancellationToken cancellationToken = default,
         GatewayValidationIdentity? preparedIdentity = null)
     {
+        if (!Enum.IsDefined(request.OperatorAuthentication) ||
+            request.OperatorAuthentication == OperatorAuthenticationMode.PersonalTailscale &&
+            (request.NativeSetup || request.SshTunnel is not null ||
+             !string.IsNullOrWhiteSpace(request.SharedToken) || !string.IsNullOrWhiteSpace(request.BootstrapToken) ||
+             !GatewayPersonalAuthenticationPolicy.TryNormalizeGatewayUrl(request.GatewayUrl, out _, out _)))
+            return Failed(GatewayConnectionSnapshot.Idle, false,
+                "Personal Tailscale authentication requires a direct credential-free wss:// host.ts.net route.");
+
         if (!GatewayUrlHelper.IsValidGatewayUrl(request.GatewayUrl))
         {
             return Failed(
@@ -365,6 +374,7 @@ internal sealed class GatewayDirectConnectService
         {
             Id = recordId,
             Url = request.GatewayUrl,
+            OperatorAuthentication = request.OperatorAuthentication,
             FriendlyName = string.IsNullOrWhiteSpace(request.FriendlyName)
                 ? existing?.FriendlyName
                 : request.FriendlyName,

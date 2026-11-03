@@ -9,6 +9,21 @@ namespace OpenClaw.Tray.Tests;
 public sealed class GatewayDirectConnectServiceTests : IDisposable
 {
     [Theory]
+    [InlineData("ws://fixture.example.ts.net", null, false)]
+    [InlineData("wss://fixture.example.com", null, false)]
+    [InlineData("wss://fixture.example.ts.net", "shared", false)]
+    [InlineData("wss://fixture.example.ts.net", null, true)]
+    public async Task InvalidPersonalRequestCannotMutateRegistryOrStartConnection(string url, string? token, bool nativeSetup)
+    {
+        var previous = AddPreviousGateway();
+        var result = await CreateService().ConnectAsync(new(url, token, null, null,
+            NativeSetup: nativeSetup, OperatorAuthentication: OperatorAuthenticationMode.PersonalTailscale));
+        Assert.False(result.GatewayCommitted);
+        Assert.Equal(previous.Id, _registry.ActiveGatewayId);
+        Assert.Equal(0, _manager.ConnectCount);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task InitialCommitCasConflictCleansOnlyUnadoptedNewRealmIdentity(bool adoptCandidate)

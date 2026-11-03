@@ -8254,4 +8254,12 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>This question is being resolved. Refresh to check its status.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choose a valid answer for each question.</value></data>
+  <data name="ConnectionPage_OperatorAuthentication.Header" xml:space="preserve"><value>Operator authentication</value></data>
+  <data name="ConnectionPage_SharedAuthentication.Content" xml:space="preserve"><value>Gateway credential</value></data>
+  <data name="ConnectionPage_PersonalAuthentication.Content" xml:space="preserve"><value>Personal Tailscale identity</value></data>
+  <data name="ConnectionPage_PersonalHint.Text" xml:space="preserve"><value>Requires a secure Tailscale Gateway address and personal identity support on the Gateway. No shared token is sent.</value></data>
+  <data name="PersonalDashboard_RecoveryTitle.Text" xml:space="preserve"><value>Personal sign-in changed</value></data>
+  <data name="PersonalDashboard_RecoveryDetail.Text" xml:space="preserve"><value>Reconnect this Gateway in OpenClaw Companion, then reopen the Dashboard.</value></data>
+  <data name="PersonalDashboard_Unavailable" xml:space="preserve"><value>Personal sign-in is unavailable. Reconnect in the app.</value></data>
+  <data name="ConnectionPage_PersonalRouteRequired" xml:space="preserve"><value>Personal sign-in requires a secure wss:// Tailscale Gateway address ending in .ts.net, without an SSH tunnel.</value></data>
 </root>

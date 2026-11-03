@@ -220,7 +220,8 @@ internal sealed class BootstrapTokenLifecycle
         var selected = resolved;
         lock (_stateLock)
         {
-            if (_forceBootstrapForGatewayRecordId == record.Id &&
+            if (record.OperatorAuthentication == OperatorAuthenticationMode.GatewayCredential &&
+                _forceBootstrapForGatewayRecordId == record.Id &&
                 !string.IsNullOrWhiteSpace(record.BootstrapToken))
             {
                 var credential = new GatewayCredential(
@@ -382,7 +383,7 @@ internal sealed class BootstrapTokenLifecycle
         }
 
         var record = _registry.GetById(attempt.GatewayRecordId);
-        if (record is null)
+        if (record is null || record.OperatorAuthentication == OperatorAuthenticationMode.PersonalTailscale)
             return false;
 
         var hasSharedToken = !string.IsNullOrWhiteSpace(record.SharedGatewayToken);

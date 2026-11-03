@@ -69,6 +69,8 @@
     </ItemGroup>
     <Error Condition="'@(_TrayTestResourceRoot)' == ''"
            Text="The production tray reference is required for mounted migration window tests." />
+    <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)Windows\PersonalDashboardWindow.xbf')"
+          DestinationFolder="$(TargetDir)Windows" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)Windows\StoreMigrationWindow.xbf')"
           DestinationFolder="$(TargetDir)Windows" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)Pages\ChatPage.xbf')"

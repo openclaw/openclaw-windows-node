@@ -40,7 +40,7 @@ internal sealed record WindowManagerCallbacks(
     Func<LocalAiGatewayLifecycle?>? GetLocalAiGatewayLifecycle = null,
     Func<SetupNativePreparation, CancellationToken, Task>? PublishNativePreparation = null);
 
-internal sealed class WindowManager : IWindowManager
+internal sealed partial class WindowManager : IWindowManager
 {
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -958,6 +958,7 @@ internal sealed class WindowManager : IWindowManager
         _callbacks.ApplyTheme(_setupWindow);
         _callbacks.ApplyTheme(_readyWindow);
         _callbacks.ApplyTheme(_restartProgressWindow);
+        _callbacks.ApplyTheme(_personalDashboardWindow);
     }
 
     public void UpdateHubTitleBarStatus(
@@ -1014,6 +1015,15 @@ internal sealed class WindowManager : IWindowManager
     private async Task CloseOwnedWindowsAsync()
     {
         List<Exception>? failures = null;
+        if (_personalDashboardWindow is { } personalDashboard)
+        {
+            try { await personalDashboard.CloseAsync(); }
+            catch (Exception ex)
+            {
+                (failures ??= []).Add(new InvalidOperationException("Personal Dashboard shutdown failed.", ex));
+            }
+            _personalDashboardWindow = null;
+        }
 
         if (_workspaceWindow is not null)
         {
