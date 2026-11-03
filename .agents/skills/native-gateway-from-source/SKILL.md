@@ -142,7 +142,8 @@ their own `openclaw-<patch>` and `clawctl-<patch>` aliases, beside the unchanged
 base package and other patches. Deploy normally runs `clawctl setup`: it
 provisions/reuses the session, installs Node in the agent profile and enables
 sign-in recovery, but **does not start a listening Gateway**. `-SkipSetup` leaves
-that setup work outstanding. A setup failure may leave a registration; inspect
+that setup work outstanding; the build helper passes `-SkipSetup` through when
+Companion's first setup is being measured. A setup failure may leave a registration; inspect
 only the owned patch, then retry or clean it up rather than claiming readiness.
 
 Serialize deployment, rebuild, refresh and unregister operations, including
