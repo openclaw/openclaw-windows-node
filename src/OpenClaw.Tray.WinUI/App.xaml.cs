@@ -843,7 +843,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (_appState is not null)
         {
             _defaultModelGateway = new DefaultModelGatewayService(
-                _appState, () => GatewayClient, () => _gatewayRegistry, _localAiGatewayLifecycle);
+                _appState, () => GatewayClient, () => _gatewayRegistry,
+                () => _connectionManager?.CurrentSnapshot.GatewayId, _localAiGatewayLifecycle);
             _modelProviderGateway = new ModelProviderGatewayService(() => GatewayClient);
         }
 

@@ -129,6 +129,12 @@ public interface IOperatorGatewayClient
     Task<bool> PatchConfigAsync(JsonElement fullConfig, string? baseHash);
     /// <summary>Response-aware variant of <see cref="PatchConfigAsync"/>: awaits the gateway's reply and returns the real error on failure.</summary>
     Task<ConfigPatchResult> PatchConfigDetailedAsync(JsonElement fullConfig, string? baseHash, int timeoutMs = 15000);
+    /// <summary>
+    /// <see cref="PatchConfigDetailedAsync"/> on the captured authenticated connection. A changed epoch
+    /// throws <see cref="InvalidOperationException"/> before transmission instead of returning a failed result.
+    /// </summary>
+    Task<ConfigPatchResult> PatchConfigOnConnectionAsync(JsonElement fullConfig, string? baseHash, long connectionEpoch, int timeoutMs = 15000)
+        => Task.FromException<ConfigPatchResult>(new NotSupportedException("Connection-bound config.patch is not supported by this gateway client."));
     Task RequestAgentsListAsync();
     Task RequestAgentFilesListAsync(string agentId = "main");
     Task RequestAgentFileGetAsync(string agentId, string name);
@@ -160,6 +166,9 @@ public interface IOperatorGatewayClient
     /// <summary>Long-poll for QR linking completion. Sends web.login.wait { currentQrDataUrl, timeoutMs }.</summary>
     Task<WebLoginWaitResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000);
     Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000);
+    /// <summary>Sends only on the captured authenticated connection; refuses before transmission when the epoch changed.</summary>
+    Task<JsonElement> SendWizardRequestOnConnectionAsync(string method, object? parameters, long connectionEpoch, int timeoutMs = 30000)
+        => Task.FromException<JsonElement>(new NotSupportedException("Connection-bound requests are not supported by this gateway client."));
 
     // ─── Gateway protocol APIs ───
     // These ship with default implementations so adding them does not source-break

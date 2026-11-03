@@ -300,6 +300,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WorkspaceIdentitySource.cs" Link="Services\WorkspaceIdentitySource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\HubCommandExecutor.cs" Link="Services\HubCommandExecutor.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WorkspaceSessionOperation.cs" Link="Services\WorkspaceSessionOperation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DefaultModelGatewayWrite.cs" Link="Services\DefaultModelGatewayWrite.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ArchivedSessionsSource.cs" Link="Services\ArchivedSessionsSource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNotificationInfoBarPresenter.cs" Link="Presentation\AppNotificationInfoBarPresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceContext.cs" Link="Presentation\AppServiceContext.cs" />

@@ -14,7 +14,9 @@ internal sealed record DefaultModelOption(string Id, string DisplayName, string?
 /// <c>agents.defaults.model.primary</c>; the Local AI choice routes through the Local AI
 /// runtime, which owns publication. Local AI keeps one fallback for the single Gateway it
 /// is bound to, so a cloud choice updates that fallback only when the active Gateway is
-/// Local AI's owner; choices on any other Gateway never touch Local AI state.
+/// Local AI's owner; choices on any other Gateway never touch Local AI state. Writes are bound
+/// to the Gateway connection the choice was admitted for; a Gateway change while a write is
+/// queued fails closed.
 /// </summary>
 internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable, INotifyPropertyChanged
 {
@@ -141,9 +143,12 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
         OnPropertyChanged(null);
         try
         {
+            // Ownership below is decided from _state; bind every write to the Gateway that state describes
+            // before any await, so a write queued behind the Local AI runtime gate cannot follow a newer Gateway.
+            IDefaultModelGatewayWrite write = _gateway.BeginWrite(_state.GatewayId);
             bool ok = selected == LocalAiOptionId
-                ? await UseLocalAiAsync()
-                : await UseCloudModelAsync(selected);
+                ? await UseLocalAiAsync(write)
+                : await UseCloudModelAsync(selected, write);
             _statusApplied = ok;
             return ok;
         }
@@ -159,7 +164,7 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
         }
     }
 
-    private async Task<bool> UseLocalAiAsync()
+    private async Task<bool> UseLocalAiAsync(IDefaultModelGatewayWrite write)
     {
         string? primary = _state.PrimaryModel;
         if (primary is null || (!IsLocalAiPrimary(primary) && IsValidFallback(primary)))
@@ -171,18 +176,18 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
             _error = started.Detail ?? "Local AI could not start.";
             return false;
         }
-        await ClearDefaultAgentModelAsync();
+        await ClearDefaultAgentModelAsync(write);
         return true;
     }
 
     // Local AI publishes to agents.defaults, which the default agent's own primary would shadow.
-    private async Task ClearDefaultAgentModelAsync()
+    private async Task ClearDefaultAgentModelAsync(IDefaultModelGatewayWrite write)
     {
         if (_state.DefaultAgentModel is not null)
-            await _gateway.ClearDefaultAgentModelAsync();
+            await write.ClearDefaultAgentModelAsync();
     }
 
-    private async Task<bool> UseCloudModelAsync(string modelRef)
+    private async Task<bool> UseCloudModelAsync(string modelRef, IDefaultModelGatewayWrite write)
     {
         // Local AI's fallback belongs to the Gateway it is bound to; another Gateway's
         // default must not change it or stop Local AI.
@@ -208,15 +213,15 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
                 _error = stopped.Detail ?? "Local AI could not hand the Gateway back.";
                 return false;
             }
-            await ClearDefaultAgentModelAsync();
+            await ClearDefaultAgentModelAsync(write);
             return true;
         }
 
         if (ownsRoute)
             // The runtime refuses before any config.patch while its route write is unconfirmed.
-            await _localAi.SetGatewayPrimaryAndFallbackModelAsync(modelRef, _ => _gateway.SetPrimaryModelAsync(modelRef));
+            await _localAi.SetGatewayPrimaryAndFallbackModelAsync(modelRef, _ => write.SetPrimaryModelAsync(modelRef));
         else
-            await _gateway.SetPrimaryModelAsync(modelRef);
+            await write.SetPrimaryModelAsync(modelRef);
         return true;
     }
 

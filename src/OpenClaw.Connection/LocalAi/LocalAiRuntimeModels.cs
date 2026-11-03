@@ -152,7 +152,8 @@ public interface ILocalAiRuntime : IAsyncDisposable
     /// <summary>
     /// Writes a non-Local-AI Gateway primary through <paramref name="writePrimary"/> and records it as
     /// the fallback. Refuses, without calling <paramref name="writePrimary"/>, while the Gateway route
-    /// has an unconfirmed write.
+    /// has an unconfirmed write. When <paramref name="writePrimary"/> throws, neither the receipt nor the
+    /// manifest fallback changes.
     /// </summary>
     Task SetGatewayPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
         CancellationToken cancellationToken = default)

@@ -156,6 +156,47 @@ public sealed class DefaultModelPageViewModelTests
     }
 
     [Fact]
+    public async Task QueuedCloudWrite_GatewayReplacedWhileWaitingForRuntime_WritesNothingAndKeepsFallback()
+    {
+        var gateway = new FakeGateway { State = State(Sonnet.SelectionId, localRoute: true) };
+        var runtime = new RecordingRuntime(Installed(LocalAiRuntimeState.Stopped))
+        {
+            PrimaryGate = new(TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        using var viewModel = Create(gateway, runtime);
+
+        viewModel.SelectedOptionId = Gpt.SelectionId;
+        Task<bool> apply = viewModel.ApplyAsync();
+        Assert.False(apply.IsCompleted);
+        // The user selects Gateway B while the write waits for the runtime gate; the page has not recomputed yet.
+        gateway.ActiveGatewayId = "gw-b";
+        gateway.State = gateway.State with { GatewayId = "gw-b" };
+        runtime.PrimaryGate!.SetResult();
+
+        Assert.False(await apply);
+        Assert.Empty(gateway.PrimaryWrites);
+        Assert.DoesNotContain("primary+fallback:openai/gpt-6", runtime.Calls);
+        Assert.Contains("Gateway connection changed", viewModel.Error);
+        Assert.False(viewModel.StatusApplied);
+    }
+
+    [Fact]
+    public async Task CloudChoiceAdmittedForStaleGateway_IsRefusedBeforeAnyWrite()
+    {
+        var gateway = new FakeGateway { State = State(Sonnet.SelectionId, localRoute: true) };
+        var runtime = new RecordingRuntime(Installed(LocalAiRuntimeState.Stopped));
+        using var viewModel = Create(gateway, runtime);
+        viewModel.SelectedOptionId = Gpt.SelectionId;
+        gateway.ActiveGatewayId = "gw-b";
+
+        Assert.False(await viewModel.ApplyAsync());
+
+        Assert.Empty(gateway.PrimaryWrites);
+        Assert.Empty(runtime.Calls);
+        Assert.Contains("Gateway connection changed", viewModel.Error);
+    }
+
+    [Fact]
     public async Task ChoiceWhoseProviderNeedsSignIn_IsListedButCannotBeApplied()
     {
         var needsAuth = new ChatModelChoice("o5", "o5", "openai", RequiresAuth: true);
@@ -266,7 +307,7 @@ public sealed class DefaultModelPageViewModelTests
     }
 
     private static DefaultModelGatewayState State(string? primary, bool localRoute, ChatModelChoice? extra = null) =>
-        new(true, true, extra is null ? [Sonnet, Gpt] : [Sonnet, Gpt, extra], primary, localRoute);
+        new(true, true, extra is null ? [Sonnet, Gpt] : [Sonnet, Gpt, extra], primary, localRoute, GatewayId: "gw-a");
 
     private static LocalAiRuntimeSnapshot Installed(LocalAiRuntimeState state)
     {
@@ -284,20 +325,39 @@ public sealed class DefaultModelPageViewModelTests
         public event EventHandler? Changed;
         public void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
         public DefaultModelGatewayState State { get; set; } = DefaultModelGatewayState.Disconnected;
+        public string? ActiveGatewayId { get; set; } = "gw-a";
         public List<string> PrimaryWrites { get; } = [];
-        public int AgentModelClears { get; private set; }
+        public int AgentModelClears { get; set; }
         public DefaultModelGatewayState Current => State;
         public Task RefreshAsync() => Task.CompletedTask;
-        public Task SetPrimaryModelAsync(string modelRef)
-        {
-            PrimaryWrites.Add(modelRef);
-            return Task.CompletedTask;
-        }
 
-        public Task ClearDefaultAgentModelAsync()
+        public IDefaultModelGatewayWrite BeginWrite(string? expectedGatewayId) =>
+            expectedGatewayId is not null && expectedGatewayId == ActiveGatewayId
+                ? new FakeWrite(this, expectedGatewayId)
+                : throw new DefaultModelGatewayChangedException();
+
+        // Models the bound write: it refuses once the active Gateway is no longer the one it was bound to.
+        private sealed class FakeWrite(FakeGateway owner, string boundId) : IDefaultModelGatewayWrite
         {
-            AgentModelClears++;
-            return Task.CompletedTask;
+            public Task SetPrimaryModelAsync(string modelRef)
+            {
+                RequireCurrent();
+                owner.PrimaryWrites.Add(modelRef);
+                return Task.CompletedTask;
+            }
+
+            public Task ClearDefaultAgentModelAsync()
+            {
+                RequireCurrent();
+                owner.AgentModelClears++;
+                return Task.CompletedTask;
+            }
+
+            private void RequireCurrent()
+            {
+                if (owner.ActiveGatewayId != boundId)
+                    throw new DefaultModelGatewayChangedException();
+            }
         }
     }
 
@@ -307,6 +367,7 @@ public sealed class DefaultModelPageViewModelTests
         public LocalAiRuntimeSnapshot? StopResult { get; init; }
         public LocalAiRuntimeSnapshot? StartResult { get; init; }
         public bool PendingReceipt { get; init; }
+        public TaskCompletionSource? PrimaryGate { get; init; }
         public LocalAiRuntimeSnapshot Snapshot { get; private set; } = snapshot;
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged { add { } remove { } }
 
@@ -319,6 +380,8 @@ public sealed class DefaultModelPageViewModelTests
         public async Task SetGatewayPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
             CancellationToken cancellationToken = default)
         {
+            if (PrimaryGate is { } gate)
+                await gate.Task;
             if (PendingReceipt)
                 throw new InvalidOperationException("Local AI has an unconfirmed Gateway change.");
             await writePrimary(cancellationToken);

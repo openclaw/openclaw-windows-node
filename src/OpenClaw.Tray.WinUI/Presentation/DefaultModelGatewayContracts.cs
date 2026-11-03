@@ -12,13 +12,15 @@ namespace OpenClawTray.Presentation;
 /// The default agent's own primary model, which the Gateway prefers over <paramref name="PrimaryModel"/>
 /// for new conversations (Gateway setup writes one for the agent it configures).
 /// </param>
+/// <param name="GatewayId">Active registry Gateway this state, including <paramref name="LocalAiRouteAvailable"/>, was projected for.</param>
 internal sealed record DefaultModelGatewayState(
     bool IsConnected,
     bool CanWriteConfig,
     IReadOnlyList<ChatModelChoice> Models,
     string? PrimaryModel,
     bool LocalAiRouteAvailable,
-    string? DefaultAgentModel = null)
+    string? DefaultAgentModel = null,
+    string? GatewayId = null)
 {
     public static DefaultModelGatewayState Disconnected { get; } = new(false, false, [], null, false);
 
@@ -32,10 +34,30 @@ internal interface IDefaultModelGatewayService
     event EventHandler? Changed;
     DefaultModelGatewayState Current { get; }
     Task RefreshAsync();
+    /// <summary>
+    /// Binds writes to the current operator connection. Throws <see cref="InvalidOperationException"/> when
+    /// disconnected or without config write scope, and <see cref="DefaultModelGatewayChangedException"/> when
+    /// the active or connected Gateway is not <paramref name="expectedGatewayId"/>.
+    /// </summary>
+    IDefaultModelGatewayWrite BeginWrite(string? expectedGatewayId);
+}
+
+/// <summary>
+/// Config writes bound to the Gateway connection a model change was admitted for. Every request
+/// rechecks that binding and fails closed with <see cref="DefaultModelGatewayChangedException"/>.
+/// </summary>
+internal interface IDefaultModelGatewayWrite
+{
     /// <summary>Sets <c>agents.defaults.model.primary</c> and drops the default agent's own primary.</summary>
     Task SetPrimaryModelAsync(string modelRef);
     /// <summary>Drops the default agent's own primary so it follows <c>agents.defaults.model.primary</c>.</summary>
     Task ClearDefaultAgentModelAsync();
+}
+
+internal sealed class DefaultModelGatewayChangedException : InvalidOperationException
+{
+    public DefaultModelGatewayChangedException()
+        : base("The Gateway connection changed before the model change was sent. Review the default model and try again.") { }
 }
 
 /// <summary>Pure helpers for the <c>config.get</c> envelope and the primary-model patch.</summary>
