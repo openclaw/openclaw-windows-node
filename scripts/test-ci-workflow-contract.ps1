@@ -384,22 +384,69 @@ foreach ($token in @(
 }
 
 $proofJob = Get-JobBlock "proof-pool-contracts"
-foreach ($job in @($fastValidationJob, $proofJob)) {
-    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
-    if ($jobHeader -match '(?m)^    (?:if|needs|continue-on-error):') {
-        throw "Fast validation and proof-pool contracts must remain unconditional required jobs."
+$fastHeader = ($fastValidationJob -split '(?m)^    steps:\s*$', 2)[0]
+if ($fastHeader -match '(?m)^    (?:if|needs|continue-on-error):') {
+    throw "Fast validation must remain an unconditional required job."
+}
+$selectionStep = Get-StepBlock -Text $classificationJob -Name "Select proof-pool regression scope"
+foreach ($token in @(
+        "id: proof_pool_regression",
+        "continue-on-error: true",
+        "./scripts/Get-CiProofPoolRegressionDecision.ps1",
+        'if ($decision -notin @("true", "false"))',
+        '"run=$decision" >> $env:GITHUB_OUTPUT'
+    )) {
+    Assert-Contains -Text $selectionStep -Expected $token -Message "Pre-allocation selection lost '$token'."
+}
+if ($selectionStep -match '(?m)^      if:') { throw 'Proof selection must run unconditionally in classification.' }
+$effectiveSelection = "steps.proof_pool_regression.outcome == 'success' && steps.proof_pool_regression.outputs.run == 'false'"
+Assert-Contains -Text $classificationJob `
+    -Expected ("proof_pool_required: " + '${{ ' + $effectiveSelection + " && 'false' || 'true' }}") `
+    -Message 'Only successful explicit false may suppress Windows allocation.'
+$proofHeader = ($proofJob -split '(?m)^    steps:\s*$', 2)[0]
+Assert-Contains -Text $proofHeader -Expected 'needs: change-classification' -Message 'Proof allocation must wait for classification.'
+Assert-Contains -Text $proofHeader -Expected 'runs-on: windows-latest' -Message 'Malformed-contract proof must remain native Windows.'
+$proofHeaderLf = $proofHeader.Replace("`r`n", "`n")
+$admitProofBlocks = foreach ($header in @($proofHeaderLf, $proofHeaderLf.Replace("`n", "`r`n"))) {
+    $admissionMatch = [regex]::Match($header, '(?m)^    if: \$\{\{ (?<condition>.+) \}\}\r?$')
+    if (-not $admissionMatch.Success) { throw 'Missing Windows proof allocation guard.' }
+    $admission = $admissionMatch.Groups['condition'].Value.Replace('!cancelled()', '-not $cancelled').
+        Replace('needs.change-classification.result', '$classificationResult').
+        Replace('needs.change-classification.outputs.proof_pool_required', '$required').
+        Replace('!=', '-ne').Replace('==', '-eq').Replace('&&', '-and').Replace('||', '-or')
+    [scriptblock]::Create('param($cancelled,$classificationResult,$required)' + "`n($admission)")
+}
+$skipSelection = [scriptblock]::Create('param($outcome,$run)' + "`n(" +
+    $effectiveSelection.Replace('steps.proof_pool_regression.outcome', '$outcome').
+        Replace('steps.proof_pool_regression.outputs.run', '$run').
+        Replace('==', '-eq').Replace('&&', '-and') + ')')
+foreach ($outcome in @('success', 'failure', 'cancelled', 'skipped', '')) {
+    foreach ($run in @('true', 'false', '', 'invalid', 'false true')) {
+        $required = if (& $skipSelection $outcome $run) { 'false' } else { 'true' }
+        $expected = -not ($outcome -eq 'success' -and $run -eq 'false')
+        if (($required -eq 'true') -ne $expected) { throw 'Effective proof selection is not fail-closed.' }
+        foreach ($classificationResult in @('success', 'failure', 'cancelled', 'skipped', '')) {
+            foreach ($cancelled in @($false, $true)) {
+                foreach ($admitProof in $admitProofBlocks) {
+                    $admitted = & $admitProof $cancelled $classificationResult $required
+                    if ($admitted -ne ($expected -and $classificationResult -eq 'success' -and -not $cancelled)) {
+                        throw 'Windows proof allocation lost classification/cancellation/selection admission.'
+                    }
+                }
+            }
+        }
     }
 }
-foreach ($token in @(
-        "./scripts/Get-CiProofPoolRegressionDecision.ps1",
-        "steps.proof_pool_regression.outcome != 'success' || steps.proof_pool_regression.outputs.run != 'false'",
-        "./scripts/test-proof-pool-validator.ps1"
-    )) {
-    Assert-Contains `
-        -Text $proofJob `
-        -Expected $token `
-        -Message "Dedicated proof-pool contract job is missing '$token'."
+foreach ($admitProof in $admitProofBlocks) {
+    if (-not (& $admitProof $false 'success' '')) { throw 'Missing effective selection must admit proof and fail at CI Gate.' }
 }
+$proofStep = Get-StepBlock -Text $proofJob -Name "Validate proof-pool regressions"
+Assert-Contains -Text $proofStep -Expected './scripts/test-proof-pool-validator.ps1' -Message 'Native proof matrix was removed.'
+foreach ($token in @('if:', 'continue-on-error:')) {
+    Assert-NotContains -Text $proofStep -Unexpected $token -Message 'Admitted native proof must run without tolerated failures.'
+}
+Assert-NotContains -Text $proofJob -Unexpected './scripts/Get-CiProofPoolRegressionDecision.ps1' `
+    -Message 'Proof selection must have one pre-allocation owner.'
 Assert-NotContains `
     -Text $fastValidationJob `
     -Unexpected "./scripts/test-proof-pool-validator.ps1" `
@@ -1001,10 +1048,12 @@ foreach ($token in @(
         "CLASSIFICATION_RESULT: `${{ needs.change-classification.result }}",
         "CLASSIFICATION: `${{ needs.change-classification.outputs.classification }}",
         "FAST_VALIDATION_RESULT: `${{ needs.fast-validation.result }}",
+        "PROOF_POOL_CONTRACTS_REQUIRED: `${{ needs.change-classification.outputs.proof_pool_required }}",
         "PROOF_POOL_CONTRACTS_RESULT: `${{ needs.proof-pool-contracts.result }}",
         "-ClassificationResult `$env:CLASSIFICATION_RESULT",
         "-Classification `$env:CLASSIFICATION",
         "-FastValidationResult `$env:FAST_VALIDATION_RESULT",
+        "-ProofPoolContractsRequired `$env:PROOF_POOL_CONTRACTS_REQUIRED",
         "-ProofPoolContractsResult `$env:PROOF_POOL_CONTRACTS_RESULT",
         "-FullRequired `$env:FULL_REQUIRED",
         "-CoreRequired `$env:CORE_REQUIRED",
@@ -1118,6 +1167,23 @@ $triggerPaths = @(
     "scripts/test-agent-readiness.ps1"
 )
 
+foreach ($case in @(
+        @{ Paths = @(); Expected = 'false' },
+        @{ Paths = @('README.md', 'src/OpenClaw.Cli/Program.cs'); Expected = 'false' },
+        @{ Paths = @('unknown/deleted.cs', 'scripts/run-proof-tests.ps1'); Expected = 'true' },
+        @{ Paths = @('scripts\run-proof-tests.ps1', 'README.md'); Expected = 'true' })) {
+    $decision = & $selectorPath -EventName pull_request -ChangedPaths $case.Paths -RepoRoot $repoRootPath
+    if ($decision -cne $case.Expected) { throw 'Explicit paths diverged from canonical proof selection.' }
+}
+foreach ($triggerPath in $triggerPaths) {
+    $decision = & $selectorPath -EventName pull_request -ChangedPaths @('unknown/deleted.cs', $triggerPath) -RepoRoot $repoRootPath
+    if ($decision -cne 'true') { throw "Explicit selection lost proof boundary '$triggerPath'." }
+}
+foreach ($eventName in @('push', 'workflow_dispatch', 'workflow_call', 'schedule', '')) {
+    $decision = & $selectorPath -EventName $eventName -ChangedPaths @() -RepoRoot $repoRootPath
+    if ($decision -cne 'true') { throw 'Explicit empty paths must not suppress non-PR proof.' }
+}
+
 $tempRoot = Join-Path (Join-Path $repoRootPath "TestResults") (
     "openclaw-ci-contract-" + [guid]::NewGuid().ToString("N"))
 try {
@@ -1207,6 +1273,8 @@ try {
     & git -C $tempRoot add .
     & git -C $tempRoot commit --quiet -m "unrelated change"
     $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+    $emptyDecision = & $selectorPath -EventName pull_request -BaseSha $headSha -HeadSha $headSha -RepoRoot $tempRoot
+    if ($emptyDecision -cne 'false') { throw 'A known empty Git diff must not allocate proof.' }
     $unrelatedDecision = & $selectorPath `
         -EventName pull_request `
         -BaseSha $baseSha `
@@ -1230,6 +1298,22 @@ try {
         -RepoRoot $tempRoot
     if ($pushDecision -ne "true") {
         throw "Push and tag workflow runs must run the proof-pool regression."
+    }
+
+    foreach ($operation in @('rename', 'delete')) {
+        $baseSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        if ($operation -eq 'rename') {
+            Move-Item -LiteralPath (Join-Path $tempRoot 'scripts/run-proof-tests.ps1') `
+                -Destination (Join-Path $tempRoot 'docs/moved-proof.ps1')
+        } else {
+            Remove-Item -LiteralPath (Join-Path $tempRoot 'scripts/validate-proof-pools.ps1')
+        }
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "proof boundary $operation"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit proof $operation fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $decision = & $selectorPath -EventName pull_request -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+        if ($decision -cne 'true') { throw "A proof-boundary $operation must require regressions." }
     }
 
     $e2eHarness = Join-Path $tempRoot 'e2e-runner-harness.ps1'

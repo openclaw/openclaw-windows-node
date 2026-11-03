@@ -330,8 +330,11 @@ foreach ($scenario in @(
     if ($plan.impact.classification -ne $scenario.classification -or $plan.selectedPaths[0].reason -ne $scenario.reason) {
         throw "Missing classification reason for $($scenario.path)."
     }
-    foreach ($job in @('change-classification', 'fast-validation', 'proof-pool-contracts', 'ci-gate')) {
+    foreach ($job in @('change-classification', 'fast-validation', 'ci-gate')) {
         if ($job -notin $plan.hostedLanes) { throw "Plan omitted always-on CI Gate job: $job" }
+    }
+    if (('proof-pool-contracts' -in $plan.hostedLanes) -ne ($scenario.path -eq 'scripts/run-proof-tests.ps1')) {
+        throw "Plan misreported canonical proof-pool selection for $($scenario.path)."
     }
     foreach ($job in @('metadata', 'build-msix', 'build-msix-bundle')) {
         if (($job -in $plan.hostedLanes) -ne ($plan.impact.x64_release -or $plan.impact.arm64_release)) {
@@ -364,13 +367,50 @@ foreach ($scenario in @(
 }
 $invalidPlan = (& $classifierPath -EventName pull_request -RepoRoot $repoRootPath -BaseSha bad -HeadSha bad -Explain) | ConvertFrom-Json
 if ($invalidPlan.reason -ne 'invalid-or-missing-revisions' -or -not $invalidPlan.impact.full) { throw 'Invalid revision explanation narrowed validation.' }
+if ('proof-pool-contracts' -notin $invalidPlan.hostedLanes) { throw 'Failed Git discovery must retain proof contracts.' }
+foreach ($case in @(
+        @{ Paths = @() },
+        @{ Paths = @('unknown/deleted.cs') },
+        @{ Paths = @('unknown/deleted.cs', 'scripts/run-proof-tests.ps1') },
+        @{ Paths = @('../escape', 'scripts/run-proof-tests.ps1') },
+        @{ Paths = @('scripts/run-proof-tests.ps1', 'unknown/deleted.cs') })) {
+    $paths = $case.Paths
+    $plan = (& $classifierPath -EventName pull_request -RepoRoot $repoRootPath -ChangedPaths $paths -Explain) | ConvertFrom-Json
+    $required = 'scripts/run-proof-tests.ps1' -in $paths
+    if (('proof-pool-contracts' -in $plan.hostedLanes) -ne $required) {
+        throw 'An early classifier return lost the original explicit proof inputs.'
+    }
+}
+foreach ($eventName in @('push', 'workflow_dispatch', 'schedule')) {
+    $plan = (& $classifierPath -EventName $eventName -RepoRoot $repoRootPath -ChangedPaths @() -Explain) | ConvertFrom-Json
+    if ('proof-pool-contracts' -notin $plan.hostedLanes) { throw 'Non-PR plans must retain proof contracts.' }
+}
 $human = (& $classifierPath -EventName pull_request -RepoRoot $repoRootPath -ChangedPaths 'src/OpenClaw.Cli/Program.cs' -Human) -join "`n"
 if ($human -notmatch 'Mandatory local|Does not prove|explicit approval' -or $human -notmatch 'Read-only') { throw 'Human plan is missing boundaries.' }
+if ($human -match 'Hosted lanes:.*proof-pool-contracts') { throw 'Human plan must use canonical proof selection.' }
 
 $tempRoot = Join-Path (Join-Path $repoRootPath "TestResults") (
     "openclaw-change-classifier-" + [guid]::NewGuid().ToString("N"))
 try {
     New-Item -ItemType Directory -Path $tempRoot | Out-Null
+    $fixtureClassifier = Join-Path $tempRoot 'Get-CiChangeClassification.ps1'
+    $fixtureSelector = Join-Path $tempRoot 'Get-CiProofPoolRegressionDecision.ps1'
+    Copy-Item -LiteralPath $classifierPath -Destination $fixtureClassifier
+    foreach ($case in @(
+            @{ Body = "'false'"; Required = $false },
+            @{ Body = "'true'"; Required = $true },
+            @{ Body = "throw 'selection failed'"; Required = $true },
+            @{ Body = "'false'; 'true'"; Required = $true },
+            @{ Body = "'invalid'"; Required = $true },
+            @{ Body = ''; Required = $true },
+            @{ Body = "'false'; exit 1"; Required = $true })) {
+        Set-Content -LiteralPath $fixtureSelector -Value $case.Body
+        $plan = (& $fixtureClassifier -EventName pull_request -RepoRoot $repoRootPath -ChangedPaths 'README.md' -Explain) | ConvertFrom-Json
+        if (('proof-pool-contracts' -in $plan.hostedLanes) -ne $case.Required) {
+            throw 'Failed, malformed, or multiple selector results must not suppress planned proof.'
+        }
+    }
+    Remove-Item -LiteralPath $fixtureClassifier, $fixtureSelector
     & git -C $tempRoot init --quiet
     & git -C $tempRoot config user.email "ci-classifier@example.invalid"
     & git -C $tempRoot config user.name "CI Classifier"
