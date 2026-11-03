@@ -362,7 +362,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 Assert.True(transform.Current.CanResize);
                 transform.Resize(name == "narrow" ? 900 : narrowWidth + 400, name == "narrow" ? 720 : 950);
                 await ScrollToAsync(run, 0);
-                await WaitUiAsync(run, () => TrySetScrollPercent(run, 100) && IsVisibleInTimeline(run, GatewayScenario.LongHistoryFinalMarker), $"message 240 visible at {name} width");
+                await ScrollToAsync(run, 100);
+                await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.LongHistoryFinalMarker), $"message 240 visible at {name} width");
                 var bounds = window.Current.BoundingRectangle;
                 if (name == "narrow")
                     narrowWidth = bounds.Width;
@@ -806,24 +807,22 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             && bounds.Right > viewport.Left && bounds.Left < viewport.Right;
     }
 
-    private static bool TrySetScrollPercent(GatewayFixtureRun run, double percent)
+    private async Task ScrollToAsync(GatewayFixtureRun run, double percent)
     {
-        var timeline = FindTimeline(run);
-        if (timeline is null) return false;
-        var scrollElement = timeline.TryGetCurrentPattern(ScrollPattern.Pattern, out _)
-            ? timeline
-            : timeline.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true));
-        if (scrollElement is null) return false;
-        ((ScrollPattern)scrollElement.GetCurrentPattern(ScrollPattern.Pattern))
-            .SetScrollPercent(ScrollPattern.NoScroll, percent);
-        return true;
-    }
-
-    private static async Task ScrollToAsync(GatewayFixtureRun run, double percent)
-    {
-        if (!TrySetScrollPercent(run, percent))
-            throw new InvalidOperationException("Chat timeline has no accessible scroll control.");
+        AutomationElement? timeline = null;
+        await WaitUiAsync(run, () => (timeline = FindTimeline(run)) is not null,
+            "mounted chat timeline before scrolling");
+        var scrollElement = timeline!;
+        if (!scrollElement.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern))
+        {
+            scrollElement = scrollElement.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true))
+                ?? throw new InvalidOperationException("Chat timeline has no accessible scroll control.");
+            pattern = scrollElement.GetCurrentPattern(ScrollPattern.Pattern);
+        }
+        var scroll = (ScrollPattern)pattern;
+        var before = scroll.Current.VerticalScrollPercent;
+        scroll.SetScrollPercent(ScrollPattern.NoScroll, percent);
         await Task.Delay(100);
         try
         {
