@@ -254,7 +254,6 @@ public class LocalizationValidationTests
         // the PermissionsPage / InstancesPage / SessionsPage runtime keys above.
         "CronPage_JobCompleted",
         "CronPage_JobCompletedRanSuccessfully",
-        "BindingsPage_CouldNotLoadBindings",
         "ConfigPage_CheckingConfigPermissions",
         "ConfigPage_ConfigUnavailable",
         "ConfigPage_ConfigIsReadOnly",
@@ -296,8 +295,6 @@ public class LocalizationValidationTests
         "Command_GoToConfig_Subtitle",
         "Command_GoToUsage_Title",
         "Command_GoToUsage_Subtitle",
-        "Command_GoToBindings_Title",
-        "Command_GoToBindings_Subtitle",
         "Command_GoToPermissions_Title",
         "Command_GoToPermissions_Subtitle",
         "Command_GoToSettings_Title",

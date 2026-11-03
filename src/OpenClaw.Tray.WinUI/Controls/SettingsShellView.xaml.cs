@@ -907,7 +907,6 @@ internal sealed partial class SettingsShellView : UserControl
                 workspace.AgentId = _currentAgentId;
                 workspace.Initialize();
                 break;
-            case BindingsPage bindings: bindings.Initialize(); break;
             case SettingsPage settings: settings.Initialize(); break;
             case NotificationsPage notifications: notifications.Initialize(_appNotificationService); break;
             case DebugPage debug: debug.Initialize(); break;
@@ -1004,7 +1003,6 @@ internal sealed partial class SettingsShellView : UserControl
         { "channels",    "\uEC05" },
         { "instances",   "\uE977" },
         { "agentevents", "\uE943" },
-        { "bindings",    "\uE8AD" },
         { "config",      "\uE90F" },
         { "usage",       "\uE9D9" },
         { "cron",        "\uE787" },

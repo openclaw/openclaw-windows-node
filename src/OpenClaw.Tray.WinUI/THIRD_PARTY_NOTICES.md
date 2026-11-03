@@ -29,7 +29,6 @@ assets. The existing monochrome glyph catalog still applies to other surfaces.
 | `Advanced.svg` | `org-24` |
 | `AgentEvents.svg` | `list-bar-24` |
 | `Agents.svg` | `bot-sparkle-24` |
-| `Bindings.svg` | `link-multiple-24` |
 | `Config.svg` | `options-24` |
 | `Usage.svg` | `data-bar-vertical-ascending-24` |
 | `Cron.svg` | `calendar-clock-24` |

@@ -68,29 +68,29 @@ public sealed class PinnedPagesTests
         Assert.Equal(tags.Length, tags.Distinct().Count());
         Assert.Equal(
             ["connection", "sessions", "skills", "channels", "instances", "cron", "agentevents",
-             "bindings", "config", "usage"],
+             "config", "usage"],
             tags);
     }
 
     [Fact]
-    public void ExcludedSettingsAndComputerPins_AreHiddenButSurvivePersistenceAndOtherPinEdits()
+    public void UnsupportedPins_AreHiddenButSurvivePersistenceAndOtherPinEdits()
     {
         using var temp = new TempDir();
         var settings = new SettingsManager(temp.Path);
-        settings.SetPinnedPages("gw-a", ["settings", "local-ai", "voice", "permissions", "sandbox", "future-page", "connection"]);
+        settings.SetPinnedPages("gw-a", ["settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "future-page", "connection"]);
         settings.Save();
         using (var store = Store(temp.Path, out _))
         {
             Assert.Equal(["connection"], PinnedPages.Visible(store.Current.PinnedPagesFor("gw-a")).Select(page => page.Tag).ToArray());
             store.Update(null, editor => editor.SetPagePinned("gw-a", "skills", true));
-            foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox" })
+            foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox", "bindings" })
                 store.Update(null, editor => editor.SetPagePinned("gw-a", excluded, false));
         }
         using var reloaded = Store(temp.Path, out _);
-        Assert.Equal(["settings", "local-ai", "voice", "permissions", "sandbox", "future-page", "connection", "skills"],
+        Assert.Equal(["settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "future-page", "connection", "skills"],
             Tags(reloaded.Current.PinnedPagesFor("gw-a")));
         Assert.Equal(["connection", "skills"], PinnedPages.Visible(reloaded.Current.PinnedPagesFor("gw-a")).Select(page => page.Tag).ToArray());
-        foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox" })
+        foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox", "bindings" })
             Assert.Empty(PinnedPages.Toggle([], excluded, true));
     }
 
