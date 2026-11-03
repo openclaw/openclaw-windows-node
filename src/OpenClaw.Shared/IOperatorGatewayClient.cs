@@ -203,6 +203,9 @@ public interface IOperatorGatewayClient
     /// <summary>List only the archived sessions (<c>sessions.list</c> with <c>archived:true</c>). Rows are detached snapshots.</summary>
     Task<SessionListResult> ListArchivedSessionsAsync(int timeoutMs = 15000)
         => Task.FromResult(new SessionListResult { IsSupported = false });
+    /// <summary>Search active transcripts across the Gateway's visible session roster.</summary>
+    Task<SessionSearchResult> SearchSessionsAsync(SessionSearchRequest request, int timeoutMs = 15000)
+        => Task.FromResult(new SessionSearchResult([], IsSupported: false));
 }
 
 public sealed record CronRunRequestResult(

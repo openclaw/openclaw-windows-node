@@ -1,5 +1,14 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
+  <data name="SessionsPage_SearchButton.Content" xml:space="preserve"><value>Pesquisar</value></data>
+  <data name="SessionsPage_TranscriptQuery.PlaceholderText" xml:space="preserve"><value>Pesquisar mensagens de conversas ativas. Pressione Enter.</value></data>
+  <data name="SessionsPage_TranscriptQuery.AutomationProperties.Name" xml:space="preserve"><value>Pesquisar mensagens de conversas ativas</value></data>
+  <data name="SessionsPage_SearchLoading" xml:space="preserve"><value>Pesquisando mensagens...</value></data>
+  <data name="SessionsPage_SearchUnsupported" xml:space="preserve"><value>Este Gateway não oferece pesquisa nas mensagens.</value></data>
+  <data name="SessionsPage_SearchFailed" xml:space="preserve"><value>A pesquisa falhou. Verifique a conexão com o Gateway e pesquise novamente (máximo de 4096 caracteres).</value></data>
+  <data name="SessionsPage_SearchIndexing" xml:space="preserve"><value>O Gateway ainda está indexando mensagens. Pesquise novamente para atualizar os resultados.</value></data>
+  <data name="SessionsPage_SearchPartial" xml:space="preserve"><value>Alguns resultados não são exibidos. Refine a pesquisa. Mensagens arquivadas podem estar excluídas.</value></data>
+  <data name="SessionsPage_SearchReady" xml:space="preserve"><value>Pesquisa concluída: {0} mensagens encontradas. Selecione uma conversa para abri-la.</value></data>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
       <xsd:complexType>
