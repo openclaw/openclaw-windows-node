@@ -53,6 +53,8 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         var result = new WindowsManagedLocalGatewayPortPlatform().InspectWslRelayBinary(path);
 
         Assert.Equal(expected, result.IsTrusted);
+        if (!expected)
+            Assert.Contains(path, result.Detail);
     }
 
     [Fact]
@@ -168,9 +170,9 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
     }
 
     [Fact]
-    public void Inspect_SpoofedWslRelayPath_IsUnknown()
+    public void Inspect_RelayOutsideInstallLocationsWithoutDistroProof_IsUnknown()
     {
-        var platform = new FakePlatform { TrustedWslRelay = false };
+        var platform = new FakePlatform { TrustedWslRelay = false, ExpectedDistroListening = false };
         platform.Listeners.Add(new WindowsTcpListenerInfo(
             IPAddress.Loopback,
             18789,
@@ -186,9 +188,29 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
     }
 
     [Fact]
-    public void Inspect_DualStackUntrustedRelay_DeduplicatesFailureDetail()
+    public void Inspect_RelayOutsideInstallLocationsWithDistroProof_IsExpectedWithWarning()
     {
         var platform = new FakePlatform { TrustedWslRelay = false };
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            18789,
+            101,
+            "wslrelay",
+            @"D:\Tools\WSL\wslrelay.exe"));
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+
+        var result = service.Inspect(ManagedRecord());
+
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, result.Kind);
+        Assert.Contains("Authenticode verification failed", result.Detail);
+        Assert.Contains("confirms it owns port 18789", result.Detail);
+        Assert.Equal(1, platform.ExpectedDistroChecks);
+    }
+
+    [Fact]
+    public void Inspect_DualStackUntrustedRelay_DeduplicatesFailureDetail()
+    {
+        var platform = new FakePlatform { TrustedWslRelay = false, ExpectedDistroListening = false };
         var start = new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc);
         platform.Listeners.Add(new WindowsTcpListenerInfo(
             IPAddress.Loopback,

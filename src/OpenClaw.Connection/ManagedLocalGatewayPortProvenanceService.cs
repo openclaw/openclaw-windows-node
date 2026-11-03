@@ -54,8 +54,9 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
     public string? GetProcessCommandLine(int processId) =>
         WindowsTcpListenerSnapshot.GetProcessCommandLine(processId);
 
-    // Admin-protected WSL install locations only. The binary is not signature-checked: some genuine
+    // Known admin-protected WSL install locations. The binary is not signature-checked: some genuine
     // WSL builds ship an unsigned relay, and gateway ownership is proven inside the expected distro.
+    // A relay elsewhere is only a warning when that in-distro proof succeeds.
     // Under WindowsApps, only the root of Microsoft's WSL package qualifies; the publisher ID suffix
     // keeps other packaged apps from shipping their own wslrelay.exe.
     private const string WslPackageNamePrefix = "MicrosoftCorporationII.WindowsSubsystemForLinux_";
@@ -80,7 +81,9 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
                  packageFolder.EndsWith(MicrosoftPublisherIdSuffix, StringComparison.OrdinalIgnoreCase));
             return isInstalled
                 ? WslRelayTrustResult.Trusted()
-                : WslRelayTrustResult.Rejected("WSL relay executable path is not canonical.");
+                : WslRelayTrustResult.Rejected(
+                    $"WSL relay at '{fullPath}' is outside the trusted WSL install locations " +
+                    @"(Program Files\WSL, System32, or the Microsoft WSL package).");
         }
         catch
         {
@@ -252,6 +255,7 @@ public sealed class ManagedLocalGatewayPortProvenanceService
     private readonly IManagedLocalGatewayPortPlatform _platform;
     private readonly IOpenClawLogger _logger;
     private readonly Func<string> _getUserProfilePath;
+    private readonly HashSet<string> _warnedRelayPaths = new(StringComparer.OrdinalIgnoreCase);
 
     internal ManagedLocalGatewayPortProvenanceService(
         IManagedLocalGatewayPortPlatform platform,
@@ -356,7 +360,7 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 path => _platform.InspectWslRelayBinary(path),
                 StringComparer.OrdinalIgnoreCase);
         var expectedDistroListening =
-            relayTrustByPath.Values.Any(result => result.IsTrusted) &&
+            relayTrustByPath.Count > 0 &&
             _platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port);
         var classified = listeners
             .Select(listener => ClassifyListener(
@@ -379,7 +383,8 @@ public sealed class ManagedLocalGatewayPortProvenanceService
         if (classified.All(item => item.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway))
         {
             var first = classified[0];
-            return first with { Detail = $"Expected WSL relay owns loopback port {uri.Port}." };
+            var relayWarning = classified.Select(item => item.Detail).FirstOrDefault(detail => detail is not null);
+            return first with { Detail = relayWarning ?? $"Expected WSL relay owns loopback port {uri.Port}." };
         }
 
         if (classified.All(item => item.Kind == GatewayEndpointProvenanceKind.ConflictingOpenClawGateway) &&
@@ -513,15 +518,24 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             relayPath is not null &&
             relayTrustByPath.TryGetValue(relayPath, out relayTrust);
         var trustedRelay = hasRelayTrust && relayTrust.IsTrusted;
-        if (isWslRelay && trustedRelay && expectedDistroListening)
+        if (isWslRelay && hasRelayTrust && expectedDistroListening)
         {
+            string? warning = null;
+            if (!trustedRelay)
+            {
+                warning = $"{relayTrust.Detail} Continuing because distro '{managedDistroName}' confirms it owns port {port}.";
+                if (_warnedRelayPaths.Add(relayPath!))
+                    _logger.Warn($"[GatewayPort] {warning}");
+            }
+
             return new GatewayEndpointProvenance(
                 GatewayEndpointProvenanceKind.ExpectedManagedGateway,
                 port,
                 listener.ProcessId,
                 listener.ProcessName,
                 listener.ProcessStartTimeUtc,
-                listener.ProcessPath);
+                listener.ProcessPath,
+                Detail: warning);
         }
 
         var taskName = $"OpenClaw Gateway ({managedDistroName})";
