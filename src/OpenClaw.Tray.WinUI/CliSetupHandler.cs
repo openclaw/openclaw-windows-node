@@ -15,8 +15,10 @@ namespace OpenClawTray;
 /// The interactive setup window requires the user to confirm before replacing an existing
 /// app-owned distro, local gateway record, or distro data. This handler applies the same
 /// gate: it refuses unless --replace-existing is passed. The distro and local data dir come
-/// from the app identity and are not isolated by OPENCLAW_TRAY_DATA_DIR, so a fresh isolated
-/// data dir can still target a distro another profile uses.
+/// from the app identity and are shared across OPENCLAW_TRAY_DATA_DIR profiles. The pre-check
+/// here only produces the guidance message. Without --replace-existing the engine receives
+/// --preserve-existing: it re-checks admission while holding SetupRunLock's shared-target
+/// lock, and CleanupStaleDistroStep refuses to remove any distro.
 /// </remarks>
 internal static class CliSetupHandler
 {
