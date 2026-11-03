@@ -38,56 +38,21 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         Assert.Equal(0, platform.ExpectedDistroChecks);
     }
 
-    [Fact]
-    public void EvaluateWslRelayBinary_NonCanonicalPathSkipsSignatureVerification()
-    {
-        var signatureChecked = false;
-
-        var result = WindowsManagedLocalGatewayPortPlatform.EvaluateWslRelayBinary(
-            @"C:\Temp\WSL\wslrelay.exe",
-            _ =>
-            {
-                signatureChecked = true;
-                return AuthenticodeTrustResult.Trusted();
-            });
-
-        Assert.False(result.IsTrusted);
-        Assert.Contains("path is not canonical", result.Detail);
-        Assert.False(signatureChecked);
-    }
-
-    [Fact]
-    public void VerifyMicrosoftSignedFile_AcceptsWindowsWslBinary()
-    {
-        var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-        var wslPath = Path.Combine(windowsDir, "System32", "wsl.exe");
-
-        var result = WindowsAuthenticodeVerifier.VerifyMicrosoftSignedFile(wslPath);
-
-        Assert.True(result.IsTrusted, result.Detail);
-    }
-
-    [Fact]
-    public void VerifyMicrosoftSignedFile_RejectsUnsignedAssembly()
-    {
-        var result = WindowsAuthenticodeVerifier.VerifyMicrosoftSignedFile(
-            typeof(ManagedLocalGatewayPortProvenanceServiceTests).Assembly.Location);
-
-        Assert.False(result.IsTrusted);
-        Assert.Contains("Authenticode verification failed", result.Detail);
-    }
-
     [Theory]
-    [InlineData("CN=Microsoft Windows, O=Microsoft Corporation, C=US", true)]
-    [InlineData("CN=Microsoft Corporation Test Certificate, O=Example Corp, C=US", false)]
-    [InlineData("CN=Other Publisher, O=Microsoft Corporation Services, C=US", false)]
-    public void HasMicrosoftPublisherIdentity_RequiresExactOrganization(
-        string subject,
-        bool expected)
+    [InlineData(@"WSL\wslrelay.exe", true)]
+    [InlineData(@"WindowsApps\MicrosoftCorporationII.WindowsSubsystemForLinux_2.6.3.0_arm64__8wekyb3d8bbwe\wslrelay.exe", true)]
+    [InlineData(@"WindowsApps\Contoso.App_1.0.0.0_x64__abcdefghijklm\wslrelay.exe", false)]
+    [InlineData(@"WindowsApps\MicrosoftCorporationII.WindowsSubsystemForLinux_2.6.3.0_x64__abcdefghijklm\wslrelay.exe", false)]
+    [InlineData(@"WindowsApps\MicrosoftCorporationII.WindowsSubsystemForLinux_2.6.3.0_x64__8wekyb3d8bbwe\nested\wslrelay.exe", false)]
+    public void InspectWslRelayBinary_TrustsOnlyWslInstallLocations(string relativePath, bool expected)
     {
-        Assert.Equal(
-            expected,
-            WindowsAuthenticodeVerifier.HasMicrosoftPublisherIdentity(subject));
+        var path = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            relativePath);
+
+        var result = new WindowsManagedLocalGatewayPortPlatform().InspectWslRelayBinary(path);
+
+        Assert.Equal(expected, result.IsTrusted);
     }
 
     [Fact]
