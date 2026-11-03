@@ -8187,4 +8187,7 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在处理此问题。请刷新以查看其状态。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>请为每个问题选择有效的答案。</value></data>
+  <data name="Chat_Verification_Checking" xml:space="preserve"><value>Gateway 已连接。正在验证聊天访问权限...</value></data>
+  <data name="Chat_Verification_Failed" xml:space="preserve"><value>Gateway 已连接，但无法验证聊天访问权限。请重试。</value></data>
+  <data name="Chat_Verification_Retry" xml:space="preserve"><value>重试</value></data>
 </root>

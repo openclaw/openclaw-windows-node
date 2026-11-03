@@ -718,13 +718,17 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         return item is not null && ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected;
     }
 
-    private static bool RenderConsumedHistory(GatewayFixtureRun run, string key)
+    private static bool RenderConsumedHistory(GatewayFixtureRun run, string key, long? afterRevision = null)
     {
         var composer = FindById(run, "ChatComposerInput");
         if (composer is null || string.IsNullOrEmpty(composer.Current.ItemStatus)) return false;
         using var rendered = JsonDocument.Parse(composer.Current.ItemStatus);
-        return rendered.RootElement.GetProperty("loadedThreadIds").EnumerateArray()
+        var loaded = rendered.RootElement.GetProperty("loadedThreadIds").EnumerateArray()
             .Any(thread => thread.GetString() == key);
+        return loaded && (afterRevision is null ||
+            rendered.RootElement.GetProperty("selectedThreadId").GetString() == key &&
+            rendered.RootElement.GetProperty("historyRevisions").TryGetProperty(key, out var revision) &&
+            revision.ValueKind == JsonValueKind.Number && revision.GetInt64() > afterRevision.Value);
     }
 
     private static void Invoke(AutomationElement element)
@@ -846,12 +850,12 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         }, description);
     }
 
-    private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name)
+    private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name, params AutomationElement[] assertedElements)
     {
         if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") != "1")
             return Task.CompletedTask;
         OwnedWindowCapture.Save(run, AppWindows(run).OrderByDescending(window =>
-            window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name);
+            window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name, assertedElements);
         return Task.CompletedTask;
     }
 }

@@ -1394,7 +1394,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             throw new InvalidOperationException($"{HandshakePendingError}; refusing to send '{method}'");
 
         _logger.Info($"[GatewayClient] Sending frame: {method}");
-        var requestId = Guid.NewGuid().ToString();
+        var requestId = CreateResponseRequestId();
         var pending = _pendingRequests.RegisterWizard(requestId, method);
 
         try
@@ -2498,6 +2498,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         _pendingRequests.TryTake(requestId, out var pending);
+        // A retired authority-scoped RPC must not fall through to the generic
+        // payload parser and publish its old profile roster into the new one.
+        if (pending is null && IsAuthorityRequestId(requestId)) return;
         var requestMethod = pending?.Method;
 
         switch (pending?.Category)

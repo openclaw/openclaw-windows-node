@@ -2,8 +2,19 @@ namespace OpenClawTray.Chat;
 
 internal readonly record struct TailNavigationRequest(int Index, string DisplayedTailKey);
 
+/// <summary>Content refresh schedules positioning without changing reader navigation intent.</summary>
+internal readonly record struct TailNavigationIdentity(string RequestKey, string ExplicitRequestKey)
+{
+    public static TailNavigationIdentity Create(string? sessionId, long generation, long historyRevision, long scrollToken) => new(
+        $"{sessionId ?? "none"}|{generation}|{historyRevision}|{scrollToken}",
+        $"{sessionId ?? "none"}|{generation}|{scrollToken}");
+}
+
 internal static class TailNavigationPolicy
 {
+    public static bool ShouldNavigate(bool explicitNavigation, bool following, bool initialPending, bool hadValidTail) =>
+        explicitNavigation || following || initialPending || !hadValidTail;
+
     public static bool TryCapture(
         int tailIndex,
         string? displayedTailKey,

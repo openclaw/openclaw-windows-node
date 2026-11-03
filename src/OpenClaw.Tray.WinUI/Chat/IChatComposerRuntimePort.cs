@@ -16,6 +16,7 @@ internal interface IChatComposerRuntimePort
 {
     /// <summary>True when the underlying provider supports native lifecycle commands.</summary>
     bool SupportsNativeLifecycle { get; }
+    bool RetryConnectionVerification() => false;
     bool SupportsSessionScopedModelCatalog { get; }
     long ModelCatalogRevision { get; }
 

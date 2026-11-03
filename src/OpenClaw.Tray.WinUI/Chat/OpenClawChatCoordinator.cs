@@ -13,10 +13,9 @@ public sealed class OpenClawChatCoordinator : IDisposable
     private readonly SettingsManager _settings;
     private readonly Func<NodeService?> _nodeServiceAccessor;
     private readonly IOpenClawLogger _logger;
-    private readonly Action<Action>? _post;
+    private readonly ChatProviderConnection _connection;
     private readonly object _gate = new();
     private readonly object _manualSpeechGate = new();
-    private OpenClawChatDataProvider? _provider;
     private TextToSpeechService? _fallbackTextToSpeech;
     private string? _lastManualSpeechText;
     private DateTimeOffset _lastManualSpeechAt;
@@ -53,50 +52,18 @@ public sealed class OpenClawChatCoordinator : IDisposable
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _nodeServiceAccessor = nodeServiceAccessor ?? throw new ArgumentNullException(nameof(nodeServiceAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _post = post;
+        _connection = new ChatProviderConnection(post);
+        _connection.Changed += (_, _) => ProviderChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public OpenClawChatDataProvider? Provider
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _provider;
-            }
-        }
-    }
-
-    public void SetOperatorClient(OpenClawGatewayClient? client)
-    {
-        OpenClawChatDataProvider? oldProvider;
-
-        lock (_gate)
-        {
-            if (_disposed) return;
-            oldProvider = _provider;
-            _provider = null;
-        }
-
-        oldProvider?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-
-        if (client is null)
-        {
-            return;
-        }
-
-        var newProvider = new OpenClawChatDataProvider(new GatewayClientChatBridge(client), _post);
-        lock (_gate)
-        {
-            if (_disposed)
-            {
-                newProvider.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                return;
-            }
-
-            _provider = newProvider;
-        }
-    }
+    public OpenClawChatDataProvider? Provider => _connection.Provider;
+    public event EventHandler? ProviderChanged;
+    internal ChatVerificationState VerificationState => _connection.VerificationState;
+    internal bool RetryVerification(IOperatorGatewayClient? expectedClient = null) =>
+        _connection.RetryVerificationForClient(expectedClient);
+    internal void ConfigureRegistry(OpenClaw.Connection.GatewayRegistry registry) => _connection.ConfigureRegistry(registry);
+    internal void ObserveConnection(OpenClaw.Connection.GatewayConnectionSnapshot snapshot) => _connection.ObserveConnection(snapshot);
+    public void SetOperatorClient(OpenClawGatewayClient? client) => _connection.SetClient(client);
 
     public Task SpeakChatTextAsync(string text)
     {
@@ -231,19 +198,16 @@ public sealed class OpenClawChatCoordinator : IDisposable
 
     public void Dispose()
     {
-        OpenClawChatDataProvider? provider;
         TextToSpeechService? fallbackTextToSpeech;
 
         lock (_gate)
         {
-            provider = _provider;
             fallbackTextToSpeech = _fallbackTextToSpeech;
-            _provider = null;
             _fallbackTextToSpeech = null;
             _disposed = true;
         }
 
-        provider?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _connection.Dispose();
         fallbackTextToSpeech?.Dispose();
     }
 }

@@ -74,7 +74,9 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("annotatedScrollBarRef,", timeline);
         Assert.Contains("rows.Count - 1", timeline);
         Assert.Contains("rows.Count,", timeline);
-        Assert.Contains("initialTailRequestKey", timeline);
+        // Concrete caller guard: the mounted renderer uses the executable identity
+        // projection above, not an independently interpolated navigation key.
+        Assert.Contains("TailNavigationIdentity.Create(", timeline);
         Assert.Contains("var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null", timeline);
         Assert.DoesNotContain("ItemsRepeater(", timeline);
         Assert.DoesNotContain("ScrollView(", timeline);
@@ -93,6 +95,34 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("context.BindFor(itemsView, element).Reference", binding);
         Assert.Contains("VerticalScrollController = scrollBar?.ScrollController", binding);
         Assert.DoesNotContain(".Current", binding);
+    }
+
+    [Theory]
+    [InlineData("same", 7, 10, 5, false, false)]
+    [InlineData("same", 7, 11, 5, true, false)]
+    [InlineData("other", 7, 10, 5, true, true)]
+    [InlineData("same", 8, 10, 5, true, true)]
+    [InlineData("same", 7, 10, 6, true, true)]
+    public void HistoryAndNavigationIdentityProtectReaderIntent(string session, long generation,
+        long historyRevision, long scrollToken, bool schedulesPositioning, bool navigatesReader)
+    {
+        var before = TailNavigationIdentity.Create("same", 7, 10, 5);
+        var after = TailNavigationIdentity.Create(session, generation, historyRevision, scrollToken);
+        Assert.Equal(schedulesPositioning, before.RequestKey != after.RequestKey);
+        Assert.Equal(navigatesReader, before.ExplicitRequestKey != after.ExplicitRequestKey);
+        Assert.Equal(navigatesReader, TailNavigationPolicy.ShouldNavigate(
+            explicitNavigation: before.ExplicitRequestKey != after.ExplicitRequestKey,
+            following: false, initialPending: false, hadValidTail: true));
+    }
+
+    [Fact]
+    public void TailNavigationPolicy_HistoryRefreshPreservesAnEstablishedReader()
+    {
+        Assert.False(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: false, initialPending: false, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: true, initialPending: false, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: true, following: false, initialPending: false, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: false, initialPending: true, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: false, initialPending: false, hadValidTail: false));
     }
 
     [Fact]
@@ -117,6 +147,9 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("_tailNavigationQueue.Enqueue(version, request)", binding);
         Assert.Contains("_tailNavigationQueue.TryDequeue(_version, out var queuedRequest)", binding);
         Assert.Contains("_valid = TailNavigationPolicy.TryCapture", binding);
+        Assert.Contains("TailNavigationPolicy.ShouldNavigate(explicitNavigation, _following, _initialPending, _valid)", binding);
+        Assert.Contains("oldElement.ExplicitTailRequestKey", binding);
+        Assert.Contains("newElement.ExplicitTailRequestKey", binding);
         Assert.Contains("_itemCount = itemCount", binding);
         Assert.Contains("TailNavigationPolicy.CanExecute(", binding);
         Assert.Contains("itemsView.Unloaded += OnUnloaded", binding);

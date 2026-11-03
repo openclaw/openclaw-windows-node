@@ -330,7 +330,12 @@ public sealed partial class ChatPage : Page
         if (_nativeSetupBinding.Request is { } request)
         {
             _nativeSetupPresentation.Evaluate(
-                () => request.GetConnectedClient(CurrentApp.Registry, CurrentApp.ConnectionManager),
+                () =>
+                {
+                    var client = request.GetConnectedClient(CurrentApp.Registry, CurrentApp.ConnectionManager);
+                    if (source == "explicit recheck") CurrentApp.RetryChatVerification(client);
+                    return client;
+                },
                 client => _nativeSetupRefresh.IsProviderCurrent(client, CurrentApp.ChatProvider),
                 target =>
                 {
@@ -363,7 +368,10 @@ public sealed partial class ChatPage : Page
         _reactorHost?.CancelVoiceRecording();
         HideNativeSetupChat();
         if (_nativeSetupPresentation.Warning == SetupNativeChatWarning.None)
+        {
             WaitingPanel.Visibility = Visibility.Visible;
+            ApplyVerificationWaitingState(CurrentApp.ChatVerificationState);
+        }
     }
 
     private void HideNativeSetupChat()
@@ -371,6 +379,7 @@ public sealed partial class ChatPage : Page
         StopWebViewNavigation();
         ChatHost.Visibility = WebView.Visibility = PlaceholderPanel.Visibility = Visibility.Collapsed;
         WaitingPanel.Visibility = ErrorPanel.Visibility = LoadingRing.Visibility = Visibility.Collapsed;
+        RetryChatButton.Visibility = Visibility.Collapsed;
         LoadingRing.IsActive = false;
     }
 
@@ -494,8 +503,13 @@ public sealed partial class ChatPage : Page
             if (_reactorHost is not null)
                 return;
 
-            PlaceholderPanel.Visibility = Visibility.Visible;
             ChatHost.Visibility = Visibility.Collapsed;
+            if (app?.ChatVerificationState is ChatVerificationState.Verifying or ChatVerificationState.Failed)
+            {
+                ChatPagePanelStates.ApplyShowingReadinessFailure(PanelHost);
+                ApplyVerificationWaitingState(app.ChatVerificationState);
+            }
+            else PlaceholderPanel.Visibility = Visibility.Visible;
             return;
         }
 
@@ -536,6 +550,15 @@ public sealed partial class ChatPage : Page
         _mountedThreadId = threadIdToMount;
 
         ConsumePendingVoice();
+    }
+
+    private void ApplyVerificationWaitingState(ChatVerificationState state)
+    {
+        if (state == ChatVerificationState.None) return;
+        WaitingStatusText.Text = LocalizationHelper.GetString(state == ChatVerificationState.Failed
+            ? "Chat_Verification_Failed" : "Chat_Verification_Checking");
+        RetryChatButton.Content = LocalizationHelper.GetString("Chat_Verification_Retry");
+        RetryChatButton.Visibility = state == ChatVerificationState.Failed ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OpenSessionCheckpoints(string sessionKey) =>
@@ -1177,6 +1200,13 @@ public sealed partial class ChatPage : Page
 
     private void OnRetryChat(object sender, RoutedEventArgs e)
     {
+        if (!_pageActive) return;
+        if (!_webViewMode)
+        {
+            if (_nativeSetupBinding.Request is null) CurrentApp.RetryChatVerification();
+            else OnNativeSetupCheckAgain(sender, e);
+            return;
+        }
         if (!_webViewInitialized || string.IsNullOrEmpty(_chatUrl))
             return;
 

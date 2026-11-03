@@ -3,6 +3,7 @@ using OpenClaw.Connection;
 using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClaw.TestSupport;
+using OpenClawTray.Chat;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 
@@ -15,6 +16,38 @@ public sealed class SetupNativeChatPresentationTests
         new(SetupCompletionIntent.CustodianOnboarding, Gateway.Id, GatewayDashboardBinding.Capture(Gateway),
             "provider/model", "verified", 1, IdentityBinding: new string('A', 64), SessionKey: "agent:verified:main"),
         new(SetupNativeDestination.Chat, "agent:verified:main")));
+
+    private sealed class BoundProvider : IChatConnectionBoundProvider
+    {
+        internal IOperatorGatewayClient? Client;
+        public bool IsBoundTo(IOperatorGatewayClient client) => ReferenceEquals(Client, client);
+    }
+
+    [Fact]
+    public void RetainedProviderCannotConfirmReplacementUntilItsExactClientIsVerified()
+    {
+        var h = new Harness();
+        var provider = new BoundProvider { Client = h.Manager.Client };
+        h.Provider = provider;
+        h.Activate();
+        h.Drain();
+        Assert.True(h.Presentation.IsReady);
+        var replacement = DispatchProxy.Create<IOperatorGatewayClient, ClientProxy>();
+        h.Manager.Client = replacement;
+        h.Manager.RaiseClientChanged(replacement);
+        h.Drain();
+        Assert.False(h.Presentation.IsReady);
+        Assert.False(h.Observer.IsProviderCurrent(replacement, provider));
+        Assert.Equal(0, h.Disposals);
+        provider.Client = replacement;
+        h.Activate();
+        h.Drain();
+        Assert.True(h.Presentation.IsReady);
+        Assert.True(h.Observer.IsProviderCurrent(replacement, provider));
+        Assert.Equal(1, h.Mounts);
+        provider.Client = null;
+        Assert.False(h.Observer.IsProviderCurrent(replacement, provider));
+    }
 
     [Fact]
     public void SameClientRecoveryRetainsHostAndHealthyRefreshDoesNotReseed()

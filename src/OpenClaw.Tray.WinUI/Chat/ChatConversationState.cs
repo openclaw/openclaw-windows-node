@@ -113,6 +113,38 @@ internal sealed class ChatConversationState
         }
     }
 
+    internal bool CanRetainHistory(SessionInfo[] sessions)
+    {
+        lock (_gate)
+        {
+            if (_disposed) return false;
+            var selected = _presentation.CachedLastChatState?.DefaultThreadId;
+            var queued = _queue.SnapshotMessages();
+            foreach (var (key, timeline) in _timelines)
+            {
+                var hasContent = timeline.HistoryLoaded || timeline.Entries.Count > 0 || timeline.TurnActive ||
+                    timeline.PendingPermission is not null || queued.TryGetValue(key, out var messages) && messages.Count > 0;
+                if (!hasContent && key != selected) continue;
+                var session = sessions.FirstOrDefault(candidate => candidate.Key == key);
+                if (session is null) return false;
+                // Live entries and a draft may precede the first history response.
+                // The prior authoritative roster can supply their immutable identity.
+                var previousId = _history.ResolveSessionId(key) ?? _presentation.FindSession(key)?.SessionId;
+                if (string.IsNullOrEmpty(previousId) || previousId != session.SessionId) return false;
+            }
+            return true;
+        }
+    }
+
+    internal ChatDataSnapshot RetainedSnapshot(ChatProjectionContext context)
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return BuildSnapshotLocked(context);
+        }
+    }
+
     internal ChatDataSnapshot Snapshot(ChatProjectionContext context)
     {
         lock (_gate)

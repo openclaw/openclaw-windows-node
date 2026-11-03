@@ -167,6 +167,40 @@ Gateway dashboard management lives in a Connection settings card rather than
 occupying a row above the chat surface. Settings' Chat rail action opens Workspace
 without changing the selected Settings page or discarding the chat draft.
 
+An already-loaded ordinary native conversation remains in memory when its
+operator connection is temporarily lost or explicitly disconnected. The retained
+provider publishes the existing disconnected composer state instead of replacing
+the transcript with initial connection guidance. Offline ports reject mutations
+and cancel pending reads and writes through the client request lifetime. The
+transport rechecks cancellation under its send lock before writing. No transcript
+persistence cache is introduced.
+
+A replacement connection may reuse that provider only after fresh endpoint,
+local signing-device, authenticated `users.self` profile and session identities
+are confirmed. Session identities come from the correlated requested
+`sessions.list` response, not a cached roster notification from live activity.
+Retired scoped RPC replies are discarded before generic cache/event parsing.
+Gateway or credential-record changes, revocation, profile changes, and
+authoritative removal invalidate reuse. An older Gateway explicitly rejecting
+`users.self` as unsupported can mount fresh chat, but cannot reactivate retained
+history. Authentication failures, malformed rosters and timeouts do not take
+that compatibility fallback. A timed-out check keeps previously confirmed history
+readable and the port suspended. The existing composer connection-status area
+shows a localized failure and explicit retry; without a provider, the existing
+waiting/retry panel shows that state instead of initial connection guidance.
+Retry performs fresh verification on the same connected client, never changes
+the manager connection status, and cannot reactivate late canceled responses.
+Known profile/signing changes, malformed identity and revocation still discard
+old history. Setup-bound chat keeps its additional receipt/authority checks and
+hidden-host behavior; explicit recheck must validate that receipt and pass its
+exact manager client before retrying chat verification.
+
+`ExplicitDisconnectRetainsLoadedTranscriptDraftAndScrollAcrossRecovery` exercises
+the native Connection toggle, retained controls, draft, scroll and ordinary Send
+against the isolated Gateway fixture. It is a required interactive proof case,
+not a claim that native rendering or a live provider was tested on a non-Windows
+host.
+
 An authoritative empty conversation shows **Recent chats** instead of quick-start
 suggestions when the active agent has eligible conversations. The list includes
 active or token-bearing conversations, excludes the current session, background, archived and channel
