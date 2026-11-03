@@ -1179,6 +1179,77 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task CleanupStaleDistro_PreserveExistingRefusesAppOwnedRegisteredDistro()
+    {
+        var installPath = Path.Combine(
+            _localTempDir,
+            "wsl",
+            "OpenClawGateway");
+        Directory.CreateDirectory(installPath);
+        var sentinel = Path.Combine(installPath, "keep.txt");
+        File.WriteAllText(sentinel, "keep");
+        await ManagedDistroOwnership.WriteMarkerAsync(
+            _localTempDir,
+            "OpenClawGateway",
+            installPath,
+            CancellationToken.None);
+        var commands = new FakeCommandRunner(args =>
+            args.SequenceEqual(["--list", "--quiet"])
+                ? Ok("OpenClawGateway\n")
+                : Fail($"unexpected destructive call: {string.Join(' ', args)}"));
+        var step = new CleanupStaleDistroStep(
+            FakeWslRegistrationInspector.Found(@"\\?\" + installPath));
+        var ctx = CreateContext(
+            new SetupConfig { CleanBeforeRun = true, PreserveExisting = true },
+            commands);
+
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("appeared after setup was admitted", result.Message);
+        Assert.True(File.Exists(sentinel));
+        Assert.Collection(
+            commands.Calls,
+            call => Assert.Equal(["--list", "--quiet"], call.Arguments));
+    }
+
+    [Fact]
+    public async Task CleanupStaleDistro_PreserveExistingRefusesOwnedOrphanDirectory()
+    {
+        var installPath = Path.Combine(
+            _localTempDir,
+            "wsl",
+            "OpenClawGateway");
+        Directory.CreateDirectory(installPath);
+        var vhdx = Path.Combine(installPath, "ext4.vhdx");
+        File.WriteAllText(vhdx, "stale");
+        await ManagedDistroOwnership.WriteMarkerAsync(
+            _localTempDir,
+            "OpenClawGateway",
+            installPath,
+            CancellationToken.None);
+        var commands = new FakeCommandRunner(args =>
+            args.SequenceEqual(["--list", "--quiet"])
+                ? Ok("")
+                : Fail($"unexpected args: {string.Join(' ', args)}"));
+        var ctx = CreateContext(
+            new SetupConfig { CleanBeforeRun = true, PreserveExisting = true },
+            commands);
+
+        var result = await new CleanupStaleDistroStep().ExecuteAsync(
+            ctx,
+            CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("appeared after setup was admitted", result.Message);
+        Assert.True(File.Exists(vhdx));
+        Assert.True(ManagedDistroOwnership.HasEvidence(
+            _tempDir,
+            _localTempDir,
+            "OpenClawGateway"));
+    }
+
+    [Fact]
     public async Task CleanupStaleDistro_DeletesOwnedOrphanAndScopedMarker()
     {
         var installPath = Path.Combine(

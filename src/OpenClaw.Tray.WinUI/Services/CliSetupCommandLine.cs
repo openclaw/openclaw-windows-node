@@ -76,6 +76,8 @@ internal static class CliSetupCommandLine
             "--distro-name", distroName,
             "--gateway-port", gatewayPort.ToString(CultureInfo.InvariantCulture),
         };
+        if (!request.ReplaceExisting)
+            arguments.Add("--preserve-existing");
         if (request.ConfigPath is { } configPath)
         {
             arguments.Add(ConfigOption);

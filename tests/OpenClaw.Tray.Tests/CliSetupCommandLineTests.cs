@@ -37,4 +37,16 @@ public sealed class CliSetupCommandLineTests
         Assert.Equal(expectedError, error);
         Assert.Equal(new CliSetupRequest(null, Force: false, ReplaceExisting: false), request);
     }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void BuildEngineArguments_PreservesExistingStateUnlessReplacementAuthorized(
+        bool replaceExisting, bool expectPreserve)
+    {
+        var arguments = CliSetupCommandLine.BuildEngineArguments(
+            new CliSetupRequest(null, Force: false, ReplaceExisting: replaceExisting), "d", "l", "Distro", 1);
+
+        Assert.Equal(expectPreserve, arguments.Contains("--preserve-existing"));
+    }
 }
