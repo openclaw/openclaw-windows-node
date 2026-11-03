@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -7463,6 +7463,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>Application de votre préférence de démarrage à la connexion...</value></data>
   <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>Démarrage des services Companion avant la vérification finale de l’IA...</value></data>
   <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>Attente de la récupération du moteur d’IA locale sélectionné...</value></data>
+  <data name="Onboarding_Loading_ResetLocalAi" xml:space="preserve"><value>Suppression de l’ancienne installation d’IA locale avant de réessayer la configuration...</value></data>
   <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>Arrêt sécurisé de l’ancien moteur d’IA locale...</value></data>
   <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>Libération de l’ancienne connexion et du moteur de passerelle...</value></data>
   <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>Vérification de votre IA</value></data>
@@ -8187,4 +8188,10 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Cette question est en cours de résolution. Actualisez pour vérifier son état.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choisissez une réponse valide pour chaque question.</value></data>
+  <data name="LocalAiPage_ResetButton.Content" xml:space="preserve"><value>Réinitialiser l’IA locale</value></data>
+  <data name="LocalAiPage_ResetDialogTitle" xml:space="preserve"><value>Réinitialiser l’IA locale ?</value></data>
+  <data name="LocalAiPage_ResetDialogContent" xml:space="preserve"><value>Cela supprime l’installation d’IA locale gérée et restaure le modèle Gateway précédent. Les caches de téléchargement sont conservés.</value></data>
+  <data name="LocalAiPage_ResetDialogPrimary" xml:space="preserve"><value>Réinitialiser l’IA locale</value></data>
+  <data name="LocalAiPage_ResetDialogCancel" xml:space="preserve"><value>Annuler</value></data>
+  <data name="LocalAiReset_Unavailable" xml:space="preserve"><value>La réinitialisation de l’IA locale n’est pas disponible ici. Ouvrez Paramètres, puis IA locale, pour la réinitialiser.</value></data>
 </root>

@@ -30,6 +30,7 @@ public sealed class ProgramArgumentTests : IDisposable
         "--dry-run",
         "--wizard-only",
         "--uninstall",
+        "--reset-local-ai",
         "--confirm-destructive",
         "--preserve-logs",
         "--tailscale",
@@ -450,6 +451,22 @@ public sealed class ProgramArgumentTests : IDisposable
     }
 
     [Fact]
+    public async Task Main_RejectsLocalAiResetWithoutDestructiveConfirmation()
+    {
+        int exitCode = await Program.Main(["--reset-local-ai"]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_RejectsResetAndUninstallTogether()
+    {
+        int exitCode = await Program.Main(["--reset-local-ai", "--uninstall"]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
     public async Task Main_AcceptsUnembeddedCandidatePackageOnlyForHeadlessRollbackValidation()
     {
         const string version = "2026.8.1";
@@ -505,6 +522,23 @@ public sealed class ProgramArgumentTests : IDisposable
             Program.SerializeJsonOutput(result, config, "journal.jsonl"));
         Assert.True(document.RootElement.TryGetProperty("requiresRestart", out var requiresRestart));
         Assert.True(requiresRestart.GetBoolean());
+    }
+
+    [Fact]
+    public void SerializeJsonOutput_IncludesFailureCode()
+    {
+        var result = new PipelineResult(
+            PipelineOutcome.Failed,
+            "reconcile-local-ai-installation")
+        {
+            FailureCode = PipelineFailureCode.LocalAiReceiptUnusable,
+        };
+        using var document = JsonDocument.Parse(
+            Program.SerializeJsonOutput(result, new SetupConfig(), "journal.jsonl"));
+
+        Assert.Equal(
+            nameof(PipelineFailureCode.LocalAiReceiptUnusable),
+            document.RootElement.GetProperty("failureCode").GetString());
     }
 
     [Fact]

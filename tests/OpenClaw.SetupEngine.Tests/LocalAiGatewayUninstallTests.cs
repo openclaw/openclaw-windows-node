@@ -257,7 +257,10 @@ public sealed class LocalAiGatewayUninstallTests
         string provider = LocalAiGatewayProviderDefinition.BuildProviderJson(install);
         string primary = JsonSerializer.Serialize(
             LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
-        var commands = new GatewayStateCommandRunner(provider, primary) { FailCapture = true };
+        var commands = new GatewayStateCommandRunner(provider, primary)
+        {
+            CaptureFailure = new CommandResult(1, "", "openclaw config get failed", TimeSpan.Zero, TimedOut: false),
+        };
         SetupContext context = CreateContext(temp.Path, commands);
         context.IsUninstalling = true;
 
@@ -268,6 +271,135 @@ public sealed class LocalAiGatewayUninstallTests
         Assert.Equal(primary, commands.PrimaryJson);
         Assert.DoesNotContain(commands.WslCalls, command =>
             command.Contains("LOCAL_AI_GATEWAY_UNSET", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(-1, "There is no distribution with the supplied name.")]
+    [InlineData(-1, "WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED")]
+    [InlineData(1, "Windows Subsystem for Linux is not installed. Visit https://aka.ms/wslinstall")]
+    [InlineData(-1, "Failed to start process 'wsl.exe'")]
+    public async Task Uninstall_TreatsConclusivelyUnavailableWslAsNoRoute(int exitCode, string stderr)
+    {
+        // Native Local AI runs without WSL: a conclusive "no distro" or "WSL unavailable" answer
+        // proves no WSL Gateway holds the managed route, so reset must not fail before deletion.
+        using var temp = new TempDirectory("local-ai-gateway-uninstall-");
+        await SaveManifestAsync(temp.Path);
+        var commands = new GatewayStateCommandRunner(null, null)
+        {
+            CaptureFailure = new CommandResult(exitCode, "", stderr, TimeSpan.Zero, TimedOut: false),
+        };
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.IsUninstalling = true;
+
+        await new ConfigureLocalAiGatewayStep().RollbackAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(commands.WslCalls, command =>
+            command.Contains("LOCAL_AI_GATEWAY_UNSET", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("\"anthropic/claude\"")]
+    [InlineData(null)]
+    public async Task FreshProcessUninstall_PreservesPrimaryNotOwnedByLocalAi(string? primary)
+    {
+        // The receipt records a fallback, but the user moved the primary afterward; cleanup
+        // leaves that choice alone and must verify it, not the fallback it never restored.
+        using var temp = new TempDirectory("local-ai-gateway-uninstall-");
+        LocalAiResolvedInstall install = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        var commands = new GatewayStateCommandRunner(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(install), primary);
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.IsUninstalling = true;
+
+        await new ConfigureLocalAiGatewayStep().RollbackAsync(context, CancellationToken.None);
+
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(primary, commands.PrimaryJson);
+    }
+
+    [Theory]
+    [InlineData(true, "\"openai/gpt-5\"")]
+    [InlineData(false, "\"llamacpp/anything\"")]
+    public async Task Uninstall_UnreadableReceiptWithLocalAiRoute_PreservesAndFailsClosed(
+        bool providerExists, string primary)
+    {
+        using var temp = new TempDirectory("local-ai-gateway-uninstall-");
+        LocalAiResolvedInstall install = await SaveManifestAsync(temp.Path);
+        string? provider = providerExists ? LocalAiGatewayProviderDefinition.BuildProviderJson(install) : null;
+        CorruptReceipt(temp.Path);
+        var commands = new GatewayStateCommandRunner(provider, primary);
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.IsUninstalling = true;
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            new ConfigureLocalAiGatewayStep().RollbackAsync(context, CancellationToken.None));
+
+        Assert.Contains("cannot be proven app-owned", error.Message, StringComparison.Ordinal);
+        Assert.Equal(provider, commands.ProviderJson);
+        Assert.Equal(primary, commands.PrimaryJson);
+        Assert.DoesNotContain(commands.WslCalls, command =>
+            command.Contains("LOCAL_AI_GATEWAY_UNSET", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ResetLocalAi_UnreadableReceiptWithoutRoute_RemovesManagedTree()
+    {
+        using var temp = new TempDirectory("local-ai-reset-");
+        CorruptReceipt(temp.Path);
+        var commands = new GatewayStateCommandRunner(null, "\"openai/gpt-5\"");
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.Config.ConfirmDestructive = true;
+
+        PipelineResult result = await new SetupPipeline(SetupStepFactory.BuildLocalAiResetSteps())
+            .ResetLocalAiAsync(context);
+
+        Assert.Equal(PipelineOutcome.Success, result.Outcome);
+        Assert.False(Directory.Exists(new LocalAiPaths(temp.Path).RootDirectory));
+        Assert.Equal("\"openai/gpt-5\"", commands.PrimaryJson);
+    }
+
+    [Fact]
+    public async Task FreshProcessUninstall_WithdrawsRouteForModelRemovedFromCatalog()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-uninstall-");
+        LocalAiResolvedInstall install = await SaveManifestAsync(temp.Path, "openai/gpt-5", RetiredModelId);
+        var commands = new GatewayStateCommandRunner(
+            RetiredProviderJson(install),
+            JsonSerializer.Serialize("llamacpp/" + RetiredModelId));
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.IsUninstalling = true;
+
+        await new ConfigureLocalAiGatewayStep().RollbackAsync(context, CancellationToken.None);
+
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal("\"openai/gpt-5\"", commands.PrimaryJson);
+    }
+
+    // Catalog ID retired by #1760 (fix(inference): rename Bolt model ID to public 24gb name).
+    private const string RetiredModelId = "nemotron-3.5-bolt-74b-a9b-iq2-lilicorr";
+
+    private static string RetiredProviderJson(LocalAiResolvedInstall retired)
+    {
+        LocalAiResolvedInstall qualified = retired with
+        {
+            Manifest = retired.Manifest with
+            {
+                ModelCatalogId = LocalModelCatalog.Qwen35BModelId,
+                ModelAlias = LocalModelCatalog.Qwen35BModelId,
+            },
+        };
+        var provider = System.Text.Json.Nodes.JsonNode.Parse(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(qualified))!;
+        provider["models"]![0]!["id"] = RetiredModelId;
+        provider["models"]![0]!["name"] = "Nemotron 3.5 Bolt";
+        return provider.ToJsonString();
+    }
+
+    private static void CorruptReceipt(string localDataDirectory)
+    {
+        string manifestPath = new LocalAiPaths(localDataDirectory).ManifestPath;
+        Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
+        File.WriteAllText(manifestPath, "{not json");
     }
 
     [Fact]
@@ -751,7 +883,8 @@ public sealed class LocalAiGatewayUninstallTests
 
     private static async Task<LocalAiResolvedInstall> SaveManifestAsync(
         string localDataDirectory,
-        string? fallbackModel = null)
+        string? fallbackModel = null,
+        string modelCatalogId = LocalModelCatalog.Qwen35BModelId)
     {
         var paths = new LocalAiPaths(localDataDirectory);
         const string revision = "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d";
@@ -761,7 +894,7 @@ public sealed class LocalAiGatewayUninstallTests
             Architecture = "arm64",
             HardwareProfileId = "rtx-spark-n1x",
             RuntimeId = "b10488-cuda13-arm64",
-            ModelCatalogId = LocalModelCatalog.Qwen35BModelId,
+            ModelCatalogId = modelCatalogId,
             SelectedGpuId = "GPU-SPARK",
             ExecutablePath = Path.Combine("engines", "llama-b10488", "llama-server.exe"),
             RuntimeAssets =
@@ -776,7 +909,7 @@ public sealed class LocalAiGatewayUninstallTests
             ],
             ModelPath = Path.Combine("models", "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"),
             ModelId = $"unsloth/Qwen3.6-35B-A3B-MTP-GGUF@{revision}",
-            ModelAlias = LocalModelCatalog.Qwen35BModelId,
+            ModelAlias = modelCatalogId,
             ModelAsset = new LocalAiAssetReceipt
             {
                 FileName = "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
@@ -803,7 +936,7 @@ public sealed class LocalAiGatewayUninstallTests
 
         public string? ProviderJson { get; private set; } = providerJson;
         public string? PrimaryJson { get; private set; } = primaryJson;
-        public bool FailCapture { get; init; }
+        public CommandResult? CaptureFailure { get; init; }
         public bool FailConfiguredBatchOnce { get; set; }
         public bool LoseConfiguredAcknowledgementOnce { get; set; }
         public bool FailRestoreBatchOnce { get; set; }
@@ -922,15 +1055,8 @@ public sealed class LocalAiGatewayUninstallTests
                 ThrowOnNextCapture = false;
                 throw new OperationCanceledException(ct);
             }
-            if (FailCapture)
-            {
-                return Task.FromResult(new CommandResult(
-                    1,
-                    "",
-                    "openclaw config get failed",
-                    TimeSpan.Zero,
-                    TimedOut: false));
-            }
+            if (CaptureFailure is not null)
+                return Task.FromResult(CaptureFailure);
 
             string stdout =
                 ProviderMarker + EncodeOrMissing(ProviderJson) + Environment.NewLine +

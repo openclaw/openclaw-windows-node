@@ -177,6 +177,12 @@
                     Content="Retry with configured fallback"
                     Visibility="Collapsed"
                     Click="FallbackButton_Click" />
+            <Button x:Name="ResetLocalAiButton" Grid.Column="0"
+                    x:Uid="LocalAiPage_ResetButton"
+                    Content="Reset Local AI"
+                    Visibility="Collapsed"
+                    AutomationProperties.AutomationId="SetupCompleteLocalAiReset"
+                    Click="ResetLocalAiButton_Click"/>
             <Button x:Name="RestartLaterButton" Grid.Column="0"
                     Content="No, I'm not ready yet"
                     Visibility="Collapsed"

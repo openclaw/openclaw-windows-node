@@ -775,6 +775,122 @@ public sealed class LocalAiPageViewModelTests
         Assert.Contains("_viewModel?.ChangeModel()", codeBehind);
     }
 
+    [Fact]
+    public async Task UnqualifiedReceiptFailure_OffersResetAndForwardsCommand()
+    {
+        // A receipt the catalog no longer qualifies fails startup before model evidence is verified.
+        using var harness = new LocalAiHarness(UnqualifiedReceiptSnapshot());
+
+        Assert.True(harness.ViewModel.CanResetLocalAi);
+        Assert.True(await harness.ViewModel.ResetLocalAiAsync());
+        Assert.Equal(1, harness.Commands.ResetLocalAiCount);
+    }
+
+    [Fact]
+    public async Task FailedReset_ReportsEngineMessage()
+    {
+        using var harness = new LocalAiHarness(UnqualifiedReceiptSnapshot());
+        harness.Commands.ResetLocalAiResult = new(LocalAiResetOutcome.Failed, "Gateway settings changed after setup.");
+
+        Assert.False(await harness.ViewModel.ResetLocalAiAsync());
+        Assert.Equal("Gateway settings changed after setup.", harness.ViewModel.ActionError);
+    }
+
+    [Fact]
+    public async Task ResetCompletion_NotifiesOnCallerSynchronizationContext()
+    {
+        // LocalAiPage updates WinUI controls from PropertyChanged, so completion must be raised on
+        // the UI context the reset started from, even when the reset finishes on a worker thread.
+        using var harness = new LocalAiHarness(UnqualifiedReceiptSnapshot());
+        var engine = new TaskCompletionSource<LocalAiResetResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Commands.PendingResetLocalAi = engine.Task;
+        var ui = new TrackingSynchronizationContext();
+        SynchronizationContext? completionContext = null;
+        bool wasBusy = false, completed = false;
+        harness.ViewModel.PropertyChanged += (_, _) =>
+        {
+            if (harness.ViewModel.IsBusy)
+            {
+                wasBusy = true;
+            }
+            else if (wasBusy && !completed)
+            {
+                // Only the busy -> idle transition is the reset completion notification.
+                completed = true;
+                completionContext = SynchronizationContext.Current;
+            }
+        };
+
+        Task<bool> reset;
+        SynchronizationContext? previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(ui);
+        try
+        {
+            reset = harness.ViewModel.ResetLocalAiAsync();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+        await Task.Run(() => engine.SetResult(new LocalAiResetResult(LocalAiResetOutcome.Success)));
+
+        Assert.True(await reset);
+        Assert.Same(ui, completionContext);
+    }
+
+    private sealed class TrackingSynchronizationContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                var previous = Current;
+                SetSynchronizationContext(this);
+                try
+                {
+                    callback(state);
+                }
+                finally
+                {
+                    SetSynchronizationContext(previous);
+                }
+            });
+        }
+    }
+
+    [Theory]
+    [InlineData(LocalAiRuntimeState.Healthy)]
+    [InlineData(LocalAiRuntimeState.Conflict)]
+    public void NonFailedRuntime_DoesNotOfferReset(LocalAiRuntimeState state)
+    {
+        using var harness = new LocalAiHarness(LocalAiModelAvailabilityState.Verified, state);
+
+        Assert.False(harness.ViewModel.CanResetLocalAi);
+    }
+
+    // Mirrors LlamaServerRuntimeService.FailStartupAsync when ResolveInstalledPlan rejects the receipt.
+    private static LocalAiRuntimeSnapshot UnqualifiedReceiptSnapshot() =>
+        LocalAiRuntimeSnapshot.Initial(new Uri("http://127.0.0.1:11983"), DateTimeOffset.UtcNow) with
+        {
+            State = LocalAiRuntimeState.Failed,
+            Detail = "The managed llama-server runtime is no longer qualified.",
+        };
+
+    [Fact]
+    public void LocalAiPage_ResetActionIsLocalizedAccessibleAndWired()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string pageDirectory = Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages");
+        string xaml = File.ReadAllText(Path.Combine(pageDirectory, "LocalAiPage.xaml"));
+        string codeBehind = File.ReadAllText(Path.Combine(pageDirectory, "LocalAiPage.xaml.cs"));
+
+        Assert.Contains("x:Uid=\"LocalAiPage_ResetButton\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"LocalAiReset\"", xaml);
+        Assert.Contains("Click=\"OnResetLocalAi\"", xaml);
+        Assert.Contains("DefaultButton = ContentDialogButton.Close", codeBehind);
+        Assert.Contains("_viewModel.ResetLocalAiAsync()", codeBehind);
+    }
+
     private static async Task ActivateAndWaitForAvailabilityAsync(LocalAiPageViewModel viewModel)
     {
         await ActivateAndWaitForAvailabilityResultAsync(viewModel);
@@ -1177,8 +1293,13 @@ public sealed class LocalAiPageViewModelTests
         public LocalAiHarness(
             LocalAiModelAvailabilityState modelState,
             LocalAiRuntimeState runtimeState = LocalAiRuntimeState.Healthy)
+            : this(CreateSnapshot(modelState, runtimeState))
         {
-            _runtime = new FakeLocalAiRuntime(CreateSnapshot(modelState, runtimeState));
+        }
+
+        public LocalAiHarness(LocalAiRuntimeSnapshot snapshot)
+        {
+            _runtime = new FakeLocalAiRuntime(snapshot);
             var gatewayHost = new FakePermissionsPageRuntimeHost();
             _gatewaySource = new PermissionsPageRuntimeSource(gatewayHost);
             Commands = new FakeAppCommands();

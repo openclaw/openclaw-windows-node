@@ -33,15 +33,18 @@ Run from the portable folder:
 
 # Dry-run - records what would happen without any destruction:
 .\OpenClaw.Tray.WinUI.exe --uninstall --dry-run
-```
 
+# Reset only the managed Local AI install, preserving WSL, tray data, LocalAICache, and Hugging Face cache files.
+# Refuses (exit 1) while native Gateway ownership is still recorded; use Settings > Local AI > Reset Local AI then.
+.\OpenClaw.Tray.WinUI.exe --reset-local-ai --confirm-destructive --json-output .\reset-local-ai-result.json
+```
 **Exit codes:**
 
 | Code | Meaning |
 |------|---------|
 | 0 | Success - all steps completed, postconditions satisfied |
 | 1 | Partial failure - one or more steps failed (see JSON output or stderr) |
-| 2 | Bad arguments - `--confirm-destructive` or `--dry-run` missing |
+| 2 | Bad arguments - `--confirm-destructive` or `--dry-run` missing, or `--uninstall` combined with `--reset-local-ai` |
 
 After the CLI command exits 0, delete the portable folder.
 

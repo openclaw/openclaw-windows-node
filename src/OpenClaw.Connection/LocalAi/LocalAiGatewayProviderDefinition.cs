@@ -10,6 +10,7 @@
 //   // batchJson atomically writes ProviderPath and PrimaryModelPath with valid JSON values.
 //   bool matches = LocalAiGatewayProviderDefinition.MatchesProviderJson(cliOutputJson, install);
 using OpenClaw.Shared.Inference.Catalog;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace OpenClaw.Connection.LocalAi;
@@ -101,8 +102,14 @@ public static class LocalAiGatewayProviderDefinition
     public static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey)
     {
         ArgumentNullException.ThrowIfNull(install);
-        _ = LocalAiApiCredentialStore.RequireApiKey(apiKey);
         LocalModelInfo model = GetQualifiedModel(install);
+        return BuildProviderJson(install, apiKey, model.DisplayName, model.SupportsVision);
+    }
+
+    private static string BuildProviderJson(
+        LocalAiResolvedInstall install, string apiKey, string displayName, bool supportsVision)
+    {
+        _ = LocalAiApiCredentialStore.RequireApiKey(apiKey);
         Uri endpoint = install.Endpoint
             ?? throw new InvalidOperationException("The verified Local AI endpoint is required.");
 
@@ -117,9 +124,9 @@ public static class LocalAiGatewayProviderDefinition
                 new
                 {
                     id = install.Manifest.ModelAlias,
-                    name = model.DisplayName,
+                    name = displayName,
                     reasoning = true,
-                    input = model.SupportsVision ? new[] { "text", "image" } : new[] { "text" },
+                    input = supportsVision ? new[] { "text", "image" } : new[] { "text" },
                     cost = new { input = 0, output = 0, cacheRead = 0, cacheWrite = 0 },
                     contextWindow = install.Manifest.ContextLength,
                     contextTokens = install.Manifest.ContextLength,
@@ -137,6 +144,78 @@ public static class LocalAiGatewayProviderDefinition
         ArgumentNullException.ThrowIfNull(install);
         _ = GetQualifiedModel(install);
         return $"llamacpp/{install.Manifest.ModelAlias}";
+    }
+
+    /// <summary>
+    /// Primary-model reference this receipt published, for proving and withdrawing an existing
+    /// route only. Unlike <see cref="BuildPrimaryModel"/>, a model that has left the catalog still
+    /// resolves. Never publish with it.
+    /// </summary>
+    public static string BuildOwnedPrimaryModel(LocalAiResolvedInstall install)
+    {
+        ArgumentNullException.ThrowIfNull(install);
+        return IsRetired(install) ? $"llamacpp/{install.Manifest.ModelAlias}" : BuildPrimaryModel(install);
+    }
+
+    /// <summary>
+    /// Ownership proof for withdrawing an existing route only; never publish with it. Qualified
+    /// models use <see cref="MatchesProviderJson"/> unchanged. For a model that has left the
+    /// catalog, every receipt-derived field must still match exactly; only the catalog-derived
+    /// <c>models[0].name</c> and <c>models[0].input</c> are read from the observed provider.
+    /// </summary>
+    public static bool MatchesOwnedProviderJson(string providerJson, LocalAiResolvedInstall install, string? apiKey = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(providerJson);
+        ArgumentNullException.ThrowIfNull(install);
+        if (!IsRetired(install))
+            return MatchesProviderJson(providerJson, install, apiKey);
+
+        try
+        {
+            using JsonDocument actual = JsonDocument.Parse(providerJson);
+            if (!TryReadRetiredPresentation(actual.RootElement, out string? displayName, out bool supportsVision))
+                return false;
+            using JsonDocument expected = JsonDocument.Parse(
+                BuildProviderJson(install, apiKey ?? "llama-local", displayName, supportsVision));
+            if (JsonEquals(actual.RootElement, expected.RootElement))
+                return true;
+
+            using JsonDocument redacted = JsonDocument.Parse(
+                BuildProviderJson(install, CliRedactedApiKey, displayName, supportsVision));
+            return JsonEquals(actual.RootElement, redacted.RootElement);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    // A catalog-found model with a mismatched alias is not retired: it keeps the strict path.
+    private static bool IsRetired(LocalAiResolvedInstall install) =>
+        LocalModelCatalog.FindInstalled(install.Manifest.ModelCatalogId, install.Manifest.ModelAsset.SourceUrl) is null;
+
+    private static bool TryReadRetiredPresentation(
+        JsonElement provider, [NotNullWhen(true)] out string? displayName, out bool supportsVision)
+    {
+        displayName = null;
+        supportsVision = false;
+        if (provider.ValueKind != JsonValueKind.Object ||
+            !provider.TryGetProperty("models", out JsonElement models) ||
+            models.ValueKind != JsonValueKind.Array || models.GetArrayLength() != 1)
+            return false;
+        JsonElement model = models[0];
+        if (model.ValueKind != JsonValueKind.Object ||
+            !model.TryGetProperty("name", out JsonElement name) || name.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(name.GetString()) ||
+            !model.TryGetProperty("input", out JsonElement input) || input.ValueKind != JsonValueKind.Array)
+            return false;
+        string?[] modalities = [.. input.EnumerateArray()
+            .Select(element => element.ValueKind == JsonValueKind.String ? element.GetString() : null)];
+        supportsVision = modalities is ["text", "image"];
+        if (!supportsVision && modalities is not ["text"])
+            return false;
+        displayName = name.GetString()!;
+        return true;
     }
 
     private static LocalModelInfo GetQualifiedModel(LocalAiResolvedInstall install)

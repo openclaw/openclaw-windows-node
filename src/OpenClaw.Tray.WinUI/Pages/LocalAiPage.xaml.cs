@@ -138,6 +138,8 @@ public sealed partial class LocalAiPage : Page
         RetrySetupButton.Visibility = _viewModel.CanRetrySetup ? Visibility.Visible : Visibility.Collapsed;
         ChangeModelButton.IsEnabled = _viewModel.CanChangeModel;
         ChangeModelPanel.Visibility = _viewModel.HasInstalledModel ? Visibility.Visible : Visibility.Collapsed;
+        ResetLocalAiButton.Visibility = _viewModel.CanResetLocalAi ? Visibility.Visible : Visibility.Collapsed;
+        ResetLocalAiButton.IsEnabled = _viewModel.CanResetLocalAi;
         RepairConnectionButton.IsEnabled = _viewModel.CanRepairConnection;
         OpenChatButton.IsEnabled = _viewModel.CanOpenChat;
     }
@@ -149,6 +151,24 @@ public sealed partial class LocalAiPage : Page
     private void OnOpenLogs(object sender, RoutedEventArgs e) => _viewModel?.OpenLogs();
     private void OnRetrySetup(object sender, RoutedEventArgs e) => _viewModel?.RetrySetup();
     private void OnChangeModel(object sender, RoutedEventArgs e) => _viewModel?.ChangeModel();
+    private void OnResetLocalAi(object sender, RoutedEventArgs e) =>
+        RunAction(ConfirmAndResetLocalAiAsync, nameof(OnResetLocalAi));
+
+    private async Task<bool> ConfirmAndResetLocalAiAsync()
+    {
+        if (_viewModel?.CanResetLocalAi != true) return false;
+        var dialog = new ContentDialog
+        {
+            Title = LocalizationHelper.GetString("LocalAiPage_ResetDialogTitle"),
+            Content = LocalizationHelper.GetString("LocalAiPage_ResetDialogContent"),
+            PrimaryButtonText = LocalizationHelper.GetString("LocalAiPage_ResetDialogPrimary"),
+            CloseButtonText = LocalizationHelper.GetString("LocalAiPage_ResetDialogCancel"),
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary &&
+            await _viewModel.ResetLocalAiAsync();
+    }
     private void OnRepairConnection(object sender, RoutedEventArgs e) => _viewModel?.RepairConnection();
     private void OnOpenChat(object sender, RoutedEventArgs e) => _viewModel?.OpenChat();
     private void LocalAiRecheckAvailability_Click(object sender, RoutedEventArgs e) => _viewModel?.RecheckAvailability();

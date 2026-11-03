@@ -10,7 +10,7 @@ public enum SetupLoadingStep
     ApplyCapabilities, CheckConfiguration, RestartGateway, CheckHealth, VerifyModel,
     ReconcileLocalAi, PublishGateway, SaveSettings, ApplyStartup, Drain,
     RestartCompanion, StartCompanion, RecoverLocalAi, ReconnectGateway, StopLocalAi,
-    StopGateway, OpenDestination
+    ResetLocalAi, StopGateway, OpenDestination
 }
 
 public sealed record SetupLoadingSnapshot(long Generation, SetupLoadingGroup Group, SetupLoadingStep Step,

@@ -54,6 +54,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private ILocalAiRuntime? _localAiRuntime;
     private LocalAiGatewayLifecycle? _localAiGatewayLifecycle;
     private KokoroVoicePackPrefetcher? _kokoroPrefetcher;
+    private LocalAiResetService? _localAiResetService;
 
     /// <summary>
     /// Root DI composition root, built once during startup and disposed during
@@ -527,13 +528,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _postSetupLaunch = GetArgValue(_startupArgs, "--post-setup-launch");
 
         // -----------------------------------------------------------------------
-        // CLI uninstall path — headless; never shows tray or any windows.
+        // CLI uninstall / Local AI reset path — headless; never shows tray or any windows.
         // Approach: detect in OnLaunched before any UI is created (WinUI3 Main
         // is auto-generated; earliest interception point is OnLaunched).
         // Bypasses the single-instance mutex so the Inno uninstaller can invoke
         // this even while the tray is running.
         // -----------------------------------------------------------------------
-        if (_startupArgs.Contains("--uninstall", StringComparer.OrdinalIgnoreCase))
+        if (DestructiveCliOperation.IsRequested(_startupArgs))
         {
             await CliUninstallHandler.RunAsync(_startupArgs);
             return; // Environment.Exit called inside; defensive return
@@ -721,7 +722,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     _autoStartMutationGate, enabled,
                     () => _settings?.AutoStart ?? throw new InvalidOperationException("Settings are unavailable."),
                     AutoStartManager.ApplySetupPreferenceAsync, ct),
-                GetSettingsStore: () => SettingsStore));
+                GetSettingsStore: () => SettingsStore,
+                ResetLocalAi: ct => _localAiResetService?.ResetAsync(ct) ??
+                    Task.FromResult(new LocalAiResetResult(LocalAiResetOutcome.Failed, "Local AI reset is not available."))));
         _updateCoordinator = new UpdateCoordinator(
             _appState,
             _settings,
@@ -829,6 +832,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 GetRecoveryPort = _localAiGatewayLifecycle.GetRecoveryPort,
             },
             localAiLogger);
+
+        _localAiResetService = new LocalAiResetService(_localAiRuntime);
 
         // Build the DI composition root AFTER the tray is up, so additive plumbing
         // can never delay or preempt tray initialization. It only needs the
@@ -4061,6 +4066,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     void IAppCommands.ShowOnboarding() => _ = ShowOnboardingAsync();
     void IAppCommands.ShowLocalAiSetup() => _ = _windowManager?.ShowLocalAiSetupAsync();
     void IAppCommands.ShowLocalAiModelSetup() => _ = _windowManager?.ShowLocalAiModelSetupAsync();
+    async Task<LocalAiResetResult> IAppCommands.ResetLocalAiAsync(CancellationToken cancellationToken)
+    {
+        if (_localAiResetService is null)
+            return new(LocalAiResetOutcome.Failed, "Local AI reset is not available.");
+        LocalAiResetResult result = await _localAiResetService.ResetAsync(cancellationToken);
+        if (result.Succeeded && _windowManager is not null)
+            await _windowManager.ShowLocalAiSetupAsync();
+        return result;
+    }
     void IAppCommands.OpenLocalAiLogs() =>
         OpenFolder(new LocalAiPaths(AppIdentity.ResolveSetupLocalDataDirectory()).LogsDirectory, "Local AI logs");
     void IAppCommands.ShowGatewayWizard() => _ = ShowGatewayWizardAsync();

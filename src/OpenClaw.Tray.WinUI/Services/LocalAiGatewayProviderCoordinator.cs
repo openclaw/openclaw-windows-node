@@ -61,16 +61,12 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         string managedPrimary;
         try
         {
-            managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+            managedPrimary = LocalAiGatewayProviderDefinition.BuildOwnedPrimaryModel(install);
             LocalAiGatewayProviderDefinition.ValidateFallbackModel(
                 install.Manifest.GatewayFallbackModel);
-            if (current.ProviderExists)
+            if (current.ProviderExists && !MatchesOwnedProvider(current.ProviderJson!, install))
             {
-                _ = BuildProvider(install);
-                if (!MatchesProvider(current.ProviderJson!, install))
-                {
-                    return Failed("The llamacpp provider was changed outside the companion; preserving it and refusing to cycle the managed endpoint.");
-                }
+                return Failed("The llamacpp provider was changed outside the companion; preserving it and refusing to cycle the managed endpoint.");
             }
         }
         catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
@@ -174,8 +170,15 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
 
         GatewayCapture current = await CaptureGatewayAsync(cancellationToken).ConfigureAwait(false);
         LocalAiEndpointLifecycleResult admission = CheckPublication(current, install);
-        if (!admission.Success || current.ProviderExists)
+        if (!admission.Success)
             return admission;
+        if (current.ProviderExists)
+        {
+            // Saved is not adopted: an earlier publication can persist the route and then fail its restart.
+            return _atomicConfiguration is not null
+                ? admission
+                : await RestartAndVerifyPublishedAsync(install, cancellationToken).ConfigureAwait(false);
+        }
 
         if (_atomicConfiguration is not null)
         {
@@ -216,9 +219,15 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                 cleanup);
         }
 
+        return await RestartAndVerifyPublishedAsync(install, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<LocalAiEndpointLifecycleResult> RestartAndVerifyPublishedAsync(
+        LocalAiResolvedInstall install, CancellationToken cancellationToken)
+    {
         // WSL config writes persist the route before the running Gateway adopts it.
         // Keep the runtime in Starting until the original Gateway has restarted.
-        var restarted = await _configuration.RunAsync(["gateway", "restart"], cancellationToken).ConfigureAwait(false);
+        var restarted = await _configuration!.RunAsync(["gateway", "restart"], cancellationToken).ConfigureAwait(false);
         if (!restarted.Routed || !restarted.Result!.Success)
         {
             _logger.Warn($"Managed Local AI Gateway restart failed (routed={restarted.Routed}, " +
@@ -417,6 +426,9 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
 
     private bool MatchesProvider(string json, LocalAiResolvedInstall install) =>
         LocalAiGatewayProviderDefinition.MatchesProviderJson(json, install, _getApiKey?.Invoke());
+
+    private bool MatchesOwnedProvider(string json, LocalAiResolvedInstall install) =>
+        LocalAiGatewayProviderDefinition.MatchesOwnedProviderJson(json, install, _getApiKey?.Invoke());
 
     private async Task<GatewayCapture> CaptureAtomicAsync(CancellationToken ct)
     {
