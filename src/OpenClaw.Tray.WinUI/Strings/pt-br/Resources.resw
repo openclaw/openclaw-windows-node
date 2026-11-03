@@ -7515,6 +7515,7 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>Aplicando sua preferência de início ao entrar...</value></data>
   <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>Iniciando os serviços do Companion antes da verificação final de IA...</value></data>
   <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>Aguardando a recuperação do runtime de IA local selecionado...</value></data>
+  <data name="Onboarding_Loading_ResetLocalAi" xml:space="preserve"><value>Removendo a instalação antiga de IA local antes de tentar a configuração novamente...</value></data>
   <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>Parando com segurança o runtime de IA local anterior...</value></data>
   <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>Liberando a conexão e o runtime anteriores do gateway...</value></data>
   <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>Verificando sua IA</value></data>

@@ -7463,6 +7463,7 @@
   <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>正在应用登录时启动的偏好设置...</value></data>
   <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>正在启动 Companion 服务，然后进行最终 AI 检查...</value></data>
   <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>正在等待所选本地 AI 运行时恢复...</value></data>
+  <data name="Onboarding_Loading_ResetLocalAi" xml:space="preserve"><value>正在移除旧的本地 AI 安装，然后重试设置...</value></data>
   <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>正在安全停止旧的本地 AI 运行时...</value></data>
   <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>正在释放旧的网关连接和运行时...</value></data>
   <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>正在检查 AI</value></data>

@@ -1057,28 +1057,55 @@ public sealed partial class SetupWindow : Window
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
             return new(Confirmed: false, Error: null);
-        // The reset engine is its own setup run and refuses while this window holds the run
-        // lock, so the window yields the lock until the reset settles, then takes it back.
+        return await ResetLocalAiAsync(_lifetimeCts.Token);
+    }
+
+    /// <summary>
+    /// Runs the tray-owned Local AI reset without an interaction dialog. The installer's
+    /// automatic recovery (ProgressPage) calls this when the pipeline reports an unusable
+    /// receipt; the confirmed button flows above call it after their dialog. The reset engine
+    /// is its own setup run and refuses while this window holds the run lock, so the window
+    /// yields the lock until the reset settles, then takes it back.
+    /// </summary>
+    internal async Task<LocalAiResetPrompt> ResetLocalAiAsync(CancellationToken ct)
+    {
+        if (_localAiHost is null)
+            return new(Confirmed: false, SetupLocalization.GetString("LocalAiReset_Unavailable"));
         bool yieldedLock = _setupLock is not null;
         _setupLock?.Dispose();
         _setupLock = null;
-        string? error;
-        try { error = await _localAiHost.ResetLocalAiAsync(_lifetimeCts.Token); }
+        string? error = null;
+        try
+        {
+            // Closing the window cancels the reset too: the tray kills and drains the engine
+            // child before reporting, so no destructive work continues after this window dies.
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCts.Token);
+            error = await _localAiHost.ResetLocalAiAsync(lifetime.Token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            error = ex.Message;
+        }
         finally
         {
-            if (yieldedLock)
-                ReclaimSetupLock();
+            if (yieldedLock && !ReclaimSetupLock(out var lockError))
+                error ??= lockError;
         }
         return new(Confirmed: true, error);
     }
 
-    private void ReclaimSetupLock()
+    private bool ReclaimSetupLock(out string? lockMessage)
     {
         if (_isClosed)
-            return;
-        if (!SetupRunLock.TryAcquire(_dataDir, out _setupLock, out var lockMessage))
-            NavigateTo(typeof(CompletePage), new CompletePageArgs(false, TimeSpan.Zero, null,
-                lockMessage ?? "Another setup run is active."));
+        {
+            lockMessage = null;
+            return false;
+        }
+        if (SetupRunLock.TryAcquire(_dataDir, out _setupLock, out lockMessage))
+            return true;
+        NavigateTo(typeof(CompletePage), new CompletePageArgs(false, TimeSpan.Zero, null,
+            lockMessage ?? "Another setup run is active."));
+        return false;
     }
 
     /// <summary>Reruns the same setup configuration after a reset removed the unusable receipt.</summary>

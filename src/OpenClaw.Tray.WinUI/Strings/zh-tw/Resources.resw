@@ -7463,6 +7463,7 @@
   <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>正在套用登入時啟動的偏好設定...</value></data>
   <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>正在啟動 Companion 服務，然後進行最終 AI 檢查...</value></data>
   <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>正在等待所選本機 AI 執行階段復原...</value></data>
+  <data name="Onboarding_Loading_ResetLocalAi" xml:space="preserve"><value>正在移除舊的本機 AI 安裝，然後重試設定...</value></data>
   <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>正在安全停止舊的本機 AI 執行階段...</value></data>
   <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>正在釋放舊的閘道連線和執行階段...</value></data>
   <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>正在檢查 AI</value></data>

@@ -143,77 +143,109 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             var journalPath = Path.ChangeExtension(config.LogPath, ".journal.jsonl");
             using var journal = new TransactionJournal(journalPath);
             var commands = new CommandRunner(_logger);
-            var ctx = new SetupContext(
-                config,
-                _logger,
-                journal,
-                commands,
-                cts.Token,
-                _dataDir,
-                _localDataDir);
-            ctx.ExternalAuthorizationPresenter = new ProgressAuthorizationPresenter(DispatcherQueue, ShowTailscaleAuthorization);
-            ctx.DetailProgress = new DirectProgress<SetupDetailProgressEvent>(OnDetailProgress);
-
-            var steps = BuildSteps(config, _localAiRecoveryOnly);
             var setupOwner = _window;
-            ctx.ExpectedGatewayRegistry = config.NativeLocalAiAcquisition ? null : setupOwner?.BeginGatewaySetup();
-            ctx.PersistTraySettings = _window is { } settingsOwner ? settingsOwner.PersistPipelineSettings : null;
-            _pipeline = new SetupPipeline(steps);
-            _pipeline.StepProgress += OnStepProgress;
 
-            var pipeline = _pipeline;
-            var result = await SetupPipeline.RunWithSettlementAsync(
-                () => Task.Run(() => pipeline.RunAsync(ctx), cts.Token),
-                outcome => config.NativeLocalAiAcquisition ? Task.CompletedTask : setupOwner?.SettleGatewaySetupAsync(ctx.ExpectedGatewayRegistry,
-                    outcome?.Outcome == PipelineOutcome.Success ? config.LocalAiRecoveryGatewayId ?? ctx.GatewayRecordId : null)
-                    ?? Task.CompletedTask);
-            sw.Stop();
-            _pipelineFinished = true;
-            if (_closed || _window?.IsClosed == true)
-                return;
+            // The installer resets an unusable Local AI receipt automatically (installer-level
+            // recovery instead of a button click), then reruns the same pipeline. One attempt
+            // only: a reset that cannot complete falls back to the manual CompletePage action.
+            var autoResetAttempted = false;
+            while (true)
+            {
+                var ctx = new SetupContext(
+                    config,
+                    _logger,
+                    journal,
+                    commands,
+                    cts.Token,
+                    _dataDir,
+                    _localDataDir);
+                ctx.ExternalAuthorizationPresenter = new ProgressAuthorizationPresenter(DispatcherQueue, ShowTailscaleAuthorization);
+                ctx.DetailProgress = new DirectProgress<SetupDetailProgressEvent>(OnDetailProgress);
 
-            var success = result.Outcome == PipelineOutcome.Success;
-            ProgressMascot.Mood = success ? OnboardingMascotMood.Happy : OnboardingMascotMood.Sad;
-            if (success)
-            {
-                var gatewayId = config.LocalAiRecoveryGatewayId ?? ctx.GatewayRecordId;
-                if (config.LocalAi.Enabled && !config.NativeLocalAiAcquisition)
+                var steps = BuildSteps(config, _localAiRecoveryOnly);
+                ctx.ExpectedGatewayRegistry = config.NativeLocalAiAcquisition ? null : setupOwner?.BeginGatewaySetup();
+                ctx.PersistTraySettings = _window is { } settingsOwner ? settingsOwner.PersistPipelineSettings : null;
+                _pipeline = new SetupPipeline(steps);
+                _pipeline.StepProgress += OnStepProgress;
+
+                var pipeline = _pipeline;
+                var result = await SetupPipeline.RunWithSettlementAsync(
+                    () => Task.Run(() => pipeline.RunAsync(ctx), cts.Token),
+                    outcome => config.NativeLocalAiAcquisition ? Task.CompletedTask : setupOwner?.SettleGatewaySetupAsync(ctx.ExpectedGatewayRegistry,
+                        outcome?.Outcome == PipelineOutcome.Success ? config.LocalAiRecoveryGatewayId ?? ctx.GatewayRecordId : null)
+                        ?? Task.CompletedTask);
+                _pipelineFinished = true;
+                if (_closed || _window?.IsClosed == true)
+                    return;
+
+                var success = result.Outcome == PipelineOutcome.Success;
+                ProgressMascot.Mood = success ? OnboardingMascotMood.Happy : OnboardingMascotMood.Sad;
+                if (success)
                 {
-                    var modelRef = ctx.ResolvedLocalAiModelRef ??
-                        throw new InvalidOperationException("The completed Local AI install did not provide its configured model.");
-                    _window?.SetExpectedConfiguredModelRef(modelRef,
-                        gatewayId ?? throw new InvalidOperationException("The completed Local AI install did not provide its Gateway."));
+                    var gatewayId = config.LocalAiRecoveryGatewayId ?? ctx.GatewayRecordId;
+                    if (config.LocalAi.Enabled && !config.NativeLocalAiAcquisition)
+                    {
+                        var modelRef = ctx.ResolvedLocalAiModelRef ??
+                            throw new InvalidOperationException("The completed Local AI install did not provide its configured model.");
+                        _window?.SetExpectedConfiguredModelRef(modelRef,
+                            gatewayId ?? throw new InvalidOperationException("The completed Local AI install did not provide its Gateway."));
+                    }
+                    if (config.NativeLocalAiAcquisition)
+                    {
+                        if (_window is not { } owner)
+                            throw new InvalidOperationException(SetupLocalization.GetString("Onboarding_Flow_CompletionUnavailable"));
+                        owner.ContinueInstalledNativeLocalAi();
+                    }
+                    else if (OnboardingFlowPolicy.RequiresAiSetup(config))
+                    {
+                        if (_window?.TryNavigateToWizard() != true)
+                            throw new InvalidOperationException(SetupLocalization.GetString("Onboarding_Flow_AiNavigationFailed"));
+                    }
+                    else
+                    {
+                        if (_window is not { } setupWindow)
+                            throw new InvalidOperationException(SetupLocalization.GetString("Onboarding_Flow_CompletionUnavailable"));
+                        await setupWindow.CompleteSetupAsync();
+                    }
+                    return;
                 }
-                if (config.NativeLocalAiAcquisition)
-                {
-                    if (_window is not { } owner)
-                        throw new InvalidOperationException(SetupLocalization.GetString("Onboarding_Flow_CompletionUnavailable"));
-                    owner.ContinueInstalledNativeLocalAi();
-                }
-                else if (OnboardingFlowPolicy.RequiresAiSetup(config))
-                {
-                    if (_window?.TryNavigateToWizard() != true)
-                        throw new InvalidOperationException(SetupLocalization.GetString("Onboarding_Flow_AiNavigationFailed"));
-                }
-                else
-                {
-                    if (_window is not { } setupWindow)
-                        throw new InvalidOperationException(SetupLocalization.GetString("Onboarding_Flow_CompletionUnavailable"));
-                    await setupWindow.CompleteSetupAsync();
-                }
-            }
-            else
-            {
+
                 if (result.Outcome == PipelineOutcome.Cancelled)
                 {
                     _installationProgress?.Cancel();
                     RenderInstallationOverview();
+                    _window?.NavigateToComplete(false, sw.Elapsed, config.LogPath, "Setup was cancelled.");
+                    return;
                 }
-                var errorMsg = result.Outcome == PipelineOutcome.Cancelled
-                    ? "Setup was cancelled."
-                    : result.FailedStepId != null
-                        ? $"Step '{result.FailedStepId}' failed: {result.Message}"
-                        : result.Message;
+
+                var errorMsg = result.FailedStepId != null
+                    ? $"Step '{result.FailedStepId}' failed: {result.Message}"
+                    : result.Message;
+
+                if (result.FailureCode == PipelineFailureCode.LocalAiReceiptUnusable &&
+                    !autoResetAttempted && setupOwner is { } resetOwner)
+                {
+                    autoResetAttempted = true;
+                    _logger.Info("The existing Local AI installation could not be reused. Removing it automatically before retrying setup.");
+                    SubtitleText.Text = SetupLocalization.GetString("Onboarding_Loading_ResetLocalAi");
+                    ProgressMascot.Mood = OnboardingMascotMood.Working;
+                    _loading?.Report(SetupLoadingStep.ResetLocalAi);
+                    var prompt = await resetOwner.ResetLocalAiAsync(cts.Token);
+                    SubtitleText.Text = SetupLocalization.GetString("Onboarding_V4_InstallationSubtitle");
+                    if (_closed || _window?.IsClosed == true)
+                        return;
+                    if (prompt.Removed)
+                    {
+                        // Fresh presentation for the retry; the same pipeline runs again.
+                        _installationProgress = new(BuildSteps(config, _localAiRecoveryOnly), _localAiRecoveryOnly);
+                        _pipelineFinished = false;
+                        RenderInstallationOverview();
+                        continue;
+                    }
+                    if (!string.IsNullOrWhiteSpace(prompt.Error))
+                        errorMsg = $"{errorMsg} {prompt.Error}";
+                }
+
                 _window?.NavigateToComplete(
                     false,
                     sw.Elapsed,
@@ -223,6 +255,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
                     result.Detail,
                     result.FailureCode,
                     restartRequired: result.RequiresRestart);
+                return;
             }
         }
         catch (SetupPipelineSettlementException ex)

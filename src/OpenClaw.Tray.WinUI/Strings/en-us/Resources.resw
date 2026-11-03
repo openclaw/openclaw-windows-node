@@ -7532,6 +7532,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>Applying your sign-in startup preference...</value></data>
   <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>Starting Companion services before the final AI check...</value></data>
   <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>Waiting for the selected Local AI runtime to recover...</value></data>
+  <data name="Onboarding_Loading_ResetLocalAi" xml:space="preserve"><value>Removing the old Local AI installation before retrying setup...</value></data>
   <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>Safely stopping the old Local AI runtime...</value></data>
   <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>Releasing the old Gateway connection and runtime...</value></data>
   <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>Checking your AI</value></data>

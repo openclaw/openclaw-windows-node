@@ -7463,6 +7463,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>Application de votre préférence de démarrage à la connexion...</value></data>
   <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>Démarrage des services Companion avant la vérification finale de l’IA...</value></data>
   <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>Attente de la récupération du moteur d’IA locale sélectionné...</value></data>
+  <data name="Onboarding_Loading_ResetLocalAi" xml:space="preserve"><value>Suppression de l’ancienne installation d’IA locale avant de réessayer la configuration...</value></data>
   <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>Arrêt sécurisé de l’ancien moteur d’IA locale...</value></data>
   <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>Libération de l’ancienne connexion et du moteur de passerelle...</value></data>
   <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>Vérification de votre IA</value></data>
