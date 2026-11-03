@@ -74,7 +74,9 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("annotatedScrollBarRef,", timeline);
         Assert.Contains("rows.Count - 1", timeline);
         Assert.Contains("rows.Count,", timeline);
-        Assert.Contains("initialTailRequestKey", timeline);
+        // Concrete caller guard: the mounted renderer uses the executable identity
+        // projection above, not an independently interpolated navigation key.
+        Assert.Contains("TailNavigationIdentity.Create(", timeline);
         Assert.Contains("var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null", timeline);
         Assert.DoesNotContain("ItemsRepeater(", timeline);
         Assert.DoesNotContain("ScrollView(", timeline);
@@ -95,18 +97,22 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain(".Current", binding);
     }
 
-    [Fact]
-    public void HistoryRefreshDoesNotIssueAnExplicitTailRequestForTheSameConversation()
+    [Theory]
+    [InlineData("same", 7, 10, 5, false, false)]
+    [InlineData("same", 7, 11, 5, true, false)]
+    [InlineData("other", 7, 10, 5, true, true)]
+    [InlineData("same", 8, 10, 5, true, true)]
+    [InlineData("same", 7, 10, 6, true, true)]
+    public void HistoryAndNavigationIdentityProtectReaderIntent(string session, long generation,
+        long historyRevision, long scrollToken, bool schedulesPositioning, bool navigatesReader)
     {
-        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs"));
-        var start = source.IndexOf("var explicitTailRequestKey =", StringComparison.Ordinal);
-        var end = source.IndexOf("var displayedTailKey", start, StringComparison.Ordinal);
-        var identity = source[start..end];
-        Assert.Contains("props.Timeline.SessionId", identity);
-        Assert.Contains("props.Timeline.TimelineGeneration", identity);
-        Assert.Contains("props.Timeline.ScrollToBottomToken", identity);
-        Assert.DoesNotContain("props.HistoryRevision", identity);
+        var before = TailNavigationIdentity.Create("same", 7, 10, 5);
+        var after = TailNavigationIdentity.Create(session, generation, historyRevision, scrollToken);
+        Assert.Equal(schedulesPositioning, before.RequestKey != after.RequestKey);
+        Assert.Equal(navigatesReader, before.ExplicitRequestKey != after.ExplicitRequestKey);
+        Assert.Equal(navigatesReader, TailNavigationPolicy.ShouldNavigate(
+            explicitNavigation: before.ExplicitRequestKey != after.ExplicitRequestKey,
+            following: false, initialPending: false, hadValidTail: true));
     }
 
     [Fact]

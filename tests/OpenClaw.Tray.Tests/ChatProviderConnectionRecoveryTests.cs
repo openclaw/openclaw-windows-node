@@ -58,15 +58,32 @@ public sealed partial class ChatProviderConnectionSecurityTests
         var retained = h.Lifetime.Provider!;
         using var timeout = new EnvironmentScope("OPENCLAW_CHAT_RECOVERY_TIMEOUT_MS", "150");
         h.Server.HoldUserProfiles();
+        var first = h.Server.Requests.Count;
+        h.Lifetime.SetClient(null);
+        h.Lifetime.SetClient(h.Client);
+        var expired = await h.WaitForAuthorityRequestAsync("users.self", first);
+        await h.PumpUntilAsync(() => h.Lifetime.VerificationState == ChatVerificationState.Failed);
+        h.Server.ReleaseUserProfiles();
+        await h.JoinResponseAsync(expired);
+        Assert.Equal(ChatVerificationState.Failed, h.Lifetime.VerificationState);
+        timeout.Set("OPENCLAW_CHAT_RECOVERY_TIMEOUT_MS", null);
+
+        var captured = h.Server.HoldNextSessionList();
         var held = true;
+        var reusedAfterInvalidation = false;
         try
         {
-            h.Lifetime.SetClient(null);
-            h.Lifetime.SetClient(h.Client);
-            await h.PumpUntilAsync(() => h.Lifetime.VerificationState == ChatVerificationState.Failed);
-            timeout.Set("OPENCLAW_CHAT_RECOVERY_TIMEOUT_MS", null);
+            var retryStart = h.Server.Requests.Count;
             Assert.True(h.Lifetime.RetryVerification());
             Assert.False(h.Lifetime.RetryVerification());
+            await captured.WaitAsync(Deadline);
+            var retryRoster = await h.WaitForAuthorityRequestAsync("sessions.list", retryStart);
+            await h.ReleaseAndQueueVerificationCommitAsync(retryRoster, h.Server.ReleaseSessionList);
+            held = false;
+            h.Lifetime.Changed += (_, _) =>
+            {
+                if (h.IsBound && ReferenceEquals(retained, h.Lifetime.Provider)) reusedAfterInvalidation = true;
+            };
             switch (boundary)
             {
                 case "disconnect": h.Lifetime.SetClient(null); break;
@@ -75,19 +92,14 @@ public sealed partial class ChatProviderConnectionSecurityTests
                     h.Registry.SetActive("other");
                     Assert.False(h.Lifetime.RetryVerification());
                     break;
-                case "profile":
-                    h.Server.SetUserProfile("fixture-retry-new-profile");
-                    await h.Server.NotifyProfileIdentityChangedAsync();
-                    await h.PumpUntilAsync(() => h.Lifetime.Provider is null);
-                    break;
+                case "profile": await h.ChangeProfileAsync("fixture-retry-new-profile"); break;
                 case "auth": h.Lifetime.ObserveConnection(new GatewayConnectionSnapshot { GatewayId = h.Record.Id, OperatorErrorKind = GatewayErrorKind.Auth }); break;
                 case "dispose": h.Lifetime.Dispose(); break;
             }
+            // The released exact retry response and its final owner continuation
+            // are joined above. Dispatch that known commit only after invalidation.
             h.Drain();
-            h.Server.ReleaseUserProfiles();
-            held = false;
-            await h.Client.SendWizardRequestAsync("health", new { }).WaitAsync(Deadline);
-            h.Drain();
+            Assert.False(reusedAfterInvalidation);
             if (boundary == "profile")
             {
                 await h.PumpUntilAsync(() => h.IsBound);
@@ -100,7 +112,7 @@ public sealed partial class ChatProviderConnectionSecurityTests
             }
             Assert.DoesNotContain(h.Server.Requests, request => request.Method == "chat.send");
         }
-        finally { if (held) h.Server.ReleaseUserProfiles(); }
+        finally { if (held) h.Server.ReleaseSessionList(); }
     }
 
     [Fact]
@@ -129,6 +141,24 @@ public sealed partial class ChatProviderConnectionSecurityTests
             Assert.NotSame(retained, h.Lifetime.Provider);
         }
         finally { if (held) h.Server.ReleaseSessionList(); }
+    }
+
+    [Fact]
+    public async Task MalformedAuthoritativeRosterCannotReactivateOrMountFreshChat()
+    {
+        await using var h = await Harness.StartAsync();
+        var retained = h.Lifetime.Provider!;
+        h.Server.SetSessionListing(JsonSerializer.Deserialize<JsonElement>(
+            "{\"sessions\":[{\"key\":\"agent:research:fixture-other\",\"sessionId\":\"00000000-0000-4000-8000-000000000003\"},{}]}"));
+        h.Lifetime.SetClient(null);
+        var first = h.Server.Requests.Count;
+        h.Lifetime.SetClient(h.Client);
+        await h.WaitForAuthorityRequestAsync("sessions.list", first);
+        await h.PumpUntilAsync(() => h.IsBound || h.Lifetime.VerificationState == ChatVerificationState.Failed);
+        Assert.Equal(ChatVerificationState.Failed, h.Lifetime.VerificationState);
+        Assert.Null(h.Lifetime.Provider);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => retained.LoadAsync());
+        Assert.DoesNotContain(h.Server.Requests, request => request.Method == "chat.send");
     }
 
     [Fact]

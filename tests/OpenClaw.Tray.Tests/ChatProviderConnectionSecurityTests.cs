@@ -17,7 +17,6 @@ namespace OpenClaw.Tray.Tests;
 public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelper output)
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
-    private static readonly TimeSpan NegativeObservation = TimeSpan.FromMilliseconds(250);
     private const int QueueTurnMs = 10;
 
     [Theory]
@@ -30,6 +29,7 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
         var before = await retained.LoadAsync();
         using var timeout = new EnvironmentScope("OPENCLAW_CHAT_RECOVERY_TIMEOUT_MS", "150");
         h.Lifetime.SetClient(null);
+        var firstRequest = h.Server.Requests.Count;
         var captured = profileRead ? Task.CompletedTask : h.Server.HoldNextSessionList();
         if (profileRead) h.Server.HoldUserProfiles();
         var held = true;
@@ -37,6 +37,7 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
         {
             h.Lifetime.SetClient(h.Client);
             await captured.WaitAsync(Deadline);
+            var expiredRead = await h.WaitForAuthorityRequestAsync(profileRead ? "users.self" : "sessions.list", firstRequest);
             await h.PumpUntilAsync(() => h.Lifetime.VerificationState == ChatVerificationState.Failed);
             Assert.True(h.Client.IsConnectedToGateway);
             Assert.Same(retained, h.Lifetime.Provider);
@@ -47,12 +48,16 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
             Assert.DoesNotContain(h.Server.Requests, request => request.Method == "chat.send");
             if (profileRead) h.Server.ReleaseUserProfiles(); else h.Server.ReleaseSessionList();
             held = false;
-            await h.Client.SendWizardRequestAsync("health", new { }).WaitAsync(Deadline);
+            // Failed acknowledges the old owner completion. Join that exact
+            // released wire response before testing late delivery or starting retry.
+            await h.JoinResponseAsync(expiredRead);
             Assert.False(h.IsBound);
             Assert.Equal(ChatVerificationState.Failed, h.Lifetime.VerificationState);
             timeout.Set("OPENCLAW_CHAT_RECOVERY_TIMEOUT_MS", null);
+            var retryStart = h.Server.Requests.Count;
             Assert.True(retained.RetryVerification());
             Assert.False(retained.RetryVerification());
+            await h.WaitForAuthorityRequestAsync("users.self", retryStart);
             await h.PumpUntilAsync(() => h.IsBound);
             Assert.Same(retained, h.Lifetime.Provider);
             Assert.Equal(ChatVerificationState.None, retained.VerificationState);
@@ -108,7 +113,10 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
             {
                 await h.Server.PublishToolActivityAsync(GatewayScenario.OtherSessionKey);
                 await activity.Task.WaitAsync(Deadline);
-                await h.PumpForAsync(NegativeObservation);
+                // Receive-loop acknowledgement follows the cached event. Drain
+                // its already-posted UI work, not a fixed absence window.
+                await h.Client.SendWizardRequestAsync("health", new { }).WaitAsync(Deadline);
+                h.Drain();
                 Assert.False(h.IsBound, "A live cached roster must not reactivate a suspended binding before its requested listing responds.");
                 Assert.Same(retained, h.Lifetime.Provider);
             }
@@ -270,23 +278,25 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
             if (h.IsBound && ReferenceEquals(retained, h.Lifetime.Provider)) reusedAfterInvalidation = true;
         };
         h.Lifetime.SetClient(null);
-        h.Lifetime.SetClient(h.Client);
-        // Let the completed verification queue its UI commit, but do not apply it.
-        await h.WaitForQueuedActionAsync(minimum: 2);
-        var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void ProfileChanged(object? sender, EventArgs args) => observed.TrySetResult();
-        h.Client.SelfProfileChanged += ProfileChanged;
+        var first = h.Server.Requests.Count;
+        var captured = h.Server.HoldNextSessionList();
+        var held = true;
         try
         {
-            h.Server.SetUserProfile("fixture-after-queued-verification");
-            await h.Server.NotifyProfileIdentityChangedAsync();
-            await observed.Task.WaitAsync(Deadline);
+            h.Lifetime.SetClient(h.Client);
+            await captured.WaitAsync(Deadline);
+            var roster = await h.WaitForAuthorityRequestAsync("sessions.list", first);
+            await h.ReleaseAndQueueVerificationCommitAsync(roster, h.Server.ReleaseSessionList);
+            held = false;
+            // The exact verification's final UI commit is now queued. Invalidate
+            // before dispatching it, rather than guessing which two callbacks ran.
+            await h.ChangeProfileAsync("fixture-after-queued-verification");
             h.Drain();
             Assert.False(reusedAfterInvalidation, "A queued UI commit must not revive the profile invalidated by the wire event.");
             await h.PumpUntilAsync(() => h.IsBound);
             Assert.NotSame(retained, h.Lifetime.Provider);
         }
-        finally { h.Client.SelfProfileChanged -= ProfileChanged; }
+        finally { if (held) h.Server.ReleaseSessionList(); }
     }
 
     [Theory]
@@ -302,7 +312,8 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
         h.Server.SetUserProfilePayload(JsonSerializer.Deserialize<JsonElement>(payload));
         await h.Server.NotifyProfileIdentityChangedAsync();
         await h.PumpUntilAsync(() => h.Server.Requests.Count(request => request.Method == "users.self" && request.Outcome == "ok") > count);
-        await h.PumpForAsync(NegativeObservation);
+        await h.PumpUntilAsync(() => h.IsBound || h.Lifetime.VerificationState == ChatVerificationState.Failed);
+        Assert.Equal(ChatVerificationState.Failed, h.Lifetime.VerificationState);
         Assert.Null(h.Lifetime.Provider);
         Assert.True(h.Client.IsConnectedToGateway);
     }
@@ -315,7 +326,8 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
         h.Server.RejectUserProfileAsUnauthorized();
         await h.Server.NotifyProfileIdentityChangedAsync();
         await h.PumpUntilAsync(() => h.Server.Requests.Count(request => request.Method == "users.self" && request.Outcome != "pending") > count);
-        await h.PumpForAsync(NegativeObservation);
+        await h.PumpUntilAsync(() => h.IsBound || h.Lifetime.VerificationState == ChatVerificationState.Failed);
+        Assert.Equal(ChatVerificationState.Failed, h.Lifetime.VerificationState);
         Assert.Null(h.Lifetime.Provider);
         Assert.True(h.Client.IsConnectedToGateway);
     }
@@ -463,6 +475,7 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
                 await h.Lifetime.Provider!.LoadAsync();
                 await h.Lifetime.Provider.LoadHistoryAsync(GatewayScenario.OtherSessionKey);
                 h.Lifetime.Provider.RememberSelectedThread(GatewayScenario.OtherSessionKey);
+                await h.PumpUntilAsync(() => h.Server.Requests.Any(r => r.Method == "agents.list" && r.Outcome == "ok"));
                 return h;
             }
             catch { await h.DisposeAsync(); throw; }
@@ -486,11 +499,48 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
                 await Task.Delay(QueueTurnMs, deadline.Token);
             }
         }
-        public async Task PumpForAsync(TimeSpan duration)
+        public async Task<int> WaitForAuthorityRequestAsync(string method, int first)
         {
-            var stop = Task.Delay(duration);
-            while (!stop.IsCompleted) { Drain(); await Task.WhenAny(stop, Task.Delay(QueueTurnMs)); }
-            Drain();
+            await WaitWithoutDispatchAsync(() => Server.Requests.Skip(first).Any(r => r.Method == method && r.AuthorityScoped));
+            return Server.Requests.Select((request, index) => (request, index))
+                .First(pair => pair.index >= first && pair.request.Method == method && pair.request.AuthorityScoped).index;
+        }
+        public async Task JoinResponseAsync(int index, bool dispatch = true)
+        {
+            // Success is recorded after the response write. Only then can the
+            // subsequent health reply order the receive-loop parser behind it.
+            await WaitWithoutDispatchAsync(() => Server.Requests[index].Outcome != "pending");
+            Assert.Equal("ok", Server.Requests[index].Outcome);
+            await Client.SendWizardRequestAsync("health", new { }).WaitAsync(Deadline);
+            if (dispatch) Drain();
+        }
+        public async Task ReleaseAndQueueVerificationCommitAsync(int roster, Action release)
+        {
+            Drain(); // The profile precheck was posted before this roster was sent.
+            Assert.Empty(_queue);
+            release();
+            await JoinResponseAsync(roster, dispatch: false);
+            // A roster response's owner continuation must actually have posted its
+            // final commit. Keep it queued so the test can retire its authority.
+            await WaitForQueuedActionAsync();
+        }
+        public async Task ChangeProfileAsync(string profile)
+        {
+            var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Changed(object? sender, EventArgs args) => observed.TrySetResult();
+            Client.SelfProfileChanged += Changed;
+            try
+            {
+                Server.SetUserProfile(profile);
+                await Server.NotifyProfileIdentityChangedAsync();
+                await observed.Task.WaitAsync(Deadline);
+            }
+            finally { Client.SelfProfileChanged -= Changed; }
+        }
+        private static async Task WaitWithoutDispatchAsync(Func<bool> condition)
+        {
+            using var deadline = new CancellationTokenSource(Deadline);
+            while (!condition()) await Task.Delay(QueueTurnMs, deadline.Token);
         }
         public async ValueTask DisposeAsync()
         {

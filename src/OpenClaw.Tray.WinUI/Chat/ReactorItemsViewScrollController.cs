@@ -20,7 +20,8 @@ file sealed record ItemsViewVerticalScrollControllerElement(
     int ItemCount,
     string InitialTailRequestKey,
     string ExplicitTailRequestKey,
-    string? DisplayedTailKey) : Element
+    string? DisplayedTailKey,
+    long HistoryRevision) : Element
 {
     static ItemsViewVerticalScrollControllerElement() =>
         ControlRegistry.RegisterDecorator<ItemsViewVerticalScrollControllerElement>(
@@ -48,7 +49,8 @@ file sealed class ItemsViewVerticalScrollControllerHandler
             element.InitialTailIndex,
             element.ItemCount,
             element.InitialTailRequestKey,
-            element.DisplayedTailKey);
+            element.DisplayedTailKey,
+            historyRevision: element.HistoryRevision);
         return itemsView;
     }
 
@@ -69,7 +71,8 @@ file sealed class ItemsViewVerticalScrollControllerHandler
                 newElement.InitialTailRequestKey,
                 newElement.DisplayedTailKey,
                 explicitNavigation: !string.Equals(oldElement.ExplicitTailRequestKey,
-                    newElement.ExplicitTailRequestKey, StringComparison.Ordinal));
+                    newElement.ExplicitTailRequestKey, StringComparison.Ordinal),
+                historyRevision: newElement.HistoryRevision);
         else if (Positioners.TryGetValue(itemsView, out var existingPositioner))
             existingPositioner.UpdateTail(
                 newElement.InitialTailIndex,
@@ -113,10 +116,15 @@ file sealed class InitialTailPositioner : IDisposable
     private bool _initialPending;
     private readonly TailNavigationQueue _tailNavigationQueue = new();
     private bool _disposed;
+    private int _pendingDispatches;
+    private readonly GatewayFixturePositioningObservation? _fixtureObservation;
 
     public InitialTailPositioner(WinUIItemsView itemsView)
     {
         this.itemsView = itemsView;
+        _fixtureObservation = GatewayFixturePositioningObservation.Create(itemsView, () =>
+            _initialPending || _awaitingLayout || _awaitingScrollView is not null ||
+            _rendering is not null || _awaitingIdle || _tailNavigationQueue.IsScheduled || _pendingDispatches != 0);
         _cancelPointerNavigation = (_, _) => CancelPendingNavigation();
         itemsView.AddHandler(UIElement.PointerPressedEvent, _cancelPointerNavigation, true);
         itemsView.AddHandler(UIElement.PointerWheelChangedEvent, _cancelPointerNavigation, true);
@@ -126,13 +134,14 @@ file sealed class InitialTailPositioner : IDisposable
         itemsView.Unloaded += OnUnloaded;
     }
 
-    public void Request(int tailIndex, int itemCount, string requestKey, string? displayedTailKey, bool explicitNavigation = true)
+    public void Request(int tailIndex, int itemCount, string requestKey, string? displayedTailKey, bool explicitNavigation = true, long historyRevision = 0)
     {
         if (_disposed || string.Equals(_requestKey, requestKey, StringComparison.Ordinal))
             return;
 
         var navigate = TailNavigationPolicy.ShouldNavigate(explicitNavigation, _following, _initialPending, _valid);
         _requestKey = requestKey;
+        _fixtureObservation?.Begin(requestKey, historyRevision);
         _version++;
         _reflowCorrection.Clear();
         DetachLayout();
@@ -251,18 +260,26 @@ file sealed class InitialTailPositioner : IDisposable
     private void DispatchTailRequest(
         int version, TailNavigationRequest request, bool renderAfterLayout = false)
     {
+        _pendingDispatches++;
         if (!itemsView.DispatcherQueue.TryEnqueue(() =>
         {
-            if (_disposed || !_valid || !itemsView.IsLoaded || version != _version
-                || !TailNavigationPolicy.CanDispatch(renderAfterLayout, _following))
-                return;
+            try
+            {
+                if (_disposed || !_valid || !itemsView.IsLoaded || version != _version
+                    || !TailNavigationPolicy.CanDispatch(renderAfterLayout, _following))
+                    return;
 
-            if (!StartTailRequest(request))
-                AwaitLayout(renderAfterLayout);
-            else if (!renderAfterLayout)
-                _initialPending = false;
+                if (!StartTailRequest(request))
+                    AwaitLayout(renderAfterLayout);
+                else if (!renderAfterLayout)
+                    _initialPending = false;
+            }
+            finally { _pendingDispatches--; }
         }))
+        {
+            _pendingDispatches--;
             OpenClawTray.Services.Logger.Warn("Chat tail navigation could not be dispatched.");
+        }
     }
 
     private void AttachScrollView()
@@ -273,6 +290,7 @@ file sealed class InitialTailPositioner : IDisposable
 
         DetachScrollView();
         _scrollView = nextScrollView;
+        _fixtureObservation?.Attach(_scrollView);
         if (_scrollView is not null)
         {
             _scrollView.VerticalAnchorRatio = 1.0;
@@ -438,6 +456,7 @@ file sealed class InitialTailPositioner : IDisposable
         }
 
         _scrollView = null;
+        _fixtureObservation?.Attach(null);
     }
 
     public void Dispose()
@@ -446,6 +465,7 @@ file sealed class InitialTailPositioner : IDisposable
             return;
 
         _disposed = true;
+        _fixtureObservation?.Dispose();
         _version++;
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
@@ -469,7 +489,8 @@ internal static class ItemsViewScrollControllerExtensions
         int itemCount,
         string initialTailRequestKey,
         string explicitTailRequestKey,
-        string? displayedTailKey) =>
+        string? displayedTailKey,
+        long historyRevision = 0) =>
         new ItemsViewVerticalScrollControllerElement(
             itemsView,
             scrollBarRef,
@@ -477,5 +498,6 @@ internal static class ItemsViewScrollControllerExtensions
             itemCount,
             initialTailRequestKey,
             explicitTailRequestKey,
-            displayedTailKey);
+            displayedTailKey,
+            historyRevision);
 }

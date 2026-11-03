@@ -1,4 +1,5 @@
 using System.Windows.Automation;
+using System.Text.Json;
 using OpenClaw.GatewayFixtureHost;
 using OpenClaw.TestSupport.Gateway;
 
@@ -22,8 +23,16 @@ public sealed partial class GatewayFixtureUiTests
             await MoveReaderAwayFromTailAsync(run);
             var beforeScroll = TimelineScroll(run).Current.VerticalScrollPercent;
             Assert.InRange(beforeScroll, 5, 95);
+            ReaderAnchor? anchor = null;
+            await WaitUiAsync(run, () => (anchor = CaptureVisibleReaderAnchor(run)) is not null,
+                "actually visible mid-history reader anchor");
+            var reader = anchor!;
+            var renderedBefore = RenderedHistoryRevision(run, GatewayScenario.LongSessionKey);
+            var historyRepliesBefore = CompletedReaderHistoryReplies(run);
             var inputIdentity = FindById(run, "ChatComposerInput")!.GetRuntimeId();
-            await CaptureIfRequestedAsync(run, "explicit-disconnect-before.png");
+            await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "disconnect-reader-anchor.json"),
+                JsonSerializer.Serialize(new { reader, renderedBefore, historyRepliesBefore }));
+            await CaptureIfRequestedAsync(run, "explicit-disconnect-before.png", FindReaderAnchor(run, reader)!);
 
             await ToggleConnectionAsync(run, ToggleState.On);
             await run.WaitForAsync(async () =>
@@ -33,22 +42,35 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Equal(inputIdentity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
             Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
             Assert.True(SessionSelected(run, GatewayScenario.LongTitle));
+            await WaitUiAsync(run, () => ReaderAnchorIsPositioned(run, reader), "offline visible reader anchor and viewport offset");
             Assert.InRange(TimelineScroll(run).Current.VerticalScrollPercent, beforeScroll - 5, beforeScroll + 5);
             Assert.False(FindById(run, "ChatComposerPrimaryAction")?.Current.IsEnabled == true);
             var offline = await run.InvokeAsync("app.chat.snapshot", new { threadId = GatewayScenario.LongSessionKey });
             Assert.Contains(offline.GetProperty("selectedTimeline").GetProperty("entries").EnumerateArray(),
                 entry => entry.GetProperty("Text").GetString()?.Contains(GatewayScenario.LongHistoryFinalMarker, StringComparison.Ordinal) == true);
-            await CaptureIfRequestedAsync(run, "explicit-disconnect-offline.png");
+            await CaptureIfRequestedAsync(run, "explicit-disconnect-offline.png", FindReaderAnchor(run, reader)!);
 
             await ToggleConnectionAsync(run, ToggleState.Off);
             await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await run.WaitForAsync(() => Task.FromResult(CompletedReaderHistoryReplies(run) > historyRepliesBefore),
+                "new reconnect history response, not the initial load");
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsEnabled: true } &&
-                RenderConsumedHistory(run, GatewayScenario.LongSessionKey), "same retained conversation after verified reconnect");
+                RenderConsumedHistory(run, GatewayScenario.LongSessionKey, afterRevision: renderedBefore),
+                "fresh reconnect history revision consumed by the mounted composer");
+            await WaitUiAsync(run, () => PositioningConsumedFreshHistory(run, renderedBefore)
+                && ReaderAnchorIsPositioned(run, reader),
+                "fresh history's native positioning/scroll completion and rendered reader anchor");
             Assert.Equal(inputIdentity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
             Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
             Assert.True(SessionSelected(run, GatewayScenario.LongTitle));
             Assert.InRange(TimelineScroll(run).Current.VerticalScrollPercent, beforeScroll - 5, beforeScroll + 5);
-            await CaptureIfRequestedAsync(run, "explicit-disconnect-recovered.png");
+            var renderedAfter = RenderedHistoryRevision(run, GatewayScenario.LongSessionKey);
+            Assert.True(renderedAfter > renderedBefore);
+            await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "disconnect-reader-anchor.json"),
+                JsonSerializer.Serialize(new { reader, renderedBefore, renderedAfter,
+                    historyRepliesBefore, historyRepliesAfter = CompletedReaderHistoryReplies(run),
+                    recoveredOffset = FindReaderAnchor(run, reader)!.Current.BoundingRectangle.Top - FindTimeline(run)!.Current.BoundingRectangle.Top }));
+            await CaptureIfRequestedAsync(run, "explicit-disconnect-recovered.png", FindReaderAnchor(run, reader)!);
             await WaitUiAsync(run, () => FindById(run, "ChatComposerPrimaryAction") is { Current.IsEnabled: true }, "normal Send after recovery");
             Invoke(FindById(run, "ChatComposerPrimaryAction")!);
             var sent = await run.Gateway.WaitForCompletedRequestAsync("chat.send", GatewayScenario.LongSessionKey);
@@ -56,6 +78,64 @@ public sealed partial class GatewayFixtureUiTests
             await CaptureIfRequestedAsync(run, "explicit-disconnect-sent.png");
         }, scenario: GatewayScenario.CreateBrowse(allowChatSend: true));
     }
+
+    private const double ReaderAnchorTolerancePixels = 4;
+    private sealed record ReaderAnchor(string Text, double TopOffset, double LeftOffset);
+
+    private static ReaderAnchor? CaptureVisibleReaderAnchor(GatewayFixtureRun run)
+    {
+        var timeline = FindTimeline(run);
+        if (timeline is null) return null;
+        var viewport = timeline.Current.BoundingRectangle;
+        var message = timeline.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
+            .Cast<AutomationElement>()
+            .Where(element => element.Current.Name.StartsWith("Fixture long message ", StringComparison.Ordinal)
+                && IsVisibleInTimeline(timeline, element))
+            .OrderBy(element => Math.Abs(element.Current.BoundingRectangle.Top - (viewport.Top + viewport.Height / 2)))
+            .FirstOrDefault();
+        if (message is null) return null;
+        var bounds = message.Current.BoundingRectangle;
+        return new(message.Current.Name, bounds.Top - viewport.Top, bounds.Left - viewport.Left);
+    }
+
+    private static AutomationElement? FindReaderAnchor(GatewayFixtureRun run, ReaderAnchor anchor) =>
+        FindTimeline(run)?.FindFirst(TreeScope.Descendants, new AndCondition(
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text),
+            new PropertyCondition(AutomationElement.NameProperty, anchor.Text)));
+
+    private static bool ReaderAnchorIsPositioned(GatewayFixtureRun run, ReaderAnchor anchor)
+    {
+        var timeline = FindTimeline(run);
+        var message = FindReaderAnchor(run, anchor);
+        if (timeline is null || message is null || !IsVisibleInTimeline(timeline, message)) return false;
+        var bounds = message.Current.BoundingRectangle;
+        var viewport = timeline.Current.BoundingRectangle;
+        return Math.Abs(bounds.Top - viewport.Top - anchor.TopOffset) <= ReaderAnchorTolerancePixels
+            && Math.Abs(bounds.Left - viewport.Left - anchor.LeftOffset) <= ReaderAnchorTolerancePixels;
+    }
+
+    private static bool PositioningConsumedFreshHistory(GatewayFixtureRun run, long previousRevision)
+    {
+        var timeline = FindTimeline(run);
+        if (timeline is null || string.IsNullOrEmpty(timeline.Current.ItemStatus)) return false;
+        using var receipt = JsonDocument.Parse(timeline.Current.ItemStatus);
+        return receipt.RootElement.GetProperty("historyRevision").GetInt64() > previousRevision
+            && receipt.RootElement.GetProperty("settled").GetBoolean()
+            && receipt.RootElement.GetProperty("requestKey").GetString() ==
+                receipt.RootElement.GetProperty("completedRequestKey").GetString();
+    }
+
+    private static long RenderedHistoryRevision(GatewayFixtureRun run, string key)
+    {
+        using var receipt = JsonDocument.Parse(FindById(run, "ChatComposerInput")!.Current.ItemStatus);
+        Assert.Equal(key, receipt.RootElement.GetProperty("selectedThreadId").GetString());
+        return receipt.RootElement.GetProperty("historyRevisions").GetProperty(key).GetInt64();
+    }
+
+    private static int CompletedReaderHistoryReplies(GatewayFixtureRun run) =>
+        run.Gateway.Requests.Count(request => request.Method == "chat.history"
+            && request.SessionKey == GatewayScenario.LongSessionKey && request.Outcome == "ok");
 
     private static async Task MoveReaderAwayFromTailAsync(GatewayFixtureRun run)
     {
