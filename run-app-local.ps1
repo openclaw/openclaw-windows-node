@@ -77,14 +77,19 @@
     is already configured. DistroName and GatewayPort come from the app
     identity, as in interactive setup. -Isolated and -DataDir do not isolate
     the WSL distro or local setup data: setup refuses to replace an existing
-    distro, distro data, or local gateway record unless -ReplaceExisting is set.
+    app-owned distro, its data, or a local gateway record unless
+    -ReplaceExisting is set, and never replaces a distro or data not proven to
+    be managed by OpenClaw.
 
 .PARAMETER ForceSetup
     With -SetupConfig, run setup even when the data dir is already configured.
 
 .PARAMETER ReplaceExisting
     With -SetupConfig, allow setup to delete and recreate the existing app-owned
-    WSL distro and replace the local gateway record.
+    WSL distro and replace the local gateway record. A distro or distro data not
+    proven to be managed by OpenClaw is preserved even with this switch: confirm
+    its replacement in interactive setup, or remove it yourself (for example
+    wsl --unregister <distro>).
 
 .EXAMPLE
     .\run-app-local.ps1

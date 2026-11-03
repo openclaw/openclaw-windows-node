@@ -15,6 +15,7 @@ internal static class CliSetupCommandLine
     internal const string ConfigOption = "--config";
     internal const string ForceFlag = "--force-setup";
     internal const string ReplaceExistingFlag = "--replace-existing";
+    private const string ReplacementHeader = "Setup would replace existing configuration:";
 
     /// <param name="processArguments">
     /// <see cref="Environment.GetCommandLineArgs"/>; index 0 (the executable path) is skipped.
@@ -85,6 +86,38 @@ internal static class CliSetupCommandLine
         }
 
         return [.. arguments];
+    }
+
+    /// <summary>
+    /// Headless replacement admission: null when setup may run, otherwise the refusal message.
+    /// State not proven to be app-owned is never replaced headlessly, even with --replace-existing.
+    /// Interactive setup requires an explicit permanent-replacement confirmation for it (#1229).
+    /// </summary>
+    internal static string? GetReplacementRefusal(
+        CliSetupRequest request,
+        bool hasExistingState,
+        bool ownershipUnproven,
+        bool hasDistro,
+        string distroName,
+        string distroDataDirectory,
+        string replacementSummary)
+    {
+        if (!hasExistingState)
+            return null;
+
+        if (ownershipUnproven)
+        {
+            var target = hasDistro ? $"WSL distro '{distroName}'" : $"WSL data for '{distroName}'";
+            var removal = hasDistro ? $"`wsl --unregister {distroName}`" : $"delete '{distroDataDirectory}'";
+            return $"{ReplacementHeader}\n{replacementSummary}\n" +
+                $"{target} is not proven to be managed by OpenClaw and was preserved. " +
+                "To replace it, run OpenClaw setup interactively and confirm its permanent replacement, " +
+                $"or remove it yourself (for example, {removal}).";
+        }
+
+        return request.ReplaceExisting
+            ? null
+            : $"{ReplacementHeader}\n{replacementSummary}\nPass {ReplaceExistingFlag} to continue.";
     }
 
     private static bool Fail(string message, out CliSetupRequest request, out string? error)

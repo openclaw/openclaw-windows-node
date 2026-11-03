@@ -12,13 +12,14 @@ namespace OpenClawTray;
 /// when the data directory is already configured unless --force-setup is passed.
 /// </summary>
 /// <remarks>
-/// The interactive setup window requires the user to confirm before replacing an existing
-/// app-owned distro, local gateway record, or distro data. This handler applies the same
-/// gate: it refuses unless --replace-existing is passed. The distro and local data dir come
-/// from the app identity and are shared across OPENCLAW_TRAY_DATA_DIR profiles. The pre-check
-/// here only produces the guidance message. Without --replace-existing the engine receives
-/// --preserve-existing: it re-checks admission while holding SetupRunLock's shared-target
-/// lock, and CleanupStaleDistroStep refuses to remove any distro.
+/// The interactive setup window asks the user to confirm before replacing state. This handler
+/// applies the same gate for an app-owned distro, its data, and the local gateway record: it
+/// refuses unless --replace-existing is passed. A distro or distro data not proven to be
+/// app-owned is never replaced headlessly, even with --replace-existing. The refusal directs the
+/// user to interactive setup or manual removal. The distro and local data dir come from the app
+/// identity and are shared across OPENCLAW_TRAY_DATA_DIR profiles. Without --replace-existing
+/// the engine receives --preserve-existing: it re-checks admission while holding SetupRunLock's
+/// shared-target lock, and CleanupStaleDistroStep refuses to remove any distro.
 /// </remarks>
 internal static class CliSetupHandler
 {
@@ -49,13 +50,16 @@ internal static class CliSetupHandler
         if (!CliSetupCommandLine.TryParse(args, out var request, out var error))
             return Fail(2, error!);
 
+        if (PackageHelper.IsPackaged)
+            return Fail(2, "Headless setup is not available in the packaged (MSIX) app. Run setup from the app instead.");
+
         if (IsTrayRunning())
             return Fail(2, "OpenClaw is running for this data directory. Quit it before running headless setup.");
 
-        // A completed Store migration retires this unpackaged install; setup must not recreate
-        // its gateway. ShouldStopLaunch shows the same guidance dialog as normal startup.
-        if (InnoMigrationStartupGuard.ShouldStopLaunch(out s_migrationLease))
-            return Fail(2, "This installation was migrated to the Microsoft Store app. Use that app instead.");
+        // A completed Store migration retires this unpackaged install; setup must not recreate its
+        // gateway. The guidance that normal startup shows in a dialog goes to stderr here.
+        if (InnoMigrationStartupGuard.TryGetStopGuidance(out s_migrationLease, out var migrationGuidanceKey))
+            return Fail(2, LocalizationHelper.GetString(migrationGuidanceKey));
 
         var dataDir = AppIdentity.ResolveRoamingDataDirectory();
         var localDataDir = AppIdentity.ResolveSetupLocalDataDirectory();
@@ -87,14 +91,16 @@ internal static class CliSetupHandler
         }
 
         var existing = ExistingConfigDetector.Detect(dataDir, AppIdentity.SetupDistroName, localDataDir);
-        if ((existing.HasLocalGateway || existing.HasDistro || existing.HasDistroDataDirectory) &&
-            !request.ReplaceExisting)
-        {
-            return Fail(2,
-                "Setup would replace existing configuration:\n" +
-                ExistingConfigDetector.BuildReplacementSummary(existing) + "\n" +
-                $"Pass {CliSetupCommandLine.ReplaceExistingFlag} to continue.");
-        }
+        var refusal = CliSetupCommandLine.GetReplacementRefusal(
+            request,
+            hasExistingState: existing.HasLocalGateway || existing.HasDistro || existing.HasDistroDataDirectory,
+            ownershipUnproven: ExistingConfigDetector.RequiresDestructiveConfirmation(existing),
+            hasDistro: existing.HasDistro,
+            distroName: AppIdentity.SetupDistroName,
+            distroDataDirectory: Path.Combine(localDataDir, "wsl", AppIdentity.SetupDistroName),
+            replacementSummary: ExistingConfigDetector.BuildReplacementSummary(existing));
+        if (refusal is not null)
+            return Fail(2, refusal);
 
         var setupArgs = CliSetupCommandLine.BuildEngineArguments(
             request,

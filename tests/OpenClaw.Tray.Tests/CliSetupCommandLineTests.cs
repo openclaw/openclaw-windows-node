@@ -49,4 +49,62 @@ public sealed class CliSetupCommandLineTests
 
         Assert.Equal(expectPreserve, arguments.Contains("--preserve-existing"));
     }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    public void GetReplacementRefusal_UnprovenOwnership_RefusesEvenWithReplaceExisting(
+        bool replaceExisting, bool hasDistro)
+    {
+        var refusal = CliSetupCommandLine.GetReplacementRefusal(
+            new CliSetupRequest(null, Force: true, ReplaceExisting: replaceExisting),
+            hasExistingState: true,
+            ownershipUnproven: true,
+            hasDistro,
+            "OpenClawGateway",
+            @"C:\local\wsl\OpenClawGateway",
+            "• summary line");
+
+        Assert.NotNull(refusal);
+        Assert.Contains("• summary line", refusal);
+        Assert.Contains("not proven to be managed by OpenClaw and was preserved", refusal);
+        Assert.Contains("run OpenClaw setup interactively", refusal);
+        Assert.DoesNotContain("--replace-existing", refusal);
+        Assert.Contains(hasDistro ? "wsl --unregister OpenClawGateway" : @"C:\local\wsl\OpenClawGateway", refusal);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GetReplacementRefusal_AppOwnedState_RequiresReplaceExisting(bool replaceExisting)
+    {
+        var refusal = CliSetupCommandLine.GetReplacementRefusal(
+            new CliSetupRequest(null, Force: true, ReplaceExisting: replaceExisting),
+            hasExistingState: true,
+            ownershipUnproven: false,
+            hasDistro: true,
+            "OpenClawGateway",
+            @"C:\local\wsl\OpenClawGateway",
+            "• summary line");
+
+        if (replaceExisting)
+            Assert.Null(refusal);
+        else
+            Assert.Contains("Pass --replace-existing to continue.", refusal);
+    }
+
+    [Fact]
+    public void GetReplacementRefusal_NoExistingState_Admits()
+    {
+        Assert.Null(CliSetupCommandLine.GetReplacementRefusal(
+            new CliSetupRequest(null, Force: true, ReplaceExisting: false),
+            hasExistingState: false,
+            ownershipUnproven: false,
+            hasDistro: false,
+            "OpenClawGateway",
+            @"C:\local\wsl\OpenClawGateway",
+            "• summary line"));
+    }
 }
