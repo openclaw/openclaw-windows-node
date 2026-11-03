@@ -98,6 +98,13 @@
                 -->
                 <InfoBar x:Name="StoreMigrationStatus" Visibility="Collapsed"
                          IsOpen="False" IsClosable="True" Closed="OnStoreMigrationStatusClosed">
+                    <InfoBar.Content>
+                        <TextBlock x:Name="StoreMigrationSetupAddress"
+                                   TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True"
+                                   Visibility="Collapsed"
+                                   AutomationProperties.AutomationId="SettingsStoreMigrationSetupAddress"/>
+                    </InfoBar.Content>
                     <InfoBar.ActionButton>
                         <HyperlinkButton x:Name="StoreMigrationDownloadSetup"
                                          x:Uid="Migration2_InnoDownloadSetup"
