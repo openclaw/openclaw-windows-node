@@ -26,9 +26,10 @@ Anything whose name contains "openclaw" (case-insensitive) in these places:
     "OpenClaw Gateway OpenClawFoundation.OpenClawGateway*", OpenClawAgentUia
   - Running processes named OpenClaw* / winnode*, or running from an
     OpenClaw-owned directory (the scan roots above or the MSIX package tree);
-    killed through a handle opened once, after verifying image path and
-    creation time on that same handle, so a reused PID is never killed, and
-    one process at a time (no tree kill)
+    selected by the image path and creation time read through a process handle
+    (bound to the inventory row by creation time), then killed through a handle
+    opened once after verifying that same identity on it, so a reused PID is
+    never killed, and one process at a time (no tree kill)
   - Installed apps listed in Settings > Apps > Installed apps ("Add or remove
     programs") whose name contains "OpenClaw":
       * MSIX/Store packages, Gateway before Companion. The native Gateway is first
@@ -49,15 +50,20 @@ Never deleted:
   - *.gguf model files inside removed directories (they and their parent
     directories are kept; files inside MSIX package data are copied out and
     digest-verified first). The Hugging Face cache is never scanned and its
-    configured root (HF_HUB_CACHE/HF_HOME/XDG_CACHE_HOME, else
+    configured root (HF_HUB_CACHE/HF_HOME/XDG_CACHE_HOME, normalized like the
+    product: leading ~, %VAR%, and .. resolved; else
     %USERPROFILE%\\.cache\\huggingface\\hub) is excluded even when it sits
     inside a matched directory: recursive deletion checks exclusions before
     every entry, including links, so protected descendants and their ancestors
-    survive, and GGUF files inside an excluded tree are not copied out.
+    survive, and GGUF files inside an excluded tree are not copied out. An
+    uninstaller deletes its own directory without those checks (Inno DelTree of
+    the install dir, MSIX package data), so an excluded path inside one blocks
+    the wipe instead.
   - The gateway source checkout at %USERPROFILE%\\openclaw (see EXCLUDED_PATHS)
 
 Order with --yes: known inventory blockers (unreadable WSL inventory, orphan
-native session, WSL storage overlap) stop the wipe before anything changes;
+native session, WSL storage overlap, excluded path inside a directory an
+uninstaller deletes) stop the wipe before anything changes;
 then processes, stop+disable tasks, native Gateway teardown, MSIX packages,
 Win32 uninstallers, WSL distros, delete tasks, then registry and files. A
 failed teardown, package removal, uninstall, or WSL step stops the wipe before
@@ -121,6 +127,7 @@ PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 STILL_ACTIVE = 259
 ERROR_INVALID_PARAMETER = 87  # OpenProcess on a PID that no longer exists
 KILL_EXIT_CODE = 1
+FILETIME_TICKS_PER_MICROSECOND = 10  # CIM CreationDate carries microseconds; FILETIME counts 100 ns ticks
 
 _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 _kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
@@ -155,21 +162,41 @@ SHORTCUT_FOLDERS = ("Desktop", "CommonDesktopDirectory", "Startup", "CommonStart
 EXTRA_PATHS = (userprofile / ".openclaw", temp / "oc-uia")
 
 
+def normalize_configured_path(value: str) -> Path:
+    """Mirror of HuggingFaceHubCache.NormalizeConfiguredPath, so exclusions match the path the product uses.
+
+    A leading "~" (alone or followed by a separator) is the user profile, then
+    %VAR% references are expanded (Environment.ExpandEnvironmentVariables: unknown
+    names stay literal, $VAR is not a reference), then the result is made a full
+    path with "." and ".." segments resolved (WindowsPathSafety.NormalizePath).
+    """
+    if value == "~" or value.startswith(("~\\", "~/")):
+        value = os.path.join(userprofile, value[2:])
+    expanded = re.sub(r"%([^%]+)%", lambda m: os.environ.get(m.group(1), m.group(0)), value)
+    return Path(os.path.abspath(expanded))
+
+
+def _configured(name: str) -> str | None:
+    """Environment value, or None when unset or whitespace (product NullIfWhiteSpace; the value is not trimmed)."""
+    value = os.environ.get(name)
+    return value if value and value.strip() else None
+
+
 def huggingface_cache_root() -> Path:
     """The Hugging Face hub cache root, resolved with the same precedence as the product
 
     (HuggingFaceHubCache.ResolveCacheRoot): HF_HUB_CACHE, HUGGINGFACE_HUB_CACHE,
     HF_HOME\\hub, XDG_CACHE_HOME\\huggingface\\hub, then %USERPROFILE%\\.cache\\huggingface\\hub.
     """
-    explicit = os.environ.get("HF_HUB_CACHE") or os.environ.get("HUGGINGFACE_HUB_CACHE")
+    explicit = _configured("HF_HUB_CACHE") or _configured("HUGGINGFACE_HUB_CACHE")
     if explicit:
-        return Path(os.path.expandvars(explicit))
-    hub_home = os.environ.get("HF_HOME")
+        return normalize_configured_path(explicit)
+    hub_home = _configured("HF_HOME")
     if hub_home:
-        return Path(os.path.expandvars(hub_home), "hub")
-    xdg = os.environ.get("XDG_CACHE_HOME")
+        return normalize_configured_path(hub_home) / "hub"
+    xdg = _configured("XDG_CACHE_HOME")
     if xdg:
-        return Path(os.path.expandvars(xdg), "huggingface", "hub")
+        return normalize_configured_path(xdg) / "huggingface" / "hub"
     return userprofile / ".cache" / "huggingface" / "hub"
 
 
@@ -218,11 +245,12 @@ def find_win32_apps() -> list[SimpleNamespace]:
                     with winreg.OpenKey(root, subkey) as key:
                         name = winreg.QueryValueEx(key, "DisplayName")[0]
                         uninstall = winreg.QueryValueEx(key, "UninstallString")[0]
+                        install_location = _optional_value(key, "InstallLocation")
                 except OSError:
                     continue
                 if matches(name):
                     apps.append(SimpleNamespace(
-                        name=name, uninstall=uninstall, hive=hive, view=view,
+                        name=name, uninstall=uninstall, install_location=install_location, hive=hive, view=view,
                         key=f"{UNINSTALL_KEY}\\{subkey}", where=f"{hive_name}\\{UNINSTALL_KEY}\\{subkey}",
                     ))
     return apps
@@ -236,6 +264,13 @@ def win32_app_registered(app: SimpleNamespace) -> bool:
         return False
 
 
+def _optional_value(key, name: str) -> str:
+    try:
+        return str(winreg.QueryValueEx(key, name)[0])
+    except FileNotFoundError:
+        return ""
+
+
 def uninstaller_exe(command: str) -> str:
     """Executable part of an UninstallString ("C:\\x\\unins000.exe" /args or unquoted)."""
     command = command.strip()
@@ -243,6 +278,48 @@ def uninstaller_exe(command: str) -> str:
         return command[1:].split('"', 1)[0]
     end = command.lower().find(".exe")
     return command[:end + 4] if end >= 0 else command.split(" ", 1)[0]
+
+
+def is_inno_uninstaller(exe: Path) -> bool:
+    return re.fullmatch(r"unins\d{3}\.exe", exe.name, re.IGNORECASE) is not None
+
+
+def uninstaller_runs(app: SimpleNamespace) -> bool:
+    """True when uninstall_win32 will run the app's own uninstaller (False: the orphan entry is deleted directly)."""
+    return "msiexec" in app.uninstall.lower() or Path(uninstaller_exe(app.uninstall)).is_file()
+
+
+def uninstaller_owned_dirs(win32_apps: list[SimpleNamespace], msix_apps: list[SimpleNamespace]) -> list[tuple[Path, str]]:
+    """Directories the apps' own uninstallers delete wholesale, with the owning app.
+
+    These deletions bypass remove_path's exclusion checks: Inno's uninstall
+    DelTree({app}) (installer.iss) removes the install directory, which for the
+    Companion is %LOCALAPPDATA%\\OpenClawTray[-Dev], and Remove-AppxPackage removes
+    the package's %LOCALAPPDATA%\\Packages\\<family> data folder.
+    """
+    dirs = []
+    for app in win32_apps:
+        if not uninstaller_runs(app) or "msiexec" in app.uninstall.lower():
+            continue  # Windows Installer removes only the files it installed, not its whole directory
+        if app.install_location.strip():
+            dirs.append((Path(os.path.abspath(app.install_location)), app.name))
+        exe = Path(uninstaller_exe(app.uninstall))
+        if is_inno_uninstaller(exe):
+            dirs.append((Path(os.path.abspath(exe.parent)), app.name))  # Inno places unins000.exe in {app}
+    dirs += [(localappdata / "Packages" / pkg.family, pkg.full_name) for pkg in msix_apps]
+    return dirs
+
+
+def excluded_under_uninstallers(
+    win32_apps: list[SimpleNamespace], msix_apps: list[SimpleNamespace],
+) -> list[tuple[Path, Path, str]]:
+    """(excluded path, owned directory, app) for every excluded path an uninstaller would delete."""
+    found = {}
+    for owned, app in uninstaller_owned_dirs(win32_apps, msix_apps):
+        for excluded in EXCLUDED_PATHS:
+            if excluded.is_relative_to(owned):
+                found.setdefault((os.path.normcase(str(excluded)), app), (excluded, owned, app))
+    return list(found.values())
 
 
 def gateway_dev_patch(name: str) -> str | None:
@@ -382,7 +459,7 @@ def uninstall_win32(app: SimpleNamespace) -> bool:
         except OSError as exc:
             print(f"  could not delete {app.where}: {exc}")
         return not win32_app_registered(app)
-    elif re.fullmatch(r"unins\d{3}\.exe", exe.name, re.IGNORECASE):
+    elif is_inno_uninstaller(exe):
         cmd = f"{cmd} {INNO_SILENT_ARGS}"  # silent Inno uninstall also removes its WSL gateway (installer.iss)
     print(f"  running uninstaller for {app.name}: {cmd}")
     try:
@@ -420,26 +497,45 @@ def find_processes(targets: list[Path]) -> list[SimpleNamespace]:
     and every other program under %LOCALAPPDATA%.
     Other users' processes (e.g. the native Gateway's sandbox account) report no path
     to a non-elevated caller; clawctl teardown owns those.
-    Identity is captured through a handle at discovery and rechecked on the handle
-    used for termination, so a reused PID is never killed.
+    Ownership is decided on the identity read through a process handle (image path
+    and creation time), the same identity terminate_if_unchanged rechecks on the
+    handle it terminates through. The CIM row only preselects candidates: its
+    creation time must match the handle's, so a PID that exited and was reused
+    between the CIM query and the handle is not the process that was selected and
+    is dropped, and a same-PID process is judged by its own image, not the row's.
     """
     rows = run_ps(
-        "Get-CimInstance Win32_Process | "
-        "ForEach-Object { '' + $_.ProcessId + '|' + $_.Name + '|' + $_.ExecutablePath }"
+        "Get-CimInstance Win32_Process | ForEach-Object { '' + $_.ProcessId + '|' + "
+        "$(if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc() }) + '|' + $_.Name + '|' + $_.ExecutablePath }"
     )
     own = {os.getpid(), os.getppid()}
     procs = []
     for row in rows:
-        pid_text, name, path = row.split("|", 2)
+        pid_text, created_text, name, path = row.split("|", 3)
         pid = int(pid_text)
-        if pid in own:
+        path = path.removeprefix("\\\\?\\")  # CIM reports some images (e.g. conhost) with the extended prefix
+        if pid in own or not process_selected(name, path, targets):
             continue
-        if not (name.lower().startswith(("openclaw", "winnode")) or (path and owned_process_path(Path(path), targets))):
-            continue
-        if path and is_excluded(Path(path)):
-            continue
-        procs.append(SimpleNamespace(pid=pid, name=name, path=path, identity=process_identity(pid)))
+        identity = process_identity(pid)
+        if identity is not None:
+            if not created_text:
+                identity = None  # no inventory creation time to bind to: reported, never killed
+            elif identity[1] // FILETIME_TICKS_PER_MICROSECOND != int(created_text) // FILETIME_TICKS_PER_MICROSECOND:
+                continue  # PID reused since the CIM query: the selected process is gone
+            else:
+                path = identity[0]
+                name = Path(path).name
+                if not process_selected(name, path, targets):
+                    continue
+        procs.append(SimpleNamespace(pid=pid, name=name, path=path, identity=identity))
     return procs
+
+
+def process_selected(name: str, path: str, targets: list[Path]) -> bool:
+    """Ownership and exclusion decision for one executable image (see find_processes)."""
+    if path and is_excluded(Path(path)):
+        return False
+    return name.lower().startswith(("openclaw", "winnode")) or bool(path) and owned_process_path(Path(path), targets)
 
 
 def owned_process_path(path: Path, targets: list[Path]) -> bool:
@@ -464,8 +560,9 @@ def _handle_identity(handle) -> tuple[str, int] | None:
     if not _kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
         return None
     created = wintypes.FILETIME()
-    null = wintypes.FILETIME()
-    if not _kernel32.GetProcessTimes(handle, ctypes.byref(null), ctypes.byref(null), ctypes.byref(null), ctypes.byref(created)):
+    unused = wintypes.FILETIME()
+    # GetProcessTimes(handle, creation, exit, kernel, user): only creation time is immutable.
+    if not _kernel32.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(unused), ctypes.byref(unused), ctypes.byref(unused)):
         return None
     return buffer.value, (created.dwHighDateTime << 32) | created.dwLowDateTime
 
@@ -755,26 +852,31 @@ def delete_key_tree(subkey: str) -> None:
     winreg.DeleteKey(winreg.HKEY_CURRENT_USER, subkey)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--yes", action="store_true", help="actually delete (default: dry run)")
-    args = parser.parse_args()
-    mode = "WIPE" if args.yes else "DRY RUN"
-    found = 0
+def excluded_held_message(excluded: Path, owned: Path, app: str) -> str:
+    return (f"excluded {excluded} is inside {owned}, which the {app} uninstaller deletes; "
+            "move it out of that directory (or point its setting elsewhere) and re-run")
 
+
+def inventory_apps(mode: str) -> tuple[list[SimpleNamespace], list[SimpleNamespace], list[tuple[Path, Path, str]]]:
+    """Installed apps, plus excluded paths their uninstallers would delete (these block the wipe)."""
     print(f"== {mode}: installed apps (Add or remove programs) ==")
     win32_apps = find_win32_apps()
     for app in win32_apps:
-        exe = Path(uninstaller_exe(app.uninstall))
-        detail = app.where if "msiexec" in app.uninstall.lower() or exe.is_file() else f"{app.where}; uninstaller missing, entry deleted directly"
+        detail = app.where if uninstaller_runs(app) else f"{app.where}; uninstaller missing, entry deleted directly"
         report(f"app {app.name}", True, detail)
     msix_apps = find_msix_apps()
     for pkg in msix_apps:
         report(f"app {pkg.full_name}", True, "MSIX package")
     if not win32_apps and not msix_apps:
         report(f"apps matching '{APP_NAME_MATCH}'", False)
-    found += len(win32_apps) + len(msix_apps)
+    held = excluded_under_uninstallers(win32_apps, msix_apps)
+    for excluded, owned, app in held:
+        print(f"  BLOCK  {excluded_held_message(excluded, owned, app)}")
+    return win32_apps, msix_apps, held
 
+
+def inventory_gateways(mode: str, msix_apps: list[SimpleNamespace]) -> tuple[list[SimpleNamespace], list[Path]]:
+    """Gateway packages to tear down, and orphan sessions that block the wipe."""
     print(f"== {mode}: native Gateway teardown ==")
     gateways = [p for p in msix_apps if is_gateway_package(p)]
     for pkg in gateways:
@@ -791,15 +893,20 @@ def main() -> int:
               "reinstall that Gateway package and re-run)")
     if not gateways and not orphans:
         report("native Gateway packages", False)
+    return gateways, orphans
 
+
+def inventory_tasks(mode: str) -> list[str]:
     print(f"== {mode}: scheduled tasks ==")
     tasks = find_scheduled_tasks()
     for task in tasks:
         report(f"task {task}", True)
     if not tasks:
         report(f"scheduled tasks matching '{APP_NAME_MATCH}'", False)
-    found += len(tasks)
+    return tasks
 
+
+def inventory_paths(mode: str) -> list[Path]:
     print(f"== {mode}: files and directories ==")
     paths = find_paths()
     for path in paths:
@@ -815,8 +922,11 @@ def main() -> int:
         report(f"paths matching '{APP_NAME_MATCH}'", False)
     for path in EXCLUDED_PATHS:
         print(f"  keep   {path}  (excluded)")
-    found += len(paths)
+    return paths
 
+
+def inventory_registry(mode: str) -> tuple[list[str], list[str]]:
+    """HKCU Run value names and HKCU subkeys to delete."""
     print(f"== {mode}: registry (HKCU) ==")
     run_values = matching_run_values()
     for name in run_values:
@@ -827,16 +937,21 @@ def main() -> int:
         report(f"HKCU\\{subkey}", True)
     if not run_values and not reg_keys:
         report(f"registry entries matching '{APP_NAME_MATCH}'", False)
-    found += len(run_values) + len(reg_keys)
+    return run_values, reg_keys
 
+
+def inventory_processes(mode: str, paths: list[Path]) -> list[SimpleNamespace]:
     print(f"== {mode}: processes ==")
     procs = find_processes(paths)
     for p in procs:
         report(f"process PID {p.pid} {p.name}", True, p.path or "path not visible")
     if not procs:
         report("OpenClaw processes", False)
-    found += len(procs)
+    return procs
 
+
+def inventory_wsl(mode: str, paths: list[Path]) -> tuple[list[str], list[tuple[str, Path]], str | None]:
+    """Distros to unregister, storage conflicts, and an inventory error (both block the wipe)."""
     print(f"== {mode}: WSL distros (unregistered: filesystem destroyed) ==")
     try:
         registered = registered_wsl_distros()
@@ -855,44 +970,51 @@ def main() -> int:
     for distro, target in conflicts:
         print(f"  BLOCK  distro {distro} stores its disk under {target}; "
               "unregister it first or exclude that path")
-    found += len(distros)
-
-    if not found and not orphans and not conflicts and not wsl_error:
-        print("\nNothing to remove. Machine is clean.")
-        return 0
-
-    if not args.yes:
-        print(f"\nDry run: {found} target(s) would be removed. Re-run with --yes to delete.")
-        return 1 if orphans or conflicts or wsl_error else 0
+    return distros, conflicts, wsl_error
 
 
-    print("\n== deleting ==")
-    errors = 0
+def take_inventory(mode: str) -> SimpleNamespace:
+    win32_apps, msix_apps, held = inventory_apps(mode)
+    gateways, orphans = inventory_gateways(mode, msix_apps)
+    tasks = inventory_tasks(mode)
+    paths = inventory_paths(mode)
+    run_values, reg_keys = inventory_registry(mode)
+    procs = inventory_processes(mode, paths)
+    distros, conflicts, wsl_error = inventory_wsl(mode, paths)
+    found = (len(win32_apps) + len(msix_apps) + len(tasks) + len(paths)
+             + len(run_values) + len(reg_keys) + len(procs) + len(distros))
+    return SimpleNamespace(
+        win32_apps=win32_apps, msix_apps=msix_apps, held=held, gateways=gateways, orphans=orphans,
+        tasks=tasks, paths=paths, run_values=run_values, reg_keys=reg_keys, procs=procs,
+        distros=distros, conflicts=conflicts, wsl_error=wsl_error, found=found,
+    )
 
-    # Known inventory blockers are rejected before anything changes: stopping
-    # processes or disabling tasks that a blocked wipe then leaves behind would
-    # be mutation with no way for a re-run to undo it.
-    def abort(reason: str) -> int:
-        print(f"  ERROR  {reason}")
-        print("\nStopped before deleting files. Fix the error above and re-run.")
-        return 1
 
-    if wsl_error:
-        return abort(wsl_error)
-    if orphans:
-        return abort(f"orphan native session {orphans[0]}: reinstall that Gateway package and re-run")
-    if conflicts:
-        distro, target = conflicts[0]
-        return abort(f"distro {distro} stores its disk under {target}; unregister it first or exclude that path")
+def inventory_blocker(inv: SimpleNamespace) -> str | None:
+    """First known inventory blocker, reported before anything changes."""
+    if inv.wsl_error:
+        return inv.wsl_error
+    if inv.orphans:
+        return f"orphan native session {inv.orphans[0]}: reinstall that Gateway package and re-run"
+    if inv.conflicts:
+        distro, target = inv.conflicts[0]
+        return f"distro {distro} stores its disk under {target}; unregister it first or exclude that path"
+    if inv.held:
+        return excluded_held_message(*inv.held[0])
+    return None
 
-    # Processes first: they lock files and package resources. Each process is
-    # terminated through a handle whose identity was verified on that same
-    # handle (see terminate_if_unchanged); each process is killed individually
-    # (no tree kill), so exclusions and identity checks cannot be bypassed.
-    errors += stop_processes(procs)
 
-    # Stop and disable tasks so logon/timer triggers can't relaunch anything mid-wipe.
-    # They are deleted after the uninstallers, which may own them.
+def abort(reason: str) -> int:
+    print(f"  ERROR  {reason}")
+    print("\nStopped before deleting files. Fix the error above and re-run.")
+    return 1
+
+
+def disable_tasks(tasks: list[str]) -> None:
+    """Stop and disable tasks so logon/timer triggers can't relaunch anything mid-wipe.
+
+    They are deleted after the uninstallers, which may own them.
+    """
     for task in tasks:
         subprocess.run(["schtasks", "/End", "/TN", task], capture_output=True)
         if subprocess.run(["schtasks", "/Change", "/TN", task, "/DISABLE"], capture_output=True).returncode == 0:
@@ -900,40 +1022,47 @@ def main() -> int:
         else:
             print(f"  WARN   could not disable task {task}")
 
-    # Fatal stages: stop before deleting files so remaining state can still be removed by a re-run.
-    models_to_preserve = [model for path in paths for model in models_in(path)]
+
+def run_fatal_stages(inv: SimpleNamespace) -> str | None:
+    """Model preservation, teardown, uninstalls, WSL. Returns the failure that stops the wipe, else None."""
+    models_to_preserve = [model for path in inv.paths for model in models_in(path)]
     try:
         preserved_models = preserve_models(models_to_preserve)
     except OSError as exc:
-        return abort(f"could not preserve model files: {exc}")
+        return f"could not preserve model files: {exc}"
     for model in preserved_models:
         print(f"  preserved model {model}")
 
-    for pkg in gateways:
+    for pkg in inv.gateways:
         failure = teardown_native_gateway(pkg)
         if failure:
-            return abort(f"native Gateway teardown {pkg.family}: {failure}")
+            return f"native Gateway teardown {pkg.family}: {failure}"
         print(f"  tore down native Gateway {pkg.family}")
-    for pkg in msix_apps:
+    for pkg in inv.msix_apps:
         if not uninstall_msix(pkg):
-            return abort(f"MSIX {pkg.full_name} still installed")
+            return f"MSIX {pkg.full_name} still installed"
         print(f"  uninstalled {pkg.full_name}")
-    for app in win32_apps:
+    for app in inv.win32_apps:
         if not uninstall_win32(app):
-            return abort(f"{app.name} still registered at {app.where} (cancelled, failed, or needs admin)")
+            return f"{app.name} still registered at {app.where} (cancelled, failed, or needs admin)"
         print(f"  uninstalled {app.name}")
     try:
         remaining = registered_wsl_distros()
     except InventoryError as exc:
-        return abort(f"could not verify WSL removal: {exc}")
-    for distro in distros:
+        return f"could not verify WSL removal: {exc}"
+    for distro in inv.distros:
         if distro not in remaining:
             print(f"  gone    distro {distro} (removed by uninstaller)")
         elif unregister_wsl(distro):
             print(f"  unregistered distro {distro}")
         else:
-            return abort(f"WSL distro {distro} still registered")
+            return f"WSL distro {distro} still registered"
+    return None
 
+
+def delete_tasks(tasks: list[str]) -> int:
+    """Delete remaining tasks; returns the number of failures."""
+    errors = 0
     for task in tasks:
         exists = task_exists(task)
         if exists is None:
@@ -949,7 +1078,12 @@ def main() -> int:
         else:
             errors += 1
             print(f"  ERROR  task {task}: {result.stderr.strip() or f'schtasks exit {result.returncode}'}")
+    return errors
 
+
+def delete_registry(run_values: list[str], reg_keys: list[str]) -> int:
+    """Delete Run values and HKCU key trees; returns the number of failures."""
+    errors = 0
     for name in run_values:
         label = f"HKCU\\{AUTO_START_KEY}\\{name}"
         try:
@@ -970,7 +1104,12 @@ def main() -> int:
         except OSError as exc:
             errors += 1
             print(f"  ERROR  HKCU\\{subkey}: {exc}")
+    return errors
 
+
+def delete_paths(paths: list[Path]) -> int:
+    """Delete files/dirs, keeping models and excluded paths; returns the number of failures."""
+    errors = 0
     kept: list[Path] = []
     for path in paths:
         if not path.exists() and not path.is_symlink():
@@ -985,6 +1124,45 @@ def main() -> int:
     for item in kept:
         kind = "model" if item.suffix.lower() == MODEL_SUFFIX else "excluded"
         print(f"  kept   {item}  ({kind})")
+    return errors
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--yes", action="store_true", help="actually delete (default: dry run)")
+    args = parser.parse_args()
+    inv = take_inventory("WIPE" if args.yes else "DRY RUN")
+    blocker = inventory_blocker(inv)
+
+    if not inv.found and not blocker:
+        print("\nNothing to remove. Machine is clean.")
+        return 0
+    if not args.yes:
+        print(f"\nDry run: {inv.found} target(s) would be removed. Re-run with --yes to delete.")
+        return 1 if blocker else 0
+
+    print("\n== deleting ==")
+    # Known inventory blockers are rejected before anything changes: stopping
+    # processes or disabling tasks that a blocked wipe then leaves behind would
+    # be mutation with no way for a re-run to undo it.
+    if blocker:
+        return abort(blocker)
+
+    # Processes first: they lock files and package resources. Each process is
+    # terminated through a handle whose identity was verified on that same
+    # handle (see terminate_if_unchanged); each process is killed individually
+    # (no tree kill), so exclusions and identity checks cannot be bypassed.
+    errors = stop_processes(inv.procs)
+    disable_tasks(inv.tasks)
+
+    # Fatal stages: stop before deleting files so remaining state can still be removed by a re-run.
+    failure = run_fatal_stages(inv)
+    if failure:
+        return abort(failure)
+
+    errors += delete_tasks(inv.tasks)
+    errors += delete_registry(inv.run_values, inv.reg_keys)
+    errors += delete_paths(inv.paths)
 
     if errors:
         print(f"\nCompleted with {errors} error(s); re-run to retry.")

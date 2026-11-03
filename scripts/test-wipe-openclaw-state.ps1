@@ -3,8 +3,12 @@
 # concrete safety contract: which packages count as the native Gateway, how the
 # dev-patch alias is derived, which processes/paths deletion owns, which WSL storage
 # blocks a wipe, which model files survive removal, that excluded descendants survive
-# recursive deletion, that a changed process identity is never terminated, and that an
-# absent or unreadable Lxss registration is empty inventory or an abort (never absence).
+# recursive deletion, that a changed process identity is never terminated, that process
+# identity is the immutable creation time and ownership is decided on the handle's
+# identity (not a stale inventory row), that configured Hugging Face paths are
+# normalized like the product, that an excluded path inside a directory an uninstaller
+# deletes blocks the wipe, and that an absent or unreadable Lxss registration is empty
+# inventory or an abort (never absence).
 # The driver runs with APPDATA/LOCALAPPDATA/USERPROFILE/TEMP/ProgramData/ProgramFiles
 # redirected under the fixture root before the module is imported, so the module's
 # computed paths and every fixture it creates are isolated from the real machine.
@@ -121,6 +125,18 @@ os.environ["HUGGINGFACE_HUB_CACHE"] = r"C:\Users\pedro\hflegacy"
 check("hf legacy env root", wipe.huggingface_cache_root(), Path(r"C:\Users\pedro\hflegacy"))
 os.environ["HF_HUB_CACHE"] = r"C:\Users\pedro\hfexplicit"
 check("hf explicit env root", wipe.huggingface_cache_root(), Path(r"C:\Users\pedro\hfexplicit"))
+# Configured paths are normalized like HuggingFaceHubCache.NormalizeConfiguredPath.
+os.environ["HF_HUB_CACHE"] = r"~\cache\..\hub2"
+check("hf tilde and parent segments", wipe.huggingface_cache_root(), Path(wipe.userprofile) / "hub2")
+os.environ["HF_HUB_CACHE"] = r"%LOCALAPPDATA%\OpenClawTray\hf\.\hub"
+check("hf percent variable", wipe.huggingface_cache_root(), Path(wipe.localappdata) / "OpenClawTray" / "hf" / "hub")
+os.environ["HF_HUB_CACHE"] = r"C:\hf\$LOCALAPPDATA\hub"
+check("hf dollar is not a variable", wipe.huggingface_cache_root(), Path(r"C:\hf\$LOCALAPPDATA\hub"))
+os.environ["HF_HUB_CACHE"] = "   "
+os.environ.pop("HUGGINGFACE_HUB_CACHE", None)
+os.environ["HF_HOME"] = "~"
+check("hf whitespace skipped, bare tilde home", wipe.huggingface_cache_root(), Path(wipe.userprofile) / "hub")
+os.environ.pop("HF_HOME", None)
 # Restore the import-time cache root for the excluded-descendant checks below.
 os.environ["HF_HUB_CACHE"] = str(Path(wipe.localappdata) / "OpenClawTray" / "hf" / "hub")
 
@@ -146,6 +162,33 @@ finally:
     if child.poll() is None:
         child.kill()
 
+# Identity is the creation time: it must not drift while the process uses CPU, and it
+# must equal the creation time CIM reports (CIM keeps microseconds).
+busy = subprocess.Popen([sys.executable, "-c", "import time\nend = time.time() + 1\nwhile time.time() < end: pass\ntime.sleep(60)"])
+try:
+    first = wipe.process_identity(busy.pid)
+    import time
+    time.sleep(1.5)
+    check("identity stable across CPU use", wipe.process_identity(busy.pid), first)
+    cim = wipe.run_ps(f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {busy.pid}').CreationDate.ToFileTimeUtc()")
+    check("identity is the CIM creation time", first[1] // 10, int(cim[0]) // 10)
+    # Ownership comes from the handle's identity, bound to the CIM row by creation time.
+    real_run_ps = wipe.run_ps
+    owned = [Path(first[0]).parent]
+    try:
+        wipe.run_ps = lambda script: [f"{busy.pid}|{first[1]}|OpenClawProof.exe|{first[0]}"]
+        check("handle image, not row name, decides ownership", wipe.find_processes([]), [])
+        selected = wipe.find_processes(owned)
+        check("bound process selected with handle identity", [(p.pid, p.identity) for p in selected], [(busy.pid, first)])
+        wipe.run_ps = lambda script: [f"{busy.pid}|{first[1] - 10_000_000}|OpenClawProof.exe|{first[0]}"]
+        check("PID reused after inventory dropped", wipe.find_processes(owned), [])
+        wipe.run_ps = lambda script: [f"{busy.pid}||OpenClawProof.exe|{first[0]}"]
+        check("unbound inventory row is never killable", [p.identity for p in wipe.find_processes(owned)], [None])
+    finally:
+        wipe.run_ps = real_run_ps
+finally:
+    busy.kill()
+
 # Excluded descendants: recursive deletion never reaches them and keeps their ancestors.
 tray = Path(wipe.localappdata) / "OpenClawTray"
 blob = tray / "hf" / "hub" / "models--proof--tiny" / "blobs" / "0123abcd"
@@ -163,6 +206,24 @@ check("excluded blob survives", blob.is_file(), True)
 check("excluded symlink survives", snapshot.exists(), True)
 check("unrelated file removed", (tray / "settings.json").exists(), False)
 check("kept list records excluded root", str(Path(wipe.huggingface_cache_root())) in {str(k) for k in kept}, True)
+
+# Uninstallers delete their own directory without exclusion checks: an excluded path
+# inside it blocks the wipe. Inno's unins000.exe lives in {app}; MSI removes only its files.
+unins = tray / "unins000.exe"
+unins.write_bytes(b"")
+cache_root = Path(wipe.localappdata) / "OpenClawTray" / "hf" / "hub"
+inno = P(); inno.name = "OpenClaw Companion"; inno.uninstall = f'"{unins}"'; inno.install_location = str(tray) + "\\"
+held = wipe.excluded_under_uninstallers([inno], [])
+check("excluded cache in Inno dir blocks", [(h[0], h[1]) for h in held], [(cache_root, tray)])
+inno.install_location = ""
+check("Inno dir derived from unins000.exe", [h[1] for h in wipe.excluded_under_uninstallers([inno], [])], [tray])
+missing = P(); missing.name = "OpenClaw Old"; missing.uninstall = rf'"{tray}\gone\unins001.exe"'; missing.install_location = str(tray)
+check("orphan entry deletes nothing", wipe.excluded_under_uninstallers([missing], []), [])
+msi = P(); msi.name = "OpenClaw MSI"; msi.uninstall = "MsiExec.exe /I{00000000-0000-0000-0000-000000000000}"; msi.install_location = str(tray)
+check("MSI does not delete its directory", wipe.excluded_under_uninstallers([msi], []), [])
+blocked = P(); blocked.wsl_error = None; blocked.orphans = []; blocked.conflicts = []; blocked.held = held
+check("held exclusion is an inventory blocker", (wipe.inventory_blocker(blocked) or "").startswith(f"excluded {cache_root} "), True)
+unins.unlink()
 
 # Model preservation: remove_path keeps *.gguf files and their parent directories.
 import tempfile
@@ -198,9 +259,20 @@ check("installed dev package not orphan", all(str(o) != str(session) for o in wi
 import ctypes
 import winreg
 
+def lxss_present():
+    try:
+        winreg.OpenKey(winreg.HKEY_CURRENT_USER, wipe.LXSS_KEY).Close()
+        return True
+    except FileNotFoundError:
+        return False
+
+# Restoration is proven by the scratch-only marker disappearing and the real Lxss
+# presence matching its pre-override state, so an account without WSL also passes.
+real_lxss_before = lxss_present()
 scratch_name = f"WipeHarness-{uuid.uuid4().hex}"
+marker = f"{scratch_name}-marker"
 scratch = winreg.CreateKey(winreg.HKEY_CURRENT_USER, scratch_name)
-winreg.SetValueEx(scratch, "marker", 0, winreg.REG_SZ, "override")
+winreg.SetValueEx(scratch, marker, 0, winreg.REG_SZ, "override")
 override = ctypes.windll.advapi32.RegOverridePredefKey(
     ctypes.c_void_p(int(winreg.HKEY_CURRENT_USER)), ctypes.c_void_p(int(scratch)))
 try:
@@ -208,7 +280,7 @@ try:
         failures.append(f"RegOverridePredefKey failed: rc={override}")
     else:
         try:
-            active = winreg.QueryValueEx(winreg.HKEY_CURRENT_USER, "marker")[0]
+            active = winreg.QueryValueEx(winreg.HKEY_CURRENT_USER, marker)[0]
         except OSError:
             active = None
         if active != "override":
@@ -231,12 +303,12 @@ finally:
         failures.append(f"HKCU override restore failed: rc={restore}")
     else:
         try:
-            winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                           r"Software\Microsoft\Windows\CurrentVersion\Lxss").Close()
+            winreg.QueryValueEx(winreg.HKEY_CURRENT_USER, marker)
+            marker_visible = True
         except FileNotFoundError:
-            failures.append("real HKCU Lxss not visible after restore")
-        else:
-            check("real HKCU visible after restore", True, True)
+            marker_visible = False
+        check("override marker gone after restore", marker_visible, False)
+        check("real Lxss presence unchanged after restore", lxss_present(), real_lxss_before)
     scratch.Close()
     # DeleteKey refuses keys with children and the override created the proof
     # Lxss tree under the scratch key, so delete depth-first.
