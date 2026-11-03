@@ -7067,6 +7067,7 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="LocalAiPage_SwitchPhase_InstallingRuntime" xml:space="preserve"><value>Instalando o llama-server</value></data>
   <data name="LocalAiPage_SwitchPhase_StoppingRuntime" xml:space="preserve"><value>Parando o modelo atual</value></data>
   <data name="LocalAiPage_SwitchPhase_StartingRuntime" xml:space="preserve"><value>Iniciando o novo modelo</value></data>
+  <data name="LocalAiPage_SwitchPhase_LoadingModel" xml:space="preserve"><value>Carregando e testando o novo modelo</value></data>
   <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>Restaurando o modelo anterior</value></data>
   <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB de {1:F1} GB</value></data>
   <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>Troca de modelo cancelada.</value></data>

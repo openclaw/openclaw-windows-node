@@ -1,4 +1,6 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Globalization;
 using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
@@ -8,10 +10,12 @@ namespace OpenClaw.SetupEngine;
 /// <summary>
 /// Changes the managed Local AI model in place: the new weights are acquired and verified
 /// while the current model keeps serving, then the runtime withdraws the old route,
-/// commits the new receipt, and restarts. A failed start restores the previous receipt.
-/// Previously used weights stay in the shared Hugging Face cache. Only one switch runs at a
-/// time per instance; App owns the single instance, so a concurrent call from another page
-/// is rejected before it reads the receipt.
+/// commits the new receipt, and restarts. A running switch counts as successful only
+/// after the new model answers one bounded request and the router reports that exact
+/// model as Loaded; a failed or timed-out load, like a failed start, restores the
+/// previous receipt. Previously used weights stay in the shared Hugging Face cache.
+/// Only one switch runs at a time per instance; App owns the single instance, so a
+/// concurrent call from another page is rejected before it reads the receipt.
 /// </summary>
 public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
 {
@@ -39,14 +43,30 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
     private readonly ILlamaRuntimeAcquirer _runtimeAcquirer;
     private readonly Func<string, CancellationToken, Task<LocalCustomModelRecipe>> _resolveCustom;
     private int _switching;
+    private readonly Func<ILlamaServerInferenceClient> _createInferenceClient;
+    private readonly TimeSpan _loadTimeout;
 
-    public LocalAiModelSwitcher(ILocalAiRuntime runtime, string localDataDirectory)
+    /// <summary>
+    /// Whole seconds; read once at process start. Invalid or out-of-range values warn and keep the default.
+    /// Kept under the log sanitizer's long-token redaction length so the name stays readable in logs.
+    /// </summary>
+    public const string LoadTimeoutEnvironmentVariable = "OPENCLAW_LOCAL_AI_SWITCH_LOAD_TIMEOUT";
+    /// <summary>Matches setup's first-load budget, LocalAiConfig.InferenceTimeoutSeconds.</summary>
+    internal const int DefaultLoadTimeoutSeconds = 600;
+    internal const int MinimumLoadTimeoutSeconds = 30;
+    internal const int MaximumLoadTimeoutSeconds = 3600;
+    internal static readonly TimeSpan DefaultLoadTimeout =
+        ResolveLoadTimeout(Environment.GetEnvironmentVariable(LoadTimeoutEnvironmentVariable));
+
+    public LocalAiModelSwitcher(ILocalAiRuntime runtime, string localDataDirectory, Func<string?> getApiKey)
         : this(
             runtime,
             localDataDirectory,
             new HuggingFaceModelInstaller(s_downloadClient),
             new LlamaRuntimeInstaller(s_runtimeClient),
-            new HuggingFaceModelReferenceResolver(s_downloadClient).ResolveAsync)
+            new HuggingFaceModelReferenceResolver(s_downloadClient).ResolveAsync,
+            CreateInferenceClient(getApiKey),
+            DefaultLoadTimeout)
     {
     }
 
@@ -55,7 +75,9 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
         string localDataDirectory,
         IHuggingFaceModelAcquirer modelAcquirer,
         ILlamaRuntimeAcquirer runtimeAcquirer,
-        Func<string, CancellationToken, Task<LocalCustomModelRecipe>> resolveCustom)
+        Func<string, CancellationToken, Task<LocalCustomModelRecipe>> resolveCustom,
+        Func<ILlamaServerInferenceClient> createInferenceClient,
+        TimeSpan loadTimeout)
     {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         ArgumentException.ThrowIfNullOrWhiteSpace(localDataDirectory);
@@ -63,6 +85,39 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
         _modelAcquirer = modelAcquirer ?? throw new ArgumentNullException(nameof(modelAcquirer));
         _runtimeAcquirer = runtimeAcquirer ?? throw new ArgumentNullException(nameof(runtimeAcquirer));
         _resolveCustom = resolveCustom ?? throw new ArgumentNullException(nameof(resolveCustom));
+        _createInferenceClient = createInferenceClient ?? throw new ArgumentNullException(nameof(createInferenceClient));
+        if (loadTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(loadTimeout), "The model load timeout must be positive.");
+        _loadTimeout = loadTimeout;
+    }
+
+    /// <summary>
+    /// A null key means the router was launched without auth (no native binding), so no
+    /// Authorization header. The null check must stay outside the delegate:
+    /// LlamaServerInferenceClient throws when its delegate returns null.
+    /// </summary>
+    internal static Func<ILlamaServerInferenceClient> CreateInferenceClient(Func<string?> getApiKey)
+    {
+        ArgumentNullException.ThrowIfNull(getApiKey);
+        return () =>
+        {
+            string? key = getApiKey();
+            return new LlamaServerInferenceClient(key is null ? null : () => key);
+        };
+    }
+
+    internal static TimeSpan ResolveLoadTimeout(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return TimeSpan.FromSeconds(DefaultLoadTimeoutSeconds);
+        if (int.TryParse(raw.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int seconds) &&
+            seconds is >= MinimumLoadTimeoutSeconds and <= MaximumLoadTimeoutSeconds)
+            return TimeSpan.FromSeconds(seconds);
+        Trace.TraceWarning(
+            $"Ignoring {LoadTimeoutEnvironmentVariable}='{raw}': expected whole seconds from " +
+            $"{MinimumLoadTimeoutSeconds} to {MaximumLoadTimeoutSeconds}. " +
+            $"Using the default {DefaultLoadTimeoutSeconds}s.");
+        return TimeSpan.FromSeconds(DefaultLoadTimeoutSeconds);
     }
 
     private LocalAiManifestStore Store => new(new LocalAiPaths(_localDataDirectory));
@@ -186,15 +241,25 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
         try
         {
             LocalAiRuntimeSnapshot started = await _runtime.EnsureStartedAsync(CancellationToken.None).ConfigureAwait(false);
-            if (started.State == LocalAiRuntimeState.Healthy)
-                return started;
-            startFailure = started.Detail;
+            if (started.State != LocalAiRuntimeState.Healthy)
+            {
+                startFailure = started.Detail;
+            }
+            else
+            {
+                progress?.Report(new(LocalAiModelSwitchPhase.LoadingModel));
+                (LocalAiRuntimeSnapshot? loaded, startFailure) =
+                    await VerifyModelLoadsAsync(started.Endpoint, replacement.ModelAlias).ConfigureAwait(false);
+                if (loaded is not null)
+                    return loaded;
+            }
         }
         catch (Exception ex)
         {
-            // A thrown start (for example a lost Gateway connection after the route was
-            // rebound) gets the same restoration as a returned failure; the new receipt is
-            // already committed and must not be left in place.
+            // A thrown start or load check (for example a lost Gateway connection after the
+            // route was rebound, or llama-server's own load failure text) gets the same
+            // restoration as a returned failure; the new receipt is already committed and
+            // must not be left in place.
             startFailure = ex.Message;
         }
 
@@ -211,6 +276,31 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
         }
         throw new LocalAiModelSwitchException(
             $"The new model could not start, so Local AI went back to the previous model. {startFailure}".TrimEnd());
+    }
+
+    /// <summary>
+    /// Router health accepts an unloaded preset model (load-on-startup = false), so only a real
+    /// request proves the new weights load. Mirrors setup's VerifyLocalAiInferenceStep. Runs after
+    /// the commit, so it is bounded by the load timeout only, never by the caller's token.
+    /// </summary>
+    private async Task<(LocalAiRuntimeSnapshot? Loaded, string? Failure)> VerifyModelLoadsAsync(Uri endpoint, string modelAlias)
+    {
+        using ILlamaServerInferenceClient client = _createInferenceClient();
+        using var timeout = new CancellationTokenSource(_loadTimeout);
+        try
+        {
+            await client.VerifyAsync(endpoint, modelAlias, timeout.Token).ConfigureAwait(false);
+            LocalAiRuntimeSnapshot loaded = await _runtime.RefreshAsync(timeout.Token).ConfigureAwait(false);
+            if (loaded is { State: LocalAiRuntimeState.Healthy, Ownership: LocalAiOwnership.CompanionManaged } &&
+                loaded.ModelEvidence.State == LocalAiModelAvailabilityState.Loaded &&
+                string.Equals(loaded.ModelEvidence.ServerModelId, modelAlias, StringComparison.Ordinal))
+                return (loaded, null);
+            return (null, "llama-server answered but did not report the new model as loaded.");
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            return (null, $"It did not finish loading within {(int)_loadTimeout.TotalSeconds} seconds.");
+        }
     }
 
     private async Task<LocalAiInstallManifest> AcquireAsync(

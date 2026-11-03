@@ -7099,6 +7099,7 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_SwitchPhase_InstallingRuntime" xml:space="preserve"><value>Installing llama-server</value></data>
   <data name="LocalAiPage_SwitchPhase_StoppingRuntime" xml:space="preserve"><value>Stopping the current model</value></data>
   <data name="LocalAiPage_SwitchPhase_StartingRuntime" xml:space="preserve"><value>Starting the new model</value></data>
+  <data name="LocalAiPage_SwitchPhase_LoadingModel" xml:space="preserve"><value>Loading and testing the new model</value></data>
   <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>Restoring the previous model</value></data>
   <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB of {1:F1} GB</value></data>
   <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>Model change canceled.</value></data>

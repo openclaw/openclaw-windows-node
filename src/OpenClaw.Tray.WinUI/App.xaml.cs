@@ -839,7 +839,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             },
             localAiLogger);
         _localAiModelSwitcher = new OpenClaw.SetupEngine.LocalAiModelSwitcher(
-            _localAiRuntime, AppIdentity.ResolveSetupLocalDataDirectory());
+            _localAiRuntime, AppIdentity.ResolveSetupLocalDataDirectory(), _localAiGatewayLifecycle.GetApiKey);
         if (_appState is not null)
         {
             _defaultModelGateway = new DefaultModelGatewayService(

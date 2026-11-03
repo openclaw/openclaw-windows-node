@@ -7031,6 +7031,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="LocalAiPage_SwitchPhase_InstallingRuntime" xml:space="preserve"><value>Installation de llama-server</value></data>
   <data name="LocalAiPage_SwitchPhase_StoppingRuntime" xml:space="preserve"><value>Arrêt du modèle actuel</value></data>
   <data name="LocalAiPage_SwitchPhase_StartingRuntime" xml:space="preserve"><value>Démarrage du nouveau modèle</value></data>
+  <data name="LocalAiPage_SwitchPhase_LoadingModel" xml:space="preserve"><value>Chargement et test du nouveau modèle</value></data>
   <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>Restauration du modèle précédent</value></data>
   <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} Go sur {1:F1} Go</value></data>
   <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>Changement de modèle annulé.</value></data>

@@ -7031,6 +7031,7 @@
   <data name="LocalAiPage_SwitchPhase_InstallingRuntime" xml:space="preserve"><value>正在安装 llama-server</value></data>
   <data name="LocalAiPage_SwitchPhase_StoppingRuntime" xml:space="preserve"><value>正在停止当前模型</value></data>
   <data name="LocalAiPage_SwitchPhase_StartingRuntime" xml:space="preserve"><value>正在启动新模型</value></data>
+  <data name="LocalAiPage_SwitchPhase_LoadingModel" xml:space="preserve"><value>正在加载并测试新模型</value></data>
   <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>正在恢复之前的模型</value></data>
   <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB / {1:F1} GB</value></data>
   <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>已取消更换模型。</value></data>

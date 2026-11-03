@@ -162,6 +162,62 @@ public sealed class LocalAiModelSwitcherTests
             fixture.Runtime.Calls);
     }
 
+    [Fact]
+    public async Task RunningSwitch_SucceedsOnlyAfterTheNewModelAnswersAndReportsLoaded()
+    {
+        using var fixture = await Fixture.CreateAsync(running: true);
+        LocalAiModelSwitchTarget target = await fixture.Switcher.PrepareCustomAsync(Hardware(48 * GiB), "owner/small", default);
+
+        LocalAiRuntimeSnapshot result = await fixture.Switcher.SwitchAsync(target, false, null, default);
+
+        Assert.Equal(["replace:" + target.Plan.Model.Id, "start", "infer:" + target.Plan.Model.Id, "refresh"],
+            fixture.Runtime.Calls);
+        Assert.Equal([new Uri("http://127.0.0.1:18080/v1")], fixture.Inference.Endpoints);
+        Assert.Equal(LocalAiModelAvailabilityState.Loaded, result.ModelEvidence.State);
+        Assert.Equal(target.Plan.Model.Id, result.ModelEvidence.ServerModelId);
+    }
+
+    [Theory]
+    [InlineData("error")]
+    [InlineData("timeout")]
+    [InlineData("not-loaded")]
+    public async Task NewModelThatDoesNotLoad_RestoresPreviousModel(string failure)
+    {
+        var fixtureTask = Fixture.CreateAsync(running: true, loadTimeout: failure == "timeout" ? TimeSpan.FromMilliseconds(200) : null);
+        using var fixture = await fixtureTask;
+        string expected;
+        switch (failure)
+        {
+            case "error":
+                fixture.Inference.Failure = new LlamaServerInferenceException(
+                    "llama-server inference returned HTTP 500 (InternalServerError): failed to load model", 500, "failed to load model");
+                expected = "failed to load model";
+                break;
+            case "timeout":
+                fixture.Inference.Hang = true;
+                expected = "did not finish loading";
+                break;
+            default:
+                fixture.Runtime.RefreshModelState = LocalAiModelAvailabilityState.Verified;
+                expected = "did not report the new model as loaded";
+                break;
+        }
+        LocalAiModelSwitchTarget target = await fixture.Switcher.PrepareCustomAsync(Hardware(48 * GiB), "owner/small", default);
+
+        LocalAiModelSwitchException error = await Assert.ThrowsAsync<LocalAiModelSwitchException>(
+            () => fixture.Switcher.SwitchAsync(target, false, null, default));
+
+        Assert.Contains("went back to the previous model", error.Message);
+        Assert.Contains(expected, error.Message);
+        int inferIndex = fixture.Runtime.Calls.IndexOf("infer:" + target.Plan.Model.Id);
+        Assert.True(inferIndex > 0);
+        Assert.Equal("replace:" + fixture.Original.ModelCatalogId, fixture.Runtime.Calls[^2]);
+        Assert.Equal("start", fixture.Runtime.Calls[^1]);
+        if (failure != "not-loaded")
+            Assert.DoesNotContain("refresh", fixture.Runtime.Calls);
+        Assert.False(fixture.Switcher.IsSwitching);
+    }
+
     [Theory]
     [InlineData("b10655-cuda13-x64")]
     [InlineData("b11026-cuda13-x64")]
@@ -193,9 +249,10 @@ public sealed class LocalAiModelSwitcherTests
         private readonly TempDirectory _temp;
 
         private Fixture(TempDirectory temp, LocalAiPaths paths, LocalAiInstallManifest original, FakeRuntime runtime,
-            FakeAcquirer acquirer, LocalAiModelSwitcher switcher)
+            FakeAcquirer acquirer, LocalAiModelSwitcher switcher, FakeInferenceClient inference)
         {
             _temp = temp; Paths = paths; Original = original; Runtime = runtime; Acquirer = acquirer; Switcher = switcher;
+            Inference = inference;
         }
 
         public LocalAiPaths Paths { get; }
@@ -203,11 +260,13 @@ public sealed class LocalAiModelSwitcherTests
         public FakeRuntime Runtime { get; }
         public FakeAcquirer Acquirer { get; }
         public LocalAiModelSwitcher Switcher { get; }
+        public FakeInferenceClient Inference { get; }
 
         public static async Task<Fixture> CreateAsync(
             bool running = false,
             string? installedRuntimeId = null,
-            ILlamaRuntimeAcquirer? runtimeAcquirer = null)
+            ILlamaRuntimeAcquirer? runtimeAcquirer = null,
+            TimeSpan? loadTimeout = null)
         {
             var temp = new TempDirectory("local-ai-switch-");
             var paths = new LocalAiPaths(temp.Path);
@@ -248,9 +307,11 @@ public sealed class LocalAiModelSwitcherTests
             await new LocalAiManifestStore(paths).SaveAsync(original);
             var runtime = new FakeRuntime(running);
             var acquirer = new FakeAcquirer(temp.Path);
+            var inference = new FakeInferenceClient(runtime);
             var switcher = new LocalAiModelSwitcher(runtime, temp.Path, acquirer, runtimeAcquirer ?? new UnusedRuntimeAcquirer(),
-                (reference, _) => Task.FromResult(Recipe(reference == "owner/big" ? 30 * GiB : 2 * GiB)));
-            return new Fixture(temp, paths, original, runtime, acquirer, switcher);
+                (reference, _) => Task.FromResult(Recipe(reference == "owner/big" ? 30 * GiB : 2 * GiB)),
+                () => inference, loadTimeout ?? TimeSpan.FromSeconds(5));
+            return new Fixture(temp, paths, original, runtime, acquirer, switcher, inference);
         }
 
         public void Dispose() => _temp.Dispose();
@@ -326,6 +387,8 @@ public sealed class LocalAiModelSwitcherTests
         public List<string> Calls { get; } = [];
         public List<LocalAiInstallManifest> Replacements { get; } = [];
         public Queue<LocalAiRuntimeState> StartResults { get; } = new();
+        /// <summary>The model state <see cref="RefreshAsync"/> reports; Loaded by default.</summary>
+        public LocalAiModelAvailabilityState RefreshModelState { get; set; } = LocalAiModelAvailabilityState.Loaded;
         public LocalAiRuntimeSnapshot Snapshot { get; private set; } = Create(running ? LocalAiRuntimeState.Healthy : LocalAiRuntimeState.Stopped);
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged { add { } remove { } }
 
@@ -355,7 +418,22 @@ public sealed class LocalAiModelSwitcherTests
         public Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default) => Task.FromResult(Snapshot);
         public Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default) => Task.FromResult(Snapshot);
         public Task<LocalAiRuntimeSnapshot> RestartAsync(CancellationToken cancellationToken = default) => Task.FromResult(Snapshot);
-        public Task<LocalAiRuntimeSnapshot> RefreshAsync(CancellationToken cancellationToken = default) => Task.FromResult(Snapshot);
+
+        public Task<LocalAiRuntimeSnapshot> RefreshAsync(CancellationToken cancellationToken = default)
+        {
+            Calls.Add("refresh");
+            Snapshot = Create(LocalAiRuntimeState.Healthy) with
+            {
+                ModelEvidence = new LocalAiModelEvidence(
+                    RefreshModelState,
+                    DateTimeOffset.UtcNow,
+                    new string('a', 64),
+                    1,
+                    RefreshModelState == LocalAiModelAvailabilityState.Loaded ? Replacements[^1].ModelAlias : null),
+            };
+            return Task.FromResult(Snapshot);
+        }
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
         private static LocalAiRuntimeSnapshot Create(LocalAiRuntimeState state) =>
@@ -365,6 +443,26 @@ public sealed class LocalAiModelSwitcherTests
                 Ownership = state == LocalAiRuntimeState.Healthy ? LocalAiOwnership.CompanionManaged : LocalAiOwnership.None,
                 Detail = state == LocalAiRuntimeState.Failed ? "did not fit" : null,
             };
+    }
+
+    private sealed class FakeInferenceClient(FakeRuntime runtime) : ILlamaServerInferenceClient
+    {
+        public List<Uri> Endpoints { get; } = [];
+        public Exception? Failure { get; set; }
+        public bool Hang { get; set; }
+
+        public async Task<LlamaServerInferenceVerification> VerifyAsync(Uri endpoint, string modelAlias, CancellationToken cancellationToken = default)
+        {
+            runtime.Calls.Add("infer:" + modelAlias);
+            Endpoints.Add(endpoint);
+            if (Failure is { } failure)
+                throw failure;
+            if (Hang)
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            return new LlamaServerInferenceVerification(modelAlias, 5, 3, 1, 1);
+        }
+
+        public void Dispose() { }
     }
 
     private static string Lfs(string path, long size, char hash) =>

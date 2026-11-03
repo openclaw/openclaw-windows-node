@@ -14,6 +14,7 @@ public enum LocalAiModelSwitchPhase
     InstallingRuntime,
     StoppingRuntime,
     StartingRuntime,
+    LoadingModel,
     RollingBack,
 }
 
