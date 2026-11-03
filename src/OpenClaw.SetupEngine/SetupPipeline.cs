@@ -101,14 +101,17 @@ public static class SetupStepFactory
     [
         new PreflightOsStep(),
         new ValidateLocalAiRecoveryGatewayStep(),
-        new PreserveLocalAiRecoveryGatewayStep(),
         new PreflightLocalAiHardwareStep(),
         new PreflightWslStep(),
         new EnsureWslPlatformStep(reusePreflightResult: true),
         new ReconcileLocalAiInstallationStep(),
+        new ValidateLocalAiRecoveryGatewayCompatibilityStep(),
         new AcquireLocalAiRuntimeStep(),
         new AcquireLocalAiModelStep(),
         new PersistLocalAiManifestStep(),
+        // Arm receipt, runtime, and final restart recovery before the borrowed runtime changes.
+        // Reverse rollback still restores WSL networking before this guard settles the Gateway.
+        new PreserveLocalAiRecoveryGatewayStep(),
         new StartLocalAiRuntimeStep(),
         new CaptureLocalAiGpuBaselineStep(),
         new VerifyLocalAiInferenceStep(),
@@ -118,6 +121,7 @@ public static class SetupStepFactory
         new VerifyLocalAiWslStep(),
         new ConfigureLocalAiGatewayStep(),
         new RestartGatewayStep(),
+        new FinalizeLocalAiModelReplacementStep(),
     ];
 
     public static List<SetupStep> BuildDefaultSteps()
@@ -166,6 +170,20 @@ public static class SetupStepFactory
 
 public sealed class SetupPipeline
 {
+    internal static Task ReleaseBorrowedLocalAiRuntimeAfterFailureAsync(
+        SetupContext ctx,
+        PipelineResult? result)
+    {
+        if (result?.Outcome == PipelineOutcome.Success ||
+            !ctx.LocalAiRuntimeBorrowed ||
+            !ctx.LocalAiBorrowedRuntimeRestartedThisRun ||
+            ctx.LocalAiRuntime is not { } borrowedRuntime)
+        {
+            return Task.CompletedTask;
+        }
+        return borrowedRuntime.ReleaseSetupGatewayRouteAsync(CancellationToken.None);
+    }
+
     public static async Task<PipelineResult> RunWithSettlementAsync(
         Func<Task<PipelineResult>> run, Func<PipelineResult?, Task> settle)
     {

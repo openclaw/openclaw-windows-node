@@ -348,8 +348,10 @@ public sealed class LocalAiManifestMigrationTests
         Assert.Equal(fixture.Content, await File.ReadAllBytesAsync(fixture.LegacyModelPath));
     }
 
-    [Fact]
-    public async Task Migration_RejectsConcurrentManifestUpdateWithoutLosingIt()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Migration_ReconcilesOptionalDriftButRejectsAnotherInstallation(bool identityDrift)
     {
         using var temp = new TempDirectory("local-ai-cache-migration-");
         MigrationFixture fixture = await CreateFixtureAsync(
@@ -361,21 +363,30 @@ public sealed class LocalAiManifestMigrationTests
                         Path.Combine(temp.Path, "app-data", "LocalAI", "state.json"),
                         cancellationToken)) as JsonObject)!;
                 current["endpoint"] = "http://127.0.0.1:28888/v1";
+                current["gatewayFallbackModel"] = "openai/new-fallback";
+                if (identityDrift) current["runtimeId"] = "another-runtime";
                 await File.WriteAllTextAsync(
                     Path.Combine(temp.Path, "app-data", "LocalAI", "state.json"),
                     current.ToJsonString(),
                     cancellationToken);
             });
 
-        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
-            () => fixture.Store.MigrateLegacyModelToHubCacheAsync());
-
-        Assert.Contains("changed while", error.Message, StringComparison.Ordinal);
+        if (identityDrift)
+        {
+            InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
+                () => fixture.Store.MigrateLegacyModelToHubCacheAsync());
+            Assert.Contains("changed while", error.Message, StringComparison.Ordinal);
+        }
+        else
+        {
+            LocalAiResolvedInstall migrated = (await fixture.Store.MigrateLegacyModelToHubCacheAsync())!;
+            Assert.Equal("openai/new-fallback", migrated.Manifest.GatewayFallbackModel);
+        }
         JsonObject persisted =
             (JsonNode.Parse(await File.ReadAllTextAsync(fixture.Paths.ManifestPath)) as JsonObject)!;
         Assert.Equal("http://127.0.0.1:28888/v1", persisted["endpoint"]!.GetValue<string>());
         Assert.Equal(
-            LocalAiInstallManifest.CurrentSchemaVersion,
+            identityDrift ? 3 : 4,
             persisted["schemaVersion"]!.GetValue<int>());
         Assert.Equal(fixture.Content, await File.ReadAllBytesAsync(fixture.CachedModelPath));
     }
