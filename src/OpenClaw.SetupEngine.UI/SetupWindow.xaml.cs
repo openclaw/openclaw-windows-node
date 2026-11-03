@@ -40,6 +40,7 @@ public sealed partial class SetupWindow : Window
     private bool _autoStartAfterSetup = true;
     private readonly string _dataDir;
     private readonly string _localDataDir;
+    private SetupLogger? _nativeSetupLog;
     private readonly LocalAiHardwareProbeCache _localAiHardwareProbe = new(() => new CudaHostHardwareProbe().Probe());
     private readonly ISetupNativeConnectionHost? _nativeConnectionHost;
     private readonly ISetupLocalAiHost? _localAiHost;
@@ -88,6 +89,21 @@ public sealed partial class SetupWindow : Window
         set => _autoStartAfterSetup = value;
     }
     internal string DataDir => _dataDir;
+
+    // Window-scoped because the staged NativeGatewaySetupSession outlives
+    // NativeGatewaySetupPage and keeps logging until ReleaseNativeSetupAsync.
+    internal SetupLogger NativeSetupLog => _nativeSetupLog ??= CreateNativeSetupLog();
+
+    private SetupLogger CreateNativeSetupLog()
+    {
+        var path = Path.Combine(_dataDir, "Logs", "Setup", $"native-setup-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
+        try { return new SetupLogger(path, OpenClaw.SetupEngine.LogLevel.Debug); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Trace.TraceWarning($"Native setup log file unavailable ({ex.GetType().Name}).");
+            return new SetupLogger(filePath: null, OpenClaw.SetupEngine.LogLevel.Debug);
+        }
+    }
     internal string LocalDataDir => _localDataDir;
     public bool CanNavigateToWizard =>
         !_isClosed &&
@@ -222,7 +238,8 @@ public sealed partial class SetupWindow : Window
                         finally
                         {
                             AccessDraft?.ClearNativeConnectionSecrets();
-                            await ReleaseNativeSetupAsync();
+                            try { await ReleaseNativeSetupAsync(); }
+                            finally { _nativeSetupLog?.Dispose(); _nativeSetupLog = null; }
                         }
                     }
                 }
@@ -1087,7 +1104,7 @@ public sealed partial class SetupWindow : Window
         page switch
         {
             "welcome" => typeof(WelcomePage),
-            "native" => typeof(NativeGatewaySetupPage),
+            "native" or "native-failed" => typeof(NativeGatewaySetupPage),
             "advanced" => typeof(AdvancedSetupPage),
             "capabilities" => typeof(CapabilitiesPage),
             "gateway-review" => typeof(GatewaySetupPage),

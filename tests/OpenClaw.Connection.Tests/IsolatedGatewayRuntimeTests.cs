@@ -28,6 +28,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     };
     private readonly List<string> _calls = [];
     private readonly List<(string Family, string Command)> _packageCalls = [];
+    private readonly RecordingLogger _log = new();
     private readonly IsolatedGatewayRuntime _runtime;
     private WindowsTcpListenerInfo[] _listeners =
         [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
@@ -149,7 +150,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         _runtime = new IsolatedGatewayRuntime(new Resolver(_package, FixturePackage(OtherFamily)), client,
             () => new WindowsTcpListenerSnapshotResult(_listeners, _snapshotComplete, true),
             () => new Dictionary<int, ulong> { [ProcessId] = _hostSequence, [4567] = 88 },
-            _ => true, timeProvider: _clock);
+            _ => true, timeProvider: _clock, logger: _log);
     }
 
     [Fact]
@@ -592,6 +593,37 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task PrestartConflictNamesTheSquattingProcessWithoutClaimingItsIdentity()
+    {
+        _state = "stopped";
+        _listeners = [new(IPAddress.Loopback, Port, 4567, "squatter", null)];
+
+        var error = await Assert.ThrowsAsync<NativeGatewayListenerException>(
+            () => _runtime.EnsureRunningAsync(_record, default));
+
+        Assert.Contains("squatter (PID 4567)", error.Provenance.Detail);
+        Assert.Null(error.Provenance.ProcessId);
+    }
+
+    [Fact]
+    public async Task MixedVerifiedAndUnverifiedListenersNameTheFailingOne()
+    {
+        _state = "running";
+        // The attested IPv4 listener is legitimate; the IPv6 listener belongs to another process.
+        _listeners =
+        [
+            new(IPAddress.Loopback, Port, ProcessId, "fixture", null),
+            new(IPAddress.IPv6Loopback, Port, 4567, "stray", null)
+        ];
+
+        var error = await Assert.ThrowsAsync<NativeGatewayListenerException>(
+            () => _runtime.EnsureRunningAsync(_record, default));
+
+        Assert.Contains("stray (PID 4567)", error.Provenance.Detail);
+        Assert.DoesNotContain("fixture", error.Provenance.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CancellingPendingOwnedStartRollsBackAndReleasesGate()
     {
         _state = "stopped";
@@ -1024,5 +1056,15 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             Task.FromResult(packages[0]);
         public Task<NativeGatewayPackage> ResolveAsync(string family, CancellationToken cancellationToken) =>
             Task.FromResult(packages.Single(package => package.PackageFamilyName == family));
+    }
+
+    private sealed class RecordingLogger : IOpenClawLogger
+    {
+        public List<string> InfoLines { get; } = [];
+        public List<string> Warnings { get; } = [];
+        public void Info(string message) => InfoLines.Add(message);
+        public void Debug(string message) { }
+        public void Warn(string message) => Warnings.Add(message);
+        public void Error(string message, Exception? ex = null) { }
     }
 }

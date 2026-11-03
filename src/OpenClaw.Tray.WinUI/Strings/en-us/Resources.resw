@@ -7786,7 +7786,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Start and verify the Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Retry setup</value></data>
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>Collect Gateway diagnostics</value></data>
-  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>View setup log</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>Collect Gateway diagnostics for a redacted ZIP you can review or share, or open a terminal inside the isolated Gateway. Then choose Retry setup.</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>The Gateway did not become ready within {0} seconds. The first start can be slow. Collect Gateway diagnostics to see why, then choose Retry setup. To allow a longer start, set the {1} environment variable to a number of seconds and restart Companion.</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>Collecting redacted Gateway diagnostics...</value></data>
@@ -7795,6 +7794,9 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>Gateway diagnostics could not be collected: {0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>The Gateway terminal could not be opened: {0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Preview only. No package will be installed or Gateway started.</value></data>
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>Detailed activity</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>Open log file</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0} did not complete</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>These Windows capabilities become usable after Node Mode connects and pairs with the Gateway. Windows permissions and command approvals still apply.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway configured</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. You can change these choices in Companion Settings.</value></data>

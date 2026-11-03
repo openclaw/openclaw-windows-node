@@ -7717,7 +7717,6 @@
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>啟動並驗證 Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重試設定</value></data>
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>收集 Gateway 診斷資訊</value></data>
-  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>檢視設定記錄</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>收集 Gateway 診斷資訊以取得可檢視或分享的已遮蔽 ZIP，或在隔離的 Gateway 中開啟終端機。然後選擇「重試設定」。</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>Gateway 未在 {0} 秒內就緒。首次啟動可能較慢。請收集 Gateway 診斷資訊查看原因，然後選擇「重試設定」。若要允許更長的啟動時間，請將環境變數 {1} 設為秒數並重新啟動 Companion。</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>正在收集已遮蔽的 Gateway 診斷資訊...</value></data>
@@ -7726,6 +7725,9 @@
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>無法收集 Gateway 診斷資訊：{0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>無法開啟 Gateway 終端機：{0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>僅供預覽。不會安裝任何套件或啟動 Gateway。</value></data>
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>詳細活動</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>開啟記錄檔</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0}未完成</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>節點模式連線至 Gateway 並完成配對後，即可使用這些 Windows 功能。Windows 權限和命令核准仍然適用。</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>原生 Gateway 已設定</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}。您可以在 Companion 設定中變更這些選項。</value></data>
