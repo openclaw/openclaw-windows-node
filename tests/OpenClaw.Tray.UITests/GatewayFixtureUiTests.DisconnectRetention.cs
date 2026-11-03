@@ -33,6 +33,7 @@ public sealed partial class GatewayFixtureUiTests
             await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "disconnect-reader-anchor.json"),
                 JsonSerializer.Serialize(new { reader, renderedBefore, historyRepliesBefore }));
             await CaptureIfRequestedAsync(run, "explicit-disconnect-before.png", FindReaderAnchor(run, reader)!);
+            await WriteReaderBoundaryAsync(run, reader, "before-disconnect");
 
             await ToggleConnectionAsync(run, ToggleState.On);
             await run.WaitForAsync(async () =>
@@ -42,7 +43,18 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Equal(inputIdentity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
             Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
             Assert.True(SessionSelected(run, GatewayScenario.LongTitle));
-            await WaitUiAsync(run, () => ReaderAnchorIsPositioned(run, reader), "offline visible reader anchor and viewport offset");
+            await WriteReaderBoundaryAsync(run, reader, "offline-mounted");
+            try
+            {
+                await WaitUiAsync(run, () => ReaderAnchorIsPositioned(run, reader), "offline visible reader anchor and viewport offset");
+            }
+            catch
+            {
+                // Preserve the original assertion failure. Emit only fixture-owned
+                // geometry and whitelisted state, never a UI tree or chat contents.
+                await WriteReaderBoundaryAsync(run, reader, "offline-anchor-failure", includeProviderSnapshot: true);
+                throw;
+            }
             Assert.InRange(TimelineScroll(run).Current.VerticalScrollPercent, beforeScroll - 5, beforeScroll + 5);
             Assert.False(FindById(run, "ChatComposerPrimaryAction")?.Current.IsEnabled == true);
             var offline = await run.InvokeAsync("app.chat.snapshot", new { threadId = GatewayScenario.LongSessionKey });
@@ -114,6 +126,87 @@ public sealed partial class GatewayFixtureUiTests
         return Math.Abs(bounds.Top - viewport.Top - anchor.TopOffset) <= ReaderAnchorTolerancePixels
             && Math.Abs(bounds.Left - viewport.Left - anchor.LeftOffset) <= ReaderAnchorTolerancePixels;
     }
+
+    private async Task WriteReaderBoundaryAsync(GatewayFixtureRun run, ReaderAnchor anchor, string stage,
+        bool includeProviderSnapshot = false)
+    {
+        try
+        {
+            // The ordinal identifies known synthetic fixture data without exporting
+            // arbitrary UI text. The expected offsets are the original captured anchor.
+            const string prefix = "Fixture long message ";
+            var fixtureOrdinal = anchor.Text.StartsWith(prefix, StringComparison.Ordinal)
+                && anchor.Text.Length >= prefix.Length + 3
+                && int.TryParse(anchor.Text.AsSpan(prefix.Length, 3), out var ordinal)
+                && ordinal is >= 1 and <= 240 ? (int?)ordinal : null;
+            var timeline = FindTimeline(run);
+            var message = FindReaderAnchor(run, anchor);
+            var input = FindById(run, "ChatComposerInput");
+            var viewport = timeline?.Current.BoundingRectangle;
+            var bounds = message?.Current.BoundingRectangle;
+            var intersection = viewport is { } v && bounds is { } b
+                ? System.Windows.Rect.Intersect(v, b) : System.Windows.Rect.Empty;
+            var scrollElement = timeline?.TryGetCurrentPattern(ScrollPattern.Pattern, out var direct) == true
+                ? direct : timeline?.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true))
+                    ?.GetCurrentPattern(ScrollPattern.Pattern);
+            var scroll = (scrollElement as ScrollPattern)?.Current;
+            using var rendered = string.IsNullOrEmpty(input?.Current.ItemStatus)
+                ? null : JsonDocument.Parse(input.Current.ItemStatus);
+            using var positioned = string.IsNullOrEmpty(timeline?.Current.ItemStatus)
+                ? null : JsonDocument.Parse(timeline.Current.ItemStatus);
+            var selected = rendered?.RootElement.GetProperty("selectedThreadId").GetString();
+            var revision = rendered?.RootElement.GetProperty("historyRevisions");
+            long? historyRevision = revision is { } revisions
+                && revisions.TryGetProperty(GatewayScenario.LongSessionKey, out var value)
+                && value.ValueKind == JsonValueKind.Number ? value.GetInt64() : null;
+            var requestKey = positioned?.RootElement.GetProperty("requestKey").GetString();
+            var completedKey = positioned?.RootElement.GetProperty("completedRequestKey").GetString();
+            output.WriteLine("SYNTHETIC disconnect-reader " + JsonSerializer.Serialize(new
+            {
+                stage, fixtureOrdinal, expectedY = anchor.TopOffset, expectedX = anchor.LeftOffset,
+                viewport = ReaderRectangle(viewport), anchorBounds = ReaderRectangle(bounds),
+                intersection = ReaderRectangle(intersection),
+                relativeY = bounds is { IsEmpty: false } a && viewport is { IsEmpty: false } t ? (double?)(a.Top - t.Top) : null,
+                relativeX = bounds is { IsEmpty: false } c && viewport is { IsEmpty: false } w ? (double?)(c.Left - w.Left) : null,
+                timelineFound = timeline is not null, anchorFound = message is not null,
+                timelineOffscreen = timeline?.Current.IsOffscreen, anchorOffscreen = message?.Current.IsOffscreen,
+                timelineRuntimeId = timeline?.GetRuntimeId(), anchorRuntimeId = message?.GetRuntimeId(),
+                visible = timeline is not null && message is not null && IsVisibleInTimeline(timeline, message),
+                scrollPercent = scroll?.VerticalScrollPercent, viewSize = scroll?.VerticalViewSize,
+                selectedFixtureReader = selected == GatewayScenario.LongSessionKey, historyRevision,
+                nativeHistoryRevision = positioned?.RootElement.GetProperty("historyRevision").GetInt64(),
+                nativeSettled = positioned?.RootElement.GetProperty("settled").GetBoolean(),
+                nativeRequestFingerprint = requestKey is null ? null : Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(requestKey)))[..16],
+                nativeRequestCompleted = requestKey is not null && requestKey == completedKey,
+                historyReplies = CompletedReaderHistoryReplies(run)
+            }));
+            if (!includeProviderSnapshot) return;
+            // This existing supporting read runs only after the failed assertion,
+            // so it cannot refresh history and rescue the boundary under test.
+            var snapshot = await run.InvokeAsync("app.chat.snapshot", new { threadId = GatewayScenario.LongSessionKey });
+            var available = snapshot.TryGetProperty("composeTarget", out var target);
+            output.WriteLine("SYNTHETIC disconnect-reader-provider " + JsonSerializer.Serialize(new
+            {
+                stage, snapshotAvailable = available,
+                connected = snapshot.TryGetProperty("connectionStatus", out var status)
+                    && string.Equals(status.GetString(), "connected", StringComparison.OrdinalIgnoreCase),
+                composeTargetReady = available && target.GetProperty("isReady").GetBoolean(),
+                composeTargetMatchesReader = available && target.GetProperty("sessionKey").GetString() == GatewayScenario.LongSessionKey,
+                historyLoaded = snapshot.TryGetProperty("selectedTimeline", out var history)
+                    && history.ValueKind == JsonValueKind.Object && history.GetProperty("historyLoaded").GetBoolean()
+            }));
+        }
+        catch (Exception diagnosticError)
+        {
+            // No exception message: UIA/MCP errors can contain arbitrary content.
+            output.WriteLine($"SYNTHETIC disconnect-reader stage={stage}; diagnostic-unavailable={diagnosticError.GetType().Name}");
+        }
+    }
+
+    private static double[]? ReaderRectangle(System.Windows.Rect? bounds) =>
+        bounds is { IsEmpty: false } value ? [value.X, value.Y, value.Width, value.Height] : null;
 
     private static bool PositioningConsumedFreshHistory(GatewayFixtureRun run, long previousRevision)
     {
