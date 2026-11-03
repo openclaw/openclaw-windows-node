@@ -277,7 +277,6 @@ foreach ($requiredToken in @(
         "actions: read",
         "contents: read",
         "security-events: write",
-        'if [ "${{ vars.OPENCLAW_CODEQL_ADVANCED_SETUP }}" = "true" ]; then',
         "inputs.profile == 'csharp'",
         "languages: csharp",
         "build-mode: manual",
@@ -293,26 +292,22 @@ foreach ($requiredToken in @(
         -Expected $requiredToken `
         -Message "CodeQL workflow is missing required contract '$requiredToken'."
 }
-Assert-NotContains `
-    -Text $codeQlWorkflow `
-    -Unexpected "inputs.advanced_setup" `
-    -Message "CodeQL advanced setup must not bypass the repository-variable gate."
+# Fork pull requests do not receive the repository variable used by the retired
+# setup-migration gate. Eligibility must depend only on draft/profile context.
+foreach ($retiredGate in @("advanced-setup", "OPENCLAW_CODEQL_ADVANCED_SETUP", "inputs.advanced_setup")) {
+    Assert-NotContains `
+        -Text $codeQlWorkflow `
+        -Unexpected $retiredGate `
+        -Message "CodeQL must not depend on the retired migration gate '$retiredGate'."
+}
 foreach ($jobName in @("csharp", "actions")) {
     $codeQlJob = Get-JobBlock -Name $jobName -Text $codeQlWorkflow
+    $expectedEligibility = "if: `${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == '$jobName') }}"
     Assert-Contains `
         -Text $codeQlJob `
-        -Expected "needs: advanced-setup" `
-        -Message "CodeQL job '$jobName' must depend on the advanced-setup gate."
-    Assert-Contains `
-        -Text $codeQlJob `
-        -Expected "needs.advanced-setup.outputs.enabled == 'true'" `
-        -Message "CodeQL job '$jobName' must remain disabled until the repository variable enables advanced setup."
+        -Expected $expectedEligibility `
+        -Message "CodeQL job '$jobName' must admit non-draft fork PRs without repository variables and preserve manual profiles."
 }
-$codeQlGateJob = Get-JobBlock -Name "advanced-setup" -Text $codeQlWorkflow
-Assert-Contains `
-    -Text $codeQlGateJob `
-    -Expected 'echo "enabled=false" >> "$GITHUB_OUTPUT"' `
-    -Message "CodeQL gate must explicitly disable advanced analysis when the repository variable is not true."
 
 Assert-Contains `
     -Text $workflow `
