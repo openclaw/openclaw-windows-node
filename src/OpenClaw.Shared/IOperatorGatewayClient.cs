@@ -39,6 +39,11 @@ public interface IOperatorGatewayClient
     event EventHandler<JsonElement>? AgentFileContentUpdated;
     event EventHandler<AgentEventInfo>? ChatEventReceived;
 
+    /// <summary>Advertised authenticated RPCs, not local node/MCP capabilities.</summary>
+    IReadOnlyList<string> AdvertisedServerMethods => Array.Empty<string>();
+    Task<GatewaySpeechAudio> SynthesizeSpeechAsync(string text, long connectionEpoch, CancellationToken cancellationToken = default)
+        => Task.FromException<GatewaySpeechAudio>(new GatewaySpeechException(GatewaySpeechFailure.Unsupported));
+
     // ─── Query ───
     string? OperatorDeviceId { get; }
     string? AuthenticatedSigningDeviceId => null;

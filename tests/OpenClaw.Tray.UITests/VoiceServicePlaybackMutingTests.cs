@@ -142,7 +142,7 @@ public sealed class VoiceServicePlaybackMutingTests
     public async Task PlaybackWithNoVoiceService_MutesCaptureCreatedLater_WithoutAnotherSpeechRequest()
     {
         using var directory = new TempDirectory();
-        var settings = new SettingsManager(directory.Path) { NodeSttEnabled = false };
+        var settings = new SettingsManager(directory.Path) { NodeSttEnabled = false, NodeTtsEnabled = true };
         using var domain = new PlaybackMuteState();
         VoiceService? recordingService = null;
         Func<VoiceService?> recordingResolver = () => recordingService;

@@ -258,6 +258,9 @@ public sealed class ChatPlaybackMutingTests
 
     private static OpenClawChatCoordinator Create(SettingsManager settings,
         Func<VoiceService?> resolve, Func<TtsSpeakArgs, CancellationToken, Task> speak,
-        Action? stop = null) =>
-        new(settings, () => null, NullLogger.Instance, null, () => resolve()?.AcquirePlaybackMute(), speak, stop ?? (() => { }));
+        Action? stop = null)
+    {
+        settings.NodeTtsEnabled = true;
+        return new(settings, () => null, NullLogger.Instance, null, () => resolve()?.AcquirePlaybackMute(), speak, stop ?? (() => { }));
+    }
 }
