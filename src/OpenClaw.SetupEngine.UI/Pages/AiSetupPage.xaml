@@ -36,7 +36,13 @@
             </controls:SetupActionCard>
         </DataTemplate>
         <DataTemplate x:Key="ProviderPickerTemplate">
-            <TextBlock Text="{Binding Label}" Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Viewbox Width="24" Height="24" VerticalAlignment="Center">
+                    <controls:ProviderArtwork Descriptor="{Binding Artwork}" Session="{Binding ArtworkSession}" />
+                </Viewbox>
+                <TextBlock Grid.Column="1" Text="{Binding Label}" Style="{StaticResource BodyTextBlockStyle}"
+                           TextWrapping="Wrap" VerticalAlignment="Center" />
+            </Grid>
         </DataTemplate>
     </Page.Resources>
     <Grid RowDefinitions="Auto,*,Auto" Padding="40,4,40,24">

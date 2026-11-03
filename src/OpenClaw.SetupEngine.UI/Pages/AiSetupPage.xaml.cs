@@ -73,6 +73,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private bool _cancelling;
     private bool _providerOperationActive;
     private string? _operationTitle;
+    private ProviderArtworkDescriptor? _operationArtwork;
     private sealed record ProviderBackdrop(Control? FocusTarget, double VerticalOffset, int Version);
     private ProviderBackdrop? _providerBackdrop;
     private Control? _providerRestoreFocus;
@@ -673,6 +674,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         _providerOperationActive = true;
         ApiKeyInput.Password = "";
         _operationTitle = row.Label;
+        _operationArtwork = row.Artwork;
         var catalogPreference = _presentation.NativeSessionCatalogPreferenceRequired
             ? CatalogPreference.IsChecked == true : (bool?)null;
         return RunAsync(async ct =>
@@ -1232,7 +1234,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             if (showProvider)
             {
                 _providerDialog.Update(step, phase, _busy, canCancelProvider, _cancelling,
-                    status, _providerError, _operationTitle, _submittingAnswer);
+                    status, _providerError, _operationTitle, _submittingAnswer, _operationArtwork, _artworkSession);
                 if (XamlRoot is not null)
                 {
                     var showing = _providerDialog.ShowOwnedAsync(XamlRoot, ActualTheme);

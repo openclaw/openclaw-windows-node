@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
 using OpenClaw.SetupEngine.UI.Pages;
@@ -21,6 +22,170 @@ namespace OpenClaw.Tray.UITests;
 public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper output)
 {
     private bool _nativeProof;
+
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    public async Task ProviderPicker_ShowsAdvertisedBrandsAndHonestFallbacksWithoutStartingSetup(ElementTheme theme)
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            var picker = Find<ComboBox>(page, "ApiProviderPicker");
+            Assert.Equal(-1, picker.SelectedIndex);
+            var scroller = Find<ScrollViewer>(page, "ChoicesScroller");
+            var scrollSettled = true;
+            void Scrolled(object? sender, ScrollViewerViewChangedEventArgs args) => scrollSettled = !args.IsIntermediate;
+            scroller.ViewChanged += Scrolled;
+            try
+            {
+                await InvokeCardAsync(Find<SetupActionCard>(page, "ApiKeysButton"));
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible && picker.IsLoaded,
+                    "API Keys action reveals the provider form");
+                picker.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+                scroller.UpdateLayout();
+                await OnboardingNativeProof.NextCompositionAsync();
+                await TestSupport.WaitForRenderedConditionAsync(() => scrollSettled, "provider scroller settled");
+                OnboardingNativeProof.AssertFullyVisible(picker, scroller);
+                picker.IsDropDownOpen = true;
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => picker.ContainerFromIndex(3) is ComboBoxItem { IsLoaded: true }, "provider inventory mounted");
+                var marks = Enumerable.Range(0, 4).Select(index => Assert.Single(
+                    TestSupport.FindDescendants<ProviderArtwork>(Assert.IsType<ComboBoxItem>(picker.ContainerFromIndex(index))))).ToArray();
+                await AssertBundledArtworkAsync(marks[0], "llama-app");
+                await AssertBundledArtworkAsync(marks[1], "ollama");
+                foreach (var mark in marks.Skip(2))
+                {
+                    Assert.Null(mark.Descriptor!.BundledFileName);
+                    Assert.Null(Assert.IsType<Image>(mark.FindName("ArtworkImage")).Source);
+                    Assert.Equal(Visibility.Visible, Assert.IsType<FontIcon>(mark.FindName("FallbackIcon")).Visibility);
+                }
+                Assert.All(marks, mark => Assert.Same(marks[0].Session, mark.Session));
+                if (_nativeProof)
+                    using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"provider-inventory-{theme}", output,
+                        ["Llama app", "Ollama", "llama.cpp", "Unknown provider"], requiredContent: picker)) { }
+                Assert.Equal(-1, picker.SelectedIndex);
+                Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+                Assert.Equal(0, completed());
+            }
+            finally
+            {
+                picker.IsDropDownOpen = false;
+                scroller.ViewChanged -= Scrolled;
+            }
+        }, theme: theme, nativeProof: !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")),
+            configure: transport => transport.DetectionOverride = new()
+            {
+                Candidates = [], Workspace = "/synthetic-workspace", SetupComplete = false,
+                ManualProviders = [new("llama-app", "Llama app", BrandId: "llama-app"),
+                    new("ollama", "Ollama", BrandId: "ollama"), new("llamacpp", "llama.cpp"),
+                    new("fixture-unknown", "Unknown provider")],
+            });
+    }
+
+    [Theory]
+    [InlineData("llama-app", "Llama app", "LlamaAppChoices", ElementTheme.Light)]
+    [InlineData("llama-app", "Llama app", "LlamaAppChoices", ElementTheme.Dark)]
+    [InlineData("ollama", "Ollama", "PrepareChoices", ElementTheme.Light)]
+    [InlineData("ollama", "Ollama", "PrepareChoices", ElementTheme.Dark)]
+    public async Task ProviderDialog_KeepsSelectedArtworkThroughTypedPromptsAndReleasesOnlyItsBorrow(
+        string brand, string label, string group, ElementTheme theme)
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            var row = Assert.Single(TestSupport.FindDescendants<ProviderArtwork>(Find<ItemsControl>(page, group)));
+            await AssertBundledArtworkAsync(row, brand);
+            var session = Assert.IsType<ProviderArtworkSession>(row.Session);
+            Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+            var dialog = GetDialog(page);
+            var opened = false;
+            void Opened(ContentDialog sender, ContentDialogOpenedEventArgs args) => opened = true;
+            dialog.Opened += Opened;
+            try
+            {
+                await InvokeChoiceAsync(page, group);
+                await TestSupport.WaitForRenderedConditionAsync(() => opened && dialog.CanSubmit,
+                    "provider dialog Opened before automation inspection");
+            }
+            finally { dialog.Opened -= Opened; }
+            var icon = Assert.IsType<ProviderArtwork>(dialog.FindName("ProviderIcon"));
+            foreach (var type in new[] { "note", "text", "confirm" })
+            {
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => dialog.CanSubmit && Equals(dialog.Title, "Provider " + type), $"{brand} {type} prompt");
+                await AssertBundledArtworkAsync(icon, brand);
+                Assert.Same(session, icon.Session);
+                Assert.Equal(label, Assert.IsType<TextBlock>(dialog.FindName("ProviderName")).Text);
+                await OnboardingNativeProof.AssertNativeDialogNameAsync(ui.TestWindow, dialog, "Provider " + type,
+                    opened, $"provider-{brand}-{type}-{theme}", output);
+                if (type == "text")
+                {
+                    var input = Assert.IsType<TextBox>(dialog.FindName("TextInput"));
+                    Assert.Equal("Provider text", AutomationProperties.GetName(input));
+                    input.Text = "synthetic-endpoint";
+                }
+                if (type == "confirm")
+                    Assert.IsType<CheckBox>(dialog.FindName("ConfirmInput")).IsChecked = true;
+                if (_nativeProof)
+                    using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"provider-{brand}-{type}-{theme}", output,
+                        [label, "Provider " + type, "Cancel"], requiredContent: Assert.IsType<ScrollViewer>(dialog.Content))) { }
+                Invoke(DialogButton(dialog, "PrimaryButton"));
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => transport.LastNext.ValueKind == JsonValueKind.Object &&
+                        transport.LastNext.GetProperty("answer").GetProperty("stepId").GetString() == type,
+                    $"{type} typed answer dispatched");
+                if (type == "text")
+                    Assert.Equal("synthetic-endpoint", transport.LastNext.GetProperty("answer").GetProperty("value").GetString());
+                if (type == "confirm")
+                    Assert.True(transport.LastNext.GetProperty("answer").GetProperty("value").GetBoolean());
+            }
+            Assert.Equal(brand, transport.LastActivation.GetProperty("authChoice").GetString());
+            Assert.Single(transport.MethodCalls, method => method == "openclaw.setup.prepare.start");
+            Assert.DoesNotContain("openclaw.setup.auth.start", transport.MethodCalls);
+            Assert.DoesNotContain("openclaw.setup.activate.start", transport.MethodCalls);
+            Invoke(Assert.IsType<Button>(dialog.FindName("CancelButton")));
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => !Assert.IsType<ScrollViewer>(dialog.Content).IsLoaded, "cancelled dialog closed");
+            Assert.Null(icon.Session);
+            Assert.Null(icon.Descriptor);
+            Assert.Null(Assert.IsType<Image>(icon.FindName("ArtworkImage")).Source);
+            await AssertBundledArtworkAsync(row, brand);
+            Assert.Same(session, row.Session);
+            // Reopening on the same page proves dismissal did not dispose its borrowed session.
+            await TestSupport.WaitForSettingsCardReadyAsync(page,
+                Assert.Single(TestSupport.FindDescendants<SetupActionCard>(Find<ItemsControl>(page, group))));
+            transport.WizardStep = new() { Id = "note", Type = "note", Title = "Provider note", Executor = "client" };
+            await InvokeChoiceAsync(page, group);
+            await AssertBundledArtworkAsync(icon, brand);
+            await page.CloseAsync();
+            Assert.Null(icon.Session);
+            Assert.Null(Assert.IsType<Image>(icon.FindName("ArtworkImage")).Source);
+            Assert.Null(Assert.IsType<Image>(row.FindName("ArtworkImage")).Source);
+            Assert.Equal(0, completed());
+        }, nativeAutomation: true, theme: theme, nativeProof: !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")),
+            configure: transport =>
+            {
+                transport.DetectionOverride = new()
+                {
+                    Candidates = [], ManualProviders = [], Workspace = "/synthetic-workspace", SetupComplete = false,
+                    PrepareOptions = [new(brand, label, BrandId: brand, ActionLabel: "Set up")],
+                };
+                transport.WizardStep = new() { Id = "note", Type = "note", Title = "Provider note", Executor = "client" };
+                transport.FollowingSteps.Enqueue(new() { Id = "text", Type = "text", Title = "Provider text", Executor = "client" });
+                transport.FollowingSteps.Enqueue(new() { Id = "confirm", Type = "confirm", Title = "Provider confirm", Executor = "client" });
+                transport.FollowingSteps.Enqueue(new() { Id = "review", Type = "note", Title = "Provider review", Executor = "client" });
+            });
+    }
+
+    private static async Task AssertBundledArtworkAsync(ProviderArtwork artwork, string brand)
+    {
+        await TestSupport.WaitForRenderedConditionAsync(
+            () => artwork.IsLoaded && Assert.IsType<FontIcon>(artwork.FindName("FallbackIcon")).Visibility == Visibility.Collapsed,
+            $"decoded {brand} artwork");
+        var image = Assert.IsType<Image>(artwork.FindName("ArtworkImage"));
+        Assert.Equal(Visibility.Visible, image.Visibility);
+        Assert.EndsWith($"/ProviderIcon-{brand}.svg", Assert.IsType<SvgImageSource>(image.Source).UriSource.AbsoluteUri);
+    }
 
     [Fact]
     public async Task AiGroups_KeepManualInputSeparateFromAuthenticationInTheMountedPage()
@@ -2497,7 +2662,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         string? expectedGatewayId = null, bool nativeProof = false, ElementTheme theme = ElementTheme.Light,
         double width = 720, LocalAiInstallAndUseIntent? installAndUse = null, Func<bool>? ready = null,
         Action<GatewayAiSetupCompletion>? completedProof = null, Action? closeSetupWindow = null,
-        bool prepareDiscovery = false, SetupLoadingProgress? loading = null)
+        bool prepareDiscovery = false, SetupLoadingProgress? loading = null, bool nativeAutomation = false)
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -2533,6 +2698,18 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     ui.TestWindow.AppWindow.Move(new Windows.Graphics.PointInt32(work.X + 32, work.Y + 32));
                     ui.Container.Padding = new Thickness(0);
                     OnboardingNativeProof.ActivateOwned(ui.TestWindow);
+                }
+                else if (nativeAutomation)
+                {
+                    // Native name exposure needs an owned HWND, not the headless 1x1 parking rectangle.
+                    var scale = ui.Container.XamlRoot.RasterizationScale;
+                    ui.TestWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32(
+                        NativeProofLayout.PhysicalPixels(720, scale), NativeProofLayout.PhysicalPixels(820, scale)));
+                    var work = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(ui.TestWindow.AppWindow.Id,
+                        Microsoft.UI.Windowing.DisplayAreaFallback.Nearest).WorkArea;
+                    ui.TestWindow.AppWindow.Move(new Windows.Graphics.PointInt32(work.X, work.Y));
+                    ui.TestWindow.AppWindow.Show(activateWindow: false);
+                    await OnboardingNativeProof.NextCompositionAsync();
                 }
                 else
                     ui.TestWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32(816, 944));
@@ -2586,7 +2763,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     if (originalBackground == DependencyProperty.UnsetValue) ui.Container.ClearValue(Panel.BackgroundProperty);
                     else ui.Container.SetValue(Panel.BackgroundProperty, originalBackground);
                     ui.TestWindow.AppWindow.Resize(originalSize);
-                    if (nativeProof) ui.TestWindow.AppWindow.Move(originalPosition);
+                    if (nativeProof || nativeAutomation) ui.TestWindow.AppWindow.Move(originalPosition);
                     _nativeProof = false;
                     await ui.YieldToRenderAsync();
                 }

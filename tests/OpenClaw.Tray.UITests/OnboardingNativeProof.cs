@@ -707,6 +707,238 @@ internal static class OnboardingNativeProof
     private sealed record NativeLabelEvidence(string Expected, string ActualName, string ControlType,
         double Left, double Top, double Width, double Height, string Status);
 
+    internal static async Task AssertNativeDialogNameAsync(Window window,
+        OpenClaw.SetupEngine.UI.Controls.ProviderSetupDialog dialog, string expectedName,
+        bool openedObserved, string state, ITestOutputHelper output)
+    {
+        Assert.True(openedObserved, "Observe this dialog's actual Opened event before querying native automation.");
+        Assert.True(window.DispatcherQueue.HasThreadAccess);
+        AssertOwned(Handle(window));
+        var currentRoot = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
+        Assert.NotNull(currentRoot.XamlRoot);
+        Assert.Same(currentRoot.XamlRoot, dialog.XamlRoot);
+        Assert.Equal(expectedName, Assert.IsType<string>(dialog.Title));
+        // Logical step readiness precedes WinUI's deferred measure/arrange. Admit current layout before snapshotting it.
+        dialog.UpdateLayout();
+        var textInput = Assert.IsType<TextBox>(dialog.FindName("TextInput"));
+        if (expectedName == "Provider text")
+        {
+            Assert.True(textInput.IsLoaded && textInput.Visibility == Visibility.Visible);
+            Assert.Same(currentRoot.XamlRoot, textInput.XamlRoot);
+            Assert.True(double.IsFinite(textInput.ActualWidth) && double.IsFinite(textInput.ActualHeight) &&
+                textInput.ActualWidth > 0 && textInput.ActualHeight > 0);
+        }
+        var layoutAdmission = new
+        {
+            operation = "UIElement.UpdateLayout", completed = true, currentTitle = Assert.IsType<string>(dialog.Title),
+            textInputLoaded = textInput.IsLoaded, textInputVisibility = textInput.Visibility.ToString(),
+            textInputWidth = textInput.ActualWidth, textInputHeight = textInput.ActualHeight,
+            uiThreadId = GetCurrentThreadId(), completedUtc = DateTimeOffset.UtcNow,
+        };
+        output.WriteLine($"native-dialog-layout-admitted={state}; operation=UIElement.UpdateLayout; title={layoutAdmission.currentTitle}; thread={layoutAdmission.uiThreadId}");
+        var binding = BindNativeDialog(window, dialog);
+        var proofDirectory = Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR");
+        if (!string.IsNullOrWhiteSpace(proofDirectory)) AssertSourceUnchanged();
+        Assert.Equal(state, Path.GetFileName(state));
+        var path = string.IsNullOrWhiteSpace(proofDirectory) ? null : Path.Combine(proofDirectory, state + ".dialog-uia.json");
+        if (path is not null) Assert.False(File.Exists(path), "Never adopt an old dialog-name observation.");
+        var observed = await Task.Run(() => ReadNativeDialog(binding));
+        void Save(string status, NativeDialogNode? selected = null)
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                schema = "owned-native-dialog-name-v1", layoutAdmission, providerGeometryContract = "rendered-in-native-in-measured-slot-physical-pixels", state, status, expectedName, openedObserved,
+                binding.Hwnd, binding.ProcessId, binding.ThreadId, binding.Title, binding.Provider,
+                binding.WindowBounds, binding.ContentBounds, binding.RenderedProviderBounds, binding.ProviderLayoutSlotInParent, binding.ProviderLayoutSlotBounds,
+                referenceContract = "microsoft-ui-xaml 948461c2d0c93bce2e9c039ec28b4a25976afede: ContentDialog projects Name to PopupAutomationPeer; class Popup, Window role",
+                head = string.IsNullOrWhiteSpace(proofDirectory) ? null : Source.Value.Head,
+                freezeManifestSha256 = Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_MANIFEST_SHA256"),
+                assemblySha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(typeof(OnboardingNativeProof).Assembly.Location))),
+                observed, selected, recordedUtc = DateTimeOffset.UtcNow,
+            }, new JsonSerializerOptions { WriteIndented = true });
+            if (path is not null) File.WriteAllText(path, json);
+            else if (status == "observed-not-verified") output.WriteLine(json);
+            output.WriteLine($"native-dialog-name={state}; status={status}; observation={path ?? "test output"}");
+        }
+        // Record the real native role/name tree before cardinality/name assertions can fail.
+        Save("observed-not-verified");
+        Assert.Empty(observed.Errors);
+        Assert.False(observed.Overflow, "The owned subtree exceeded the bounded observation budget.");
+        var current = BindNativeDialog(window, dialog);
+        Assert.Same(binding.Root, current.Root);
+        Assert.Same(binding.XamlRoot, current.XamlRoot);
+        Assert.Same(binding.ProviderParent, current.ProviderParent);
+        Assert.Equal(binding.Hwnd, current.Hwnd);
+        Assert.Equal(binding.ProcessId, current.ProcessId);
+        Assert.Equal(binding.ThreadId, current.ThreadId);
+        Assert.Equal(binding.Title, current.Title);
+        Assert.Equal(binding.Provider, current.Provider);
+        Assert.Equal(binding.WindowBounds, current.WindowBounds);
+        Assert.Equal(binding.ContentBounds, current.ContentBounds);
+        Assert.Equal(binding.RenderedProviderBounds, current.RenderedProviderBounds);
+        Assert.Equal(binding.ProviderLayoutSlotInParent, current.ProviderLayoutSlotInParent);
+        Assert.Equal(binding.ProviderLayoutSlotBounds, current.ProviderLayoutSlotBounds);
+        Assert.Equal(expectedName, binding.Title);
+        var candidate = Assert.Single(observed.Nodes, node =>
+            node.ProcessId == binding.ProcessId && node.Role == "ControlType.Window" && node.ClassName == "Popup" &&
+            node.IsModal == true && !node.IsOffscreen && node.RuntimeId.Length > 0 && node.Bounds is { } bounds &&
+            binding.WindowBounds.Contains(bounds) && bounds.Contains(binding.ContentBounds) && bounds.Contains(binding.RenderedProviderBounds) &&
+            bounds.Contains(binding.ProviderLayoutSlotBounds) &&
+            node.TextChildren.Any(text => text.ProcessId == binding.ProcessId && !text.IsOffscreen &&
+                // TextBlock ActualWidth is text metrics; UIA encloses the arranged visual, not the full pre-alignment slot.
+                // Require the real provider's visible extent inside its native box, itself inside its measured slot.
+                text.Name == binding.Provider && text.Bounds is { } providerBounds &&
+                providerBounds.ContainsPhysical(binding.RenderedProviderBounds) && binding.ProviderLayoutSlotBounds.ContainsPhysical(providerBounds) &&
+                observed.Nodes.Any(providerNode => providerNode.RuntimeId.SequenceEqual(text.RuntimeId) &&
+                    providerNode.ProcessId == binding.ProcessId && providerNode.Role == "ControlType.Text" &&
+                    providerNode.ClassName == "TextBlock" && providerNode.AutomationId == "ProviderName" && !providerNode.IsOffscreen)) &&
+            node.TextChildren.Any(text => text.ProcessId == binding.ProcessId && !text.IsOffscreen &&
+                text.Name == expectedName && text.Bounds is { } titleBounds && bounds.Contains(titleBounds)));
+        Assert.Equal(expectedName, candidate.Name);
+        if (!string.IsNullOrWhiteSpace(proofDirectory)) AssertSourceUnchanged();
+        Save("name-verified", candidate);
+    }
+
+    private static NativeDialogBinding BindNativeDialog(Window window,
+        OpenClaw.SetupEngine.UI.Controls.ProviderSetupDialog dialog)
+    {
+        var handle = Handle(window);
+        AssertOwned(handle);
+        var thread = GetWindowThreadProcessId(handle, out var process);
+        Assert.Equal(GetCurrentThreadId(), thread);
+        Assert.True(IsWindowVisible(handle) && !IsIconic(handle));
+        var root = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
+        Assert.NotNull(root.XamlRoot);
+        Assert.Same(root, root.XamlRoot.Content);
+        Assert.Same(root.XamlRoot, dialog.XamlRoot);
+        var content = Assert.IsAssignableFrom<FrameworkElement>(dialog.Content);
+        var provider = Assert.IsType<TextBlock>(dialog.FindName("ProviderName"));
+        Assert.All(new FrameworkElement[] { content, provider }, element =>
+        {
+            Assert.True(element.IsLoaded && element.Visibility == Visibility.Visible);
+            Assert.Same(root.XamlRoot, element.XamlRoot);
+        });
+        Assert.False(string.IsNullOrWhiteSpace(provider.Text));
+        Assert.True(GetWindowRect(handle, out var windowBounds));
+        var origin = new NativePoint();
+        Assert.True(ClientToScreen(handle, ref origin));
+        var inset = GetContentTopInset(window);
+        var scale = root.XamlRoot.RasterizationScale;
+        Assert.True(double.IsFinite(scale) && scale > 0);
+        NativeDialogBounds PhysicalBounds(Windows.Foundation.Rect rect, string context = "rendered element")
+        {
+            var physical = new NativeDialogBounds(origin.X + rect.Left * scale, origin.Y + inset + rect.Top * scale,
+                origin.X + rect.Right * scale, origin.Y + inset + rect.Bottom * scale);
+            Assert.True(physical.PositiveFinite,
+                $"Rejected native-dialog geometry: context={context}; rootRect={rect}; physical={physical}; clientOrigin=({origin.X},{origin.Y}); inset={inset}; scale={scale}.");
+            return physical;
+        }
+        NativeDialogBounds Bounds(FrameworkElement element) => PhysicalBounds(
+            element.TransformToVisual(root).TransformBounds(
+                new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight)));
+        var providerParent = Assert.IsAssignableFrom<FrameworkElement>(VisualTreeHelper.GetParent(provider));
+        Assert.Same(root.XamlRoot, providerParent.XamlRoot);
+        var renderedProviderBounds = Bounds(provider);
+        var layoutSlot = Microsoft.UI.Xaml.Controls.Primitives.LayoutInformation.GetLayoutSlot(provider);
+        var providerLayoutSlotInParent = new NativeDialogBounds(layoutSlot.Left, layoutSlot.Top, layoutSlot.Right, layoutSlot.Bottom);
+        var slotContext = $"parent={providerParent.GetType().FullName}/{providerParent.Name}; rawSlot={providerLayoutSlotInParent}; rendered={renderedProviderBounds}";
+        Assert.True(providerLayoutSlotInParent.PositiveFinite,
+            $"Actual provider layout slot must be finite and nonempty: {slotContext}; physicalSlot=not projected because raw slot was rejected.");
+        var providerLayoutSlotBounds = PhysicalBounds(providerParent.TransformToVisual(root).TransformBounds(layoutSlot), slotContext);
+        Assert.True(providerLayoutSlotBounds.Contains(renderedProviderBounds),
+            $"Actual provider layout slot must contain its rendered extent: {slotContext}; physicalSlot={providerLayoutSlotBounds}.");
+        var outer = windowBounds.Rectangle;
+        return new(handle.ToInt64(), (int)process, thread, root, root.XamlRoot, providerParent,
+            Assert.IsType<string>(dialog.Title), provider.Text,
+            new(outer.Left, outer.Top, outer.Right, outer.Bottom), Bounds(content), renderedProviderBounds, providerLayoutSlotInParent, providerLayoutSlotBounds);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static NativeDialogObservation ReadNativeDialog(NativeDialogBinding binding)
+    {
+        Assert.Equal(ApartmentState.MTA, Thread.CurrentThread.GetApartmentState());
+        RuntimeHelpers.RunModuleConstructor(typeof(System.Windows.Media.Visual).Module.ModuleHandle);
+        var nodes = new List<NativeDialogNode>();
+        var errors = new List<string>();
+        var count = 0;
+        try
+        {
+            var handle = new IntPtr(binding.Hwnd);
+            AssertOwned(handle);
+            var root = Uia.AutomationElement.FromHandle(handle);
+            Assert.Equal(binding.ProcessId, root.Current.ProcessId);
+            var owned = new Uia.PropertyCondition(Uia.AutomationElement.ProcessIdProperty, binding.ProcessId);
+            var elements = root.FindAll(Uia.TreeScope.Descendants, owned).Cast<Uia.AutomationElement>().ToArray();
+            count = elements.Length;
+            foreach (var element in elements.Take(512))
+            {
+                try
+                {
+                    var current = element.Current;
+                    if (current.ProcessId != binding.ProcessId) continue;
+                    var role = current.ControlType.ProgrammaticName;
+                    var children = new List<NativeDialogText>();
+                    bool? modal = null;
+                    if (current.ControlType == Uia.ControlType.Window)
+                    {
+                        if (element.TryGetCurrentPattern(Uia.WindowPattern.Pattern, out var pattern) && pattern is Uia.WindowPattern windowPattern)
+                            modal = windowPattern.Current.IsModal;
+                        var text = element.FindAll(Uia.TreeScope.Descendants, new Uia.AndCondition(owned,
+                            new Uia.PropertyCondition(Uia.AutomationElement.ControlTypeProperty, Uia.ControlType.Text)))
+                            .Cast<Uia.AutomationElement>().ToArray();
+                        if (text.Length > 512) errors.Add("Dialog text subtree exceeded observation budget.");
+                        foreach (var child in text.Take(512))
+                        {
+                            var childCurrent = child.Current;
+                            if (childCurrent.ProcessId != binding.ProcessId) continue;
+                            children.Add(new(child.GetRuntimeId(), childCurrent.ProcessId, childCurrent.Name,
+                                NativeDialogBounds.From(childCurrent.BoundingRectangle), childCurrent.IsOffscreen));
+                        }
+                    }
+                    nodes.Add(new(element.GetRuntimeId(), current.ProcessId, role, current.ClassName,
+                        current.Name, current.AutomationId, NativeDialogBounds.From(current.BoundingRectangle),
+                        current.IsOffscreen, modal, children.ToArray()));
+                }
+                catch (Uia.ElementNotAvailableException error) { errors.Add(error.GetType().Name); }
+                catch (COMException error) { errors.Add(error.GetType().Name); }
+            }
+        }
+        catch (Uia.ElementNotAvailableException error) { errors.Add(error.GetType().Name); }
+        catch (COMException error) { errors.Add(error.GetType().Name); }
+        return new(count, count > 512, nodes.ToArray(), errors.ToArray());
+    }
+
+    private sealed record NativeDialogBinding(long Hwnd, int ProcessId, uint ThreadId, FrameworkElement Root,
+        XamlRoot XamlRoot, FrameworkElement ProviderParent, string Title, string Provider, NativeDialogBounds WindowBounds,
+        NativeDialogBounds ContentBounds, NativeDialogBounds RenderedProviderBounds,
+        NativeDialogBounds ProviderLayoutSlotInParent, NativeDialogBounds ProviderLayoutSlotBounds);
+    private sealed record NativeDialogObservation(int TotalOwnedNodes, bool Overflow, NativeDialogNode[] Nodes, string[] Errors);
+    private sealed record NativeDialogNode(int[] RuntimeId, int ProcessId, string Role, string ClassName,
+        string Name, string AutomationId, NativeDialogBounds? Bounds, bool IsOffscreen, bool? IsModal,
+        NativeDialogText[] TextChildren);
+    private sealed record NativeDialogText(int[] RuntimeId, int ProcessId, string Name, NativeDialogBounds? Bounds, bool IsOffscreen);
+    private sealed record NativeDialogBounds(double Left, double Top, double Right, double Bottom)
+    {
+        internal bool PositiveFinite => double.IsFinite(Left) && double.IsFinite(Top) && double.IsFinite(Right) &&
+            double.IsFinite(Bottom) && Right > Left && Bottom > Top;
+        internal bool Contains(NativeDialogBounds other) => other.PositiveFinite && other.Left >= Left && other.Top >= Top &&
+            other.Right <= Right && other.Bottom <= Bottom;
+        internal bool ContainsPhysical(NativeDialogBounds other) => PositiveFinite && other.PositiveFinite &&
+            NativeProofLayout.PhysicalEdge(Right, 1) > NativeProofLayout.PhysicalEdge(Left, 1) &&
+            NativeProofLayout.PhysicalEdge(Bottom, 1) > NativeProofLayout.PhysicalEdge(Top, 1) &&
+            NativeProofLayout.PhysicalEdge(other.Right, 1) > NativeProofLayout.PhysicalEdge(other.Left, 1) &&
+            NativeProofLayout.PhysicalEdge(other.Bottom, 1) > NativeProofLayout.PhysicalEdge(other.Top, 1) &&
+            NativeProofLayout.PhysicalEdge(other.Left, 1) >= NativeProofLayout.PhysicalEdge(Left, 1) &&
+            NativeProofLayout.PhysicalEdge(other.Top, 1) >= NativeProofLayout.PhysicalEdge(Top, 1) &&
+            NativeProofLayout.PhysicalEdge(other.Right, 1) <= NativeProofLayout.PhysicalEdge(Right, 1) &&
+            NativeProofLayout.PhysicalEdge(other.Bottom, 1) <= NativeProofLayout.PhysicalEdge(Bottom, 1);
+        internal static NativeDialogBounds? From(System.Windows.Rect rect)
+        {
+            var result = new NativeDialogBounds(rect.Left, rect.Top, rect.Right, rect.Bottom);
+            return result.PositiveFinite ? result : null;
+        }
+    }
+
     private static Task<NativeLabelEvidence[]> ReadExactVisibleLabelEvidenceAsync(
         IntPtr handle, Rectangle capturedBounds, string[] labels) => Task.Run(() =>
     {
