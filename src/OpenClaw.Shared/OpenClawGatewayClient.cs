@@ -1859,7 +1859,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     }
 
     public virtual Task<bool> NodePairApproveAsync(string requestId) =>
-        ApprovePairingRequestAsync("node.pair.approve", requestId, RequestNodePairListAsync);
+        SendPairingDecisionAsync("node.pair.approve", requestId, RequestNodePairListAsync);
 
     public Task<bool> NodePairRejectAsync(string requestId)
     {
@@ -1967,23 +1967,42 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         await SendTrackedRequestAsync("device.pair.list");
     }
 
-    public virtual Task<bool> DevicePairApproveAsync(string requestId) =>
-        ApprovePairingRequestAsync("device.pair.approve", requestId, RequestDevicePairListAsync);
+    private const int PairingDecisionTimeoutMs = 12000;
 
-    private async Task<bool> ApprovePairingRequestAsync(
+    public virtual Task<bool> DevicePairApproveAsync(string requestId) =>
+        SendPairingDecisionAsync("device.pair.approve", requestId, RequestDevicePairListAsync);
+
+    public Task<bool> DevicePairRejectAsync(string requestId) =>
+        SendPairingDecisionAsync("device.pair.reject", requestId, RequestDevicePairListAsync);
+
+    private async Task<bool> SendPairingDecisionAsync(
         string method,
         string requestId,
-        Func<Task> refreshPairListAsync)
+        Func<Task>? refreshPairListAsync = null)
     {
         if (string.IsNullOrWhiteSpace(requestId))
+        {
+            _logger.Warn($"{method} requires a requestId");
             return false;
-        if (!IsConnected)
+        }
+        if (!TryGetReadyConnectionGeneration(out var generation))
+        {
+            _logger.Warn($"{method} requires a ready Gateway connection");
             return false;
+        }
 
         try
         {
-            await SendWizardRequestAsync(method, new { requestId }, timeoutMs: 12000);
-            _ = refreshPairListAsync();
+            await SendResponseRequestAsync(
+                method, new { requestId }, PairingDecisionTimeoutMs, generation);
+            // A reply belongs to its physical socket, even if this client reconnects.
+            if (!TryGetReadyConnectionGeneration(out var current) || current != generation)
+            {
+                _logger.Warn($"{method} result discarded after the Gateway connection changed");
+                return false;
+            }
+            if (refreshPairListAsync is not null)
+                _ = refreshPairListAsync();
             return true;
         }
         catch (InvalidOperationException ex)
@@ -1996,11 +2015,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             _logger.Warn($"{method} failed: {ex.Message}");
             return false;
         }
-    }
-
-    public Task<bool> DevicePairRejectAsync(string requestId)
-    {
-        return TrySendTrackedRequestAsync("device.pair.reject", new { requestId });
     }
 
     /// <summary>
