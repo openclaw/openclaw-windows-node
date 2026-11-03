@@ -36,6 +36,7 @@ public static class Program
         "--tailscale",
         "--tailscale-trust-auth",
         "--validate-gateway-candidate",
+        "--preserve-existing",
     ]);
 
     public static async Task<int> Main(string[] args)
@@ -71,6 +72,7 @@ public static class Program
         var wizardOnly = parsedArguments.HasFlag("--wizard-only");
         var uninstall = parsedArguments.HasFlag("--uninstall");
         var confirmDestructive = parsedArguments.HasFlag("--confirm-destructive");
+        var preserveExisting = parsedArguments.HasFlag("--preserve-existing");
         var jsonOutput = parsedArguments.GetValue("--json-output");
         var preserveLogs = parsedArguments.HasFlag("--preserve-logs");
         var dataDir = parsedArguments.GetValue("--data-dir");
@@ -156,6 +158,7 @@ public static class Program
         if (logPath != null) config.LogPath = logPath;
         if (dryRun) config.DryRun = true;
         if (confirmDestructive) config.ConfirmDestructive = true;
+        if (preserveExisting) config.PreserveExisting = true;
 
         if (gatewayCandidatePackage != null)
         {
@@ -251,13 +254,46 @@ public static class Program
             return 2;
         }
 
-        if (!SetupRunLock.TryAcquire(dataDir ?? SetupContext.ResolveDataDir(), out var setupLock, out var lockMessage))
+        if (!SetupRunLock.TryAcquire(
+                dataDir ?? SetupContext.ResolveDataDir(),
+                localDataDir ?? SetupContext.ResolveLocalDataDir(),
+                out var setupLock,
+                out var lockMessage))
         {
             Console.Error.WriteLine($"ERROR: {lockMessage}");
             return 2;
         }
 
         using var acquiredSetupLock = setupLock;
+
+        // Admission for callers without replacement consent is re-checked here, under the
+        // shared-target lock, because state can appear between their own check and this run.
+        if (config.PreserveExisting && !uninstall && !wizardOnly)
+        {
+            ExistingConfigDetector.ExistingConfig existing;
+            try
+            {
+                // Detect blocks on async work; keep it off any caller synchronization context.
+                existing = await Task.Run(() => ExistingConfigDetector.Detect(
+                    dataDir ?? SetupContext.ResolveDataDir(),
+                    config.DistroName,
+                    localDataDir ?? SetupContext.ResolveLocalDataDir()));
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"ERROR: Cannot inspect existing configuration: {ex.Message}");
+                return 1;
+            }
+
+            if (existing.HasLocalGateway || existing.HasDistro || existing.HasDistroDataDirectory)
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Setup would replace existing configuration that appeared after this run was admitted:\n" +
+                    ExistingConfigDetector.BuildReplacementSummary(existing) + "\n" +
+                    "Nothing was changed. Rerun setup to review the replacement.");
+                return 2;
+            }
+        }
 
         // Create infrastructure after acquiring the run lock so a concurrent loser
         // cannot truncate the active run's log or journal files.
