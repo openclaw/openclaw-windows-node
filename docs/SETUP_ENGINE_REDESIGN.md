@@ -876,11 +876,22 @@ handler also passes `--preserve-existing`, so the engine re-checks this under th
 setup lock and a run that loses a race with another profile preserves that profile's
 distro. It also refuses while a tray holds the single-instance mutex for the same data dir.
 
+A distro or distro data directory that is not proven to be app-owned is never
+replaced headlessly. Setup refuses with exit code 2 even with `--replace-existing`,
+prints what would be replaced, and says that the target was preserved. To replace
+it, run setup interactively and confirm the permanent replacement, or remove it
+yourself (for example `wsl --unregister <distro>`).
+
 Only `--headless-setup`, `--config <path>` (separated syntax), `--force-setup`, and
 `--replace-existing` are accepted. Anything else exits with code 2. The native MSIX
 gateway route remains interactive only. Per-capability `Settings.Node*Enabled` values
 are overwritten from the `Capabilities` section before `settings.json` is written, so
 toggle capabilities there.
+
+Headless setup is refused with exit code 2 in the packaged app. An unpackaged
+install retired by a completed Store migration, or one whose migration state cannot
+be checked, refuses with exit code 2 and prints the same guidance that normal
+startup shows in a dialog to stderr.
 
 The tray is a GUI-subsystem executable, so a shell does not wait for it. Setup also
 leaves a WSL keepalive running, which makes `Start-Process -Wait` hang. Wait on the
