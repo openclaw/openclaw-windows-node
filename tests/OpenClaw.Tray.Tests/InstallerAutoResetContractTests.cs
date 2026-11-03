@@ -58,6 +58,24 @@ public sealed class InstallerAutoResetContractTests
     }
 
     [Fact]
+    public void ProgressPage_LostRunLockNeverNavigatesWithUnusableReceiptCode()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "Pages", "ProgressPage.xaml.cs"));
+        string method = ExtractMethod(source, "private async Task StartPipelineAsync()");
+
+        // When the automatic reset succeeds but the window cannot reclaim the setup run lock,
+        // ReclaimSetupLock has already navigated to the lock-contention page. The pipeline
+        // must not navigate again with the LocalAiReceiptUnusable failure code, which would
+        // replace that message and offer another destructive reset for a reset that already ran.
+        AssertInOrder(
+            method,
+            "if (prompt.LockLost)",
+            "return; // ReclaimSetupLock already navigated to the lock-contention page.");
+    }
+
+    [Fact]
     public void SetupWindow_AutomaticResetYieldsRunLockBeforeRunningAndReclaimsAfter()
     {
         string root = TestRepositoryPaths.GetRepositoryRoot();

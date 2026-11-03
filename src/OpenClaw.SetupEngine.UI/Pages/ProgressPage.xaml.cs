@@ -242,6 +242,8 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
                         RenderInstallationOverview();
                         continue;
                     }
+                    if (prompt.LockLost)
+                        return; // ReclaimSetupLock already navigated to the lock-contention page.
                     if (!string.IsNullOrWhiteSpace(prompt.Error))
                         errorMsg = $"{errorMsg} {prompt.Error}";
                 }

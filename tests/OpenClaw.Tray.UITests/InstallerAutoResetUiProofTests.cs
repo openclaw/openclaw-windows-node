@@ -13,6 +13,22 @@ using OpenClaw.TestSupport;
 namespace OpenClaw.Tray.UITests;
 
 /// <summary>
+/// Skips instead of passing when this host cannot run the pipeline's own hardware admission,
+/// so an absent GPU never reports a green proof.
+/// </summary>
+public sealed class LocalAiHardwareFactAttribute : FactAttribute
+{
+    public LocalAiHardwareFactAttribute()
+    {
+        var hardware = new CudaHostHardwareProbe().Probe();
+        var eligibility = LocalInferenceEligibility.Evaluate(
+            hardware, LocalModelCatalog.Qwen38_27BModelId);
+        if (eligibility.Plan is null || eligibility.SelectedGpu?.StableId is not { Length: > 0 })
+            Skip = "The installer pipeline's Local AI hardware admission cannot qualify the selected model on this host.";
+    }
+}
+
+/// <summary>
 /// Real-UI proof of the installer-level Local AI recovery: when the setup pipeline fails with
 /// <c>LocalAiReceiptUnusable</c>, the mounted ProgressPage invokes the tray reset automatically
 /// (no confirmation dialog), announces the removal on the real page, and reruns the same
@@ -22,15 +38,11 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class InstallerAutoResetUiProofTests(UIThreadFixture ui)
 {
-    [Fact]
+    [LocalAiHardwareFact]
     [Trait("Category", "NativeOnboardingProof")]
     public async Task UnusableReceipt_InstallerAutoResetsWithoutDialogAndRerunsPipeline()
     {
         const string modelId = LocalModelCatalog.Qwen38_27BModelId;
-        var hardware = new CudaHostHardwareProbe().Probe();
-        var eligibility = LocalInferenceEligibility.Evaluate(hardware, modelId);
-        if (eligibility.Plan is null || eligibility.SelectedGpu?.StableId is not { Length: > 0 })
-            return; // The pipeline's own hardware admission fails on this host; nothing to prove here.
 
         using var directory = new TempDirectory("openclaw-auto-reset-");
         var config = new SetupConfig
@@ -46,7 +58,7 @@ public sealed class InstallerAutoResetUiProofTests(UIThreadFixture ui)
         paths.EnsureDirectories();
         await new LocalAiManifestStore(paths).SaveAsync(StaleManifest(), CancellationToken.None);
 
-        var host = new RecordingResetHost(paths);
+        var host = new RecordingResetHost(paths, dataDir);
 
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -90,6 +102,11 @@ public sealed class InstallerAutoResetUiProofTests(UIThreadFixture ui)
                 await WaitAsync(() => JournalPipelineRuns(dataDir) == 2 &&
                     JournalReconcileOutcome(dataDir, run: 2) == "Skipped", "second pipeline run");
 
+                // The window reclaimed the setup run lock after the reset settled.
+                Assert.False(SetupRunLock.TryAcquire(dataDir, out var probe, out _),
+                    "The setup window must hold the run lock again after the automatic reset.");
+                probe?.Dispose();
+
                 var journal = ReadJournal(dataDir);
                 Assert.Equal(2, CountOccurrences(journal, "\"pipeline_started\""));
                 var firstReconcile = JournalReconcileOutcome(dataDir, run: 1);
@@ -102,14 +119,24 @@ public sealed class InstallerAutoResetUiProofTests(UIThreadFixture ui)
             }
             finally
             {
-                if (frame?.Content is IAsyncDisposable disposable)
-                    await disposable.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(30));
-                if (window is not null)
+                // Unblock the reset double before any teardown await: an assertion failure
+                // above would otherwise leave the pipeline blocked in the double and the
+                // page disposal below would wait the full timeout.
+                host.Release();
+                try
                 {
-                    window.Close();
-                    await window.CleanupCompleted.WaitAsync(TimeSpan.FromSeconds(10));
+                    if (frame?.Content is IAsyncDisposable disposable)
+                        await disposable.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(30));
                 }
-                navigation?.Dispose();
+                finally
+                {
+                    if (window is not null)
+                    {
+                        window.Close();
+                        await window.CleanupCompleted.WaitAsync(TimeSpan.FromSeconds(10));
+                    }
+                    navigation?.Dispose();
+                }
             }
         });
     }
@@ -202,9 +229,11 @@ public sealed class InstallerAutoResetUiProofTests(UIThreadFixture ui)
 
     /// <summary>
     /// Records the automatic reset and blocks until released, then removes the managed LocalAI
-    /// tree exactly like the reset engine's final step. Never called from observation.
+    /// tree exactly like the reset engine's final step. While blocked it probes the setup run
+    /// lock: the window must have yielded it before the reset started, and the test asserts the
+    /// window holds it again after the reset settles. Never called from observation.
     /// </summary>
-    private sealed class RecordingResetHost(LocalAiPaths paths) : ISetupLocalAiHost
+    private sealed class RecordingResetHost(LocalAiPaths paths, string dataDir) : ISetupLocalAiHost
     {
         private readonly TaskCompletionSource _release =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -217,6 +246,11 @@ public sealed class InstallerAutoResetUiProofTests(UIThreadFixture ui)
         public async Task<string?> ResetLocalAiAsync(CancellationToken ct)
         {
             Interlocked.Increment(ref _resetCalls);
+            // The window yields its run lock before invoking the reset; the reset engine
+            // would refuse while it is held.
+            Assert.True(SetupRunLock.TryAcquire(dataDir, out var probeLock, out _),
+                "The setup window must yield its run lock before the automatic reset starts.");
+            probeLock?.Dispose();
             await _release.Task.WaitAsync(ct);
             if (Directory.Exists(paths.RootDirectory))
                 Directory.Delete(paths.RootDirectory, recursive: true);

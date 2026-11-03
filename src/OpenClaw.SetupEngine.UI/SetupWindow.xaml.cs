@@ -1075,6 +1075,7 @@ public sealed partial class SetupWindow : Window
         _setupLock?.Dispose();
         _setupLock = null;
         string? error = null;
+        bool lockLost = false;
         try
         {
             // Closing the window cancels the reset too: the tray kills and drains the engine
@@ -1089,9 +1090,12 @@ public sealed partial class SetupWindow : Window
         finally
         {
             if (yieldedLock && !ReclaimSetupLock(out var lockError))
+            {
                 error ??= lockError;
+                lockLost = true;
+            }
         }
-        return new(Confirmed: true, error);
+        return new(Confirmed: true, error, lockLost);
     }
 
     private bool ReclaimSetupLock(out string? lockMessage)
@@ -1117,7 +1121,7 @@ public sealed partial class SetupWindow : Window
     }
 
     /// <summary>Confirmed=false with no error means the user cancelled. Error null after confirmation means removed.</summary>
-    internal readonly record struct LocalAiResetPrompt(bool Confirmed, string? Error)
+    internal readonly record struct LocalAiResetPrompt(bool Confirmed, string? Error, bool LockLost = false)
     {
         public bool Removed => Confirmed && Error is null;
     }
