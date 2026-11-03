@@ -52,21 +52,14 @@ internal sealed class FakeOllamaServer : IAsyncDisposable
 
     private async Task AcceptLoopAsync()
     {
+        var clients = new List<Task>();
         try
         {
             while (!_shutdown.IsCancellationRequested)
             {
-                using TcpClient client =
+                TcpClient client =
                     await _listener.AcceptTcpClientAsync(_shutdown.Token).ConfigureAwait(false);
-                try
-                {
-                    await HandleClientAsync(client, _shutdown.Token).ConfigureAwait(false);
-                }
-                catch (IOException) when (!_shutdown.IsCancellationRequested)
-                {
-                    // A revoked MCP request closes its HTTP connection before
-                    // the controlled response is released.
-                }
+                clients.Add(HandleOwnedClientAsync(client));
             }
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
@@ -74,6 +67,32 @@ internal sealed class FakeOllamaServer : IAsyncDisposable
         }
         catch (SocketException) when (_shutdown.IsCancellationRequested)
         {
+        }
+        finally
+        {
+            await Task.WhenAll(clients).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleOwnedClientAsync(TcpClient client)
+    {
+        using (client)
+        {
+            try
+            {
+                await HandleClientAsync(client, _shutdown.Token).ConfigureAwait(false);
+            }
+            catch (IOException) when (!_shutdown.IsCancellationRequested)
+            {
+                // A revoked MCP request closes its HTTP connection before
+                // the controlled response is released.
+            }
+            catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+            {
+            }
+            catch (SocketException) when (_shutdown.IsCancellationRequested)
+            {
+            }
         }
     }
 
