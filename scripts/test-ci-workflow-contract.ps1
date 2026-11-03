@@ -459,6 +459,26 @@ foreach ($lane in $testLanes.GetEnumerator()) {
     }
 }
 
+$overlapLanes = [ordered]@{
+        "core-tests" = "core_tests"
+        "tray-tests" = "tray_tests"
+        "ui-tests" = "ui_tests"
+        "setup-e2e" = "setup_e2e"
+        "revocation-e2e" = "revocation_e2e"
+        "network-e2e" = "network_e2e"
+}
+foreach ($lane in $overlapLanes.GetEnumerator()) {
+    $job = Get-JobBlock $lane.Key
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    Assert-Contains -Text $jobHeader -Expected "    needs: change-classification" `
+        -Message "Lane '$($lane.Key)' must start after classification without waiting for fast validation."
+    Assert-Contains -Text $jobHeader `
+        -Expected ("    if: " + '${{ ' + "!cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.$($lane.Value) == 'true' }}") `
+        -Message "Lane '$($lane.Key)' must preserve cancellation, classification success, and selected-lane admission."
+    Assert-NotContains -Text $jobHeader -Unexpected "fast-validation" `
+        -Message "Lane '$($lane.Key)' must overlap fast validation; CI Gate still requires its success."
+}
+
 $coreJob = Get-JobBlock "core-tests"
 $sharedTestStep = Get-StepBlock -Text $coreJob -Name "Run Shared Tests"
 Assert-Contains -Text $sharedTestStep -Expected "timeout-minutes: 15" `

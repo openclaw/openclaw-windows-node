@@ -455,8 +455,8 @@ jobs:
 
   core-tests:
     name: Core and CLI tests
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.core_tests == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.core_tests == 'true' }}
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
@@ -560,8 +560,8 @@ jobs:
 
   tray-tests:
     name: Tray, setup, and integration tests
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.tray_tests == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.tray_tests == 'true' }}
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
@@ -657,8 +657,8 @@ jobs:
 
   ui-tests:
     name: UI, functional, and accessibility tests
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
@@ -845,8 +845,8 @@ jobs:
 
   setup-e2e:
     name: Setup and connect E2E (WSL Latest)
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.setup_e2e == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.setup_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:
@@ -921,8 +921,8 @@ jobs:
 
   revocation-e2e:
     name: Revocation recovery E2E (WSL Latest)
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.revocation_e2e == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.revocation_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:
@@ -997,8 +997,8 @@ jobs:
 
   network-e2e:
     name: Network recovery E2E (WSL Latest)
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.network_e2e == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.network_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:

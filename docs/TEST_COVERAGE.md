@@ -265,6 +265,12 @@ owns the evidence checklist.
 
 ### CI impact fast paths
 
+Core, Tray, UI, and the three E2E jobs start after successful classification
+when their lane is selected, without waiting for `fast-validation`. They retain
+cancellation guards. CI Gate still waits for fast validation and rejects any
+result other than success. This overlaps work, not acceptance requirements;
+hosted critical-path savings require measurement.
+
 The setup/connect, revocation recovery and network recovery E2E jobs each run once
 against npm Latest, matching normal WSL setup.
 `scripts\Resolve-CiGateway.ps1` resolves Latest once in change-classification and
