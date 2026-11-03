@@ -414,6 +414,13 @@ Environment-only knobs without a config-file equivalent:
   overrides it, and any other value is ignored with a warning and keeps the default.
   An explicit `timeout` argument wins over this variable.
 
+- `OPENCLAW_SETUP_NATIVE_CLI_TIMEOUT`: bound, in seconds, for each packaged
+  `openclaw` CLI call during native Gateway setup (`config validate`, `config set`
+  for node capabilities, `gateway health`, `devices list`, `devices approve`;
+  `NativeGatewayCliTimeout`). Each call includes packaged Node/CLI startup.
+  Default 240 (4 minutes); a positive integer between 1 and 2147483 overrides it,
+  and any other value is ignored with a warning and keeps the default.
+
 ---
 
 ## Pipeline Steps (24 total)

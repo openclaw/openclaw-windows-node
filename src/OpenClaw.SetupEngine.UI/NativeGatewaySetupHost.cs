@@ -8,8 +8,8 @@ internal sealed class NativeGatewaySetupHost(
     Action<NativeGatewaySetupStage>? stageProgress = null,
     SetupLogger? log = null) : INativeGatewaySetupHost
 {
-    // Includes packaged Node/CLI startup, not just the Gateway RPC timeout.
-    private static readonly TimeSpan PairingCommandTimeout = TimeSpan.FromMinutes(2);
+    // Resolved per call so OPENCLAW_SETUP_NATIVE_CLI_TIMEOUT applies without a restart.
+    private static TimeSpan CliCommandTimeout => NativeGatewayCliTimeout.ResolveTimeout();
     private readonly NativeGatewayPackageClient _packageClient = new();
 
     public Task<NativeGatewayContract> DetectContractAsync(
@@ -25,7 +25,7 @@ internal sealed class NativeGatewaySetupHost(
         RunAsync(package.OpenClawAliasPath,
             ["config", "set", ConfigureGatewayStep.NodeCommandsAllowKey,
                 System.Text.Json.JsonSerializer.Serialize(commandIds), "--strict-json"],
-            new Dictionary<string, string>(), TimeSpan.FromMinutes(2),
+            new Dictionary<string, string>(), CliCommandTimeout,
             "Applying Windows node capabilities inside the isolated Gateway...", cancellationToken);
 
     /// <summary>Runs the package's redacted <c>clawctl collect-logs</c> for setup recovery.</summary>
@@ -107,14 +107,14 @@ internal sealed class NativeGatewaySetupHost(
         IReadOnlyDictionary<string, string> environment,
         CancellationToken cancellationToken) =>
         RunAsync(package.OpenClawAliasPath, ["config", "validate", "--json"], environment,
-            TimeSpan.FromMinutes(2), "Validating native Gateway configuration...", cancellationToken);
+            CliCommandTimeout, "Validating native Gateway configuration...", cancellationToken);
 
     public Task VerifyHealthAsync(
         NativeGatewayPackage package,
         IReadOnlyDictionary<string, string> environment,
         CancellationToken cancellationToken) =>
         RunAsync(package.OpenClawAliasPath, ["gateway", "health", "--json"], environment,
-            TimeSpan.FromMinutes(2), "Checking native Gateway health...", cancellationToken);
+            CliCommandTimeout, "Checking native Gateway health...", cancellationToken);
 
     public Task<IsolatedGatewayConfiguration> CheckIsolatedPairingConfigurationAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken) =>
@@ -125,20 +125,20 @@ internal sealed class NativeGatewaySetupHost(
         IReadOnlyDictionary<string, string> environment, CancellationToken cancellationToken) =>
         package.Contract == NativeGatewayContract.IsolatedSessionV1
             ? RunAsync(package.OpenClawAliasPath, ["devices", "list", "--json"],
-                new Dictionary<string, string>(), PairingCommandTimeout,
+                new Dictionary<string, string>(), CliCommandTimeout,
                 "Verifying this Companion's pairing request...", cancellationToken)
             : RunAsync(package.OpenClawAliasPath, ["devices", "list", "--json"],
-                environment, PairingCommandTimeout, "Verifying this Companion's pairing request...", cancellationToken);
+                environment, CliCommandTimeout, "Verifying this Companion's pairing request...", cancellationToken);
 
     public Task<string> ApproveDevicePairingAsync(
         NativeGatewayPackage package, string requestId,
         IReadOnlyDictionary<string, string> environment, CancellationToken cancellationToken) =>
         package.Contract == NativeGatewayContract.IsolatedSessionV1
             ? RunAsync(package.OpenClawAliasPath, ["devices", "approve", requestId, "--json"],
-                new Dictionary<string, string>(), PairingCommandTimeout,
+                new Dictionary<string, string>(), CliCommandTimeout,
                 "Pairing this Companion with its setup Gateway...", cancellationToken)
             : RunAsync(package.OpenClawAliasPath, ["devices", "approve", requestId, "--json"],
-                environment, PairingCommandTimeout, "Pairing this Companion with its setup Gateway...", cancellationToken);
+                environment, CliCommandTimeout, "Pairing this Companion with its setup Gateway...", cancellationToken);
 
     private async Task<string> RunAsync(
         string executable, string[] arguments,
