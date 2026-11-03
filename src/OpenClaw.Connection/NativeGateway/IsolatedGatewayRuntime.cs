@@ -25,7 +25,11 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     /// Kept under the log sanitizer's long-token redaction length so the name stays readable in logs.
     /// </summary>
     public const string StartupTimeoutEnvironmentVariable = "OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT";
-    internal const int DefaultStartupTimeoutSeconds = 180;
+    /// <summary>
+    /// Includes the start command. Slow ARM64/x64 hosts reached a verified listener after about
+    /// 210 seconds (#1969); the outer setup and credential handoff deadlines derive from this value.
+    /// </summary>
+    internal const int DefaultStartupTimeoutSeconds = 300;
     internal const int MinimumStartupTimeoutSeconds = 30;
     internal const int MaximumStartupTimeoutSeconds = 3600;
     internal static readonly TimeSpan StartupTimeout =

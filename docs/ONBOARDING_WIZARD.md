@@ -23,7 +23,7 @@ separate and does not claim or restore Companion management.
 
 After setup restarts Companion, destination handoff waits for native connection
 startup and any already-admitted Local AI recovery before fresh model verification.
-New preparation receipts start one execution window when issued, 27 minutes at
+New preparation receipts start one execution window when issued, 31 minutes at
 the default startup budget and longer with `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`,
 before restarting Companion. This includes old-process Local AI teardown, whose
 guarded WSL Gateway restart may exceed five minutes. First acquisition and retry
@@ -461,8 +461,8 @@ channel focus behavior, but are not separate choices on this screen.
 Each explicit choice drains the prior AI page, rechecks the same Gateway,
 endpoint, agent, model and main session through bounded verification,
 then finalizes Windows choices once. The prior page drain has its own 30-second
-deadline. Fresh proof has a separate six-minute ceiling, allowing the
-native owner's 210-second reconnect budget, the existing 120-second exact-model
+deadline. Fresh proof has a separate eight-minute ceiling at the default startup
+budget, allowing the native owner's 330-second reconnect budget, the existing 120-second exact-model
 RPC budget and authority-check overhead. Neither deadline runs across finalization
 or destination publication: those retain caller cancellation and their underlying
 operation budgets, without abandoning or automatically replaying mutations.
@@ -476,19 +476,23 @@ verification. MCP-only/deferred routes do not claim verified AI.
 
 ### Native startup and completion deadlines
 
-A reported slow native cold start took about 136 seconds. Conditional on a
-successful package acknowledgement, Companion uses a three-minute startup
+A reported slow native cold start took about 136 seconds. Later reports on slow
+ARM64 and x64 hosts reached a verified listener after about 165 to 210 seconds
+([#1969](https://github.com/openclaw/openclaw-windows-node/issues/1969)), so the
+former three-minute budget rolled back starts that were still progressing.
+Conditional on a successful package acknowledgement, Companion uses a five-minute startup
 budget, with ten seconds for confirmation after a late acknowledgement, subject
-to the caller deadline (at most 190 seconds for start/status), then still requires fresh selected-port and process-sequence ownership
+to the caller deadline (at most 310 seconds for start/status), then still requires fresh selected-port and process-sequence ownership
 proof. It never treats an `unhealthy`/`starting` observation as ready, waits for
 an unrelated pre-existing start, or retries the start command while polling.
 If a listener appears between a pending status and the host snapshot, one immediate
 status recheck may admit only a fresh `running` attestation. The full selected-port,
 listener and process-sequence checks still run; another pending status or failed
 attribution rejects the start.
-The startup budget defaults to three minutes. Set `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`
+The startup budget defaults to five minutes. Set `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`
 to whole seconds (30 to 3600) before starting Companion to change it; the published
-connection phase and credential handoff budgets grow with a longer value.
+connection phase and credential handoff budgets follow it. Only the published connection
+phase keeps a 210-second floor for shorter values.
 
 When native setup fails after the package is installed, the setup page keeps the
 failed step, shows the typed failure (for a startup timeout: the phase, budget and
@@ -503,24 +507,26 @@ last package status) and offers recovery actions:
 
 The timeout guidance names the override variable. **Retry setup** reruns the full flow.
 
-The published native connection borrow gets up to 210 seconds for startup,
+The published native connection borrow gets up to 330 seconds at the default
+startup budget for startup,
 authenticated handshake and authorization before exact-model verification.
 Preflight and final inspection also consume that outer budget; the confirmation
 allowance never extends it. Slow surrounding work can therefore cancel confirmation.
-Native credential reauthorization also has a bounded 210-second allowance instead
+Native credential reauthorization also has a bounded 330-second allowance instead
 of the unrelated five-second SSH/listener-check budget. Non-native authorization
 keeps its existing deadline. Caller cancellation, superseded attempts, record drift
 and connection error states still reject admission.
 Page drain, selection
 verification, runtime startup and published-owner handoff are distinct lifetimes.
 
-`SetupNativeCompletionTiming` defines the published path's enforced phase ceilings:
-210 seconds for the first borrow, 1,020 seconds to join already-admitted Local AI
-recovery, 210 seconds for a fresh post-recovery borrow, 150 seconds for exact-model
+`SetupNativeCompletionTiming` defines the published path's enforced phase ceilings
+at the default startup budget:
+330 seconds for the first borrow, 1,020 seconds to join already-admitted Local AI
+recovery, 330 seconds for a fresh post-recovery borrow, 150 seconds for exact-model
 verification (including the existing 120-second RPC and authorization), and
-30 seconds for navigation. Their 1,620-second total bounds the execution window.
+30 seconds for navigation. Their 1,860-second total bounds the execution window.
 New preparation receipts also charge old-process teardown against this same
-window, so acquisition receives only the remaining time, not a fresh 27 minutes.
+window, so acquisition receives only the remaining time, not a fresh 31 minutes.
 A phase can fail earlier due to its underlying owner or caller cancellation;
 unused phase time is not a guarantee that a different phase may overrun its ceiling.
 Recovery waits never initiate or replay a provider mutation.

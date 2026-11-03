@@ -342,7 +342,8 @@ public class GatewayConnectionManagerTests : IDisposable
             BeforeEnsure = () =>
             {
                 if (!reconnecting) return;
-                clock.Advance(outcome == "expired" ? TimeSpan.FromSeconds(210) : TimeSpan.FromSeconds(187));
+                clock.Advance(NativeGatewayEndpointSecurity.CredentialHandoffTimeout -
+                    (outcome == "expired" ? TimeSpan.Zero : TimeSpan.FromSeconds(23)));
                 if (outcome == "changed")
                     _registry.AddOrUpdate(_registry.GetById("native")! with { Url = "ws://127.0.0.1:19999" });
                 if (outcome == "cancelled") handshake.Cancel();
