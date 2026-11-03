@@ -60,27 +60,6 @@ public sealed partial class GatewayFixtureUiTests
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
-    public async Task BindingsRefresh_HasAnAccessibleNameOnTheEnabledButton()
-    {
-        await WithAppAsync(async run =>
-        {
-            await run.InvokeAsync("app.navigate", new { page = "bindings" });
-            await WaitUiAsync(run, () => FindById(run, "BindingsPageMarker") is not null
-                && FindText(run, "fixture") is not null, "populated binding route");
-            var button = FindById(run, "RefreshButton");
-            Assert.NotNull(button);
-            Assert.Equal(ControlType.Button, button.Current.ControlType);
-            Assert.True(button.Current.IsEnabled);
-            Assert.False(button.Current.IsOffscreen);
-            output.WriteLine($"Bindings refresh: name=[{button.Current.Name}], id=[{button.Current.AutomationId}]");
-            Assert.Equal("Refresh", button.Current.Name);
-        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
-    }
-
-
-    [GatewayFixtureUiFact]
-    [Trait("Category", "GatewayFixture")]
-    [Trait("Category", "Accessibility")]
     public async Task ClipboardExpander_ExposesNamedSelectableRadioChildren()
     {
         await WithAppAsync(async run =>
@@ -516,41 +495,6 @@ public sealed partial class GatewayFixtureUiTests
             pattern.Expand();
             Assert.Equal(4, expander.FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Count);
-        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
-    }
-
-    [GatewayFixtureUiFact]
-    [Trait("Category", "GatewayFixture")]
-    [Trait("Category", "Accessibility")]
-    [Trait("KeyboardProof", "Required")]
-    public async Task BindingsRefresh_KeyboardRoundTripTriggersFreshConfigRead()
-    {
-        await WithAppAsync(async run =>
-        {
-            await run.InvokeAsync("app.navigate", new { page = "bindings" });
-            await WaitUiAsync(run, () => FindById(run, "BindingsPageMarker") is not null
-                && FindText(run, "fixture") is not null, "populated binding route");
-            var button = FindById(run, "RefreshButton")!;
-            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, "BindingsPageMarker")) is not null);
-            var hwnd = new IntPtr(window.Current.NativeWindowHandle);
-            await NativeKeyboardProof.ActivateAsync(hwnd);
-            button.SetFocus();
-            await WaitUiAsync(run, () => Automation.Compare(button, AutomationElement.FocusedElement), "Refresh focused");
-            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
-            await WaitUiAsync(run, () => !Automation.Compare(button, AutomationElement.FocusedElement), "focus leaves Refresh");
-            Assert.False(Automation.Compare(button, AutomationElement.FocusedElement), "Tab should leave Refresh.");
-            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: true);
-            await WaitUiAsync(run, () => Automation.Compare(button, AutomationElement.FocusedElement), "focus returns to Refresh");
-            Assert.True(Automation.Compare(button, AutomationElement.FocusedElement), "Shift+Tab should return to Refresh.");
-            var occurrence = run.Gateway.Requests.Count(r => r.Method == "config.get") + 1;
-            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await run.Gateway.WaitForCompletedRequestAsync("config.get", occurrence: occurrence, cancellationToken: deadline.Token);
-            var afterRefresh = AutomationElement.FocusedElement;
-            Assert.NotNull(afterRefresh);
-            output.WriteLine($"Focus after refresh: name=[{afterRefresh.Current.Name}] type=[{afterRefresh.Current.ControlType.ProgrammaticName}] id=[{afterRefresh.Current.AutomationId}] pid=[{afterRefresh.Current.ProcessId}].");
-            Assert.True(Automation.Compare(button, afterRefresh), "Refresh should retain useful focus after activation.");
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
 

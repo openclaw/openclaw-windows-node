@@ -15,7 +15,6 @@ public sealed partial class GatewayScenario
         var reads = new Dictionary<string, JsonElement>(browse._reads, StringComparer.Ordinal);
         var get = JsonNode.Parse(reads["config.get"].GetRawText())!.AsObject();
         var config = get["config"]!.DeepClone().AsObject();
-        config["bindings"] = JsonNode.Parse("""[{"agentId":"main","match":{"channel":"webchat","accountId":"fixture"}}]""");
         config["messages"]!["fixtureLabels"] = JsonNode.Parse("""["alpha","bravo"]""");
         var raw = config.ToJsonString();
         get["raw"] = raw;

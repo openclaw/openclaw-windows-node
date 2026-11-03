@@ -261,6 +261,9 @@ Installation and verification share a cancellable 30-minute deadline by default.
 Set `OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT` to override it in seconds
 (1 through 2147483). Invalid values warn and keep the default.
 Cancellation stops the WinGet request, but Windows may still finish an in-progress deployment.
+Each packaged `openclaw` CLI call during native setup (configuration validation, node
+capabilities, health, pairing) has a 4-minute deadline that includes packaged CLI startup. Set
+`OPENCLAW_SETUP_NATIVE_CLI_TIMEOUT` to override it in seconds (1 through 2147483).
 If WinGet reports stale Microsoft Store certificate pins (`0x8A15005E`), Companion
 runs one current-user `Repair-WinGetPackageManager -Force -Latest` bootstrap and retries once.
 The repair installs Microsoft's WinGet client module; it never bypasses certificate validation.
