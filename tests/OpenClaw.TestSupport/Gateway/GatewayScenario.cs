@@ -127,10 +127,12 @@ public sealed partial class GatewayScenario
     }
 
     /// <summary>Explicit synthetic setup replies only. The host never executes provider or package operations.</summary>
-    public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true)
+    public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true,
+        bool allowSessionMutations = false)
     {
         var browse = CreateBrowse();
-        return new(browse._sessions, browse._reads, responder, advertiseSetup);
+        return new(browse._sessions, browse._reads, responder, advertiseSetup,
+            allowSessionMutations: allowSessionMutations);
     }
 
     /// <summary>Synthetic historical Talk rows, not a recording of a user's conversation.</summary>
@@ -483,8 +485,13 @@ public sealed partial class GatewayScenario
 
     private object CreateConversation(JsonElement p)
     {
-        ValidateProperties(p, "parentSessionKey", "emitCommandHooks", "succeedsParent");
-        var parent = FindSession(RequiredString(p, "parentSessionKey"));
+        ValidateProperties(p, "parentSessionKey", "emitCommandHooks", "succeedsParent", "agentId");
+        var parent = p.TryGetProperty("parentSessionKey", out _)
+            ? FindSession(RequiredString(p, "parentSessionKey"))
+            : p.TryGetProperty("agentId", out _)
+                ? _sessions.FirstOrDefault(session => session.AgentId == RequiredString(p, "agentId"))
+                    ?? throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agent.")
+                : FindSession(MainSessionKey);
         OptionalBoolean(p, "emitCommandHooks");
         if (OptionalBoolean(p, "succeedsParent") == true)
             throw new FixtureRequestException("INVALID_PARAMS", "The fixture only supports parallel session creation.");
