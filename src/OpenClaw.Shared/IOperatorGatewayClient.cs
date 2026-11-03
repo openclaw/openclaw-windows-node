@@ -119,6 +119,8 @@ public interface IOperatorGatewayClient
     Task<bool> UpdateCronJobAsync(string id, object patch);
     Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0);
     Task RequestConfigAsync();
+    Task<JsonElement> RequestConfigDetailedAsync(int timeoutMs = 15000) =>
+        Task.FromException<JsonElement>(new NotSupportedException("Response-aware config.get is not supported by this client."));
     Task RequestConfigSchemaAsync();
     Task<bool> SetConfigAsync(string path, object value);
     Task<bool> PatchConfigAsync(JsonElement fullConfig, string? baseHash);

@@ -12,6 +12,11 @@ using System.Threading.Tasks;
 
 namespace OpenClaw.Shared;
 
+internal sealed class GatewayRequestRejectedException(string message, string? code) : InvalidOperationException(message)
+{
+    public string? Code { get; } = code;
+}
+
 public sealed record SessionUsageSnapshot(SessionInfo[] Sessions, long? Timestamp);
 
 public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
@@ -1402,18 +1407,29 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         try
         {
-            var sent = await SendRawAsync(
-                    SerializeRequest(requestId, method, parameters),
-                    connectionGeneration,
-                    CancellationToken)
-                .ConfigureAwait(false);
+            bool sent;
+            using (var dispatchTimeout = new CancellationTokenSource(timeoutMs))
+            {
+                sent = await SendRawAsync(
+                        SerializeRequest(requestId, method, parameters),
+                        connectionGeneration,
+                        dispatchTimeout.Token)
+                    .ConfigureAwait(false);
+                if (!sent && dispatchTimeout.IsCancellationRequested)
+                    throw new TimeoutException($"Timed out sending {method} request");
+            }
+
             if (!sent)
                 throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");
-            return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
-        }
-        catch (TimeoutException ex)
-        {
-            throw new TimeoutException($"Timed out waiting for {method} response", ex);
+
+            try
+            {
+                return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
+            }
+            catch (TimeoutException ex)
+            {
+                throw new TimeoutException($"Timed out waiting for {method} response", ex);
+            }
         }
         finally
         {
@@ -1641,6 +1657,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         await SendTrackedRequestAsync("config.get");
     }
 
+    public Task<JsonElement> RequestConfigDetailedAsync(int timeoutMs = 15000) =>
+        SendWizardRequestAsync("config.get", timeoutMs: timeoutMs);
+
     public async Task RequestConfigSchemaAsync()
     {
         await SendTrackedRequestAsync("config.schema");
@@ -1696,6 +1715,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             return new ConfigPatchResult
             {
                 Ok = false,
+                IsGatewayRejection = ex is GatewayRequestRejectedException
+                {
+                    Code: "INVALID_REQUEST",
+                },
                 TimedOut = ex is TimeoutException,
                 HasStaleBaseHashSignal = staleBaseHash,
             };
@@ -2507,7 +2530,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 {
                     var message = TryGetErrorMessage(root) ?? "wizard request failed";
                     wizardCompletion.TryFault(QuestionRequestError(pending.Method, root)
-                        ?? new InvalidOperationException(message));
+                        ?? new GatewayRequestRejectedException(message, TryGetErrorTopLevelCode(root)));
                 }
                 else if (root.TryGetProperty("payload", out var wizPayload))
                 {

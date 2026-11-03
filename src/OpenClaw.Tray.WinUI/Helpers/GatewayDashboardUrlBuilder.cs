@@ -6,7 +6,8 @@ public static class GatewayDashboardUrlBuilder
         string gatewayUrl,
         string? path,
         string? sharedGatewayToken,
-        bool appendSharedGatewayToken)
+        bool appendSharedGatewayToken,
+        bool trustTailscaleAuth = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gatewayUrl);
 
@@ -42,9 +43,9 @@ public static class GatewayDashboardUrlBuilder
             fragment.Add(session);
         AppendPreservedFragmentFields(fragment, routeFragment);
         AppendPreservedFragmentFields(fragment, uri.Fragment);
-        if (appendSharedGatewayToken && !string.IsNullOrEmpty(sharedGatewayToken))
+        if (!trustTailscaleAuth && appendSharedGatewayToken && !string.IsNullOrEmpty(sharedGatewayToken))
             fragment.Add($"token={Uri.EscapeDataString(sharedGatewayToken)}");
-        else if (appendSharedGatewayToken)
+        else if (!trustTailscaleAuth && appendSharedGatewayToken)
         {
             var existingToken = FindNamedParameter(routeFragment, "token")
                 ?? FindNamedParameter(uri.Fragment, "token");
@@ -61,11 +62,12 @@ public static class GatewayDashboardUrlBuilder
         string? sharedGatewayToken,
         bool appendSharedGatewayToken,
         out string url,
-        out string error)
+        out string error,
+        bool trustTailscaleAuth = false)
     {
         try
         {
-            url = Build(gatewayUrl, path, sharedGatewayToken, appendSharedGatewayToken);
+            url = Build(gatewayUrl, path, sharedGatewayToken, appendSharedGatewayToken, trustTailscaleAuth);
             error = string.Empty;
             return true;
         }
@@ -197,5 +199,24 @@ public static class GatewayDashboardUrlBuilder
         }
 
         return kept.Count == 0 ? string.Empty : "?" + string.Join('&', kept);
+    }
+
+    internal static bool HasSharedTokenFragment(string gatewayUrl)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(gatewayUrl);
+        var endpoint = new Uri(gatewayUrl
+            .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)
+            .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase), UriKind.Absolute);
+        return GetFragmentFields(endpoint.Fragment).Any(IsSharedTokenField);
+    }
+
+    private static IEnumerable<string> GetFragmentFields(string fragment) =>
+        fragment.TrimStart('#').Split('&', StringSplitOptions.RemoveEmptyEntries);
+
+    private static bool IsSharedTokenField(string field)
+    {
+        var separator = field.IndexOf('=');
+        var key = separator < 0 ? field : field[..separator];
+        return Uri.UnescapeDataString(key).Equals("token", StringComparison.OrdinalIgnoreCase);
     }
 }

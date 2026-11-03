@@ -5,9 +5,13 @@ public sealed class ConnectionRegressionSourceTests
     [Fact]
     public void Dashboard_TokenQuery_IsLimitedToSharedGatewayToken()
     {
+        var appSource = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
+        var linkServiceSource = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "GatewayDashboardLinkService.cs");
         var launcherSource = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "GatewayDashboardLauncher.cs");
 
-        Assert.Contains("!credential.IsBootstrapToken && credential.Source == CredentialResolver.SourceSharedGatewayToken", launcherSource);
+        Assert.Contains("!isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken", appSource);
+        Assert.Contains("request.AppendBrowserCredential && !trustTailscaleAuth", linkServiceSource);
+        Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build", launcherSource);
         Assert.DoesNotContain("if (!isBootstrapToken && !string.IsNullOrEmpty(token))", launcherSource);
     }
 
