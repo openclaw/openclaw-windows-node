@@ -254,7 +254,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         _listenOnStart = true;
         _duringStart = _ =>
         {
-            _clock.Advance(TimeSpan.FromSeconds(179));
+            _clock.Advance(IsolatedGatewayRuntime.StartupTimeout - TimeSpan.FromSeconds(1));
             _duringStatus = ct => expire
                 ? Task.Delay(Timeout.Infinite, ct)
                 : Task.Delay(TimeSpan.FromSeconds(8), _clock, ct);
@@ -298,7 +298,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             return Task.CompletedTask;
         };
-        _startDuration = TimeSpan.FromSeconds(179);
+        _startDuration = IsolatedGatewayRuntime.StartupTimeout - TimeSpan.FromSeconds(1);
         using var outer = new CancellationTokenSource(NativeGatewayEndpointSecurity.CredentialHandoffTimeout, _clock);
         var authorization = NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, outer.Token);
         if (allowed)
@@ -481,6 +481,49 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task SlowOwnedStartReachingListenerAtTwoHundredTenSecondsIsNotRolledBack()
+    {
+        // #1969: on a slow host the package acknowledged the launch after its ~90 s listener
+        // wait, stayed unhealthy while bootstrapping, and was listening at ~210 s.
+        var acknowledged = TimeSpan.FromSeconds(90);
+        var listening = TimeSpan.FromSeconds(210);
+        var poll = TimeSpan.FromSeconds(2);
+        _state = "stopped";
+        _listeners = [];
+        _startState = "unhealthy";
+        _startDuration = acknowledged;
+        using var pollScheduled = new SemaphoreSlim(0);
+        _clock.TimerScheduled += due =>
+        {
+            if (due == poll) pollScheduled.Release();
+        };
+        var start = _runtime.EnsureRunningAsync(_record, default);
+        int polls = (int)((listening - acknowledged) / poll);
+        for (var i = 0; i < polls; i++)
+        {
+            var scheduled = pollScheduled.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.WhenAny(scheduled, start);
+            if (start.IsCompleted)
+                await start; // Surfaces a premature timeout and rollback.
+            Assert.True(await scheduled);
+            if (i == polls - 1)
+                _beforeStatus = () =>
+                {
+                    _state = "running";
+                    _listeners = [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
+                };
+            _clock.Advance(poll);
+        }
+        await start.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(listening.Ticks, _clock.GetTimestamp());
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service start --json"));
+        Assert.DoesNotContain("gateway-service stop --json", _calls);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
+        _beforeStatus = null;
+    }
+
+    [Fact]
     public async Task PendingStartDeadlineIncludesStartCommandAndRollsBackExactlyOnce()
     {
         _state = "stopped";
@@ -488,7 +531,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         _startState = "starting";
         _startDuration = TimeSpan.FromSeconds(90);
         var start = _runtime.EnsureRunningAsync(_record, default);
-        _clock.Advance(TimeSpan.FromSeconds(90));
+        _clock.Advance(IsolatedGatewayRuntime.StartupTimeout - _startDuration);
 
         var error = await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(NativeGatewayStartupTimeoutPhase.Readiness, error.Phase);
@@ -507,7 +550,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         _configMissing = true;
         _startDuration = TimeSpan.FromSeconds(90);
         var start = _runtime.EnsureRunningAsync(_record, default);
-        _clock.Advance(TimeSpan.FromSeconds(90));
+        _clock.Advance(IsolatedGatewayRuntime.StartupTimeout - _startDuration);
 
         var error = await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(NativeGatewayStartupTimeoutPhase.Readiness, error.Phase);
@@ -531,20 +574,21 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     }
 
     [Theory]
-    [InlineData(null, 180)]
-    [InlineData("", 180)]
-    [InlineData("  ", 180)]
-    [InlineData("abc", 180)]
-    [InlineData("-5", 180)]
-    [InlineData("29", 180)]
-    [InlineData("3601", 180)]
-    [InlineData("1.5", 180)]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("  ", null)]
+    [InlineData("abc", null)]
+    [InlineData("-5", null)]
+    [InlineData("29", null)]
+    [InlineData("3601", null)]
+    [InlineData("1.5", null)]
     [InlineData("30", 30)]
     [InlineData(" 600 ", 600)]
     [InlineData("3600", 3600)]
-    public void StartupTimeoutOverrideAcceptsOnlyBoundedWholeSeconds(string? raw, int expectedSeconds)
+    public void StartupTimeoutOverrideAcceptsOnlyBoundedWholeSeconds(string? raw, int? expectedSeconds)
     {
-        Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), IsolatedGatewayRuntime.ResolveStartupTimeout(raw));
+        var expected = TimeSpan.FromSeconds(expectedSeconds ?? IsolatedGatewayRuntime.DefaultStartupTimeoutSeconds);
+        Assert.Equal(expected, IsolatedGatewayRuntime.ResolveStartupTimeout(raw));
     }
 
     [Fact]
