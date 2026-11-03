@@ -318,7 +318,24 @@ internal sealed class UpdateCoordinator(
                     _settings.SkippedUpdateTag = string.Empty;
                     _settings.Save();
                 }
-                var installed = await DownloadAndInstallUpdateAsync(updater);
+                bool installed;
+                try
+                {
+                    installed = await DownloadAndInstallUpdateAsync(updater);
+                }
+                catch (OperationCanceledException)
+                {
+                    Logger.Info("Update download canceled.");
+                    appState.UpdateInfo = new UpdateCommandCenterInfo
+                    {
+                        Status = "Available",
+                        CurrentVersion = AppVersionInfo.Version,
+                        LatestVersion = releaseTag,
+                        CheckedAt = DateTime.UtcNow,
+                        Detail = "download canceled"
+                    };
+                    return true;
+                }
                 if (!installed && _updaterLoader.Failure is null)
                 {
                     appState.UpdateInfo = new UpdateCommandCenterInfo
@@ -578,12 +595,30 @@ internal sealed class UpdateCoordinator(
     private async Task<bool> DownloadAndInstallUpdateAsync(IUpdateBackend updater)
     {
         DownloadProgressDialog? progressDialog = null;
+        using var downloadTimeout = new CancellationTokenSource(UpdateDownloadDeadline.Resolve());
+        using var windowClosed = new CancellationTokenSource();
+        using var downloadCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            downloadTimeout.Token, windowClosed.Token);
+        void CancelBecauseWindowClosed(object? sender, EventArgs args)
+        {
+            try { windowClosed.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
+
         try
         {
             progressDialog = new DownloadProgressDialog();
+            progressDialog.Closed += CancelBecauseWindowClosed;
             progressDialog.ShowAsync(); // Fire and forget
 
-            return await updater.DownloadAndInstallAsync(() => TryCloseProgressDialog(progressDialog));
+            return await updater.DownloadAndInstallAsync(
+                () => TryCloseProgressDialog(progressDialog),
+                downloadCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            TryCloseProgressDialog(progressDialog);
+            throw;
         }
         catch (Exception ex) when (UpdateBackendLoader.IsDependencyFailure(ex))
         {
@@ -596,6 +631,11 @@ internal sealed class UpdateCoordinator(
             Logger.Error($"Update failed: {ex.Message}");
             TryCloseProgressDialog(progressDialog);
             return false;
+        }
+        finally
+        {
+            if (progressDialog is not null)
+                progressDialog.Closed -= CancelBecauseWindowClosed;
         }
     }
 

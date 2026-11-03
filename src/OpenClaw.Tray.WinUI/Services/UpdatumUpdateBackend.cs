@@ -19,9 +19,9 @@ internal sealed class UpdatumUpdateBackend : IUpdateBackend
 
     public string? GetChangelog() => _updater.GetChangelog(true);
 
-    public async Task<bool> DownloadAndInstallAsync(Action downloadCompleted)
+    public async Task<bool> DownloadAndInstallAsync(Action downloadCompleted, CancellationToken cancellationToken = default)
     {
-        var downloadedAsset = await _updater.DownloadUpdateAsync();
+        var downloadedAsset = await _updater.DownloadUpdateAsync(cancellationToken);
         downloadCompleted();
         if (downloadedAsset == null || !File.Exists(downloadedAsset.FilePath))
         {

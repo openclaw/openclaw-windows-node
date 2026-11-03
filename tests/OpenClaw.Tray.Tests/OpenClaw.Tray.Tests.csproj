@@ -105,6 +105,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UpdateDownloadDeadline.cs" Link="Services\UpdateDownloadDeadline.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\MxcCompanionPackagePaths.cs" Link="Services\MxcCompanionPackagePaths.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkHandler.cs" Link="Services\DeepLinkHandler.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkSecurityPolicy.cs" Link="Services\DeepLinkSecurityPolicy.cs" />
