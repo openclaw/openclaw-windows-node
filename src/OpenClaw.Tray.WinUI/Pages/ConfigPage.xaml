@@ -301,10 +301,10 @@
                             VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
                     <FontIcon Glyph="&#xE713;" FontSize="48" HorizontalAlignment="Center"
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <TextBlock x:Uid="ConfigPage_TextBlock_95" Text="Schema not available"
+                    <TextBlock x:Uid="ConfigPage_TextBlock_95" Text="Configuration unavailable"
                                Style="{StaticResource SubtitleTextBlockStyle}"
                                HorizontalAlignment="Center"/>
-                    <TextBlock x:Uid="ConfigPage_TextBlock_98" Text="The gateway configuration schema could not be loaded. Use the web dashboard to edit settings."
+                    <TextBlock x:Uid="ConfigPage_TextBlock_98" Text="Refresh to retry loading the gateway configuration and schema. You can also open the gateway panel."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="400"/>
