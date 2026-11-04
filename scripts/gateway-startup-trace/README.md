@@ -8,6 +8,10 @@ The same recorder supports real Companion setup and user-driven chat. A bounded 
 adds process CPU, memory, logical I/O and host contention evidence. These tools are for
 individual investigations, not continuous monitoring.
 
+Agents should start with the [Windows tracing skill](../../.agents/skills/openclaw-tracing/SKILL.md)
+for workflow selection, capture authority, interpretation and evidence handoff.
+This runbook remains the command and metric reference.
+
 Use it to compare payload changes such as bundling, lazy loading or install-time prewarm.
 It does not change Defender, power or system settings, and it never adds exclusions.
 
