@@ -277,7 +277,10 @@ public sealed class SetupCompletionAuthorityTests
             }
             Assert.True(owner.HasPendingWork);
             Assert.False(owner.CanRetry);
-            await Assert.ThrowsAsync<InvalidOperationException>(owner.RetryAsync);
+            if (cancel)
+                await Assert.ThrowsAsync<InvalidOperationException>(owner.RetryAsync);
+            else
+                await Assert.ThrowsAsync<SetupNativeCompletionTimeoutException>(owner.RetryAsync);
             owner.Dispose();
             Assert.False(owner.CleanupCompleted.IsCompleted);
         }
@@ -394,7 +397,10 @@ public sealed class SetupCompletionAuthorityTests
         Assert.True(owner.CanRetry);
         clock.Advance(TimeSpan.FromTicks(1));
         Assert.False(owner.CanRetry);
-        await Assert.ThrowsAsync<InvalidOperationException>(owner.RetryAsync);
+        var error = await Assert.ThrowsAsync<SetupNativeCompletionTimeoutException>(owner.RetryAsync);
+        Assert.Equal(SetupNativeCompletionPhase.Execution, error.Phase);
+        Assert.Equal("Onboarding_Ready_Timeout",
+            AiSetupReadinessPresentation.CompletionFailureKey(error, "unused"));
         Assert.Equal(1, verifies);
     }
 

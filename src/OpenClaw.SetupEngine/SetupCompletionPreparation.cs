@@ -60,6 +60,9 @@ public sealed class SetupCompletionPreparation(
 
     public Task RetryAsync()
     {
+        if (!_disposed && ExecutionExpired)
+            throw new SetupNativeCompletionTimeoutException(SetupNativeCompletionPhase.Execution,
+                new OperationCanceledException(_executionLifetime!.Token));
         if (!CanRetry)
             throw new InvalidOperationException("Completion cannot be replayed while cleanup or an uncertain write is pending.");
         return ActiveTask = RunAsync();
