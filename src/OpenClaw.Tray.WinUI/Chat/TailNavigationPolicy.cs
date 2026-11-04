@@ -57,6 +57,13 @@ internal static class TailNavigationPolicy
     // reported a position away from the tail; only reflow correction is follow-gated.
     public static bool CanDispatch(bool reflowCorrection, bool following) =>
         !reflowCorrection || following;
+
+    // ScrollPresenter uses a wrapping 31-bit counter. Outstanding operations span
+    // less than half that range, so a wrapped new ID still follows the boundary.
+    public static bool CanCancelForScrollCompletion(int correlationId, int requestBoundary) =>
+        correlationId >= 0
+        && (requestBoundary < 0
+            || ((correlationId - requestBoundary) & int.MaxValue) < (1 << 30));
 }
 
 internal sealed class TailNavigationQueue
