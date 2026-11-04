@@ -48,6 +48,12 @@ public interface IOperatorGatewayClient
     string? MainSessionKey { get; }
     /// <summary>True once the hello-ok handshake has been processed.</summary>
     bool HasHandshakeSnapshot { get; }
+    IReadOnlyList<string> AdvertisedServerMethods => Array.Empty<string>();
+    long ServerHandshakeGeneration => 0;
+    Task<GatewaySearchResult> SearchSessionsAsync(string query, bool messages, CancellationToken cancellationToken) =>
+        Task.FromException<GatewaySearchResult>(new NotSupportedException("Session search is unavailable."));
+    Task<JsonElement> ReadSearchCatalogAsync(string method, object? parameters, CancellationToken cancellationToken) =>
+        Task.FromException<JsonElement>(new NotSupportedException("Search catalogs are unavailable."));
     /// <summary>Authenticated transport epoch, used to bind a mutation across an asynchronous dialog.</summary>
     long? SessionMutationConnectionEpoch => null;
 

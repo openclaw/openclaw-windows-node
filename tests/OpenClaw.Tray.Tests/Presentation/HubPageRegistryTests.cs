@@ -142,31 +142,6 @@ public sealed class HubPageRegistryTests
         Assert.All(commands.TakeLast(2), command => Assert.Equal("Open in dashboard", command.Subtitle));
     }
 
-    [Fact]
-    public void Search_EmptyReturnsFirstEightAndQueryMatchesTitleOrSubtitleInInsertionOrder()
-    {
-        var commands = Enumerable.Range(0, 14)
-            .Select(index => new HubCommand(
-                index.ToString(),
-                index is 2 or 11 ? $"Target {index}" : $"Title {index}",
-                index is 4 or 12 ? $"TARGET subtitle {index}" : $"Subtitle {index}",
-                HubCommandAction.Navigate(index.ToString())))
-            .ToImmutableArray();
-
-        Assert.Equal(Enumerable.Range(0, 8).Select(i => i.ToString()), HubPageRegistry.SearchCommands(commands, "   ").Select(c => c.Icon));
-        Assert.Equal(["2", "4", "11", "12"], HubPageRegistry.SearchCommands(commands, "target").Select(c => c.Icon));
-    }
-
-    [Fact]
-    public void Search_QueryIsLimitedToFirstTenMatches()
-    {
-        var commands = Enumerable.Range(0, 12)
-            .Select(index => new HubCommand("", $"Match {index}", null, HubCommandAction.Navigate(index.ToString())))
-            .ToImmutableArray();
-
-        Assert.Equal(10, HubPageRegistry.SearchCommands(commands, "MATCH").Length);
-    }
-
     private static HubCommandContext Context(
         bool diagnosticsVisible = false,
         HubCommandToggleState? toggles = null,

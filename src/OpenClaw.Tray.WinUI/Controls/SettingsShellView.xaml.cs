@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
@@ -42,7 +43,8 @@ internal sealed partial class SettingsShellView : UserControl
     private AppNotificationSnapshot? _lastAppNotificationSnapshot;
     private AppNotificationInfoBarPresentation _currentAppNotificationPresentation =
         AppNotificationInfoBarPresentation.Hidden;
-    private readonly HubCommandExecutor _commandExecutor = new();
+    internal HubSearchController? SearchController { get; set; }
+    internal Action<HubSearchTarget>? SearchNavigation { get; set; }
     private bool _suppressAppNotificationClosed;
     private bool _disposed;
     private bool _active;
@@ -70,6 +72,7 @@ internal sealed partial class SettingsShellView : UserControl
     public SettingsShellView()
     {
         InitializeComponent();
+        CommandSearchFlyout.FlyoutPresenterStyle = SearchHost.CreatePresenterStyle();
         ContentFrame.IsNavigationStackEnabled = false;
         var searchLabel = LocalizationHelper.GetString("TitleSearchBox.PlaceholderText");
         AutomationProperties.SetName(SettingsSearchButton, searchLabel);
@@ -281,7 +284,7 @@ internal sealed partial class SettingsShellView : UserControl
                     DispatcherQueue?.TryEnqueue(() =>
                     {
                         if (_disposed) return;
-                        _cachedCommands = null;
+                        SearchController?.Refresh();
                         var status = AppModel!.Status;
                         UpdateStatus(status);
                         // Defer nav visibility to avoid stowed exceptions during NavigationView layout
@@ -444,6 +447,11 @@ internal sealed partial class SettingsShellView : UserControl
 
     internal void OpenCommandCenter()
     {
+        if (_searchFlyoutClosing)
+        {
+            _searchReopenPending = true;
+            return;
+        }
         CommandSearchFlyout.ShowAt(SearchAnchor);
     }
 
@@ -748,7 +756,7 @@ internal sealed partial class SettingsShellView : UserControl
         if (nativeRequest is not null)
         {
             _currentAgentId = nativeRequest.Completion.Verification.AgentId!;
-            _cachedCommands = null;
+            SearchController?.Refresh();
         }
 
         // Keep _currentAgentId aligned with the page that's now visible.
@@ -758,7 +766,7 @@ internal sealed partial class SettingsShellView : UserControl
             if (newAgent != _currentAgentId)
             {
                 _currentAgentId = newAgent;
-                _cachedCommands = null;
+                SearchController?.Refresh();
             }
         }
 
@@ -907,74 +915,50 @@ internal sealed partial class SettingsShellView : UserControl
         _ = filter;
     }
 
-    // Command search retains its catalog in the sidebar flyout. Keyboard shortcuts belong to the
-    // host window (Ctrl+K opens this flyout; Alt+Left/Right drive its single history).
-
-    private ImmutableArray<HubCommand>? _cachedCommands;
-
     private void OnCommandSearchOpening(object sender, object e)
     {
-        _cachedCommands = BuildCommandList();
-        TitleSearchBox.Text = string.Empty;
-        TitleSearchBox.ItemsSource = HubPageRegistry.SearchCommands(_cachedCommands.Value, string.Empty);
+        if (SearchController is { } controller && SearchNavigation is { } navigate)
+            SettingsSearchHost.Begin(controller, navigate, () => CommandSearchFlyout.Hide(), "SettingsSearchBox");
     }
 
-    private void OnCommandSearchOpened(object sender, object e)
+    private bool _searchFlyoutClosing;
+    private bool _searchReopenPending;
+    private void OnCommandSearchClosing(FlyoutBase sender, FlyoutBaseClosingEventArgs e) => _searchFlyoutClosing = true;
+    private void OnCommandSearchClosed(object sender, object e)
     {
-        TitleSearchBox.Focus(FocusState.Programmatic);
-        TitleSearchBox.IsSuggestionListOpen = true;
+        SettingsSearchHost.End();
+        _searchFlyoutClosing = false;
+        if (!_searchReopenPending) return;
+        _searchReopenPending = false;
+        DispatcherQueue.TryEnqueue(() => { if (_active && !_disposed) OpenCommandCenter(); });
     }
+    private void OnCommandSearchOpened(object sender, object e) => SettingsSearchHost.FocusInput();
 
-    private void OnCommandSearchKeyDown(object sender, KeyRoutedEventArgs e)
+    internal void RevealSearchTarget(HubSearchTarget target)
     {
-        if (e.Key != global::Windows.System.VirtualKey.Escape) return;
-        e.Handled = true;
-        TitleSearchBox.IsSuggestionListOpen = false;
-        CommandSearchFlyout.Hide();
-    }
-
-    private void OnSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
-    {
-        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
-        _cachedCommands ??= BuildCommandList();
-        sender.ItemsSource = HubPageRegistry.SearchCommands(_cachedCommands.Value, sender.Text);
-    }
-
-    private void OnSearchSuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
-    {
-        if (args.SelectedItem is HubCommand cmd)
-            sender.Text = cmd.Title;
-    }
-
-    private void OnSearchQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
-    {
-        if (args.ChosenSuggestion is HubCommand cmd)
+        var page = ContentFrame.Content as FrameworkElement;
+        if (page is null || target.Focus is null) return;
+        var client = CurrentApp.GatewayClient;
+        var epoch = client?.ServerHandshakeGeneration;
+        void Reveal()
         {
-            CommandSearchFlyout.Hide();
-            sender.Text = "";
-            sender.ItemsSource = null;
-            _cachedCommands = null;
-            ExecuteCommand(cmd);
+            if (!_active || !ReferenceEquals(ContentFrame.Content, page) ||
+                !ReferenceEquals(client, CurrentApp.GatewayClient) || epoch != client?.ServerHandshakeGeneration) return;
+            switch (page)
+            {
+                case PermissionsPage permissions: permissions.RevealSearchSetting(target.Focus); break;
+                case ConfigPage config: config.RevealSearchPath(target.Focus); break;
+                case SkillsPage skills: skills.RevealSearchSkill(HubPageRegistry.ParseAgentId(target.Value), target.Focus); break;
+                case CronPage cron: cron.RevealSearchJob(target.Focus); break;
+            }
         }
-        else if (HubPageRegistry.SearchCommands(_cachedCommands ?? BuildCommandList(), args.QueryText)
-            .FirstOrDefault() is { } first)
+        if (page.IsLoaded) Reveal();
+        else
         {
-            // Enter pressed without selecting — execute first match
-            CommandSearchFlyout.Hide();
-            sender.Text = "";
-            sender.ItemsSource = null;
-            _cachedCommands = null;
-            ExecuteCommand(first);
+            void Loaded(object sender, RoutedEventArgs e) { page.Loaded -= Loaded; Reveal(); }
+            page.Loaded += Loaded;
         }
     }
-
-    internal ImmutableArray<HubCommand> BuildCommandList()
-    {
-        return HubCommandCatalog.Build(AppModel, CurrentApp.Settings, _currentAgentId);
-    }
-
-    private void ExecuteCommand(HubCommand command) =>
-        _commandExecutor.Execute(command, NavigateTo, RaiseSettingsSaved);
 
     #region High Contrast icon fallback
 

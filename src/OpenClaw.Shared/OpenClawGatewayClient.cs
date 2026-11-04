@@ -1376,9 +1376,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000) =>
         SendResponseRequestAsync(method, parameters, timeoutMs);
 
+    private const string SearchRequestIdPrefix = "search:";
+
     private async Task<JsonElement> SendResponseRequestAsync(
-        string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null)
+        string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null,
+        CancellationToken callerCancellation = default, bool searchRead = false)
     {
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken, callerCancellation);
+        lifetime.Token.ThrowIfCancellationRequested();
         var connectionGeneration = GetReadyConnectionGeneration(method);
         if (expectedConnectionEpoch.HasValue && connectionGeneration != expectedConnectionEpoch.Value)
             throw new InvalidOperationException("The Gateway connection changed before the request could be sent.");
@@ -1394,7 +1399,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             throw new InvalidOperationException($"{HandshakePendingError}; refusing to send '{method}'");
 
         _logger.Info($"[GatewayClient] Sending frame: {method}");
-        var requestId = Guid.NewGuid().ToString();
+        var requestId = (searchRead ? SearchRequestIdPrefix : "") + Guid.NewGuid().ToString();
         var pending = _pendingRequests.RegisterWizard(requestId, method);
 
         try
@@ -1402,11 +1407,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             var sent = await SendRawAsync(
                     SerializeRequest(requestId, method, parameters),
                     connectionGeneration,
-                    CancellationToken)
+                    lifetime.Token)
+                .WaitAsync(lifetime.Token)
                 .ConfigureAwait(false);
             if (!sent)
                 throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");
-            return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
+            return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), lifetime.Token);
         }
         catch (TimeoutException ex)
         {
@@ -2499,6 +2505,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         _pendingRequests.TryTake(requestId, out var pending);
         var requestMethod = pending?.Method;
+        // A cancelled detached search must not fall through to legacy payload-based roster updates.
+        if (pending is null && requestId?.StartsWith(SearchRequestIdPrefix, StringComparison.Ordinal) == true)
+            return;
 
         switch (pending?.Category)
         {
@@ -2526,7 +2535,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 {
                     var message = TryGetErrorMessage(root) ?? "wizard request failed";
                     wizardCompletion.TryFault(QuestionRequestError(pending.Method, root)
-                        ?? new InvalidOperationException(message));
+                        ?? (pending.Method == "sessions.search" ? new GatewayRequestException(message,
+                            root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
+                                ? GetString(error, "code") : null) : new InvalidOperationException(message)));
                 }
                 else if (root.TryGetProperty("payload", out var wizPayload))
                 {

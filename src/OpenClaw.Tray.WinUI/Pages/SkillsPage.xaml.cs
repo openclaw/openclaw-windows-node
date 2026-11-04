@@ -23,6 +23,99 @@ public sealed partial class SkillsPage : Page
     private CancellationTokenSource? _nativeLifetime;
     private Task? _nativeLoad;
     private Exception? _nativeLoadError;
+    private string? _searchSkillKey;
+    private string? _searchAgentId;
+    private CancellationTokenSource? _searchLifetime;
+    private bool _searchLoading;
+    private bool _searchRefreshPending;
+
+    internal void RevealSearchSkill(string agentId, string skillKey)
+    {
+        _searchSkillKey = skillKey;
+        _searchAgentId = agentId;
+        AgentFilterCombo.SelectionChanged -= OnAgentFilterChanged;
+        foreach (var item in AgentFilterCombo.Items.OfType<ComboBoxItem>())
+            if (item.Tag as string == agentId) { AgentFilterCombo.SelectedItem = item; break; }
+        AgentFilterCombo.SelectionChanged += OnAgentFilterChanged;
+        StartSearchSkillLoad(agentId);
+    }
+
+    private void StartSearchSkillLoad(string agentId)
+    {
+        _searchLifetime?.Cancel();
+        _searchLifetime?.Dispose();
+        _searchLifetime = new();
+        _searchLoading = true;
+        _searchRefreshPending = false;
+        _ = LoadSearchSkillAsync(agentId, _searchLifetime.Token);
+    }
+
+    private async Task LoadSearchSkillAsync(string agentId, CancellationToken ct)
+    {
+        var client = CurrentApp.GatewayClient;
+        var epoch = client?.ServerHandshakeGeneration;
+        if (client is null || !client.IsConnectedToGateway || !client.HasHandshakeSnapshot ||
+            _nativeSetupRequest is not null)
+        {
+            _searchLoading = false;
+            ShowSearchFailure();
+            return;
+        }
+        SkillsGroups.Visibility = Visibility.Collapsed;
+        LoadingState.Visibility = Visibility.Visible;
+        NativeSetupError.IsOpen = false;
+        NativeSetupError.Visibility = Visibility.Collapsed;
+        try
+        {
+            var data = await client.ReadSearchCatalogAsync("skills.status", new { agentId }, ct);
+            if (ct.IsCancellationRequested || !IsLoaded || _searchAgentId != agentId) return;
+            if (!ReferenceEquals(client, CurrentApp.GatewayClient) || epoch != client.ServerHandshakeGeneration)
+            {
+                ShowSearchFailure();
+                _searchRefreshPending = _appState?.Status == ConnectionStatus.Connected;
+                return;
+            }
+            UpdateFromGateway(data);
+            if (_searchSkillKey is not null) ShowSearchFailure();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or
+            NotSupportedException or InvalidDataException or JsonException or OperationCanceledException)
+        {
+            if (!ct.IsCancellationRequested && IsLoaded)
+            {
+                Logger.Warn("[Search] skill-destination-unavailable");
+                ShowSearchFailure();
+            }
+        }
+        finally
+        {
+            if (!ct.IsCancellationRequested && IsLoaded && _searchAgentId == agentId)
+            {
+                _searchLoading = false;
+                if (_searchRefreshPending) StartSearchSkillLoad(agentId);
+            }
+        }
+    }
+
+    private void ShowSearchFailure()
+    {
+        LoadingState.Visibility = Visibility.Collapsed;
+        NativeSetupError.Message = LocalizationHelper.GetString("Search_TargetUnavailable");
+        NativeSetupError.Visibility = Visibility.Visible;
+        NativeSetupError.IsOpen = true;
+    }
+
+    private void RevealLoadedSearchSkill()
+    {
+        if (_searchSkillKey is not { } key || GetSelectedAgentId() != _searchAgentId) return;
+        var card = EnabledPanel.Children.Concat(DisabledPanel.Children).OfType<FrameworkElement>()
+            .FirstOrDefault(item => item.Tag as string == key);
+        if (card is null) return;
+        if (DisabledPanel.Children.Contains(card)) DisabledExpander.IsExpanded = true;
+        card.StartBringIntoView();
+        _searchSkillKey = null;
+    }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
@@ -55,6 +148,9 @@ public sealed partial class SkillsPage : Page
         InitializeComponent();
         Unloaded += (_, _) =>
         {
+            _searchLifetime?.Cancel();
+            _searchLifetime?.Dispose();
+            _searchLifetime = null;
             _nativeLifetime?.Cancel();
             _nativeLifetime?.Dispose();
             _nativeLifetime = null;
@@ -131,7 +227,24 @@ public sealed partial class SkillsPage : Page
         switch (e.PropertyName)
         {
             case nameof(AppState.SkillsData):
+                if (_searchAgentId is { } agentId)
+                {
+                    // The shared slot has no agent provenance. Reload the selected agent privately.
+                    if (_searchLoading) _searchRefreshPending = true;
+                    else StartSearchSkillLoad(agentId);
+                    break;
+                }
                 if (_appState!.SkillsData.HasValue) UpdateFromGateway(_appState.SkillsData.Value);
+                break;
+            case nameof(AppState.Status) when _searchAgentId is { } connectedAgent:
+                if (_appState!.Status == ConnectionStatus.Connected) StartSearchSkillLoad(connectedAgent);
+                else
+                {
+                    _searchLifetime?.Cancel();
+                    _searchLoading = _searchRefreshPending = false;
+                    SkillsGroups.Visibility = Visibility.Collapsed;
+                    ShowSearchFailure();
+                }
                 break;
         }
     }
@@ -168,6 +281,12 @@ public sealed partial class SkillsPage : Page
 
     private void OnAgentFilterChanged(object sender, SelectionChangedEventArgs e)
     {
+        _searchLifetime?.Cancel();
+        _searchAgentId = null;
+        _searchSkillKey = null;
+        _searchLoading = _searchRefreshPending = false;
+        NativeSetupError.IsOpen = false;
+        NativeSetupError.Visibility = Visibility.Collapsed;
         var client = CurrentApp.GatewayClient;
         if (client != null)
             _ = client.RequestSkillsStatusAsync(GetSelectedAgentId());
@@ -304,12 +423,14 @@ public sealed partial class SkillsPage : Page
             SkillsGroups.Visibility = Visibility.Collapsed;
             EmptyState.Visibility = Visibility.Visible;
         }
+        RevealLoadedSearchSkill();
     }
 
     private Grid BuildCard(SkillData s)
     {
         var card = new Grid
         {
+            Tag = s.SkillKey,
             Padding = new Thickness(16, 10, 16, 12),
             Margin = new Thickness(0, 2, 0, 0),
             CornerRadius = new CornerRadius(6),
@@ -368,6 +489,7 @@ public sealed partial class SkillsPage : Page
             Tag = s.SkillKey,
             Padding = new Thickness(6, 4, 6, 4), MinWidth = 0, MinHeight = 0
         };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggleBtn, $"SkillToggle:{s.SkillKey}");
         ToolTipService.SetToolTip(toggleBtn, s.IsEnabled ? "Disable" : "Enable");
         toggleBtn.Content = new FontIcon { Glyph = s.IsEnabled ? "\uE769" : "\uE768", FontSize = 12 };
         toggleBtn.Click += OnToggleSkillClick;

@@ -5,6 +5,25 @@ namespace OpenClaw.Tray.Tests;
 
 public class ConfigEditorModelTests
 {
+    [Theory]
+    [InlineData("optional.enabled", "optional")]
+    [InlineData("optional", "optional")]
+    [InlineData("optional.nested.value", "optional.nested")]
+    [InlineData("rootValue", "")]
+    [InlineData("optional.missing", null)]
+    public void SearchResolvesTheSchemaSectionIndependentlyOfSavedValues(string path, string? expected)
+    {
+        using var schema = JsonDocument.Parse("""
+        {"type":"object","properties":{
+          "optional":{"type":"object","properties":{
+            "enabled":{"type":"boolean"},
+            "nested":{"type":"object","properties":{"value":{"type":"string"}}}}},
+          "rootValue":{"type":"string"}
+        }}
+        """);
+        Assert.Equal(expected, ConfigEditorModel.ResolveSearchSection(schema.RootElement, path));
+    }
+
     [Fact]
     public void CaptureSnapshot_UsesParsedRootAndBaseHash()
     {

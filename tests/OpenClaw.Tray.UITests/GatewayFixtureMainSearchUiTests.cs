@@ -1,5 +1,6 @@
 using System.Windows.Automation;
 using OpenClaw.GatewayFixtureHost;
+using OpenClaw.TestSupport.Gateway;
 
 namespace OpenClaw.Tray.UITests;
 
@@ -66,8 +67,7 @@ public sealed partial class GatewayFixtureUiTests
             FocusComposer(run, window);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search before routing");
-            FindById(run, "WorkspaceSearchBox")!.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))!.SetFocus();
+            SearchEdit(run, "WorkspaceSearchBox").SetFocus();
             Send(run, window, "Settings{ENTER}");
             await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is { Current.IsOffscreen: false },
                 "Settings route from main search");
@@ -126,8 +126,7 @@ public sealed partial class GatewayFixtureUiTests
             SetForeground(window);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search flyout");
-            var edit = FindById(run, "WorkspaceSearchBox")!.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))!;
+            var edit = SearchEdit(run, "WorkspaceSearchBox");
             edit.SetFocus();
             const string unmatched = "zzqqxx-no-such-command";
             Send(run, window, unmatched);
@@ -168,13 +167,475 @@ public sealed partial class GatewayFixtureUiTests
         return (window, composer, composer.GetRuntimeId());
     }
 
-    private static void SetForeground(AutomationElement window)
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task MainSearch_MessageHitOpensItsNativeConversationWithoutSending()
     {
-        if (!SetForegroundWindow(new IntPtr(window.Current.NativeWindowHandle)))
-            throw new InvalidOperationException("Cannot activate the isolated Workspace for keyboard proof.");
+        await WithAppAsync(async run =>
+        {
+            var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            Assert.Null(FindById(run, "WorkspaceSearchBox"));
+            Send(run, window, "^e");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "icon-only search opened");
+            ((ValuePattern)SearchEdit(run, "WorkspaceSearchBox").GetCurrentPattern(ValuePattern.Pattern)).SetValue("lighthouse");
+            await WaitUiAsync(run, () =>
+            {
+                var results = FindById(run, "SearchResultsList");
+                return results is not null && results.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.NameProperty, "In messages")) is not null &&
+                    results.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>()
+                        .Any(item => item.Current.Name.Contains(GatewayScenario.MainSentinel, StringComparison.Ordinal));
+            }, "message result with Gateway snippet inside the results list");
+            OwnedWindowCapture.Save(run, window, "main-search-message-result.png", FindById(run, "SearchResultsList")!);
+            SearchEdit(run, "WorkspaceSearchBox").SetFocus();
+            Send(run, window, "{ENTER}");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is null &&
+                SessionSelected(run, GatewayScenario.MainTitle), "exact native conversation after search");
+            Assert.Equal(MainSearchDraft, ComposerText(run));
+        });
     }
 
-    // SendKeys is global input. Refuse to send unless the foreground window belongs to the fixture app
+    private static AutomationElement SearchEdit(GatewayFixtureRun run, string id)
+    {
+        var element = FindById(run, id)!;
+        return element.Current.ControlType == ControlType.Edit ? element :
+            element.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))!;
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task MainSearch_OpenPopupEmptyResultsAndStatusPassAccessibility()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitVerifiedChatAsync(run);
+            var window = FindHub(run);
+            SetForeground(window);
+            Invoke(FindById(run, "WorkspaceSearch")!);
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null &&
+                FindById(run, "SearchResult_0") is { Current.IsOffscreen: false }, "empty search popup");
+            Scan("empty");
+            var input = (ValuePattern)SearchEdit(run, "WorkspaceSearchBox").GetCurrentPattern(ValuePattern.Pattern);
+            input.SetValue("camera");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith("Camera.", StringComparison.Ordinal) == true &&
+                FindById(run, "SearchStatus")?.Current.Name.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
+                "camera destination and settled source status");
+            Scan("results");
+            input.SetValue("zzqqxx-no-such-destination");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0") is null &&
+                FindById(run, "SearchStatus") is { Current.IsOffscreen: false } status &&
+                !status.Current.Name.Contains("searching", StringComparison.OrdinalIgnoreCase), "unmatched search status");
+            Scan("status");
+
+            void Scan(string state)
+            {
+                var popup = FindById(run, "WorkspaceSearchFlyout")!;
+                Assert.DoesNotContain(popup.FindAll(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ScrollBar)).Cast<AutomationElement>(),
+                    bar => !bar.Current.IsOffscreen && bar.Current.Orientation == OrientationType.Horizontal);
+                AxeHelper.AssertNoAccessibilityErrors(new(window.Current.NativeWindowHandle),
+                    context: $"MainSearch-{state}", targetProcessId: run.AppProcessId);
+                Assert.NotNull(FindById(run, "WorkspaceSearchBox"));
+            }
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task MainSearch_ControlEnterIsInert_AndArrowActivationOnlyNavigatesToTheSetting()
+    {
+        await WithAppAsync(async run =>
+        {
+            var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            var before = await run.InvokeAsync("app.settings.get", new { name = "NodeCameraEnabled" });
+            Send(run, window, "^e");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search opened");
+            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("camera");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith("Camera.", StringComparison.Ordinal) == true,
+                "camera destination selected");
+            edit.SetFocus();
+            Send(run, window, "^{ENTER}");
+            Send(run, window, OrderingProbe);
+            await WaitUiAsync(run, () =>
+            {
+                var value = ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).Current.Value;
+                return value.Length == "camera".Length + OrderingProbe.Length &&
+                    value.Replace(OrderingProbe, "", StringComparison.Ordinal) == "camera";
+            },
+                "Control+Enter leaves the search field active");
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "chat.send");
+            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("camera");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith("Camera.", StringComparison.Ordinal) == true,
+                "camera result restored");
+            edit.SetFocus();
+            Send(run, window, "{DOWN}");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0") is { Current.HasKeyboardFocus: true }, "native result row focus");
+            Send(run, window, "{ENTER}");
+            await WaitUiAsync(run, () => FindById(run, "PermissionsPageMarker") is { Current.IsOffscreen: false },
+                "permission settings destination");
+            var after = await run.InvokeAsync("app.settings.get", new { name = "NodeCameraEnabled" });
+            Assert.Equal(before.GetRawText(), after.GetRawText());
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "chat.send");
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task MainSearch_NativePageNamesAndIconsNavigateWithoutCommandPrefixes()
+    {
+        await WithAppAsync(async run =>
+        {
+            var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            foreach (var (query, title, marker) in new[]
+            {
+                ("Agent Events", "Event Stream", "AgentEventsPageMarker"),
+                ("Bindings", "Bindings", "BindingsPageMarker")
+            })
+            {
+                Send(run, window, "^k");
+                var inputId = query == "Agent Events" ? "WorkspaceSearchBox" : "SettingsSearchBox";
+                await WaitUiAsync(run, () => FindById(run, inputId) is not null, "shared search popup");
+                var edit = SearchEdit(run, inputId);
+                ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue(query);
+                await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name
+                    .StartsWith(title + ".", StringComparison.Ordinal) == true &&
+                    FindById(run, "SearchStatus")?.Current.Name.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
+                    "plain localized destination name and settled results");
+                var row = FindById(run, "SearchResult_0")!;
+                Assert.DoesNotContain("Go to", row.Current.Name, StringComparison.OrdinalIgnoreCase);
+                row.SetFocus();
+                await WaitUiAsync(run, () => FindById(run, "SearchResult_0") is { Current.HasKeyboardFocus: true },
+                    "rendered native destination row focus");
+                OwnedWindowCapture.Save(run, window, $"search-native-{query.Replace(" ", "-").ToLowerInvariant()}.png", row);
+                edit.SetFocus();
+                Send(run, window, "{ENTER}");
+                await WaitUiAsync(run, () => FindById(run, marker) is { Current.IsOffscreen: false },
+                    $"exact native {title} page");
+            }
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method is "config.patch" or "chat.send");
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task MainSearch_LongDescriptionsAndActionsShareOneScrollableSurfaceWithoutAFixedFooter()
+    {
+        await WithAppAsync(async run =>
+        {
+            run.Gateway.OverrideSearchRead("skills.status", _ => new
+            {
+                skills = Enumerable.Range(1, 6).Select(number => new
+                {
+                    name = $"Layout skill {number}",
+                    skillKey = $"layout-{number}",
+                    description = $"Layout description {number}: first line.\nSecond line stays inside the result.\nFinal line remains readable.",
+                    enabled = true
+                }).ToArray()
+            });
+            var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
+            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Layout skill");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_4") is not null &&
+                FindById(run, "SearchStatus")?.Current.Name.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
+                "long skill results and settled status");
+            var list = FindById(run, "SearchResultsList")!;
+            var more = list.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SearchMore"));
+            Assert.NotNull(more);
+            Assert.Null(FindInApp(run, new PropertyCondition(AutomationElement.NameProperty,
+                "Enter: Open. Alt+Enter: Dashboard when available. Esc: Close.")));
+            var scrolling = list.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern) ? list :
+                list.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true))!;
+            var scroll = (ScrollPattern)(pattern ?? scrolling.GetCurrentPattern(ScrollPattern.Pattern));
+            scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
+            await WaitUiAsync(run, () => IsFullyVisibleInScrollViewport(FindById(run, "SearchResult_4")) &&
+                IsFullyVisibleInScrollViewport(FindById(run, "SearchMore")), "last complete result and inline actions");
+            var last = FindById(run, "SearchResult_4")!;
+            Assert.Contains("Final line remains readable.", last.Current.Name);
+            var status = FindById(run, "SearchStatus")!;
+            Assert.True(status.Current.BoundingRectangle.Top >= last.Current.BoundingRectangle.Bottom - 1,
+                "Source status overlaps the final result.");
+            OwnedWindowCapture.Save(run, window, "search-inline-status-and-actions.png", list);
+            more!.SetFocus();
+            Send(run, window, "{ENTER}");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_5") is not null, "more results without closing search");
+            var final = FindById(run, "SearchResult_5")!;
+            ((ScrollItemPattern)final.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+            await WaitUiAsync(run, () => IsFullyVisibleInScrollViewport(FindById(run, "SearchResult_5")),
+                "expanded last description");
+            Assert.NotNull(FindById(run, "WorkspaceSearchBox"));
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "skills.update");
+        }, scenario: GatewayScenario.CreateSearchNavigation());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task MainSearch_KeyboardMoreAndRetryOperateTheFocusedButtonWithoutNavigation()
+    {
+        var scenario = GatewayScenario.CreateSearchNavigation();
+        await WithAppAsync(async run =>
+        {
+            var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            run.Gateway.FailSearchRead("sessions.search");
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
+            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture navigation field");
+            await WaitUiAsync(run, () => FindById(run, "SearchMore") is not null &&
+                FindById(run, "SearchRetry") is not null, "more and retry buttons");
+            ScrollSearch(run);
+            var before = ResultCount();
+            FindById(run, "SearchMore")!.SetFocus();
+            Send(run, window, "{ENTER}");
+            await WaitUiAsync(run, () => ResultCount() > before, "native Enter expands results");
+            Assert.NotNull(FindById(run, "WorkspaceSearchBox"));
+            var requests = run.Gateway.Requests.Count(request => request.Method == "sessions.search");
+            run.Gateway.ClearSearchReadOverride("sessions.search");
+            ScrollSearch(run);
+            FindById(run, "SearchRetry")!.SetFocus();
+            Send(run, window, "{ENTER}");
+            await WaitUiAsync(run, () => run.Gateway.Requests.Count(request => request.Method == "sessions.search") > requests &&
+                FindById(run, "SearchRetry") is null or { Current.IsOffscreen: true }, "native Enter retries the failed source");
+            Assert.NotNull(FindById(run, "WorkspaceSearchBox"));
+            Assert.Null(FindById(run, "ConfigPageMarker"));
+            OwnedWindowCapture.Save(run, window, "search-keyboard-more-retry.png", FindById(run, "SearchResultsList")!);
+
+            int ResultCount() => FindById(run, "SearchResultsList")!.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem)).Count;
+        }, scenario: scenario);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task MainSearch_AbsentConfigSectionRevealsItsSchemaFieldWithoutWriting()
+    {
+        await WithAppAsync(async run =>
+        {
+            var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
+            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture navigation field 8");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name
+                .StartsWith("Fixture navigation field 8.", StringComparison.Ordinal) == true, "schema-only result");
+            edit.SetFocus();
+            Send(run, window, "{ENTER}");
+            await WaitUiAsync(run, () => IsFullyVisibleInScrollViewport(FindById(run, "ConfigField:field8")),
+                "requested field in the absent optional section");
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method is "config.patch" or "config.set" or "config.apply");
+            OwnedWindowCapture.Save(run, window, "search-absent-config-field.png", FindById(run, "ConfigField:field8")!);
+        }, scenario: GatewayScenario.CreateSearchNavigation());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task MainSearch_FailedConfigRevealDoesNotFollowManualSectionNavigation()
+    {
+        await WithAppAsync(async run =>
+        {
+            var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
+            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Unrenderable navigation field");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name
+                .StartsWith("Unrenderable navigation field.", StringComparison.Ordinal) == true, "unrenderable schema result");
+            edit.SetFocus();
+            Send(run, window, "{ENTER}");
+            await WaitUiAsync(run, () => FindInApp(run,
+                new PropertyCondition(AutomationElement.NameProperty, "Unrenderable Navigation")) is not null,
+                "initial section without a renderable field");
+            var section = FindInApp(run, new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem),
+                new PropertyCondition(AutomationElement.NameProperty, "\U0001F4C1 Optional Navigation")))!;
+            Assert.NotNull(section);
+            section.SetFocus();
+            Send(run, window, "{ENTER}");
+            await WaitUiAsync(run, () => IsFullyVisibleInScrollViewport(FindById(run, "ConfigField:field1")) &&
+                section.Current.HasKeyboardFocus, "manual navigation retains tree focus and section-top scroll");
+            Assert.False(FindById(run, "ConfigField:field8")!.Current.HasKeyboardFocus);
+            Assert.Equal("unchanged", ((ValuePattern)FindById(run, "ConfigField:field8")!
+                .GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method is "config.patch" or "config.set");
+        }, scenario: GatewayScenario.CreateSearchNavigation(includeUnrenderableSection: true));
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task MainSearch_MetadataRefreshPreservesResultFocusWithoutStealingInputFocus()
+    {
+        var scenario = GatewayScenario.CreateSearchNavigation();
+        await WithAppAsync(async run =>
+        {
+            var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
+            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture");
+            await WaitUiAsync(run, () => FindById(run, "SearchStatus")?.Current.Name
+                .Contains("searching", StringComparison.OrdinalIgnoreCase) != true &&
+                FindById(run, "SearchMore") is not null, "settled metadata");
+            ScrollSearch(run);
+            Invoke(FindById(run, "SearchMore")!);
+            ScrollSearch(run, 0);
+            const string title = GatewayScenario.EmptyTitle;
+            var row = FindInApp(run, new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem),
+                new PropertyCondition(AutomationElement.NameProperty, title + ". main. ")))!;
+            Assert.NotNull(row);
+            ((SelectionItemPattern)row.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            row.SetFocus();
+            const string revised = title + " revised";
+            scenario.RenameSession(GatewayScenario.EmptySessionKey, revised, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            await run.Gateway.NotifySessionsChangedAsync();
+            await WaitUiAsync(run, () => FindInApp(run, new PropertyCondition(
+                AutomationElement.NameProperty, revised + ". main. ")) is { Current.HasKeyboardFocus: true },
+                "same selected conversation keeps focus after metadata update");
+            Assert.True(IsFullyVisibleInScrollViewport(FindInApp(run,
+                new PropertyCondition(AutomationElement.NameProperty, revised + ". main. "))));
+            edit.SetFocus();
+            var list = FindById(run, "SearchResultsList")!;
+            var scrollElement = list.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern) ? list :
+                list.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true))!;
+            var scroll = (ScrollPattern)(pattern ?? scrollElement.GetCurrentPattern(ScrollPattern.Pattern));
+            Assert.True(scroll.Current.VerticallyScrollable);
+            scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
+            await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent >= 99, "result list scrolled to the end");
+            edit.SetFocus();
+            await WaitUiAsync(run, () => edit.Current.HasKeyboardFocus, "input focus before the metadata refresh");
+            const string updated = title + " updated";
+            scenario.RenameSession(GatewayScenario.EmptySessionKey, updated);
+            await run.Gateway.NotifySessionsChangedAsync();
+            await WaitUiAsync(run, () => FindInApp(run, new PropertyCondition(
+                AutomationElement.NameProperty, updated + ". main. ")) is not null, "second metadata update");
+            Assert.True(edit.Current.HasKeyboardFocus);
+            Assert.True(scroll.Current.VerticalScrollPercent >= 99, "Metadata refresh reset the user's result scroll.");
+            row = FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, updated + ". main. "))!;
+            row.SetFocus();
+            Send(run, window, "{ENTER}");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is null && SessionSelected(run, updated),
+                "Enter still selects the exact conversation");
+        }, scenario: scenario);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task MainSearch_CrossSurfaceImmediateReopeningKeepsTheCurrentSearchUsable()
+    {
+        await WithAppAsync(async run =>
+        {
+            var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "Workspace popup");
+            var input = SearchEdit(run, "WorkspaceSearchBox");
+            ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue("camera");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith("Camera.", StringComparison.Ordinal) == true,
+                "setting target");
+            input.SetFocus();
+            Send(run, window, "{ENTER}");
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "SettingsSearchBox") is not null, "immediately reopened Settings popup");
+            input = SearchEdit(run, "SettingsSearchBox");
+            ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture: main conversation");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith(GatewayScenario.MainTitle + ".", StringComparison.Ordinal) == true,
+                "chat target after the old Workspace popup closed");
+            input.SetFocus();
+            Send(run, window, "{ENTER}");
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "immediately reopened Workspace popup");
+            input = SearchEdit(run, "WorkspaceSearchBox");
+            ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue("lighthouse");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.Contains(GatewayScenario.MainSentinel, StringComparison.Ordinal) == true,
+                "remote search still works after the old Settings popup closed");
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "chat.send");
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task MainSearch_SkillsRevealRecoversAfterReconnectAndLaterAgentMatchedRefresh()
+    {
+        await WithAppAsync(async run =>
+        {
+            var revision = 1;
+            object SkillData(System.Text.Json.JsonElement parameters)
+            {
+                var selected = parameters.TryGetProperty("agentId", out var agent) && agent.GetString() == "main";
+                return new { skills = new[] { new { name = selected ? $"Navigation skill revision {Volatile.Read(ref revision)}" : "Foreign agent skill",
+                    skillKey = selected ? "fixture-navigation" : "foreign-skill", description = "Synthetic navigation skill", enabled = true } } };
+            }
+            run.Gateway.OverrideSearchRead("skills.status", SkillData);
+            var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
+            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Navigation skill revision");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith("Navigation skill revision 1.", StringComparison.Ordinal) == true,
+                "selected-agent skill result");
+            var held = run.Gateway.HoldNextSkillsRead("main");
+            try
+            {
+                edit.SetFocus();
+                Send(run, window, "{ENTER}");
+                await held.WaitAsync(TimeSpan.FromSeconds(10));
+                await WaitUiAsync(run, () => FindById(run, "SkillsLoading") is { Current.IsOffscreen: false }, "in-flight skill reveal");
+                var connections = run.Gateway.ConnectionCount;
+                Interlocked.Exchange(ref revision, 2);
+                await run.Gateway.CloseConnectionsAsync();
+                await WaitUiAsync(run, () => run.Gateway.ConnectionCount > connections &&
+                    FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "Navigation skill revision 2")) is not null &&
+                    FindById(run, "SkillsLoading") is null or { Current.IsOffscreen: true }, "skills recover on the fresh connection");
+            }
+            finally { run.Gateway.ReleaseSkillsRead(); }
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "skills.update");
+            Interlocked.Exchange(ref revision, 3);
+            Invoke(FindById(run, "SkillToggle:fixture-navigation")!);
+            await WaitUiAsync(run, () => FindInApp(run,
+                new PropertyCondition(AutomationElement.NameProperty, "Navigation skill revision 3")) is not null,
+                "later shared update triggers an agent-owned reload");
+            Assert.Contains(run.Gateway.Requests, request => request.Method == "skills.update" && request.Outcome == "ok");
+            Assert.Null(FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "Foreign agent skill")));
+            OwnedWindowCapture.Save(run, window, "search-skills-reconnected.png", FindById(run, "SkillsPageMarker")!);
+        }, scenario: GatewayScenario.CreateSearchNavigation());
+    }
+
+    private static void SetForeground(AutomationElement window)
+    {
+        NativeKeyboardProof.ActivateAsync(new IntPtr(window.Current.NativeWindowHandle)).GetAwaiter().GetResult();
+    }
+
+    private static void ScrollSearch(GatewayFixtureRun run, double percent = 100)
+    {
+        var list = FindById(run, "SearchResultsList")!;
+        var element = list.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern) ? list :
+            list.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true))!;
+        var scroll = (ScrollPattern)(pattern ?? element.GetCurrentPattern(ScrollPattern.Pattern));
+        if (scroll.Current.VerticallyScrollable) scroll.SetScrollPercent(ScrollPattern.NoScroll, percent);
+    }
+
+    private static bool IsFullyVisibleInScrollViewport(AutomationElement? element)
+    {
+        if (element is null || element.Current.IsOffscreen) return false;
+        var bounds = element.Current.BoundingRectangle;
+        for (var parent = TreeWalker.ControlViewWalker.GetParent(element); parent is not null;
+            parent = TreeWalker.ControlViewWalker.GetParent(parent))
+        {
+            if (!parent.TryGetCurrentPattern(ScrollPattern.Pattern, out _)) continue;
+            var viewport = parent.Current.BoundingRectangle;
+            return bounds.Width > 0 && bounds.Height > 0 && bounds.Top >= viewport.Top - 1 &&
+                bounds.Bottom <= viewport.Bottom + 1 && bounds.Left >= viewport.Left - 1 &&
+                bounds.Right <= viewport.Right + 1;
+        }
+        return false;
+    }
+
+    // Native input is global. Refuse to send unless the foreground window belongs to the fixture app
     // process (a flyout popup is a separate window of the same process) and no modifier key is held.
     private static void Send(GatewayFixtureRun run, AutomationElement window, string keys)
     {
@@ -191,7 +652,23 @@ public sealed partial class GatewayFixtureUiTests
             if ((GetAsyncKeyState(modifier) & 0x8000) != 0)
                 throw new InvalidOperationException("A modifier key is held; refusing to send keys.");
         }
-        System.Windows.Forms.SendKeys.SendWait(keys);
+        var foreground = GetForegroundWindow();
+        switch (keys)
+        {
+            case "^k": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.K, control: true); break;
+            case "^e": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.E, control: true); break;
+            case "^f": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.F, control: true); break;
+            case "%{LEFT}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Left, alt: true); break;
+            case "{ESC}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Escape); break;
+            case "{ENTER}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Enter); break;
+            case "^{ENTER}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Enter, control: true); break;
+            case "{DOWN}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Down); break;
+            case "Settings{ENTER}":
+                NativeKeyboardProof.TypeText(foreground, "Settings");
+                NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Enter);
+                break;
+            default: NativeKeyboardProof.TypeText(foreground, keys); break;
+        }
     }
 
     private static bool ForegroundBelongsTo(int processId)

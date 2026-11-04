@@ -55,8 +55,10 @@
                 <StackPanel x:Name="LoadingState" Orientation="Horizontal" Spacing="12"
                             HorizontalAlignment="Center" Margin="0,32,0,0"
                             Visibility="Collapsed">
-                    <ProgressRing IsActive="True" Width="24" Height="24"/>
-                    <TextBlock x:Uid="SkillsPage_LoadingSkills" Text="Loading skills..."
+                    <ProgressRing IsActive="True" Width="24" Height="24"
+                                  AutomationProperties.AutomationId="SkillsLoading"
+                                  AutomationProperties.LabeledBy="{x:Bind SkillsLoadingText}"/>
+                    <TextBlock x:Name="SkillsLoadingText" x:Uid="SkillsPage_LoadingSkills" Text="Loading skills..."
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                VerticalAlignment="Center"/>
                 </StackPanel>

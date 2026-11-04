@@ -14,6 +14,37 @@ Read-only placement discovery returns an empty project catalog and one synthetic
 local environment through `projects.list` and `environments.list`. It creates no
 project or host resources; `projects.add` is rejected as a write.
 
+The fixture also advertises read-only `sessions.search` over its synthetic
+message text and accepts the scoped metadata search fields on `sessions.list`.
+The main-search UI regressions exercise icon/shortcut opening and immediate
+reopening, shared Settings search, draft-preserving dismissal, read-only setting
+navigation and native conversation navigation from a message hit. Keyboard
+regressions also exercise Enter on Show more/Retry, immediate cross-shell
+reopening, absent Config sections and agent-owned Skills recovery. Focused
+cases cover a failed Config reveal followed by manual navigation to a section
+with the same field name, and session title/recency changes while result or
+input focus is active, including user-controlled result scroll. The
+search-navigation scenario adds optional schema fields without corresponding
+saved values. Read-response overrides and a selected-agent skills gate model
+failures and an in-flight reconnect. This test-only scenario also acknowledges
+`skills.update` for one synthetic skill so a manual toggle can trigger the
+production shared refresh and selected-agent reload. Search itself never sends
+that mutation. No provider is contacted, no skill is installed or changed on
+disk, and config writes remain rejected. Keyboard
+journeys use the shared native SendInput helper, with the fixture opt-in,
+foreground ownership and released-modifier guards intact. Open-popup Axe scans
+cover empty results, matching results and source-status states, including a
+horizontal-clipping assertion. This proves the application boundary, not a real
+Gateway's indexing or Dashboard route compatibility.
+
+The long-description search journey checks that source status and More/Retry
+share the native results scroller, after the last result, with no fixed
+keyboard-help footer. It verifies the complete last description can be
+scrolled into view and expanded without a status/action region covering it.
+Native page-name proof searches the old Agent Events alias and Bindings,
+checks plain destination names, captures the actual symbol icons and navigates
+to the corresponding native pages without sending chat or config writes.
+
 ## Build and explore
 
 Build the current app first, then pass its executable explicitly. An installed

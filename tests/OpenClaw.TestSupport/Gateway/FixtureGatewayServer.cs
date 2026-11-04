@@ -46,6 +46,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private TaskCompletionSource? _nextSessionListGate;
     private TaskCompletionSource? _heldSessionList;
     private TaskCompletionSource? _sessionListCaptured;
+    private readonly Dictionary<string, Func<JsonElement, object>> _readResponses = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (TaskCompletionSource Release, TaskCompletionSource Captured)> _heldReads = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _nextReads = new(StringComparer.Ordinal);
+    private string? _heldSkillsAgent;
     private readonly TaskCompletionSource _handshake = NewSignal();
     private readonly TaskCompletionSource _accepted = NewSignal();
     private TaskCompletionSource _requestChanged = NewSignal();
@@ -374,6 +378,45 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }
     }
 
+    public void OverrideSearchRead(string method, Func<JsonElement, object> response)
+    {
+        if (method is not ("skills.status" or "sessions.search"))
+            throw new ArgumentException("Only search reads may be overridden.", nameof(method));
+        lock (_sync) _readResponses[method] = response;
+    }
+
+    public void FailSearchRead(string method) => OverrideSearchRead(method, _ =>
+        throw new FixtureRequestException("FIXTURE_SEARCH_FAILURE", "Synthetic read failure."));
+
+    public void ClearSearchReadOverride(string method)
+    {
+        lock (_sync) _readResponses.Remove(method);
+    }
+
+    public Task HoldNextSkillsRead(string agentId)
+    {
+        lock (_sync)
+        {
+            if (_heldReads.ContainsKey("skills.status"))
+                throw new InvalidOperationException("A skills read is already held.");
+            var held = (Release: NewSignal(), Captured: NewSignal());
+            _heldReads.Add("skills.status", held);
+            _nextReads.Add("skills.status");
+            _heldSkillsAgent = agentId;
+            return held.Captured.Task;
+        }
+    }
+
+    public void ReleaseSkillsRead()
+    {
+        lock (_sync)
+        {
+            if (!_heldReads.Remove("skills.status", out var held)) return;
+            _nextReads.Remove("skills.status");
+            held.Release.TrySetResult();
+        }
+    }
+
     /// <summary>Releases the gate immediately. Await response/UI readiness separately after releasing.</summary>
     public Task ReleaseHistoryAsync(string sessionKey)
     {
@@ -659,6 +702,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                             : method == "chat.send"
                                 ? _chatSendGate?.Task
                             : method == "sessions.list" ? _nextSessionListGate?.Task
+                            : method == "skills.status" && ReadString(parameters, "agentId") == _heldSkillsAgent &&
+                                _nextReads.Remove(method) ? _heldReads[method].Release.Task
                             : method == "chat.history" && key is not null && _historyGates.TryGetValue(key, out var held)
                                 ? held.Task : null;
                         abortOutcome = method == "chat.abort" ? _chatAbortGate?.Task : null;
@@ -735,7 +780,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 "Approval ID was not issued by the fixture.");
                     }
                 }
-                payload = Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
+                Func<JsonElement, object>? readResponse;
+                lock (_sync) _readResponses.TryGetValue(method, out readResponse);
+                payload = readResponse is not null ? readResponse(parameters)
+                    : Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
                     ? await Interactive.RespondAsync(method, parameters, cancellationToken)
                     : _scenario.Respond(method, parameters,
                         Interactive is null ? null : Interactive.ContainsSession);
@@ -771,6 +819,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 lock (_sync) _subscriptions.Add(connectionId);
             if (method == "sessions.list" && gate is not null)
                 lock (_sync) _sessionListCaptured?.TrySetResult();
+            if (method == "skills.status" && gate is not null)
+                lock (_sync)
+                    if (_heldReads.TryGetValue(method, out var held)) held.Captured.TrySetResult();
             if (gate is not null)
                 await gate.WaitAsync(cancellationToken);
             if (abortOutcome is not null && await abortOutcome.WaitAsync(cancellationToken))
