@@ -787,14 +787,6 @@ public class OpenClawGatewayClientTests
         public long? GetChallengeTimestampMs() =>
             GetPrivateField<long?>("_challengeTimestampMs");
 
-        public string? GetLastSkillsStatusAgentId()
-        {
-            var field = typeof(OpenClawGatewayClient).GetField(
-                "_lastSkillsStatusAgentId",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            return field!.GetValue(_client) as string;
-        }
-
         public List<string> CaptureAuthenticationFailedEvents()
         {
             var events = new List<string>();
@@ -1697,20 +1689,6 @@ public class OpenClawGatewayClientTests
         var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: false, identityPath: tmpDir);
 
         Assert.False(helper.Client.UseV2Signature);
-    }
-
-    [Fact]
-    public async Task RequestSkillsStatusAsync_RemembersRequestedAgentScope()
-    {
-        var helper = new GatewayClientTestHelper();
-
-        await helper.Client.RequestSkillsStatusAsync("agent-alpha");
-
-        Assert.Equal("agent-alpha", helper.GetLastSkillsStatusAgentId());
-
-        await helper.Client.RequestSkillsStatusAsync();
-
-        Assert.Null(helper.GetLastSkillsStatusAgentId());
     }
 
     [Fact]

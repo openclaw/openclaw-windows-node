@@ -174,6 +174,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Local AI model cache acquisition, explicit legacy migration, and active-path receipt selection | `HuggingFaceModelInstaller` + `LocalAiManifestStore` + `LocalAiInstallReconciler` | authoritative |
 | Exact Gateway wizard terminal-restart compatibility and bounded retry policy | `GatewayWizardRestartRecoveryPolicy` | authoritative |
 | Interactive onboarding routes and installation-step selection | `OnboardingFlowPolicy` | authoritative |
+| Accessible provider/model and completion-card invocation | `SetupActionCard` supplies the native Invoke provider; `AiSetupPage` and `AiReadyPage` retain their guarded selection and completion actions | authoritative |
 | Setup-lifetime capability/profile/explicit Custom intent/consent draft and ordered installation requirements | `SetupAccessDraft` + `SetupCapabilityProfiles`, owned by `SetupWindow` | authoritative |
 | Setup provider artwork resolution and bounded page-owned download lifetime | `GatewayAiSetupPresentation` + `ProviderArtworkSession` + `ProviderArtworkLoader`, rendered by `ProviderArtwork` | authoritative |
 | Native setup editor mounting and committed-result routing | `SetupWindow` through `ISetupNativeConnectionHost` + `SetupNativeConnectionPage` | authoritative |
@@ -188,8 +189,8 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Focused AI setup protocol state and provider progress polling | `GatewayAiSetupClient` + `GatewayAiSetupController` | authoritative |
 | Verified AI completion intent and opaque pending restart handoff | `GatewayAiSetupClient` + `GatewayAiSetupCompletion` + `SetupDashboardHandoffStore` + `SetupDashboardHandoff` | authoritative |
 | Native verified destination choice and selection-time read-only verification | `SetupNativeCompletionCoordinator` + `SetupNativeCompletionVerifier`; `AiReadyPage` renders, `SetupWindow` composes finalization | authoritative |
-| Native pending launch and bound Chat/Channels/Skills entry | `SetupNativeHandoffLauncher` + `SetupNativeNavigationRequest`; `SetupNativeSkills` owns response-bound read-only skills loading; `WindowManager` and pages apply the selected route | authoritative |
-| Verified native setup Chat window boundary | `SetupNativeNavigationRequest` projects the exact Workspace session; `WorkspaceWindow` calls `ChatPage.BindNativeSetupRequest` explicitly, not a Frame navigation override. `WindowManager` awaits the retained page before activation and receipt consumption. Channels/Skills remain typed companion routes | authoritative |
+| Native pending launch and bound Chat/Channels entry | `SetupNativeHandoffLauncher` + `SetupNativeNavigationRequest`; `WindowManager` and pages apply the selected route | authoritative |
+| Verified native setup Chat window boundary | `SetupNativeNavigationRequest` projects the exact Workspace session; `WorkspaceWindow` calls `ChatPage.BindNativeSetupRequest` explicitly, not a Frame navigation override. `WindowManager` awaits the retained page before activation and receipt consumption. Channels remains a typed companion route | authoritative |
 | Verified setup Chat hosting in the Settings view | Closed in `SettingsShellView`; typed native Chat requests must use Workspace without dropping endpoint, identity, agent or session verification | closed |
 | Settings Chat rail action | `SettingsShellView` forwards a non-selecting item invocation through `WorkspaceNavigation` to the retained chat destination in the same window; Settings never mounts Chat | authoritative |
 | Gateway dashboard management card | `ConnectionPage` owns the visible card and forwards to the existing `GatewayDashboardLauncher` path; `ChatPage` has no management banner | authoritative |
@@ -224,7 +225,9 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Workspace Home/Notifications and exact session-key identity, deprecated-link fallback, back/forward history, and companion boundaries | `WorkspaceNavigation` + `WorkspaceNavigationHistory`; `WorkspaceWindow` restores the selected agent/session on the retained chat host; `WindowManager` routes pending session links directly without an intermediate Home entry | authoritative |
 | Workspace-versus-Settings dispatch and rejection of unknown prefixed routes before window side effects | `WorkspaceNavigation.Dispatch`; `WindowManager` and `WorkspaceWindow` supply native window actions; `AppCapability` propagates navigation error payloads as tool errors | authoritative |
 | Unvalidated Workspace-prefix forwarding and Settings fallback | Closed in `SettingsShellView` and `WindowManager.ShowHub`; delegate boundary dispatch to `WorkspaceNavigation` | closed |
-| Workspace agent/session identity, background-session filtering, and explicit assistant-selection readiness for conversation creation | `WorkspaceProjection`; `WorkspaceWindow` applies readiness to Sessions + and guards the mutation | authoritative |
+| Workspace agent/session identity and background-session filtering | `WorkspaceProjection` | authoritative |
+| Gateway-bound remembered assistant, transient roster continuity, and explicit assistant-selection readiness for conversation creation | `WorkspaceAgentSelection` uses `WorkspaceProjection`; `WorkspaceWindow` reports fresh roster updates, applies readiness to Sessions +, and guards assistant/session actions. Explicit unsupported-method status travels from the operator client through `GatewayService`/`AppState`, permitting legacy session access and Gateway-default creation without inventing an agent roster | authoritative |
+| Default-agent fallback caused by clearing a transient connection cache in Workspace | Closed in `WorkspaceWindow`; `WorkspaceAgentSelection` retains the same Gateway's explicit choice and waits for its authoritative roster | closed |
 | Workspace sidebar session context menu: entries, patch payloads, fork request; flyout, dialogs, and gateway dispatch | `WorkspaceSessionMenu` (pure entries/patches/fork request), `WorkspaceSessionMenuController` (flyout, dialogs, gateway dispatch); `WorkspaceWindow` applies active rows and owns session creation/navigation | authoritative |
 | Archived session browsing and restoration | Settings `SessionsPage` owns the Archived section and response-confirmed Unarchive action; `ArchivedSessionsSource` owns the lazy, connection-bound snapshot | authoritative |
 | Archived dropdown, archived row cache, and archive-list fetching in the Workspace sidebar | Removed by design; archived conversations are managed from Settings Sessions, not `WorkspaceWindow` | closed |
@@ -237,6 +240,9 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Chat-visible notification suppression | `ChatVisibilityPolicy` owns the pure visibility decision; `WorkspaceWindow` supplies current destination, AppWindow visibility and minimized state; `WindowManager.IsChatVisible` evaluates only Workspace chat | authoritative |
 | Inferring chat visibility from any existing main window | Closed in `App.ShouldShowNotification`; use `IWindowManager.IsChatVisible`, retaining chat/per-type notification toggles | closed |
 | Readiness-gated, single-use native chat voice launch | `PendingVoiceActivation` | authoritative |
+| Opt-in Gateway chat speech lifetime and late-result rejection | `GatewaySpeechPlayback` captures the operator client, authenticated epoch and chat target; mounted composer input projection supplies initial, fallback and explicit targets without becoming another selection owner; `OpenClawChatCoordinator` routes chat/preview and owns microphone playback-muting leases. `TextToSpeechService` remains the serialized native playback owner | authoritative |
+| Outward Gateway speech protocol and payload admission | `OpenClawGatewayClient.Speech` uses the existing response registry; `GatewaySpeech` validates method/scope authority, bounded inline MP3/WAV. Inward node/MCP `TtsCapability` keeps its local provider selection | authoritative |
+| Playback mute intent and overlapping leases across voice captures | `PlaybackMuteState` owns desired mute and registrations. App supplies one mute domain to independently owned standalone/node `VoiceService` instances, including later node/MCP activation, and disposes it after both services. One-shot pipelines remain local. `OpenClawChatCoordinator` acquires directly from that domain even before STT is enabled, without creating a capture service, and releases generation-scoped leases after playback drains. `SpeechInputContractTests.AppVoiceServices_SharePlaybackMuteWithoutSharingCaptureOwnership` protects composition until real App transition tests cover that wiring | authoritative |
 | Hub notification banner severity and action projection | `AppNotificationInfoBarPresenter` | authoritative |
 | Compact notification list reconciliation and dismissal | `NotificationFlyoutContent` | authoritative |
 | Gateway/operator/node status flyout controls | `GatewayStatusContent` | authoritative |
@@ -252,6 +258,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Exactly-once ordered app shutdown sequencing | `AppShutdownCoordinator` | authoritative |
 | App composition-root startup sequencing | `AppBootstrapper` (planned) | planned |
 | Packaged uninstall cleanup, preservation recovery and removed-target reconciliation | `GatewayPackageCleanup`; App only invokes its startup gate and presents recovery. Legacy name/path markers never grant unattended deletion authority; malformed receipts/settings retain pending evidence and fail closed | authoritative |
+| Windowless scheduled cleanup launch after Companion removal | `OpenClaw.GatewayCleanupHost` (GUI-subsystem .NET Framework helper), embedded and deployed by `GatewayPackageCleanup`; `GatewayPackageCleanup.Task.ps1` registers its durable versioned path. PowerShell starts with `CreateNoWindow`; worker exit codes reach Task Scheduler | authoritative |
 | Inno migration records, preparation, and pre-start completion guard | `MigrationRecordCodec`, `MigrationPreparation`, `MigrationInventory`, `InnoMigrationStartupGuard` | authoritative |
 | Cross-session migration exclusion and source activity inspection | `MigrationOperationLock`, `InnoSourceActivityVerifier` (App only retains the runtime handle through process exit) | authoritative |
 | Store migration startup admission and finalization | `InnoInstallationDetector`, `InnoSourceRemovalVerifier`, `MigrationStartupRecordReader`, `MigrationInventoryCapture`, `StoreMigrationStartupCoordinator`, `StoreMigrationFinalizationCoordinator`, `StoreMigrationStartupGuard` | authoritative |
@@ -378,8 +385,10 @@ automatically. It rechecks device support, then calls
 packages start WinGet install/update once per attempt; development packages skip it.
 Duplicate registration, unhealthy packages
 and missing aliases fail explicitly instead of triggering reinstall loops.
-The cancellable acquisition deadline is five minutes including installation and
+The cancellable acquisition deadline defaults to 30 minutes, including installation and
 registration verification, with one-second polling after WinGet completes.
+`OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT` overrides that bound in seconds; an explicit
+`EnsureAsync` timeout argument still wins.
 Cancellation reaches `CommandRunner`, which stops its WinGet process tree;
 Windows may still finish an already submitted deployment. No installed package
 is removed, and retry starts by resolving registration again.
@@ -410,7 +419,7 @@ Restart, which would otherwise discard stop ownership for a setup-started servic
 The shared setup settings owner then saves the reviewed capability, transport
 and startup choices without overwriting unrelated settings. Settings write
 failure stays retryable before releasing the session. Completion shows the
-verified model and three destinations, not a running or paired Windows node.
+verified model and two destinations, not a running or paired Windows node.
 The normal connection owner still performs node connection/pairing; Windows
 permission and exec-approval gates are unchanged.
 
@@ -418,7 +427,7 @@ Native package setup uses the shared `AiSetupPage` and `AiReadyPage` flow.
 Only an explicit unsupported-method result offers `WizardPage` compatibility
 setup. Authentication failures, timeouts and uncertain writes do not enter that
 fallback. Healthy native and WSL AI/Ready screens use the same presentation:
-providers, verified model and the three destination choices, without a native-only
+providers, verified model and the two destination choices, without a native-only
 summary. Gateway and permission details remain in Connection and Permissions.
 Native recovery actions and output appear only for actionable errors or uncertain
 outcomes on the AI page/provider dialog, and hide again during normal progress or
@@ -444,16 +453,18 @@ A positive result enables and initially selects the first **Install a local nati
 gateway** card with the accent highlight and **Recommended** badge. A negative
 capability result leaves that recommended choice visible but disabled after WSL and
 **Connect to an existing gateway**, with Windows Update guidance directly below the
-choice list; reopening the page rechecks support. The guidance tells users to
-update to a Windows version that supports the native Gateway. The guidance says
-support is coming soon to all devices and, until broad availability, directs
-users to join the Windows Insider Program, select the Beta or Experimental
-channel, and choose Windows 11, version 26H1 under **Advanced options** during
+choice list; reopening the page rechecks support. The guidance names the unavailable
+isolation-session capability, explains that a newer Windows version alone does not
+guarantee availability, and offers the existing WSL and existing-Gateway routes.
+For users who need to update Windows, it describes joining the Windows Insider Program,
+selecting the Beta or Experimental channel, and choosing Windows 11, version 26H1 under **Advanced options** during
 enrollment. It warns that returning to Windows 11, version 25H2/26H2 requires
 a clean reinstall. After enrolling, users return to
 **Settings > Windows Update** and check for updates; the update may take a few
 minutes to appear. The guidance notes that feature availability can vary by
-device and tells users to reopen the page after updating to check support again.
+device and tells users to reopen the page to check support again, including when
+Windows is already up to date. It does not promise a rollout or that updating fixes
+the capability.
 The live probe remains authoritative. The native boolean cannot distinguish
 every OS API failure from missing support.
 Missing executables, malformed results and probe errors instead offer retry or
@@ -534,13 +545,15 @@ reload setting intact. Stopping either runtime does not delete its configuration
 ### Isolated listener proof and legacy process ownership
 
 After a successful package start acknowledgement, `IsolatedGatewayRuntime`
-allows up to three minutes by default, including the start command, for its own start to
-become ready. `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT` (whole seconds, 30 to 3600,
-read once per process) overrides that budget; the package command timeout never drops
-below three minutes, and the derived credential handoff and setup connection phase
-budgets grow with a longer override. A late successful acknowledgement retains ten seconds for status
-confirmation, extending the start/status ceiling to at most 190 seconds at the default. This
-allowance remains subordinate to caller deadlines; the outer 210-second default connection
+allows up to five minutes by default, including the start command, for its own start to
+become ready. Slow hosts reached a verified listener after about 210 seconds
+([#1969](https://github.com/openclaw/openclaw-windows-node/issues/1969)).
+`OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT` (whole seconds, 30 to 3600,
+read once per process) overrides that budget; the package command timeout is the larger of
+three minutes and the startup budget, and the derived credential handoff and setup connection phase
+budgets follow the startup budget. A late successful acknowledgement retains ten seconds for status
+confirmation, extending the start/status ceiling to at most 310 seconds at the default. This
+allowance remains subordinate to caller deadlines; the outer 330-second default connection
 budget also includes preflight, inspection and handshake work. It polls status
 every two seconds without issuing another start.
 A timeout raises `NativeGatewayStartupTimeoutException` with its phase (start request or
@@ -631,7 +644,7 @@ cleanup applies after assignment, and no launcher code has resumed before then.
 
 This section describes the explicit compatibility path only. The normal native
 path uses the same detected providers, activation, exact-model verification and
-Chat/Channels/Skills chooser as WSL. `NativeGatewaySetupConnection` owns the
+Chat/Channels chooser as WSL. `NativeGatewaySetupConnection` owns the
 temporary operator socket in both paths; it never owns or replaces the native
 runtime. `SetupWindow` retains `NativeGatewaySetupSession` across AI/Ready navigation.
 
@@ -894,6 +907,9 @@ leading and trailing pipe. Columns, in order:
 | composition-root | authoritative | src/OpenClaw.Tray.WinUI/App.xaml.cs | presentation-layer service construction and wiring | AppServiceRegistration | App remains the composition root and owns non-DI service lifetimes | one validated root ServiceProvider; App-owned singletons registered as instances are never disposed by the container | AppServiceRegistrationTests.Dispose_DoesNotDisposeAppOwnedInstanceSingletons | behavioral | - |
 | node-summary-text | authoritative | src/OpenClaw.Tray.WinUI/App.xaml.cs | node-summary clipboard text formatting | NodeSummaryText | App keeps the clipboard side effect (building the DataPackage and setting clipboard content) | copied node-summary text is projected only by NodeSummaryText.Build (online/offline state, display-name fallback, short id, detail text, newline join) | NodeSummaryTextTests.Build_MultipleNodes_OneLinePerNodeJoinedByNewline | behavioral | - |
 | reactor-chat-timeline | authoritative | removed legacy FunctionalUI chat timeline | production chat message virtualization, row realization, and imperative scroll follow | ReactorChatTimeline through OpenClawReactorChatRoot and ReactorHostControl | - | Workspace's ChatPage mounts one direct ReactorHostControl; Reactor owns stable-key ItemsView and ItemContainer realization without a custom native list, collection reconciler, or scroll-layout mutation | ChatTimelinePresentationTests.ReactorTimeline_UsesNonSelectableItemsViewContainersAndAnnotatedScrollBar | source-shape | when ReactorChatTimeline is replaced as the production virtualization owner |
+| chat-tail-reflow-budget | authoritative | src/OpenClaw.Tray.WinUI/Chat/ReactorItemsViewScrollController.cs | bounded correction eligibility after viewport reflow | TailReflowCorrection | InitialTailPositioner owns native layout/render/input subscriptions and discrete tail requests | one correction per viewport change, only while following away from the tail and never while initial positioning is pending; cancellation rejects late extent changes; no continuous extent chasing | ChatTimelinePresentationTests.TailReflowCorrection_DoesNotStartWhileInitialPositioningIsPending | behavioral | - |
+| chat-tail-reflow-follow-admission | authoritative | src/OpenClaw.Tray.WinUI/Chat/ReactorItemsViewScrollController.cs | stale reflow correction after a reader scrolls away | TailNavigationPolicy.CanDispatch, applied in InitialTailPositioner.DispatchTailRequest | initial history positioning retains its layout gate; input cancellation recomputes follow from the current position | reflow correction rechecks follow eligibility inside its dispatcher callback before issuing a native bring; initial positioning is never follow-gated | ChatTimelinePresentationTests.TailNavigationPolicy_OnlyReflowCorrectionRequiresFollowingAtDispatch | behavioral | - |
+| chat-tail-live-dispatch | authoritative | src/OpenClaw.Tray.WinUI/Chat/ReactorItemsViewScrollController.cs | stale initial or reflow tail coordinates across dispatcher handoff | InitialTailNavigationRequest, applied in InitialTailPositioner.DispatchTailRequest | native layout, render, follow and input gates remain in InitialTailPositioner | both initial and reflow requests retain only the originating generation before dispatch and resolve live tail coordinates inside the callback | ChatTimelinePresentationTests.ReactorTimeline_InitialTailResolvesLiveCoordinatesAfterLayoutAndDispatch | source-shape | when InitialTailPositioner no longer owns queued native tail navigation |
 | chat-tool-activity-renderer | authoritative | src/OpenClaw.Tray.WinUI/Chat/ReactorChatTimeline.cs | production standalone tool-call and grouped activity presentation, summaries, disclosures, and detail rendering | ChatToolActivityPresentation + ToolCallCardRenderer | ReactorChatTimeline projects rows and delegates realization only | consecutive invocation grouping preserves source chronology; stable group identity comes from session, generation, and first tool entry; selectable output remains capped at 240px | ChatToolActivityPresentationTests.Project_GroupsOnlyConsecutiveSpansOfAtLeastTwoTools | behavioral | - |
 | chat-history-replay-projection | authoritative | src/OpenClaw.Tray.WinUI/Chat/OpenClawChatDataProvider.cs | array-valued history content ordering projection | ChatHistoryReplayProjection | provider applies projected text and tool parts to the reducer | interleaved text, calls, and results replay in source order without clearing active tool correlation | OpenClawChatDataProviderTests.LoadHistoryAsync_InterleavedContentParts_PreserveChronologyAndCorrelation | behavioral | - |
 | assistant-media-protocol-projection | authoritative | src/OpenClaw.Shared/OpenClawGatewayClient.cs | structured assistant media content parsing and assistant-only legacy MEDIA directive redaction/projection | AssistantMediaDirectiveParser + ChatMediaContentInfo | gateway client preserves ordered typed media while tray presentation receives only safe filenames and metadata | user text never activates media directives; accepted local sources never enter visible assistant text or notifications; media-only messages survive live and history parsing | AssistantMediaDirectiveParserTests.Project_AssistantAbsolutePath_ProducesMediaWithoutExposingPath | behavioral | - |
@@ -947,11 +963,12 @@ leading and trailing pipe. Columns, in order:
 | inno-migration-handoff | authoritative | SettingsPage + App activation composition | explicit consent, Store listing policy, and migration shutdown authorization | InnoMigrationHandoff + InnoMigrationConsentStore + StoreMigrationListing | Settings forwards the action and displays its result; App supplies its existing shutdown callback | only configured production Release or explicit preview builds expose handoff; Dev stays isolated; exact same-user Inno and protected consent precede canonical graceful exit; inventory never means consent | InnoMigrationContractTests.InnoPreview_GatesHandoffAndUsesCanonicalShutdown | source-shape | when migration handoff is retired |
 | migration-build-policy | authoritative | OpenClaw.Tray.WinUI.csproj | shared Inno/Store compile-time activation and fixed source floor | Migration.Build.props | the tray project imports one policy for packaged and unpackaged publishing | production requires a pinned nonzero source floor and supported Release RID; Debug and Dev cannot inherit production activation | MigrationBuildConfigurationTests.Production_InnoAndStoreShareThePinnedReleasePolicy | behavioral | - |
 | migration-consent-locking | authoritative | InnoMigrationConsentStore | protected consent publication and inspection while source is running | MigrationOperationLock + InnoMigrationConsentStore | consent uses a shared preparation lease and a separate exclusive writer lock | consent remains compatible with Inno runtime readers but cannot overlap exclusive Store mutation; finalization removes the writer lock before deleting the completion receipt | InnoMigrationConsentStoreTests.RuntimeReadLease_AllowsExplicitGrantAndInspection | behavioral | - |
-| chat-markdown-presentation | authoritative | src/OpenClaw.Tray.WinUI/Chat/ReactorChatTimeline.cs | paragraph and heading typography, literal code-frame presentation and Copy | ChatMarkdownPresentation | timeline keeps sanitization, parser flags, inert links/images and the existing list-wrapping callback | presentation uses public MarkdownOptions callbacks; code content is never truncated or parsed as markup | ReactorChatLayoutProofTests.CodeBlock_PreservesLiteralContentAndCopiesExactText | behavioral | - |
+| chat-markdown-presentation | authoritative | src/OpenClaw.Tray.WinUI/Chat/ReactorChatTimeline.cs | paragraph and heading typography, literal code-frame presentation and Copy | ChatMarkdownPresentation | timeline keeps sanitization, parser flags and inert links/images; Reactor owns default list wrapping | presentation uses public MarkdownOptions callbacks; code content is never truncated or parsed as markup | ReactorChatLayoutProofTests.CodeBlock_PreservesLiteralContentAndCopiesExactText | behavioral | - |
+| reactor-markdown-list-layout | closed | src/OpenClaw.Tray.WinUI/Chat/ReactorChatTimeline.cs | preview.12 ListItem layout replacement and StackElement shape assumption | Microsoft.UI.Reactor.Advanced default Markdown list layout (preview.16, upstream #1197) | timeline keeps sanitizer, parser safety and block presentation callbacks | ordered/unordered, nested and loose list content wraps in an Auto/Star Grid without an application-side ListItem override | ReactorChatMarkdownContractTests.AssistantMessages_UseSanitizedGitHubFlavoredMarkdown | source-shape | when upstream Markdown list layout is replaced |
 | chat-model-picker-presentation | authoritative | src/OpenClaw.Tray.WinUI/Chat/ReactorChatComposer.cs, then custom Button rows in ChatModelPicker | catalog search, provider groups, native row interaction states and model metadata presentation | NativeChatModelPicker through a generated Reactor wrapper | ChatModelPicker owns flyout lifetime; composer controller owns model mutation and authorization | native single-selection navigation never writes a model until explicit activation; filtering and resizing preserve raw provider-qualified identities | ReactorChatLayoutProofTests.ModelMenu_UsesNativeSelectionStatesAndPreservesNavigationDuringResize | behavioral | - |
 | chat-model-picker-button-rows-closed | closed | src/OpenClaw.Tray.WinUI/Chat/ChatModelPicker.cs | hand-built Button rows, custom selected fill/checkmark and search-box styling | NativeChatModelPicker | declarative trigger and flyout lifetime only | native AutoSuggestBox/ListView own search and row interaction visuals; no duplicate hand-styled selection path | ReactorChatLayoutProofTests.ModelMenu_UsesNativeSelectionStatesAndPreservesNavigationDuringResize | behavioral | - |
 | chat-thinking-profile | authoritative | static levels in ReactorChatComposer | advertised reasoning-profile precedence and exact identity/runtime matching | ChatThinkingProfile over immutable ThinkingContext/ThinkingProfile values | ThinkingMetadata parses and scope-fences gateway metadata; client retains session-cache ownership; ChatSnapshotProjector carries it; composer controller gates selections and clears overrides | no provider/model heuristics, missing differs from empty, unknown saved values remain truthful, and Default is explicit null | ChatThinkingProfileTests.Priority_FirstCandidateWithAnyMetadataOwnsEvenEmptyOrDefaultOnly | behavioral | - |
-| reactor-markdown-presentation-closed | closed | src/OpenClaw.Tray.WinUI/Chat/ReactorChatTimeline.cs | inline custom typography and code-frame construction | ChatMarkdownPresentation | timeline owns sanitizer and parser safety options, the existing list-wrapping callback and public callback registration | custom block presentation is delegated, with no parser or list-measurement fork | ReactorChatMarkdownContractTests.AssistantMessages_UseSanitizedGitHubFlavoredMarkdown | source-shape | when the public MarkdownOptions presentation seam is replaced |
+| reactor-markdown-presentation-closed | closed | src/OpenClaw.Tray.WinUI/Chat/ReactorChatTimeline.cs | inline custom typography and code-frame construction | ChatMarkdownPresentation | timeline owns sanitizer and parser safety options and public callback registration; Reactor owns default list wrapping | custom block presentation is delegated, with no parser or list-measurement fork | ReactorChatMarkdownContractTests.AssistantMessages_UseSanitizedGitHubFlavoredMarkdown | source-shape | when the public MarkdownOptions presentation seam is replaced |
 | chat-copy-feedback | authoritative | src/OpenClaw.Tray.WinUI/Chat/ReactorChatTimeline.cs and ChatMarkdownPresentation.cs | copy invocation status, temporary success/failure announcement and reset lifetime | ChatCopyButton with ClipboardHelper.TryCopyText | renderers pass immutable text/identity and keep parser, metadata and workflow ownership | only confirmed clipboard writes show Copied; content changes, repeated clicks and unmount cancel stale resets | ReactorChatLayoutProofTests.CopyFeedback_ResetsRepeatedClicksContentIdentityAndDisposal | behavioral | - |
 | chat-effort-picker-presentation | authoritative | ReactorChatComposer's native reasoning menu | effort popover, discrete slider/single-stop presentation and Default affordance | ChatReasoningPicker | ChatThinkingProfile resolves advertised options; ChatComposerController validates and performs mutations; composer owns responsive trigger placement | opening a popover never writes a setting, only advertised IDs are selected, Default stays an explicit clear, and compact icons retain textual automation names | ReactorChatLayoutProofTests.ReasoningPicker_UsesConcreteWireValuesAndExplicitDefaultClear | behavioral | - |
 | chat-composer-button-chrome | authoritative | ReactorChatComposer's duplicated per-button resource overrides | shared idle, hover and pressed toolbar resource overrides | ChatVisuals.ToolbarButtonResources | composer constructs the controls and applies the shared resources; native templates retain disabled and keyboard-focus behavior | compact effort stays transparent at rest and matches neighboring toolbar states across resize without replacing native templates | ReactorChatLayoutProofTests.EffortTrigger_PreservesTransparentChromeAndCenteredContent | behavioral | - |

@@ -22,6 +22,151 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
 {
     private bool _nativeProof;
 
+    [Fact]
+    public async Task AiGroups_KeepManualInputSeparateFromAuthenticationInTheMountedPage()
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            await ui.YieldToRenderAsync();
+            page.UpdateLayout();
+            var local = Find<SettingsCard>(page, "LocalAiCard");
+            var api = Find<SetupActionCard>(page, "ApiKeysButton");
+            var apiSection = Find<StackPanel>(page, "ApiKeySection");
+            var signIn = Find<StackPanel>(page, "SignInSection");
+            var more = Find<SettingsExpander>(page, "MoreExpander");
+            Assert.False(ContainsVisual(signIn, api));
+            Assert.True(ContainsVisual(apiSection, api));
+            Assert.True(ContainsVisual(local, Find<RecommendedBadge>(page, "LocalAiRecommendedBadge")));
+            Assert.True(ContainsVisual(Find<StackPanel>(page, "PrepareSection"),
+                Find<ItemsControl>(page, "PrepareChoices")));
+            Assert.Same(Find<ItemsControl>(page, "MoreSignInChoices"), more.ItemsFooter);
+            Assert.Empty(more.Items);
+            Assert.Empty(TestSupport.FindDescendants<ListViewItem>(
+                Find<ItemsControl>(page, "FeaturedSignInChoices")));
+            Assert.False(Find<SettingsExpander>(page, "RecommendedSection").IsExpanded);
+
+            var groups = new[] { "CandidatesSection", "LocalAiSection", "PrepareSection", "SignInSection", "ApiKeySection" }
+                .Select(name => Assert.IsAssignableFrom<FrameworkElement>(page.FindName(name)))
+                .Where(group => group.Visibility == Visibility.Visible).ToArray();
+            await ui.YieldToRenderAsync();
+            var tops = groups.Select(group => group.TransformToVisual(page).TransformPoint(default).Y).ToArray();
+            Assert.Equal(tops.Order(), tops);
+            var peer = FrameworkElementAutomationPeer.CreatePeerForElement(api);
+            Assert.IsAssignableFrom<IInvokeProvider>(peer.GetPattern(PatternInterface.Invoke)).Invoke();
+            await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
+            var form = Find<StackPanel>(page, "ApiKeyForm");
+            Assert.True(ContainsVisual(apiSection, form));
+            Assert.False(ContainsVisual(signIn, form));
+            Assert.NotNull(Find<PasswordBox>(page, "ApiKeyInput"));
+            Assert.Null(page.FindName("ContinueButton"));
+            Assert.Equal(-1, Find<ComboBox>(page, "ApiProviderPicker").SelectedIndex);
+            Assert.False(Find<Button>(page, "ApiKeyConnectButton").IsEnabled);
+            Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+            Assert.Equal(0, completed());
+        }, configure: transport => transport.IncludeDensityChoices = true,
+            localAiHost: new PageLocalAiHost(LocalAiOnboardingState.Use));
+
+        static bool ContainsVisual(DependencyObject owner, DependencyObject element)
+        {
+            for (DependencyObject? current = element; current is not null; current = VisualTreeHelper.GetParent(current))
+                if (ReferenceEquals(current, owner)) return true;
+            return false;
+        }
+    }
+
+    [Fact]
+    public async Task ApiProviderSelection_DoesNotActivateProviderOrLocalAiBeforeExplicitAction()
+    {
+        var local = new PageLocalAiHost(LocalAiOnboardingState.Use);
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            Find<SettingsExpander>(page, "MoreExpander").IsExpanded = true;
+            var card = Find<SetupActionCard>(page, "ApiKeysButton");
+            var peer = FrameworkElementAutomationPeer.CreatePeerForElement(card);
+            Assert.IsAssignableFrom<IInvokeProvider>(peer.GetPattern(PatternInterface.Invoke)).Invoke();
+            await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
+            var picker = Find<ComboBox>(page, "ApiProviderPicker");
+            Assert.NotEmpty(picker.Items);
+            picker.SelectedIndex = -1;
+            picker.SelectedIndex = 0;
+            await ui.YieldToRenderAsync();
+
+            Assert.NotNull(picker.SelectedItem);
+            Assert.Equal(0, local.Actions);
+            Assert.Equal(0, completed());
+            Assert.DoesNotContain(transport.MethodCalls, method =>
+                method is "openclaw.setup.activate.start" or "openclaw.setup.prepare.start" or "wizard.start");
+            Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ApiKeyForm").Visibility);
+        }, configure: transport => transport.IncludeMoreProvider = true, localAiHost: local);
+    }
+
+    [Fact]
+    public async Task CurrentModel_NativeUiaInvokeStartsTheSelectedActivation()
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            await ui.YieldToRenderAsync();
+            await MountedControlCapture.OptionalAsync(ui.TestWindow, "current-model-action-enabled");
+            var handle = WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow);
+            await Task.Run(() =>
+            {
+                var window = System.Windows.Automation.AutomationElement.FromHandle(handle);
+                var card = window.FindFirst(System.Windows.Automation.TreeScope.Descendants,
+                    new System.Windows.Automation.PropertyCondition(
+                        System.Windows.Automation.AutomationElement.AutomationIdProperty, "ChoiceActionCard"));
+                Assert.NotNull(card);
+                Assert.Equal(System.Windows.Automation.ControlType.Button, card.Current.ControlType);
+                var invoke = Assert.IsType<System.Windows.Automation.InvokePattern>(
+                    card.GetCurrentPattern(System.Windows.Automation.InvokePattern.Pattern));
+                invoke.Invoke();
+            });
+            await WaitAsync(() => completed() == 1);
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
+            Assert.Equal("existing-model", transport.LastActivation.GetProperty("kind").GetString());
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.verify"));
+            Assert.Equal(1, completed());
+        });
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CurrentModel_NativeUiaRespectsActionAvailability(bool disabled)
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            var choices = Find<ItemsControl>(page, "CandidateChoices");
+            var card = Assert.Single(TestSupport.FindDescendants<SetupActionCard>(choices));
+            if (disabled)
+                card.IsEnabled = false;
+            else
+                card.IsClickEnabled = false;
+            await ui.YieldToRenderAsync();
+            await MountedControlCapture.OptionalAsync(ui.TestWindow,
+                disabled ? "current-model-action-disabled" : "current-model-action-unavailable");
+            var handle = WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow);
+            await Task.Run(() =>
+            {
+                var window = System.Windows.Automation.AutomationElement.FromHandle(handle);
+                var target = window.FindFirst(System.Windows.Automation.TreeScope.Descendants,
+                    new System.Windows.Automation.PropertyCondition(
+                        System.Windows.Automation.AutomationElement.AutomationIdProperty, "ChoiceActionCard"));
+                Assert.NotNull(target);
+                if (disabled)
+                {
+                    var invoke = Assert.IsType<System.Windows.Automation.InvokePattern>(
+                        target.GetCurrentPattern(System.Windows.Automation.InvokePattern.Pattern));
+                    var error = Assert.Throws<System.Runtime.InteropServices.COMException>(invoke.Invoke);
+                    Assert.Equal(unchecked((int)0x802B001E), error.HResult); // WinUI E_ELEMENTNOTENABLED
+                }
+                else
+                    Assert.False(target.TryGetCurrentPattern(System.Windows.Automation.InvokePattern.Pattern, out _));
+            });
+            Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+            Assert.Equal(0, completed());
+        });
+    }
+
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
@@ -67,7 +212,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 var rows = new[] { Find<SettingsCard>(page, "LocalAiCard") }
                     .Concat(new[] { "CandidateChoices", "PrepareChoices", "FeaturedSignInChoices" }
                         .SelectMany(name => TestSupport.FindDescendants<SettingsCard>(Find<ItemsControl>(page, name))))
-                    .Append(Find<SettingsCard>(page, "ApiKeysButton")).ToArray();
+                    .Append(Find<SetupActionCard>(page, "ApiKeysButton")).ToArray();
                 Assert.Equal(6, rows.Length);
                 var textScale = new Windows.UI.ViewManagement.UISettings().TextScaleFactor;
                 Assert.Equal(defaultSize, window.AppWindow.Size);
@@ -210,7 +355,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
-            await InvokeCardAsync(Find<SettingsCard>(page, "ApiKeysButton"));
+            await InvokeCardAsync(Find<SetupActionCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
             Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ApiKeyForm").Visibility);
             Assert.Equal(-1, Find<ComboBox>(page, "ApiProviderPicker").SelectedIndex);
@@ -287,7 +432,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             scroll.ViewChanged += (_, e) => viewportSettled = !e.IsIntermediate;
             var more = Find<SettingsExpander>(page, "MoreExpander");
             more.IsExpanded = true;
-            await InvokeCardAsync(Find<SettingsCard>(page, "ApiKeysButton"));
+            await InvokeCardAsync(Find<SetupActionCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
             var picker = Find<ComboBox>(page, "ApiProviderPicker");
             picker.SelectedIndex = 0;
@@ -512,7 +657,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
-    public async Task RepeatedChoiceCards_BindTheirTemplateNameAndRejectAnotherTemplatesHandler()
+    public async Task RepeatedChoiceCards_InvokeTheirOwnBoundCandidate()
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
@@ -526,27 +671,19 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.NotSame(cards[0].Tag, cards[1].Tag);
             Assert.Null(page.FindName("ChoiceActionCard"));
             var recommendedTemplate = Find<ItemsControl>(page, "RecommendedInstalls").ItemTemplate;
-            var recommended = Assert.IsType<SettingsCard>(recommendedTemplate.LoadContent());
-            var anotherRecommended = Assert.IsType<SettingsCard>(recommendedTemplate.LoadContent());
+            var recommended = Assert.IsType<SetupActionCard>(recommendedTemplate.LoadContent());
+            var anotherRecommended = Assert.IsType<SetupActionCard>(recommendedTemplate.LoadContent());
             Assert.Equal("RecommendedInstallCard", recommended.Name);
             Assert.Equal(recommended.Name, anotherRecommended.Name);
             Assert.NotSame(recommended, anotherRecommended);
             Assert.Null(page.FindName("RecommendedInstallCard"));
             foreach (var card in cards)
-            {
                 Assert.Equal("ChoiceActionCard", card.Name);
-                Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
-                    TestSupport.InvokeSettingsCardAction(page, card, "RecommendedInstall_Click"));
-            }
-            cards[0].Name = "";
-            try
-            {
-                Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
-                    TestSupport.InvokeSettingsCardAction(page, cards[0], "ChoiceAction_Click"));
-                Assert.Throws<InvalidOperationException>(() => { _ = InvokeCardAsync(cards[0]); });
-            }
-            finally { cards[0].Name = "ChoiceActionCard"; }
-            Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+            await InvokeCardAsync(cards[1]);
+            await WaitAsync(() => transport.MethodCalls.Contains("openclaw.setup.activate.start"));
+            Assert.Equal("saved-auth:other", transport.LastActivation.GetProperty("kind").GetString());
+            Assert.Equal("openai/another-model", transport.LastActivation.GetProperty("modelRef").GetString());
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
             Assert.Equal(0, completed());
         }, configure: transport => transport.IncludeAdditionalCandidate = true);
     }
@@ -556,9 +693,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
-            Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
-                TestSupport.InvokeSettingsCardAction(page, Find<SettingsCard>(page, "ApiKeysButton"), "LocalAi_Click"));
-            await InvokeCardAsync(Find<SettingsCard>(page, "ApiKeysButton"));
+            await InvokeCardAsync(Find<SetupActionCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
             Assert.Equal(-1, Find<ComboBox>(page, "ApiProviderPicker").SelectedIndex);
             Assert.Null(page.FindName("ContinueButton"));
@@ -573,7 +708,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
-            await InvokeCardAsync(Find<SettingsCard>(page, "ApiKeysButton"));
+            await InvokeCardAsync(Find<SetupActionCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
             Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ApiKeyForm").Visibility);
             Assert.Equal(-1, Find<ComboBox>(page, "ApiProviderPicker").SelectedIndex);
@@ -821,7 +956,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
-            await InvokeCardAsync(Find<SettingsCard>(page, "ApiKeysButton"));
+            await InvokeCardAsync(Find<SetupActionCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
             Find<ComboBox>(page, "ApiProviderPicker").SelectedIndex = 0;
             var input = Find<PasswordBox>(page, "ApiKeyInput");
@@ -1191,7 +1326,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     root.UpdateLayout();
                     var label = sectionName == "CandidatesSection"
                         ? (FrameworkElement)Find<TextBlock>(page, "CandidatesHeading")
-                        : Find<SettingsCard>(page, "ApiKeysButton");
+                        : Find<SetupActionCard>(page, "ApiKeysButton");
                     if (sectionName == "CandidatesSection")
                         Assert.Equal("Detected AI choices", ((TextBlock)label).Text);
                     OnboardingNativeProof.AssertFullyVisible(label, scroll);

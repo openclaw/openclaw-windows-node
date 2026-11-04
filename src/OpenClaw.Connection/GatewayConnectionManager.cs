@@ -844,11 +844,11 @@ public sealed class GatewayConnectionManager :
         if (!Directory.Exists(perGatewayIdentityDir))
             Directory.CreateDirectory(perGatewayIdentityDir);
 
-        // Same-gateway node reapproval reconnects keep the operator alive so it can
-        // request the post-handshake node.list; all other paths reset lifecycle/tunnel state.
+        // Same-gateway node reapproval reconnects keep a live or still-handshaking operator alive
+        // so it can request the post-handshake node.list; all other paths reset lifecycle/tunnel state.
         var preservesOperatorConnection =
             _activeLifecycle != null &&
-            _stateMachine.Current.OperatorState == RoleConnectionState.Connected &&
+            _stateMachine.Current.OperatorState is RoleConnectionState.Connected or RoleConnectionState.Connecting &&
             string.Equals(_activeGatewayRecordId, record.Id, StringComparison.Ordinal) &&
             string.Equals(_stateMachine.Current.GatewayUrl, record.Url, StringComparison.Ordinal) &&
             Equals(_activeSshTunnel, record.SshTunnel);
