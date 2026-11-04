@@ -272,6 +272,12 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPageRuntimeSource.cs" Link="Presentation\PermissionsPageRuntimeSource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPageViewModel.cs" Link="Presentation\PermissionsPageViewModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\LocalAiPageViewModel.cs" Link="Presentation\LocalAiPageViewModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\LocalAiRuntimePresentation.cs" Link="Presentation\LocalAiRuntimePresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\CoalescingSwitchProgress.cs" Link="Presentation\CoalescingSwitchProgress.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DefaultModelGatewayContracts.cs" Link="Presentation\DefaultModelGatewayContracts.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DefaultModelPageViewModel.cs" Link="Presentation\DefaultModelPageViewModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ModelProviderContracts.cs" Link="Presentation\ModelProviderContracts.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ModelProviderSetupViewModel.cs" Link="Presentation\ModelProviderSetupViewModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ISettingsStore.cs" Link="Presentation\ISettingsStore.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsStore.cs" Link="Presentation\SettingsStore.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsPersistenceNotification.cs" Link="Presentation\SettingsPersistenceNotification.cs" />
@@ -281,6 +287,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ConnectionTogglePresenter.cs" Link="Presentation\ConnectionTogglePresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\TrayMenuPresenter.cs" Link="Presentation\TrayMenuPresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubPageRegistry.cs" Link="Presentation\HubPageRegistry.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPages.cs" Link="Presentation\PinnedPages.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPageRows.cs" Link="Presentation\PinnedPageRows.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceNavigation.cs" Link="Presentation\WorkspaceNavigation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PendingRequestSlot.cs" Link="Presentation\PendingRequestSlot.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DeferredNavigation.cs" Link="Presentation\DeferredNavigation.cs" />
@@ -292,6 +300,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WorkspaceIdentitySource.cs" Link="Services\WorkspaceIdentitySource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\HubCommandExecutor.cs" Link="Services\HubCommandExecutor.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WorkspaceSessionOperation.cs" Link="Services\WorkspaceSessionOperation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DefaultModelGatewayWrite.cs" Link="Services\DefaultModelGatewayWrite.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ModelProviderGatewayService.cs" Link="Services\ModelProviderGatewayService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ArchivedSessionsSource.cs" Link="Services\ArchivedSessionsSource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNotificationInfoBarPresenter.cs" Link="Presentation\AppNotificationInfoBarPresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceContext.cs" Link="Presentation\AppServiceContext.cs" />

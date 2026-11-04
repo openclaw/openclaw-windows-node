@@ -112,7 +112,7 @@ public sealed partial class GatewayFixtureUiTests
             ScrollCronControlIntoView(run, title);
             if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
                 OwnedWindowCapture.Save(run, CronWindow(run), $"cron-target-{id}.png", title);
-            ClickOwnedCronTitle(run, CronWindow(run), title);
+            ClickOwnedElement(run, CronWindow(run), title);
             await WaitUiAsync(run, () => FindCronControl(run, editId) is not null, $"expanded cron card {id}");
         }
         Invoke(CronControl(run, editId));
@@ -203,7 +203,7 @@ public sealed partial class GatewayFixtureUiTests
         Assert.False(element.Current.IsOffscreen, "Target must be visible before native cron input.");
     }
 
-    private static void ClickOwnedCronTitle(GatewayFixtureRun run, AutomationElement window, AutomationElement title)
+    private static void ClickOwnedElement(GatewayFixtureRun run, AutomationElement window, AutomationElement title)
     {
         run.EnsureRunning();
         Assert.Equal(run.AppProcessId, window.Current.ProcessId);

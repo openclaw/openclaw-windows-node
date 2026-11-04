@@ -45,15 +45,18 @@ public static class NativeGatewayPackageAcquisition
 
     /// <summary>
     /// Resolves before installing, installs at most once, and retries only missing registration.
-    /// The total deadline includes installation and verification and defaults to 30 minutes
-    /// unless <paramref name="timeout"/> or <c>OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT</c>
-    /// overrides it. Cancellation reaches the installer, which must honor its token. Await its
-    /// cleanup before releasing setup ownership; Windows deployment may outlive the cancelled
-    /// WinGet process.
+    /// After WinGet returns and the package is still unregistered, registers the staged Store family
+    /// for the current user once: <see cref="NativeGatewayStagedRegistrationResult.NotStaged"/> keeps
+    /// polling, and any other registration error fails immediately. The total deadline includes
+    /// installation, registration and verification and defaults to 30 minutes unless
+    /// <paramref name="timeout"/> or <c>OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT</c> overrides it.
+    /// Cancellation reaches the installer and registrar, which must honor their token. Await installer
+    /// cleanup before releasing setup ownership; Windows deployment may outlive the cancelled WinGet process.
     /// </summary>
     public static async Task<NativeGatewayPackage> EnsureAsync(
         INativeGatewayPackageResolver resolver,
         Func<CancellationToken, Task> installPackage,
+        Func<CancellationToken, Task<NativeGatewayStagedRegistrationResult>> registerStagedPackage,
         Action? waitingForInstallation = null,
         CancellationToken cancellationToken = default,
         TimeSpan? timeout = null,
@@ -61,6 +64,7 @@ public static class NativeGatewayPackageAcquisition
     {
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(installPackage);
+        ArgumentNullException.ThrowIfNull(registerStagedPackage);
         var deadline = timeout ?? ResolveTimeout();
         var interval = pollInterval ?? TimeSpan.FromSeconds(1);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(deadline, TimeSpan.Zero, nameof(timeout));
@@ -70,6 +74,7 @@ public static class NativeGatewayPackageAcquisition
         using var expiration = new CancellationTokenSource(deadline);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, expiration.Token);
         var token = linked.Token;
+        var installed = false;
         try
         {
             try
@@ -84,9 +89,11 @@ public static class NativeGatewayPackageAcquisition
             }
 
             await installPackage(token);
+            installed = true;
             token.ThrowIfCancellationRequested();
             waitingForInstallation?.Invoke();
 
+            var registrationAttempted = false;
             while (true)
             {
                 try
@@ -95,16 +102,28 @@ public static class NativeGatewayPackageAcquisition
                 }
                 catch (NativeGatewayPackageNotInstalledException)
                 {
-                    await Task.Delay(interval, token);
                 }
+                if (!registrationAttempted)
+                {
+                    registrationAttempted = true;
+                    // Registered: verify immediately through the resolver's identity, health and alias checks.
+                    if (await RegisterStagedAsync() == NativeGatewayStagedRegistrationResult.Registered)
+                        continue;
+                    // NotStaged: deployment may still be running (#1756); keep polling within the deadline.
+                }
+                await Task.Delay(interval, token);
             }
         }
         catch (OperationCanceledException exception) when (
             expiration.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException(
-                "Timed out waiting for a verified OpenClaw Gateway package. " +
-                "Windows may still finish deployment. Check WinGet and Microsoft Store access, then retry native setup.", exception);
+            throw new TimeoutException(installed
+                ? "Timed out waiting for a verified OpenClaw Gateway package. " +
+                  "WinGet finished, but the package is still not registered for this Windows user. " +
+                  "Install OpenClaw Gateway from Microsoft Store. Check WinGet and Microsoft Store access, then retry native setup."
+                : "Timed out waiting for a verified OpenClaw Gateway package. " +
+                  "Windows may still finish deployment. Check WinGet and Microsoft Store access, then retry native setup.",
+                exception);
         }
 
         async Task<NativeGatewayPackage> ResolveAsync()
@@ -113,6 +132,28 @@ public static class NativeGatewayPackageAcquisition
             var package = await resolver.ResolveAsync(token).WaitAsync(token);
             token.ThrowIfCancellationRequested();
             return package;
+        }
+
+        async Task<NativeGatewayStagedRegistrationResult> RegisterStagedAsync()
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                return await registerStagedPackage(token).WaitAsync(token);
+            }
+            catch (NativeGatewayPackageRegistrationException)
+            {
+                // Windows may have completed its own registration concurrently; trust only a verified resolve.
+                try
+                {
+                    await ResolveAsync();
+                    return NativeGatewayStagedRegistrationResult.Registered;
+                }
+                catch (NativeGatewayPackageNotInstalledException)
+                {
+                }
+                throw;
+            }
         }
     }
 }

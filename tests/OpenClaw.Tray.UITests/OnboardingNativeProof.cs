@@ -29,6 +29,19 @@ internal static class OnboardingNativeProof
 
     internal static void InitializeProductProcessDpi()
     {
+        LockProcessDpi();
+        using var process = Process.GetCurrentProcess();
+        var context = GetDpiAwarenessContextForProcess(process.Handle);
+        TraceDpiContext($"testhost process initialization: PresentationCoreLoaded=" +
+            AppDomain.CurrentDomain.GetAssemblies().Any(assembly => assembly.GetName().Name == "PresentationCore"));
+        // PresentationCore's module initializer calls SetProcessDPIAware when native UIA
+        // first loads WPF. Lock our testhost default before any HWND, like the product manifest.
+        Assert.True(AreDpiAwarenessContextsEqual(context, new IntPtr(-4)),
+            $"Cannot initialize owned testhost as PerMonitorV2: context=0x{context:X}.");
+    }
+
+    internal static void LockProcessDpi()
+    {
         var initialized = SetProcessDpiAwarenessContext(new IntPtr(-4));
         var error = initialized ? 0 : Marshal.GetLastWin32Error();
         using var process = Process.GetCurrentProcess();
@@ -36,10 +49,6 @@ internal static class OnboardingNativeProof
         TraceDpiContext($"testhost process initialization: success={initialized}; error={error}; " +
             $"processContext=0x{context:X}; PresentationCoreLoaded=" +
             AppDomain.CurrentDomain.GetAssemblies().Any(assembly => assembly.GetName().Name == "PresentationCore"));
-        // PresentationCore's module initializer calls SetProcessDPIAware when native UIA
-        // first loads WPF. Lock our testhost default before any HWND, like the product manifest.
-        Assert.True(AreDpiAwarenessContextsEqual(context, new IntPtr(-4)),
-            $"Cannot initialize owned testhost as PerMonitorV2: success={initialized}, error={error}, context=0x{context:X}.");
     }
 
     internal static void AssertProductDpi(Window window)

@@ -133,6 +133,10 @@ Prefer existing repository patterns and simple, idiomatic C#. Timeouts are
 named constants that an environment variable can override. Literals shared
 across modules go in a constants file.
 
+For new modules, add a file header explaining the purpose and showing intended
+usage of the main public functions. Document the primary type and the public
+methods called from other modules.
+
 ## Product contracts
 
 - New Windows node command: follow the

@@ -21,10 +21,12 @@ public sealed partial class GatewayFixtureUiTests
             await run.Gateway.WaitForRequestAsync("agents.list", occurrence: occurrence);
 
             await WaitUiAsync(run, () =>
-                FindById(run, $"WorkspaceSession:{GatewayScenario.MainSessionKey}") is not null &&
                 FindById(run, $"WorkspaceSession:{GatewayScenario.OtherSessionKey}") is not null &&
                 FindById(run, "WorkspaceSessionsAdd") is { } add && add.Current.IsEnabled,
                 "legacy sessions and default conversation creation after unsupported agents.list");
+            // Home owns the Gateway main conversation, so it is never duplicated as a session row.
+            Assert.NotNull(FindById(run, "WorkspaceNavHome"));
+            Assert.Null(FindById(run, $"WorkspaceSession:{GatewayScenario.MainSessionKey}"));
             Assert.False(FindById(run, "WorkspaceAssistantSelector")!.Current.IsEnabled);
             CaptureContinuity(run, "continuity-unsupported-roster.png");
 
