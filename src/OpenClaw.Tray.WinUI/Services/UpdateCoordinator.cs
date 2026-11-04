@@ -611,9 +611,16 @@ internal sealed class UpdateCoordinator(
             progressDialog.Closed += CancelBecauseWindowClosed;
             progressDialog.ShowAsync(); // Fire and forget
 
-            return await updater.DownloadAndInstallAsync(
-                () => TryCloseProgressDialog(progressDialog),
+            var attempt = await UpdateDownloadCancellation.FinishAsync(
+                updater.DownloadAndInstallAsync(
+                    () => TryCloseProgressDialog(progressDialog),
+                    downloadCancellation.Token),
                 downloadCancellation.Token);
+            if (attempt.IndependentCancellation)
+                Logger.Error("Update download failed before the window or deadline canceled it.");
+            if (!attempt.Installed)
+                TryCloseProgressDialog(progressDialog);
+            return attempt.Installed;
         }
         catch (OperationCanceledException)
         {

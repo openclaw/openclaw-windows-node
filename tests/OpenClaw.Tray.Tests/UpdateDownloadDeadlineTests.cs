@@ -31,6 +31,23 @@ public sealed class UpdateDownloadDeadlineTests
     }
 
     [Fact]
+    public async Task HeaderTimeoutWithoutTheCallerToken_StaysAFailedDownload()
+    {
+        using var caller = new CancellationTokenSource();
+        var timedOut = await UpdateDownloadCancellation.FinishAsync(
+            Task.FromException<bool>(new TaskCanceledException("response headers")),
+            caller.Token);
+        Assert.False(timedOut.Installed);
+        Assert.True(timedOut.IndependentCancellation);
+
+        caller.Cancel();
+        await Assert.ThrowsAsync<TaskCanceledException>(() =>
+            UpdateDownloadCancellation.FinishAsync(
+                Task.FromException<bool>(new TaskCanceledException("response headers")),
+                caller.Token));
+    }
+
+    [Fact]
     public void DownloadPassesTheTokenAndClosingTheWindowCancelsIt()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -46,7 +63,11 @@ public sealed class UpdateDownloadDeadlineTests
         Assert.Contains("UpdateDownloadDeadline.Resolve()", coordinator, StringComparison.Ordinal);
         Assert.Contains("progressDialog.Closed += CancelBecauseWindowClosed", coordinator, StringComparison.Ordinal);
         Assert.Contains("downloadCancellation.Token", coordinator, StringComparison.Ordinal);
-        Assert.Contains("catch (OperationCanceledException)", coordinator, StringComparison.Ordinal);
+        Assert.Contains("UpdateDownloadCancellation.FinishAsync(", coordinator, StringComparison.Ordinal);
+        Assert.Contains(
+            "catch (OperationCanceledException) when (!callerToken.IsCancellationRequested)",
+            File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "UpdateDownloadCancellation.cs")),
+            StringComparison.Ordinal);
         Assert.Contains("Detail = \"download canceled\"", coordinator, StringComparison.Ordinal);
         Assert.Contains("_window.Closed +=", dialog, StringComparison.Ordinal);
         Assert.Equal("OPENCLAW_UPDATE_DOWNLOAD_TIMEOUT", UpdateDownloadDeadline.TimeoutEnvironmentVariable);
