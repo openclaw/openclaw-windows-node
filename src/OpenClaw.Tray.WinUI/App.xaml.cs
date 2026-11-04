@@ -540,6 +540,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             return; // Environment.Exit called inside; defensive return
         }
 
+        // CLI headless setup: explicit dev/automation command; never shows tray or windows.
+        // Runs before the Store migration admission guard, which presents a window: CliSetupHandler
+        // refuses in packaged builds, where that guard applies, and checks Inno migration completion
+        // without UI. It does not take the single-instance mutex; CliSetupHandler refuses while a
+        // tray for this data dir holds it.
+        if (_startupArgs.Contains(CliSetupCommandLine.HeadlessSetupFlag, StringComparer.OrdinalIgnoreCase))
+        {
+            await CliSetupHandler.RunAsync(_startupArgs);
+            return; // Environment.Exit called inside; defensive return
+        }
+
         if (await StoreMigrationStartupGuard.ShouldStopLaunchAsync(DeepLinkPipeName))
         {
             Exit();
@@ -555,7 +566,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // String.GetHashCode() is randomized per process since .NET Core 2.1, so
         // two test runs against the same data dir would otherwise pick different
         // mutex names — and `Math.Abs(int.MinValue)` overflows. Use a stable
-        // SHA-256 prefix instead.
+        // SHA-256 prefix instead. CliSetupHandler.IsTrayRunning mirrors this.
         // NOTE: The build variant's bare mutex name is also referenced by
         // installer.iss `AppMutex=` for install/uninstall race coordination.
         // The suffixed test-isolation variant is

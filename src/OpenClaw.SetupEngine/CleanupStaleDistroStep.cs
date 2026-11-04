@@ -54,6 +54,9 @@ public sealed class CleanupStaleDistroStep : SetupStep
             // Distro not registered, but disk directory may still exist from prior crash
             if (Directory.Exists(wslDir))
             {
+                if (ctx.Config.PreserveExisting)
+                    return BuildPreservedExistingFailure(ctx, distro);
+
                 if (EnsureOrphanDirectoryCleanupAllowed(ctx, distro) is { } ownershipFailure)
                     return ownershipFailure;
 
@@ -70,6 +73,9 @@ public sealed class CleanupStaleDistroStep : SetupStep
             ctx.Logger.Decision("No stale distro found", "skip cleanup");
             return StepResult.Ok("No stale distro to clean");
         }
+
+        if (ctx.Config.PreserveExisting)
+            return BuildPreservedExistingFailure(ctx, distro);
 
         if (EnsureRegisteredDistroCleanupAllowed(
                 ctx,
@@ -155,6 +161,15 @@ public sealed class CleanupStaleDistroStep : SetupStep
                ctx.Config.ConfirmedDestructiveDistroName,
                distroName,
                StringComparison.OrdinalIgnoreCase);
+
+    private static StepResult BuildPreservedExistingFailure(SetupContext ctx, string distroName)
+    {
+        ctx.Logger.Decision(
+            $"Existing WSL distro or data '{distroName}' appeared after setup was admitted",
+            "preserve existing data (replacement not authorized)");
+        return StepResult.Terminal(
+            $"Existing WSL distro or data for '{distroName}' appeared after setup was admitted and was preserved. Rerun setup to review the replacement.");
+    }
 
     private static StepResult BuildOwnershipFailure(
         SetupContext ctx,

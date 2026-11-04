@@ -967,6 +967,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
         var directory = Path.Combine(Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")!,
             "mounted-flow", Guid.NewGuid().ToString("N"));
         var data = Path.Combine(directory, "data");
+        var localData = Path.Combine(directory, "local-data");
         Directory.CreateDirectory(data);
         var configPath = Path.Combine(directory, "setup.json");
         File.WriteAllText(configPath, JsonSerializer.Serialize(new SetupConfig
@@ -989,7 +990,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                 try
                 {
                     window = OnboardingNativeProof.CreateWindow(() => new SetupWindow(configPath: configPath, dataDir: data,
-                        localDataDir: Path.Combine(directory, "local-data"), commandLineArgs: [],
+                        localDataDir: localData, commandLineArgs: [],
                         distroNameOverride: "MountedFlow-NoRealDistro", nativeConnectionHost: host,
                         startAtLocalAiRecoveryReview: recovery, localAiRecoveryModelId: recovery ? "mounted-pinned-model" : null));
                     var root = Assert.IsType<Grid>(window.Content);
@@ -1007,7 +1008,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                         Assert.False(string.IsNullOrWhiteSpace(Find<TextBlock>(welcome, "WelcomeDescription").Text));
                         Assert.DoesNotContain("Onboarding_", Find<TextBlock>(welcome, "WelcomeDescription").Text);
                     }
-                    var acquired = SetupRunLock.TryAcquire(data, out var competingLock, out _);
+                    var acquired = SetupRunLock.TryAcquire(data, localData, out var competingLock, out _);
                     competingLock?.Dispose();
                     Assert.False(acquired, "A mounted setup window must retain its run lock.");
                     Assert.Equal(recovery, window.AccessDraft.Config.LocalAi.Enabled);
@@ -1037,7 +1038,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                         await ui.YieldToRenderAsync();
                     }
                 }
-                Assert.True(SetupRunLock.TryAcquire(data, out var releasedLock, out var error), error);
+                Assert.True(SetupRunLock.TryAcquire(data, localData, out var releasedLock, out var error), error);
                 releasedLock!.Dispose();
             });
         }

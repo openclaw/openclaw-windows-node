@@ -14,6 +14,7 @@ public sealed class InnoMigrationContractTests
         var launch = app[app.IndexOf("private async Task OnLaunchedAsync", StringComparison.Ordinal)..];
         var guard = launch.IndexOf("await StoreMigrationStartupGuard.ShouldStopLaunchAsync(DeepLinkPipeName)", StringComparison.Ordinal);
         Assert.True(guard > launch.IndexOf("await CliUninstallHandler.RunAsync", StringComparison.Ordinal));
+        Assert.True(guard > launch.IndexOf("await CliSetupHandler.RunAsync", StringComparison.Ordinal));
         Assert.True(guard < launch.IndexOf("GetLaunchActivation()", StringComparison.Ordinal));
         Assert.True(guard < launch.IndexOf("_mutex = new Mutex(", StringComparison.Ordinal));
         Assert.True(guard < launch.IndexOf("new ActivationRouter(", StringComparison.Ordinal));
@@ -90,23 +91,12 @@ public sealed class InnoMigrationContractTests
     /// <summary>
     /// The migration lock coordinates with a Store migration that most users will never run.
     /// It must never become a reason an ordinary user cannot start or uninstall the app: only
-    /// a live contended lock may block, and an unreadable one must degrade instead.
+    /// a live contended lock may block, and an unreadable one must degrade instead. Startup
+    /// behavior is covered by InnoMigrationStartupAdmissionTests.
     /// </summary>
     [Fact]
-    public void InaccessibleMigrationLock_BlocksNeitherStartupNorUninstall()
+    public void InaccessibleMigrationLock_DoesNotBlockUninstall()
     {
-        var guard = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "InnoMigrationStartupGuard.cs");
-        var acquire = guard.IndexOf("MigrationOperationLock.AcquireRuntime(binding)", StringComparison.Ordinal);
-        var busy = guard.IndexOf("catch (IOException ex) when (MigrationOperationLock.IsBusy(ex))",
-            StringComparison.Ordinal);
-        Assert.True(busy > acquire, "Only a contended lock may block Inno startup.");
-        var receipt = guard.IndexOf("MigrationRecordCodec.ReadCompletion", StringComparison.Ordinal);
-        var degrade = guard.IndexOf("continuing without it", StringComparison.Ordinal);
-        Assert.InRange(degrade, busy, receipt);
-        // The degraded path must fall through to the receipt check rather than showing guidance,
-        // because ShowGuidance returns true and would stop the launch it is meant to preserve.
-        Assert.DoesNotContain("ShowGuidance", guard[degrade..receipt]);
-
         var installer = Read("installer.iss");
         var uninstall = installer[installer.IndexOf("function InitializeUninstall", StringComparison.Ordinal)..];
         uninstall = uninstall[..uninstall.IndexOf("procedure DeinitializeUninstall", StringComparison.Ordinal)];
@@ -430,18 +420,18 @@ public sealed class InnoMigrationContractTests
         var helper = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "InnoMigrationStartupGuard.cs");
         Assert.Contains("#if !INNO_MIGRATION_PREVIEW && !PRODUCTION_MIGRATION", helper);
         Assert.Contains("AppIdentity.IsDev || PackageHelper.IsPackaged", helper);
-        Assert.Contains("MigrationRecordCodec.ReadCompletion", helper);
         Assert.Contains("Migration_InnoCompleted", helper);
         Assert.Contains("GatewayFixtureIsolation.IsEnabled", helper);
-        var acquire = helper.IndexOf("runtimeLease = MigrationOperationLock.AcquireRuntime(binding)", StringComparison.Ordinal);
-        Assert.True(acquire > 0 && acquire < helper.IndexOf("MigrationRecordCodec.ReadCompletion", StringComparison.Ordinal));
-        var lockFailure = helper[acquire..helper.IndexOf("var path =", StringComparison.Ordinal)];
-        Assert.Contains("InvalidDataException", lockFailure);
-        Assert.Contains("return ShowGuidance(\"Migration_InnoCheckFailed\")", lockFailure);
-        var receiptRejected = helper[helper.IndexOf("Migration completion receipt rejected", StringComparison.Ordinal)..];
-        Assert.Contains("return false;", receiptRejected);
         Assert.DoesNotContain("_innoMigrationLease", Read("src", "OpenClaw.Tray.WinUI", "App.AppShutdownCoordinator.cs"));
         Assert.DoesNotContain("_innoMigrationLease?.Dispose", app);
+    }
+
+    [Fact]
+    public void HeadlessSetup_ChecksMigrationWithoutGuidanceDialog()
+    {
+        var handler = Read("src", "OpenClaw.Tray.WinUI", "CliSetupHandler.cs");
+        Assert.DoesNotContain("ShouldStopLaunch", handler);
+        Assert.Contains("InnoMigrationStartupGuard.TryGetStopGuidance(out s_migrationLease", handler);
     }
 
     [Fact]

@@ -373,7 +373,7 @@ public sealed partial class SetupWindow : Window
             return;
         }
 
-        if (!SetupRunLock.TryAcquire(_dataDir, out _setupLock, out var lockMessage))
+        if (!SetupRunLock.TryAcquire(_dataDir, _localDataDir, out _setupLock, out var lockMessage))
         {
             NavigateTo(typeof(CompletePage), new CompletePageArgs(false, TimeSpan.Zero, null, lockMessage ?? "Another setup run is active."));
             return;

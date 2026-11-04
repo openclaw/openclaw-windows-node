@@ -28,6 +28,13 @@ public sealed class SetupConfig
     public bool ConfirmDestructive { get; set; }
     [JsonIgnore]
     public string? ConfirmedDestructiveDistroName { get; set; }
+    /// <summary>
+    /// Set by --preserve-existing when the caller has not authorized replacement. Setup refuses
+    /// to start, or to remove a WSL distro or its data, if existing state is present, even when
+    /// that state is app-owned. Wins over ConfirmDestructive and ConfirmedDestructiveDistroName.
+    /// </summary>
+    [JsonIgnore]
+    public bool PreserveExisting { get; set; }
     public string LogLevel { get; set; } = "trace";
     public string? LogPath { get; set; }
     public string? GatewayUrl { get; set; }

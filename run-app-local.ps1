@@ -70,6 +70,27 @@
 .PARAMETER UseStoreGateway
     Skip development Gateway packaging and use the installed Store Gateway.
 
+.PARAMETER SetupConfig
+    Run headless WSL gateway setup with this SetupEngine config JSON before
+    launching (copy src\OpenClaw.SetupEngine\default-config.json and edit it).
+    Relative paths resolve from the repository root. Skipped when the data dir
+    is already configured. DistroName and GatewayPort come from the app
+    identity, as in interactive setup. -Isolated and -DataDir do not isolate
+    the WSL distro or local setup data: setup refuses to replace an existing
+    app-owned distro, its data, or a local gateway record unless
+    -ReplaceExisting is set, and never replaces a distro or data not proven to
+    be managed by OpenClaw.
+
+.PARAMETER ForceSetup
+    With -SetupConfig, run setup even when the data dir is already configured.
+
+.PARAMETER ReplaceExisting
+    With -SetupConfig, allow setup to delete and recreate the existing app-owned
+    WSL distro and replace the local gateway record. A distro or distro data not
+    proven to be managed by OpenClaw is preserved even with this switch: confirm
+    its replacement in interactive setup, or remove it yourself (for example
+    wsl --unregister <distro>).
+
 .EXAMPLE
     .\run-app-local.ps1
 
@@ -87,6 +108,9 @@
 
 .EXAMPLE
     .\run-app-local.ps1 -UseWinApp -NoBuild
+
+.EXAMPLE
+    .\run-app-local.ps1 -Dev -Isolated -SetupConfig .\my-setup.json
 #>
 [CmdletBinding()]
 param(
@@ -120,7 +144,13 @@ param(
     [ValidatePattern('\Av\d{4}\.\d{1,2}\.\d+(?:-\d+)?-msix\.\d+\z')]
     [string]$PackagingRelease,
 
-    [switch]$UseStoreGateway
+    [switch]$UseStoreGateway,
+
+    [string]$SetupConfig,
+
+    [switch]$ForceSetup,
+
+    [switch]$ReplaceExisting
 )
 
 $ErrorActionPreference = "Stop"
@@ -157,6 +187,13 @@ function Get-ShortHash {
     } finally {
         $sha.Dispose()
     }
+}
+
+if (($ForceSetup -or $ReplaceExisting) -and -not $SetupConfig) { throw "-ForceSetup and -ReplaceExisting require -SetupConfig." }
+$setupConfigPath = $null
+if ($SetupConfig) {
+    $setupConfigPath = Resolve-FullPath $SetupConfig
+    if (-not (Test-Path -LiteralPath $setupConfigPath -PathType Leaf)) { throw "Setup config not found: $setupConfigPath" }
 }
 
 $branch = (git -C $repoRoot rev-parse --abbrev-ref HEAD).Trim()
@@ -284,6 +321,10 @@ try {
     if ($env:OPENCLAW_UPDATE_CHANNEL) {
         Write-Host "  Update channel: $env:OPENCLAW_UPDATE_CHANNEL"
     }
+    if ($setupConfigPath) {
+        $setupFlags = @(@('forced') * [int]$ForceSetup.IsPresent) + @(@('replace existing') * [int]$ReplaceExisting.IsPresent)
+        Write-Host "  Setup config:  $setupConfigPath$(if ($setupFlags) { ' (' + ($setupFlags -join ', ') + ')' })"
+    }
     if ($UseWinApp) {
         Write-Host "  Launcher:      $($winapp.Source)"
         Write-Host "  Command:       winapp $($winappArgs -join ' ')"
@@ -293,6 +334,23 @@ try {
 
     if ($DryRun) {
         return
+    }
+
+    if ($setupConfigPath) {
+        # Windows PowerShell's Start-Process joins arguments without quoting.
+        $setupArgs = @('--headless-setup', '--config', ('"{0}"' -f $setupConfigPath))
+        if ($ForceSetup) { $setupArgs += '--force-setup' }
+        if ($ReplaceExisting) { $setupArgs += '--replace-existing' }
+        Write-Host "Running headless setup" -ForegroundColor Cyan
+        # Setup leaves a WSL keepalive running; -Wait would block on that descendant, so wait
+        # on the setup process alone. Reading Handle keeps ExitCode available after exit.
+        $setupProcess = Start-Process -FilePath $exePath -ArgumentList $setupArgs -WorkingDirectory $outputDir -NoNewWindow -PassThru
+        $null = $setupProcess.Handle
+        $setupProcess.WaitForExit()
+        if ($setupProcess.ExitCode -ne 0) {
+            Write-Host "Headless setup failed (exit $($setupProcess.ExitCode)). See the Log/Journal paths printed above." -ForegroundColor Red
+            exit $setupProcess.ExitCode
+        }
     }
 
     if ($buildGateway) {
