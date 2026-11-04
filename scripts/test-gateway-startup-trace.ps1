@@ -270,11 +270,12 @@ try {
         ([ordered]@{ ts = $selectedRetryTimestamp.ToString('O'); run = 'r'; level = 'info'; msg = 'Native Gateway setup started.'; data = $null } | ConvertTo-Json -Compress)
     )
     [IO.File]::WriteAllLines($retryLog, [string[]]$retryLines)
-    $selectedRetryTicks = $selectedRetryTimestamp.UtcDateTime.ToFileTimeUtc()
+    $selectedRetryTicks = $firstRetryTimestamp.UtcDateTime.ToFileTimeUtc()
     $pinnedRetry = Get-CurrentSetupAttempt -Directory $setupLogsRoot -SinceTicks $sinceTicks `
         -Path $retryLog -AttemptStartTicks $selectedRetryTicks
     Assert-Equal $retryLog $pinnedRetry.Path 'retry remains pinned to selected setup log'
     Assert-Equal $selectedRetryTicks $pinnedRetry.Parsed.Milestones[0].Ticks 'retry remains pinned to selected attempt'
+    Assert-Equal 1 $pinnedRetry.Parsed.Milestones.Count 'later retry milestones are excluded from pinned attempt'
 } finally {
     Remove-Item -LiteralPath $setupLogsRoot -Recurse -Force
 }
