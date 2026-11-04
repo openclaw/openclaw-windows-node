@@ -469,7 +469,7 @@ translated into `INTERNAL` responses and recorded as unexpected requests.
 
 The server also answers one plain HTTP request: the owner's profile photo at
 `GET /api/users/<profile id>/avatar`, which the Workspace footer sends after
-`users.self` returns a profile with an email. A request with the shared
+`users.self` returns a profile. A request with the shared
 Gateway token (or the issued device token once the server accepts one) for the
 fixture owner receives a small solid-colour PNG. A missing or wrong credential
 receives 401 and an unknown profile receives 404. Each request is recorded as

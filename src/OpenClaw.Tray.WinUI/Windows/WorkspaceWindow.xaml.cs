@@ -31,7 +31,6 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly GatewayStatusContent _gatewayStatusContent = new();
     private readonly Flyout _gatewayStatusFlyout = new() { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft };
     private readonly MenuFlyoutItem _connectionStatusItem = new();
-    private readonly MenuFlyoutItem _setUpProfileItem = new() { Visibility = Visibility.Collapsed };
     private readonly FontIcon _connectionStatusIcon = new();
     // Sidebar rows keyed by session key; SyncSessionItems keeps MenuItems in step with these.
     private readonly Dictionary<string, NavigationViewItem> _sessionItems = new(StringComparer.Ordinal);
@@ -1017,10 +1016,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void UpdateOwnerIdentity()
     {
         var name = _identity.DisplayName;
-        var unnamed = name is null && _identity.IsUnnamedProfile;
-        OwnerName.Text = name ?? Text(_identity.IsLoading ? "OwnerLoading.Text"
-            : unnamed ? "OwnerUnnamed.Text" : "OwnerUnavailable.Text");
-        _setUpProfileItem.Visibility = unnamed ? Visibility.Visible : Visibility.Collapsed;
+        // macOS parity: the shared-credential owner is labelled as such; no known profile shows Owner.
+        OwnerName.Text = _identity.IsSharedOwner ? Text("SharedOwner.Text") : name ?? Text("Owner.Text");
         OwnerPicture.DisplayName = name ?? "";
         AutomationProperties.SetName(OwnerButton, OwnerName.Text);
         var avatar = _identity.Avatar;
@@ -1266,11 +1263,6 @@ public sealed partial class WorkspaceWindow : WindowEx
             item.Click += (_, _) => action();
             menu.Items.Add(item);
         }
-        _setUpProfileItem.Text = Text("SetUpProfile");
-        _setUpProfileItem.Icon = FluentIconCatalog.Build(FluentIconCatalog.OpenInBrowser);
-        AutomationProperties.SetAutomationId(_setUpProfileItem, "WorkspaceOwnerSetUpProfile");
-        _setUpProfileItem.Click += (_, _) => ((IAppCommands)CurrentApp).OpenDashboard("settings/profile");
-        menu.Items.Add(_setUpProfileItem);
         Add("Settings", () => OpenCompanion(CompanionPageId.Settings), FluentIconCatalog.Settings);
         Add("Usage", () => OpenCompanion(CompanionPageId.Usage), FluentIconCatalog.Money);
         Add("PairDevice", () => OpenCompanion(CompanionPageId.Channels), FluentIconCatalog.Devices);

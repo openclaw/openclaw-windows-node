@@ -43,20 +43,34 @@ public sealed class WorkspaceIdentitySourceTests
         Assert.Equal("b@example.test", WorkspaceIdentitySource.ReadDisplayName(Profile(null, "  ", "b@example.test")));
 
     [Fact]
-    public void MissingNameAndEmailsHasNoIdentity() =>
-        Assert.Null(WorkspaceIdentitySource.ReadDisplayName(Profile(null)));
+    public void MissingNameAndEmailsFallsBackToProfileIdLikeMacOS() =>
+        Assert.Equal("person", WorkspaceIdentitySource.ReadDisplayName(Profile(null)));
 
     [Fact]
-    public void AvatarRequestedOnlyForUploadOrEmail()
+    public void EveryValidProfileRequestsItsAvatar()
     {
-        var none = WorkspaceIdentitySource.ReadProfile(Profile("Ada"));
-        Assert.Null(none.AvatarProfileId);
-        var email = WorkspaceIdentitySource.ReadProfile(Profile("Ada", "a@example.test"));
-        Assert.Equal("person", email.AvatarProfileId);
+        var nameOnly = WorkspaceIdentitySource.ReadProfile(Profile("Ada"));
+        Assert.Equal("person", nameOnly.ProfileId);
+        Assert.Null(nameOnly.AvatarRevision);
         var uploaded = WorkspaceIdentitySource.ReadProfile(JsonSerializer.SerializeToElement(
             new { profile = new { id = "person", hasAvatar = true, updatedAt = 42 } }));
-        Assert.Equal("person", uploaded.AvatarProfileId);
+        Assert.Equal("person", uploaded.ProfileId);
         Assert.Equal("42", uploaded.AvatarRevision);
+    }
+
+    [Fact]
+    public async Task NameOnlyProfileStillShowsTheGatewayResolvedAvatar()
+    {
+        var (client, proxy) = Gateway();
+        proxy.Response = () => Task.FromResult(Profile("Ada"));
+        var image = new UserAvatarImage([8], "image/png");
+        proxy.Avatar = (_, _) => Task.FromResult(new UserAvatarResult(UserAvatarStatus.Ready, image));
+        var source = new WorkspaceIdentitySource(() => { }, category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        Assert.Equal("Ada", source.DisplayName);
+        Assert.Same(image, source.Avatar);
+        Assert.Equal("person", Assert.Single(proxy.AvatarRequests).ProfileId);
     }
 
     [Fact]
@@ -93,7 +107,7 @@ public sealed class WorkspaceIdentitySourceTests
     }
 
     [Fact]
-    public async Task GatewayOwnerRequestsGatewayRouteWithoutEmailOrUpload()
+    public async Task GatewayOwnerIsMarkedSharedAndRequestsGatewayRoute()
     {
         var (client, proxy) = Gateway();
         proxy.Response = () => Task.FromResult(JsonSerializer.SerializeToElement(
@@ -103,8 +117,21 @@ public sealed class WorkspaceIdentitySourceTests
         source.SetConnection(client, ConnectionStatus.Connected);
         await source.RefreshAsync();
         Assert.Equal("gateway-owner", Assert.Single(proxy.AvatarRequests).ProfileId);
+        Assert.True(source.IsSharedOwner);
         Assert.Equal("Owner Person", source.DisplayName);
         Assert.Null(source.Avatar);
+    }
+
+    [Fact]
+    public async Task PersonalProfileIsNotSharedOwner()
+    {
+        var (client, proxy) = Gateway();
+        proxy.Response = () => Task.FromResult(Profile("Ada"));
+        var source = new WorkspaceIdentitySource(() => { }, category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        Assert.False(source.IsSharedOwner);
+        Assert.Equal("Ada", source.DisplayName);
     }
 
     [Theory]
@@ -154,78 +181,49 @@ public sealed class WorkspaceIdentitySourceTests
     }
 
     [Fact]
-    public async Task LoadingStateIsObservableAtEveryNotification_Success()
+    public async Task NameIsUnknownUntilTheProfileArrives()
     {
         var (client, proxy) = Gateway();
         var pending = new TaskCompletionSource<JsonElement>();
         proxy.Response = () => pending.Task;
-        var states = new List<(bool Loading, string? Name)>();
+        var states = new List<string?>();
         WorkspaceIdentitySource? source = null;
-        source = new WorkspaceIdentitySource(() => states.Add((source!.IsLoading, source.DisplayName)), _ => { });
+        source = new WorkspaceIdentitySource(() => states.Add(source!.DisplayName), _ => { });
         source.SetConnection(client, ConnectionStatus.Connected);
         var load = source.RefreshAsync();
-        Assert.True(source.IsLoading);
+        Assert.Null(source.DisplayName);
         pending.SetResult(Profile("Ada"));
         await load;
-        Assert.False(source.IsLoading);
-        Assert.Equal([(true, (string?)null), (false, "Ada")], states);
+        Assert.Equal("Ada", source.DisplayName);
+        Assert.Null(states[0]);
+        Assert.All(states.Skip(1), name => Assert.Equal("Ada", name));
     }
 
     [Theory]
-    [InlineData("blank")]
     [InlineData("timeout")]
     [InlineData("malformed")]
     [InlineData("unsupported")]
-    public async Task LoadingClearsBeforeTerminalNotification_WhenNoUsableProfile(string outcome)
+    public async Task UnreadableProfileLeavesNoNameSoTheFooterShowsOwner(string outcome)
     {
         var (client, proxy) = Gateway();
         proxy.Response = () => outcome switch
         {
-            "blank" => Task.FromResult(Profile(null)),
             "timeout" => throw new TimeoutException("x"),
             "malformed" => Task.FromResult(JsonSerializer.SerializeToElement(new { })),
             _ => throw new InvalidOperationException("x"),
         };
-        var states = new List<(bool Loading, string? Name)>();
-        WorkspaceIdentitySource? source = null;
-        source = new WorkspaceIdentitySource(() => states.Add((source!.IsLoading, source.DisplayName)), _ => { });
-        source.SetConnection(client, ConnectionStatus.Connected);
-        await source.RefreshAsync();
-        Assert.Equal([(true, (string?)null), (false, (string?)null)], states);
-        Assert.False(source.IsLoading);
-    }
-
-    [Fact]
-    public async Task ValidNamelessProfileIsUnnamedNotUnavailable_AtTerminalNotification()
-    {
-        var (client, proxy) = Gateway();
-        proxy.Response = () => Task.FromResult(Profile(null));
-        var states = new List<(bool Loading, bool Has, bool Unnamed)>();
-        WorkspaceIdentitySource? source = null;
-        source = new WorkspaceIdentitySource(
-            () => states.Add((source!.IsLoading, source.HasProfile, source.IsUnnamedProfile)), _ => Assert.Fail("reported"));
-        source.SetConnection(client, ConnectionStatus.Connected);
-        await source.RefreshAsync();
-        Assert.Equal([(true, false, false), (false, true, true)], states);
-    }
-
-    [Fact]
-    public async Task NamedProfileIsNeverUnnamed()
-    {
-        var (client, proxy) = Gateway();
-        proxy.Response = () => Task.FromResult(Profile("Ada"));
         var source = new WorkspaceIdentitySource(() => { }, _ => { });
         source.SetConnection(client, ConnectionStatus.Connected);
         await source.RefreshAsync();
-        Assert.True(source.HasProfile);
-        Assert.False(source.IsUnnamedProfile);
+        Assert.Null(source.DisplayName);
+        Assert.False(source.IsSharedOwner);
     }
 
     [Theory]
     [InlineData("timeout")]
     [InlineData("malformed")]
     [InlineData("forbidden")]
-    public async Task FailedLookupAfterValidProfileClearsHasProfile(string outcome)
+    public async Task FailedLookupAfterSharedOwnerReturnsToOwner(string outcome)
     {
         var (client, proxy) = Gateway();
         var fail = false;
@@ -236,49 +234,45 @@ public sealed class WorkspaceIdentitySourceTests
                 "malformed" => Task.FromResult(JsonSerializer.SerializeToElement(new { })),
                 _ => throw new GatewayRequestException("x", "FORBIDDEN", null),
             }
-            : Task.FromResult(Profile(null));
-        var states = new List<bool>();
-        WorkspaceIdentitySource? source = null;
-        source = new WorkspaceIdentitySource(() => states.Add(source!.HasProfile), _ => { });
-        source.SetConnection(client, ConnectionStatus.Connected);
-        await source.RefreshAsync();
-        Assert.True(source.IsUnnamedProfile);
-        fail = true;
-        states.Clear();
-        await source.RefreshAsync(invalidate: true);
-        Assert.False(source.HasProfile);
-        Assert.False(source.IsUnnamedProfile);
-        Assert.All(states, has => Assert.False(has));
-    }
-
-    [Fact]
-    public async Task ContextSwitchAndDisconnectClearHasProfile()
-    {
-        var (client, proxy) = Gateway();
-        proxy.Response = () => Task.FromResult(Profile(null));
+            : Task.FromResult(JsonSerializer.SerializeToElement(new { profile = new { id = "gateway-owner" } }));
         var source = new WorkspaceIdentitySource(() => { }, _ => { });
         source.SetConnection(client, ConnectionStatus.Connected);
         await source.RefreshAsync();
-        Assert.True(source.HasProfile);
-        var (next, _) = Gateway();
-        source.SetConnection(next, ConnectionStatus.Connected);
-        Assert.False(source.HasProfile);
-        Assert.False(source.IsUnnamedProfile);
-        source.SetConnection(client, ConnectionStatus.Connected);
-        await source.RefreshAsync();
-        source.SetConnection(null, ConnectionStatus.Disconnected);
-        Assert.False(source.HasProfile);
+        Assert.True(source.IsSharedOwner);
+        fail = true;
+        await source.RefreshAsync(invalidate: true);
+        Assert.False(source.IsSharedOwner);
+        Assert.Null(source.DisplayName);
     }
 
     [Fact]
-    public async Task OldGenerationCompletionNeverClearsNewContextLoading()
+    public async Task ContextSwitchAndDisconnectClearSharedOwner()
+    {
+        var (client, proxy) = Gateway();
+        proxy.Response = () => Task.FromResult(JsonSerializer.SerializeToElement(new { profile = new { id = "gateway-owner" } }));
+        var source = new WorkspaceIdentitySource(() => { }, _ => { });
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        Assert.True(source.IsSharedOwner);
+        var (next, _) = Gateway();
+        source.SetConnection(next, ConnectionStatus.Connected);
+        Assert.False(source.IsSharedOwner);
+        Assert.Null(source.DisplayName);
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        source.SetConnection(null, ConnectionStatus.Disconnected);
+        Assert.False(source.IsSharedOwner);
+    }
+
+    [Fact]
+    public async Task OldGenerationCompletionNeverWritesTheNewContext()
     {
         var (client, proxy) = Gateway();
         var oldRequest = new TaskCompletionSource<JsonElement>();
         proxy.Response = () => oldRequest.Task;
-        var states = new List<(bool Loading, string? Name)>();
+        var states = new List<string?>();
         WorkspaceIdentitySource? source = null;
-        source = new WorkspaceIdentitySource(() => states.Add((source!.IsLoading, source.DisplayName)), _ => { });
+        source = new WorkspaceIdentitySource(() => states.Add(source!.DisplayName), _ => { });
         source.SetConnection(client, ConnectionStatus.Connected);
         var old = source.RefreshAsync();
         var (next, nextProxy) = Gateway();
@@ -288,34 +282,12 @@ public sealed class WorkspaceIdentitySourceTests
         var current = source.RefreshAsync();
         oldRequest.SetResult(Profile("Old"));
         await old;
-        Assert.True(source.IsLoading);
         Assert.Null(source.DisplayName);
         newRequest.SetResult(Profile("New"));
         await current;
-        Assert.False(source.IsLoading);
         Assert.Equal("New", source.DisplayName);
-        Assert.DoesNotContain(states, s => s.Name == "Old");
+        Assert.DoesNotContain("Old", states);
     }
-
-    [Fact]
-    public async Task DisconnectEndsLoadingAndMissingGrantDoesNotLoadForever()
-    {
-        var (client, proxy) = Gateway();
-        proxy.Scopes = ["operator.pairing"];
-        var source = new WorkspaceIdentitySource(() => { }, _ => { });
-        source.SetConnection(client, ConnectionStatus.Connected);
-        Assert.True(source.IsLoading);
-        await source.RefreshAsync();
-        Assert.False(source.IsLoading);
-        var (c2, p2) = Gateway();
-        p2.Response = () => new TaskCompletionSource<JsonElement>().Task;
-        source.SetConnection(c2, ConnectionStatus.Connected);
-        _ = source.RefreshAsync();
-        Assert.True(source.IsLoading);
-        source.SetConnection(c2, ConnectionStatus.Disconnected);
-        Assert.False(source.IsLoading);
-    }
-
     [Fact]
     public void DiagnosticsNameTheTrueSourceAndCarryNoPayload()
     {
@@ -323,7 +295,7 @@ public sealed class WorkspaceIdentitySourceTests
         Assert.Contains("name is kept", WorkspaceIdentitySource.DescribeUnavailable("AvatarFailed"));
         var profile = WorkspaceIdentitySource.DescribeUnavailable("TimeoutException");
         Assert.Contains("users.self", profile);
-        Assert.DoesNotContain("fallback", profile);
+        Assert.Contains("showing Owner", profile);
     }
 
     [Theory]
@@ -583,36 +555,23 @@ public sealed class WorkspaceIdentitySourceTests
     }
 
     [Fact]
-    public void UnnamedProfileUsesDistinctCopyAndDashboardProfileAction()
+    public void WorkspaceFooterUsesMacOSOwnerLabelsWithoutStatusOrSetupStates()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(root,
             "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.Contains("\"OwnerUnnamed.Text\"", source);
-        Assert.Contains("OpenDashboard(\"settings/profile\")", source);
-        Assert.Contains("unnamed ? Visibility.Visible : Visibility.Collapsed", source);
-        Assert.Contains("Add(\"Settings\"", source);
+        Assert.Contains("_identity.IsSharedOwner ? Text(\"SharedOwner.Text\") : name ?? Text(\"Owner.Text\")", source);
+        Assert.Contains("OwnerPicture.DisplayName = name ?? \"\"", source);
+        Assert.DoesNotContain("settings/profile", source);
+        Assert.DoesNotContain("SetUpProfile", source);
         foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
         {
             var resw = File.ReadAllText(Path.Combine(root,
                 "src", "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw"));
-            Assert.Contains("WorkspaceShell_OwnerUnnamed.Text", resw);
-            Assert.Contains("WorkspaceShell_SetUpProfile", resw);
-        }
-    }
-
-    [Fact]
-    public void WorkspaceFooterNeverFallsBackToAGenericOwnerLabel()
-    {
-        var root = TestRepositoryPaths.GetRepositoryRoot();
-        var source = File.ReadAllText(Path.Combine(root,
-            "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.DoesNotContain("\"Owner.Text\"", source);
-        foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
-        {
-            var resw = File.ReadAllText(Path.Combine(root,
-                "src", "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw"));
-            Assert.DoesNotContain("WorkspaceShell_Owner.Text", resw);
+            Assert.Contains("\"WorkspaceShell_Owner.Text\"", resw);
+            Assert.Contains("\"WorkspaceShell_SharedOwner.Text\"", resw);
+            foreach (var removed in new[] { "OwnerLoading", "OwnerUnavailable", "OwnerUnnamed", "SetUpProfile" })
+                Assert.DoesNotContain("WorkspaceShell_" + removed, resw);
         }
     }
 
@@ -656,7 +615,6 @@ public sealed class WorkspaceIdentitySourceTests
         var first = source.RefreshAsync();
         await stalledStarted.Task;
         Assert.Equal("Ada", source.DisplayName);
-        Assert.False(source.IsLoading);
 
         var second = source.RefreshAsync(invalidate: true);
         await first.WaitAsync(TimeSpan.FromSeconds(10));
@@ -713,15 +671,15 @@ public sealed class WorkspaceIdentitySourceTests
     }
 
     [Fact]
-    public async Task UnchangedOrdinaryRefreshKeepsImageWithoutRefetchOrLoadingFlash()
+    public async Task UnchangedOrdinaryRefreshKeepsImageWithoutRefetchOrFlash()
     {
         var (client, proxy) = Gateway();
         proxy.Response = () => Task.FromResult(AvatarProfile("Ada", "1"));
         var image = new UserAvatarImage([5], "image/png");
         proxy.Avatar = (_, _) => Task.FromResult(new UserAvatarResult(UserAvatarStatus.Ready, image));
-        var states = new List<(bool Loading, bool HasAvatar)>();
+        var states = new List<bool>();
         WorkspaceIdentitySource? source = null;
-        source = new WorkspaceIdentitySource(() => states.Add((source!.IsLoading, source.Avatar is not null)), category => Assert.Fail(category));
+        source = new WorkspaceIdentitySource(() => states.Add(source!.Avatar is not null), category => Assert.Fail(category));
         source.SetConnection(client, ConnectionStatus.Connected);
         await source.RefreshAsync();
         states.Clear();
@@ -729,24 +687,24 @@ public sealed class WorkspaceIdentitySourceTests
         await source.RefreshAsync();
         Assert.Same(image, source.Avatar);
         Assert.Single(proxy.AvatarRequests);
-        Assert.DoesNotContain(states, s => s.Loading || !s.HasAvatar);
+        Assert.DoesNotContain(false, states);
     }
 
     [Fact]
-    public async Task KnownUnnamedProfileNeverReturnsToLoadingOnOrdinaryRefresh()
+    public async Task KnownProfileNeverReturnsToOwnerOnOrdinaryRefresh()
     {
         var (client, proxy) = Gateway();
         proxy.Response = () => Task.FromResult(Profile(null));
-        var states = new List<(bool Loading, bool Unnamed)>();
+        var states = new List<string?>();
         WorkspaceIdentitySource? source = null;
-        source = new WorkspaceIdentitySource(() => states.Add((source!.IsLoading, source.IsUnnamedProfile)), category => Assert.Fail(category));
+        source = new WorkspaceIdentitySource(() => states.Add(source!.DisplayName), category => Assert.Fail(category));
         source.SetConnection(client, ConnectionStatus.Connected);
         await source.RefreshAsync();
-        Assert.True(source.IsUnnamedProfile);
+        Assert.Equal("person", source.DisplayName);
         states.Clear();
         await source.RefreshAsync();
-        Assert.True(source.IsUnnamedProfile);
-        Assert.DoesNotContain(states, s => s.Loading || !s.Unnamed);
+        Assert.Equal("person", source.DisplayName);
+        Assert.DoesNotContain(null, states);
     }
 
     [Fact]
@@ -806,10 +764,10 @@ public sealed class WorkspaceIdentitySourceTests
         var (client, proxy) = Gateway();
         proxy.Response = () => Task.FromResult(AvatarProfile("Ada", "1"));
         proxy.Avatar = (_, _) => Task.FromResult(UserAvatarResult.Of(status));
-        var states = new List<(bool Loading, string? Name)>();
+        var states = new List<string?>();
         WorkspaceIdentitySource? source = null;
         source = new WorkspaceIdentitySource(
-            () => states.Add((source!.IsLoading, source.DisplayName)), category => Assert.Fail(category));
+            () => states.Add(source!.DisplayName), category => Assert.Fail(category));
         source.SetConnection(client, ConnectionStatus.Connected);
         await source.RefreshAsync();
         states.Clear();
@@ -821,7 +779,7 @@ public sealed class WorkspaceIdentitySourceTests
         Assert.Equal(3, proxy.Requests.Count);
         Assert.Null(source.Avatar);
         Assert.NotEmpty(states);
-        Assert.DoesNotContain(states, s => s.Loading || s.Name != "Ada");
+        Assert.All(states, name => Assert.Equal("Ada", name));
     }
 
     [Theory]
@@ -966,8 +924,6 @@ public sealed class WorkspaceIdentitySourceTests
         await source.RefreshAsync();
 
         Assert.Equal("Ada", source.DisplayName);
-        Assert.True(source.HasProfile);
-        Assert.False(source.IsLoading);
         Assert.Null(source.Avatar);
         Assert.Equal(["Avatar" + exceptionType.Name], errors);
         Assert.Single(proxy.AvatarRequests);
@@ -980,10 +936,10 @@ public sealed class WorkspaceIdentitySourceTests
         var errors = new List<string>();
         var read = new TaskCompletionSource<JsonElement>();
         proxy.Response = () => read.Task;
-        var states = new List<(bool Loading, bool HasProfile)>();
+        var states = new List<string?>();
         WorkspaceIdentitySource? source = null;
         source = new WorkspaceIdentitySource(
-            () => states.Add((source!.IsLoading, source.HasProfile)), errors.Add);
+            () => states.Add(source!.DisplayName), errors.Add);
         source.SetConnection(client, ConnectionStatus.Connected);
         var load = source.RefreshAsync();
         var queued = source.RefreshAsync();
@@ -993,8 +949,8 @@ public sealed class WorkspaceIdentitySourceTests
 
         Assert.Equal(["Unavailable"], errors);
         Assert.Single(proxy.Requests);
-        Assert.False(source.IsLoading);
-        Assert.Equal((Loading: false, HasProfile: false), states[^1]);
+        Assert.Null(source.DisplayName);
+        Assert.Null(states[^1]);
     }
 
     [Fact]
@@ -1010,10 +966,10 @@ public sealed class WorkspaceIdentitySourceTests
             2 => stalled.Task,
             _ => Task.FromResult(Profile("Grace")),
         };
-        var states = new List<(bool Loading, string? Name)>();
+        var states = new List<string?>();
         WorkspaceIdentitySource? source = null;
         source = new WorkspaceIdentitySource(
-            () => states.Add((source!.IsLoading, source.DisplayName)), errors.Add);
+            () => states.Add(source!.DisplayName), errors.Add);
         source.SetConnection(client, ConnectionStatus.Connected);
         await source.RefreshAsync();
         states.Clear();
@@ -1021,17 +977,15 @@ public sealed class WorkspaceIdentitySourceTests
         var stalledRead = source.RefreshAsync();
         Assert.Equal(2, reads);
         Assert.Equal("Ada", source.DisplayName);
-        Assert.False(source.IsLoading);
 
         var invalidation = source.RefreshAsync(invalidate: true);
         await Task.WhenAll(stalledRead, invalidation).WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(3, reads);
         Assert.Equal("Grace", source.DisplayName);
-        Assert.False(source.IsLoading);
         Assert.Empty(errors);
         Assert.NotEmpty(states);
-        Assert.DoesNotContain(states, s => s.Loading || s.Name is null);
+        Assert.DoesNotContain(null, states);
 
         stalled.SetResult(Profile("Stale owner"));
         Assert.Equal("Grace", source.DisplayName);

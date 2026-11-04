@@ -8046,10 +8046,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
-  <data name="WorkspaceShell_OwnerLoading.Text" xml:space="preserve"><value>Loading profile</value></data>
-  <data name="WorkspaceShell_OwnerUnavailable.Text" xml:space="preserve"><value>Profile unavailable</value></data>
-  <data name="WorkspaceShell_OwnerUnnamed.Text" xml:space="preserve"><value>Profile not set up</value></data>
-  <data name="WorkspaceShell_SetUpProfile" xml:space="preserve"><value>Set up profile in dashboard</value></data>
+  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>Shared owner</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
