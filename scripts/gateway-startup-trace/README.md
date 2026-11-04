@@ -62,8 +62,9 @@ It saves the trace when the controller writes its stop file. It cancels its own 
 when `-MaxRecordingSeconds` elapses or when it fails. Start, stop, status and cancel calls
 are bounded. Start defaults to 60 seconds and status or cancel to 30 seconds. The controller
 gives WPR stop up to half the recording limit, with a 180-second minimum and 1800-second
-maximum, then allows at least 60 seconds for recorder status and controller shutdown. The
-controller's `-RecorderStopTimeoutSeconds` must exceed that WPR stop limit by 60 seconds.
+maximum, then allows 90 seconds for cancellation, final status and polling overhead. The
+controller's `-RecorderStopTimeoutSeconds` must exceed that WPR stop limit by at least
+90 seconds.
 A stop that times out is killed and followed by a cancel of the same instance. Recorder
 status is atomically published.
 

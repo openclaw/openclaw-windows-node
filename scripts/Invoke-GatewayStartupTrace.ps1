@@ -73,8 +73,8 @@ if ($MaxRecordingSeconds -le (2 * $BenchmarkTimeoutSeconds + 300)) {
     throw 'MaxRecordingSeconds must exceed two benchmark timeouts plus 300 seconds for setup and cleanup.'
 }
 $wprStopTimeoutSeconds = [int][Math]::Min(1800, [Math]::Max(180, [Math]::Ceiling($MaxRecordingSeconds / 2)))
-if ($RecorderStopTimeoutSeconds -le ($wprStopTimeoutSeconds + 60)) {
-    throw 'RecorderStopTimeoutSeconds must exceed the WPR stop timeout by at least 60 seconds.'
+if ($RecorderStopTimeoutSeconds -lt ($wprStopTimeoutSeconds + 90)) {
+    throw 'RecorderStopTimeoutSeconds must exceed the WPR stop timeout by at least 90 seconds.'
 }
 $PayloadRoot = [IO.Path]::GetFullPath($PayloadRoot)
 foreach ($required in @('payload-metadata.json', 'app\openclaw.mjs')) {
@@ -113,11 +113,11 @@ try {
     $nodePath = Expand-NodeExecutable -Archive $NodeArchive -Destination $runDirectory
 
     if (-not $SkipRecording) {
-        $recorderLaunched = $true
         $recorderPaths = Start-GatewayTraceRecorder -ToolDirectory $toolDirectory -InstanceName $instanceName `
             -TracePath $tracePath -ControlDirectory $controlDirectory -MaxRecordingSeconds $MaxRecordingSeconds `
             -StartTimeoutSeconds $RecorderStartTimeoutSeconds -WprStartTimeoutSeconds 60 `
             -WprStopTimeoutSeconds $wprStopTimeoutSeconds -WprControlTimeoutSeconds 30
+        $recorderLaunched = $true
     }
 
     if (Test-IsElevated) { throw 'The comparison controller unexpectedly became elevated.' }

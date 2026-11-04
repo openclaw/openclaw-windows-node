@@ -81,7 +81,12 @@ function New-SetupLine([int]$Seconds, [string]$Level, [string]$Message) {
     $data = $null
     if ($Message -match '^Native setup step: (Step\w+)\.$') {
         $stepId = $Matches[1]
-        $Message = "step.started: $stepId"
+        $Message = switch ($stepId) {
+            'StepSupport' { 'step.started: Check device support' }
+            'StepPackage' { 'step.started: Install or verify Gateway package' }
+            'StepPrepare' { 'step.started: Prepare your Gateway profile' }
+            'StepVerify' { 'step.started: Start and verify the Gateway' }
+        }
         $data = @{ step_id = $stepId }
     } elseif ($Message -match '^Native Gateway setup failed during (\w+):') {
         $data = @{ step = $Matches[1] }
@@ -104,8 +109,8 @@ $readyAttempt = @(
     New-SetupLine 201 'debug' 'cmd.done: openclaw exit=0 (70000ms)'
     New-SetupLine 210 'info' 'Native setup step: StepVerify.'
     New-SetupLine 211 'info' 'Starting the packaged Gateway and verifying its listener...'
-    New-SetupLine 212 'info' '[WS] Native Gateway start requested on port 1 (budget 180s).'
-    New-SetupLine 250 'info' '[WS] Native Gateway start acknowledged after 38.0s.'
+    New-SetupLine 212 'info' 'Native Gateway start requested on port 1 (budget 180s).'
+    New-SetupLine 250 'info' 'Native Gateway start acknowledged after 38.0s.'
     New-SetupLine 255 'info' '[WS] Native Gateway startup status: gateway starting.'
     'not json'
     New-SetupLine 290 'info' 'Verifying the Gateway endpoint before connecting...'
@@ -142,6 +147,21 @@ Assert-Equal 'reached-ai-setup' (Resolve-NativeSetupOutcome -ParsedOutcome $setu
 Assert-Equal 'failed-ui-only' (Resolve-NativeSetupOutcome -ParsedOutcome $setup.Outcome -StopReason 'ui-retry') 'Retry without a failure log'
 Assert-Equal 'incomplete' (Resolve-NativeSetupOutcome -ParsedOutcome $setup.Outcome -StopReason 'manual') 'manual stop is not success'
 Assert-Equal 'incomplete' (Resolve-NativeSetupOutcome -ParsedOutcome $setup.Outcome -StopReason 'timeout') 'timeout is not success'
+Assert-Equal 'not-observed' (Resolve-NativeSetupOutcome -ParsedOutcome 'not-observed' -StopReason 'ai-setup-reached' -AttemptObserved $false) 'AI page without setup attempt is not success'
+$completeCleanup = [pscustomobject]@{
+    stop = 'reported-success'
+    deprovision = 'reported-success'
+    workspace = 'not-found'
+    ownership_record = 'removed-after-deprovision'
+}
+$releasedAwake = [pscustomobject]@{ release = 'clear=ok;close=ok' }
+Assert-Equal $true (Test-StartupCleanupComplete -Cleanup $completeCleanup -Awake $releasedAwake) 'verified comparison cleanup'
+$unverifiedCleanup = $completeCleanup.PSObject.Copy()
+$unverifiedCleanup.workspace = 'unverified'
+Assert-Equal $false (Test-StartupCleanupComplete -Cleanup $unverifiedCleanup -Awake $releasedAwake) 'unverified workspace rejects cleanup'
+$retainedCleanup = $completeCleanup.PSObject.Copy()
+$retainedCleanup.ownership_record = 'retained-after-deprovision'
+Assert-Equal $false (Test-StartupCleanupComplete -Cleanup $retainedCleanup -Awake $releasedAwake) 'retained ownership record rejects cleanup'
 $validArm = [pscustomobject]@{
     status = 'captured'
     trace = [pscustomobject]@{ blocked = [pscustomobject]@{ child = 0; network = 0 } }
@@ -171,12 +191,11 @@ $timedOutAttempt = @(
     New-SetupLine 400 'info' 'Native Gateway setup started.'
     New-SetupLine 410 'info' 'Native setup step: StepVerify.'
     New-SetupLine 411 'info' 'Starting the packaged Gateway and verifying its listener...'
-    New-SetupLine 412 'info' '[WS] Native Gateway start requested on port 1 (budget 180s).'
-    New-SetupLine 450 'info' '[WS] Native Gateway start acknowledged after 38.0s.'
+    New-SetupLine 412 'info' 'Native Gateway start requested on port 1 (budget 180s).'
+    New-SetupLine 450 'info' 'Native Gateway start acknowledged after 38.0s.'
     New-SetupLine 451 'info' 'Native setup step: StepVerify.'
     New-SetupLine 452 'info' 'Some unrelated progress.'
-    New-SetupLine 592 'warn' '[WS] The package-managed Gateway did not report a verified listener within 180s.'
-    New-SetupLine 593 'error' 'Native Gateway setup failed during StepVerify: TimeoutException: x'
+    New-SetupLine 593 'error' 'Native Gateway setup failed during StepVerify: TimeoutException: The package-managed Gateway did not report a verified listener within 180 seconds of starting.'
 )
 $timedOut = Get-NativeSetupMilestones -Lines $timedOutAttempt
 Assert-Equal 'failed' $timedOut.Outcome 'readiness timeout fails'
@@ -297,6 +316,16 @@ try {
     } | ConvertTo-Json -Compress | Set-Content -LiteralPath $paths.Status
     $malformedRecording = Stop-GatewayTraceRecorder -InstanceName $instance -Paths $paths -StopTimeoutSeconds 1
     Assert-Equal 'invalid-status' $malformedRecording.outcome 'malformed recorder status fails closed'
+    'null' | Set-Content -LiteralPath $paths.Status
+    $nullRecording = Stop-GatewayTraceRecorder -InstanceName $instance -Paths $paths -StopTimeoutSeconds 1
+    Assert-Equal 'invalid-status' $nullRecording.outcome 'null recorder status fails closed'
+    [ordered]@{
+        instance = $instance
+        outcome = 'saved'
+        instance_recording_after = $false
+    } | ConvertTo-Json -Compress | Set-Content -LiteralPath $paths.Status
+    $missingCancelRecording = Stop-GatewayTraceRecorder -InstanceName $instance -Paths $paths -StopTimeoutSeconds 1
+    Assert-Equal 'invalid-status' $missingCancelRecording.outcome 'missing cancel field fails closed'
     $paths.Status = Join-Path $tempRoot 'missing-status.json'
     $missingRecording = Stop-GatewayTraceRecorder -InstanceName $instance -Paths $paths -StopTimeoutSeconds 0
     Assert-Equal 'missing-status' $missingRecording.outcome 'missing recorder status is a failure'

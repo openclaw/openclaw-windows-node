@@ -96,8 +96,8 @@ if ($SetupTimeoutSeconds + 60 -ge $MaxRecordingSeconds) {
     throw 'MaxRecordingSeconds must exceed SetupTimeoutSeconds by at least 60 seconds.'
 }
 $wprStopTimeoutSeconds = [int][Math]::Min(1800, [Math]::Max(180, [Math]::Ceiling($MaxRecordingSeconds / 2)))
-if ($RecorderStopTimeoutSeconds -le ($wprStopTimeoutSeconds + 60)) {
-    throw 'RecorderStopTimeoutSeconds must exceed the WPR stop timeout by at least 60 seconds.'
+if ($RecorderStopTimeoutSeconds -lt ($wprStopTimeoutSeconds + 90)) {
+    throw 'RecorderStopTimeoutSeconds must exceed the WPR stop timeout by at least 90 seconds.'
 }
 $PayloadAppRoot = @($PayloadAppRoot | ForEach-Object {
     $full = [IO.Path]::GetFullPath($_)
@@ -226,7 +226,8 @@ if ($null -ne $attempt) {
 $parsedOutcome = if ($attempt) { $attempt.Parsed.Outcome } else { 'not-observed' }
 # Assign through @() so an empty result serializes as [] rather than null.
 $milestones = @(if ($attempt) { $attempt.Parsed.Milestones })
-$outcome = Resolve-NativeSetupOutcome -ParsedOutcome $parsedOutcome -StopReason $stopReason
+$outcome = Resolve-NativeSetupOutcome -ParsedOutcome $parsedOutcome -StopReason $stopReason `
+    -AttemptObserved ($null -ne $attempt)
 if ($attempt -and $uiStopTicks -gt 0 -and $outcome -in @('reached-ai-setup', 'failed-ui-only')) {
     $name = if ($outcome -eq 'reached-ai-setup') { 'ai-setup-page' } else { 'ui-retry-shown' }
     $milestones += [pscustomobject]@{ Name = $name; Ticks = $uiStopTicks }

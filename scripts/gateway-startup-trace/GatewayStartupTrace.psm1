@@ -94,6 +94,18 @@ function Get-StartupArmValidity {
     }
 }
 
+function Test-StartupCleanupComplete {
+    param($Cleanup, $Awake)
+    if ($null -eq $Cleanup -or $null -eq $Awake) { return $false }
+    if ($null -eq $Awake.PSObject.Properties['release']) { return $false }
+    if (@($Cleanup.PSObject.Properties | Where-Object {
+        ($_.Name -in 'stop', 'deprovision' -and $_.Value -ne 'reported-success') -or
+        ($_.Name -eq 'workspace' -and $_.Value -ne 'not-found') -or
+        ($_.Name -eq 'ownership_record' -and $_.Value -eq 'retained-after-deprovision')
+    }).Count -gt 0) { return $false }
+    return $Awake.release -in @('not-needed', 'clear=ok;close=ok')
+}
+
 function ConvertTo-UtcFileTime {
     # ConvertFrom-Json in PowerShell 7 may already have turned ISO strings into DateTime values.
     param($Value)
@@ -123,9 +135,9 @@ function Get-CompleteMpPerformanceReport {
 $script:NativeSetupMilestonePatterns = [ordered]@{
     'session-prepare' = '^Preparing the (isolated Gateway session|packaged Gateway runtime)\.\.\.$'
     'config-validation-start' = '^Validating native Gateway configuration\.\.\.$'
-    'gateway-start-requested' = '^\[WS\] Native Gateway start requested'
-    'gateway-start-acknowledged' = '^\[WS\] Native Gateway start acknowledged'
-    'readiness-timeout' = '^\[WS\] The package-managed Gateway did not report a verified listener'
+    'gateway-start-requested' = '^(?:\[WS\] )?Native Gateway start requested'
+    'gateway-start-acknowledged' = '^(?:\[WS\] )?Native Gateway start acknowledged'
+    'readiness-timeout' = '(?:\[WS\] )?The package-managed Gateway did not report a verified listener'
 }
 # NativeGatewaySetupHost.ReportProgress(VerifyingEndpoint), logged verbatim by the setup page.
 $script:ListenerVerifiedMessage = 'Verifying the Gateway endpoint before connecting...'
@@ -198,6 +210,9 @@ function Get-NativeSetupMilestones {
             $failedStep = if ($record.FailedStep) { $record.FailedStep }
                 elseif ($record.Message -match '^Native Gateway setup failed during (\w+):') { $Matches[1] }
                 else { $record.Step }
+            if ($record.Message -match $script:NativeSetupMilestonePatterns['readiness-timeout']) {
+                $milestones.Add([pscustomobject]@{ Name = 'readiness-timeout'; Ticks = $record.Ticks })
+            }
             $milestones.Add([pscustomobject]@{ Name = 'setup-failed'; Ticks = $record.Ticks })
             break
         }
@@ -251,7 +266,8 @@ function Resolve-NativeSetupOutcome {
     preparation reached AI setup, not full onboarding. 'failed-ui-only' means the setup page
     showed Retry without a logged failure; some unexpected-cancellation paths only Trace.
     #>
-    param([string]$ParsedOutcome, [string]$StopReason)
+    param([string]$ParsedOutcome, [string]$StopReason, [bool]$AttemptObserved = $true)
+    if (-not $AttemptObserved) { return 'not-observed' }
     if ($ParsedOutcome -in @('failed', 'cancelled', 'not-started')) { return $ParsedOutcome }
     if ($StopReason -eq $script:AiSetupReachedSignal) { return 'reached-ai-setup' }
     if ($StopReason -eq 'ui-retry') { return 'failed-ui-only' }
@@ -397,17 +413,18 @@ function Stop-GatewayTraceRecorder {
     }
     try {
         $status = Get-Content -LiteralPath $Paths.Status -Raw | ConvertFrom-Json
+        if ($null -eq $status -or $status -isnot [pscustomobject] -or
+            $null -eq $status.PSObject.Properties['instance'] -or
+            $null -eq $status.PSObject.Properties['outcome'] -or
+            $null -eq $status.PSObject.Properties['cancel'] -or
+            $null -eq $status.PSObject.Properties['instance_recording_after'] -or
+            $status.instance -isnot [string] -or $status.outcome -isnot [string] -or
+            $status.cancel -isnot [string] -or $status.instance_recording_after -isnot [bool] -or
+            $status.instance -ne $InstanceName -or [string]::IsNullOrWhiteSpace($status.outcome)) {
+            throw 'Recorder status fields are missing or invalid.'
+        }
     } catch {
-        Write-Warning "Recorder status could not be read for WPR instance $InstanceName."
-        return [pscustomobject]@{ outcome = 'invalid-status'; cancel = 'unknown'; instance_recording_after = $null }
-    }
-    if ($null -eq $status.PSObject.Properties['instance'] -or
-        $null -eq $status.PSObject.Properties['outcome'] -or
-        $null -eq $status.PSObject.Properties['instance_recording_after'] -or
-        $status.instance -isnot [string] -or $status.outcome -isnot [string] -or
-        $status.instance_recording_after -isnot [bool] -or
-        $status.instance -ne $InstanceName -or [string]::IsNullOrWhiteSpace($status.outcome)) {
-        Write-Warning "Recorder status did not match WPR instance $InstanceName."
+        Write-Warning "Recorder status is invalid for WPR instance $InstanceName."
         return [pscustomobject]@{ outcome = 'invalid-status'; cancel = 'unknown'; instance_recording_after = $null }
     }
     Write-Host "Recorder outcome: $($status.outcome); cancel: $($status.cancel)"
@@ -424,4 +441,4 @@ function Stop-GatewayTraceRecorder {
     return $status
 }
 
-Export-ModuleMember -Function Get-IntervalUnionLength, Get-ClippedIntervals, Get-PayloadPackageGroup, Get-StartupPhaseWindows, Get-StartupArmValidity, ConvertTo-UtcFileTime, Get-CompleteMpPerformanceReport, Get-NativeSetupMilestones, Get-NativeSetupWindows, Resolve-NativeSetupOutcome, Read-SetupStopSignal, Get-NativeSetupUiStateFromIds, Get-NativeSetupUiState, Test-IsElevated, New-PrivateDirectory, Wait-ForFile, Start-GatewayTraceRecorder, Stop-GatewayTraceRecorder
+Export-ModuleMember -Function Get-IntervalUnionLength, Get-ClippedIntervals, Get-PayloadPackageGroup, Get-StartupPhaseWindows, Get-StartupArmValidity, Test-StartupCleanupComplete, ConvertTo-UtcFileTime, Get-CompleteMpPerformanceReport, Get-NativeSetupMilestones, Get-NativeSetupWindows, Resolve-NativeSetupOutcome, Read-SetupStopSignal, Get-NativeSetupUiStateFromIds, Get-NativeSetupUiState, Test-IsElevated, New-PrivateDirectory, Wait-ForFile, Start-GatewayTraceRecorder, Stop-GatewayTraceRecorder

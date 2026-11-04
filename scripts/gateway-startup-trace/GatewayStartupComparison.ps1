@@ -19,6 +19,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+Import-Module (Join-Path $PSScriptRoot 'GatewayStartupTrace.psm1') -Force
 
 if ($PSVersionTable.PSEdition -ne 'Core') {
     throw 'Run this comparison with PowerShell 7; the MXC SDK cannot load in Windows PowerShell.'
@@ -643,6 +644,7 @@ try {
                 }
             } catch {
                 $report.cleanup.workspace = 'unverified'
+                $hadFailure = $true
             }
         }
         if ($report.cleanup.deprovision -eq 'reported-success' -and $recordWritten) {
@@ -651,6 +653,7 @@ try {
                 $report.cleanup.ownership_record = 'removed-after-deprovision'
             } catch {
                 $report.cleanup.ownership_record = 'retained-after-deprovision'
+                $hadFailure = $true
             }
         }
     }
@@ -664,6 +667,9 @@ try {
             $report.awake.release = 'failed'
             $hadFailure = $true
         }
+    }
+    if (-not (Test-StartupCleanupComplete -Cleanup $report.cleanup -Awake $report.awake)) {
+        $hadFailure = $true
     }
     try {
         $json = $report | ConvertTo-Json -Depth 12 -Compress
