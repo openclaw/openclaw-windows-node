@@ -26,6 +26,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'GatewayStartupTrace.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'GatewayResourceTrace.psm1') -Force
 
 $ticksPerMs = 10000.0
 $appRoot = [IO.Path]::GetFullPath((Join-Path $PayloadRoot 'app')).TrimEnd('\') + '\'
@@ -143,6 +144,19 @@ if ($result.failure) {
     $comparisonFailure = 'arm-not-valid'
 }
 
+$resourceWindows = @(foreach ($name in @('host', 'isolated')) {
+    $arm = $result.$name
+    if ((Get-StartupArmValidity $arm).Status -ne 'captured') { continue }
+    $start = ConvertTo-UtcFileTime $arm.trace.started_utc
+    [pscustomobject]@{ Name = "$name`:overall"; StartTicks = $start; EndTicks = $start + [long]($arm.trace.elapsed_ms * 10000) }
+    foreach ($window in Get-StartupPhaseWindows $arm.trace) {
+        [pscustomobject]@{
+            Name = "$name`:$($window.Phase)"
+            StartTicks = $start + [long]($window.StartMs * 10000)
+            EndTicks = $start + [long]($window.EndMs * 10000)
+        }
+    }
+})
 $summary = [ordered]@{
     comparison_status = $comparisonStatus
     comparison_failure = $comparisonFailure
@@ -158,10 +172,11 @@ $summary = [ordered]@{
         Get-ArmSummary 'host' $result.host
         Get-ArmSummary 'isolated' $result.isolated
     )
+    resources = Invoke-ResourceTraceAnalysis -TracePath $TracePath -Windows $resourceWindows -PayloadRoots @($appRoot)
     interpretation = 'Scan union is wall-clock coverage by at least one Defender scan; it correlates with, but does not prove, blocking. Summed scan time, CPU time and windows must not be added as exclusive contributions.'
 }
 
-$json = $summary | ConvertTo-Json -Depth 8
+$json = $summary | ConvertTo-Json -Depth 12
 if ($OutputPath) {
     [IO.File]::WriteAllText($OutputPath, $json, [Text.UTF8Encoding]::new($false))
 }

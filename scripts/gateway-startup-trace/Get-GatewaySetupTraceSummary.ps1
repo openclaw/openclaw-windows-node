@@ -26,6 +26,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'GatewayStartupTrace.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'GatewayResourceTrace.psm1') -Force
 
 $ticksPerMs = 10000.0
 $roots = @($PayloadAppRoot | ForEach-Object {
@@ -160,10 +161,20 @@ $summary = [ordered]@{
     processes = $processes
     windows = @($windows)
     top_groups = @($groups)
+    resources = Invoke-ResourceTraceAnalysis -TracePath $TracePath -PayloadRoots $roots -Windows @(
+        [pscustomobject]@{ Name = 'recording-overall'; StartTicks = $recordingStart; EndTicks = $recordingStop }
+        foreach ($window in $windowList) {
+            [pscustomobject]@{
+                Name = $window.Phase
+                StartTicks = [Math]::Max([long]$window.Start, $recordingStart)
+                EndTicks = [Math]::Min([long]$window.End, $recordingStop)
+            }
+        }
+    )
     interpretation = 'Windows come from Companion setup-log milestones plus the observed UI stop. listener-verified is not success; reached-ai-setup means Gateway preparation reached the AI-setup page, not full onboarding. Scan union correlates with, but does not prove, blocking. Summed scan time and windows must not be added as exclusive contributions.'
 }
 
-$json = $summary | ConvertTo-Json -Depth 8
+$json = $summary | ConvertTo-Json -Depth 12
 if ($OutputPath) {
     [IO.File]::WriteAllText($OutputPath, $json, [Text.UTF8Encoding]::new($false))
 }

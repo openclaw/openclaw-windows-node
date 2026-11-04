@@ -36,9 +36,12 @@ param(
     [Parameter(Mandatory)][string]$SetupLogDirectory,
     [Parameter(Mandatory)][string[]]$PayloadAppRoot,
     [string]$OutputDirectory = (Join-Path $env:LOCALAPPDATA 'OpenClawStartupTraces'),
+    [string]$BuildIdentityPath,
     [ValidateRange(60, 3600)][int]$MaxRecordingSeconds = 1800,
     [ValidateRange(30, 3500)][int]$SetupTimeoutSeconds = 1500,
     [int]$CompanionProcessId,
+    [int[]]$ResourceProcessId = @(),
+    [string[]]$ResourceImageRoot = @(),
     [ValidateRange(10, 600)][int]$RecorderStartTimeoutSeconds = 120,
     [ValidateRange(90, 2400)][int]$RecorderStopTimeoutSeconds = 2000
 )
@@ -47,6 +50,7 @@ Set-StrictMode -Version Latest
 
 $toolDirectory = Join-Path $PSScriptRoot 'gateway-startup-trace'
 Import-Module (Join-Path $toolDirectory 'GatewayStartupTrace.psm1') -Force
+Import-Module (Join-Path $toolDirectory 'GatewayResourceTrace.psm1') -Force
 
 if ($PSVersionTable.PSEdition -ne 'Core') { throw 'Run this script with PowerShell 7 (pwsh).' }
 if (Test-IsElevated) {
@@ -80,6 +84,8 @@ if (-not (Test-Path -LiteralPath $OutputDirectory)) {
 $runDirectory = New-PrivateDirectory (Join-Path $OutputDirectory ("{0:yyyyMMdd-HHmmss}-setup-{1}" -f [DateTime]::UtcNow, $runId.Substring(0, 8)))
 $controlDirectory = Join-Path $runDirectory 'control'
 New-Item -ItemType Directory -Path $controlDirectory | Out-Null
+Write-ResourceTraceConfiguration -ControlDirectory $controlDirectory -PayloadRoots @($PayloadAppRoot + $ResourceImageRoot) `
+    -ProcessIds @($ResourceProcessId + $(if ($CompanionProcessId) { $CompanionProcessId })) -BuildIdentityPath $BuildIdentityPath
 $tracePath = Join-Path $runDirectory 'setup-trace.etl'
 $setupResultPath = Join-Path $runDirectory 'setup-result.json'
 $summaryPath = Join-Path $runDirectory 'setup-summary.json'

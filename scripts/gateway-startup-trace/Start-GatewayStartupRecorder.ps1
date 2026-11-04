@@ -23,6 +23,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'GatewayStartupTrace.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'GatewayResourceTrace.psm1') -Force
 
 $wpr = Join-Path $env:SystemRoot 'System32\wpr.exe'
 $readyPath = Join-Path $ControlDirectory 'recorder-ready.json'
@@ -33,6 +34,9 @@ $startAttempted = $false
 $stopSaved = $false
 $instanceRecordingAfter = $false
 $outcome = 'not-started'
+$resourceWriter = $null
+$resourceSamples = 0
+$resourceMaximumCaptureMs = 0.0
 
 function Write-ControlFile {
     param([string]$Path, $Value)
@@ -103,6 +107,26 @@ try {
     if (-not (Test-Path -LiteralPath $defenderProfile -PathType Leaf)) {
         throw 'The Defender performance profile is unavailable.'
     }
+    $resourceConfiguration = Join-Path $ControlDirectory 'resource-config.json'
+    if (-not (Test-Path -LiteralPath $resourceConfiguration -PathType Leaf)) {
+        throw 'Resource capture configuration is missing.'
+    }
+    $configuration = Get-Content -LiteralPath $resourceConfiguration -Raw | ConvertFrom-Json
+    $samplingDelayMilliseconds = [int]$configuration.context.sampling_delay_ms
+    if ($samplingDelayMilliseconds -lt 100 -or $samplingDelayMilliseconds -gt 10000) {
+        throw 'Resource sampling delay must be from 100 through 10000 milliseconds.'
+    }
+    Initialize-ResourceSampler
+    [OpenClaw.Trace.ResourceSampler]::PayloadRoots = [string[]]@($configuration.payload_roots | ForEach-Object {
+        [IO.Path]::GetFullPath($_).TrimEnd('\') + '\'
+    })
+    [OpenClaw.Trace.ResourceSampler]::SelectedProcesses.Clear()
+    foreach ($process in $configuration.processes) {
+        [OpenClaw.Trace.ResourceSampler]::SelectedProcesses.Add([int]$process.id, [long]$process.started_utc_ticks)
+    }
+    $resourcePath = Join-Path (Split-Path -Parent $TracePath) 'resource-samples.jsonl'
+    $resourceStream = [IO.File]::Open($resourcePath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+    $resourceWriter = [IO.StreamWriter]::new($resourceStream, [Text.UTF8Encoding]::new($false))
 
     $startAttempted = $true
     $start = Invoke-BoundedWpr "-start `"$defenderProfile!Scans.Light`" -start FileIO.Light -start DiskIO.Light -start CPU.Light -filemode -instancename $InstanceName" $wprStartTimeoutSeconds
@@ -126,7 +150,13 @@ try {
         if ([DateTimeOffset]::UtcNow -ge $deadline) {
             throw 'The recording deadline elapsed before the controller finished.'
         }
-        Start-Sleep -Milliseconds 500
+        $sampleTimer = [Diagnostics.Stopwatch]::StartNew()
+        $snapshot = [OpenClaw.Trace.ResourceSampler]::Capture()
+        $resourceWriter.WriteLine(($snapshot | ConvertTo-Json -Depth 5 -Compress))
+        $resourceWriter.Flush()
+        $resourceSamples++
+        $resourceMaximumCaptureMs = [Math]::Max($resourceMaximumCaptureMs, $sampleTimer.Elapsed.TotalMilliseconds)
+        Start-Sleep -Milliseconds $samplingDelayMilliseconds
     }
 
     $stop = Invoke-BoundedWpr "-stop `"$TracePath`" -instancename $InstanceName" $wprStopTimeoutSeconds
@@ -143,6 +173,12 @@ try {
     $outcome = 'failed: ' + $_.Exception.Message
     Write-Warning $outcome
 } finally {
+    if ($resourceWriter) {
+        try { $resourceWriter.Dispose() } catch {
+            $outcome = 'failed: resource-sample-close'
+            Write-Warning 'Resource samples could not be flushed. Continuing owned WPR cleanup.'
+        }
+    }
     $cancel = 'not-needed'
     if ($started -or ($startAttempted -and -not $stopSaved)) {
         $cancelResult = Invoke-BoundedWpr "-cancel -instancename $InstanceName" $wprControlTimeoutSeconds
@@ -159,6 +195,8 @@ try {
         cancel = $cancel
         instance_recording_after = $instanceRecordingAfter
         finished_utc = [DateTimeOffset]::UtcNow.ToString('O')
+        resource_samples = $resourceSamples
+        resource_maximum_capture_ms = [Math]::Round($resourceMaximumCaptureMs, 1)
     })
     if ($instanceRecordingAfter) {
         Write-Warning "Instance $InstanceName may still be recording. Run: wpr.exe -cancel -instancename $InstanceName"

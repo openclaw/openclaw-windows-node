@@ -33,6 +33,7 @@ param(
     [Parameter(Mandatory)][string]$NodeArchive,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$NodeArchiveSha256,
     [string]$OutputDirectory = (Join-Path $env:LOCALAPPDATA 'OpenClawStartupTraces'),
+    [string]$BuildIdentityPath,
     [ValidateSet('isolated-then-host', 'host-then-isolated')][string]$Order = 'isolated-then-host',
     [string]$MxcSdkVersion = '1.0.1',
     [ValidateRange(10, 1600)][int]$BenchmarkTimeoutSeconds = 240,
@@ -47,6 +48,7 @@ Set-StrictMode -Version Latest
 $toolDirectory = Join-Path $PSScriptRoot 'gateway-startup-trace'
 
 Import-Module (Join-Path $toolDirectory 'GatewayStartupTrace.psm1') -Force
+Import-Module (Join-Path $toolDirectory 'GatewayResourceTrace.psm1') -Force
 
 function Expand-NodeExecutable {
     param([string]$Archive, [string]$Destination)
@@ -94,6 +96,7 @@ if (-not (Test-Path -LiteralPath $OutputDirectory)) {
 $runDirectory = New-PrivateDirectory (Join-Path $OutputDirectory ("{0:yyyyMMdd-HHmmss}-{1}" -f [DateTime]::UtcNow, $runId.Substring(0, 8)))
 $controlDirectory = Join-Path $runDirectory 'control'
 New-Item -ItemType Directory -Path $controlDirectory | Out-Null
+Write-ResourceTraceConfiguration -ControlDirectory $controlDirectory -PayloadRoots @((Join-Path $PayloadRoot 'app'), $runDirectory) -BuildIdentityPath $BuildIdentityPath
 $resultPath = Join-Path $runDirectory 'comparison-result.json'
 $tracePath = Join-Path $runDirectory 'startup-trace.etl'
 $summaryPath = Join-Path $runDirectory 'startup-summary.json'

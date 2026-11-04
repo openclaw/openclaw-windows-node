@@ -1,9 +1,12 @@
-# Gateway startup trace
+# Gateway startup, setup and chat performance traces
 
 `scripts\Invoke-GatewayStartupTrace.ps1` measures where native Gateway startup time goes, with
-a focus on Microsoft Defender real-time scanning of the payload's many files. It runs the
+a focus on timing, resource use and Microsoft Defender scanning of the payload's many files. It runs the
 same bounded startup on the host and in a temporary MXC isolated session while one named
 WPR instance records Defender scans, file I/O, disk I/O and CPU sampling.
+The same recorder supports real Companion setup and user-driven chat. A bounded sampler
+adds process CPU, memory, logical I/O and host contention evidence. These tools are for
+individual investigations, not continuous monitoring.
 
 Use it to compare payload changes such as bundling, lazy loading or install-time prewarm.
 It does not change Defender, power or system settings, and it never adds exclusions.
@@ -19,6 +22,15 @@ It does not change Defender, power or system settings, and it never adds exclusi
 - The MXC SDK version (default `1.0.1`) in the NuGet package cache (`NUGET_PACKAGES` or
   `%USERPROFILE%\.nuget\packages`).
 - `wpr.exe` and the `ConfigDefenderPerformance` module (built into supported Windows).
+- .NET 10 SDK for the offline ETL analyzer. Build it **before** preparing a cold run:
+
+```powershell
+dotnet build .\scripts\gateway-startup-trace\Analyzer\GatewayTraceAnalyzer.csproj
+```
+
+The analyzer uses Microsoft.Diagnostics.Tracing.TraceEvent 4.0.0. It runs after capture,
+not inside the measured workload. Without its build, summaries explicitly report
+`unavailable-build-analyzer`; sampled counters and Defender summaries still remain.
 
 Only trace **trusted** payloads. The startup guard (`startup-guard.cjs`) is not a security
 sandbox. It patches selected Node APIs to block networking and child processes, redirects
@@ -44,6 +56,11 @@ with `-OutputDirectory`) with inheritance disabled. It contains:
 | `startup-trace.etl` | Full WPR trace | No. It contains machine-wide activity |
 | `comparison-result.json` | Guard timings, cleanup and identity checks | Review first |
 | `startup-summary.json` | Sanitized aggregates with payload-relative paths | Yes |
+| `resource-samples.jsonl` | Private process creation identities and host/process counter snapshots | No |
+| `control\resource-config.json` | Private process/image-root selection and supplied build identities | No |
+| `resource-analysis-request.json` | Private ETL correlation windows and process identities | No |
+| `resource-etl-summary.json` | Sanitized CPU samples, logical file activity and machine disk activity | Yes |
+| `resource-timeline.json` | Sanitized sampled memory timeline with anonymous process indexes | Yes |
 
 Scratch `node.exe` and the synthetic host profile are removed at the end. The driver stops
 and deprovisions the temporary MXC session by exact ID. `-SkipRecording` runs the
@@ -106,7 +123,7 @@ payload files:
 
 Scan coverage correlates with startup time but does not prove the probe was blocked on a
 scan. Do not add scan time, CPU time and disk time as exclusive contributions. Use WPA on
-the private ETL for file I/O, disk and CPU detail, including MiniFilter delay when present.
+the private ETL for deeper file I/O, disk and CPU detail, including MiniFilter delay when present.
 A change in the OS file cache is separate from Defender scan caching. Measure any prewarm
 claim on a comparable packaged or MXC startup.
 
@@ -152,6 +169,13 @@ root, so a zero-scan result can be told apart from a wrong root.
 `setup-summary.json` reports only fixed `stop_reason` codes. Raw controller error text stays
 in the private `setup-result.json`.
 
+The sampler includes the given Companion PID and executable images under the payload roots.
+Node, `clawctl` and a local-model host can live elsewhere. Pass their executable directories
+with `-ResourceImageRoot`, or their already-running PIDs with `-ResourceProcessId`. Only
+processes whose full image path matches a configured root, or whose PID **and native creation
+time** match an explicit selection, contribute process counters. A child is not automatically
+included just because its parent was selected.
+
 `setup-summary.json` reports payload scans from every process, using anonymous process
 indexes, and splits the recording at setup-log milestones. Those milestones run from
 `attempt-started` through config validation, `gateway-start-requested` and
@@ -166,10 +190,121 @@ Setup milestones are not the Gateway's `session-runtime-import` or `plugin-confi
 Take those from Gateway diagnostics, collected with **Collect Gateway diagnostics** on the
 setup page. Do not compare setup-mode scan counts directly with synthetic-probe counts.
 
+## Resource outputs and limits
+
+Startup and setup summaries retain their Defender fields and add `resources`. Resource
+windows use the same phase/milestone boundaries, including unclassified startup before the
+first marker. Whole-recording/whole-arm windows overlap the phase windows; do not sum them.
+
+| Output | Meaning and limit |
+|---|---|
+| Process CPU user/kernel milliseconds | Differences between native counters for the same PID and creation time. Only sample endpoints inside the window contribute. One observation gives `null`, not zero |
+| Sampled peak working set and private bytes | Highest observed value in that window. Not the process's lifetime peak, committed system memory, or a sum of exclusive memory across processes |
+| Logical read/write bytes and operations | Process I/O counter deltas. Can include pipes/network/device I/O. Not physical disk traffic |
+| Host CPU fraction and available memory | Machine-wide context, including other workloads and the recorder. Not proof that contention caused the measured delay |
+| Maximum sample gap, non-awake gap and clock adjustment | Sampling uses a 500 ms delay after each capture, so the real cadence is slower. Unbiased awake time and the monotonic clock distinguish non-awake intervals from wall-clock adjustment. These are not named sleep/resume ETW events |
+| ETL CPU sample counts and image groups | Selected process lifetimes, split at observed process starts/exits. Counts are not milliseconds or provider/JS parse time. Missing native images and JIT frames stay unresolved |
+| ETL file open requests, read/write counts and bytes | Logical activity grouped by package and top payload-relative files. Open requests are not verified successful opens. Missing filenames remain unresolved |
+| ETL machine disk bytes, counts and response time | Machine-wide requests assigned by completion timestamp. Response time is ETW-reported device response time, not independently correlated issue-to-completion latency. Do not attribute these totals or overlapping request durations to Gateway blocking |
+| Event-loss and observation flags | Loss makes the ETL report incomplete. No events is unobserved, not proof of no activity or complete provider capture |
+
+`resource-timeline.json` contains available host memory and selected-process working set/private
+bytes at each observation. Process labels are anonymous and stable within that run's resource
+outputs. Defender process indexes are a separate namespace.
+Each process has its own observation timestamp because process enumeration is not atomic.
+Its phase assignment and timeline offset use that timestamp, not enumeration start.
+
+The recorder enumerates processes to discover matching executable images. Unavailable/exited
+process observations are counted; denied I/O counters remain `null`. Short-lived processes
+between samples can be missed completely. A guest PID is not assumed to be a host PID. If MXC
+guest activity is not visible/matchable, process coverage stays absent rather than claiming
+attribution. Use the private ETL for additional investigation.
+
+Sampling and ETW have observer overhead. `sampler_maximum_capture_ms` reports the longest
+snapshot plus serialization/write cost, not total recorder CPU. Host measurements include
+that overhead. Record competing work, boot/cache state, run order, sleep and thermal/power
+conditions separately. The scripts do not control or change them.
+To change the default 500 ms post-capture delay, set `OPENCLAW_TRACE_SAMPLE_INTERVAL_MS`
+to an integer from 100 to 10000 before starting the controller. The selected delay is
+recorded in context; keep it identical across comparisons.
+
+For reproducible identities, optionally pass `-BuildIdentityPath` to any controller. Its JSON
+object accepts only `companion_sha256`, `gateway_sha256`, `local_model_sha256`,
+`companion_commit`, `gateway_commit`, `payload_commit`, and the corresponding
+`companion_version`, `gateway_version`, `payload_version`, `node_version` fields. Hashes must
+be 64 hex digits, commits 40 hex digits, versions dot-separated with an initial numeric
+component. Unknown fields and free text are rejected. Supply previously computed identities;
+do not hash the payload immediately before a cold run. These identities are explicitly
+operator-supplied, not independently verified during capture. If omitted, identity is
+`not-supplied`. Synthetic comparison results retain their existing payload identity checks.
+Resource context also records OS version, architecture, logical processor count and a digest
+of the trace tool's source files.
+
+Old traces without `resource-samples.jsonl` report `not-recorded`; no memory/counter history
+is reconstructed from nothing. Re-run the existing summary script after building the analyzer
+to analyze a saved recording, without recording again.
+
+## Real chat mode
+
+Launch and connect the intended Companion/Gateway normally first. Do not change another
+person's runtime, package or profile for a trace. Obtain approval for the real chat operation
+and elevated machine-wide capture; use a non-sensitive test prompt. The controller does not
+send a prompt, read credentials, inspect chat logs, or start/stop any application.
+
+From an unelevated PowerShell 7 console:
+
+```powershell
+.\scripts\Invoke-GatewayChatTrace.ps1 `
+    -ProcessId <Companion-PID>, <Gateway-host-PID>, <optional-local-model-PID> `
+    -PayloadAppRoot 'C:\payloads\candidate\app' `
+    -ChatTimeoutSeconds 600
+```
+
+Pass only the real, already-running process IDs whose resource use you intend to measure.
+For a remote Gateway, select the local Companion process and omit `-PayloadAppRoot`; no
+remote CPU/memory or provider timing can be measured. PID reuse does not silently select
+a different process. Restarted/new processes must be selected by a new recording.
+
+After UAC approval, the controller prints the private run directory and marker command.
+In a second console, use the same directory for each observation:
+
+```powershell
+.\scripts\Write-GatewayChatTraceMarker.ps1 -RunDirectory '<printed-run-directory>' -Event send
+.\scripts\Write-GatewayChatTraceMarker.ps1 -RunDirectory '<printed-run-directory>' -Event first-response
+.\scripts\Write-GatewayChatTraceMarker.ps1 -RunDirectory '<printed-run-directory>' -Event completed
+```
+
+Mark `send` as you send in the actual chat UI, `first-response` when the first response
+becomes visible, and `completed` when the reply ends. Use `failed` or `cancelled` instead
+of `completed` when applicable. Only those event names and timestamps are recorded.
+Duplicate, reordered, missing-send and conflicting terminal markers fail closed.
+To stop without a terminal observation, create `<run>\control\chat-stop`. Timeout or manual
+stop is incomplete and exits nonzero; failure/cancellation remain explicit chat outcomes.
+The recording limit must exceed the chat timeout by more than 60 seconds.
+
+`chat-summary.json` reports observed send-to-first-response and send-to-terminal times,
+pre-send and between-marker resource windows, and Defender coverage when payload roots were
+supplied. Marker timing includes console switching, human reaction and command scheduling.
+Delay in marking send versus first response can bias the observed duration in either direction.
+Controller polling affects the recording-stop boundary, not the marker-to-marker duration.
+They are **not instrumented server time to first token**, network latency, or tokens/second.
+Those fields remain unavailable. This mode measures a real chat interaction without
+claiming a more precise timing boundary than the observation actually provides.
+
+The same named-instance deadline, stop/cancel and manual recovery rules apply to chat.
+Closing the controller does not close the chat or the app. Keep ETLs and raw samples private:
+ETLs can contain unrelated activity even though the summary and marker files contain no
+prompt, response text, session key, credentials or command lines.
+
 ## Tests
 
 ```powershell
+dotnet build .\scripts\gateway-startup-trace\Analyzer\GatewayTraceAnalyzer.csproj
 .\scripts\test-gateway-startup-trace.ps1
+.\scripts\test-gateway-resource-trace.ps1
 ```
 
-This runs offline helper, guard and refusal checks. It never starts WPR, MXC or a Gateway.
+These run offline helper, guard, refusal, resource projection, PID reuse, marker publication
+and ordering checks, plus a current-test-process sampler smoke check. They never start WPR,
+MXC, Companion, a Gateway or a chat request. A successful build/offline suite does not prove
+current-head WPR provider coverage, UAC, actual chat timing or MXC guest attribution.
