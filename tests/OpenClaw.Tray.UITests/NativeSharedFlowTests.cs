@@ -813,7 +813,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     .GetField("_moreOptionsButton", BindingFlags.NonPublic | BindingFlags.Instance)!;
                 Button? more = null;
                 await TestSupport.WaitForRenderedConditionAsync(
-                    () => (more = moreField.GetValue(wizard) as Button) is { IsLoaded: true } or { XamlRoot: not null },
+                    () => (more = moreField.GetValue(wizard) as Button) is { IsLoaded: true },
                     "Gateway More button loaded",
                     () => $"field={(moreField.GetValue(wizard) is Button b ? $"Button(Parent={b.Parent?.GetType().Name ?? "null"}, IsLoaded={b.IsLoaded}, XamlRoot={(b.XamlRoot is null ? "null" : "set")})" : "null")}, page.IsLoaded={wizard.IsLoaded}");
                 var continueButton = Find<Button>(wizard, "PrimaryButton");
