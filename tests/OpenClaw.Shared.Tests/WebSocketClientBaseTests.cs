@@ -25,6 +25,7 @@ public class TestWebSocketClient : WebSocketClientBase
     public int OnErrorCallCount { get; private set; }
     public Exception? LastError { get; private set; }
     public int OnDisposingCallCount { get; private set; }
+    public ConcurrentQueue<(long Generation, GatewayHandshakePhase Phase)> TransportObservations { get; } = new();
     public bool AutoReconnectEnabled { get; set; } = true;
     public TimeSpan? TestConnectAttemptTimeout { get; set; }
 
@@ -56,6 +57,11 @@ public class TestWebSocketClient : WebSocketClientBase
     {
         OnDisconnectedCallCount++;
     }
+
+    protected override void OnTransportObservation(
+        long connectionGeneration, GatewayHandshakePhase phase,
+        Exception? error = null, GatewayErrorKind? failureKind = null) =>
+        TransportObservations.Enqueue((connectionGeneration, phase));
 
     protected override void OnError(Exception ex)
     {
@@ -717,6 +723,14 @@ public class WebSocketClientBaseTests
         Assert.Contains(ConnectionStatus.Disconnected, statuses);
         Assert.True(client.OnDisconnectedCallCount >= 1);
         Assert.Equal(0, client.OnErrorCallCount);
+        var observations = client.TransportObservations.ToArray();
+        var firstGeneration = observations.First(item => item.Phase == GatewayHandshakePhase.TransportConnecting).Generation;
+        var disconnected = Array.FindIndex(observations, item =>
+            item.Generation == firstGeneration && item.Phase == GatewayHandshakePhase.Disconnected);
+        var replacement = Array.FindIndex(observations, item =>
+            item.Generation != firstGeneration && item.Phase == GatewayHandshakePhase.TransportConnecting);
+        Assert.True(disconnected >= 0, "The lost socket must emit its own disconnect observation.");
+        Assert.True(replacement > disconnected, "Disconnect must be observed before the replacement transport starts.");
     }
 
     [Fact]

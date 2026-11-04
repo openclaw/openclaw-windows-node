@@ -1084,13 +1084,13 @@ public sealed class NativeGatewaySetupTests
         public NativeGatewaySetupDraft Draft { get; }
         public string ConfigPath => NativeGatewayPaths.GetConfigPath(Registry, Draft.GatewayId);
         public JsonObject Config() => JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject();
-        public Fixture(int port = 18789, NativeGatewayContract contract = NativeGatewayContract.Legacy)
+        public Fixture(int port = 18789, NativeGatewayContract contract = NativeGatewayContract.Legacy, TimeProvider? timeProvider = null)
         {
             Draft = new("0123456789abcdef", port, Family) { Contract = contract };
             Registry = new GatewayRegistry(Temp.Path);
             Host = new Host(Events) { Contract = contract };
             Runtime = new Runtime(Events);
-            Service = new NativeGatewaySetupService(Registry, Resolver, Host, () => Runtime);
+            Service = new NativeGatewaySetupService(Registry, Resolver, Host, () => Runtime, timeProvider);
         }
         public Task<NativeGatewaySetupSession> PrepareAsync() => Service.PrepareAsync(Draft, CancellationToken.None);
         public void Dispose() => Temp.Dispose();
@@ -1161,6 +1161,9 @@ public sealed class NativeGatewaySetupTests
         }
 
         public List<NativeGatewaySetupStage> Progress { get; } = [];
+        public Action<long, GatewayHandshakeObservation>? HandshakeObservation { get; set; }
+        public void ReportHandshakeObservation(long attempt, GatewayHandshakeObservation observation) =>
+            HandshakeObservation?.Invoke(attempt, observation);
         public void ReportProgress(NativeGatewaySetupStage stage) => Progress.Add(stage);
         public Action Prepare { get; set; } = () => { };
         public Action Health { get; set; } = () => { };
@@ -1207,10 +1210,11 @@ public sealed class NativeGatewaySetupTests
         public Action Stop { get; set; } = () => { };
         public Func<Task> StopConnections { get; set; } = () => Task.CompletedTask;
         public Func<Task> DisposeRuntime { get; set; } = () => Task.CompletedTask;
+        public Func<CancellationToken, Task> Ensure { get; set; } = _ => Task.CompletedTask;
         public Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken)
         {
             events.Add("start");
-            return Task.CompletedTask;
+            return Ensure(cancellationToken);
         }
         public Task StopAsync(CancellationToken cancellationToken)
         {

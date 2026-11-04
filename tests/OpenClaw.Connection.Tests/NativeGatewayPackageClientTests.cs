@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.Shared;
 
@@ -11,8 +12,76 @@ public sealed class NativeGatewayPackageClientTests
         new("OpenClaw.Gateway_123456789abcd", "2026.9.5.5",
             @"C:\package\openclaw.exe", @"C:\package\clawctl.exe");
 
+    [Theory]
+    [InlineData("starting", 0)]
+    [InlineData("unknown", 1)]
+    [InlineData("stopped", 0)]
+    [InlineData("unhealthy", 1)]
+    public async Task StatusPreservesReceiptBeforeListenerReadinessAndOnFailedInspection(string state, int exitCode)
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(
+            new NativeGatewayCommandResult(exitCode, JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1, command = "gateway-service status", ok = exitCode == 0,
+                integration = new { kind = "isolated-session", version = 1, gatewayLaunch = new { version = 1 } },
+                gateway = new { state, launch = new { version = 1, attemptId = "11111111111111111111111111111111" } }
+            }))));
+        var status = await client.StatusAsync(s_package, default);
+        Assert.True(status.SupportsLaunchReceipts);
+        Assert.Equal("11111111111111111111111111111111", status.Launch!.AttemptId);
+        Assert.Empty(status.Listeners);
+        Assert.Null(status.Port);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("{\"version\":2}")]
+    [InlineData("{\"version\":\"1\"}")]
+    public async Task MalformedAdvertisedExtensionCannotDowngradeToLegacy(string advertisement)
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(
+            new NativeGatewayCommandResult(0,
+                """{"schemaVersion":1,"command":"gateway-service status","integration":{"kind":"isolated-session","version":1,"gatewayLaunch":ADVERTISEMENT},"gateway":{"state":"stopped"}}"""
+                    .Replace("ADVERTISEMENT", advertisement, StringComparison.Ordinal))));
+        await Assert.ThrowsAsync<NativeGatewayContractException>(() => client.StatusAsync(s_package, default));
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("{\"version\":2,\"attemptId\":\"11111111111111111111111111111111\",\"disposition\":\"created\"}")]
+    [InlineData("{\"version\":1,\"attemptId\":\"00000000000000000000000000000000\",\"disposition\":\"created\"}")]
+    [InlineData("{\"version\":1,\"attemptId\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"disposition\":\"created\"}")]
+    [InlineData("{\"version\":1,\"attemptId\":\"22222222222222222222222222222222\",\"disposition\":\"created\"}")]
+    [InlineData("{\"version\":1,\"attemptId\":\"11111111111111111111111111111111\",\"disposition\":\"unknown\"}")]
+    public async Task ReceiptStartRejectsMissingMalformedAndMismatchedCreatedReceipt(string receipt)
+    {
+        var root = JsonNode.Parse(
+            """{"schemaVersion":1,"command":"gateway-service start","ok":true,"integration":{"kind":"isolated-session","version":1,"gatewayLaunch":{"version":1}},"gateway":{}}""")!;
+        if (receipt != "missing") root["gateway"]!["launch"] = JsonNode.Parse(receipt);
+        var client = new NativeGatewayPackageClient((_, _, _) =>
+            Task.FromResult(new NativeGatewayCommandResult(0, root.ToJsonString())));
+        await Assert.ThrowsAsync<NativeGatewayContractException>(() =>
+            client.StartAsync(s_package, "11111111111111111111111111111111", default));
+    }
+
     [Fact]
-    public async Task FailedStatusLogsSanitizedStderrButKeepsItOutOfExceptionMessages()
+    public async Task CapabilityAbsentStatusRemainsShippingV1WithoutReceipt()
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(new NativeGatewayCommandResult(0,
+            """{"schemaVersion":1,"command":"gateway-service status","integration":{"kind":"isolated-session","version":1},"gateway":{"state":"stopped"}}""")));
+        var status = await client.StatusAsync(s_package, default);
+        Assert.False(status.SupportsLaunchReceipts);
+        Assert.Null(status.Launch);
+    }
+
+    [Theory]
+    [InlineData("status")]
+    [InlineData("start")]
+    [InlineData("stop")]
+    public async Task FailedLifecycleLogsSanitizedStderrButKeepsItOutOfExceptionMessages(string operation)
     {
         var log = new RecordingLogger();
         var client = new NativeGatewayPackageClient((_, _, _) =>
@@ -20,13 +89,18 @@ public sealed class NativeGatewayPackageClientTests
                 "fatal: gateway listener unavailable\nAuthorization: Bearer abcdefghijklmnop0123456789")),
             log);
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => client.StatusAsync(s_package, CancellationToken.None));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => operation switch
+        {
+            "start" => client.StartAsync(s_package, "11111111111111111111111111111111", CancellationToken.None),
+            "stop" => client.StopAsync(s_package, "11111111111111111111111111111111", CancellationToken.None),
+            _ => client.StatusAsync(s_package, CancellationToken.None)
+        });
 
         Assert.Contains("exit code 3", error.Message);
         Assert.DoesNotContain("fatal", error.Message);
         Assert.Contains(log.Warnings,
-            warning => warning.Contains("clawctl gateway-service status --json stderr: fatal: gateway listener unavailable"));
+            warning => warning.Contains($"clawctl gateway-service {operation}") &&
+                warning.Contains("stderr: fatal: gateway listener unavailable"));
         Assert.DoesNotContain(log.Warnings, warning => warning.Contains("abcdefghijklmnop0123456789"));
     }
 

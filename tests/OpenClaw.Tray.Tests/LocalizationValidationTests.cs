@@ -1136,7 +1136,9 @@ public class LocalizationValidationTests
                         "LocalAiPage_ModelSelector.Header" => ["nl-nl"],
                     "Onboarding_V2_ProfileReadOnlyTitle.Text" or "SandboxPage_PresetStrict.Text" => ["fr-fr"],
                     "Onboarding_V2_ProfileFullTitle.Text" or "SandboxPage_PresetOpen.Text" => ["nl-nl"],
-                    "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications" => ["fr-fr"],
+                    "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications"
+                        or "HubWindow_NavigationViewItem_145.Content"
+                        or "WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
                     "Search_Dashboard" or "Search_Group_Dashboard" or "Search_Dashboard_Apps" or
                         "Search_Dashboard_Dashboards" or "Search_Group_Chats" => ["nl-nl"],
