@@ -1,4 +1,5 @@
 using System.Security.AccessControl;
+using System.Text;
 using Microsoft.Mxc.Sdk.V1;
 using OpenClaw.Shared.Mxc;
 
@@ -13,7 +14,10 @@ public sealed class MxcRuntimeNamespaceNativeTests
     [MxcNativeFact]
     public Task NativeBuilder_TwoConcurrentOperationsCannotAccessSiblingRuntimeUnderBroadWriteGrant() => ProbeAsync(true);
 
-    private static async Task ProbeAsync(bool productionPolicy)
+    [MxcNativeFact]
+    public Task NativeSdk_InlinePayloadControlExercisesTheSameNamespaceAssertions() => ProbeAsync(false, inlinePayload: true);
+
+    private static async Task ProbeAsync(bool productionPolicy, bool inlinePayload = false)
     {
         var root = Path.Combine(Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? Directory.GetCurrentDirectory(),
             ".mxc-test-runs", Guid.NewGuid().ToString("N"));
@@ -77,7 +81,7 @@ public sealed class MxcRuntimeNamespaceNativeTests
             var scratch = Path.Combine(operations[index], "scratch");
             var sibling = operations[1 - index];
             var script = Path.Combine(code, "probe.ps1");
-            File.WriteAllText(script, """
+            var scriptText = """
                 param($Runs, $Sibling, $Sensitive, $Scratch, $Code)
                 $ErrorActionPreference = 'Stop'
                 [Console]::WriteLine('READY')
@@ -99,9 +103,11 @@ public sealed class MxcRuntimeNamespaceNativeTests
                 Denied 'sibling-scratch' { [IO.File]::WriteAllText((Join-Path $Sibling 'scratch\new'), 'bad') }
                 Denied 'protected-read' { [IO.File]::ReadAllText((Join-Path $Sensitive 'sentinel')) }
                 Denied 'protected-write' { [IO.File]::WriteAllText((Join-Path $Sensitive 'sentinel'), 'bad') }
-                """);
+                """;
+            File.WriteAllText(script, scriptText);
             var powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
-            string[] argv = [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", script, runs, sibling, sensitive, scratch, code];
+            var argv = BuildLaunchArguments(powershell, script, scriptText,
+                [runs, sibling, sensitive, scratch, code], inlinePayload);
             ContainerRequest request;
             if (productionPolicy)
             {
@@ -126,11 +132,12 @@ public sealed class MxcRuntimeNamespaceNativeTests
                 Ui = new() { Disable = false, Clipboard = ClipboardPolicy.None, AllowInputInjection = false },
                 WorkingDirectory = scratch,
             };
-            var name = $"namespace-{(productionPolicy ? "builder" : "sdk")}";
+            var name = $"namespace-{(productionPolicy ? "builder" : "sdk")}{(inlinePayload ? "-inline-control" : "")}";
             var capture = captures[index] = new(artifacts, name, index, new
             {
                 RunId = Path.GetFileName(root), Root = root, Executable = powershell, Argv = argv,
                 Request = request, Script = File.ReadAllText(script), Port = (int?)null,
+                LaunchMode = inlinePayload ? "inline-control" : "file",
                 ProductionPolicy = productionPolicy, ConcurrentProcesses = count,
             });
             await capture.RunAsync(async evidence =>
@@ -161,6 +168,20 @@ public sealed class MxcRuntimeNamespaceNativeTests
                     Assert.Contains("DENIED:" + check, output);
             });
         }
+    }
+
+    internal static string[] BuildLaunchArguments(string powershell, string scriptPath, string scriptText,
+        IReadOnlyList<string> parameters, bool inlinePayload)
+    {
+        if (!inlinePayload)
+            return [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", scriptPath, .. parameters];
+
+        // A separate control, never a fallback for the unchanged -File proof.
+        // Encoding transports the same script and literal arguments without changing execution policy.
+        var command = "& {\n" + scriptText + "\n} " +
+            string.Join(" ", parameters.Select(value => "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'"));
+        return [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand",
+            Convert.ToBase64String(Encoding.Unicode.GetBytes(command))];
     }
 
     private static string Acl(string path)

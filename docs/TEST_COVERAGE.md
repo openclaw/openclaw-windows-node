@@ -577,6 +577,18 @@ Those remain distinct build, transport and runtime proof boundaries.
 The opt-in `MxcRuntimeNamespaceNativeTests` adds actual SDK deny/child-grant
 and overlapping-policy proof, with owned process identities and fixture ACL
 checks. It is not whole-app or installed-worker proof.
+The two original cases use PowerShell `-File`. A separately named
+`NativeSdk_InlinePayloadControlExercisesTheSameNamespaceAssertions` diagnostic
+case sends the same synthetic script and literal arguments through
+`-EncodedCommand`, retaining the same direct-SDK policy, readiness handshake,
+deny/scratch assertions and ACL checks. It does not set execution policy,
+replace a failed file-based case, or establish script-file authorization.
+Run and report it alongside the original cases when investigating startup
+`AuthorizationManager` failures. Inline success with file-based failure narrows
+the failing boundary; it is not overall namespace or FileWorker acceptance.
+The artifacts identify `LaunchMode` and use a distinct inline-control prefix.
+Ordinary `MxcNamespaceLaunchTests` protect the unchanged file argv and literal
+inline payload construction without launching PowerShell or MXC.
 
 CLI `FileWorkerProcessTests` add the concrete process boundary: the production
 MCP listener, file capability, shared executor, private binary protocol and
