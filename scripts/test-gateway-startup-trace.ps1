@@ -227,19 +227,54 @@ $setupLogsRoot = Join-Path ([IO.Path]::GetTempPath()) ('setup-logs-' + [guid]::N
 New-Item -ItemType Directory -Path $setupLogsRoot | Out-Null
 try {
     $oldSetupLog = Join-Path $setupLogsRoot 'native-setup-stale.jsonl'
+    $currentTimestamp = [DateTimeOffset]::UtcNow
+    $sinceTicks = $currentTimestamp.AddMinutes(-1).UtcDateTime.ToFileTimeUtc()
     $currentAttempt = [ordered]@{
-        ts = [DateTimeOffset]::UtcNow.ToString('O')
+        ts = $currentTimestamp.ToString('O')
         run = 'r'
         level = 'info'
         msg = 'Native Gateway setup started.'
         data = $null
     } | ConvertTo-Json -Compress
+    $previousAttempt = [ordered]@{
+        ts = $currentTimestamp.AddMinutes(-2).ToString('O')
+        run = 'r'
+        level = 'info'
+        msg = 'Native Gateway setup started.'
+        data = $null
+    } | ConvertTo-Json -Compress
+    $newerLog = Join-Path $setupLogsRoot 'native-setup-newer.jsonl'
+    [IO.File]::WriteAllText($newerLog, $previousAttempt)
+    (Get-Item -LiteralPath $newerLog).LastWriteTimeUtc = [DateTime]::UtcNow
     [IO.File]::WriteAllText($oldSetupLog, $currentAttempt)
     (Get-Item -LiteralPath $oldSetupLog).LastWriteTimeUtc = [DateTime]::UtcNow.AddHours(-1)
-    $candidateLogs = @(Get-NativeSetupLogFiles -Directory $setupLogsRoot)
-    Assert-Equal $oldSetupLog $candidateLogs[0].FullName 'setup attempt is not hidden by stale file timestamp'
-    $parsedCurrentAttempt = Get-NativeSetupMilestones -Lines (Get-Content -LiteralPath $candidateLogs[0].FullName)
-    Assert-Equal 'attempt-started' $parsedCurrentAttempt.Milestones[0].Name 'stale file timestamp still yields current attempt'
+    $selectedAttempt = Get-CurrentSetupAttempt -Directory $setupLogsRoot -SinceTicks $sinceTicks `
+        -AttemptStartTicks 0 -EndTicks ([Int64]::MaxValue)
+    Assert-Equal $oldSetupLog $selectedAttempt.Path 'current attempt is found despite stale file timestamp'
+    Assert-Equal 'attempt-started' $selectedAttempt.Parsed.Milestones[0].Name 'stale metadata does not hide current attempt'
+
+    $oldOnlyRoot = Join-Path $setupLogsRoot 'old-only'
+    New-Item -ItemType Directory -Path $oldOnlyRoot | Out-Null
+    $oldOnlyLog = Join-Path $oldOnlyRoot 'native-setup-old.jsonl'
+    [IO.File]::WriteAllText($oldOnlyLog, $previousAttempt)
+    (Get-Item -LiteralPath $oldOnlyLog).LastWriteTimeUtc = [DateTime]::UtcNow
+    $oldOnlyAttempt = Get-CurrentSetupAttempt -Directory $oldOnlyRoot -SinceTicks $sinceTicks `
+        -AttemptStartTicks 0 -EndTicks ([Int64]::MaxValue)
+    Assert-Equal $null $oldOnlyAttempt 'fresh file metadata does not admit an old setup attempt'
+
+    $retryLog = Join-Path $setupLogsRoot 'native-setup-retry.jsonl'
+    $firstRetryTimestamp = $currentTimestamp.AddSeconds(-10)
+    $selectedRetryTimestamp = $currentTimestamp.AddSeconds(-5)
+    $retryLines = @(
+        ([ordered]@{ ts = $firstRetryTimestamp.ToString('O'); run = 'r'; level = 'info'; msg = 'Native Gateway setup started.'; data = $null } | ConvertTo-Json -Compress)
+        ([ordered]@{ ts = $selectedRetryTimestamp.ToString('O'); run = 'r'; level = 'info'; msg = 'Native Gateway setup started.'; data = $null } | ConvertTo-Json -Compress)
+    )
+    [IO.File]::WriteAllLines($retryLog, [string[]]$retryLines)
+    $selectedRetryTicks = $selectedRetryTimestamp.UtcDateTime.ToFileTimeUtc()
+    $pinnedRetry = Get-CurrentSetupAttempt -Directory $setupLogsRoot -SinceTicks $sinceTicks `
+        -Path $retryLog -AttemptStartTicks $selectedRetryTicks
+    Assert-Equal $retryLog $pinnedRetry.Path 'retry remains pinned to selected setup log'
+    Assert-Equal $selectedRetryTicks $pinnedRetry.Parsed.Milestones[0].Ticks 'retry remains pinned to selected attempt'
 } finally {
     Remove-Item -LiteralPath $setupLogsRoot -Recurse -Force
 }
@@ -344,6 +379,16 @@ try {
     $recording = Stop-GatewayTraceRecorder -InstanceName $instance -Paths $paths -StopTimeoutSeconds 1
     Assert-Equal 'failed: test' $recording.outcome 'recorder failure status is returned to controller'
     Assert-Equal $false $recording.instance_recording_after 'recorder stopped status is surfaced'
+    $activeStatusPath = Join-Path $tempRoot 'active-status.json'
+    [ordered]@{
+        instance = $instance
+        outcome = 'failed: preflight status unknown'
+        cancel = 'not-needed'
+        instance_recording_after = $true
+    } | ConvertTo-Json -Compress | Set-Content -LiteralPath $activeStatusPath
+    $activeRecording = Read-GatewayTraceRecorderStatus -InstanceName $instance -StatusPath $activeStatusPath
+    Assert-Equal 'recording-still-active' $activeRecording.outcome 'startup failure preserves active recorder status'
+    Assert-Equal $true $activeRecording.instance_recording_after 'startup failure reports possible active recorder'
     [ordered]@{
         instance = $instance
         outcome = 'saved'

@@ -141,6 +141,44 @@ function Get-NativeSetupLogFiles {
         Sort-Object LastWriteTimeUtc -Descending)
 }
 
+function Read-SharedLines {
+    # Companion keeps the setup log open for writing; open it with shared access.
+    param([string]$Path)
+    $stream = [IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite, Delete')
+    try {
+        $reader = [IO.StreamReader]::new($stream)
+        return $reader.ReadToEnd() -split "`r?`n"
+    } finally {
+        $stream.Dispose()
+    }
+}
+
+function Get-CurrentSetupAttempt {
+    # Once selected, read only the same attempt from the same log, even if a retry starts.
+    param(
+        [string]$Directory,
+        [Int64]$SinceTicks,
+        [string]$Path,
+        [Int64]$AttemptStartTicks,
+        [Int64]$EndTicks = [Int64]::MaxValue
+    )
+    if (-not (Test-Path -LiteralPath $Directory)) { return $null }
+    $logs = if ($Path) {
+        @(Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue)
+    } else {
+        @(Get-NativeSetupLogFiles -Directory $Directory)
+    }
+    foreach ($log in $logs) {
+        $parsed = Get-NativeSetupMilestones -Lines (Read-SharedLines $log.FullName) `
+            -AttemptStartTicks $AttemptStartTicks -EndTicks $EndTicks
+        $started = @($parsed.Milestones | Where-Object Name -eq 'attempt-started')
+        if ($started.Count -eq 1 -and ($AttemptStartTicks -gt 0 -or $started[0].Ticks -ge $SinceTicks)) {
+            return [pscustomobject]@{ Path = $log.FullName; Parsed = $parsed }
+        }
+    }
+    return $null
+}
+
 function ConvertTo-UtcFileTime {
     # ConvertFrom-Json in PowerShell 7 may already have turned ISO strings into DateTime values.
     param($Value)
@@ -441,16 +479,13 @@ function Start-GatewayTraceRecorder {
     return $paths
 }
 
-function Stop-GatewayTraceRecorder {
-    param([string]$InstanceName, $Paths, [int]$StopTimeoutSeconds)
-    [IO.File]::WriteAllText($Paths.Stop, 'stop')
-    $signal = Wait-ForFile -Paths @($Paths.Status) -TimeoutSeconds $StopTimeoutSeconds
-    if ($null -eq $signal) {
-        Write-Warning "Recorder status was not received for WPR instance $InstanceName."
+function Read-GatewayTraceRecorderStatus {
+    param([string]$InstanceName, [string]$StatusPath)
+    if (-not (Test-Path -LiteralPath $StatusPath)) {
         return [pscustomobject]@{ outcome = 'missing-status'; cancel = 'unknown'; instance_recording_after = $null }
     }
     try {
-        $status = Get-Content -LiteralPath $Paths.Status -Raw | ConvertFrom-Json
+        $status = Get-Content -LiteralPath $StatusPath -Raw | ConvertFrom-Json
         if ($null -eq $status -or $status -isnot [pscustomobject] -or
             $null -eq $status.PSObject.Properties['instance'] -or
             $null -eq $status.PSObject.Properties['outcome'] -or
@@ -479,4 +514,14 @@ function Stop-GatewayTraceRecorder {
     return $status
 }
 
-Export-ModuleMember -Function Get-IntervalUnionLength, Get-ClippedIntervals, Get-PayloadPackageGroup, Get-StartupPhaseWindows, Get-StartupArmValidity, Test-StartupCleanupComplete, Resolve-WprRecordingStatus, Resolve-WprPossibleActiveState, Get-NativeSetupLogFiles, ConvertTo-UtcFileTime, Get-CompleteMpPerformanceReport, Get-NativeSetupMilestones, Get-NativeSetupWindows, Resolve-NativeSetupOutcome, Read-SetupStopSignal, Get-NativeSetupUiStateFromIds, Get-NativeSetupUiState, Test-IsElevated, New-PrivateDirectory, Wait-ForFile, Start-GatewayTraceRecorder, Stop-GatewayTraceRecorder
+function Stop-GatewayTraceRecorder {
+    param([string]$InstanceName, $Paths, [int]$StopTimeoutSeconds)
+    [IO.File]::WriteAllText($Paths.Stop, 'stop')
+    $signal = Wait-ForFile -Paths @($Paths.Status) -TimeoutSeconds $StopTimeoutSeconds
+    if ($null -eq $signal) {
+        Write-Warning "Recorder status was not received for WPR instance $InstanceName."
+    }
+    return Read-GatewayTraceRecorderStatus -InstanceName $InstanceName -StatusPath $Paths.Status
+}
+
+Export-ModuleMember -Function Get-IntervalUnionLength, Get-ClippedIntervals, Get-PayloadPackageGroup, Get-StartupPhaseWindows, Get-StartupArmValidity, Test-StartupCleanupComplete, Resolve-WprRecordingStatus, Resolve-WprPossibleActiveState, Get-NativeSetupLogFiles, Get-CurrentSetupAttempt, Read-SharedLines, ConvertTo-UtcFileTime, Get-CompleteMpPerformanceReport, Get-NativeSetupMilestones, Get-NativeSetupWindows, Resolve-NativeSetupOutcome, Read-SetupStopSignal, Get-NativeSetupUiStateFromIds, Get-NativeSetupUiState, Test-IsElevated, New-PrivateDirectory, Wait-ForFile, Start-GatewayTraceRecorder, Read-GatewayTraceRecorderStatus, Stop-GatewayTraceRecorder

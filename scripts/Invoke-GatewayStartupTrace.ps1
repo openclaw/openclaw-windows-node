@@ -135,6 +135,8 @@ try {
         $recorderResult = Stop-GatewayTraceRecorder -InstanceName $instanceName -Paths $recorderPaths -StopTimeoutSeconds $RecorderStopTimeoutSeconds
     } elseif (-not $SkipRecording -and (Test-Path -LiteralPath $controlDirectory)) {
         [IO.File]::WriteAllText((Join-Path $controlDirectory 'recorder-stop'), 'stop')
+        $recorderResult = Read-GatewayTraceRecorderStatus -InstanceName $instanceName `
+            -StatusPath (Join-Path $controlDirectory 'recorder-status.json')
     }
     if ($nodePath -and (Test-Path -LiteralPath $nodePath)) { Remove-Item -LiteralPath $nodePath -Force }
     $hostProfile = Join-Path $runDirectory 'host-profile'

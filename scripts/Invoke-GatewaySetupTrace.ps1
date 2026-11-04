@@ -48,44 +48,6 @@ Set-StrictMode -Version Latest
 $toolDirectory = Join-Path $PSScriptRoot 'gateway-startup-trace'
 Import-Module (Join-Path $toolDirectory 'GatewayStartupTrace.psm1') -Force
 
-function Read-SharedLines {
-    # Companion keeps the setup log open for writing; open it with shared access.
-    param([string]$Path)
-    $stream = [IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite, Delete')
-    try {
-        $reader = [IO.StreamReader]::new($stream)
-        return $reader.ReadToEnd() -split "`r?`n"
-    } finally {
-        $stream.Dispose()
-    }
-}
-
-function Get-CurrentSetupAttempt {
-    # Once selected, read only the same attempt from the same log, even if a retry starts.
-    param(
-        [string]$Directory,
-        [Int64]$SinceTicks,
-        [string]$Path,
-        [Int64]$AttemptStartTicks,
-        [Int64]$EndTicks = [Int64]::MaxValue
-    )
-    if (-not (Test-Path -LiteralPath $Directory)) { return $null }
-    $logs = if ($Path) {
-        @(Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue)
-    } else {
-        @(Get-NativeSetupLogFiles -Directory $Directory)
-    }
-    foreach ($log in $logs) {
-        $parsed = Get-NativeSetupMilestones -Lines (Read-SharedLines $log.FullName) `
-            -AttemptStartTicks $AttemptStartTicks -EndTicks $EndTicks
-        $started = @($parsed.Milestones | Where-Object Name -eq 'attempt-started')
-        if ($started.Count -eq 1 -and ($AttemptStartTicks -gt 0 -or $started[0].Ticks -ge $SinceTicks)) {
-            return [pscustomobject]@{ Path = $log.FullName; Parsed = $parsed }
-        }
-    }
-    return $null
-}
-
 if ($PSVersionTable.PSEdition -ne 'Core') { throw 'Run this script with PowerShell 7 (pwsh).' }
 if (Test-IsElevated) {
     throw 'Run this script unelevated. Only the recorder is elevated, through a UAC prompt.'
@@ -213,6 +175,8 @@ try {
     } elseif (Test-Path -LiteralPath $controlDirectory) {
         # The recorder may have started after the wait timed out; ask it to stop as well.
         [IO.File]::WriteAllText((Join-Path $controlDirectory 'recorder-stop'), 'stop')
+        $recorderResult = Read-GatewayTraceRecorderStatus -InstanceName $instanceName `
+            -StatusPath (Join-Path $controlDirectory 'recorder-status.json')
     }
 }
 

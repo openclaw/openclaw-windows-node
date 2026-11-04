@@ -70,6 +70,8 @@ status is atomically published. The status check recognizes English `WPR is reco
 `WPR recording is in progress`, and `WPR is not recording` output. Nonzero status
 commands or unrecognized output fail closed as unknown; an unknown preflight state is
 reported conservatively as possibly still recording without canceling the instance.
+If the recorder exits before it signals readiness, the controllers preserve any status
+it already published, including a possible-active warning.
 
 The setup controller requires `MaxRecordingSeconds` to exceed `SetupTimeoutSeconds` by at
 least 60 seconds. The startup comparison requires it to exceed two benchmark timeouts by
