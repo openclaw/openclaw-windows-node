@@ -609,6 +609,7 @@ public abstract class WebSocketClientBase : IDisposable
             _logger.Warn($"{ClientRole} connection stopped answering keep-alive pings");
             if (IsCurrentConnection(ws, connectionGeneration))
             {
+                OnTransportObservation(connectionGeneration, GatewayHandshakePhase.Disconnected);
                 OnDisconnected();
                 RaiseStatusChanged(ConnectionStatus.Disconnected);
             }
