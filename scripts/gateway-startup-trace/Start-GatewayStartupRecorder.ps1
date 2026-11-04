@@ -22,6 +22,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+Import-Module (Join-Path $PSScriptRoot 'GatewayStartupTrace.psm1') -Force
 
 $wpr = Join-Path $env:SystemRoot 'System32\wpr.exe'
 $readyPath = Join-Path $ControlDirectory 'recorder-ready.json'
@@ -70,7 +71,7 @@ function Test-InstanceRecording {
     # wpr requires -instancename to be the last argument.
     $result = Invoke-BoundedWpr "-status -instancename $InstanceName" $wprControlTimeoutSeconds -CaptureOutput
     if ($null -eq $result.ExitCode) { throw 'WPR status timed out.' }
-    return ($result.Output -notmatch 'not recording')
+    return Resolve-WprRecordingStatus -ExitCode $result.ExitCode -Output $result.Output
 }
 
 try {

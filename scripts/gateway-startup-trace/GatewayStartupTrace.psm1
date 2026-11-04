@@ -97,13 +97,37 @@ function Get-StartupArmValidity {
 function Test-StartupCleanupComplete {
     param($Cleanup, $Awake)
     if ($null -eq $Cleanup -or $null -eq $Awake) { return $false }
-    if ($null -eq $Awake.PSObject.Properties['release']) { return $false }
-    if (@($Cleanup.PSObject.Properties | Where-Object {
+    $cleanupFields = if ($Cleanup -is [Collections.IDictionary]) {
+        @($Cleanup.Keys | ForEach-Object {
+            [pscustomobject]@{ Name = [string]$_; Value = $Cleanup[$_] }
+        })
+    } else {
+        @($Cleanup.PSObject.Properties)
+    }
+    $awakeRelease = if ($Awake -is [Collections.IDictionary]) {
+        if (-not $Awake.Contains('release')) { return $false }
+        $Awake['release']
+    } else {
+        $releaseProperty = $Awake.PSObject.Properties['release']
+        if ($null -eq $releaseProperty) { return $false }
+        $releaseProperty.Value
+    }
+    if (@($cleanupFields | Where-Object {
         ($_.Name -in 'stop', 'deprovision' -and $_.Value -ne 'reported-success') -or
         ($_.Name -eq 'workspace' -and $_.Value -ne 'not-found') -or
         ($_.Name -eq 'ownership_record' -and $_.Value -eq 'retained-after-deprovision')
     }).Count -gt 0) { return $false }
-    return $Awake.release -in @('not-needed', 'clear=ok;close=ok')
+    return $awakeRelease -in @('not-needed', 'clear=ok;close=ok')
+}
+
+function Resolve-WprRecordingStatus {
+    param([int]$ExitCode, [string]$Output)
+    if ($ExitCode -ne 0) {
+        throw "WPR status exited with code $ExitCode."
+    }
+    if ($Output -match '(?im)\bWPR\s+is\s+not\s+recording\b') { return $false }
+    if ($Output -match '(?im)\bWPR\s+is\s+recording\b') { return $true }
+    throw 'WPR status output did not identify the recording state.'
 }
 
 function ConvertTo-UtcFileTime {
@@ -211,7 +235,10 @@ function Get-NativeSetupMilestones {
                 elseif ($record.Message -match '^Native Gateway setup failed during (\w+):') { $Matches[1] }
                 else { $record.Step }
             if ($record.Message -match $script:NativeSetupMilestonePatterns['readiness-timeout']) {
-                $milestones.Add([pscustomobject]@{ Name = 'readiness-timeout'; Ticks = $record.Ticks })
+                if (-not $seen.ContainsKey('readiness-timeout')) {
+                    $seen['readiness-timeout'] = $true
+                    $milestones.Add([pscustomobject]@{ Name = 'readiness-timeout'; Ticks = $record.Ticks })
+                }
             }
             $milestones.Add([pscustomobject]@{ Name = 'setup-failed'; Ticks = $record.Ticks })
             break
@@ -441,4 +468,4 @@ function Stop-GatewayTraceRecorder {
     return $status
 }
 
-Export-ModuleMember -Function Get-IntervalUnionLength, Get-ClippedIntervals, Get-PayloadPackageGroup, Get-StartupPhaseWindows, Get-StartupArmValidity, Test-StartupCleanupComplete, ConvertTo-UtcFileTime, Get-CompleteMpPerformanceReport, Get-NativeSetupMilestones, Get-NativeSetupWindows, Resolve-NativeSetupOutcome, Read-SetupStopSignal, Get-NativeSetupUiStateFromIds, Get-NativeSetupUiState, Test-IsElevated, New-PrivateDirectory, Wait-ForFile, Start-GatewayTraceRecorder, Stop-GatewayTraceRecorder
+Export-ModuleMember -Function Get-IntervalUnionLength, Get-ClippedIntervals, Get-PayloadPackageGroup, Get-StartupPhaseWindows, Get-StartupArmValidity, Test-StartupCleanupComplete, Resolve-WprRecordingStatus, ConvertTo-UtcFileTime, Get-CompleteMpPerformanceReport, Get-NativeSetupMilestones, Get-NativeSetupWindows, Resolve-NativeSetupOutcome, Read-SetupStopSignal, Get-NativeSetupUiStateFromIds, Get-NativeSetupUiState, Test-IsElevated, New-PrivateDirectory, Wait-ForFile, Start-GatewayTraceRecorder, Stop-GatewayTraceRecorder

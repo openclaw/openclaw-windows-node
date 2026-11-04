@@ -66,7 +66,9 @@ maximum, then allows 90 seconds for cancellation, final status and polling overh
 controller's `-RecorderStopTimeoutSeconds` must exceed that WPR stop limit by at least
 90 seconds.
 A stop that times out is killed and followed by a cancel of the same instance. Recorder
-status is atomically published.
+status is atomically published. The status check recognizes English `WPR is recording`
+and `WPR is not recording` output. Nonzero status commands or unrecognized output fail
+closed as unknown.
 
 The setup controller requires `MaxRecordingSeconds` to exceed `SetupTimeoutSeconds` by at
 least 60 seconds. The startup comparison requires it to exceed two benchmark timeouts by

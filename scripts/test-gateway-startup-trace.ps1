@@ -148,20 +148,31 @@ Assert-Equal 'failed-ui-only' (Resolve-NativeSetupOutcome -ParsedOutcome $setup.
 Assert-Equal 'incomplete' (Resolve-NativeSetupOutcome -ParsedOutcome $setup.Outcome -StopReason 'manual') 'manual stop is not success'
 Assert-Equal 'incomplete' (Resolve-NativeSetupOutcome -ParsedOutcome $setup.Outcome -StopReason 'timeout') 'timeout is not success'
 Assert-Equal 'not-observed' (Resolve-NativeSetupOutcome -ParsedOutcome 'not-observed' -StopReason 'ai-setup-reached' -AttemptObserved $false) 'AI page without setup attempt is not success'
-$completeCleanup = [pscustomobject]@{
+$completeCleanup = [ordered]@{
     stop = 'reported-success'
     deprovision = 'reported-success'
     workspace = 'not-found'
     ownership_record = 'removed-after-deprovision'
 }
-$releasedAwake = [pscustomobject]@{ release = 'clear=ok;close=ok' }
+$releasedAwake = [ordered]@{ release = 'clear=ok;close=ok' }
 Assert-Equal $true (Test-StartupCleanupComplete -Cleanup $completeCleanup -Awake $releasedAwake) 'verified comparison cleanup'
-$unverifiedCleanup = $completeCleanup.PSObject.Copy()
+$unverifiedCleanup = [ordered]@{} + $completeCleanup
 $unverifiedCleanup.workspace = 'unverified'
 Assert-Equal $false (Test-StartupCleanupComplete -Cleanup $unverifiedCleanup -Awake $releasedAwake) 'unverified workspace rejects cleanup'
-$retainedCleanup = $completeCleanup.PSObject.Copy()
+$retainedCleanup = [ordered]@{} + $completeCleanup
 $retainedCleanup.ownership_record = 'retained-after-deprovision'
 Assert-Equal $false (Test-StartupCleanupComplete -Cleanup $retainedCleanup -Awake $releasedAwake) 'retained ownership record rejects cleanup'
+Assert-Equal $true (Test-StartupCleanupComplete `
+    -Cleanup ($completeCleanup | ConvertTo-Json | ConvertFrom-Json) `
+    -Awake ($releasedAwake | ConvertTo-Json | ConvertFrom-Json)) 'serialized cleanup objects are accepted'
+Assert-Equal $false (Resolve-WprRecordingStatus -ExitCode 0 -Output 'WPR is not recording.') 'inactive WPR status'
+Assert-Equal $true (Resolve-WprRecordingStatus -ExitCode 0 -Output 'WPR is recording.') 'active WPR status'
+$unknownWprStatusRejected = $false
+try { [void](Resolve-WprRecordingStatus -ExitCode 0 -Output 'Access is denied.') } catch { $unknownWprStatusRejected = $true }
+Assert-Equal $true $unknownWprStatusRejected 'unknown WPR status fails closed'
+$failedWprStatusRejected = $false
+try { [void](Resolve-WprRecordingStatus -ExitCode 5 -Output 'WPR is not recording.') } catch { $failedWprStatusRejected = $true }
+Assert-Equal $true $failedWprStatusRejected 'failed WPR status fails closed'
 $validArm = [pscustomobject]@{
     status = 'captured'
     trace = [pscustomobject]@{ blocked = [pscustomobject]@{ child = 0; network = 0 } }
@@ -195,6 +206,7 @@ $timedOutAttempt = @(
     New-SetupLine 450 'info' 'Native Gateway start acknowledged after 38.0s.'
     New-SetupLine 451 'info' 'Native setup step: StepVerify.'
     New-SetupLine 452 'info' 'Some unrelated progress.'
+    New-SetupLine 592 'warn' 'The package-managed Gateway did not report a verified listener within 180 seconds of starting.'
     New-SetupLine 593 'error' 'Native Gateway setup failed during StepVerify: TimeoutException: The package-managed Gateway did not report a verified listener within 180 seconds of starting.'
 )
 $timedOut = Get-NativeSetupMilestones -Lines $timedOutAttempt
