@@ -66,6 +66,8 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
             providers,
             () => _state.Models.Select(model => model.Provider).OfType<string>(),
             ModelProviderSetupViewModel.DefaultLoginPollInterval);
+        // The page observes only this view model; surface provider-flow changes through it.
+        Providers.PropertyChanged += (_, _) => OnPropertyChanged(nameof(Providers));
         Recompute();
     }
 
