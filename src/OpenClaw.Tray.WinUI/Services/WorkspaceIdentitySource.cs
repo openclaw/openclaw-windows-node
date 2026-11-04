@@ -277,8 +277,8 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
     }
 
     /// <summary>
-    /// The request API takes no token, so a superseded read is abandoned rather than cancelled; the
-    /// client's own deadline still frees it. Its eventual fault is observed so it cannot surface later.
+    /// The request API takes no token, so a superseded read is abandoned rather than cancelled and left to
+    /// the client's own request handling. Its eventual fault is observed so it cannot surface later.
     /// </summary>
     private static async Task<JsonElement> ReadSelfAsync(IOperatorGatewayClient client, CancellationToken token)
     {

@@ -1096,6 +1096,10 @@ public sealed class WorkspaceIdentitySourceTests
                 GC.WaitForPendingFinalizers();
             }
 
+            // A collection another test triggers can clear the weak reference and run only some finalizers
+            // before the loop stops, so drain whatever is still queued before asserting nothing late surfaced.
+            GC.WaitForPendingFinalizers();
+
             Assert.Contains(reported, fault => fault is UnobservedControlFault);
             Assert.False(abandoned.IsAlive);
             Assert.DoesNotContain(reported, fault => fault is SupersededReadFault);
