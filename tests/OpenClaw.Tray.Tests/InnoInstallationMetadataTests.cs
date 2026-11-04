@@ -121,9 +121,9 @@ public sealed class InnoInstallationMetadataTests
             "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
         var launch = source[source.IndexOf("private async Task OnLaunchedAsync", StringComparison.Ordinal)..];
         var refresh = launch.IndexOf("new InnoInstallationMetadata().Refresh(", StringComparison.Ordinal);
-        Assert.True(refresh > launch.IndexOf("InnoMigrationStartupGuard.ShouldStopLaunch", StringComparison.Ordinal));
-        Assert.True(refresh > launch.IndexOf("ForwardLaunchToPrimaryAsync", StringComparison.Ordinal));
-        Assert.True(refresh > launch.IndexOf("await _activationRouter.DispatchPlanAsync", StringComparison.Ordinal));
+        Assert.InRange(launch.IndexOf("InnoMigrationStartupGuard.ShouldStopLaunch", StringComparison.Ordinal), 0, refresh - 1);
+        Assert.InRange(launch.IndexOf("ForwardLaunchToPrimaryAsync", StringComparison.Ordinal), 0, refresh - 1);
+        Assert.InRange(launch.IndexOf("await _activationRouter.DispatchPlanAsync", StringComparison.Ordinal), 0, refresh - 1);
         Assert.True(refresh < launch.IndexOf("Logger.Info(\"Application started (WinUI 3)\")", StringComparison.Ordinal));
         Assert.Equal(InnoInstallationDetector.UninstallKey, InnoInstallationMetadata.UninstallKey);
     }
