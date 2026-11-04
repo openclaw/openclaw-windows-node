@@ -144,11 +144,12 @@ try {
 Write-Host "Comparison: $comparisonExit"
 if (-not $SkipRecording -and
     ($null -eq $recorderResult -or $recorderResult.outcome -ne 'saved' -or -not (Test-Path -LiteralPath $tracePath))) {
-    $comparisonExit = "failed: WPR recording was not saved ($($recorderResult.outcome))."
+    $recorderOutcome = if ($recorderResult) { $recorderResult.outcome } else { 'not-started' }
+    $comparisonExit = "failed: WPR recording was not saved ($recorderOutcome)."
     Write-Warning $comparisonExit
 }
 if ((Test-Path -LiteralPath $resultPath) -and -not $SkipRecording -and
-    $recorderResult.outcome -eq 'saved' -and (Test-Path -LiteralPath $tracePath)) {
+    $null -ne $recorderResult -and $recorderResult.outcome -eq 'saved' -and (Test-Path -LiteralPath $tracePath)) {
     & (Join-Path $toolDirectory 'Get-GatewayStartupTraceSummary.ps1') -TracePath $tracePath -ResultPath $resultPath `
         -PayloadRoot $PayloadRoot -OutputPath $summaryPath | Out-Null
     Write-Host "Sanitized summary: $summaryPath"
