@@ -124,7 +124,6 @@ internal sealed class GatewayService
         client.CronRunsUpdated += OnCronRunsUpdated;
         client.ConfigUpdated += OnConfigUpdated;
         client.ConfigSchemaUpdated += OnConfigSchemaUpdated;
-        client.SkillsStatusUpdated += OnSkillsStatusUpdated;
         client.AgentEventReceived += OnAgentEventReceived;
         client.NodePairListUpdated += OnNodePairListUpdated;
         client.DevicePairListUpdated += OnDevicePairListUpdated;
@@ -157,7 +156,6 @@ internal sealed class GatewayService
         client.CronRunsUpdated -= OnCronRunsUpdated;
         client.ConfigUpdated -= OnConfigUpdated;
         client.ConfigSchemaUpdated -= OnConfigSchemaUpdated;
-        client.SkillsStatusUpdated -= OnSkillsStatusUpdated;
         client.AgentEventReceived -= OnAgentEventReceived;
         client.NodePairListUpdated -= OnNodePairListUpdated;
         client.DevicePairListUpdated -= OnDevicePairListUpdated;
@@ -453,13 +451,6 @@ internal sealed class GatewayService
         if (sender != _currentClient) return;
         var cloned = data.Clone();
         EnqueueModelUpdate(() => _state.CronRuns = cloned);
-    }
-
-    private void OnSkillsStatusUpdated(object? sender, JsonElement data)
-    {
-        if (sender != _currentClient) return;
-        var cloned = data.Clone();
-        EnqueueModelUpdate(() => _state.SkillsData = cloned);
     }
 
     private void OnConfigUpdated(object? sender, JsonElement data)

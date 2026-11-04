@@ -173,12 +173,6 @@
   <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
     <value>Open kanaalconfiguratie voor schema-gestuurde verificatie, QR, aanmelden en dashboardstromen wanneer beschikbaar.</value>
   </data>
-  <data name="StatusSkillsTitle.Text" xml:space="preserve">
-    <value>Vaardigheden</value>
-  </data>
-  <data name="StatusSkillsDescription.Text" xml:space="preserve">
-    <value>Open gateway-skillconfiguratie wanneer de verbonden gateway dit ondersteunt.</value>
-  </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / planningen</value>
   </data>
@@ -1106,9 +1100,6 @@ Gebruik een van deze opties:
   <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
     <value>Canvas gebruiken</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
-    <value>Vaardigheden inschakelen</value>
-  </data>
   <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
     <value>OpenClaw starten bij het opstarten</value>
   </data>
@@ -1285,9 +1276,6 @@ Gebruik een van deze opties:
   </data>
   <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
     <value>Visuele werkruimte</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
-    <value>Instellingen → Vaardigheden</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
     <value>Oorsprong niet toegestaan: gateway weigert deze verbinding</value>
@@ -2077,18 +2065,6 @@ Gebruik een van deze opties:
   <data name="CancelButton.Content" xml:space="preserve">
     <value>Annuleren</value>
   </data>
-  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>🧩 Vaardigheden</value>
-  </data>
-  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
-    <value>Alle agents</value>
-  </data>
-  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
-    <value>Geen vaardigheden geïnstalleerd</value>
-  </data>
-  <data name="MarketplaceLink.Content" xml:space="preserve">
-    <value>Skills Marketplace bekijken →</value>
-  </data>
   <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
     <value>Totale kosten</value>
   </data>
@@ -2250,9 +2226,6 @@ Gebruik een van deze opties:
   </data>
   <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
     <value>Agentgebeurtenissen</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
-    <value>Vaardigheden</value>
   </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>Softwareagents</value>
@@ -5027,27 +5000,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>Opgeslagen</value>
   </data>
-  <data name="SkillsPage_Skills.Text" xml:space="preserve">
-    <value>🧩 Vaardigheden</value>
-  </data>
-  <data name="SkillsPage_AllAgents.Content" xml:space="preserve">
-    <value>Alle agents</value>
-  </data>
-  <data name="SkillsPage_Enabled.Text" xml:space="preserve">
-    <value>Ingeschakeld</value>
-  </data>
-  <data name="SkillsPage_Disabled.Text" xml:space="preserve">
-    <value>Uitgeschakeld</value>
-  </data>
-  <data name="SkillsPage_LoadingSkills.Text" xml:space="preserve">
-    <value>Vaardigheden worden geladen…</value>
-  </data>
-  <data name="SkillsPage_NoSkillsInstalled.Text" xml:space="preserve">
-    <value>Geen vaardigheden geïnstalleerd</value>
-  </data>
-  <data name="SkillsPage_SkillsExtendYourAgent.Text" xml:space="preserve">
-    <value>Vaardigheden breiden de mogelijkheden van uw agent uit. Installeer vaardigheden via de CLI of ClawHub.</value>
-  </data>
   <data name="UsagePage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Gateway losgekoppeld</value>
   </data>
@@ -5224,12 +5176,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
     <value>Chat openen</value>
-  </data>
-  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
-    <value>Ingeschakeld</value>
-  </data>
-  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
-    <value>Uitgeschakeld</value>
   </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>Voorbeeld</value>
@@ -6240,12 +6186,6 @@ Controleer of de gateway actief is.</value>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
     <value>Go to Settings</value>
   </data>
-  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
-    <value>Registered skills</value>
-  </data>
-  <data name="Command_GoToSkills_Title" xml:space="preserve">
-    <value>Go to Skills</value>
-  </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
   </data>
@@ -6706,21 +6646,6 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Open this session in Chat</value>
-  </data>
-  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
-    <value>Uitgeschakeld</value>
-  </data>
-  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
-    <value>Ingeschakeld</value>
-  </data>
-  <data name="SkillsPage_CountFormat" xml:space="preserve">
-    <value>({0}/{1} ingeschakeld)</value>
-  </data>
-  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
-    <value>Uitgeschakeld ({0})</value>
-  </data>
-  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
-    <value>Ingeschakeld ({0})</value>
   </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
@@ -7444,8 +7369,6 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Met mijn agent praten</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Open Chat met je agent.</value></data>
   <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Met mijn agent praten, aanbevolen</value></data>
-  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>Vaardigheden verkennen</value></data>
-  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Bekijk vaardigheden voor je agent. Er wordt niets automatisch geïnstalleerd.</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Kanalen verbinden</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram en meer. Jij kiest wanneer je je aanmeldt.</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Gereedheid opnieuw controleren</value></data>
@@ -7795,7 +7718,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>De Gateway starten en controleren</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Instelling opnieuw proberen</value></data>
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>Gateway-diagnostiek verzamelen</value></data>
-  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>Instellingslogboek weergeven</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>Verzamel Gateway-diagnostiek voor een geschoonde ZIP die u kunt bekijken of delen, of open een terminal in de geïsoleerde Gateway. Kies daarna Instelling opnieuw proberen.</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>De Gateway was niet binnen {0} seconden gereed. De eerste start kan traag zijn. Verzamel Gateway-diagnostiek om te zien waarom en kies daarna Instelling opnieuw proberen. Stel voor een langere start de omgevingsvariabele {1} in op een aantal seconden en start Companion opnieuw.</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>Geschoonde Gateway-diagnostiek verzamelen...</value></data>
@@ -7804,6 +7726,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>Gateway-diagnostiek kon niet worden verzameld: {0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>De Gateway-terminal kon niet worden geopend: {0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Alleen een voorbeeld. Er wordt geen pakket geïnstalleerd of Gateway gestart.</value></data>
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>Gedetailleerde activiteit</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>Logbestand openen</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0} is niet voltooid</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Deze Windows-functies zijn bruikbaar nadat de nodemodus verbinding heeft gemaakt en met de Gateway is gekoppeld. Windows-machtigingen en opdrachtgoedkeuringen blijven van toepassing.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway geconfigureerd</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. U kunt deze keuzes wijzigen in de instellingen van Companion.</value></data>
@@ -7845,7 +7770,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
-  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
   <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
@@ -7946,7 +7870,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
   <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
   <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
-  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
   <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
   <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
   <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>
@@ -8191,4 +8114,19 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Item verwijderen</value>
   </data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Stem van verbonden Gateway gebruiken</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>Voorlezen en automatische antwoorden gebruiken de ingestelde Gateway-stem. Tekst wordt naar de Gateway en de spraakprovider gestuurd. Sleutels blijven op de Gateway. Lokale node- en MCP-spraak blijven ongewijzigd.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>Geen automatische lokale terugval. Schakel deze optie uit om bij onbeschikbaarheid uw lokale provider te gebruiken.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>Stoppen</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>Gateway-spraak genereren…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Gateway-stem: {0}.</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>Verbind een Gateway in de verbindingsinstellingen om de stem te gebruiken.</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>Deze Gateway biedt de vereiste spraak-RPC’s niet aan. Werk de Gateway bij of schakel Gateway-spraak uit.</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>Gateway-spraak vereist operator.write. Controleer de apparaatgoedkeuring op de Gateway. Companion wijzigt geen rechten.</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>De tekst is leeg of langer dan de limiet van 4096 tekens van Companion. Kies een korter bericht.</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>De Gateway gaf lege, ongeldige of te grote audio terug. Controleer de TTS-instellingen. Er is niets afgespeeld.</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>Dit Gateway-audioformaat wordt niet ondersteund. Configureer MP3- of WAV-uitvoer op de Gateway.</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Time-out voor Gateway-spraak. Synthese kan voltooid zijn. Controleer de Gateway voordat u opnieuw probeert. Er is niet automatisch opnieuw geprobeerd.</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway-spraak mislukt. Controleer de steminstellingen en het providerquotum. Geen lokale terugval of automatische herhaling.</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
 </root>

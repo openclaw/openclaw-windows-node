@@ -283,20 +283,6 @@ public sealed class NativeCompletionPresentationTests
     }
 
     [Fact]
-    public void SkillsEntryIsBoundReadOnlyAndWaitedBeforeReceiptConsumption()
-    {
-        var source = Read(@"src\OpenClaw.Tray.WinUI\Pages\SkillsPage.xaml.cs");
-        Assert.Contains("_nativeSetupRequest = e.Parameter as SetupNativeNavigationRequest", source);
-        Assert.Contains("SetupNativeSkills.LoadAsync(request, RequireNativeClient, ct)", source);
-        Assert.Contains("if (_nativeSetupRequest is not null) return;", source);
-        Assert.Contains("CurrentAgentId != request.Completion.Verification.AgentId", source);
-        Assert.Contains("AgentFilterCombo.IsEnabled = false", source);
-        Assert.DoesNotContain("InstallSkillAsync", source);
-        Assert.Contains("await skills.WaitForNativeSetupAsync(request, ct)",
-            Read(@"src\OpenClaw.Tray.WinUI\Controls\SettingsShellView.xaml.cs"));
-    }
-
-    [Fact]
     public void IsolatedHostDisablesStartupWithoutWeakeningRegistrationGuard()
     {
         Assert.Contains("startupRegistrationAllowed: !AppIdentity.IsIsolated",

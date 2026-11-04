@@ -32,6 +32,10 @@ public class TestWebSocketClient : WebSocketClientBase
     protected override string ClientRole => "test";
     protected override TimeSpan ConnectAttemptTimeout =>
         TestConnectAttemptTimeout ?? base.ConnectAttemptTimeout;
+    public TimeSpan? TestKeepAliveInterval { get; set; }
+    public TimeSpan? TestKeepAliveTimeout { get; set; }
+    protected override TimeSpan KeepAliveInterval => TestKeepAliveInterval ?? base.KeepAliveInterval;
+    protected override TimeSpan KeepAliveTimeout => TestKeepAliveTimeout ?? base.KeepAliveTimeout;
 
     public TestWebSocketClient(string gatewayUrl, string token, IOpenClawLogger? logger = null)
         : base(gatewayUrl, token, logger) { }
@@ -280,6 +284,7 @@ public class WebSocketClientBaseTests
         await Task.Delay(100);
 
         Assert.DoesNotContain("stale-socket-message", client.ProcessedMessages);
+        Assert.Equal(0, client.OnDisconnectedCallCount);
     }
 
     [Fact]
@@ -688,6 +693,56 @@ public class WebSocketClientBaseTests
         Assert.DoesNotContain(_logger.Logs, line => line.Contains("reconnecting in", StringComparison.OrdinalIgnoreCase));
 
         client.Dispose();
+    }
+
+    [Fact]
+    public async Task KeepAlive_PeerStopsAnsweringPings_ReconnectsOnFreshSocket()
+    {
+        // A managed server socket answers pings only while a receive is pending, and this test
+        // never receives, so the TCP connection stays open while the peer looks frozen.
+        using var server = new LoopbackWebSocketServer(useManagedWebSocket: true);
+        await server.StartAsync();
+        using var client = new TestWebSocketClient(server.WebSocketUrl, "token", _logger)
+        {
+            TestKeepAliveInterval = TimeSpan.FromMilliseconds(250),
+            TestKeepAliveTimeout = TimeSpan.FromMilliseconds(250),
+        };
+
+        var statuses = new ConcurrentQueue<ConnectionStatus>();
+        client.StatusChanged += (_, status) => statuses.Enqueue(status);
+
+        await client.ConnectAsync();
+
+        await server.WaitForAcceptedCountAsync(2, TimeSpan.FromSeconds(15));
+        Assert.Contains(ConnectionStatus.Disconnected, statuses);
+        Assert.True(client.OnDisconnectedCallCount >= 1);
+        Assert.Equal(0, client.OnErrorCallCount);
+    }
+
+    [Fact]
+    public async Task KeepAlive_PeerAnswersPings_KeepsTheConnection()
+    {
+        using var server = new LoopbackWebSocketServer(useManagedWebSocket: true);
+        await server.StartAsync();
+        using var client = new TestWebSocketClient(server.WebSocketUrl, "token", _logger)
+        {
+            TestKeepAliveInterval = TimeSpan.FromMilliseconds(250),
+            TestKeepAliveTimeout = TimeSpan.FromSeconds(2),
+        };
+        using var serverLifetime = new CancellationTokenSource();
+
+        await client.ConnectAsync();
+        await server.WaitForAcceptedCountAsync(1, TimeSpan.FromSeconds(5));
+        var pendingReceive = server.ReceiveTextAsync(serverLifetime.Token);
+
+        // slopwatch-ignore: SW004 The silence window must outlast several ping and pong rounds.
+        await Task.Delay(TimeSpan.FromSeconds(3));
+
+        Assert.Equal(1, server.AcceptedCount);
+        Assert.Equal(0, client.OnErrorCallCount);
+        Assert.True(client.TestIsConnected);
+        serverLifetime.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pendingReceive);
     }
 
     [Fact]

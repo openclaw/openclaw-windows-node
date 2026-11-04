@@ -27,6 +27,8 @@
     <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
     <!-- Compile only the model-layer files directly so the tests can remain
          pure net10.0 while the tray app owns the native WinUI surface. -->
+    <Compile Include="../../src/OpenClaw.Tray.WinUI/Chat/GatewaySpeechPlayback.cs" Link="Chat/GatewaySpeechPlayback.cs" />
+    <Compile Include="../../src/OpenClaw.Tray.WinUI/Chat/GatewaySpeechPresentation.cs" Link="Chat/GatewaySpeechPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatModels.cs" Link="Chat\ChatModels.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatModelChoice.cs" Link="Chat\ChatModelChoice.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatThinkingProfile.cs" Link="Chat\ChatThinkingProfile.cs" />
@@ -53,6 +55,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs" Link="Chat\ChatSurfaceResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\GatewayFixtureRenderObservation.cs" Link="Chat\GatewayFixtureRenderObservation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\PendingVoiceActivation.cs" Link="Chat\PendingVoiceActivation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\PlaybackMuteState.cs" Link="Services\PlaybackMuteState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\DebugChatSurfaceOverrides.cs" Link="Chat\DebugChatSurfaceOverrides.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatEntryMetadata.cs" Link="Chat\ChatEntryMetadata.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAssistantContentPresentation.cs" Link="Chat\ChatAssistantContentPresentation.cs" />
@@ -131,7 +134,6 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupNativeHandoffLauncher.cs" Link="Services\SetupNativeHandoffLauncher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupNativeNavigationRequest.cs" Link="Presentation\SetupNativeNavigationRequest.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupNativeChatPresentation.cs" Link="Presentation\SetupNativeChatPresentation.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupNativeSkills.cs" Link="Presentation\SetupNativeSkills.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsChangeEffects.cs" Link="Services\SettingsChangeEffects.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsChangeCoordinator.cs" Link="Services\SettingsChangeCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppShutdownPlan.cs" Link="Services\AppShutdownPlan.cs" />

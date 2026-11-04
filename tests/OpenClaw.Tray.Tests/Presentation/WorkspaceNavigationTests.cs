@@ -388,7 +388,7 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
-    public void ColdNativeSetup_ChannelsAndSkills_AwaitSettingsRenderInsteadOfThrowing()
+    public void ColdNativeSetup_Channels_AwaitSettingsRenderInsteadOfThrowing()
     {
         var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         var wait = workspace[workspace.IndexOf("internal async Task WaitForNativeSetupAsync", StringComparison.Ordinal)..];
@@ -404,7 +404,6 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("_pendingSettingsRequest.Consume()", workspace);
         Assert.Contains("_pendingSettingsRequest.Clear();\n        LeaveSettings();", workspace.Replace("\r\n", "\n"));
         Assert.Equal("channels", WorkspaceNavigation.NormalizeSettingsTag("channels", "main"));
-        Assert.Equal("skills", WorkspaceNavigation.NormalizeSettingsTag("skills", "main"));
         Assert.Contains("NormalizeNativeSetupTag(request.PageTag)", workspace);
     }
 

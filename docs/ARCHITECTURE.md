@@ -189,8 +189,8 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Focused AI setup protocol state and provider progress polling | `GatewayAiSetupClient` + `GatewayAiSetupController` | authoritative |
 | Verified AI completion intent and opaque pending restart handoff | `GatewayAiSetupClient` + `GatewayAiSetupCompletion` + `SetupDashboardHandoffStore` + `SetupDashboardHandoff` | authoritative |
 | Native verified destination choice and selection-time read-only verification | `SetupNativeCompletionCoordinator` + `SetupNativeCompletionVerifier`; `AiReadyPage` renders, `SetupWindow` composes finalization | authoritative |
-| Native pending launch and bound Chat/Channels/Skills entry | `SetupNativeHandoffLauncher` + `SetupNativeNavigationRequest`; `SetupNativeSkills` owns response-bound read-only skills loading; `WindowManager` and pages apply the selected route | authoritative |
-| Verified native setup Chat window boundary | `SetupNativeNavigationRequest` projects the exact Workspace session; `WorkspaceWindow` calls `ChatPage.BindNativeSetupRequest` explicitly, not a Frame navigation override. `WindowManager` awaits the retained page before activation and receipt consumption. Channels/Skills remain typed companion routes | authoritative |
+| Native pending launch and bound Chat/Channels entry | `SetupNativeHandoffLauncher` + `SetupNativeNavigationRequest`; `WindowManager` and pages apply the selected route | authoritative |
+| Verified native setup Chat window boundary | `SetupNativeNavigationRequest` projects the exact Workspace session; `WorkspaceWindow` calls `ChatPage.BindNativeSetupRequest` explicitly, not a Frame navigation override. `WindowManager` awaits the retained page before activation and receipt consumption. Channels remains a typed companion route | authoritative |
 | Verified setup Chat hosting in the Settings view | Closed in `SettingsShellView`; typed native Chat requests must use Workspace without dropping endpoint, identity, agent or session verification | closed |
 | Settings Chat rail action | `SettingsShellView` forwards a non-selecting item invocation through `WorkspaceNavigation` to the retained chat destination in the same window; Settings never mounts Chat | authoritative |
 | Gateway dashboard management card | `ConnectionPage` owns the visible card and forwards to the existing `GatewayDashboardLauncher` path; `ChatPage` has no management banner | authoritative |
@@ -240,6 +240,9 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Chat-visible notification suppression | `ChatVisibilityPolicy` owns the pure visibility decision; `WorkspaceWindow` supplies current destination, AppWindow visibility and minimized state; `WindowManager.IsChatVisible` evaluates only Workspace chat | authoritative |
 | Inferring chat visibility from any existing main window | Closed in `App.ShouldShowNotification`; use `IWindowManager.IsChatVisible`, retaining chat/per-type notification toggles | closed |
 | Readiness-gated, single-use native chat voice launch | `PendingVoiceActivation` | authoritative |
+| Opt-in Gateway chat speech lifetime and late-result rejection | `GatewaySpeechPlayback` captures the operator client, authenticated epoch and chat target; mounted composer input projection supplies initial, fallback and explicit targets without becoming another selection owner; `OpenClawChatCoordinator` routes chat/preview and owns microphone playback-muting leases. `TextToSpeechService` remains the serialized native playback owner | authoritative |
+| Outward Gateway speech protocol and payload admission | `OpenClawGatewayClient.Speech` uses the existing response registry; `GatewaySpeech` validates method/scope authority, bounded inline MP3/WAV. Inward node/MCP `TtsCapability` keeps its local provider selection | authoritative |
+| Playback mute intent and overlapping leases across voice captures | `PlaybackMuteState` owns desired mute and registrations. App supplies one mute domain to independently owned standalone/node `VoiceService` instances, including later node/MCP activation, and disposes it after both services. One-shot pipelines remain local. `OpenClawChatCoordinator` acquires directly from that domain even before STT is enabled, without creating a capture service, and releases generation-scoped leases after playback drains. `SpeechInputContractTests.AppVoiceServices_SharePlaybackMuteWithoutSharingCaptureOwnership` protects composition until real App transition tests cover that wiring | authoritative |
 | Hub notification banner severity and action projection | `AppNotificationInfoBarPresenter` | authoritative |
 | Compact notification list reconciliation and dismissal | `NotificationFlyoutContent` | authoritative |
 | Gateway/operator/node status flyout controls | `GatewayStatusContent` | authoritative |
@@ -416,7 +419,7 @@ Restart, which would otherwise discard stop ownership for a setup-started servic
 The shared setup settings owner then saves the reviewed capability, transport
 and startup choices without overwriting unrelated settings. Settings write
 failure stays retryable before releasing the session. Completion shows the
-verified model and three destinations, not a running or paired Windows node.
+verified model and two destinations, not a running or paired Windows node.
 The normal connection owner still performs node connection/pairing; Windows
 permission and exec-approval gates are unchanged.
 
@@ -424,7 +427,7 @@ Native package setup uses the shared `AiSetupPage` and `AiReadyPage` flow.
 Only an explicit unsupported-method result offers `WizardPage` compatibility
 setup. Authentication failures, timeouts and uncertain writes do not enter that
 fallback. Healthy native and WSL AI/Ready screens use the same presentation:
-providers, verified model and the three destination choices, without a native-only
+providers, verified model and the two destination choices, without a native-only
 summary. Gateway and permission details remain in Connection and Permissions.
 Native recovery actions and output appear only for actionable errors or uncertain
 outcomes on the AI page/provider dialog, and hide again during normal progress or
@@ -542,13 +545,15 @@ reload setting intact. Stopping either runtime does not delete its configuration
 ### Isolated listener proof and legacy process ownership
 
 After a successful package start acknowledgement, `IsolatedGatewayRuntime`
-allows up to three minutes by default, including the start command, for its own start to
-become ready. `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT` (whole seconds, 30 to 3600,
-read once per process) overrides that budget; the package command timeout never drops
-below three minutes, and the derived credential handoff and setup connection phase
-budgets grow with a longer override. A late successful acknowledgement retains ten seconds for status
-confirmation, extending the start/status ceiling to at most 190 seconds at the default. This
-allowance remains subordinate to caller deadlines; the outer 210-second default connection
+allows up to five minutes by default, including the start command, for its own start to
+become ready. Slow hosts reached a verified listener after about 210 seconds
+([#1969](https://github.com/openclaw/openclaw-windows-node/issues/1969)).
+`OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT` (whole seconds, 30 to 3600,
+read once per process) overrides that budget; the package command timeout is the larger of
+three minutes and the startup budget, and the derived credential handoff and setup connection phase
+budgets follow the startup budget. A late successful acknowledgement retains ten seconds for status
+confirmation, extending the start/status ceiling to at most 310 seconds at the default. This
+allowance remains subordinate to caller deadlines; the outer 330-second default connection
 budget also includes preflight, inspection and handshake work. It polls status
 every two seconds without issuing another start.
 A timeout raises `NativeGatewayStartupTimeoutException` with its phase (start request or
@@ -639,7 +644,7 @@ cleanup applies after assignment, and no launcher code has resumed before then.
 
 This section describes the explicit compatibility path only. The normal native
 path uses the same detected providers, activation, exact-model verification and
-Chat/Channels/Skills chooser as WSL. `NativeGatewaySetupConnection` owns the
+Chat/Channels chooser as WSL. `NativeGatewaySetupConnection` owns the
 temporary operator socket in both paths; it never owns or replaces the native
 runtime. `SetupWindow` retains `NativeGatewaySetupSession` across AI/Ready navigation.
 

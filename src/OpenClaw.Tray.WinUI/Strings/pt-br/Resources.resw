@@ -186,12 +186,6 @@
   <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
     <value>Abra a configuração de canais para fluxos de autenticação orientados por esquema, QR, login e painel, quando disponíveis.</value>
   </data>
-  <data name="StatusSkillsTitle.Text" xml:space="preserve">
-    <value>Habilidades</value>
-  </data>
-  <data name="StatusSkillsDescription.Text" xml:space="preserve">
-    <value>Abra a configuração de Skills do Gateway quando o Gateway conectado oferecer suporte a esse recurso.</value>
-  </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / agendamentos</value>
   </data>
@@ -1125,9 +1119,6 @@ Use uma destas opções:
   <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
     <value>Usar Canvas</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
-    <value>Ativar Skills</value>
-  </data>
   <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
     <value>Iniciar o OpenClaw na inicialização</value>
   </data>
@@ -1304,9 +1295,6 @@ Use uma destas opções:
   </data>
   <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
     <value>Espaço de trabalho visual</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
-    <value>Configurações → Skills</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
     <value>Origem não permitida: o Gateway rejeita esta conexão</value>
@@ -2122,18 +2110,6 @@ Use uma destas opções:
   <data name="CancelButton.Content" xml:space="preserve">
     <value>Cancelar</value>
   </data>
-  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>🧩 Habilidades</value>
-  </data>
-  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
-    <value>Todos os agentes</value>
-  </data>
-  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
-    <value>Nenhuma Skill instalada</value>
-  </data>
-  <data name="MarketplaceLink.Content" xml:space="preserve">
-    <value>Navegar no Marketplace de Skills →</value>
-  </data>
   <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
     <value>Custo total</value>
   </data>
@@ -2295,9 +2271,6 @@ Use uma destas opções:
   </data>
   <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
     <value>Fluxo de eventos</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
-    <value>Habilidades</value>
   </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>Agentes</value>
@@ -5003,27 +4976,6 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>Salvo</value>
   </data>
-  <data name="SkillsPage_Skills.Text" xml:space="preserve">
-    <value>🧩 Habilidades</value>
-  </data>
-  <data name="SkillsPage_AllAgents.Content" xml:space="preserve">
-    <value>Todos os agentes</value>
-  </data>
-  <data name="SkillsPage_Enabled.Text" xml:space="preserve">
-    <value>Ativado</value>
-  </data>
-  <data name="SkillsPage_Disabled.Text" xml:space="preserve">
-    <value>Desativado</value>
-  </data>
-  <data name="SkillsPage_LoadingSkills.Text" xml:space="preserve">
-    <value>Carregando Skills...</value>
-  </data>
-  <data name="SkillsPage_NoSkillsInstalled.Text" xml:space="preserve">
-    <value>Nenhuma Skill instalada</value>
-  </data>
-  <data name="SkillsPage_SkillsExtendYourAgent.Text" xml:space="preserve">
-    <value>Skills estendem as capacidades do seu agente. Instale skills via CLI ou ClawHub.</value>
-  </data>
   <data name="UsagePage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Gateway desconectado</value>
   </data>
@@ -5200,12 +5152,6 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   </data>
   <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
     <value>Abrir chat</value>
-  </data>
-  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
-    <value>Ativado</value>
-  </data>
-  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
-    <value>Desativado</value>
   </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>Visualizar</value>
@@ -6215,12 +6161,6 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
     <value>Go to Settings</value>
   </data>
-  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
-    <value>Registered skills</value>
-  </data>
-  <data name="Command_GoToSkills_Title" xml:space="preserve">
-    <value>Go to Skills</value>
-  </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
   </data>
@@ -6681,21 +6621,6 @@ Certifique-se de que o Gateway está em execução.</value>
   </data>
   <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Open this session in Chat</value>
-  </data>
-  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
-    <value>Desativado</value>
-  </data>
-  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
-    <value>Ativado</value>
-  </data>
-  <data name="SkillsPage_CountFormat" xml:space="preserve">
-    <value>({0}/{1} ativadas)</value>
-  </data>
-  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
-    <value>Desativadas ({0})</value>
-  </data>
-  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
-    <value>Ativadas ({0})</value>
   </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
@@ -7495,8 +7420,6 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Conversar com meu agente</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Abrir o Chat com seu agente.</value></data>
   <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Conversar com meu agente, recomendado</value></data>
-  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>Explorar habilidades</value></data>
-  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Veja habilidades para seu agente. Nada é instalado automaticamente.</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Conectar canais</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram e mais. Você escolhe quando entrar.</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Verificar prontidão novamente</value></data>
@@ -7846,7 +7769,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Iniciar e verificar o Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Tentar configurar novamente</value></data>
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>Coletar diagnósticos do Gateway</value></data>
-  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>Ver log de configuração</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>Colete diagnósticos do Gateway para obter um ZIP com dados ocultados que você pode revisar ou compartilhar, ou abra um terminal dentro do Gateway isolado. Depois, escolha Tentar configurar novamente.</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>O Gateway não ficou pronto em {0} segundos. A primeira inicialização pode ser lenta. Colete diagnósticos do Gateway para ver o motivo e escolha Tentar configurar novamente. Para permitir uma inicialização mais longa, defina a variável de ambiente {1} com um número de segundos e reinicie o Companion.</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>Coletando diagnósticos do Gateway com dados ocultados...</value></data>
@@ -7855,6 +7777,9 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>Não foi possível coletar os diagnósticos do Gateway: {0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>Não foi possível abrir o terminal do Gateway: {0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Somente visualização. Nenhum pacote será instalado e nenhum Gateway será iniciado.</value></data>
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>Atividade detalhada</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>Abrir arquivo de log</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0} não foi concluído</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Esses recursos do Windows ficam disponíveis após o Modo Nó se conectar e emparelhar com o Gateway. As permissões do Windows e as aprovações de comandos continuam sendo aplicáveis.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Gateway nativo configurado</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. Você pode alterar essas escolhas nas configurações do Companion.</value></data>
@@ -7896,7 +7821,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
-  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
   <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
@@ -7997,7 +7921,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
   <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
   <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
-  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
   <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
   <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
   <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>
@@ -8242,4 +8165,19 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Remover item</value>
   </data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Usar a voz da Gateway conectada</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>A leitura do chat e as respostas automáticas usam a voz configurada na Gateway. O texto é enviado à Gateway e ao provedor de voz. As chaves ficam na Gateway. A fala local do nó e do MCP não muda.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>Sem alternativa local automática. Se indisponível, desative esta opção para usar o provedor local.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>Parar</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>Gerando fala na Gateway…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Voz da Gateway: {0}.</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>Conecte uma Gateway nas configurações de conexão para usar sua voz.</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>Esta Gateway não anuncia os RPCs de voz necessários. Atualize a Gateway ou desative a voz da Gateway.</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>A voz da Gateway requer operator.write. Revise a aprovação deste dispositivo na Gateway. O Companion não altera permissões.</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>O texto está vazio ou excede o limite de 4096 caracteres do Companion. Escolha uma mensagem menor.</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>A Gateway retornou áudio vazio, inválido ou grande demais. Verifique a configuração de TTS. Nada foi reproduzido.</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>Este formato de áudio não é compatível. Configure a saída MP3 ou WAV na Gateway.</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>O tempo da fala da Gateway esgotou. A síntese pode ter terminado. Verifique a Gateway antes de tentar de novo. Não houve nova tentativa automática.</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>A fala da Gateway falhou. Verifique a configuração de voz e a cota do provedor. Não houve alternativa local nem nova tentativa automática.</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>O Windows não conseguiu reproduzir o áudio. Verifique o dispositivo de saída. Não houve nova tentativa automática.</value></data>
 </root>

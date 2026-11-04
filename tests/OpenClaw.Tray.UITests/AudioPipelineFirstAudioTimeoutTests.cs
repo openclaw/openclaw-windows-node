@@ -295,6 +295,32 @@ public sealed class AudioPipelineFirstAudioTimeoutTests
         Assert.Equal(1, capture.DisposeCount);
     }
 
+    [Fact]
+    public async Task PlaybackMuteBeforeStart_DropsAudioUntilLastLeaseEnds_ThenRecovers()
+    {
+        var delay = new ControlledDelay();
+        var capture = new FakeAudioCapture();
+        using var mute = new PlaybackMuteState();
+        using var firstPlayback = mute.Acquire();
+        using var secondPlayback = mute.Acquire();
+        await using var pipeline = CreatePipeline(() => capture, delay.DelayAsync);
+        using var registration = mute.RegisterCapture(value => pipeline.IsMuted = value);
+        var levels = new List<float>();
+        pipeline.AudioLevelChanged += levels.Add;
+        await pipeline.StartAsync(new AudioPipelineOptions());
+
+        capture.EmitData([0, 16]);
+        Assert.Empty(levels);
+        firstPlayback.Dispose();
+        capture.EmitData([0, 16]);
+        Assert.Empty(levels);
+        secondPlayback.Dispose();
+        capture.EmitData([0, 16]);
+        Assert.Single(levels);
+        Assert.True(levels[0] > 0);
+        await pipeline.StopAsync();
+    }
+
     private static AudioPipeline CreatePipeline(
         Func<IAudioCapture> captureFactory,
         Func<TimeSpan, CancellationToken, Task> delayAsync,
