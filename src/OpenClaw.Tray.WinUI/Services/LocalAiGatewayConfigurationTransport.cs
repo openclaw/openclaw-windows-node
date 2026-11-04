@@ -1,5 +1,6 @@
 using OpenClaw.Connection;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace OpenClawTray.Services;
@@ -88,6 +89,31 @@ internal static class LocalAiReasoningGatewayCompatibility
         @"(?<![0-9A-Za-z.+-])(?<year>\d{4})\.(?<month>\d{1,2})\.(?<patch>\d+)(?<prerelease>-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?(?![0-9A-Za-z.+-])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     public const string UpgradeMessage = "Local AI reasoning controls require OpenClaw Gateway 2026.9.8 or newer. Upgrade the Gateway before publishing this model.";
+    public const string RunningVersionUnavailableMessage = "The running WSL Gateway version could not be verified. Reconnect the Gateway before publishing Local AI.";
+
+    public static bool TryReadRunningVersion(string? statusJson, out string? version)
+    {
+        version = null;
+        if (string.IsNullOrWhiteSpace(statusJson) || Encoding.UTF8.GetByteCount(statusJson) > 1024 * 1024)
+            return false;
+        try
+        {
+            using JsonDocument status = JsonDocument.Parse(statusJson, new JsonDocumentOptions { MaxDepth = 32 });
+            if (status.RootElement.ValueKind != JsonValueKind.Object ||
+                !status.RootElement.TryGetProperty("rpc", out var rpc) || rpc.ValueKind != JsonValueKind.Object ||
+                !rpc.TryGetProperty("ok", out var ok) || ok.ValueKind != JsonValueKind.True ||
+                !rpc.TryGetProperty("server", out var server) || server.ValueKind != JsonValueKind.Object ||
+                !server.TryGetProperty("version", out var reported) ||
+                reported.ValueKind != JsonValueKind.String)
+                return false;
+            version = reported.GetString();
+            return !string.IsNullOrWhiteSpace(version);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 
     public static bool IsSupportedCliOutput(string? output) =>
         !string.IsNullOrWhiteSpace(output) && IsSupported(VersionPattern.Match(output).Value);
@@ -102,7 +128,8 @@ internal static class LocalAiReasoningGatewayCompatibility
             !int.TryParse(match.Groups["patch"].Value, out int patch) ||
             month is < 1 or > 12) return false;
         int releaseLine = (year, month, patch).CompareTo((2026, 9, 8));
-        // A prerelease of the floor itself was not part of the live proof.
+        // A named prerelease of the floor was not proven. Numeric suffixes
+        // are correction releases under GatewayReleaseVersion's contract.
         bool unverifiedFloorPrerelease = releaseLine == 0 &&
             match.Groups["prerelease"].Success &&
             !Regex.IsMatch(match.Groups["prerelease"].Value, @"^-\d+$");

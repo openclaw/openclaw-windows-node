@@ -63,6 +63,7 @@ public sealed class LocalAiGatewayRpcConfigurationTransportTests
 
     [Theory]
     [InlineData("2026.9.8", true)]
+    [InlineData("2026.9.8-1", true)] // numeric correction release
     [InlineData("2026.9.8-beta.1", false)]
     [InlineData("2026.10.5-beta.1", true)]
     [InlineData("2026.9.7", false)]

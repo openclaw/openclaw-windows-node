@@ -177,14 +177,30 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         LocalAiEndpointLifecycleResult admission = CheckPublication(current, install);
         if (!admission.Success)
             return admission;
+        // A saved WSL route may be awaiting recovery from a failed restart.
+        // Check its installed CLI now; confirm the live Gateway after restart.
+        bool resumeWslRoute = _configuration is not null && current.ProviderExists &&
+            MatchesProvider(current.ProviderJson!, install);
         LocalAiEndpointLifecycleResult compatibility = await CheckReasoningGatewayVersionAsync(
-            install, cancellationToken).ConfigureAwait(false);
+            install, cancellationToken, checkRunning: !resumeWslRoute).ConfigureAwait(false);
         if (!compatibility.Success)
             return compatibility;
         if (current.ProviderExists)
-            return MatchesProvider(current.ProviderJson!, install)
-                ? admission
-                : await MigrateLegacyProviderAsync(current, install, cancellationToken).ConfigureAwait(false);
+        {
+            if (!MatchesProvider(current.ProviderJson!, install))
+                return await MigrateLegacyProviderAsync(current, install, cancellationToken).ConfigureAwait(false);
+            if (_atomicConfiguration is not null)
+                return admission;
+
+            // A previous WSL write may have persisted while its Gateway restart
+            // timed out. Disk readback alone cannot prove the running Gateway
+            // adopted the route, so confirm a restart on every resumed publish.
+            LocalAiGatewayCommandOutcome resumed = await _configuration!.RunAsync(
+                ["gateway", "restart"], cancellationToken).ConfigureAwait(false);
+            if (!resumed.Routed || !resumed.Result!.Success)
+                return Failed("The saved Local AI route could not be adopted by the WSL Gateway. Confirm its restart before retrying.");
+            return await VerifyExistingProviderAsync(install).ConfigureAwait(false);
+        }
 
         if (_atomicConfiguration is not null)
         {
@@ -227,7 +243,9 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
 
         // WSL config writes persist the route before the running Gateway adopts it.
         // Keep the runtime in Starting until the original Gateway has restarted.
-        var restarted = await _configuration.RunAsync(["gateway", "restart"], cancellationToken).ConfigureAwait(false);
+        // The provider write is already persisted; finish restart/readback even
+        // if the caller cancels its wait, or a retry could see stale live state.
+        var restarted = await _configuration.RunAsync(["gateway", "restart"], CancellationToken.None).ConfigureAwait(false);
         if (!restarted.Routed || !restarted.Result!.Success)
         {
             _logger.Warn($"Managed Local AI Gateway restart failed (routed={restarted.Routed}, " +
@@ -236,7 +254,11 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             return Failed("The Local AI route was saved, but the app-owned Gateway did not restart. Check the WSL Gateway before retrying Local AI.");
         }
 
-        return await VerifyPublishedAsync(install, cancellationToken).ConfigureAwait(false);
+        LocalAiEndpointLifecycleResult liveVersion = await CheckReasoningGatewayVersionAsync(
+            install, CancellationToken.None).ConfigureAwait(false);
+        return liveVersion.Success
+            ? await VerifyPublishedAsync(install, CancellationToken.None).ConfigureAwait(false)
+            : liveVersion;
     }
 
     private async Task<LocalAiEndpointLifecycleResult> VerifyPublishedAsync(
@@ -263,15 +285,17 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
     public async Task<LocalAiEndpointLifecycleResult> ValidatePublicationAsync(
         LocalAiResolvedInstall install, CancellationToken ct = default)
     {
-        LocalAiEndpointLifecycleResult admission =
-            CheckPublication(await CaptureGatewayAsync(ct).ConfigureAwait(false), install);
-        return admission.Success
-            ? await CheckReasoningGatewayVersionAsync(install, ct).ConfigureAwait(false)
-            : admission;
+        GatewayCapture current = await CaptureGatewayAsync(ct).ConfigureAwait(false);
+        LocalAiEndpointLifecycleResult admission = CheckPublication(current, install);
+        if (!admission.Success) return admission;
+        bool resumeWslRoute = _configuration is not null && current.ProviderExists &&
+            MatchesProvider(current.ProviderJson!, install);
+        return await CheckReasoningGatewayVersionAsync(install, ct,
+            checkRunning: !resumeWslRoute).ConfigureAwait(false);
     }
 
     private async Task<LocalAiEndpointLifecycleResult> CheckReasoningGatewayVersionAsync(
-        LocalAiResolvedInstall install, CancellationToken ct)
+        LocalAiResolvedInstall install, CancellationToken ct, bool checkRunning = true)
     {
         if (!LocalAiGatewayProviderDefinition.UsesReasoningEffortMetadata(install))
             return LocalAiEndpointLifecycleResult.Ok();
@@ -280,8 +304,20 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                 ? LocalAiEndpointLifecycleResult.Ok()
                 : Failed(LocalAiReasoningGatewayCompatibility.UpgradeMessage);
         LocalAiGatewayCommandOutcome version = await _configuration!.RunAsync(["--version"], ct).ConfigureAwait(false);
-        return version.Routed && version.Result!.Success &&
-               LocalAiReasoningGatewayCompatibility.IsSupportedCliOutput(version.Result.StandardOutput)
+        if (!version.Routed || !version.Result!.Success ||
+            !LocalAiReasoningGatewayCompatibility.IsSupportedCliOutput(version.Result.StandardOutput))
+            return Failed(LocalAiReasoningGatewayCompatibility.UpgradeMessage);
+        if (!checkRunning) return LocalAiEndpointLifecycleResult.Ok();
+
+        // The CLI may have been upgraded while its systemd service still runs
+        // an older Gateway. Require the authenticated RPC version as well.
+        LocalAiGatewayCommandOutcome running = await _configuration.RunAsync(
+            ["gateway", "status", "--json"], ct).ConfigureAwait(false);
+        if (!running.Routed || !running.Result!.Success ||
+            !LocalAiReasoningGatewayCompatibility.TryReadRunningVersion(
+                running.Result.StandardOutput, out string? runningVersion))
+            return Failed(LocalAiReasoningGatewayCompatibility.RunningVersionUnavailableMessage);
+        return LocalAiReasoningGatewayCompatibility.IsSupported(runningVersion)
             ? LocalAiEndpointLifecycleResult.Ok()
             : Failed(LocalAiReasoningGatewayCompatibility.UpgradeMessage);
     }
@@ -349,12 +385,22 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             LocalAiGatewayCommandOutcome applied = await _configuration.RunAsync(args, ct).ConfigureAwait(false);
             if (!applied.Routed || !applied.Result!.Success)
                 return Failed("The legacy Local AI model settings changed before migration could be confirmed. Reconnect the original Gateway to reconcile.");
+            // The conditional write has landed; drain the restart despite
+            // cancellation so the running Gateway can adopt this revision.
             LocalAiGatewayCommandOutcome restarted = await _configuration.RunAsync(
-                ["gateway", "restart"], ct).ConfigureAwait(false);
+                ["gateway", "restart"], CancellationToken.None).ConfigureAwait(false);
             if (!restarted.Routed || !restarted.Result!.Success)
                 return Failed("The Local AI model settings were saved, but the WSL Gateway restart was not confirmed. Reconcile the original Gateway before retrying.");
         }
 
+        return await VerifyExistingProviderAsync(install).ConfigureAwait(false);
+    }
+
+    private async Task<LocalAiEndpointLifecycleResult> VerifyExistingProviderAsync(LocalAiResolvedInstall install)
+    {
+        LocalAiEndpointLifecycleResult liveVersion = await CheckReasoningGatewayVersionAsync(
+            install, CancellationToken.None).ConfigureAwait(false);
+        if (!liveVersion.Success) return liveVersion;
         GatewayCapture verified = await CaptureGatewayAsync(CancellationToken.None).ConfigureAwait(false);
         return verified.Success && verified.ProviderExists &&
                MatchesProvider(verified.ProviderJson!, install) &&
@@ -362,7 +408,7 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                string.Equals(verified.PrimaryModel,
                    LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), StringComparison.Ordinal)
             ? LocalAiEndpointLifecycleResult.Ok()
-            : Failed("The migrated Local AI route could not be verified. Preserve the endpoint and reconcile the original Gateway.");
+            : Failed("The saved Local AI route could not be verified. Preserve the endpoint and reconcile the original Gateway.");
     }
 
     private LocalAiEndpointLifecycleResult PublicationFailed(
