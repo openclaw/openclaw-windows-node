@@ -14,13 +14,28 @@ internal enum CompanionPageId
 /// <summary>
 /// One entry in the Workspace window's single history. <see cref="SessionKey"/> identifies a chat;
 /// <see cref="CompanionTag"/> identifies the Settings section shown in the same window.
+/// <see cref="Embedded"/> shows that section beside the Workspace sidebar, without Settings' own
+/// section list, instead of replacing the whole window.
 /// </summary>
 internal sealed record WorkspaceDestination(
-    WorkspacePageId Page, string? SessionKey = null, string? CompanionTag = null)
+   WorkspacePageId Page, string? SessionKey = null, string? CompanionTag = null, bool Embedded = false)
 {
-    public static WorkspaceDestination Settings(string companionTag) =>
-        new(WorkspacePageId.Settings, null, companionTag);
+   public static WorkspaceDestination Settings(string companionTag, bool embedded = false) =>
+       new(WorkspacePageId.Settings, null, companionTag, embedded);
+
+   /// <summary>The replacement for a pruned section keeps the presentation the user was in.</summary>
+   public static WorkspaceDestination PrunedFallback(WorkspaceDestination current, string fallbackTag) =>
+       Settings(fallbackTag, current.Page == WorkspacePageId.Settings && current.Embedded);
+
+   /// <summary>
+   /// The control to refocus when leaving Settings: the one that opened it, unless a sidebar row was
+   /// invoked to leave (a deliberate navigation that owns focus). History exits always restore it.
+   /// </summary>
+   public static T? SettingsExitFocus<T>(T? saved, SettingsExitCause cause) where T : class =>
+       cause == SettingsExitCause.SidebarActivation ? null : saved;
 }
+
+public enum SettingsExitCause { History, SidebarActivation }
 
 /// <summary>
 /// Window boundary and route identity for the approved Workspace. Agent file

@@ -359,6 +359,20 @@ internal sealed partial class SettingsShellView : UserControl
 
     // Back/Forward live in the window-level pair driven only by WorkspaceNavigationHistory.
     // This view keeps no navigation stack of its own.
+    /// <summary>
+    /// Shows only the section content, hiding this view's own section list. Used when a pinned page
+    /// opens beside the Workspace sidebar.
+    /// </summary>
+    internal bool ContentOnly
+    {
+        get => !NavView.IsPaneVisible;
+        set
+        {
+            NavView.IsPaneVisible = !value;
+            SettingsNavigationToolbar.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
     /// <summary>Returns the currently displayed page in the content frame.</summary>
     public object? CurrentPage => ContentFrame?.Content;
 
