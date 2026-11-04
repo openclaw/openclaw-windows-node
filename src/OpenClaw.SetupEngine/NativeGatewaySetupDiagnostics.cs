@@ -47,6 +47,10 @@ public static class NativeGatewaySetupDiagnostics
                 if (timeout.LastStatus is not null)
                     lines.Add($"Last reported Gateway status: {timeout.LastStatus.Describe()}.");
                 break;
+            case NativeGatewayPackageRegistrationException registration:
+                lines.Add($"Windows deployment activity: {registration.ActivityId}. " +
+                    $"Run Get-AppPackageLog -ActivityID {registration.ActivityId} for details.");
+                break;
             case Win32Exception win32:
                 lines.Add($"Windows error code: {win32.NativeErrorCode}.");
                 break;

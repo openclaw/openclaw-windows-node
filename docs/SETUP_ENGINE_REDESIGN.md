@@ -146,6 +146,10 @@ package; an existing development package is reused without Store migration. Inst
 `OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT`. Cancellation stops the WinGet request, but Windows deployment may
 continue. Repair errors and timeouts stay visible, with explicit retry rather
 than repeated installer launches; retries recheck registration before installing.
+When WinGet succeeds but the package is still not registered for the current user,
+`NativeGatewayStagedPackageRegistrar` registers the already staged Store family once
+(`Add-AppxPackage -RegisterByFamilyName` equivalent, no elevation); a "not staged" result keeps the
+bounded wait, and any other registration error fails immediately with recovery guidance.
 Native setup shares the `SetupAccessDraft` capability profiles with WSL but
 skips WSL/Local AI/Tailscale installation review and probes. The native
 progress page uses `SetupPhaseStatus` rows and automatically enters **Connect

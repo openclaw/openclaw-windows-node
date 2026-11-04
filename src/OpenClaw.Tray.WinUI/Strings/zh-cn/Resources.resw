@@ -7719,6 +7719,7 @@
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>收集 Gateway 诊断信息</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>收集 Gateway 诊断信息以获取可查看或共享的已脱敏 ZIP，或在隔离的 Gateway 中打开终端。然后选择“重试设置”。</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>Gateway 未在 {0} 秒内就绪。首次启动可能较慢。请收集 Gateway 诊断信息查看原因，然后选择“重试设置”。如需允许更长的启动时间，请将环境变量 {1} 设置为秒数并重启 Companion。</value></data>
+  <data name="Onboarding_Native_RegistrationGuidance" xml:space="preserve"><value>Windows 无法为您的 Windows 用户注册 Gateway 包。请从 Microsoft Store 安装 OpenClaw Gateway，或在 PowerShell 中运行 {0}。然后选择“重试设置”。</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>正在收集已脱敏的 Gateway 诊断信息...</value></data>
   <data name="Onboarding_Native_DiagnosticsSaved" xml:space="preserve"><value>Gateway 诊断信息已保存到 {0}。</value></data>
   <data name="Onboarding_Native_DiagnosticsNoPath" xml:space="preserve"><value>Gateway 包已收集诊断信息，但未报告保存位置。</value></data>

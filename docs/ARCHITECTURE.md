@@ -146,6 +146,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Current-user Gateway package registration, health and package-qualified alias discovery | `NativeGatewayPackageResolver` | authoritative |
 | Prospective Companion-to-native-Gateway state/config/workspace path mapping | `NativeGatewayDataPathMapper`; `NativeGatewayPackageResolver` supplies package and known-folder context. Independent of existing-log resolution | authoritative |
 | Store package install/update, one acquisition attempt and bounded registration verification | `NativeGatewayPackageAcquisition` | authoritative |
+| Current-user registration of the already staged Store Gateway family after WinGet success | `NativeGatewayStagedPackageRegistrar` (classification in `NativeGatewayPackageRegistration`), invoked once by `NativeGatewayPackageAcquisition` | authoritative |
 | Shared Windows capability and permission selection, with runtime-specific install review | `CapabilitiesPage` | authoritative |
 | Native profile draft creation and canonical state/config launch paths | `NativeGatewaySetupService` + `NativeGatewayPaths` | authoritative |
 | Native onboarding capability admission and default/remembered gateway choice policy | `NativeGatewaySetupEligibility`, consuming `MxcAvailability` session probe metadata | authoritative |
@@ -390,6 +391,9 @@ Duplicate registration, unhealthy packages
 and missing aliases fail explicitly instead of triggering reinstall loops.
 The cancellable acquisition deadline defaults to 30 minutes, including installation and
 registration verification, with one-second polling after WinGet completes.
+If WinGet succeeds but the first post-install resolve still finds no registration,
+`NativeGatewayStagedPackageRegistrar` registers the staged Store family for the current user once.
+"Not staged" keeps polling within the deadline; any other registration error fails immediately.
 `OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT` overrides that bound in seconds; an explicit
 `EnsureAsync` timeout argument still wins.
 Cancellation reaches `CommandRunner`, which stops its WinGet process tree;
