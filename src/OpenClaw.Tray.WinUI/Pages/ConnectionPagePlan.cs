@@ -185,6 +185,8 @@ internal sealed record ConnectionPagePlan
     public string? ActiveGatewayDisplayName { get; init; }
     public string? ActiveGatewayDetailLine { get; init; }
     public bool ActiveGatewayHasSshTunnel { get; init; }
+    /// <summary>Verifier reason for the non-fatal WSL relay trust warning; null hides the banner.</summary>
+    public string? RelayTrustWarningDetail { get; init; }
 
     // ─── Inputs the projection chose to keep around for code-behind ───
     /// <summary>The gateway record the strip is reporting on (active or "the one we were on").</summary>
@@ -226,7 +228,10 @@ internal sealed record ConnectionPagePlan
             plan,
             localNode,
             snap,
-            settings);
+            settings) with
+        {
+            RelayTrustWarningDetail = snap.ManagedRelayTrustWarning,
+        };
     }
 
     private static ConnectionPagePlan BuildDerived(

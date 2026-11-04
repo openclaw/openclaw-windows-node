@@ -6048,6 +6048,12 @@ Controleer of de gateway actief is.</value>
   <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
     <value>Wachten tot de gateway bevestigt dat het kanaal actief is…</value>
   </data>
+  <data name="ConnectionPage_RelayTrustWarning.Title" xml:space="preserve">
+    <value>WSL-relay kon niet worden geverifieerd</value>
+  </data>
+  <data name="ConnectionPage_RelayTrustWarning_Format" xml:space="preserve">
+    <value>Windows kon de WSL-relay (wslrelay.exe) die deze gatewayverbinding doorstuurt niet volledig verifiëren. OpenClaw heeft verbinding gemaakt omdat de beheerde WSL-distributie heeft bevestigd dat de gatewaypoort van haar is. Reden: {0}</value>
+  </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
     <value>WSL-gateway</value>
   </data>

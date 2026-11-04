@@ -6047,6 +6047,12 @@
   <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
     <value>正在等待网关确认频道已运行…</value>
   </data>
+  <data name="ConnectionPage_RelayTrustWarning.Title" xml:space="preserve">
+    <value>无法验证 WSL 中继</value>
+  </data>
+  <data name="ConnectionPage_RelayTrustWarning_Format" xml:space="preserve">
+    <value>Windows 无法完全验证转发此网关连接的 WSL 中继 (wslrelay.exe)。OpenClaw 已连接，因为受管理的 WSL 发行版已确认其拥有网关端口。原因：{0}</value>
+  </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
     <value>WSL 网关</value>
   </data>

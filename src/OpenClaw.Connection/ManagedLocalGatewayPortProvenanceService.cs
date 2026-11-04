@@ -40,15 +40,24 @@ internal interface IManagedLocalGatewayPortPlatform
         CancellationToken cancellationToken);
 }
 
-internal readonly record struct WslRelayTrustResult(bool IsTrusted, string? Detail)
+internal readonly record struct WslRelayTrustResult(bool IsTrusted, string? Detail, bool IsWarning = false)
 {
     public static WslRelayTrustResult Trusted() => new(true, null);
+
+    /// <summary>Binary trust could not be fully proven, but the deployment path is canonical.
+    /// Usable only when the managed distro ownership probe independently confirms the gateway.</summary>
+    public static WslRelayTrustResult Warned(string detail) => new(true, detail, true);
 
     public static WslRelayTrustResult Rejected(string detail) => new(false, detail);
 }
 
 internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGatewayPortPlatform
 {
+    private const string WslRelayFileName = "wslrelay.exe";
+    private const string WslDeploymentFolderName = "WSL";
+    private const string System32FolderName = "System32";
+    private const string WindowsAppsFolderName = "WindowsApps";
+
     public WindowsTcpListenerSnapshotResult CaptureListeners() =>
         WindowsTcpListenerSnapshot.Capture();
 
@@ -67,14 +76,14 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
             var fullPath = Path.GetFullPath(processPath);
             var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
             var systemRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-            var canonicalProgramFiles = Path.Combine(programFiles, "WSL", "wslrelay.exe");
-            var canonicalSystem = Path.Combine(systemRoot, "System32", "wslrelay.exe");
-            var windowsAppsRoot = Path.Combine(programFiles, "WindowsApps") + Path.DirectorySeparatorChar;
+            var canonicalProgramFiles = Path.Combine(programFiles, WslDeploymentFolderName, WslRelayFileName);
+            var canonicalSystem = Path.Combine(systemRoot, System32FolderName, WslRelayFileName);
+            var windowsAppsRoot = Path.Combine(programFiles, WindowsAppsFolderName) + Path.DirectorySeparatorChar;
             var isCanonical =
                 string.Equals(fullPath, canonicalProgramFiles, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(fullPath, canonicalSystem, StringComparison.OrdinalIgnoreCase) ||
                 (fullPath.StartsWith(windowsAppsRoot, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(Path.GetFileName(fullPath), "wslrelay.exe", StringComparison.OrdinalIgnoreCase));
+                 string.Equals(Path.GetFileName(fullPath), WslRelayFileName, StringComparison.OrdinalIgnoreCase));
             if (!isCanonical)
             {
                 return WslRelayTrustResult.Rejected(
@@ -82,10 +91,14 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
             }
 
             var signature = verifySignature(fullPath);
-            return signature.IsTrusted
-                ? WslRelayTrustResult.Trusted()
-                : WslRelayTrustResult.Rejected(
-                    signature.Detail ?? "WSL relay Authenticode verification failed.");
+            if (signature.IsTrusted)
+            {
+                return signature.IsWarning
+                    ? WslRelayTrustResult.Warned(signature.Detail ?? "WSL relay trust could not be fully verified.")
+                    : WslRelayTrustResult.Trusted();
+            }
+            return WslRelayTrustResult.Rejected(
+                signature.Detail ?? "WSL relay Authenticode verification failed.");
         }
         catch
         {
@@ -245,7 +258,7 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
         var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         if (string.IsNullOrWhiteSpace(windowsDir))
             windowsDir = Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows";
-        return Path.Combine(windowsDir, "System32", "wsl.exe");
+        return Path.Combine(windowsDir, System32FolderName, "wsl.exe");
     }
 }
 
@@ -291,6 +304,10 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 Detail: "Native Gateway ownership must be verified by its Companion runtime, not WSL.");
         }
         var result = InspectCore(record);
+        if (result.RelayTrustWarning is not null)
+        {
+            _logger.Warn($"[GatewayPort] {result.Detail}");
+        }
         _lastProvenance[new ProvenanceCacheKey(record.Id, record.Url)] = result;
         return result;
     }
@@ -441,7 +458,27 @@ public sealed class ManagedLocalGatewayPortProvenanceService
         if (classified.All(item => item.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway))
         {
             var first = classified[0];
-            return first with { Detail = $"Expected WSL relay owns loopback port {uri.Port}." };
+            var warning = string.Join(
+                " ",
+                classified
+                    .Select(item => item.Detail)
+                    .Where(itemDetail => itemDetail is not null)
+                    .Select(itemDetail => itemDetail!)
+                    .Distinct(StringComparer.Ordinal));
+            var relayTrustWarnings = classified
+                .Select(item => item.RelayTrustWarning)
+                .OfType<string>()
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            return first with
+            {
+                Detail = string.IsNullOrEmpty(warning)
+                    ? $"Expected WSL relay owns loopback port {uri.Port}."
+                    : $"Expected WSL relay owns loopback port {uri.Port}. {warning}",
+                RelayTrustWarning = relayTrustWarnings.Length == 0
+                    ? null
+                    : string.Join("; ", relayTrustWarnings),
+            };
         }
 
         if (classified.All(item => item.Kind == GatewayEndpointProvenanceKind.ConflictingOpenClawGateway) &&
@@ -575,15 +612,21 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             relayPath is not null &&
             relayTrustByPath.TryGetValue(relayPath, out relayTrust);
         var trustedRelay = hasRelayTrust && relayTrust.IsTrusted;
+        var warnedRelay = hasRelayTrust && relayTrust.IsWarning;
         if (isWslRelay && trustedRelay && expectedDistroListening)
         {
+            var warningDetail = warnedRelay
+                ? $"Expected WSL relay owns loopback port {port}, but binary trust is unproven: {relayTrust.Detail}."
+                : null;
             return new GatewayEndpointProvenance(
                 GatewayEndpointProvenanceKind.ExpectedManagedGateway,
                 port,
                 listener.ProcessId,
                 listener.ProcessName,
                 listener.ProcessStartTimeUtc,
-                listener.ProcessPath);
+                listener.ProcessPath,
+                Detail: warningDetail,
+                RelayTrustWarning: warnedRelay ? relayTrust.Detail : null);
         }
 
         var taskName = $"OpenClaw Gateway ({managedDistroName})";
@@ -606,7 +649,9 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 : !trustedRelay
                     ? relayTrust.Detail ??
                         "WSL relay Authenticode verification failed."
-                    : $"Expected distro '{managedDistroName}' does not report its systemd gateway MainPID owning port {port}."
+                    : warnedRelay
+                        ? $"Binary trust is unproven for the relay ({relayTrust.Detail}), and the expected distro '{managedDistroName}' does not report its systemd gateway MainPID owning port {port}."
+                        : $"Expected distro '{managedDistroName}' does not report its systemd gateway MainPID owning port {port}."
             : "Process is not a verified managed WSL relay or proven obsolete OpenClaw gateway.";
         return new GatewayEndpointProvenance(
             GatewayEndpointProvenanceKind.UnknownListener,

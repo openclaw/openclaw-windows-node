@@ -234,6 +234,16 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- Non-fatal: the managed WSL distro confirmed the gateway, but Windows could not
+                         prove wslrelay.exe binary trust. Message is set in ApplyRelayTrustWarning. -->
+                    <InfoBar x:Uid="ConnectionPage_RelayTrustWarning" x:Name="RelayTrustWarningBar"
+                             Severity="Warning"
+                             IsOpen="False"
+                             IsClosable="False"
+                             Visibility="Collapsed"
+                             Title="WSL relay could not be verified"
+                             AutomationProperties.AutomationId="RelayTrustWarning"/>
+
                     <!-- Host access controls — only for setup-managed WSL gateways.
                          SSH gateways keep the top-right terminal affordance but
                          do not expose lifecycle buttons. -->

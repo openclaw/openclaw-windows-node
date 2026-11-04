@@ -6023,6 +6023,12 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
     <value>Aguardando o Gateway confirmar que o canal está em execução…</value>
   </data>
+  <data name="ConnectionPage_RelayTrustWarning.Title" xml:space="preserve">
+    <value>Não foi possível verificar o relay do WSL</value>
+  </data>
+  <data name="ConnectionPage_RelayTrustWarning_Format" xml:space="preserve">
+    <value>O Windows não conseguiu verificar totalmente o relay do WSL (wslrelay.exe) que encaminha esta conexão do Gateway. O OpenClaw se conectou porque a distribuição WSL gerenciada confirmou que é dona da porta do Gateway. Motivo: {0}</value>
+  </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
     <value>Gateway WSL</value>
   </data>
