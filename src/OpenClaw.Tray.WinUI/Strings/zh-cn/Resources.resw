@@ -173,12 +173,6 @@
   <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
     <value>在可用时打开频道设置，用于基于架构的身份验证、二维码、登录和仪表板流程。</value>
   </data>
-  <data name="StatusSkillsTitle.Text" xml:space="preserve">
-    <value>技能</value>
-  </data>
-  <data name="StatusSkillsDescription.Text" xml:space="preserve">
-    <value>当连接的网关支持时，打开网关技能配置。</value>
-  </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / 计划</value>
   </data>
@@ -1105,9 +1099,6 @@
   <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
     <value>使用画布</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
-    <value>启用技能</value>
-  </data>
   <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
     <value>开机时启动 OpenClaw</value>
   </data>
@@ -1284,9 +1275,6 @@
   </data>
   <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
     <value>视觉工作区</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
-    <value>设置 → 技能</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
     <value>来源不允许: 网关拒绝此连接</value>
@@ -1484,15 +1472,6 @@
   </data>
   <data name="ClearButton.Text" xml:space="preserve">
     <value>清除</value>
-  </data>
-  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
-    <value>绑定</value>
-  </data>
-  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>消息路由规则</value>
-  </data>
-  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
-    <value>刷新</value>
   </data>
   <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
     <value>🖥️ 此计算机</value>
@@ -2085,18 +2064,6 @@
   <data name="CancelButton.Content" xml:space="preserve">
     <value>取消</value>
   </data>
-  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>🧩 技能</value>
-  </data>
-  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
-    <value>所有代理</value>
-  </data>
-  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
-    <value>未安装技能</value>
-  </data>
-  <data name="MarketplaceLink.Content" xml:space="preserve">
-    <value>浏览技能市场 →</value>
-  </data>
   <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
     <value>总成本</value>
   </data>
@@ -2259,9 +2226,6 @@
   <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
     <value>代理事件</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
-    <value>技能</value>
-  </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>代理</value>
   </data>
@@ -2273,9 +2237,6 @@
   </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
     <value>实例</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
-    <value>绑定</value>
   </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>配置</value>
@@ -2390,18 +2351,6 @@
   </data>
   <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
     <value>请等待连接建立...</value>
-  </data>
-  <data name="PriorityInfoBar.Title" xml:space="preserve">
-    <value>路由优先级</value>
-  </data>
-  <data name="PriorityInfoBar.Message" xml:space="preserve">
-    <value>绑定控制哪个代理处理每个频道的消息。优先级：对等 &gt; 帐户 &gt; 频道 &gt; 默认。</value>
-  </data>
-  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
-    <value>单代理模式</value>
-  </data>
-  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
-    <value>所有消息都会路由到默认代理。添加绑定以进行多代理路由。</value>
   </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
     <value>使用架构引导的表单编辑网关配置 (openclaw.json)。</value>
@@ -3117,6 +3066,12 @@
   </data>
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>推理</value>
+  </data>
+  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
+    <value>每秒令牌数：本会话中最新模型响应、平均值 (μ) 以及近期模型调用的第 95 百分位数 (p95)。~ 表示流式传输期间的实时估算。</value>
+  </data>
+  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
+    <value>上下文窗口使用情况</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
     <value>给助手发送消息（按 Enter 发送）</value>
@@ -4170,18 +4125,6 @@
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
     <value>Connection Status</value>
   </data>
-  <data name="BindingsPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>网关已断开</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>请连接到网关以加载绑定。</value>
-  </data>
-  <data name="BindingsPage_OpenConnection.Content" xml:space="preserve">
-    <value>打开连接</value>
-  </data>
-  <data name="BindingsPage_LoadingBindings.Text" xml:space="preserve">
-    <value>正在加载绑定…</value>
-  </data>
   <data name="ConnectionPage_ApprovalsWaitingOnYou.Text" xml:space="preserve">
     <value>等待您的审批</value>
   </data>
@@ -5056,27 +4999,6 @@
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>已保存</value>
   </data>
-  <data name="SkillsPage_Skills.Text" xml:space="preserve">
-    <value>🧩 技能</value>
-  </data>
-  <data name="SkillsPage_AllAgents.Content" xml:space="preserve">
-    <value>所有代理</value>
-  </data>
-  <data name="SkillsPage_Enabled.Text" xml:space="preserve">
-    <value>已启用</value>
-  </data>
-  <data name="SkillsPage_Disabled.Text" xml:space="preserve">
-    <value>已禁用</value>
-  </data>
-  <data name="SkillsPage_LoadingSkills.Text" xml:space="preserve">
-    <value>正在加载技能…</value>
-  </data>
-  <data name="SkillsPage_NoSkillsInstalled.Text" xml:space="preserve">
-    <value>未安装技能</value>
-  </data>
-  <data name="SkillsPage_SkillsExtendYourAgent.Text" xml:space="preserve">
-    <value>技能扩展代理的能力。通过 CLI 或 ClawHub 安装技能。</value>
-  </data>
   <data name="UsagePage_GatewayDisconnected.Title" xml:space="preserve">
     <value>网关已断开</value>
   </data>
@@ -5253,12 +5175,6 @@
   </data>
   <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
     <value>打开聊天</value>
-  </data>
-  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
-    <value>已启用</value>
-  </data>
-  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
-    <value>已禁用</value>
   </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>预览</value>
@@ -6197,20 +6113,11 @@
   <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
     <value>离线</value>
   </data>
-  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
-    <value>Could not load bindings</value>
-  </data>
   <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
     <value>Agent event log</value>
   </data>
   <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
     <value>Go to Agent Events</value>
-  </data>
-  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
-    <value>Gateway bindings</value>
-  </data>
-  <data name="Command_GoToBindings_Title" xml:space="preserve">
-    <value>Go to Bindings</value>
   </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
@@ -6277,12 +6184,6 @@
   </data>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
     <value>Go to Settings</value>
-  </data>
-  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
-    <value>Registered skills</value>
-  </data>
-  <data name="Command_GoToSkills_Title" xml:space="preserve">
-    <value>Go to Skills</value>
   </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
@@ -6633,7 +6534,7 @@
     <value>在沙盒不可用期间，命令将在主机上运行，且没有沙盒保护。</value>
   </data>
   <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
-    <value>由于已启用严格回退阻止，沙盒不可用期间命令会被阻止。</value>
+    <value>节点沙盒已开启。命令会被阻止，直到隔离可用。</value>
   </data>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>无法验证沙盒可用性</value>
@@ -6744,21 +6645,6 @@
   </data>
   <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Open this session in Chat</value>
-  </data>
-  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
-    <value>已禁用</value>
-  </data>
-  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
-    <value>已启用</value>
-  </data>
-  <data name="SkillsPage_CountFormat" xml:space="preserve">
-    <value>({0}/{1} 已启用)</value>
-  </data>
-  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
-    <value>已禁用 ({0})</value>
-  </data>
-  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
-    <value>已启用 ({0})</value>
   </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
@@ -7482,11 +7368,36 @@
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>与我的智能体聊天</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>打开 Chat，与智能体聊天。</value></data>
   <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>与我的智能体聊天，推荐</value></data>
-  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>探索技能</value></data>
-  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>浏览智能体的技能。不会自动安装任何内容。</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>连接渠道</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp、Telegram 等。由您选择何时登录。</value></data>
-  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>返回 AI 设置</value></data>
+  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>重新检查就绪状态</value></data>
+  <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>正在准备 AI 选项</value></data>
+  <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>正在准备网关</value></data>
+  <data name="Onboarding_Loading_StartGateway" xml:space="preserve"><value>正在启动网关并检查侦听器...</value></data>
+  <data name="Onboarding_Loading_PairGateway" xml:space="preserve"><value>正在将 Companion 与网关配对...</value></data>
+  <data name="Onboarding_Loading_AcquireArtifacts" xml:space="preserve"><value>正在获取本地 AI 文件...</value></data>
+  <data name="Onboarding_Loading_ApplyCapabilities" xml:space="preserve"><value>正在应用已审核的 Windows 功能...</value></data>
+  <data name="Onboarding_Loading_CheckConfiguration" xml:space="preserve"><value>正在检查已保存的网关配置...</value></data>
+  <data name="Onboarding_Loading_RestartGateway" xml:space="preserve"><value>正在重新启动已配置的网关...</value></data>
+  <data name="Onboarding_Loading_CheckHealth" xml:space="preserve"><value>正在通过身份验证检查网关运行状况...</value></data>
+  <data name="Onboarding_Loading_ReconcileLocalAi" xml:space="preserve"><value>正在协调所选本地 AI 的配置...</value></data>
+  <data name="Onboarding_Loading_PublishGateway" xml:space="preserve"><value>正在保存已验证的网关配置文件...</value></data>
+  <data name="Onboarding_Loading_SaveSettings" xml:space="preserve"><value>正在保存设置选项...</value></data>
+  <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>正在应用登录时启动的偏好设置...</value></data>
+  <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>正在启动 Companion 服务，然后进行最终 AI 检查...</value></data>
+  <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>正在等待所选本地 AI 运行时恢复...</value></data>
+  <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>正在安全停止旧的本地 AI 运行时...</value></data>
+  <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>正在释放旧的网关连接和运行时...</value></data>
+  <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>正在检查 AI</value></data>
+  <data name="Onboarding_AiSetup_VerificationFailedTitle" xml:space="preserve"><value>AI 需要处理</value></data>
+  <data name="Onboarding_AiSetup_ManagerRecoveryBlocked" xml:space="preserve"><value>设置尚未完成时网关连接发生了变化。请关闭此设置窗口，检查“连接”，然后重新打开 AI 设置以验证已保存的结果。在结果不确定时，请勿重复提供程序操作。关闭时会等待已准许的操作完成。</value></data>
+  <data name="Onboarding_Finishing_Draining" xml:space="preserve"><value>正在安全结束上一项设置操作...</value></data>
+  <data name="Onboarding_Finishing_Restarting" xml:space="preserve"><value>正在重新启动 OpenClaw，然后进行最终就绪检查...</value></data>
+  <data name="Onboarding_Finishing_Recovery" xml:space="preserve"><value>设置尚未就绪。请使用可用的恢复操作，或关闭此窗口。不会自动重复任何提供程序操作。</value></data>
+  <data name="Onboarding_Ai_CompletionConsent.Text" xml:space="preserve"><value>选择 AI 或继续其设置，即授权 OpenClaw 完成您已审核的设置选项，并在显示就绪状态前重新启动。</value></data>
+  <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>正在完成设置</value></data>
+  <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>正在应用您的选项、重新启动 OpenClaw 并检查 AI。这可能需要几分钟。</value></data>
+  <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>设置需要处理。不会自动重复任何 AI 操作。请关闭此窗口，在“连接”中检查已保存的网关，然后明确重新打开 AI 设置进行验证。</value></data>
   <data name="Onboarding_Ready_Model" xml:space="preserve"><value>已验证的模型：{0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>正在重新验证同一 Gateway、智能体和模型...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>正在完成你的 Windows 设置选项...</value></data>
@@ -7502,7 +7413,7 @@
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows 设置未能完成。所选目标尚未打开。请重试或返回 AI 设置。</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>应用无法打开所选目标。请再次选择以重试。未启动任何渠道登录。</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>无法打开所选设置目标</value></data>
-  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>此设置交接已过期、已使用或不可用。请重新打开设置并验证 AI。</value></data>
+  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>此设置交接已中断、不兼容、已过期或已使用，无法重放。请在“连接”中检查已保存的网关，然后明确重新打开 AI 设置进行验证。不会自动重复之前的设置操作。</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>已验证的 Gateway 或智能体发生变化。请返回原 Gateway 并重新打开 AI 设置。未打开其他账户。</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>已验证的 Gateway 或应用页面尚未就绪。请检查 Connection，然后手动重试。</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>重试</value></data>
@@ -7674,6 +7585,18 @@
 
 您的设置、网关、文件和模型将保留在原处。</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>您的配置已通过验证，迁移完成状态已记录。
+
+1. 打开“已安装的应用”。
+卸载：{0}（桌面安装版）
+保留：{1}，版本 {2}（Microsoft Store）
+保留所有其他应用。
+
+2. 返回此处并选择“重试”以验证移除状态并完成迁移。
+
+您的设置、网关、文件和模型将保留在原处。</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>卸载旧版应用</value>
   </data>
@@ -7736,6 +7659,17 @@
   <data name="Migration2_InnoGranted" xml:space="preserve">
     <value>已保存迁移授权。请安装并打开 Store 版本以继续。在确认迁移完成之前，请保留此应用。</value>
   </data>
+  <data name="Migration2_InnoRepairRequired" xml:space="preserve">
+    <value>所需的安装文件缺失或无效。请下载完整的 OpenClaw 安装程序。退出 OpenClaw，以同一 Windows 用户运行安装程序覆盖此安装，然后重新打开应用并重试迁移。请勿先卸载 OpenClaw。
+
+安装程序会修复安装文件。迁移仍须通过 Store 应用的兼容性检查。</value>
+  </data>
+  <data name="Migration2_InnoSetupLinkFailed" xml:space="preserve">
+    <value>Windows 无法打开安装程序下载链接。请将此地址复制到浏览器中：{0}。请勿先卸载 OpenClaw。</value>
+  </data>
+  <data name="Migration2_InnoDownloadSetup.Content" xml:space="preserve">
+    <value>下载安装程序以修复</value>
+  </data>
   <data name="Migration2_InnoFailed" xml:space="preserve">
     <value>OpenClaw 无法保存迁移授权或打开 Store 中的应用页面。请查看应用日志并重试。请勿卸载此应用。</value>
   </data>
@@ -7750,13 +7684,13 @@
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>安装本地 WSL Gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>正在检查原生 Gateway 支持情况...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>此设备支持原生 Gateway。</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>若要使用原生 Gateway，请将设备更新到支持该功能的 Windows 版本。
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Windows 报告原生 Gateway 所需的隔离会话功能不可用。较新的 Windows 版本本身并不保证此功能可用。您可以改为安装本地 WSL Gateway 或连接到现有 Gateway。
 
-原生 Gateway 支持即将在所有设备上推出。在全面推出之前，请加入 Windows 预览体验计划，选择 Beta 或 Experimental 渠道，并在加入时通过“高级选项”选择 Windows 11 版本 26H1。若要返回 Windows 11 版本 25H2/26H2，必须全新安装系统。
+如果需要更新 Windows，您可以加入 Windows 预览体验计划，选择 Beta 或 Experimental 渠道，并在加入时通过“高级选项”选择 Windows 11 版本 26H1。若要返回 Windows 11 版本 25H2/26H2，必须全新安装系统。
 
-加入后，请返回“设置 &gt; Windows 更新”并检查更新。更新可能需要几分钟才会显示。功能可用性可能因设备而异。更新后，请重新打开此页面以再次检查支持情况。</value></data>
-  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>若要使用原生 Gateway，请将设备更新到支持该功能的 Windows 版本。</value></data>
-  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>即将在所有设备上推出。</value></data>
+加入后，请返回“设置 &gt; Windows 更新”并检查更新。更新可能需要几分钟才会显示。功能可用性可能因设备而异。您可以重新打开此页面以再次检查支持情况。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Windows 报告原生 Gateway 所需的隔离会话功能不可用。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableAlternatives" xml:space="preserve"><value>您可以改为安装本地 WSL Gateway 或连接到现有 Gateway。</value></data>
   <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Windows 预览体验计划</value></data>
   <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta 或 Experimental</value></data>
   <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11 版本 26H1</value></data>
@@ -7770,6 +7704,7 @@
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>在 Companion 中继续使用与 WSL 相同的 Gateway 设置向导。连接前将验证配置和健康状态。现有 WSL Gateway 和默认 OpenClaw 配置不会被替换。</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>如果尚未安装 Gateway，设置程序将使用 WinGet 从 Microsoft Store 安装，并在验证包后自动继续。</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>正在使用 WinGet 从 Microsoft Store 安装 Gateway...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>仍在从 Microsoft Store 安装 Gateway。这可能需要几分钟（已用时 {0} 分钟）。</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet 已完成。正在验证 Gateway 注册和执行别名，然后继续...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion 将准备您的 Gateway，然后帮助您连接 AI。</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway 恢复</value></data>
@@ -7782,7 +7717,6 @@
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>启动并验证 Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重试设置</value></data>
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>收集 Gateway 诊断信息</value></data>
-  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>查看设置日志</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>收集 Gateway 诊断信息以获取可查看或共享的已脱敏 ZIP，或在隔离的 Gateway 中打开终端。然后选择“重试设置”。</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>Gateway 未在 {0} 秒内就绪。首次启动可能较慢。请收集 Gateway 诊断信息查看原因，然后选择“重试设置”。如需允许更长的启动时间，请将环境变量 {1} 设置为秒数并重启 Companion。</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>正在收集已脱敏的 Gateway 诊断信息...</value></data>
@@ -7791,6 +7725,9 @@
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>无法收集 Gateway 诊断信息：{0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>无法打开 Gateway 终端：{0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>仅供预览。不会安装任何包或启动 Gateway。</value></data>
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>详细活动</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>打开日志文件</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0}未完成</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>节点模式连接 Gateway 并完成配对后，即可使用这些 Windows 功能。Windows 权限和命令审批仍然适用。</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>原生 Gateway 已配置</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}。您可以在 Companion 设置中更改这些选项。</value></data>
@@ -7832,7 +7769,6 @@
   <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
-  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
   <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
@@ -7847,7 +7783,6 @@
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
   <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
-  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
@@ -7934,7 +7869,6 @@
   <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
   <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
   <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
-  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
   <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
   <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
   <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>
@@ -8086,9 +8020,109 @@
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>此会话已不再为空，因此已取消待定的位置选择。请检查会话并重新发送，以在当前位置继续。</value>
   </data>
+  <data name="Chat_Questions_Refresh" xml:space="preserve"><value>刷新问题</value></data>
+  <data name="Chat_Questions_Answered" xml:space="preserve"><value>问题已回答</value></data>
+  <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>问题已取消</value></data>
+  <data name="Chat_Questions_Expired" xml:space="preserve"><value>问题已过期</value></data>
+  <data name="Chat_Questions_Waiting" xml:space="preserve"><value>等待您的回答</value></data>
+  <data name="Chat_Questions_WebRequired" xml:space="preserve"><value>请打开网页版聊天回答此问题。此问题需要资源选择或机密存储控件。</value></data>
+  <data name="Chat_Questions_Answer" xml:space="preserve"><value>您的回答</value></data>
+  <data name="Chat_Questions_OpenLink" xml:space="preserve"><value>打开问题链接</value></data>
+  <data name="Chat_Questions_LinkFailed" xml:space="preserve"><value>无法打开问题链接。</value></data>
+  <data name="Chat_Questions_SendFailed" xml:space="preserve"><value>无法发送回答。请刷新后重试。</value></data>
+  <data name="Chat_Questions_Reconnect" xml:space="preserve"><value>请重新连接并刷新问题后再回答。</value></data>
+  <data name="Chat_Questions_Submitting" xml:space="preserve"><value>正在提交...</value></data>
+  <data name="Chat_Questions_Submit" xml:space="preserve"><value>提交回答</value></data>
+  <data name="Chat_Questions_Cancel" xml:space="preserve"><value>取消问题</value></data>
+  <data name="Chat_Questions_RefreshFailed" xml:space="preserve"><value>无法刷新问题。请重试或打开网页版聊天。</value></data>
+  <data name="Chat_Questions_Unavailable" xml:space="preserve"><value>此问题已过期或连接已断开。请刷新后再回答。</value></data>
+  <data name="Chat_Questions_Unconfirmed" xml:space="preserve"><value>回答尚未确认。请刷新以检查状态后再重试。</value></data>
+  <data name="Chat_Questions_Invalid" xml:space="preserve"><value>无法读取智能体的问题。请刷新或打开网页版聊天作答。</value></data>
+  <data name="Chat_Run_Finished" xml:space="preserve"><value>已完成</value></data>
+  <data name="Chat_Run_Approval" xml:space="preserve"><value>等待批准</value></data>
+  <data name="Chat_Run_Answer" xml:space="preserve"><value>等待您的回答</value></data>
+  <data name="Chat_Run_Compacting" xml:space="preserve"><value>正在压缩上下文</value></data>
+  <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>压缩上下文后正在重试</value></data>
+  <data name="Chat_Run_Retry" xml:space="preserve"><value>正在重试模型请求</value></data>
+  <data name="Chat_Run_Thinking" xml:space="preserve"><value>正在思考</value></data>
+  <data name="Chat_Run_Responding" xml:space="preserve"><value>正在回答</value></data>
+  <data name="Chat_Run_Working" xml:space="preserve"><value>正在处理</value></data>
+  <data name="Chat_Run_Tool" xml:space="preserve"><value>正在运行 {0}</value></data>
+  <data name="Chat_Questions_NoLongerAvailable" xml:space="preserve"><value>问题已不可用</value></data>
+  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0:N0} 个输出令牌</value></data>
+  <data name="Chat_Questions_OtherPlaceholder" xml:space="preserve"><value>在此输入您自己的答案</value></data>
+  <data name="Chat_Questions_KeyboardHint" xml:space="preserve"><value>Enter 换行 / Ctrl+Enter 继续</value></data>
+  <data name="Chat_Questions_Expand" xml:space="preserve"><value>展开问题</value></data>
+  <data name="Chat_Questions_Collapse" xml:space="preserve"><value>折叠问题</value></data>
+  <data name="Chat_Questions_PreviousRequest" xml:space="preserve"><value>上一个请求</value></data>
+  <data name="Chat_Questions_NextRequest" xml:space="preserve"><value>下一个请求</value></data>
+  <data name="Chat_Questions_Back" xml:space="preserve"><value>返回</value></data>
+  <data name="Chat_Questions_Skip" xml:space="preserve"><value>跳过</value></data>
+  <data name="Chat_Questions_SubmitShort" xml:space="preserve"><value>提交</value></data>
+  <data name="Chat_Questions_Next" xml:space="preserve"><value>下一步</value></data>
   <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>获取支持</value></data>
   <data name="Chat_Welcome_WhatCanYouDo" xml:space="preserve"><value>你能做什么？</value></data>
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>总结我最近的会话</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>帮我配置一个频道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>检查系统健康状况</value></data>
+  <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
+    <value>节点沙盒</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OpenSettings" xml:space="preserve">
+    <value>沙盒设置</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
+    <value>可用</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
+    <value>兼容模式</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Unavailable" xml:space="preserve">
+    <value>不可用</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Disabled" xml:space="preserve">
+    <value>工具已关闭</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Checking" xml:space="preserve">
+    <value>正在检查</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_AvailableDescription" xml:space="preserve">
+    <value>Windows 支持沙盒。每个命令都会在运行前接受检查。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_CompatibilityDescription" xml:space="preserve">
+    <value>此 Windows 版本不支持沙盒。已批准的命令将在沙盒外运行。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_UnavailableDescription" xml:space="preserve">
+    <value>无法验证沙盒。命令已被阻止。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_DisabledDescription" xml:space="preserve">
+    <value>系统工具已关闭。命令无法在此节点上运行。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
+    <value>正在检查 Windows 沙盒支持。</value>
+  </data>
+  <data name="Chat_Status_PrimaryRestored" xml:space="preserve"><value>已恢复主要模型</value></data>
+  <data name="Chat_Status_FallbackSwitching" xml:space="preserve"><value>正在切换到备用模型</value></data>
+  <data name="Chat_Status_FallbackModel" xml:space="preserve"><value>正在使用备用模型：{0}</value></data>
+  <data name="Chat_Status_StreamIncomplete" xml:space="preserve"><value>实时响应不完整。请重新连接或重新加载对话历史以恢复。</value></data>
+  <data name="Chat_Run_ElapsedHours" xml:space="preserve"><value>{0}小时 {1}分 {2}秒</value></data>
+  <data name="Chat_Run_ElapsedMinutes" xml:space="preserve"><value>{1}分 {2}秒</value></data>
+  <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
+  <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在处理此问题。请刷新以查看其状态。</value></data>
+  <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>请为每个问题选择有效的答案。</value></data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>使用已连接 Gateway 的语音</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>聊天朗读和自动回复使用 Gateway 配置的语音。文本会发送到 Gateway 及其语音提供商。密钥保留在 Gateway 上。本地节点和 MCP 语音不受影响。</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>不会自动回退到本地。若不可用，请关闭此选项以使用本地提供商。</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>停止</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>正在生成 Gateway 语音…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Gateway 语音：{0}。</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>请在连接设置中连接 Gateway 以使用其语音。</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>此 Gateway 未声明所需的语音 RPC。请更新 Gateway 或关闭 Gateway 语音。</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>Gateway 语音需要 operator.write 权限。请检查 Gateway 对此设备的批准。Companion 不会更改权限。</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>语音文本为空或超过 Companion 的 4096 字符限制。请选择较短的消息。</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>Gateway 返回了空、无效或过大的音频。请检查其 TTS 配置。未播放任何音频。</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>不支持此 Gateway 音频格式。请在 Gateway 上配置 MP3 或 WAV 输出。</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 语音已超时。合成可能已完成。再次尝试前请检查 Gateway；未进行自动重试。</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 语音失败。请检查其语音配置和提供商配额。未回退到本地或自动重试。</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 无法播放语音音频。请检查输出设备。未进行自动重试。</value></data>
 </root>

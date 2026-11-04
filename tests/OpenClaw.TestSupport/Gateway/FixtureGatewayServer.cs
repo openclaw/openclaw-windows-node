@@ -40,6 +40,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
     private TaskCompletionSource? _sessionMutationGate;
+    private TaskCompletionSource? _agentsListGate;
+    private JsonElement? _agentsRoster;
+    private bool _agentsListUnsupported;
     private TaskCompletionSource? _chatSendGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
     private int _chatEventSequence;
@@ -56,7 +59,12 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private int _sharedCredentialConnects;
     private int _deviceTokenRejections;
     private static readonly JsonElement EmptyParameters = JsonSerializer.SerializeToElement(new { });
-    private sealed record ActiveConnection(WebSocket Socket, SemaphoreSlim SendLock, CancellationToken CancellationToken);
+    private sealed record ActiveConnection(WebSocket Socket, SemaphoreSlim SendLock, CancellationToken CancellationToken)
+    {
+        public int Borrowers { get; set; }
+        public bool Retired { get; set; }
+        public TaskCompletionSource Drained { get; } = NewSignal();
+    }
 
     public Uri Endpoint { get; }
     public InteractiveGatewayRuntime? Interactive { get; }
@@ -154,25 +162,51 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
 
     public async Task CloseConnectionsAsync(CancellationToken cancellationToken = default)
     {
-        ActiveConnection[] connections;
-        lock (_sync) connections = _authenticatedConnections.Values.ToArray();
-        foreach (var connection in connections)
+        cancellationToken.ThrowIfCancellationRequested();
+        var connections = AcquireConnections(onlyOpen: false);
+        try
         {
-            try
+            foreach (var connection in connections)
             {
-                using var close = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, connection.CancellationToken);
-                close.CancelAfter(TimeSpan.FromSeconds(5));
-                await connection.SendLock.WaitAsync(close.Token);
                 try
                 {
-                    if (connection.Socket.State == WebSocketState.Open)
-                        await connection.Socket.CloseOutputAsync((WebSocketCloseStatus)1012, "Fixture restart", close.Token);
+                    using var close = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, connection.CancellationToken);
+                    close.CancelAfter(TimeSpan.FromSeconds(5));
+                    await connection.SendLock.WaitAsync(close.Token);
+                    try
+                    {
+                        if (connection.Socket.State == WebSocketState.Open)
+                            await connection.Socket.CloseOutputAsync((WebSocketCloseStatus)1012, "Fixture restart", close.Token);
+                    }
+                    finally { connection.SendLock.Release(); }
                 }
-                finally { connection.SendLock.Release(); }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { connection.Socket.Abort(); }
+                catch (WebSocketException) { connection.Socket.Abort(); }
+                catch (ObjectDisposedException) { }
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { connection.Socket.Abort(); }
-            catch (WebSocketException) { connection.Socket.Abort(); }
-            catch (ObjectDisposedException) { }
+        }
+        finally { ReleaseConnections(connections); }
+    }
+
+    private ActiveConnection[] AcquireConnections(bool onlyOpen)
+    {
+        lock (_sync)
+        {
+            var connections = _authenticatedConnections.OrderByDescending(pair => pair.Key)
+                .Select(pair => pair.Value)
+                .Where(connection => !onlyOpen || connection.Socket.State == WebSocketState.Open)
+                .ToArray();
+            foreach (var connection in connections) connection.Borrowers++;
+            return connections;
+        }
+    }
+
+    private void ReleaseConnections(ActiveConnection[] connections)
+    {
+        lock (_sync)
+        {
+            foreach (var connection in connections)
+                if (--connection.Borrowers == 0 && connection.Retired) connection.Drained.TrySetResult();
         }
     }
 
@@ -318,6 +352,43 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }, cancellationToken);
     }
 
+    /// <summary>Replaces only the synthetic agents.list response; authentication remains unchanged.</summary>
+    public void SetAgentsRoster(JsonElement roster)
+    {
+        if (roster.ValueKind != JsonValueKind.Object ||
+            !roster.TryGetProperty("agents", out var agents) || agents.ValueKind != JsonValueKind.Array)
+            throw new ArgumentException("An agents roster object is required.", nameof(roster));
+        lock (_sync)
+            _agentsRoster = roster.Clone();
+    }
+
+    public void RejectAgentsListAsUnsupported()
+    {
+        lock (_sync)
+            _agentsListUnsupported = true;
+    }
+
+    public void HoldAgentsList()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (_agentsListGate is not null)
+                throw new InvalidOperationException("An agents listing is already held.");
+            _agentsListGate = NewSignal();
+        }
+    }
+
+    public void ReleaseAgentsList()
+    {
+        lock (_sync)
+        {
+            var gate = _agentsListGate ?? throw new InvalidOperationException("No agents listing is held.");
+            _agentsListGate = null;
+            gate.TrySetResult();
+        }
+    }
+
     /// <summary>Hold one listing snapshot while subsequent requests remain independent.</summary>
     public Task HoldNextSessionList()
     {
@@ -408,53 +479,65 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
         ArgumentNullException.ThrowIfNull(data);
-        var targets = GetAuthenticatedConnections();
-        var eventData = JsonSerializer.SerializeToElement(data);
-        var approvalId = ReadString(eventData, "approvalId");
-        if (ReadString(eventData, "phase") == "requested"
-            && approvalId is { Length: <= 64 }
-            && approvalId.StartsWith("fixture-", StringComparison.Ordinal))
+        var targets = AcquireConnections(onlyOpen: true);
+        try
         {
-            lock (_sync)
-                _issuedApprovalIds.Add(approvalId);
-        }
+            if (targets.Length == 0)
+                throw new InvalidOperationException("No authenticated fixture connection is available.");
 
-        var message = new
-        {
-            type = "event",
-            @event = "agent",
-            payload = new
+            var eventData = JsonSerializer.SerializeToElement(data);
+            var approvalId = ReadString(eventData, "approvalId");
+            if (ReadString(eventData, "phase") == "requested"
+                && approvalId is { Length: <= 64 }
+                && approvalId.StartsWith("fixture-", StringComparison.Ordinal))
             {
-                runId = "",
-                seq = 0,
-                stream = "approval",
-                ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                sessionKey,
-                data = eventData,
-            },
-        };
-        await PublishEventAsync(targets, message, cancellationToken);
+                lock (_sync)
+                    _issuedApprovalIds.Add(approvalId);
+            }
+
+            var message = new
+            {
+                type = "event",
+                @event = "agent",
+                payload = new
+                {
+                    runId = "",
+                    seq = 0,
+                    stream = "approval",
+                    ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    sessionKey,
+                    data = eventData,
+                },
+            };
+            await PublishEventAsync(targets, message, cancellationToken);
+        }
+        finally
+        {
+            ReleaseConnections(targets);
+        }
     }
 
     public Task NotifySessionsChangedAsync(CancellationToken cancellationToken = default) =>
         PublishEventAsync(new { type = "event", @event = "sessions.changed", payload = new { } }, cancellationToken);
 
-    private ActiveConnection[] GetAuthenticatedConnections()
-    {
-        ActiveConnection[] targets;
-        lock (_sync)
-            targets = _authenticatedConnections
-                .OrderByDescending(pair => pair.Key)
-                .Select(pair => pair.Value)
-                .Where(connection => connection.Socket.State == WebSocketState.Open)
-                .ToArray();
-        if (targets.Length == 0)
-            throw new InvalidOperationException("No authenticated fixture connection is available.");
-        return targets;
-    }
+    public Task NotifyConfigurationChangedAsync(CancellationToken cancellationToken = default) =>
+        PublishEventAsync(new { type = "event", @event = "config.changed", payload = new { } }, cancellationToken);
 
-    private Task PublishEventAsync(object message, CancellationToken cancellationToken) =>
-        PublishEventAsync(GetAuthenticatedConnections(), message, cancellationToken);
+    public Task NotifyChatMetadataChangedAsync(CancellationToken cancellationToken = default) =>
+        PublishEventAsync(new { type = "event", @event = "chat.metadata.changed",
+            payload = new { modelCatalogChanged = false, authChanged = false } }, cancellationToken);
+
+    private async Task PublishEventAsync(object message, CancellationToken cancellationToken)
+    {
+        var targets = AcquireConnections(onlyOpen: true);
+        try
+        {
+            if (targets.Length == 0)
+                throw new InvalidOperationException("No authenticated fixture connection is available.");
+            await PublishEventAsync(targets, message, cancellationToken);
+        }
+        finally { ReleaseConnections(targets); }
+    }
 
     private static async Task PublishEventAsync(
         ActiveConnection[] targets, object message, CancellationToken cancellationToken)
@@ -509,6 +592,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             Interlocked.Increment(ref _activeConnectionCount);
             var pending = new List<Task>();
             WebSocket? socket = null;
+            ActiveConnection? activeConnection = null;
             try
             {
                 socket = await UpgradeAsync(tcp.GetStream(), connection.Token);
@@ -594,7 +678,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                             authenticated = true;
                             lock (_sync)
                                 _authenticatedConnections[connectionId] =
-                                    new ActiveConnection(socket, sendLock, connection.Token);
+                                    activeConnection = new ActiveConnection(socket, sendLock, connection.Token);
                             Complete(requestIndex, "ok");
                             _handshake.TrySetResult();
                         }
@@ -612,6 +696,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     {
                         gate = method is "sessions.patch" or "sessions.delete" or "sessions.create"
                             ? _sessionMutationGate?.Task
+                            : method == "agents.list" ? _agentsListGate?.Task
                             : method == "chat.send"
                                 ? _chatSendGate?.Task
                             : method == "sessions.list" ? _nextSessionListGate?.Task
@@ -625,8 +710,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                         gate, abortOutcome, connection.Token));
                 }
             }
-            catch (OperationCanceledException) when (connection.IsCancellationRequested) { }
-            catch (WebSocketException) when (socket?.State is WebSocketState.Aborted or WebSocketState.Closed) { }
+            catch (OperationCanceledException) when (connection.IsCancellationRequested ||
+                socket?.State is WebSocketState.Aborted or WebSocketState.Closed) { }
+            catch (WebSocketException) when (activeConnection is null ||
+                socket?.State is WebSocketState.Aborted or WebSocketState.Closed) { }
             catch (IOException) when (connection.IsCancellationRequested) { }
             catch (InvalidDataException) when (socket is null)
             {
@@ -640,16 +727,29 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             {
                 await connection.CancelAsync();
                 socket?.Abort();
+                Task borrowers = Task.CompletedTask;
+                lock (_sync)
+                {
+                    _authenticatedConnections.Remove(connectionId);
+                    if (activeConnection is not null)
+                    {
+                        activeConnection.Retired = true;
+                        if (activeConnection.Borrowers == 0) activeConnection.Drained.TrySetResult();
+                        borrowers = activeConnection.Drained.Task;
+                    }
+                }
                 try { await Task.WhenAll(pending); }
                 finally
                 {
-                    socket?.Dispose();
-                    lock (_sync)
+                    // Snapshots may still own a queued send or restart close after removal.
+                    // Keep their semaphore alive until those admitted operations release it.
+                    try { await borrowers; }
+                    finally
                     {
-                        _subscriptions.Remove(connectionId);
-                        _authenticatedConnections.Remove(connectionId);
+                        socket?.Dispose();
+                        lock (_sync) _subscriptions.Remove(connectionId);
+                        Interlocked.Decrement(ref _activeConnectionCount);
                     }
-                    Interlocked.Decrement(ref _activeConnectionCount);
                 }
             }
         }
@@ -677,7 +777,17 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 "Approval ID was not issued by the fixture.");
                     }
                 }
-                payload = Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
+                JsonElement? agentsRoster;
+                bool agentsListUnsupported;
+                lock (_sync)
+                {
+                    agentsRoster = method == "agents.list" ? _agentsRoster : null;
+                    agentsListUnsupported = method == "agents.list" && _agentsListUnsupported;
+                }
+                if (agentsListUnsupported)
+                    throw new FixtureRequestException("INVALID_REQUEST", "unknown method: agents.list");
+                payload = agentsRoster is { } roster ? roster
+                    : Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
                     ? await Interactive.RespondAsync(method, parameters, cancellationToken)
                     : _scenario.Respond(method, parameters,
                         Interactive is null ? null : Interactive.ContainsSession);

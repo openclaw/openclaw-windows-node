@@ -88,7 +88,11 @@ public partial class App
         // and withdraw before that owner is disconnected, even when the Gateway stays running.
         var localAiLifecycle = _localAiGatewayLifecycle;
         if (localAiLifecycle is not null)
-            steps.Add(new AppShutdownStep("local AI recovery", async () => await localAiLifecycle.DrainRecoveryAsync()));
+            steps.Add(new AppShutdownStep("local AI recovery", async () =>
+            {
+                _windowManager?.ReportSetupShutdownProgress(OpenClaw.SetupEngine.SetupLoadingStep.Drain);
+                await localAiLifecycle.DrainRecoveryAsync();
+            }));
         var localAiRuntime = _localAiRuntime;
         if (localAiRuntime is not null)
         {
@@ -96,6 +100,7 @@ public partial class App
             {
                 try
                 {
+                    _windowManager?.ReportSetupShutdownProgress(OpenClaw.SetupEngine.SetupLoadingStep.StopLocalAi);
                     await localAiRuntime.DisposeAsync();
                 }
                 finally
@@ -113,6 +118,7 @@ public partial class App
             {
                 try
                 {
+                    _windowManager?.ReportSetupShutdownProgress(OpenClaw.SetupEngine.SetupLoadingStep.StopGateway);
                     await connectionManager.DisposeAsync();
                 }
                 finally
@@ -163,6 +169,12 @@ public partial class App
                 }
             }));
         }
+
+        steps.Add(new AppShutdownStep("voice playback mute", () =>
+        {
+            _voicePlaybackMute.Dispose();
+            return ValueTask.CompletedTask;
+        }));
 
         steps.Add(new AppShutdownStep("ssh tunnel service", () =>
         {

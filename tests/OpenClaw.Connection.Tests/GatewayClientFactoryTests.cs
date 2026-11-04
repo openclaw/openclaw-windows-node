@@ -137,6 +137,32 @@ public sealed class GatewayClientFactoryTests
         }
     }
 
+    [Theory]
+    [InlineData(false, OperatorClientIdentity.Cli)]
+    [InlineData(true, OperatorClientIdentity.Interactive)]
+    public void Create_OperatorIdentityIsCliUnlessInteractiveRequested(bool interactive, OperatorClientIdentity expected)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "openclaw-gateway-factory-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var factory = interactive
+                ? new GatewayClientFactory { ClientIdentity = OperatorClientIdentity.Interactive }
+                : new GatewayClientFactory();
+            using var lifecycle = factory.Create(
+                "ws://127.0.0.1:18789",
+                new GatewayCredential("shared-token", IsBootstrapToken: false, Source: "test"),
+                tempDir,
+                NullLogger.Instance);
+
+            Assert.Equal(expected, lifecycle.DataClient.ClientIdentity);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task HandshakeAuthorization_BlocksCredentialBearingConnectMessage()
     {

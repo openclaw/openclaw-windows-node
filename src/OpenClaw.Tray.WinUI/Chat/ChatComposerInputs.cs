@@ -48,6 +48,7 @@ internal sealed record ChatComposerInputs(
     long ModelCatalogRevision = 0)
 {
     internal long Revision { get; init; }
+    internal bool IsVisible { get; init; } = true;
     internal bool ShowPlacementPickers { get; init; }
     internal bool PlacementTargetIsEmpty { get; init; }
     internal bool PlacementHistoryReady { get; init; }
@@ -58,6 +59,7 @@ internal sealed record ChatComposerInputs(
     internal bool HasSameProjection(ChatComposerInputs other) =>
         string.Equals(ConnectionState, other.ConnectionState, StringComparison.Ordinal)
         && TurnActive == other.TurnActive
+        && IsVisible == other.IsVisible
         && Equals(CurrentThread, other.CurrentThread)
         && AvailableModels.SequenceEqual(other.AvailableModels, StringComparer.Ordinal)
         && SequenceEqual(ModelChoices, other.ModelChoices)

@@ -4,13 +4,22 @@ using System.Diagnostics;
 namespace OpenClaw.SetupEngine.UI;
 
 internal sealed class NativeGatewaySetupHost(
+    SetupLogger logger,
     Action<string>? progress = null,
-    Action<NativeGatewaySetupStage>? stageProgress = null,
-    SetupLogger? log = null) : INativeGatewaySetupHost
+    Action<NativeGatewaySetupStage>? stageProgress = null) : INativeGatewaySetupHost
 {
-    // Includes packaged Node/CLI startup, not just the Gateway RPC timeout.
-    private static readonly TimeSpan PairingCommandTimeout = TimeSpan.FromMinutes(2);
-    private readonly NativeGatewayPackageClient _packageClient = new();
+    // Resolved per call so OPENCLAW_SETUP_NATIVE_CLI_TIMEOUT applies without a restart.
+    private static TimeSpan CliCommandTimeout => NativeGatewayCliTimeout.ResolveTimeout();
+    private readonly NativeGatewayPackageClient _packageClient =
+        new(new SetupOpenClawLogger(logger, prefix: ""));
+
+    private void Report(string message)
+    {
+        logger.Info(message);
+        progress?.Invoke(message);
+    }
+
+
 
     public Task<NativeGatewayContract> DetectContractAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken) =>
@@ -25,7 +34,7 @@ internal sealed class NativeGatewaySetupHost(
         RunAsync(package.OpenClawAliasPath,
             ["config", "set", ConfigureGatewayStep.NodeCommandsAllowKey,
                 System.Text.Json.JsonSerializer.Serialize(commandIds), "--strict-json"],
-            new Dictionary<string, string>(), TimeSpan.FromMinutes(2),
+            new Dictionary<string, string>(), CliCommandTimeout,
             "Applying Windows node capabilities inside the isolated Gateway...", cancellationToken);
 
     /// <summary>Runs the package's redacted <c>clawctl collect-logs</c> for setup recovery.</summary>
@@ -36,7 +45,7 @@ internal sealed class NativeGatewaySetupHost(
     public void ReportProgress(NativeGatewaySetupStage stage)
     {
         stageProgress?.Invoke(stage);
-        progress?.Invoke(stage switch
+        Report(stage switch
         {
             NativeGatewaySetupStage.StartingGateway => "Starting the packaged Gateway and verifying its listener...",
             NativeGatewaySetupStage.VerifyingEndpoint => "Verifying the Gateway endpoint before connecting...",
@@ -95,7 +104,7 @@ internal sealed class NativeGatewaySetupHost(
     {
         if (package.Contract == NativeGatewayContract.IsolatedSessionV1)
         {
-            progress?.Invoke("Preparing the isolated Gateway session...");
+            Report("Preparing the isolated Gateway session...");
             return _packageClient.SetupAsync(package, cancellationToken);
         }
         return RunAsync(package.ClawCtlAliasPath, ["setup"], environment,
@@ -107,14 +116,14 @@ internal sealed class NativeGatewaySetupHost(
         IReadOnlyDictionary<string, string> environment,
         CancellationToken cancellationToken) =>
         RunAsync(package.OpenClawAliasPath, ["config", "validate", "--json"], environment,
-            TimeSpan.FromMinutes(2), "Validating native Gateway configuration...", cancellationToken);
+            CliCommandTimeout, "Validating native Gateway configuration...", cancellationToken);
 
     public Task VerifyHealthAsync(
         NativeGatewayPackage package,
         IReadOnlyDictionary<string, string> environment,
         CancellationToken cancellationToken) =>
         RunAsync(package.OpenClawAliasPath, ["gateway", "health", "--json"], environment,
-            TimeSpan.FromMinutes(2), "Checking native Gateway health...", cancellationToken);
+            CliCommandTimeout, "Checking native Gateway health...", cancellationToken);
 
     public Task<IsolatedGatewayConfiguration> CheckIsolatedPairingConfigurationAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken) =>
@@ -125,29 +134,27 @@ internal sealed class NativeGatewaySetupHost(
         IReadOnlyDictionary<string, string> environment, CancellationToken cancellationToken) =>
         package.Contract == NativeGatewayContract.IsolatedSessionV1
             ? RunAsync(package.OpenClawAliasPath, ["devices", "list", "--json"],
-                new Dictionary<string, string>(), PairingCommandTimeout,
+                new Dictionary<string, string>(), CliCommandTimeout,
                 "Verifying this Companion's pairing request...", cancellationToken)
             : RunAsync(package.OpenClawAliasPath, ["devices", "list", "--json"],
-                environment, PairingCommandTimeout, "Verifying this Companion's pairing request...", cancellationToken);
+                environment, CliCommandTimeout, "Verifying this Companion's pairing request...", cancellationToken);
 
     public Task<string> ApproveDevicePairingAsync(
         NativeGatewayPackage package, string requestId,
         IReadOnlyDictionary<string, string> environment, CancellationToken cancellationToken) =>
         package.Contract == NativeGatewayContract.IsolatedSessionV1
             ? RunAsync(package.OpenClawAliasPath, ["devices", "approve", requestId, "--json"],
-                new Dictionary<string, string>(), PairingCommandTimeout,
+                new Dictionary<string, string>(), CliCommandTimeout,
                 "Pairing this Companion with its setup Gateway...", cancellationToken)
             : RunAsync(package.OpenClawAliasPath, ["devices", "approve", requestId, "--json"],
-                environment, PairingCommandTimeout, "Pairing this Companion with its setup Gateway...", cancellationToken);
+                environment, CliCommandTimeout, "Pairing this Companion with its setup Gateway...", cancellationToken);
 
     private async Task<string> RunAsync(
         string executable, string[] arguments,
         IReadOnlyDictionary<string, string> environment,
         TimeSpan timeout, string message, CancellationToken cancellationToken)
     {
-        progress?.Invoke(message);
-        using var owned = log is null ? new SetupLogger(filePath: null) : null;
-        var logger = log ?? owned!;
+        Report(message);
         var result = await new CommandRunner(logger).RunAsync(
             executable, arguments, timeout, environment,
             workingDirectory: environment.TryGetValue("OPENCLAW_STATE_DIR", out var directory)
@@ -162,7 +169,7 @@ internal sealed class NativeGatewaySetupHost(
                 $"{message} {(result.TimedOut ? "Timed out." : $"Exit code {result.ExitCode}.")} {detail}");
         }
         if (arguments is ["setup"] && !string.IsNullOrWhiteSpace(result.Stdout))
-            progress?.Invoke(SetupLogger.Sanitize(result.Stdout).Trim());
+            Report(SetupLogger.Sanitize(result.Stdout).Trim());
         return result.Stdout;
     }
 }

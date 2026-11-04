@@ -4,6 +4,21 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class ChatTimelinePresentationTests
 {
+    [Theory]
+    [InlineData("Light", "SystemAccentColorDark1")]
+    [InlineData("Default", "SystemAccentColorLight2")]
+    [InlineData("HighContrast", "SystemColorWindowTextColor")]
+    public void SandboxOnBrush_UsesNativeThemeColor(string theme, string resource)
+    {
+        var document = System.Xml.Linq.XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Themes", "ChatResources.xaml"));
+        System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var dictionary = document.Descendants().Single(element =>
+            element.Name.LocalName == "ResourceDictionary" && (string?)element.Attribute(x + "Key") == theme);
+        var brush = dictionary.Elements().Single(element => (string?)element.Attribute(x + "Key") == "ChatSandboxOnBrush");
+        Assert.Equal($"{{ThemeResource {resource}}}", (string?)brush.Attribute("Color"));
+    }
+
     [Fact]
     public void GatewayDashboard_StaysInConnectionCardNotChat()
     {
@@ -107,6 +122,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("itemsView.Unloaded += OnUnloaded", binding);
         Assert.Contains("itemsView.Loaded -= OnLoaded", binding);
         Assert.Contains("itemsView.LayoutUpdated -= OnLayoutUpdated", binding);
+        Assert.Contains("scrollView.Loaded -= OnScrollViewLoaded", binding);
         Assert.DoesNotContain("ChangeView", binding);
         Assert.DoesNotContain("UpdateLayout", binding);
         Assert.DoesNotContain("TailSettle", binding);
@@ -123,6 +139,105 @@ public sealed class ChatTimelinePresentationTests
         var viewChanged = binding[viewChangedStart..tailRequestStart];
         Assert.DoesNotContain("VerticalAnchorRatio", viewChanged);
         Assert.DoesNotContain("StartBringItemIntoView", viewChanged);
+    }
+
+    [Fact]
+    public void ReactorTimeline_InitialTailResolvesLiveCoordinatesAfterLayoutAndDispatch()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "ReactorItemsViewScrollController.cs"));
+
+        var requestStart = binding.IndexOf("public void Request(", StringComparison.Ordinal);
+        var updateStart = binding.IndexOf("public void UpdateTail(", requestStart, StringComparison.Ordinal);
+        Assert.Contains("AwaitLayout();", binding[requestStart..updateStart]);
+
+        var loadStart = binding.IndexOf("private void OnLoaded(", StringComparison.Ordinal);
+        var attachStart = binding.IndexOf("private void AttachScrollView(", loadStart, StringComparison.Ordinal);
+        var initialPositioning = binding[loadStart..attachStart];
+        Assert.Contains("_disposed || !_valid || !itemsView.IsLoaded", initialPositioning);
+        Assert.Contains("itemsView.ScrollView is { IsLoaded: false } scrollView", initialPositioning);
+        Assert.Contains("scrollView.Loaded += OnScrollViewLoaded", initialPositioning);
+        Assert.Contains("itemsView.LayoutUpdated += OnLayoutUpdated", initialPositioning);
+        Assert.Contains("DetachLayout();", initialPositioning);
+        Assert.Contains("AttachScrollView();", initialPositioning);
+        Assert.Contains("initialRequest.TryResolve(", initialPositioning);
+        Assert.Contains("StartTailRequest(request)", initialPositioning);
+        Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", initialPositioning);
+        Assert.Contains("new InitialTailNavigationRequest(_version)", initialPositioning);
+        Assert.Contains("!itemsView.IsLoaded || initialRequest.Version != _version", initialPositioning);
+        var dispatchStart = initialPositioning.IndexOf("itemsView.DispatcherQueue.TryEnqueue", StringComparison.Ordinal);
+        Assert.DoesNotContain("TryCapture(", initialPositioning[..dispatchStart]);
+        Assert.DoesNotContain("TryResolve(", initialPositioning[..dispatchStart]);
+        Assert.DoesNotContain("_tailIndex", initialPositioning[..dispatchStart]);
+        Assert.DoesNotContain("_displayedTailKey", initialPositioning[..dispatchStart]);
+        Assert.DoesNotContain("_itemCount", initialPositioning[..dispatchStart]);
+        Assert.Contains("initialRequest.TryResolve(", initialPositioning[dispatchStart..]);
+        Assert.Contains("CompositionTarget.Rendering += _rendering", initialPositioning);
+
+        var unloadStart = binding.IndexOf("private void OnUnloaded(", StringComparison.Ordinal);
+        var detachLayoutStart = binding.IndexOf("private void DetachLayout(", unloadStart, StringComparison.Ordinal);
+        Assert.Contains("DetachLayout();", binding[unloadStart..detachLayoutStart]);
+        var disposeStart = binding.IndexOf("public void Dispose()", StringComparison.Ordinal);
+        Assert.Contains("DetachLayout();", binding[disposeStart..]);
+    }
+
+    [Fact]
+    public void InitialTailNavigationRequest_ResolvesSameKeyAtCurrentIndexAfterDispatch()
+    {
+        var initialRequest = new InitialTailNavigationRequest(Version: 1);
+        var tailIndex = 1;
+        var itemCount = 2;
+        const string thinkingKey = "thinking";
+        Assert.True(TailNavigationPolicy.TryCapture(tailIndex, thinkingKey, itemCount, out var staleRequest));
+
+        TailNavigationRequest? executed = null;
+        var dispatcher = new Queue<Action>();
+        dispatcher.Enqueue(() =>
+        {
+            if (initialRequest.TryResolve(1, tailIndex, thinkingKey, itemCount, out var request)
+                && TailNavigationPolicy.CanExecute(request, tailIndex, thinkingKey, itemCount))
+                executed = request;
+        });
+
+        // A tool row arrives before the same thinking row while initial navigation is queued.
+        tailIndex = 2;
+        itemCount = 3;
+        Assert.False(TailNavigationPolicy.CanExecute(staleRequest, tailIndex, thinkingKey, itemCount));
+        Assert.Null(executed);
+
+        dispatcher.Dequeue()();
+
+        Assert.Equal(new TailNavigationRequest(2, thinkingKey), executed);
+    }
+
+    [Fact]
+    public void InitialTailNavigationRequest_RejectsChangedSessionGeneration()
+    {
+        var initialRequest = new InitialTailNavigationRequest(Version: 1);
+
+        Assert.False(initialRequest.TryResolve(
+            currentVersion: 2,
+            currentTailIndex: 0,
+            currentDisplayedTailKey: "other-session",
+            itemCount: 1,
+            out _));
+    }
+
+    [Fact]
+    public void InitialTailNavigationRequest_RejectsTailThatBecameEmptyBeforeDispatch()
+    {
+        var initialRequest = new InitialTailNavigationRequest(Version: 1);
+
+        Assert.False(initialRequest.TryResolve(
+            currentVersion: 1,
+            currentTailIndex: -1,
+            currentDisplayedTailKey: null,
+            itemCount: 0,
+            out _));
     }
 
     [Fact]
@@ -194,6 +309,105 @@ public sealed class ChatTimelinePresentationTests
 
         Assert.False(queue.TryDequeue(currentVersion: 2, out _));
         Assert.False(queue.IsScheduled);
+    }
+
+    [Fact]
+    public void TailReflowCorrection_AllowsOnlyOneCorrectionPerResize()
+    {
+        var correction = new TailReflowCorrection();
+
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        correction.Arm();
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+
+        correction.Arm();
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Fact]
+    public void TailReflowCorrection_DoesNotPullBackAReaderOrConsumeAnUnneededCorrection()
+    {
+        var correction = new TailReflowCorrection();
+        correction.Arm();
+
+        Assert.False(correction.TryConsume(following: false, nearBottom: false, initialPending: false));
+        Assert.False(correction.TryConsume(following: true, nearBottom: true, initialPending: false));
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Fact]
+    public void TailReflowCorrection_CancellationRejectsLateExtentChanges()
+    {
+        var correction = new TailReflowCorrection();
+        correction.Arm();
+        correction.Clear();
+
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Fact]
+    public void TailReflowCorrection_DoesNotStartWhileInitialPositioningIsPending()
+    {
+        var correction = new TailReflowCorrection();
+        correction.Arm();
+
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: true));
+        // The resize budget survives, so reflow after the initial bring lands can still correct once.
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)]
+    public void TailNavigationPolicy_OnlyReflowCorrectionRequiresFollowingAtDispatch(
+        bool reflowCorrection, bool following, bool expected)
+    {
+        Assert.Equal(expected, TailNavigationPolicy.CanDispatch(reflowCorrection, following));
+    }
+
+    [Fact]
+    public void ReactorTimeline_ReflowNavigationDetachesRenderingAndInputSubscriptions()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+
+        Assert.Contains("CompositionTarget.Rendering += _rendering", binding);
+        Assert.Contains("CompositionTarget.Rendering -= _rendering", binding);
+        Assert.Contains("itemsView.SizeChanged += OnSizeChanged", binding);
+        Assert.Contains("itemsView.SizeChanged -= OnSizeChanged", binding);
+        Assert.Contains("_scrollView.ExtentChanged += OnExtentChanged", binding);
+        Assert.Contains("_scrollView.ExtentChanged -= OnExtentChanged", binding);
+        Assert.Contains("itemsView.PreviewKeyDown += OnNavigationKeyDown", binding);
+        Assert.Contains("itemsView.PreviewKeyDown -= OnNavigationKeyDown", binding);
+        Assert.Contains("itemsView.AddHandler(UIElement.PointerWheelChangedEvent", binding);
+        Assert.Contains("itemsView.RemoveHandler(UIElement.PointerWheelChangedEvent", binding);
+    }
+
+    [Fact]
+    public void ReactorTimeline_ReflowDispatchRechecksFollowEligibility()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        var dispatchStart = binding.IndexOf("private void DispatchTailRequest", StringComparison.Ordinal);
+        var attachStart = binding.IndexOf("private void AttachScrollView", dispatchStart, StringComparison.Ordinal);
+        var dispatch = binding[dispatchStart..attachStart];
+        var bringStart = dispatch.IndexOf("StartTailRequest(request)", StringComparison.Ordinal);
+
+        Assert.True(bringStart > 0);
+        Assert.Contains("TailNavigationPolicy.CanDispatch(renderAfterLayout, _following)", dispatch[..bringStart]);
+        Assert.Contains("TryConsume(_following, IsNearBottom(sender), _initialPending)", binding);
+
+        var cancelStart = binding.IndexOf("private void CancelPendingNavigation", StringComparison.Ordinal);
+        var cancelEnd = binding.IndexOf("private void OnViewChanged", cancelStart, StringComparison.Ordinal);
+        var cancel = binding[cancelStart..cancelEnd];
+        Assert.Contains("_following = _scrollView is { } scrollView && IsNearBottom(scrollView);", cancel);
+        Assert.DoesNotContain("_following = false;", cancel);
     }
 
     [Fact]

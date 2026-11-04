@@ -127,10 +127,12 @@ public sealed partial class GatewayScenario
     }
 
     /// <summary>Explicit synthetic setup replies only. The host never executes provider or package operations.</summary>
-    public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true)
+    public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true,
+        bool allowSessionMutations = false)
     {
         var browse = CreateBrowse();
-        return new(browse._sessions, browse._reads, responder, advertiseSetup);
+        return new(browse._sessions, browse._reads, responder, advertiseSetup,
+            allowSessionMutations: allowSessionMutations);
     }
 
     /// <summary>Synthetic historical Talk rows, not a recording of a user's conversation.</summary>
@@ -255,13 +257,28 @@ public sealed partial class GatewayScenario
                 selectionRequired = requireAgentSelection,
                 agents = new[]
                 {
-                    new { id = "main", name = "Fixture Main", identity = new { name = "Fixture Main" } },
-                    new { id = "research", name = "Fixture Research", identity = new { name = "Fixture Research" } }
+                    new { id = "main", name = "Fixture Main", workspace = "/fixture/workspace", identity = new { name = "Fixture Main" } },
+                    new { id = "research", name = "Fixture Research", workspace = "/fixture/research", identity = new { name = "Fixture Research" } }
                 }
             }),
             ["node.list"] = JsonSerializer.SerializeToElement(new { ts = Epoch.ToUnixTimeMilliseconds(), nodes = Array.Empty<object>() }),
+            ["question.list"] = JsonSerializer.SerializeToElement(new { questions = Array.Empty<object>() }),
+            ["projects.list"] = JsonSerializer.SerializeToElement(new { projects = Array.Empty<object>(), recents = Array.Empty<object>() }),
+            ["environments.list"] = JsonSerializer.SerializeToElement(new
+            {
+                environments = new[]
+                {
+                    new { id = "gateway:fixture", type = "local", label = "Fixture Gateway", status = "available" }
+                }
+            }),
             ["node.pair.list"] = JsonSerializer.SerializeToElement(new { pending = Array.Empty<object>(), paired = Array.Empty<object>() }),
             ["device.pair.list"] = JsonSerializer.SerializeToElement(new { pending = Array.Empty<object>(), paired = Array.Empty<object>() }),
+            ["question.list"] = JsonSerializer.SerializeToElement(new { questions = Array.Empty<object>() }),
+            ["channels.status"] = JsonSerializer.SerializeToElement(new
+            {
+                ts = Epoch.ToUnixTimeMilliseconds(), channelOrder = Array.Empty<string>(),
+                channels = new { }, channelAccounts = new { }
+            }),
             ["usage.status"] = JsonSerializer.SerializeToElement(new
             {
                 updatedAt = Epoch.ToUnixTimeMilliseconds(), providers = Array.Empty<object>()
@@ -467,8 +484,13 @@ public sealed partial class GatewayScenario
 
     private object CreateConversation(JsonElement p)
     {
-        ValidateProperties(p, "parentSessionKey", "emitCommandHooks", "succeedsParent");
-        var parent = FindSession(RequiredString(p, "parentSessionKey"));
+        ValidateProperties(p, "parentSessionKey", "emitCommandHooks", "succeedsParent", "agentId");
+        var parent = p.TryGetProperty("parentSessionKey", out _)
+            ? FindSession(RequiredString(p, "parentSessionKey"))
+            : p.TryGetProperty("agentId", out _)
+                ? _sessions.FirstOrDefault(session => session.AgentId == RequiredString(p, "agentId"))
+                    ?? throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agent.")
+                : FindSession(MainSessionKey);
         OptionalBoolean(p, "emitCommandHooks");
         if (OptionalBoolean(p, "succeedsParent") == true)
             throw new FixtureRequestException("INVALID_PARAMS", "The fixture only supports parallel session creation.");
@@ -617,11 +639,21 @@ public sealed partial class GatewayScenario
 
     private JsonElement Read(string method, JsonElement p)
     {
-        ValidateProperties(p, method == "health" ? ["deep", "probe"] : []);
+        ValidateProperties(p, method switch
+        {
+            "health" => ["deep", "probe"],
+            "channels.status" => ["probe", "timeoutMs"],
+            _ => []
+        });
         if (method == "health")
         {
             OptionalBoolean(p, "deep");
             OptionalBoolean(p, "probe");
+        }
+        else if (method == "channels.status")
+        {
+            OptionalBoolean(p, "probe");
+            PositiveInt(p, "timeoutMs", 10000);
         }
         return _reads[method];
     }
@@ -639,7 +671,8 @@ public sealed partial class GatewayScenario
         or "sessions.compaction.branch" or "node.invoke" or "exec.approval.resolve" or "node.rename"
         or "node.pair.approve" or "node.pair.reject" or "node.pair.remove" or "device.pair.approve"
         or "device.pair.reject" or "device.token.rotate" or "device.token.revoke" or "update.run"
-        or "cron.add" or "cron.update" or "cron.remove" or "cron.run" or "skills.install" or "skills.update";
+        or "cron.add" or "cron.update" or "cron.remove" or "cron.run"
+        or "projects.add";
 
     internal static void ValidateProperties(JsonElement p, params string[] names)
     {

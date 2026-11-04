@@ -81,7 +81,7 @@ public sealed class AppRefactorContractTests
         var source = ReadAppSources();
 
         Assert.Contains("new CredentialResolver", source);
-        Assert.Contains("new GatewayClientFactory { SupportsExecApprovals = true }", source);
+        Assert.Contains("new GatewayClientFactory { SupportsExecApprovals = true, ClientIdentity = OperatorClientIdentity.Interactive }", source);
         Assert.Contains("new NodeConnector", source);
         Assert.Contains("_connectionManager = new GatewayConnectionManager", source);
         Assert.Contains("nodeConnector.ClientCreated +=", source);
@@ -1432,9 +1432,16 @@ public sealed class AppRefactorContractTests
         var restart = ExtractMethod(source, "RestartAfterSetupAsync");
         AssertInOrder(
             restart,
-            "if (nativeCompletion is null)",
+            "var verifiedCompletion = preparation?.Verification ?? nativeCompletion?.Verification;",
+            "if (verifiedCompletion is null)",
             "SetupStartupPolicy.ApplyClassicPreferenceAsync(enableAutoStart",
+            "if (verifiedCompletion is not null)",
+            "store.IssuePreparation(preparation) : store.Issue(nativeCompletion!)",
             "Process.Start(psi)");
+        Assert.Contains("if (verifiedCompletion is null)\n            " +
+            "await SetupStartupPolicy.ApplyClassicPreferenceAsync(enableAutoStart",
+            restart.Replace("\r\n", "\n", StringComparison.Ordinal));
+        Assert.DoesNotContain("if (nativeCompletion is null)", restart);
     }
 
     [Fact]
@@ -1825,16 +1832,21 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void HubBackNavigation_PrunesUnavailableGatewayPages()
+    public void WorkspaceBackForward_PrunesUnavailableGatewaySettingsHistory()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
-        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs"));
+        var workspace = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
+        var view = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs"));
 
-        Assert.Contains("RemoveUnavailableGatewayBackStackEntries", source);
-        Assert.Contains("ContentFrame.BackStack.RemoveAt(i)", source);
-        Assert.Contains("RemoveBackStackEntries(HubPageRegistry.IsGatewayPageTag)", source);
-        Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "GoBack"));
-        Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "UpdateGatewayNavVisibility"));
+        Assert.Contains("PruneUnavailableGatewayHistory();", ExtractMethod(workspace, "NavigateBack"));
+        Assert.Contains("PruneUnavailableGatewayHistory();", ExtractMethod(workspace, "NavigateForward"));
+        var prune = ExtractMethod(workspace, "PruneUnavailableGatewayHistory");
+        Assert.Contains("_state.Status != ConnectionStatus.Connected", prune);
+        Assert.Contains("PruneSettingsHistory(HubPageRegistry.IsGatewayPageTag, null)", prune);
+        Assert.Contains("_navigation.PruneSettings(", ExtractMethod(workspace, "PruneSettingsHistory"));
+        Assert.Contains("PruneUnavailableGatewayEntries(fallbackTag: null);", ExtractMethod(view, "UpdateGatewayNavVisibility"));
+        Assert.Contains("PruneRequested?.Invoke(HubPageRegistry.IsGatewayPageTag", ExtractMethod(view, "PruneUnavailableGatewayEntries"));
+        Assert.DoesNotContain("BackStack", view);
     }
 
     [Fact]
@@ -2055,19 +2067,22 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void HubWindow_DesktopIconMirrorsStatusAccent()
+    public void SettingsView_DoesNotOwnWindowIcon_WorkspaceKeepsSingleBrandIcon()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
-        var source = File.ReadAllText(Path.Combine(
-            root, "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs"));
+        var view = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs"));
+        var workspace = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
 
-        // The desktop/taskbar icon is refreshed from the same accent as the pill.
-        var apply = ExtractMethod(source, "ApplyWindowStatusIcon");
-        Assert.Contains("StatusBadgeIconFactory.GetBadgedIconPath(accent)", apply);
-
-        // Both status-update paths must repaint the window icon.
-        var update = ExtractMethod(source, "UpdateTitleBarStatus");
-        Assert.Contains("ApplyWindowStatusIcon(accent)", update);
+        // The status-accent desktop icon belonged to the removed Settings window. The embedded
+        // view must not repaint any window icon; the Workspace owns the one static brand icon.
+        Assert.DoesNotContain("ApplyWindowStatusIcon", view);
+        Assert.DoesNotContain("StatusBadgeIconFactory", view);
+        Assert.DoesNotContain("AppWindow.SetIcon", view);
+        Assert.DoesNotContain("UpdateTitleBarStatus", view);
+        Assert.Contains("WorkspaceTitleBar.IconSource = new BitmapIconSource", workspace);
+        Assert.Contains("new Uri(BrandAssets.RedBotMarkUri)", workspace);
     }
 
     [Fact]

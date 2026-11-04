@@ -147,10 +147,19 @@ public sealed partial class DebugPage : Page
     /// </summary>
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        Deactivate();
+        base.OnNavigatedFrom(e);
+    }
+
+    /// <summary>
+    /// Also called by the Settings view when it is hidden: clearing the frame content does not
+    /// raise <see cref="OnNavigatedFrom"/>.
+    /// </summary>
+    internal void Deactivate()
+    {
         _detailMode = DetailMode.None;
         _detailGeneration++;
         StopCopyFeedbackTimer();
-        base.OnNavigatedFrom(e);
     }
 
     // ── Top status InfoBar ───────────────────────────────────────────

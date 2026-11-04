@@ -12,14 +12,14 @@ namespace OpenClaw.Tray.UITests;
 public sealed class WorkspaceSessionLayoutTests(UIThreadFixture ui)
 {
     [Theory]
-    [InlineData("WorkspaceWindow.xaml", "CollapsePaneButton")]
-    [InlineData("WorkspaceWindow.xaml", "ReopenPaneButton")]
-    [InlineData("HubWindow.xaml", "NavPaneToggleButton")]
+    [InlineData("Windows\\WorkspaceWindow.xaml", "CollapsePaneButton")]
+    [InlineData("Windows\\WorkspaceWindow.xaml", "ReopenPaneButton")]
+    [InlineData("Controls\\SettingsShellView.xaml", "NavPaneToggleButton")]
     public async Task PaneToggle_LeavesRoundingRoomAroundUnconstrainedGlyph(string file, string name)
     {
         var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
             ?? throw new InvalidOperationException("OPENCLAW_REPO_ROOT is required for production markup proof.");
-        var document = XDocument.Load(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", file));
+        var document = XDocument.Load(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", file));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var markup = new XElement(document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name));
         // Mount the production control without its window event handler or localized tooltip.

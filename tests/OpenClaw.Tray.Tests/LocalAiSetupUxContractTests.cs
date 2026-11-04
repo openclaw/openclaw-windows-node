@@ -66,7 +66,7 @@ public sealed class LocalAiSetupUxContractTests
     {
         string root = TestRepositoryPaths.GetRepositoryRoot();
         string tray = Path.Combine(root, "src", "OpenClaw.Tray.WinUI");
-        string xaml = File.ReadAllText(Path.Combine(tray, "Windows", "HubWindow.xaml"));
+        string xaml = File.ReadAllText(Path.Combine(tray, "Controls", "SettingsShellView.xaml"));
         string svg = File.ReadAllText(Path.Combine(tray, "Assets", "SidebarIcons", "LocalAi.svg"));
 
         Assert.Contains("x:Key=\"LocalAi_Icon\" UriSource=\"ms-appx:///Assets/SidebarIcons/LocalAi.svg\"", xaml);

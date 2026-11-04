@@ -639,7 +639,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false,
         bool requireAgentSelection = false, bool allowSessionMutations = false, GatewayScenario? scenario = null,
-        Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null)
+        Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null, bool postSetupRestart = false,
+        Action? releasePendingResponses = null)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
@@ -647,10 +648,11 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),
             allowAgentCreation: allowAgentCreation, requireAgentSelection: requireAgentSelection,
             allowSessionMutations: allowSessionMutations,
-            scenario: scenario, prepareSetupHandoff: prepareSetupHandoff);
-        output.WriteLine($"Fixture run {run.Profile.RunId}, PID {run.AppProcessId}, artifacts: {run.ArtifactsDirectory}");
+            scenario: scenario, prepareSetupHandoff: prepareSetupHandoff, postSetupRestart: postSetupRestart,
+            releasePendingResponses: releasePendingResponses);
         try
         {
+            output.WriteLine($"Fixture run {run.Profile.RunId}, PID {run.AppProcessId}, artifacts: {run.ArtifactsDirectory}");
             // UIA is synchronous and can block inside a hung app. Keep the deadline
             // outside that worker so failure reporting and owned-process cleanup still run.
             await Task.Run(() => test(run)).WaitAsync(TimeSpan.FromSeconds(150)).ConfigureAwait(false);
@@ -662,6 +664,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         }
         catch (Exception ex)
         {
+            releasePendingResponses?.Invoke();
             await run.WriteReportAsync("failed", ex);
             if (run.IsRunning)
             {
@@ -674,24 +677,26 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             }
             throw;
         }
+        finally
+        {
+            // Release response gates before await-using disposes the server and joins its connections.
+            releasePendingResponses?.Invoke();
+        }
     }
 
     private static async Task SelectSessionAsync(GatewayFixtureRun run, string title, string key, bool waitForHistory = true)
     {
-        await WaitUiAsync(run, () => FindById(run, "WorkspaceAssistantSelector") is not null, "agent selector");
-        var selector = FindById(run, "WorkspaceAssistantSelector")!;
+        var selector = await WaitForElementByIdAsync(run, "WorkspaceAssistantSelector", "agent selector");
         var agentId = $"WorkspaceAgent:{SessionDisplayResolver.Resolve(new SessionInfo { Key = key }).AgentId}";
         var selection = (SelectionPattern)selector.GetCurrentPattern(SelectionPattern.Pattern);
         if (!selection.Current.GetSelection().Any(item => item.Current.AutomationId == agentId))
         {
             var dropdown = (ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern);
             dropdown.Expand();
-            await WaitUiAsync(run, () => FindById(run, agentId) is not null, "session's agent");
-            Invoke(FindById(run, agentId)!);
+            Invoke(await WaitForElementByIdAsync(run, agentId, "session's agent"));
             dropdown.Collapse();
         }
-        await WaitUiAsync(run, () => FindById(run, $"WorkspaceSession:{key}") is not null, $"sidebar session {title}");
-        Invoke(FindById(run, $"WorkspaceSession:{key}")!);
+        Invoke(await WaitForElementByIdAsync(run, $"WorkspaceSession:{key}", $"sidebar session {title}"));
         await WaitUiAsync(run, () => SessionSelected(run, title), $"selected session {title}");
         if (waitForHistory) await WaitHistoryAsync(run, key);
     }
@@ -782,7 +787,12 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     {
         var timeline = FindTimeline(run);
         var message = FindText(run, text);
-        if (timeline is null || message is null || message.Current.IsOffscreen)
+        return timeline is not null && message is not null && IsVisibleInTimeline(timeline, message);
+    }
+
+    private static bool IsVisibleInTimeline(AutomationElement timeline, AutomationElement message)
+    {
+        if (message.Current.IsOffscreen)
             return false;
         var viewport = timeline.Current.BoundingRectangle;
         var bounds = message.Current.BoundingRectangle;
@@ -791,19 +801,40 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             && bounds.Right > viewport.Left && bounds.Left < viewport.Right;
     }
 
-    private static async Task ScrollToAsync(GatewayFixtureRun run, double percent)
+    private async Task ScrollToAsync(GatewayFixtureRun run, double percent)
     {
-        var timeline = FindTimeline(run) ?? throw new InvalidOperationException("Chat timeline is not mounted.");
-        var scrollElement = timeline;
+        AutomationElement? timeline = null;
+        await WaitUiAsync(run, () => (timeline = FindTimeline(run)) is not null,
+            "mounted chat timeline before scrolling");
+        var scrollElement = timeline!;
         if (!scrollElement.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern))
         {
-            scrollElement = timeline.FindFirst(TreeScope.Descendants,
+            scrollElement = scrollElement.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true))
                 ?? throw new InvalidOperationException("Chat timeline has no accessible scroll control.");
             pattern = scrollElement.GetCurrentPattern(ScrollPattern.Pattern);
         }
-        ((ScrollPattern)pattern).SetScrollPercent(ScrollPattern.NoScroll, percent);
+        var scroll = (ScrollPattern)pattern;
+        var before = scroll.Current.VerticalScrollPercent;
+        scroll.SetScrollPercent(ScrollPattern.NoScroll, percent);
         await Task.Delay(100);
+        try
+        {
+            var after = scroll.Current;
+            output.WriteLine($"Timeline scroll {percent}%: before={before}%, after={after.VerticalScrollPercent}%, view={after.VerticalViewSize}%.");
+        }
+        catch (ElementNotAvailableException)
+        {
+            output.WriteLine($"Timeline scroll {percent}%: before={before}%; post-scroll metrics unavailable because the UIA provider was removed.");
+        }
+    }
+
+    private static async Task<AutomationElement> WaitForElementByIdAsync(GatewayFixtureRun run, string id, string description)
+    {
+        AutomationElement? element = null;
+        // Keep the successful poll's element instead of racing a second tree lookup.
+        await WaitUiAsync(run, () => (element = FindById(run, id)) is not null, description);
+        return element!;
     }
 
     private static async Task WaitUiAsync(GatewayFixtureRun run, Func<bool> condition, string description)

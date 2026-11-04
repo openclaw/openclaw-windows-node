@@ -120,7 +120,7 @@ package-contract and profile preparation. `NativeGatewaySetupSession` owns
 staged-record runtime authorization, legacy-only reload suspension/restoration, retry/cancel,
 authenticated health/config gates, and final registry publication.
 Both installations use the shared focused `AiSetupPage` and verified
-three-destination `AiReadyPage`. `WizardPage` remains an explicit compatibility
+two-destination `AiReadyPage`. `WizardPage` remains an explicit compatibility
 fallback when focused setup methods are unavailable. Its native requests retain
 the owned `NativeGatewaySetupConnection` authorization and upstream
 `installDaemon: false` contract.
@@ -141,8 +141,9 @@ the original development identity for existing installations. Multiple matching
 registrations fail explicitly for new setup. Existing runtime profiles resolve only
 their saved family, allowing both packages to coexist without an implicit migration.
 `NativeGatewayPackageAcquisition` invokes acquisition once for a missing or existing Store
-package; an existing development package is reused without Store migration. Installation and verified package readiness share a five-minute
-deadline. Cancellation stops the WinGet request, but Windows deployment may
+package; an existing development package is reused without Store migration. Installation and verified package readiness share a 30-minute deadline
+(`NativeGatewayPackageAcquisition.DefaultTimeout`), overridable by
+`OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT`. Cancellation stops the WinGet request, but Windows deployment may
 continue. Repair errors and timeouts stay visible, with explicit retry rather
 than repeated installer launches; retries recheck registration before installing.
 Native setup shares the `SetupAccessDraft` capability profiles with WSL but
@@ -179,15 +180,17 @@ substitute.
 The [Welcome recommendation policy](ONBOARDING_WIZARD.md#welcome) now checks
 `wxc-exec --probe` session capability before recommending the existing native
 Gateway. `NativeGatewaySetupEligibility` owns admission and selection policy.
-Unavailable capability offers Windows Update guidance. It says native Gateway
-support is coming soon to all devices and, until broad availability, directs
-users to join the Windows Insider Program, select the Beta or Experimental
-channel, and choose Windows 11, version 26H1 under **Advanced options** during
+Unavailable capability guidance names the isolation-session check, explains that
+a newer Windows version alone does not guarantee availability, and offers the
+existing WSL and existing-Gateway routes. For users who need to update Windows,
+it describes joining the Windows Insider Program, selecting the Beta or Experimental
+channel, and choosing Windows 11, version 26H1 under **Advanced options** during
 enrollment. It warns that returning to Windows 11, version 25H2/26H2 requires
 a clean reinstall. After enrolling, users return to
 **Settings > Windows Update** and check for updates. The copy notes that feature
-availability can vary by device and tells users to reopen the page after
-updating to check support again. The live probe remains
+availability can vary by device and tells users to reopen the page to check
+support again, including when Windows is already up to date. It does not promise
+a rollout or that updating fixes the capability. The live probe remains
 authoritative; failed probes offer retry/repair instead. WSL is always visible
 as the second option after native, with existing-gateway connection third.
 Explicit WSL and existing-gateway choices survive late native probe results. Welcome has no
@@ -205,7 +208,7 @@ selection, activation and recovery; the native AI page renders that state.
 page-owned `ProviderSetupDialog` owns prompt controls and secret clearing,
 without another client, persistence store or top-level setup page.
 `SetupWindow` remains the completion host. Verified AI opens the native chooser;
-an explicit choice restarts into Chat, Channels or Skills with a bound receipt.
+an explicit choice restarts into Chat or Channels with a bound receipt.
 The experimental browser-completion path is removed. See the completion handoff
 in `ONBOARDING_WIZARD.md`.
 Headless setup keeps `SetupStepFactory.BuildDefaultSteps()` and the
@@ -404,6 +407,20 @@ Environment-only knobs without a config-file equivalent:
   Default 30; a positive integer between 1 and 2147483 overrides it, and any
   other value is ignored with a warning and keeps the default.
 
+- `OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT`: bound, in seconds, for one native
+  Gateway Store install plus registration verification
+  (`NativeGatewayPackageAcquisition.EnsureAsync`, also the WinGet and WinGet-repair
+  command timeout). Default 1800 (30 minutes); a positive integer between 1 and 2147483
+  overrides it, and any other value is ignored with a warning and keeps the default.
+  An explicit `timeout` argument wins over this variable.
+
+- `OPENCLAW_SETUP_NATIVE_CLI_TIMEOUT`: bound, in seconds, for each packaged
+  `openclaw` CLI call during native Gateway setup (`config validate`, `config set`
+  for node capabilities, `gateway health`, `devices list`, `devices approve`;
+  `NativeGatewayCliTimeout`). Each call includes packaged Node/CLI startup.
+  Default 240 (4 minutes); a positive integer between 1 and 2147483 overrides it,
+  and any other value is ignored with a warning and keeps the default.
+
 ---
 
 ## Pipeline Steps (24 total)
@@ -441,6 +458,13 @@ Executed sequentially. Each step is a small class (30–120 lines) in its own fi
 | 22 | `RunGatewayWizardStep` | Run/configure the gateway wizard unless skipped |
 | 23 | `WindowsNodeBootstrapContextStep` | Inject Windows-node context into the WSL workspace `AGENTS.md` |
 | 24 | `StartKeepaliveStep` | Background WSL keepalive to prevent VM shutdown |
+
+Managed WSL setup passes the Node version pinned by `GatewayInstallPolicy` to
+the official installer, then verifies the installed runtime against that same
+version. The pin is Node 24.22.1, matching the installer's Node 24 minimum for
+the `node:sqlite` embedded-NUL round-trip fix. Preinstalling a newer Node does
+not override the installer's explicit `--node-version` argument. This runtime
+prerequisite does not change the wizard's 15-second reload-restoration deadline.
 
 The Windows port preflight requires a free port before installation. Installing
 the gateway service can start it immediately, so the subsequent WSL port check
