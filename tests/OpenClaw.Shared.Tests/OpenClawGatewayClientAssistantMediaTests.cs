@@ -237,6 +237,64 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
         Assert.Equal(UserAvatarStatus.Failed, (await client.ResolveUserAvatarAsync("a", null)).Status);
     }
 
+    [Theory]
+    [InlineData(".")]
+    [InlineData("..")]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ResolveUserAvatar_RejectsUnroutableProfileIdsBeforeAnyRequest(string profileId)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("assistant-media-");
+        await server.StartAsync();
+        var handler = new SequentialMediaHandler(BytesResponse([1], "image/png"));
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "paired-device-token",
+            identityPath: identity.Path,
+            assistantMediaAuthToken: "shared-http-token",
+            assistantMediaHandler: handler);
+        await client.ConnectAsync();
+        MarkHandshakeReady(client);
+
+        var result = await client.ResolveUserAvatarAsync(profileId, null);
+
+        Assert.Equal(UserAvatarStatus.Failed, result.Status);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task ResolveUserAvatar_BoundsIdentifierLengthsAtFiveHundredTwelve()
+    {
+        var atLimit = new string('a', 512);
+        var overLimit = new string('a', 513);
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("assistant-media-");
+        await server.StartAsync();
+        var handler = new SequentialMediaHandler(
+            BytesResponse([1], "image/png"),
+            BytesResponse([2], "image/png"));
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "paired-device-token",
+            identityPath: identity.Path,
+            assistantMediaAuthToken: "shared-http-token",
+            assistantMediaHandler: handler);
+        await client.ConnectAsync();
+        MarkHandshakeReady(client);
+
+        Assert.Equal(UserAvatarStatus.Failed, (await client.ResolveUserAvatarAsync(overLimit, null)).Status);
+        Assert.Equal(UserAvatarStatus.Failed, (await client.ResolveUserAvatarAsync("gateway-owner", overLimit)).Status);
+        Assert.Empty(handler.Requests);
+
+        Assert.Equal(UserAvatarStatus.Ready, (await client.ResolveUserAvatarAsync(atLimit, null)).Status);
+        Assert.Equal(UserAvatarStatus.Ready, (await client.ResolveUserAvatarAsync("gateway-owner", atLimit)).Status);
+        Assert.Collection(
+            handler.Requests,
+            request => Assert.Equal($"/api/users/{atLimit}/avatar", request.Uri.AbsolutePath),
+            request => Assert.Equal($"?v={atLimit}", request.Uri.Query));
+    }
+
     [Fact]
     public async Task ResolveUserAvatar_WithoutConnectionIsCancelledNotAFailure()
     {

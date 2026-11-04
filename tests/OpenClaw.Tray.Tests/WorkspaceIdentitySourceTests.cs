@@ -1,6 +1,9 @@
+using System.Collections.Concurrent;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using OpenClaw.Shared;
+using OpenClaw.TestSupport;
 using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
@@ -599,6 +602,21 @@ public sealed class WorkspaceIdentitySourceTests
     }
 
     [Fact]
+    public void WorkspaceFooterNeverFallsBackToAGenericOwnerLabel()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root,
+            "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.DoesNotContain("\"Owner.Text\"", source);
+        foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
+        {
+            var resw = File.ReadAllText(Path.Combine(root,
+                "src", "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw"));
+            Assert.DoesNotContain("WorkspaceShell_Owner.Text", resw);
+        }
+    }
+
+    [Fact]
     public void ViewRefreshesOnProfileNotEverySessionAndInvalidatesAtClose()
     {
         var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
@@ -778,5 +796,310 @@ public sealed class WorkspaceIdentitySourceTests
         await source.RefreshAsync(invalidate: true);
         Assert.Equal("Grace", source.DisplayName);
         Assert.Equal(2, reads);
+    }
+
+    [Theory]
+    [InlineData(UserAvatarStatus.NotFound)]
+    [InlineData(UserAvatarStatus.Unsupported)]
+    public async Task SettledNoImageOutcomeIsNotRefetchedOrRepaintedByOrdinaryRefresh(UserAvatarStatus status)
+    {
+        var (client, proxy) = Gateway();
+        proxy.Response = () => Task.FromResult(AvatarProfile("Ada", "1"));
+        proxy.Avatar = (_, _) => Task.FromResult(UserAvatarResult.Of(status));
+        var states = new List<(bool Loading, string? Name)>();
+        WorkspaceIdentitySource? source = null;
+        source = new WorkspaceIdentitySource(
+            () => states.Add((source!.IsLoading, source.DisplayName)), category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        states.Clear();
+
+        await source.RefreshAsync();
+        await source.RefreshAsync();
+
+        Assert.Single(proxy.AvatarRequests);
+        Assert.Equal(3, proxy.Requests.Count);
+        Assert.Null(source.Avatar);
+        Assert.NotEmpty(states);
+        Assert.DoesNotContain(states, s => s.Loading || s.Name != "Ada");
+    }
+
+    [Theory]
+    [InlineData(UserAvatarStatus.Failed, "AvatarFailed")]
+    [InlineData(UserAvatarStatus.Unauthorized, "AvatarUnauthorized")]
+    public async Task FailedAvatarOutcomeIsReportedOnceAndNotRefetchedByOrdinaryRefresh(
+        UserAvatarStatus status, string category)
+    {
+        var (client, proxy) = Gateway();
+        var errors = new List<string>();
+        proxy.Response = () => Task.FromResult(AvatarProfile("Ada", "1"));
+        proxy.Avatar = (_, _) => Task.FromResult(UserAvatarResult.Of(status));
+        var source = new WorkspaceIdentitySource(() => { }, errors.Add);
+        source.SetConnection(client, ConnectionStatus.Connected);
+
+        await source.RefreshAsync();
+        await source.RefreshAsync();
+        await source.RefreshAsync();
+
+        Assert.Equal([category], errors);
+        Assert.Single(proxy.AvatarRequests);
+        Assert.Equal(3, proxy.Requests.Count);
+        Assert.Equal("Ada", source.DisplayName);
+    }
+
+    [Fact]
+    public async Task ChangedRevisionRefetchesAfterARememberedFailureAndRecovers()
+    {
+        var (client, proxy) = Gateway();
+        var errors = new List<string>();
+        var revision = "1";
+        var image = new UserAvatarImage([9], "image/png");
+        proxy.Response = () => Task.FromResult(AvatarProfile("Ada", revision));
+        proxy.Avatar = (_, requested) => Task.FromResult(requested == "1"
+            ? UserAvatarResult.Of(UserAvatarStatus.Failed)
+            : new UserAvatarResult(UserAvatarStatus.Ready, image));
+        var source = new WorkspaceIdentitySource(() => { }, errors.Add);
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        Assert.Null(source.Avatar);
+
+        revision = "2";
+        await source.RefreshAsync();
+
+        Assert.Same(image, source.Avatar);
+        Assert.Equal(["1", "2"], proxy.AvatarRequests.Select(request => request.Revision));
+        Assert.Equal(["AvatarFailed"], errors);
+    }
+
+    [Fact]
+    public async Task OnlyExplicitInvalidationRetriesARememberedAvatarFailure()
+    {
+        var (client, proxy) = Gateway();
+        var image = new UserAvatarImage([4], "image/png");
+        var healthy = false;
+        proxy.Response = () => Task.FromResult(AvatarProfile("Ada", "1"));
+        proxy.Avatar = (_, _) => Task.FromResult(healthy
+            ? new UserAvatarResult(UserAvatarStatus.Ready, image)
+            : UserAvatarResult.Of(UserAvatarStatus.Failed));
+        var source = new WorkspaceIdentitySource(() => { }, _ => { });
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+
+        healthy = true;
+        await source.RefreshAsync();
+        Assert.Null(source.Avatar);
+        Assert.Single(proxy.AvatarRequests);
+
+        await source.RefreshAsync(invalidate: true);
+        Assert.Same(image, source.Avatar);
+        Assert.Equal(2, proxy.AvatarRequests.Count);
+    }
+
+    [Fact]
+    public async Task CancelledAvatarOutcomeIsNotRememberedSoTheNextRefreshRetries()
+    {
+        var (client, proxy) = Gateway();
+        var image = new UserAvatarImage([6], "image/png");
+        var superseded = true;
+        proxy.Response = () => Task.FromResult(AvatarProfile("Ada", "1"));
+        proxy.Avatar = (_, _) => Task.FromResult(superseded
+            ? UserAvatarResult.Of(UserAvatarStatus.Cancelled)
+            : new UserAvatarResult(UserAvatarStatus.Ready, image));
+        var source = new WorkspaceIdentitySource(() => { }, category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        Assert.Null(source.Avatar);
+
+        superseded = false;
+        await source.RefreshAsync();
+
+        Assert.Same(image, source.Avatar);
+        Assert.Equal(2, proxy.AvatarRequests.Count);
+    }
+
+    [Theory]
+    [InlineData(typeof(InvalidOperationException))]
+    [InlineData(typeof(UriFormatException))]
+    [InlineData(typeof(NotSupportedException))]
+    public async Task UnexpectedAvatarExceptionKeepsTheProfileAndReportsOnlyItsTypeOnce(Type exceptionType)
+    {
+        var (client, proxy) = Gateway();
+        var errors = new List<string>();
+        proxy.Response = () => Task.FromResult(Profile("Ada", "a@example.test"));
+        proxy.Avatar = (_, _) => throw (Exception)Activator.CreateInstance(exceptionType, "sensitive")!;
+        var source = new WorkspaceIdentitySource(() => { }, errors.Add);
+        source.SetConnection(client, ConnectionStatus.Connected);
+
+        await source.RefreshAsync();
+        await source.RefreshAsync();
+
+        Assert.Equal("Ada", source.DisplayName);
+        Assert.True(source.HasProfile);
+        Assert.False(source.IsLoading);
+        Assert.Null(source.Avatar);
+        Assert.Equal(["Avatar" + exceptionType.Name], errors);
+        Assert.Single(proxy.AvatarRequests);
+    }
+
+    [Fact]
+    public async Task FailedReadWithQueuedOrdinaryRefreshSettlesInsteadOfRetrying()
+    {
+        var (client, proxy) = Gateway();
+        var errors = new List<string>();
+        var read = new TaskCompletionSource<JsonElement>();
+        proxy.Response = () => read.Task;
+        var states = new List<(bool Loading, bool HasProfile)>();
+        WorkspaceIdentitySource? source = null;
+        source = new WorkspaceIdentitySource(
+            () => states.Add((source!.IsLoading, source.HasProfile)), errors.Add);
+        source.SetConnection(client, ConnectionStatus.Connected);
+        var load = source.RefreshAsync();
+        var queued = source.RefreshAsync();
+
+        read.SetException(new GatewayRequestException("busy", "UNAVAILABLE", null));
+        await Task.WhenAll(load, queued).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(["Unavailable"], errors);
+        Assert.Single(proxy.Requests);
+        Assert.False(source.IsLoading);
+        Assert.Equal((Loading: false, HasProfile: false), states[^1]);
+    }
+
+    [Fact]
+    public async Task InvalidationSupersedesAStalledUsersSelfReadWithoutLosingTheKnownIdentity()
+    {
+        var (client, proxy) = Gateway();
+        var errors = new List<string>();
+        var stalled = new TaskCompletionSource<JsonElement>();
+        var reads = 0;
+        proxy.Response = () => ++reads switch
+        {
+            1 => Task.FromResult(Profile("Ada")),
+            2 => stalled.Task,
+            _ => Task.FromResult(Profile("Grace")),
+        };
+        var states = new List<(bool Loading, string? Name)>();
+        WorkspaceIdentitySource? source = null;
+        source = new WorkspaceIdentitySource(
+            () => states.Add((source!.IsLoading, source.DisplayName)), errors.Add);
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        states.Clear();
+
+        var stalledRead = source.RefreshAsync();
+        Assert.Equal(2, reads);
+        Assert.Equal("Ada", source.DisplayName);
+        Assert.False(source.IsLoading);
+
+        var invalidation = source.RefreshAsync(invalidate: true);
+        await Task.WhenAll(stalledRead, invalidation).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(3, reads);
+        Assert.Equal("Grace", source.DisplayName);
+        Assert.False(source.IsLoading);
+        Assert.Empty(errors);
+        Assert.NotEmpty(states);
+        Assert.DoesNotContain(states, s => s.Loading || s.Name is null);
+
+        stalled.SetResult(Profile("Stale owner"));
+        Assert.Equal("Grace", source.DisplayName);
+        Assert.Equal(3, reads);
+    }
+
+    private sealed class SupersededReadFault : Exception
+    {
+    }
+
+    private sealed class UnobservedControlFault : Exception
+    {
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static async Task SupersedeAStalledReadThatLaterFaultsAsync()
+    {
+        var (client, proxy) = Gateway();
+        var stalled = new TaskCompletionSource<JsonElement>();
+        var reads = 0;
+        proxy.Response = () => ++reads == 1 ? stalled.Task : Task.FromResult(Profile("Grace"));
+        var source = new WorkspaceIdentitySource(() => { }, category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        var load = source.RefreshAsync();
+        await Task.WhenAll(load, source.RefreshAsync(invalidate: true)).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("Grace", source.DisplayName);
+        stalled.SetException(new SupersededReadFault());
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void FaultATaskNobodyObserves() =>
+        new TaskCompletionSource<JsonElement>().SetException(new UnobservedControlFault());
+
+    [Fact]
+    public async Task SupersededReadThatLaterFaultsNeverSurfacesAsAnUnobservedTaskException()
+    {
+        var reported = new ConcurrentQueue<Exception>();
+        EventHandler<UnobservedTaskExceptionEventArgs> handler = (_, e) =>
+        {
+            // Process-wide event: keep only the faults this test creates.
+            foreach (var inner in e.Exception.Flatten().InnerExceptions)
+                if (inner is SupersededReadFault or UnobservedControlFault)
+                    reported.Enqueue(inner);
+        };
+        TaskScheduler.UnobservedTaskException += handler;
+        try
+        {
+            await SupersedeAStalledReadThatLaterFaultsAsync();
+            FaultATaskNobodyObserves();
+
+            // The control proves finalization ran and the detector works, so the absence check cannot pass vacuously.
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while (!reported.Any(fault => fault is UnobservedControlFault) && DateTime.UtcNow < deadline)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                await Task.Delay(10);
+            }
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            Assert.Contains(reported, fault => fault is UnobservedControlFault);
+            Assert.DoesNotContain(reported, fault => fault is SupersededReadFault);
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= handler;
+        }
+    }
+
+    [Fact]
+    public void UserSelfDeadlineDefaultsAndHonorsAPositiveEnvironmentOverride()
+    {
+        const string variable = WorkspaceIdentitySource.UserSelfTimeoutEnvironmentVariable;
+        using var environment = new EnvironmentScope(variable, null);
+        Assert.Equal(12_000, WorkspaceIdentitySource.UserSelfTimeoutMs());
+
+        environment.Set(variable, "2500");
+        Assert.Equal(2_500, WorkspaceIdentitySource.UserSelfTimeoutMs());
+
+        foreach (var invalid in new[] { "0", "-5", "soon" })
+        {
+            environment.Set(variable, invalid);
+            Assert.Equal(12_000, WorkspaceIdentitySource.UserSelfTimeoutMs());
+        }
+    }
+
+    [Theory]
+    [InlineData(null, 12_000)]
+    [InlineData("4321", 4_321)]
+    public async Task UsersSelfReadIsSentWithTheConfiguredDeadline(string? configured, int expected)
+    {
+        using var environment = new EnvironmentScope(WorkspaceIdentitySource.UserSelfTimeoutEnvironmentVariable, configured);
+        var (client, proxy) = Gateway();
+        proxy.Response = () => Task.FromResult(Profile("Ada"));
+        var source = new WorkspaceIdentitySource(() => { }, category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+
+        await source.RefreshAsync();
+
+        Assert.Equal([expected], proxy.Timeouts);
     }
 }

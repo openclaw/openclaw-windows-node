@@ -14,11 +14,24 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
     private bool _refreshAgain;
     private bool _invalidateAgain;
     private bool _forceAvatar;
+
+    /// <summary>
+    /// Profile id and revision whose avatar outcome (an image, or settled "no image") is known for this
+    /// connection. An ordinary refresh with the same key never refetches; an explicit invalidation, a
+    /// changed key or a new connection does. A cancelled attempt is never recorded.
+    /// </summary>
     private (string ProfileId, string? Revision)? _avatarKey;
     private bool _unavailable;
 
     private const string GatewayOwnerProfileId = "gateway-owner";
-    private CancellationTokenSource _avatarCancellation = new();
+    internal const string UserSelfTimeoutEnvironmentVariable = "OPENCLAW_USER_SELF_TIMEOUT_MS";
+    internal const int DefaultUserSelfTimeoutMs = 12_000;
+
+    /// <summary>Lifetime of the current connection; every read and avatar attempt is linked to it.</summary>
+    private CancellationTokenSource _connectionCancellation = new();
+
+    /// <summary>The newest read-and-avatar attempt; an explicit invalidation cancels it so a stalled one cannot delay a refresh.</summary>
+    private CancellationTokenSource? _attempt;
 
     public string? DisplayName { get; private set; }
 
@@ -54,8 +67,8 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
             return false;
 
         _generation++;
-        _avatarCancellation.Cancel();
-        _avatarCancellation = new CancellationTokenSource();
+        _connectionCancellation.Cancel();
+        _connectionCancellation = new CancellationTokenSource();
         Avatar = null;
         _avatarKey = null;
         _forceAvatar = false;
@@ -99,11 +112,11 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
             _refreshAgain = true;
             if (invalidate)
             {
-                // Explicit invalidation supersedes a stalled avatar and any older read. An ordinary refresh only
+                // Explicit invalidation supersedes a stalled read or avatar. An ordinary refresh only
                 // coalesces so repeated presence events cannot restart a valid in-flight attempt forever.
                 _invalidateAgain = true;
                 _forceAvatar = true;
-                CancelAvatarAttempt();
+                CancelAttempt();
             }
             return _pending;
         }
@@ -179,16 +192,24 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
         ex is System.Runtime.InteropServices.COMException or IOException or ArgumentException
             or ObjectDisposedException or InvalidOperationException or NotSupportedException;
 
+    /// <summary>Deadline for one users.self read; a positive OPENCLAW_USER_SELF_TIMEOUT_MS overrides the default.</summary>
+    internal static int UserSelfTimeoutMs() =>
+        int.TryParse(Environment.GetEnvironmentVariable(UserSelfTimeoutEnvironmentVariable), out var ms) && ms > 0
+            ? ms
+            : DefaultUserSelfTimeoutMs;
+
     private async Task LoadAsync(IOperatorGatewayClient client, int generation)
     {
-        var token = _avatarCancellation.Token;
+        var connectionToken = _connectionCancellation.Token;
         do
         {
             _refreshAgain = false;
             _invalidateAgain = false;
+            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(connectionToken);
+            _attempt = attempt;
             try
             {
-                var response = await client.SendWizardRequestAsync("users.self", new { }, timeoutMs: 12000);
+                var response = await ReadSelfAsync(client, attempt.Token);
                 if (!IsCurrent()) return;
                 if (_invalidateAgain) continue;
                 var profile = ReadProfile(response);
@@ -196,7 +217,7 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
                 HasProfile = true;
                 _loading = false;
                 var key = profile.AvatarProfileId is { } keyId ? (keyId, profile.AvatarRevision) : ((string, string?)?)null;
-                var refetch = key is not null && (_forceAvatar || Avatar is null || key != _avatarKey);
+                var refetch = key is not null && (_forceAvatar || key != _avatarKey);
                 if (key is null || key != _avatarKey)
                 {
                     Avatar = null;
@@ -206,19 +227,24 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
                 changed();
                 if (refetch)
                 {
-                    var avatar = await LoadAvatarAttemptAsync(client, key!.Value.Item1, key.Value.Item2, token);
+                    var avatar = await LoadAvatarAsync(client, key!.Value.Item1, key.Value.Item2, attempt.Token);
                     if (!IsCurrent()) return;
                     if (_invalidateAgain) continue;
-                    Avatar = avatar;
-                    _avatarKey = avatar is null ? null : key;
-                    changed();
+                    if (avatar.Resolved)
+                    {
+                        Avatar = avatar.Image;
+                        _avatarKey = key;
+                        changed();
+                    }
                 }
             }
             catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or
                 OperationCanceledException or JsonException)
             {
                 if (!IsCurrent()) return;
-                if (_refreshAgain) continue;
+                // Only an explicit invalidation retries here. A queued ordinary refresh must not postpone
+                // the outcome, or repeated presence events would hold the profile in Loading indefinitely.
+                if (_invalidateAgain) continue;
                 DisplayName = null;
                 HasProfile = false;
                 Avatar = null;
@@ -231,40 +257,52 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
                 changed();
                 return;
             }
+            finally
+            {
+                if (ReferenceEquals(_attempt, attempt)) _attempt = null;
+            }
         } while (IsCurrent() && _refreshAgain);
 
         bool IsCurrent() => generation == _generation &&
             ReferenceEquals(client, _client) && client.IsConnectedToGateway;
     }
 
-    private CancellationTokenSource? _avatarAttempt;
-
-    private void CancelAvatarAttempt()
+    private void CancelAttempt()
     {
-        try { _avatarAttempt?.Cancel(); }
+        try { _attempt?.Cancel(); }
         catch (ObjectDisposedException) { }
     }
 
-    private async Task<UserAvatarImage?> LoadAvatarAttemptAsync(
-        IOperatorGatewayClient client, string profileId, string? revision, CancellationToken connectionToken)
+    /// <summary>
+    /// The request API takes no token, so a superseded read is abandoned rather than cancelled; the
+    /// client's own deadline still frees it. Its eventual fault is observed so it cannot surface later.
+    /// </summary>
+    private static async Task<JsonElement> ReadSelfAsync(IOperatorGatewayClient client, CancellationToken token)
     {
-        using var attempt = CancellationTokenSource.CreateLinkedTokenSource(connectionToken);
-        _avatarAttempt = attempt;
+        var read = client.SendWizardRequestAsync("users.self", new { }, timeoutMs: UserSelfTimeoutMs());
         try
         {
-            return await LoadAvatarAsync(client, profileId, revision, attempt.Token);
+            return await read.WaitAsync(token);
         }
-        finally
+        catch (OperationCanceledException)
         {
-            if (ReferenceEquals(_avatarAttempt, attempt)) _avatarAttempt = null;
+            _ = read.ContinueWith(
+                static task => { _ = task.Exception; },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            throw;
         }
     }
+
+    /// <summary>Resolved is false when the attempt was cancelled or could not run, so a later refresh tries again.</summary>
+    private readonly record struct AvatarOutcome(bool Resolved, UserAvatarImage? Image);
 
     /// <summary>
     /// The picture is optional: any failure keeps the already-loaded name and leaves native initials.
     /// Cancellation and superseded connections are silent; real failures report only a category.
     /// </summary>
-    private async Task<UserAvatarImage?> LoadAvatarAsync(
+    private async Task<AvatarOutcome> LoadAvatarAsync(
         IOperatorGatewayClient client, string profileId, string? revision, CancellationToken token)
     {
         try
@@ -273,20 +311,23 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
             switch (result.Status)
             {
                 case UserAvatarStatus.Ready:
-                    return result.Image;
+                    return new AvatarOutcome(true, result.Image);
                 case UserAvatarStatus.Unauthorized or UserAvatarStatus.Failed:
                     reportUnavailable("Avatar" + result.Status);
-                    return null;
+                    return new AvatarOutcome(true, null);
+                case UserAvatarStatus.NotFound or UserAvatarStatus.Unsupported:
+                    return new AvatarOutcome(true, null);
                 default:
-                    return null;
+                    return new AvatarOutcome(false, null);
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or TimeoutException
-            or ObjectDisposedException or OperationCanceledException)
+        // Optional enrichment behind an injectable client: no exception from it may fault the profile refresh.
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            if (!token.IsCancellationRequested)
-                reportUnavailable("Avatar" + ex.GetType().Name);
-            return null;
+            if (token.IsCancellationRequested)
+                return new AvatarOutcome(false, null);
+            reportUnavailable("Avatar" + ex.GetType().Name);
+            return new AvatarOutcome(true, null);
         }
     }
 

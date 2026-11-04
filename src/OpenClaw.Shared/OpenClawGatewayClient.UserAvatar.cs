@@ -28,6 +28,7 @@ public sealed record UserAvatarResult(UserAvatarStatus Status, UserAvatarImage? 
 public partial class OpenClawGatewayClient
 {
     internal const int MaximumUserAvatarBytes = 1_000_000;
+    internal const int MaximumUserAvatarIdentifierLength = 512;
     internal const string UserAvatarTimeoutEnvironmentVariable = "OPENCLAW_USER_AVATAR_TIMEOUT_MS";
     internal const int DefaultUserAvatarTimeoutMs = 15_000;
     private const string UserAvatarPathPrefix = "/api/users/";
@@ -47,6 +48,18 @@ public partial class OpenClawGatewayClient
             : TimeSpan.FromMilliseconds(DefaultUserAvatarTimeoutMs);
 
     /// <summary>
+    /// Uri.EscapeDataString leaves "." and ".." intact, which would collapse the users/{id}/avatar route,
+    /// and it throws for oversized input. Both are rejected before a request is built.
+    /// </summary>
+    private static bool IsRoutableAvatarProfileId(string? profileId) =>
+        !string.IsNullOrWhiteSpace(profileId)
+        && profileId.Length <= MaximumUserAvatarIdentifierLength
+        && profileId is not ("." or "..");
+
+    private static bool IsBoundedAvatarRevision(string? revision) =>
+        revision is null || revision.Length <= MaximumUserAvatarIdentifierLength;
+
+    /// <summary>
     /// Fetches the authenticated user's avatar from the Gateway's own route using the connection's
     /// existing HTTP credential. The Gateway resolves uploads and any email-backed or host-account
     /// image itself; the client never contacts a third-party image provider.
@@ -56,7 +69,7 @@ public partial class OpenClawGatewayClient
         string? revision,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(profileId))
+        if (!IsRoutableAvatarProfileId(profileId) || !IsBoundedAvatarRevision(revision))
             return UserAvatarResult.Of(UserAvatarStatus.Failed);
         if (!TryCaptureMediaLease(out var lease))
             return UserAvatarResult.Of(UserAvatarStatus.Cancelled);
