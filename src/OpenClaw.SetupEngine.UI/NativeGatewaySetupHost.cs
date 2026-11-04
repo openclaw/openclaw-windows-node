@@ -18,11 +18,8 @@ internal sealed class NativeGatewaySetupHost(
         logger.Info(message);
         progress?.Invoke(message);
     }
-
-
-
     public void ReportHandshakeObservation(long connectionAttempt, OpenClaw.Shared.GatewayHandshakeObservation observation) =>
-        log?.HandshakeObservation(connectionAttempt, observation);
+        logger.HandshakeObservation(connectionAttempt, observation);
 
     public Task<NativeGatewayContract> DetectContractAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken) =>

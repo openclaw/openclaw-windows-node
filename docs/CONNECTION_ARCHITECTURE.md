@@ -460,10 +460,9 @@ private typed payload directly to allowlisted primitive fields, preserving enum
 names such as `AuthorizationStarted` and `TokenDrift`; arbitrary log data still
 uses the existing free-text redactor.
 
-The current native setup page owns the file sink and disposes it when navigating
-to AI setup. Later session finalization/reconnect observations are not persisted
-to that file. This stream is not a complete end-to-end setup trace; logger
-lifetime changes belong to the setup logging owner.
+The setup window owns the file sink across page navigation and disposes it after
+native session cleanup. The native page only subscribes to the existing log
+while loaded; the handshake subscription remains owned by its connection.
 
 `ChatNavigationReadiness` settles operator readiness, its real deadline, and
 caller cancellation through one atomic completion source. A connected event
