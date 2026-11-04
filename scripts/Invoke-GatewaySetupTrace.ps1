@@ -70,12 +70,10 @@ function Get-CurrentSetupAttempt {
         [Int64]$EndTicks = [Int64]::MaxValue
     )
     if (-not (Test-Path -LiteralPath $Directory)) { return $null }
-    $logs = if ($Path) {
+    $logs =     if ($Path) {
         @(Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue)
     } else {
-        @(Get-ChildItem -LiteralPath $Directory -Filter 'native-setup-*.jsonl' -File |
-            Where-Object { $_.LastWriteTimeUtc.ToFileTimeUtc() -ge $SinceTicks } |
-            Sort-Object LastWriteTimeUtc -Descending)
+        @(Get-NativeSetupLogFiles -Directory $Directory)
     }
     foreach ($log in $logs) {
         $parsed = Get-NativeSetupMilestones -Lines (Read-SharedLines $log.FullName) `

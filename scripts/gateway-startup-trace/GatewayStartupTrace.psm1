@@ -126,8 +126,19 @@ function Resolve-WprRecordingStatus {
         throw "WPR status exited with code $ExitCode."
     }
     if ($Output -match '(?im)\bWPR\s+is\s+not\s+recording\b') { return $false }
-    if ($Output -match '(?im)\bWPR\s+is\s+recording\b') { return $true }
+    if ($Output -match '(?im)\bWPR\s+(?:is\s+recording|recording\s+is\s+in\s+progress)\b') { return $true }
     throw 'WPR status output did not identify the recording state.'
+}
+
+function Resolve-WprPossibleActiveState {
+    param([bool]$StatusKnown, [bool]$IsRecording)
+    return (-not $StatusKnown -or $IsRecording)
+}
+
+function Get-NativeSetupLogFiles {
+    param([string]$Directory)
+    return @(Get-ChildItem -LiteralPath $Directory -Filter 'native-setup-*.jsonl' -File |
+        Sort-Object LastWriteTimeUtc -Descending)
 }
 
 function ConvertTo-UtcFileTime {
@@ -468,4 +479,4 @@ function Stop-GatewayTraceRecorder {
     return $status
 }
 
-Export-ModuleMember -Function Get-IntervalUnionLength, Get-ClippedIntervals, Get-PayloadPackageGroup, Get-StartupPhaseWindows, Get-StartupArmValidity, Test-StartupCleanupComplete, Resolve-WprRecordingStatus, ConvertTo-UtcFileTime, Get-CompleteMpPerformanceReport, Get-NativeSetupMilestones, Get-NativeSetupWindows, Resolve-NativeSetupOutcome, Read-SetupStopSignal, Get-NativeSetupUiStateFromIds, Get-NativeSetupUiState, Test-IsElevated, New-PrivateDirectory, Wait-ForFile, Start-GatewayTraceRecorder, Stop-GatewayTraceRecorder
+Export-ModuleMember -Function Get-IntervalUnionLength, Get-ClippedIntervals, Get-PayloadPackageGroup, Get-StartupPhaseWindows, Get-StartupArmValidity, Test-StartupCleanupComplete, Resolve-WprRecordingStatus, Resolve-WprPossibleActiveState, Get-NativeSetupLogFiles, ConvertTo-UtcFileTime, Get-CompleteMpPerformanceReport, Get-NativeSetupMilestones, Get-NativeSetupWindows, Resolve-NativeSetupOutcome, Read-SetupStopSignal, Get-NativeSetupUiStateFromIds, Get-NativeSetupUiState, Test-IsElevated, New-PrivateDirectory, Wait-ForFile, Start-GatewayTraceRecorder, Stop-GatewayTraceRecorder

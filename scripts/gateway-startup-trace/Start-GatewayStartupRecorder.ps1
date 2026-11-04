@@ -85,8 +85,14 @@ try {
     if (Test-Path -LiteralPath $TracePath) {
         throw 'The trace output already exists.'
     }
-    if (Test-InstanceRecording) {
-        $instanceRecordingAfter = $true
+    try {
+        $alreadyRecording = Test-InstanceRecording
+    } catch {
+        $instanceRecordingAfter = Resolve-WprPossibleActiveState -StatusKnown:$false -IsRecording:$false
+        throw
+    }
+    $instanceRecordingAfter = Resolve-WprPossibleActiveState -StatusKnown:$true -IsRecording:$alreadyRecording
+    if ($alreadyRecording) {
         throw 'The named instance is already recording, so this recorder does not own it.'
     }
     $module = Get-Module -ListAvailable ConfigDefenderPerformance | Select-Object -First 1

@@ -167,6 +167,9 @@ Assert-Equal $true (Test-StartupCleanupComplete `
     -Awake ($releasedAwake | ConvertTo-Json | ConvertFrom-Json)) 'serialized cleanup objects are accepted'
 Assert-Equal $false (Resolve-WprRecordingStatus -ExitCode 0 -Output 'WPR is not recording.') 'inactive WPR status'
 Assert-Equal $true (Resolve-WprRecordingStatus -ExitCode 0 -Output 'WPR is recording.') 'active WPR status'
+Assert-Equal $true (Resolve-WprRecordingStatus -ExitCode 0 -Output 'WPR recording is in progress.') 'active WPR status format'
+Assert-Equal $false (Resolve-WprPossibleActiveState -StatusKnown:$true -IsRecording:$false) 'known inactive WPR status'
+Assert-Equal $true (Resolve-WprPossibleActiveState -StatusKnown:$false -IsRecording:$false) 'unknown WPR status is conservatively active'
 $unknownWprStatusRejected = $false
 try { [void](Resolve-WprRecordingStatus -ExitCode 0 -Output 'Access is denied.') } catch { $unknownWprStatusRejected = $true }
 Assert-Equal $true $unknownWprStatusRejected 'unknown WPR status fails closed'
@@ -219,6 +222,27 @@ Assert-Equal 'not-started' (Get-NativeSetupMilestones -Lines @('{}')).Outcome 'n
 $timedOut = Get-NativeSetupMilestones -Lines ($readyAttempt[0..11] + @(New-SetupLine 400 'warn' '[WS] The package-managed Gateway did not report a verified listener within 180 seconds of starting.'))
 Assert-Equal 'incomplete' $timedOut.Outcome 'readiness timeout is not success'
 Assert-Equal 'readiness-timeout' $timedOut.Milestones[-1].Name 'readiness timeout milestone'
+
+$setupLogsRoot = Join-Path ([IO.Path]::GetTempPath()) ('setup-logs-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $setupLogsRoot | Out-Null
+try {
+    $oldSetupLog = Join-Path $setupLogsRoot 'native-setup-stale.jsonl'
+    $currentAttempt = [ordered]@{
+        ts = [DateTimeOffset]::UtcNow.ToString('O')
+        run = 'r'
+        level = 'info'
+        msg = 'Native Gateway setup started.'
+        data = $null
+    } | ConvertTo-Json -Compress
+    [IO.File]::WriteAllText($oldSetupLog, $currentAttempt)
+    (Get-Item -LiteralPath $oldSetupLog).LastWriteTimeUtc = [DateTime]::UtcNow.AddHours(-1)
+    $candidateLogs = @(Get-NativeSetupLogFiles -Directory $setupLogsRoot)
+    Assert-Equal $oldSetupLog $candidateLogs[0].FullName 'setup attempt is not hidden by stale file timestamp'
+    $parsedCurrentAttempt = Get-NativeSetupMilestones -Lines (Get-Content -LiteralPath $candidateLogs[0].FullName)
+    Assert-Equal 'attempt-started' $parsedCurrentAttempt.Milestones[0].Name 'stale file timestamp still yields current attempt'
+} finally {
+    Remove-Item -LiteralPath $setupLogsRoot -Recurse -Force
+}
 
 $node = Get-Command node -ErrorAction SilentlyContinue
 if ($node) {
@@ -356,3 +380,4 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 Write-Host 'Gateway startup trace tests passed.'
+exit 0
