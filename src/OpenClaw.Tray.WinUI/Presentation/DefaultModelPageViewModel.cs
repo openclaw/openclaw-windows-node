@@ -1,3 +1,12 @@
+// <summary>
+// Presents and applies the active Gateway default-model choice without WinUI dependencies.
+// It routes Local AI changes through the runtime owner and binds cloud writes to the observed Gateway.
+// Usage:
+//   viewModel.Activate(null);
+//   viewModel.SelectedOptionId = "openai/gpt-6";
+//   bool applied = await viewModel.ApplyAsync(); // false exposes Error.
+// </summary>
+
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using OpenClaw.Chat;
@@ -6,6 +15,7 @@ using OpenClawTray.Services;
 
 namespace OpenClawTray.Presentation;
 
+/// <summary>Represents one selectable default-model option exposed to the page.</summary>
 /// <param name="RequiresAuth">The provider still needs sign-in; the option is shown but cannot be applied.</param>
 internal sealed record DefaultModelOption(string Id, string DisplayName, string? Provider, bool IsLocalAi, bool RequiresAuth = false);
 
@@ -94,6 +104,7 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
         }
     }
 
+    /// <summary>Subscribes the active page to Gateway and Local AI changes, then refreshes its state.</summary>
     public void Activate(object? parameter)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -109,6 +120,7 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
         Refresh();
     }
 
+    /// <summary>Removes page subscriptions and retires the embedded provider setup flow.</summary>
     public void Deactivate()
     {
         if (_subscribed)
@@ -122,6 +134,7 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
         IsActive = false;
     }
 
+    /// <summary>Requests Gateway and provider-catalog refreshes for the active page.</summary>
     public void Refresh()
     {
         _ = RefreshCoreAsync();
@@ -131,6 +144,7 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
     public void OpenConnection() => _commands.Navigate("connection");
     public void OpenLocalAi() => _commands.Navigate("local-ai");
 
+    /// <summary>Applies the selected model to the Gateway or Local AI runtime and returns whether it succeeded.</summary>
     public async Task<bool> ApplyAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

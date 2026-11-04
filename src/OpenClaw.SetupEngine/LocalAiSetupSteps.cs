@@ -1,3 +1,13 @@
+// <summary>
+// Defines the ordered Local AI setup pipeline from hardware qualification through receipt persistence
+// and native plus WSL inference proof. The setup runner invokes these steps transactionally and their
+// rollback methods preserve receipt and router ownership invariants.
+// Usage:
+//   pipeline.Add(new PreflightLocalAiHardwareStep(probe));
+//   pipeline.Add(new AcquireLocalAiModelStep(acquirer));
+//   // The setup runner calls ExecuteAsync and invokes RollbackAsync in reverse on failure.
+// </summary>
+
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -31,6 +41,7 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Qualifies hardware and records the selected Local AI plan in setup context.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -141,6 +152,7 @@ public sealed class ConfigureLocalAiWslNetworkingStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Applies the user-approved WSL networking configuration needed by Local AI.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         IWslGlobalConfigManager manager = _managerFactory(ctx);
@@ -202,6 +214,7 @@ public sealed class ConfigureLocalAiWslNetworkingStep : SetupStep
         return StepResult.Ok("WSL mirrored networking is enabled.");
     }
 
+    /// <summary>Restores the pre-setup networking state only when this step still owns the change.</summary>
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         IWslGlobalConfigManager manager = _managerFactory(ctx);
@@ -274,6 +287,7 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
     public override RetryPolicy Retry => RetryPolicy.None;
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Reuses or repairs the receipt-owned Local AI installation for the selected plan.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiEligibility?.Plan is not { } plan ||
@@ -387,6 +401,7 @@ public sealed class AcquireLocalAiRuntimeStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Acquires the selected llama-server runtime archives into setup context.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiRuntimeInstall is { CreatedThisRun: false })
@@ -451,6 +466,7 @@ public sealed class AcquireLocalAiRuntimeStep : SetupStep
         }
     }
 
+    /// <summary>Removes runtime artifacts created by this step when the setup transaction rolls back.</summary>
     public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -503,6 +519,7 @@ public sealed class AcquireLocalAiModelStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Acquires the selected model and optional recipe assets into setup context.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiModelInstall is { CreatedThisRun: false })
@@ -582,6 +599,7 @@ public sealed class AcquireLocalAiModelStep : SetupStep
         }
     }
 
+    /// <summary>Removes model artifacts created by this step when setup rolls back.</summary>
     public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -615,6 +633,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Writes the verified Local AI receipt and records it for dependent setup steps.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiResolvedInstall is not null && !ctx.LocalAiManifestCreatedThisRun)
@@ -742,6 +761,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         }
     }
 
+    /// <summary>Restores or removes receipt state according to the transaction rollback outcome.</summary>
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.IsUninstalling)
@@ -832,6 +852,7 @@ public sealed class StartLocalAiRuntimeStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Starts the receipt-owned router and records its runtime handle in setup context.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiResolvedInstall is null)
@@ -942,6 +963,7 @@ public sealed class VerifyLocalAiInferenceStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Proves the selected model can load and serve through the managed router.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiRuntime is not { } runtime ||
@@ -1053,6 +1075,7 @@ public sealed class VerifyLocalAiWslStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Proves the app-owned WSL distribution can reach the native Local AI router.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiResolvedInstall is not { Endpoint: { } endpoint } install ||

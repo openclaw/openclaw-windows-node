@@ -1,3 +1,12 @@
+// <summary>
+// Builds the canonical Local AI installation receipt from verified runtime and model acquisitions.
+// Setup and model switching use this factory so persisted ownership always reflects pinned artifacts.
+// Usage:
+//   LocalAiInstallManifest manifest = LocalAiManifestFactory.Create(paths, plan, gpuId, port,
+//       engineVersion, runtimeId, architecture, executablePath, runtimeAssets, modelInstall, additionalInstalls);
+//   // Persist the returned receipt only after every input acquisition has been verified.
+// </summary>
+
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using OpenClaw.Connection.LocalAi;
@@ -11,6 +20,7 @@ namespace OpenClaw.SetupEngine;
 /// </summary>
 internal static class LocalAiManifestFactory
 {
+    /// <summary>Maps a supported process architecture to the receipt's canonical architecture name.</summary>
     public static string ArchitectureName(Architecture architecture) => architecture switch
     {
         Architecture.X64 => "x64",
@@ -18,6 +28,7 @@ internal static class LocalAiManifestFactory
         _ => throw new InvalidDataException("The selected Local AI runtime architecture is unsupported."),
     };
 
+    /// <summary>Creates a receipt that records all verified artifacts and the selected inference plan.</summary>
     public static LocalAiInstallManifest Create(
         LocalAiPaths paths,
         LocalInferencePlan plan,
@@ -100,6 +111,7 @@ internal static class LocalAiManifestFactory
         };
     }
 
+    /// <summary>Builds receipt entries for the verified archives that compose a runtime installation.</summary>
     public static ImmutableArray<LocalAiAssetReceipt> BuildRuntimeReceipts(
         LlamaRuntimeVariant runtime,
         LlamaRuntimeInstallResult install)

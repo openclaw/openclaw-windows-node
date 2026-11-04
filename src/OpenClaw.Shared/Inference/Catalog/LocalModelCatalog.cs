@@ -1,3 +1,12 @@
+// <summary>
+// Owns the immutable, pinned model recipes and launch profiles offered by Local AI. Fresh selection
+// uses current entries only, while receipt validation may resolve legacy pins without re-offering them.
+// Usage:
+//   LocalModelInfo? model = LocalModelCatalog.Find(modelId);
+//   var profiles = LocalModelCatalog.GetProfiles(model!);
+//   long bytes = LocalModelCatalog.TotalDownloadSizeBytes(model!);
+// </summary>
+
 using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 
@@ -179,7 +188,9 @@ public sealed record LocalInferenceRunProfile
     public long RuntimeWorkspaceBytes { get; }
 }
 
-/// <summary>Immutable Hugging Face model pins offered by the Windows local inference flow.</summary>
+/// <summary>
+/// Provides pinned Local AI models, profiles, and receipt-aware lookup helpers.
+/// </summary>
 public static partial class LocalModelCatalog
 {
     public const string Bonsai2ModelId = "bonsai-2-27b-ptq1-0";
@@ -468,6 +479,7 @@ public static partial class LocalModelCatalog
 
     public static IReadOnlyList<LocalModelInfo> ExplicitAlternatives => s_explicitAlternatives;
 
+    /// <summary>Returns the supported profiles for a catalog or receipt-backed custom model.</summary>
     public static IReadOnlyList<LocalInferenceRunProfile> GetProfiles(LocalModelInfo model)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -486,12 +498,14 @@ public static partial class LocalModelCatalog
         string.Equals(id, NemotronBoltModelId, StringComparison.OrdinalIgnoreCase) ||
         LocalCustomModel.IsCustomId(id);
 
+    /// <summary>Finds a profile by its stable receipt identifier.</summary>
     public static LocalInferenceRunProfile? FindProfile(LocalModelInfo model, string? profileId) =>
         string.IsNullOrWhiteSpace(profileId)
             ? null
             : GetProfiles(model).SingleOrDefault(profile =>
                 string.Equals(profile.Id, profileId, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Finds a profile by its persisted capacity and cache-precision settings.</summary>
     public static LocalInferenceRunProfile? FindProfile(
         LocalModelInfo model,
         int contextTokens,
@@ -506,6 +520,7 @@ public static partial class LocalModelCatalog
             profile.DraftKeyCachePrecision == draftKeyCachePrecision &&
             profile.DraftValueCachePrecision == draftValueCachePrecision);
 
+    /// <summary>Converts a cache precision to the llama-server command-line value.</summary>
     public static string ToLlamaServerCacheType(KvCachePrecision precision) => precision switch
     {
         KvCachePrecision.F16 => "f16",
@@ -513,6 +528,7 @@ public static partial class LocalModelCatalog
         _ => throw new ArgumentOutOfRangeException(nameof(precision)),
     };
 
+    /// <summary>Converts a cache precision to its user-facing display value.</summary>
     public static string ToDisplayCacheType(KvCachePrecision precision) => precision switch
     {
         KvCachePrecision.F16 => "F16",
@@ -520,6 +536,7 @@ public static partial class LocalModelCatalog
         _ => throw new ArgumentOutOfRangeException(nameof(precision)),
     };
 
+    /// <summary>Finds a model currently offered for fresh Local AI selection.</summary>
     public static LocalModelInfo? Find(string? id) =>
         string.IsNullOrWhiteSpace(id)
             ? null

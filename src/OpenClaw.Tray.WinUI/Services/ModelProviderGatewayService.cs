@@ -1,3 +1,11 @@
+// <summary>
+// Owns authenticated Gateway RPCs for provider credentials, browser sign-in and custom provider definitions.
+// Operations require the active administrator connection and must not send credentials after that binding changes.
+// Usage:
+//   var providers = new ModelProviderGatewayService(getClient, getActiveGatewayId, getConnectedGatewayId);
+//   await providers.SetApiKeyAsync("openai", apiKey);
+//   IModelProviderLogin login = providers.BeginLogin(); // use only while its Gateway remains connected.
+// </summary>
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.SetupEngine;
@@ -29,6 +37,7 @@ internal sealed class ModelProviderGatewayService(
     private readonly Func<string?> _getActiveGatewayId = getActiveGatewayId ?? throw new ArgumentNullException(nameof(getActiveGatewayId));
     private readonly Func<string?> _getConnectedGatewayId = getConnectedGatewayId ?? throw new ArgumentNullException(nameof(getConnectedGatewayId));
 
+    /// <summary>Gets the active administrator connection's provider-management capabilities.</summary>
     public ModelProviderCapabilities Capabilities
     {
         get
@@ -44,6 +53,7 @@ internal sealed class ModelProviderGatewayService(
         }
     }
 
+    /// <summary>Loads provider authentication status and catalog entries from the active Gateway.</summary>
     public async Task<IReadOnlyList<ModelProviderCatalogEntry>> LoadCatalogAsync()
     {
         JsonElement payload = await RequireClient()
@@ -52,6 +62,7 @@ internal sealed class ModelProviderGatewayService(
         return ModelProviderWire.ParseAuthStatus(payload);
     }
 
+    /// <summary>Stores an API key for a provider and returns any Gateway status message.</summary>
     public async Task<string?> SetApiKeyAsync(string provider, string apiKey)
     {
         IOperatorGatewayClient client = RequireClient();
@@ -65,6 +76,7 @@ internal sealed class ModelProviderGatewayService(
             : null;
     }
 
+    /// <summary>Adds a custom provider through a fresh Gateway configuration patch.</summary>
     public async Task AddCustomProviderAsync(CustomModelProviderDraft draft)
     {
         ArgumentNullException.ThrowIfNull(draft);
@@ -91,6 +103,7 @@ internal sealed class ModelProviderGatewayService(
         }
     }
 
+    /// <summary>Begins a browser sign-in bound to the current Gateway connection.</summary>
     public IModelProviderLogin BeginLogin()
     {
         IOperatorGatewayClient client = RequireClient();

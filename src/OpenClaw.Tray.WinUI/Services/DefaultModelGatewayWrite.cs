@@ -1,3 +1,11 @@
+// <summary>
+// Performs default-model configuration writes only while the admitted Gateway connection remains current.
+// Each patch reads fresh configuration, and it must never write to a replacement Gateway or connection epoch.
+// Usage:
+//   var write = new DefaultModelGatewayWrite(client, gatewayId, currentClient, activeGatewayId, connectedGatewayId, agentsList);
+//   await write.SetPrimaryModelAsync("openai/gpt-6");
+//   await write.ClearDefaultAgentModelAsync(); // restores the configured default-agent choice.
+// </summary>
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using OpenClaw.Shared;
@@ -54,6 +62,7 @@ internal sealed class DefaultModelGatewayWrite : IDefaultModelGatewayWrite
             throw new DefaultModelGatewayChangedException();
     }
 
+    /// <summary>Sets the Gateway default primary and clears the default agent's overriding primary.</summary>
     public Task SetPrimaryModelAsync(string modelRef)
     {
         if (string.IsNullOrWhiteSpace(modelRef) || modelRef.Length > 512 ||
@@ -63,6 +72,7 @@ internal sealed class DefaultModelGatewayWrite : IDefaultModelGatewayWrite
             config, modelRef, GatewayConfigEnvelope.ResolveDefaultAgentId(config, _agentsList())));
     }
 
+    /// <summary>Clears the default agent's model override without changing the Gateway default.</summary>
     public Task ClearDefaultAgentModelAsync() =>
         PatchConfigAsync(config => GatewayConfigEnvelope.BuildClearAgentModelPatch(
             config, GatewayConfigEnvelope.ResolveDefaultAgentId(config, _agentsList())));

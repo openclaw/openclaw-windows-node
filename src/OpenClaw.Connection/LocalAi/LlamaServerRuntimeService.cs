@@ -7,8 +7,8 @@
 //   var runtime = new LlamaServerRuntimeService(new LlamaServerRuntimeOptions { Paths = paths });
 //   runtime.StateChanged += (_, args) => UpdateUi(args.Snapshot);
 //   LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync(cancellationToken);
-//   if (snapshot.State is LocalAiRuntimeState.Healthy) { /* endpoint ready at snapshot.Endpoint */ }
-//   await using var _ = runtime; // StopAsync/RestartAsync/RefreshAsync also available on ILocalAiRuntime
+//   snapshot = await runtime.ReplaceInstallAsync(replacement, cancellationToken); // leaves it stopped
+//   await using var _ = runtime; // StopAsync, RestartAsync, and RefreshAsync are also available
 // </summary>
 using OpenClaw.Shared;
 using OpenClaw.Shared.Inference;
@@ -18,6 +18,7 @@ using System.Text;
 
 namespace OpenClaw.Connection.LocalAi;
 
+/// <summary>Configures paths, lifecycle ownership, timing, and process limits for a llama-server runtime.</summary>
 public sealed record LlamaServerRuntimeOptions
 {
     public required LocalAiPaths Paths { get; init; }
@@ -183,16 +184,21 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         };
     }
 
+    /// <summary>Raised after the service publishes a changed runtime snapshot.</summary>
     public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged;
 
+    /// <summary>Whether the configured endpoint lifecycle retains durable Gateway ownership.</summary>
     public bool HasReleasableOwnership => _options.EndpointLifecycle.HasReleasableOwnership;
+    /// <summary>Whether callers must select a native Gateway before starting the runtime.</summary>
     public bool RequiresNativeSelection => _options.EndpointLifecycle.RequiresNativeSelection;
+    /// <summary>Forwards native Gateway selection changes from the configured endpoint lifecycle.</summary>
     public event EventHandler? SelectionChanged
     {
         add => _options.EndpointLifecycle.SelectionChanged += value;
         remove => _options.EndpointLifecycle.SelectionChanged -= value;
     }
 
+    /// <summary>Releases durable Gateway ownership after the runtime has stopped cleanly.</summary>
     public async Task<LocalAiRuntimeSnapshot> ReleaseOwnershipAsync(CancellationToken cancellationToken = default)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -209,6 +215,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         finally { _operationGate.Release(); }
     }
 
+    /// <summary>
+    /// Stops and withdraws the current installation, then atomically commits a validated replacement.
+    /// The replacement stays stopped until callers explicitly start it.
+    /// </summary>
     public async Task<LocalAiRuntimeSnapshot> ReplaceInstallAsync(
         LocalAiInstallManifest replacement,
         CancellationToken cancellationToken = default)
@@ -267,6 +277,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         finally { _operationGate.Release(); }
     }
 
+    /// <summary>Records the cloud primary to restore when the managed Local AI route is withdrawn.</summary>
     public async Task SetGatewayFallbackModelAsync(string? model, CancellationToken cancellationToken = default)
     {
         LocalAiGatewayModelPolicy.ValidateFallbackModel(model);
@@ -284,6 +295,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         finally { _operationGate.Release(); }
     }
 
+    /// <summary>
+    /// Writes a cloud primary through the caller callback and records it as the fallback under the
+    /// endpoint lifecycle's durable ownership rules.
+    /// </summary>
     public async Task SetGatewayPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
         CancellationToken cancellationToken = default)
     {
@@ -313,11 +328,13 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         _install = _manifestStore.ResolveAndValidate(updated);
     }
 
+    /// <summary>Returns the latest thread-safe published runtime snapshot.</summary>
     public LocalAiRuntimeSnapshot Snapshot
     {
         get { lock (_snapshotGate) return _snapshot; }
     }
 
+    /// <summary>Starts the runtime and publishes its route after endpoint health verification.</summary>
     public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
         EnsureStartedAsync(cancellationToken, null);
 
@@ -334,6 +351,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         public void Dispose() => _active = false;
     }
 
+    /// <summary>Starts the runtime while reporting startup stages through the supplied progress sink.</summary>
     public async Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken,
         IProgress<LocalAiRuntimeStartStage>? progress)
     {
@@ -402,6 +420,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         return Snapshot;
     }
 
+    /// <summary>Resumes automatic operation when recovery is enabled and no explicit stop is pending.</summary>
     public async Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -416,6 +435,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         finally { _operationGate.Release(); }
     }
 
+    /// <summary>Reconciles a stopped runtime with durable route ownership before returning its state.</summary>
     public async Task<LocalAiRuntimeSnapshot> ReconcileStoppedAsync(CancellationToken cancellationToken = default)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -430,6 +450,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         finally { _operationGate.Release(); }
     }
 
+    /// <summary>Refreshes the runtime snapshot from the current process and endpoint state.</summary>
     public async Task<LocalAiRuntimeSnapshot> RefreshAsync(CancellationToken cancellationToken = default)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -444,6 +465,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
     }
 
+    /// <summary>Stops the native runtime and withdraws its managed Gateway route.</summary>
     public async Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -492,6 +514,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
     }
 
+    /// <summary>Stops and then starts the runtime as one serialized explicit operation.</summary>
     public async Task<LocalAiRuntimeSnapshot> RestartAsync(CancellationToken cancellationToken = default)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -2034,6 +2057,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             _ => LocalAiModelEvidence.Unknown(now),
         };
 
+    /// <summary>Stops owned resources and releases process, file, and synchronization handles.</summary>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposeStarted, 1) != 0)

@@ -1,3 +1,12 @@
+// <summary>
+// Registers WinUI-independent presentation services and their intended lifetimes. App-owned
+// instances stay outside container ownership; navigation-scoped view models are transient.
+// Usage:
+//   var services = new ServiceCollection();
+//   services.AddOpenClawTrayCore(context);
+//   using var provider = services.BuildServiceProvider();
+// </summary>
+
 using OpenClaw.Shared.ExecApprovals;
 using OpenClaw.Shared.Inference;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +35,7 @@ namespace OpenClawTray.Presentation;
 /// </remarks>
 internal static class AppServiceRegistration
 {
+    /// <summary>Registers core presentation services using the App-owned instances in <paramref name="context"/>.</summary>
     public static IServiceCollection AddOpenClawTrayCore(this IServiceCollection services, AppServiceContext context)
     {
         ArgumentNullException.ThrowIfNull(services);

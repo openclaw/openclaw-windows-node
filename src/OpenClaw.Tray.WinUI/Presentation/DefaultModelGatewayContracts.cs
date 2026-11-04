@@ -1,3 +1,11 @@
+// <summary>
+// Contracts and pure wire helpers for reading and changing the active Gateway default model.
+// Writes are connection-bound so callers cannot apply a decision to a replacement Gateway.
+// Usage:
+//   IDefaultModelGatewayWrite write = gateway.BeginWrite(state.GatewayId);
+//   await write.SetPrimaryModelAsync("openai/gpt-6");
+// </summary>
+
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -14,6 +22,7 @@ namespace OpenClawTray.Presentation;
 /// </param>
 /// <param name="GatewayId">Active registry Gateway this state, including <paramref name="LocalAiRouteAvailable"/>, was projected for.</param>
 /// <param name="LocalAiReceiptOwnsGateway">A native Local AI ownership receipt names this Gateway. Unlike runtime evidence, it persists when the Local AI install cannot be loaded.</param>
+/// <summary>Projects the active Gateway model configuration and Local AI ownership evidence for the page.</summary>
 internal sealed record DefaultModelGatewayState(
     bool IsConnected,
     bool CanWriteConfig,
@@ -35,6 +44,7 @@ internal interface IDefaultModelGatewayService
 {
     event EventHandler? Changed;
     DefaultModelGatewayState Current { get; }
+    /// <summary>Refreshes <see cref="Current"/> from the active Gateway connection.</summary>
     Task RefreshAsync();
     /// <summary>
     /// Binds writes to the current operator connection. Throws <see cref="InvalidOperationException"/> when
@@ -56,6 +66,7 @@ internal interface IDefaultModelGatewayWrite
     Task ClearDefaultAgentModelAsync();
 }
 
+/// <summary>Signals that a connection-bound model operation lost its original Gateway.</summary>
 internal sealed class DefaultModelGatewayChangedException : InvalidOperationException
 {
     public DefaultModelGatewayChangedException()
@@ -66,8 +77,8 @@ internal sealed class DefaultModelGatewayChangedException : InvalidOperationExce
 internal static class GatewayConfigEnvelope
 {
     /// <summary>
-    /// Unwraps <c>{ path, exists, raw, parsed }</c> (or <c>{ config, hash }</c>) into the config
-    /// root and the optimistic-concurrency hash: <c>baseHash</c>, then <c>hash</c>, then SHA-256(raw).
+    /// Unwraps a Gateway configuration envelope and returns its config root and concurrency hash.
+    /// The hash comes from <c>baseHash</c>, <c>hash</c>, or SHA-256 of the raw configuration.
     /// </summary>
     public static bool TryRead(JsonElement envelope, out JsonElement config, out string? baseHash)
     {

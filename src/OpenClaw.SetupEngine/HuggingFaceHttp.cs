@@ -1,3 +1,12 @@
+// <summary>
+// HTTPS request policy for immutable Hugging Face model downloads and metadata reads. It owns
+// redirect validation and transient-status classification, and callers must not bypass it for Hub URLs.
+// Usage:
+//   using HttpResponseMessage response = await HuggingFaceHttp.SendWithValidatedRedirectsAsync(
+//       client, artifactUri, resumeOffset, cancellationToken);
+//   // Untrusted redirects and retryable statuses throw model-install exceptions.
+// </summary>
+
 using System.Net;
 using System.Net.Http.Headers;
 
@@ -12,6 +21,9 @@ internal static class HuggingFaceHttp
 {
     private const int MaximumRedirects = 5;
 
+    /// <summary>
+    /// Sends a range-capable GET while enforcing the allowed Hugging Face redirect boundary.
+    /// </summary>
     public static async Task<HttpResponseMessage> SendWithValidatedRedirectsAsync(
         HttpClient client,
         Uri initialUri,
@@ -65,6 +77,9 @@ internal static class HuggingFaceHttp
         throw new HuggingFaceModelInstallException("The Hugging Face download exceeded the redirect limit.");
     }
 
+    /// <summary>
+    /// Rejects download URIs that are not credential-free HTTPS on an allowed Hub host.
+    /// </summary>
     public static void ValidateDownloadUri(Uri uri, bool initialRequest)
     {
         if (!uri.IsAbsoluteUri ||

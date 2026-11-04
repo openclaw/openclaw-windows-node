@@ -1,3 +1,13 @@
+// <summary>
+// Switches the managed Local AI model without discarding a serving installation. It validates and
+// acquires replacement weights, commits a receipt only after a bounded inference proof, and restores
+// the prior receipt if the new model cannot load. The app owns one instance and concurrent switches fail.
+// Usage:
+//   LocalAiModelSwitchTarget target = await switcher.PrepareCatalogAsync(hardware, modelId, ct);
+//   LocalAiRuntimeSnapshot snapshot = await switcher.SwitchAsync(target, force: false, progress, ct);
+//   // A successful snapshot proves the selected model is loaded by the managed router.
+// </summary>
+
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
@@ -122,10 +132,12 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
 
     private LocalAiManifestStore Store => new(new LocalAiPaths(_localDataDirectory));
 
+    /// <summary>Reports whether this instance currently owns an in-progress model switch.</summary>
     public bool IsSwitching => Volatile.Read(ref _switching) != 0;
 
     public event EventHandler? IsSwitchingChanged;
 
+    /// <summary>Loads the currently installed plan when its receipt still resolves to a catalog plan.</summary>
     public async Task<LocalInferencePlan?> LoadInstalledPlanAsync(CancellationToken ct)
     {
         try
@@ -139,6 +151,7 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
         }
     }
 
+    /// <summary>Prepares a catalog model target for switching on the detected hardware.</summary>
     public Task<LocalAiModelSwitchTarget> PrepareCatalogAsync(HostHardwareInfo hardware, string modelId, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(hardware);
@@ -150,6 +163,7 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
         return Task.FromResult(ToTarget(eligibility, requiresForce: false));
     }
 
+    /// <summary>Resolves and prepares a user-supplied Hugging Face model target for switching.</summary>
     public async Task<LocalAiModelSwitchTarget> PrepareCustomAsync(HostHardwareInfo hardware, string reference, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(hardware);
@@ -164,6 +178,7 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
         throw new LocalAiModelSwitchException(Describe(eligibility));
     }
 
+    /// <summary>Switches to a prepared target and restores the prior installation if the switch fails.</summary>
     public async Task<LocalAiRuntimeSnapshot> SwitchAsync(
         LocalAiModelSwitchTarget target,
         bool force,

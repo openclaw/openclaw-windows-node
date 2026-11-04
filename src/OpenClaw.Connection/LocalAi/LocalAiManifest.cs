@@ -1,9 +1,8 @@
 // <summary>
-// Canonical, companion-owned layout and persistence for local inference artifacts:
-// LocalAiPaths defines contained directory layout with reparse-point/traversal-safe path
-// resolution, LocalAiInstallManifest records the acquired runtime/model receipt, and
-// LocalAiManifestStore persists it with same-directory atomic replacement. Also holds port
-// and gateway-model validation policies shared by setup and runtime launch.
+// Canonical, companion-owned layout and persistence for local inference artifacts. LocalAiPaths defines
+// contained directory layout with reparse-point and traversal-safe resolution. LocalAiInstallManifest
+// records catalog or custom-model receipts, and LocalAiManifestStore validates and atomically persists them.
+// It also owns shared port and Gateway-model validation policies used by setup and runtime launch.
 // Usage:
 //   var paths = new LocalAiPaths(localDataDirectory);
 //   paths.EnsureDirectories();
@@ -53,6 +52,7 @@ public sealed class LocalAiPaths
     public string StandardOutputLogPath { get; }
     public string StandardErrorLogPath { get; }
 
+    /// <summary>Creates the companion-owned Local AI directory layout when it does not already exist.</summary>
     public void EnsureDirectories()
     {
         Directory.CreateDirectory(RootDirectory);
@@ -135,6 +135,10 @@ public sealed record LocalAiAssetReceipt
     public required string Sha256 { get; init; }
 }
 
+/// <summary>
+/// Immutable receipt for a catalog or custom Local AI installation. The manifest pins every executable
+/// and model artifact needed to validate, launch, migrate, or replace the managed runtime.
+/// </summary>
 public sealed record LocalAiInstallManifest
 {
     /// <summary>
@@ -271,6 +275,7 @@ public sealed record LocalAiInstallManifest
     public DateTimeOffset InstalledAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 
+/// <summary>Pairs a validated manifest with resolved executable, model, and optional verified endpoint paths.</summary>
 public sealed record LocalAiResolvedInstall(
     LocalAiInstallManifest Manifest,
     string ExecutablePath,
@@ -284,6 +289,7 @@ public enum LocalAiModelMigrationPhase
     VerifyingCacheCopy,
 }
 
+/// <summary>Reports byte progress while migrating a legacy model into the Hugging Face cache.</summary>
 public sealed record LocalAiModelMigrationProgress(
     LocalAiModelMigrationPhase Phase,
     long CompletedBytes,
@@ -371,6 +377,7 @@ public sealed class LocalAiManifestStore
             beforeMigrationCommit ?? (static _ => Task.CompletedTask),
             beforeMigrationPromotion ?? (static (_, _) => Task.CompletedTask));
 
+    /// <summary>Loads, validates, and resolves the persisted installation receipt, or null when none exists.</summary>
     public async Task<LocalAiResolvedInstall?> LoadAsync(CancellationToken cancellationToken = default)
     {
         if (!File.Exists(_paths.ManifestPath))
@@ -381,9 +388,8 @@ public sealed class LocalAiManifestStore
     }
 
     /// <summary>
-    /// Copies a canonical schema-3 model into the standard Hugging Face cache and
-    /// records a schema-4 receipt whose verified cache snapshot becomes active.
-    /// Passive manifest loads never invoke this operation.
+    /// Copies a legacy receipt into the verified Hugging Face cache layout. It returns null when no receipt
+    /// exists and leaves an already migrated receipt unchanged.
     /// </summary>
     public async Task<LocalAiResolvedInstall?> MigrateLegacyModelToHubCacheAsync(
         IProgress<LocalAiModelMigrationProgress>? progress = null,
@@ -486,6 +492,7 @@ public sealed class LocalAiManifestStore
         }
     }
 
+    /// <summary>Validates and atomically persists an installation receipt under its exclusive write lock.</summary>
     public async Task SaveAsync(LocalAiInstallManifest manifest, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(manifest);
@@ -537,6 +544,7 @@ public sealed class LocalAiManifestStore
         }
     }
 
+    /// <summary>Deletes the persisted installation receipt under its exclusive write lock.</summary>
     public async Task DeleteAsync(CancellationToken cancellationToken = default)
     {
         await using FileStream writeLock = await AcquireManifestWriteLockAsync(cancellationToken)
@@ -574,6 +582,7 @@ public sealed class LocalAiManifestStore
     private static bool IsSharingViolation(IOException exception) =>
         (exception.HResult & 0xFFFF) is 32 or 33;
 
+    /// <summary>Validates and resolves all paths and invariants in a manifest receipt.</summary>
     public LocalAiResolvedInstall ResolveAndValidate(LocalAiInstallManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);

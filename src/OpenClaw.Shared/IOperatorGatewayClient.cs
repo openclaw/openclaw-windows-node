@@ -1,11 +1,20 @@
+// <summary>
+// Operator-facing read facade for an authenticated Gateway connection. UI consumers use it to
+// request Gateway data and observe asynchronous updates without receiving lifecycle controls.
+// Implementations must preserve the authenticated connection and epoch constraints for mutations.
+// Usage:
+//   IOperatorGatewayClient gateway = connectionManager.Client;
+//   await gateway.RequestSessionsAsync();
+//   gateway.SessionsUpdated += (_, sessions) => ShowSessions(sessions);
+// </summary>
+
 using System.Text.Json;
 
 namespace OpenClaw.Shared;
 
 /// <summary>
-/// Read-only facade for the operator gateway client.
-/// Exposes data events and request methods needed by UI consumers
-/// without exposing connection lifecycle methods (connect/disconnect/dispose).
+/// Defines the Gateway data, request, and event contract exposed to operator-facing consumers.
+/// Connection owners retain lifecycle control outside this facade.
 /// </summary>
 public interface IOperatorGatewayClient
 {
@@ -41,6 +50,7 @@ public interface IOperatorGatewayClient
 
     /// <summary>Advertised authenticated RPCs, not local node/MCP capabilities.</summary>
     IReadOnlyList<string> AdvertisedServerMethods => Array.Empty<string>();
+    /// <summary>Requests synthesized speech on the captured authenticated connection.</summary>
     Task<GatewaySpeechAudio> SynthesizeSpeechAsync(string text, long connectionEpoch, CancellationToken cancellationToken = default)
         => Task.FromException<GatewaySpeechAudio>(new GatewaySpeechException(GatewaySpeechFailure.Unsupported));
 
@@ -65,11 +75,15 @@ public interface IOperatorGatewayClient
     event EventHandler? HandshakeSucceeded;
 
     // ─── Configuration ───
+    /// <summary>Updates the notification rules used to classify later Gateway notifications.</summary>
     void SetUserRules(IReadOnlyList<UserNotificationRule>? rules);
+    /// <summary>Chooses whether structured notification metadata takes precedence over keyword classification.</summary>
     void SetPreferStructuredCategories(bool value);
 
     // ─── Request Methods ───
+    /// <summary>Sends a chat message to the selected or current session.</summary>
     Task SendChatMessageAsync(string message, string? sessionKey = null);
+    /// <summary>Sends a chat message and returns the Gateway run accepted for it.</summary>
     Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey = null);
     /// <summary>
     /// Fetches the normalized conversation transcript for a session
@@ -80,6 +94,7 @@ public interface IOperatorGatewayClient
     /// </summary>
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey = null, int timeoutMs = 15000)
         => Task.FromException<ChatHistoryInfo>(new NotSupportedException("chat.history is not supported by this gateway client."));
+    /// <summary>Checks the active connection and reconnects when necessary.</summary>
     Task CheckHealthAsync();
     Task RequestSessionsAsync(string? agentId = null);
     Task RequestUsageAsync();
@@ -123,9 +138,11 @@ public interface IOperatorGatewayClient
     Task<bool> AddCronJobAsync(object jobDefinition);
     Task<bool> UpdateCronJobAsync(string id, object patch);
     Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0);
+    /// <summary>Requests the effective Gateway configuration and raises <see cref="ConfigUpdated"/>.</summary>
     Task RequestConfigAsync();
     Task RequestConfigSchemaAsync();
     Task<bool> SetConfigAsync(string path, object value);
+    /// <summary>Applies a full configuration document against an optional Gateway base hash.</summary>
     Task<bool> PatchConfigAsync(JsonElement fullConfig, string? baseHash);
     /// <summary>Response-aware variant of <see cref="PatchConfigAsync"/>: awaits the gateway's reply and returns the real error on failure.</summary>
     Task<ConfigPatchResult> PatchConfigDetailedAsync(JsonElement fullConfig, string? baseHash, int timeoutMs = 15000);

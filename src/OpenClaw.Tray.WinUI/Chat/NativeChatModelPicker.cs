@@ -1,3 +1,13 @@
+// <summary>
+// Native grouped, searchable model-selection control used inside the Reactor chat flyout. It renders supplied
+// choices, keeps the committed Gateway selection visible, and invokes its callback only for selectable choices.
+// Its owner updates it from Reactor and disposes it when the flyout unmounts to release control event handlers.
+// Usage:
+//   var picker = new NativeChatModelPicker();
+//   picker.Update(props, choice => Select(choice), () => OpenModelProviderSettings());
+//   picker.RestoreCommittedSelection();
+// </summary>
+
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -6,6 +16,7 @@ using OpenClaw.Chat;
 
 namespace OpenClawTray.Chat;
 
+/// <summary>Projects a selectable chat model into the localized row fields consumed by the item template.</summary>
 [Bindable]
 public sealed class ChatModelPickerRow(ChatModelChoice choice)
 {
@@ -18,6 +29,7 @@ public sealed class ChatModelPickerRow(ChatModelChoice choice)
     }.Where(value => !string.IsNullOrWhiteSpace(value)));
 }
 
+/// <summary>Groups picker rows under the provider label consumed by the grouped list template.</summary>
 [Bindable]
 public sealed class ChatModelPickerGroup(string label, IReadOnlyList<ChatModelPickerRow> items)
 {
@@ -25,7 +37,9 @@ public sealed class ChatModelPickerGroup(string label, IReadOnlyList<ChatModelPi
     public IReadOnlyList<ChatModelPickerRow> Items { get; } = items;
 }
 
-/// <summary>Grouped native selection UI. Only explicit item activation commits a model change.</summary>
+/// <summary>
+/// Hosts grouped native model selection. Only explicit item activation commits a model change.
+/// </summary>
 internal sealed class NativeChatModelPicker : Control, IDisposable
 {
     internal StackPanel Layout { get; } = new() { Spacing = 8 };
@@ -47,6 +61,7 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
     private bool _eventsAttached;
     private long _textChangeToken;
 
+    /// <summary>Creates the native controls, templates and accessibility metadata for the model picker.</summary>
     public NativeChatModelPicker()
     {
         var resources = Application.Current.Resources;
@@ -93,7 +108,9 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
         _eventsAttached = true;
     }
 
-    /// <param name="addProvider">Opens model-provider settings; the link is hidden when null.</param>
+    /// <summary>
+    /// Applies the latest flyout state and callbacks. A null <paramref name="addProvider"/> hides the provider link.
+    /// </summary>
     internal void Update(ChatModelPickerProps props, Action<ChatModelChoice> select, Action? addProvider)
     {
         var rebuild = _props is null || !_props.Choices.SequenceEqual(props.Choices);
@@ -145,6 +162,7 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
         RestoreCommittedSelection();
     }
 
+    /// <summary>Restores the list selection to the model committed by the hosting chat surface.</summary>
     internal void RestoreCommittedSelection() =>
         _list.SelectedItem = _rows.FirstOrDefault(row =>
             row.Choice.MatchesModel(_props?.CurrentModel, _props?.CurrentProvider));
@@ -210,6 +228,7 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
         return _list.ContainerFromItem(row) is ListViewItem item && item.Focus(FocusState.Keyboard);
     }
 
+    /// <summary>Releases event handlers and choice references when the containing flyout unmounts.</summary>
     public void Dispose()
     {
         _props = null;

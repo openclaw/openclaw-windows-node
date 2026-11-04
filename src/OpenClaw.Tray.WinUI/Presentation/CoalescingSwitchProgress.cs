@@ -1,3 +1,11 @@
+// <summary>
+// Coalesces high-frequency Local AI model-switch progress before it reaches the UI dispatcher.
+// It preserves phase transitions and delivers only the latest byte progress on the UI thread.
+// Usage:
+//   var progress = new CoalescingSwitchProgress(dispatcher, UpdateProgress);
+//   await switcher.SwitchAsync(target, force: false, progress, cancellationToken);
+// </summary>
+
 using OpenClaw.Connection.LocalAi;
 
 namespace OpenClawTray.Presentation;
@@ -24,6 +32,7 @@ internal sealed class CoalescingSwitchProgress(
     private long _lastDeliveredAt = long.MinValue;
     private bool _queued;
 
+    /// <summary>Accepts installer progress from any thread and schedules an eligible UI update.</summary>
     public void Report(LocalAiModelSwitchProgress value)
     {
         ArgumentNullException.ThrowIfNull(value);

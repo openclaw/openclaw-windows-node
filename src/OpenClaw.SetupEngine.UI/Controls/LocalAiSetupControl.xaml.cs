@@ -1,3 +1,13 @@
+// <summary>
+// Hosts the Local AI selection and consent surface in the setup access flow. SetupWindow initializes
+// it with the current draft, then deactivates it when navigation ends so pending hardware probes cannot
+// update an inactive page. The control writes selections only to the draft configuration and raises StateChanged.
+// Usage:
+//   localAiSetupControl.Initialize(draft, recovery, pinModel);
+//   // Host the control on the capabilities-review-consent page and call Deactivate when leaving it.
+//   localAiSetupControl.StateChanged += (_, _) => UpdatePrimaryButton();
+// </summary>
+
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -10,6 +20,9 @@ using System.Diagnostics;
 
 namespace OpenClaw.SetupEngine.UI.Controls;
 
+/// <summary>
+/// Presents draft-backed Local AI availability, model selection, networking consent, and recovery state.
+/// </summary>
 public sealed partial class LocalAiSetupControl : UserControl
 {
     private SetupConfig? _config;
@@ -37,6 +50,7 @@ public sealed partial class LocalAiSetupControl : UserControl
         Unloaded += (_, _) => Deactivate();
     }
 
+    /// <summary>Initializes this hosted control for the current setup draft and begins availability probing.</summary>
     internal void Initialize(SetupAccessDraft draft, bool recovery, bool pinModel)
     {
         _draft = draft;
@@ -51,6 +65,7 @@ public sealed partial class LocalAiSetupControl : UserControl
             NullLogger.Instance, nameof(InitializeLocalAiReviewAsync));
     }
 
+    /// <summary>Cancels in-flight availability work when the host stops displaying this control.</summary>
     internal void Deactivate()
     {
         _localAiAvailability.CancelCurrent();
@@ -339,6 +354,7 @@ public sealed partial class LocalAiSetupControl : UserControl
         UpdatePrimaryButtonState();
     }
 
+    /// <summary>Maps Local AI eligibility diagnostics to the localized reason displayed by the setup surface.</summary>
     internal static string DescribeLocalAiUnavailable(LocalInferenceEligibilityResult eligibility)
     {
         LocalInferenceUnavailableReason reason = LocalInferenceEligibilityDiagnostics.GetUnavailableReason(eligibility);

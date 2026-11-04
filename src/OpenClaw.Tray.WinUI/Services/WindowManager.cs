@@ -1,3 +1,11 @@
+// <summary>
+// Owns the application's WinUI window lifetimes, workspace navigation and setup-window presentation.
+// It marshals UI work through its dispatcher and must never activate or expose windows after shutdown begins.
+// Usage:
+//   IWindowManager windows = new WindowManager(dispatcherQueue, callbacks);
+//   windows.ShowHub("settings");
+//   await windows.ShowLocalAiSetupAsync();
+// </summary>
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -40,6 +48,10 @@ internal sealed record WindowManagerCallbacks(
     Func<LocalAiGatewayLifecycle?>? GetLocalAiGatewayLifecycle = null,
     Func<SetupNativePreparation, CancellationToken, Task>? PublishNativePreparation = null);
 
+/// <summary>
+/// Coordinates every application-owned window and transitions between workspace, onboarding and setup UI.
+/// Callers interact through <see cref="IWindowManager"/> so this class retains lifetime ownership.
+/// </summary>
 internal sealed class WindowManager : IWindowManager
 {
     private const string ShuttingDownMessage = "The application is shutting down.";
@@ -182,9 +194,11 @@ internal sealed class WindowManager : IWindowManager
         }
     }
 
+    /// <summary>Shows the workspace and optionally navigates it before activation.</summary>
     public void ShowHub(string? navigateTo = null, bool activate = true)
         => ShowHubCore(navigateTo, activate);
 
+    /// <summary>Shows the native setup completion experience until it is closed or committed.</summary>
     public async Task ShowNativeSetupAsync(SetupNativeCompletion completion, CancellationToken ct)
     {
         var request = new SetupNativeNavigationRequest(completion);
@@ -603,6 +617,7 @@ internal sealed class WindowManager : IWindowManager
         }
     }
 
+    /// <summary>Shows onboarding and starts at its initial Gateway setup milestone.</summary>
     public async Task ShowOnboardingAsync()
     {
         await EnsureSetupWindowAsync(
@@ -610,6 +625,7 @@ internal sealed class WindowManager : IWindowManager
             localAiRecoveryTarget: null);
     }
 
+    /// <summary>Shows Local AI setup for the active Gateway selection.</summary>
     public async Task ShowLocalAiSetupAsync()
     {
         if (_callbacks.GetGatewayRegistry()?.GetActive() is
@@ -741,6 +757,7 @@ internal sealed class WindowManager : IWindowManager
         }
     }
 
+    /// <summary>Shows onboarding at the Gateway-installed milestone.</summary>
     public async Task ShowGatewayWizardAsync()
     {
         var (setupWindow, created) = await EnsureSetupWindowAsync(
@@ -1003,6 +1020,7 @@ internal sealed class WindowManager : IWindowManager
             ? WinRT.Interop.WindowNative.GetWindowHandle(_setupWindow)
             : IntPtr.Zero;
 
+    /// <summary>Begins shutdown and closes every window owned by this manager.</summary>
     public Task CloseForShutdownAsync()
     {
         BeginShutdown();

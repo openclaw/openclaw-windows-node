@@ -1,11 +1,21 @@
+// <summary>
+// Defines the model-switching contract for an existing companion-managed Local AI installation.
+// A switcher qualifies a requested target, serializes the destructive replacement, and reports progress.
+// Callers must prepare a target against current hardware before switching and may force an overridable fit warning.
+// Usage:
+//   LocalAiModelSwitchTarget target = await switcher.PrepareCatalogAsync(hardware, modelId, cancellationToken);
+//   LocalAiRuntimeSnapshot snapshot = await switcher.SwitchAsync(target, force: false, progress, cancellationToken);
+//   // A LocalAiModelSwitchException exposes a user-facing refusal or recovery failure.
+// </summary>
 using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 
 namespace OpenClaw.Connection.LocalAi;
 
-/// <summary>A model change was refused or failed; the message is user-facing.</summary>
+/// <summary>Represents a user-facing refusal or failure while changing a managed Local AI model.</summary>
 public sealed class LocalAiModelSwitchException(string message) : InvalidOperationException(message);
 
+/// <summary>Identifies the durable stages reported while a Local AI model is replaced.</summary>
 public enum LocalAiModelSwitchPhase
 {
     Resolving,
@@ -18,12 +28,13 @@ public enum LocalAiModelSwitchPhase
     RollingBack,
 }
 
+/// <summary>Reports the current model-switch phase and optional byte progress.</summary>
 public sealed record LocalAiModelSwitchProgress(
     LocalAiModelSwitchPhase Phase,
     long CompletedBytes = 0,
     long TotalBytes = 0);
 
-/// <summary>A qualified (or, with <see cref="RequiresForce"/>, user-overridable) switch target.</summary>
+/// <summary>Describes a qualified model replacement target and any hardware-fit override required to apply it.</summary>
 public sealed record LocalAiModelSwitchTarget(
     LocalInferencePlan Plan,
     string GpuStableId,
@@ -32,12 +43,16 @@ public sealed record LocalAiModelSwitchTarget(
     long? DetectedMemoryBytes,
     bool RequiresForce);
 
-/// <summary>In-place model change for an existing managed Local AI installation.</summary>
+/// <summary>Qualifies and applies in-place model changes for an existing managed Local AI installation.</summary>
 public interface ILocalAiModelSwitcher
 {
+    /// <summary>Loads the qualified plan for the installed model, or null when Local AI is not installed.</summary>
     Task<LocalInferencePlan?> LoadInstalledPlanAsync(CancellationToken ct);
+    /// <summary>Qualifies a catalog model against the selected host hardware.</summary>
     Task<LocalAiModelSwitchTarget> PrepareCatalogAsync(HostHardwareInfo hardware, string modelId, CancellationToken ct);
+    /// <summary>Qualifies a custom model reference against the selected host hardware.</summary>
     Task<LocalAiModelSwitchTarget> PrepareCustomAsync(HostHardwareInfo hardware, string reference, CancellationToken ct);
+    /// <summary>Replaces the installed model with a prepared target and returns the resulting runtime state.</summary>
     Task<LocalAiRuntimeSnapshot> SwitchAsync(
         LocalAiModelSwitchTarget target,
         bool force,

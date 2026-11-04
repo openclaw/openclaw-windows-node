@@ -1,3 +1,12 @@
+// <summary>
+// Resolves a user-entered Hugging Face reference into an immutable custom Local AI recipe. It reads
+// Hub metadata and only the GGUF header, never downloads model weights or accepts unpinned provenance.
+// Usage:
+//   var resolver = new HuggingFaceModelReferenceResolver(httpClient);
+//   LocalCustomModelRecipe recipe = await resolver.ResolveAsync(reference, cancellationToken);
+//   // The returned recipe pins a commit, LFS digest, size, and model geometry.
+// </summary>
+
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -19,6 +28,7 @@ internal sealed partial class HuggingFaceModelReferenceResolver(HttpClient clien
 
     private sealed record LfsFile(string Path, string Sha256, long SizeBytes);
 
+    /// <summary>Resolves one typed Hub reference into a validated, content-pinned custom model recipe.</summary>
     public async Task<LocalCustomModelRecipe> ResolveAsync(string input, CancellationToken ct)
     {
         if (!HuggingFaceModelReference.TryParse(input, out HuggingFaceModelReference? reference, out string error))

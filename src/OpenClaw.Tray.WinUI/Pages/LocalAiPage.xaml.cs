@@ -1,3 +1,11 @@
+// <summary>
+// Settings page view for the installed Local AI runtime, model selection and runtime actions. LocalAiPageViewModel
+// owns lifecycle, model-switch and recovery decisions; this code-behind renders its state and forwards user actions.
+// It detaches from the view model on unload so a deactivated Settings page receives no further UI updates.
+// Usage:
+//   frame.Navigate(typeof(LocalAiPage));
+//   // NavigationScopeManager supplies and activates LocalAiPageViewModel as the page DataContext.
+// </summary>
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -9,6 +17,9 @@ using System.Globalization;
 
 namespace OpenClawTray.Pages;
 
+/// <summary>
+/// Renders <see cref="LocalAiPageViewModel"/> state and forwards Local AI commands from the Settings UI.
+/// </summary>
 public sealed partial class LocalAiPage : Page
 {
     private const double BytesPerGigabyte = 1024d * 1024 * 1024;
@@ -16,6 +27,7 @@ public sealed partial class LocalAiPage : Page
     private IReadOnlyList<LocalAiModelOption>? _renderedModelOptions;
     private bool _suppressModelSelection;
 
+    /// <summary>Initializes the Local AI page and its DataContext and unload lifecycle hooks.</summary>
     public LocalAiPage()
     {
         InitializeComponent();

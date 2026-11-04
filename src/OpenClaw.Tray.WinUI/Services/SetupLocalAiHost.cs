@@ -1,3 +1,11 @@
+// <summary>
+// Adapts existing Local AI runtime, Gateway and setup owners to the onboarding host contracts.
+// It coordinates their calls but must never take ownership of their processes, receipts or windows.
+// Usage:
+//   LocalAiOnboardingSnapshot state = await host.ObserveAsync(cancellationToken);
+//   SetupLocalAiUseResult result = await host.UseAsync(state, cancellationToken);
+//   await host.ReconcileNativeAsync(transport, modelRef, cancellationToken);
+// </summary>
 using System.Security.Cryptography;
 using System.Text.Json;
 using OpenClaw.Connection;
@@ -32,6 +40,7 @@ internal sealed class SetupLocalAiHost(
     public bool HasNativeSelection => _nativeRecord is { } record &&
         nativeLifecycle?.OwnsGateway(record.Id) == true;
 
+    /// <summary>Reconciles the selected native Gateway with its Local AI model route.</summary>
     public async Task ReconcileNativeAsync(IGatewayAiSetupTransport transport, string modelRef, CancellationToken ct)
     {
         if (!HasNativeSelection || !modelRef.StartsWith("llamacpp/", StringComparison.Ordinal)) return;
@@ -39,6 +48,7 @@ internal sealed class SetupLocalAiHost(
         await nativeLifecycle!.ReconcileVerifiedAsync(_nativeRecord!, transport, install, ct);
     }
 
+    /// <summary>Withdraws the selected native Local AI route.</summary>
     public async Task WithdrawNativeAsync(CancellationToken ct)
     {
         if (!HasNativeSelection) return;
@@ -88,6 +98,7 @@ internal sealed class SetupLocalAiHost(
         }
     }
 
+    /// <summary>Observes available Local AI setup choices and current onboarding state.</summary>
     public Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct) => ObserveAsync(ct, null);
 
     public async Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct,
@@ -159,6 +170,7 @@ internal sealed class SetupLocalAiHost(
             getRuntime()?.Snapshot, Identity(install), nativeOwnership: ownership);
     }
 
+    /// <summary>Revalidates the selected install before it is shown for review.</summary>
     public async Task<SetupLocalAiTarget> RevalidateReviewAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)
     {
         if (!selected.CanReview)
@@ -176,6 +188,7 @@ internal sealed class SetupLocalAiHost(
         return current.Target!;
     }
 
+    /// <summary>Uses a reviewed Local AI selection through the appropriate runtime owner.</summary>
     public Task<SetupLocalAiUseResult> UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)
         => UseAsync(selected, ct, null);
 
@@ -191,6 +204,7 @@ internal sealed class SetupLocalAiHost(
         return await UseAdmittedAsync(current, ct, progress);
     }
 
+    /// <summary>Installs and uses a selected Local AI intent.</summary>
     public async Task<SetupLocalAiUseResult> UseInstalledAsync(LocalAiInstallAndUseIntent intent, CancellationToken ct,
         IProgress<LocalAiSetupStage>? progress)
     {

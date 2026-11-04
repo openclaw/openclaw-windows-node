@@ -1,3 +1,13 @@
+// <summary>
+// Application composition root for the Companion's top-level lifecycle. App constructs and owns the
+// service provider, coordinates activation, tray and window entry points, and disposes process-wide services.
+// Pages use the composed services and window manager rather than retaining App-owned state or creating parallel roots.
+// Usage:
+//   var app = (App)Application.Current;
+//   app.EnsureSshTunnelStarted();
+//   await app.RestartSshTunnelAsync(); // false when no connection manager is available.
+// </summary>
+
 using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -40,6 +50,9 @@ using SetupCompletedEventArgs = OpenClaw.SetupEngine.UI.SetupCompletedEventArgs;
 
 namespace OpenClawTray;
 
+/// <summary>
+/// Composes the Companion's application-wide services and top-level lifecycle.
+/// </summary>
 public partial class App : Application, OpenClawTray.Services.IAppCommands, IPermissionsPageRuntimeHost
 {
     private ITrayController? _trayController;
@@ -95,7 +108,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// during Phase 14 auto-pair (Bug #2, manual test 2026-05-05). Null when no local
     /// setup has run in this app lifetime.
     /// </summary>
-    /// <summary>The persistent gateway client. Used by the onboarding wizard for RPC calls.</summary>
+    /// <summary>Returns the active authenticated Gateway client, registry and connection manager for hosted flows.</summary>
     public IOperatorGatewayClient? GatewayClient => _connectionManager?.OperatorClient;
     public GatewayRegistry? Registry => _gatewayRegistry;
     public GatewayConnectionManager? ConnectionManager => _connectionManager;
@@ -127,6 +140,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// </summary>
     public string? PendingChatSessionKey { get; set; }
 
+    /// <summary>Exposes the active chat data and speech coordinators to the hosted chat surface.</summary>
     public OpenClawTray.Chat.OpenClawChatDataProvider? ChatProvider => _chatCoordinator?.Provider;
     public OpenClawTray.Chat.OpenClawChatCoordinator? ChatSpeech => _chatCoordinator;
     /// <summary>
@@ -287,6 +301,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private readonly AppCrashLogger _crashLogger = new(Path.Combine(DataPath, "crash.log"));
     private static readonly AppRunMarker s_runMarker = new(Path.Combine(DataPath, "run.marker"));
 
+    /// <summary>Initializes startup validation, localization, XAML resources and process-wide failure handlers.</summary>
     public App()
     {
         // Validate before restart handling, logging, settings, or run-marker writes.
@@ -2628,11 +2643,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             $"[App] Node list refresh failed after {reason}");
     }
 
-    /// <summary>
-    /// Pushes current node service state to hub window so ConnectionPage reflects live pairing/identity.
-    /// Now a no-op — pages read App properties directly via CurrentApp.
-    /// </summary>
-
+    /// <summary>Builds the Gateway CLI command that approves the specified pending node device.</summary>
     public static string BuildPairingApprovalCommand(string deviceId) =>
         $"openclaw devices approve {deviceId}";
 
@@ -2663,6 +2674,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         return sanitized.Length <= 8 ? sanitized : $"{sanitized[..8]}...";
     }
 
+    /// <summary>Publishes a notification for a pending node-pairing request and its approval action.</summary>
     public void ShowPairingPendingNotification(string deviceId, string? approvalCommand = null)
     {
         var command = approvalCommand ?? BuildPairingApprovalCommand(deviceId);
@@ -3673,6 +3685,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _pairingApprovalDialog.ShowForeground();
     }
 
+    /// <summary>Restarts the managed SSH tunnel when the active connection manager supports it.</summary>
     public async Task<bool> RestartSshTunnelAsync()
     {
         return _connectionManager is not null &&
@@ -4351,9 +4364,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             await voiceService.StopAsync();
     }
 
+    /// <summary>Asks the active chat coordinator to speak text, if chat speech is available.</summary>
     public Task SpeakChatTextAsync(string text) =>
         _chatCoordinator?.SpeakChatTextAsync(text) ?? Task.CompletedTask;
 
+    /// <summary>Stops active chat speech without changing the persisted mute preference.</summary>
     public void StopChatSpeaking() => _chatCoordinator?.StopSpeaking();
 
     /// <summary>Raised when speaker mute state changes from any source (composer, settings, etc.).</summary>

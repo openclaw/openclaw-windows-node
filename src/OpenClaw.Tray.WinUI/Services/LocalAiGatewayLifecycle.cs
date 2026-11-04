@@ -1,3 +1,11 @@
+// <summary>
+// Coordinates native Local AI ownership, Gateway route publication and recovery from the durable receipt.
+// Native operations use one authorized Gateway and must reconcile receipt state before mutating that route.
+// Usage:
+//   await lifecycle.PrepareAsync(install, cancellationToken);
+//   await lifecycle.PrepareStartAsync(install, cancellationToken);
+//   await lifecycle.SetPrimaryAndFallbackModelAsync(model, writePrimary, cancellationToken);
+// </summary>
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using OpenClaw.Connection;
@@ -49,6 +57,7 @@ internal sealed class LocalAiGatewayLifecycle(
             ? recovery.Endpoint.Port : null;
     public void EndEndpointRecovery() => _endpointRecovery = null;
 
+    /// <summary>Observes durable native ownership without changing Gateway or receipt state.</summary>
     public async Task<NativeLocalAiOwnershipState> ObserveOwnershipAsync(
         GatewayRecord record, IGatewayAiSetupTransport transport, LocalAiResolvedInstall? install, CancellationToken ct)
     {
@@ -131,6 +140,7 @@ internal sealed class LocalAiGatewayLifecycle(
             _store.Save(binding with { AutomaticRecoveryEnabled = enabled });
     }
 
+    /// <summary>Removes a receipt after confirming its Gateway route has been withdrawn.</summary>
     public async Task ForgetWithdrawnAsync(string gatewayId, CancellationToken ct)
     {
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
@@ -192,6 +202,7 @@ internal sealed class LocalAiGatewayLifecycle(
         await ForgetWithdrawnAsync(binding.GatewayId, ct).ConfigureAwait(false);
     }
 
+    /// <summary>Commits a model rebind while preserving recoverable ownership state.</summary>
     public async Task CommitModelRebindAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next,
         Func<Task> commitManifest, CancellationToken ct)
     {
@@ -275,6 +286,7 @@ internal sealed class LocalAiGatewayLifecycle(
         }
     }
 
+    /// <summary>Records the cloud fallback model for the owned native route.</summary>
     public async Task SetFallbackModelAsync(string? model, CancellationToken ct)
     {
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
@@ -284,6 +296,7 @@ internal sealed class LocalAiGatewayLifecycle(
         _store.Save(binding with { PreviousPrimary = model });
     }
 
+    /// <summary>Writes a cloud primary after the owned route has accepted the transition.</summary>
     public async Task SetPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
         CancellationToken ct)
     {
@@ -507,11 +520,13 @@ internal sealed class LocalAiGatewayLifecycle(
         finally { Interlocked.Exchange(ref _resuming, 0); }
     }
 
+    /// <summary>Prepares the active native Gateway to publish the supplied Local AI install.</summary>
     public Task PrepareAsync(LocalAiResolvedInstall install, CancellationToken ct) =>
         PrepareCoreAsync(install, _registeredTarget ??
             throw new LocalAiSelectionRejectedException("Reconnect the selected native Gateway before using Local AI."),
             _registeredTransport!, ct);
 
+    /// <summary>Reconciles receipt and Gateway state before starting the native Local AI route.</summary>
     public async Task PrepareStartAsync(LocalAiResolvedInstall install, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -600,11 +615,13 @@ internal sealed class LocalAiGatewayLifecycle(
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>Quiesces the native route or delegates the operation to WSL ownership.</summary>
     public Task<LocalAiEndpointLifecycleResult> QuiesceAsync(LocalAiResolvedInstall install,
         LocalAiQuiesceReason reason = LocalAiQuiesceReason.Teardown, CancellationToken cancellationToken = default) =>
         _store.Exists ? RunNativeAsync(install, reason, cancellationToken) :
             wsl.QuiesceAsync(install, reason, cancellationToken);
 
+    /// <summary>Publishes the native route or delegates publication to WSL ownership.</summary>
     public Task<LocalAiEndpointLifecycleResult> PublishAsync(LocalAiResolvedInstall install,
         CancellationToken cancellationToken = default) =>
         PublishAsync(install, cancellationToken, null);

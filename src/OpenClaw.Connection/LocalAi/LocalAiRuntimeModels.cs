@@ -5,16 +5,12 @@
 // ILocalAiRuntime contract that LlamaServerRuntimeService implements.
 // </summary>
 // Usage:
-//   runtime.StateChanged += (_, args) =>
-//   {
-//       LocalAiRuntimeSnapshot s = args.Snapshot;
-//       Log($"{s.State} ownership={s.Ownership} model={s.ModelId} at {s.Endpoint}");
-//       if (s.ModelEvidence.State is
-//           LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded)
-//       {
-//           /* ready; Verified is the healthy lazy-unloaded state */
-//       }
-//   };
+//   runtime.StateChanged += (_, args) => UpdateUi(args.Snapshot);
+//   LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync(cancellationToken);
+//   if (snapshot.State == LocalAiRuntimeState.Healthy) { /* use snapshot.Endpoint */ }
+//   snapshot = await runtime.ReplaceInstallAsync(replacement, cancellationToken);
+//   // Replacement stops the runtime. Call EnsureStartedAsync to publish the new route.
+// </summary>
 using OpenClaw.Shared.Inference.Catalog;
 
 namespace OpenClaw.Connection.LocalAi;
@@ -48,6 +44,7 @@ public enum LocalAiModelAvailabilityState
     Loaded,
 }
 
+/// <summary>Records time-stamped evidence for the model the managed runtime observed.</summary>
 public sealed record LocalAiModelEvidence
 {
     public LocalAiModelEvidence(
@@ -94,6 +91,7 @@ public sealed record LocalAiModelEvidence
         new(LocalAiModelAvailabilityState.NotInstalled, now);
 }
 
+/// <summary>Publishes the Local AI runtime state, endpoint, process identity, and verified model evidence.</summary>
 public sealed record LocalAiRuntimeSnapshot(
     LocalAiRuntimeState State,
     LocalAiOwnership Ownership,
@@ -128,16 +126,22 @@ public sealed record LocalAiRuntimeSnapshot(
             now);
 }
 
+/// <summary>Provides the snapshot supplied with a Local AI runtime state change.</summary>
 public sealed class LocalAiRuntimeSnapshotChangedEventArgs(LocalAiRuntimeSnapshot snapshot) : EventArgs
 {
     public LocalAiRuntimeSnapshot Snapshot { get; } = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
 }
 
+/// <summary>Controls the companion-managed Local AI runtime and its durable Gateway route.</summary>
 public interface ILocalAiRuntime : IAsyncDisposable
 {
+    /// <summary>Whether this runtime has durable Gateway ownership that callers may release.</summary>
     bool HasReleasableOwnership => false;
+    /// <summary>Whether callers must choose a native Gateway before starting this runtime.</summary>
     bool RequiresNativeSelection => false;
+    /// <summary>Raised when the selected native Gateway changes.</summary>
     event EventHandler? SelectionChanged { add { } remove { } }
+    /// <summary>Releases durable Gateway ownership after the route has been withdrawn.</summary>
     Task<LocalAiRuntimeSnapshot> ReleaseOwnershipAsync(CancellationToken cancellationToken = default)
         => throw new InvalidOperationException("There is no native Local AI ownership to release.");
     /// <summary>
@@ -158,9 +162,13 @@ public interface ILocalAiRuntime : IAsyncDisposable
     Task SetGatewayPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
         CancellationToken cancellationToken = default)
         => throw new InvalidOperationException("This Local AI runtime cannot change its Gateway fallback.");
+    /// <summary>Returns the latest published runtime state.</summary>
     LocalAiRuntimeSnapshot Snapshot { get; }
+    /// <summary>Raised after the runtime publishes a new snapshot.</summary>
     event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged;
+    /// <summary>Starts the managed runtime and publishes its Gateway route when healthy.</summary>
     Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default);
+    /// <summary>Starts the managed runtime while reporting observable startup stages.</summary>
     Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken,
         IProgress<LocalAiRuntimeStartStage>? progress)
     {
@@ -168,10 +176,15 @@ public interface ILocalAiRuntime : IAsyncDisposable
         progress?.Report(LocalAiRuntimeStartStage.StartingRuntime);
         return EnsureStartedAsync(cancellationToken);
     }
+    /// <summary>Resumes an eligible stopped runtime.</summary>
     Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default);
+    /// <summary>Reconciles a stopped runtime with its durable Gateway route.</summary>
     Task<LocalAiRuntimeSnapshot> ReconcileStoppedAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(Snapshot);
+    /// <summary>Stops the runtime and withdraws its managed Gateway route.</summary>
     Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default);
+    /// <summary>Restarts the runtime after stopping and withdrawing its route.</summary>
     Task<LocalAiRuntimeSnapshot> RestartAsync(CancellationToken cancellationToken = default);
+    /// <summary>Refreshes the runtime state from current process and endpoint observations.</summary>
     Task<LocalAiRuntimeSnapshot> RefreshAsync(CancellationToken cancellationToken = default);
 }

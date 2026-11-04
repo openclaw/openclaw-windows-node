@@ -1,3 +1,12 @@
+// <summary>
+// Settings page that displays Gateway channel status and applies channel credential or configuration changes.
+// It observes AppState, reads the current Gateway configuration before full-config patches, and cancels page-owned
+// refresh and linking work when unloaded. The page does not own Gateway connection state or persisted configuration.
+// Usage:
+//   frame.Navigate(typeof(ChannelsPage));
+//   // The Settings host calls Initialize on the navigated page to attach AppState and refresh status.
+//   // The page cancels its work when the host removes it from the frame.
+// </summary>
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -24,14 +33,7 @@ using Windows.Storage.Streams;
 namespace OpenClawTray.Pages;
 
 /// <summary>
-/// Channels page — single-column Expander layout. See <c>ChannelsPage.xaml</c>
-/// for the architectural comment. Data flows from the gateway's
-/// <c>channels.status</c> response → <see cref="ChannelsStatusSnapshot"/> →
-/// <see cref="ChannelRecord"/>s → Expander cards built imperatively below.
-///
-/// Follows the single-app-model pattern (see <c>docs/DATA_FLOW_ARCHITECTURE.md</c>):
-/// the page observes <see cref="AppState"/> directly via <see cref="INotifyPropertyChanged"/>
-/// and routes commands through <see cref="App"/> globally; no <c>HubWindow</c> coupling.
+/// Renders channel status and invokes the Gateway-backed channel setup actions for the active Settings route.
 /// </summary>
 public sealed partial class ChannelsPage : Page
 {
@@ -165,6 +167,7 @@ public sealed partial class ChannelsPage : Page
     /// </summary>
     private CancellationTokenSource? _linkingCts;
 
+    /// <summary>Initializes the page's view controls and unload cleanup handler.</summary>
     public ChannelsPage()
     {
         InitializeComponent();

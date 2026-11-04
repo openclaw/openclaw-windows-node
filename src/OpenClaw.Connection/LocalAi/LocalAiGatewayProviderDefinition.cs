@@ -25,9 +25,11 @@ public static class LocalAiGatewayProviderDefinition
     public const int ProviderTimeoutSeconds = 300;
     public const int MaximumOutputTokens = 8_192;
 
+    /// <summary>Caps generated Gateway output tokens to one quarter of the selected context window.</summary>
     public static int GetMaximumOutputTokens(int contextTokens) =>
         Math.Min(MaximumOutputTokens, contextTokens / 4);
 
+    /// <summary>Builds the managed provider JSON with the default local API credential.</summary>
     public static string BuildProviderJson(LocalAiResolvedInstall install)
     {
         return BuildProviderJson(install, "llama-local");
@@ -98,6 +100,7 @@ public static class LocalAiGatewayProviderDefinition
         return JsonElement.DeepEquals(left, right);
     }
 
+    /// <summary>Builds the managed provider JSON for a resolved install and explicit local API credential.</summary>
     public static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey)
     {
         ArgumentNullException.ThrowIfNull(install);
@@ -132,6 +135,7 @@ public static class LocalAiGatewayProviderDefinition
         return JsonSerializer.Serialize(value);
     }
 
+    /// <summary>Builds the Gateway primary-model identifier for a resolved managed install.</summary>
     public static string BuildPrimaryModel(LocalAiResolvedInstall install)
     {
         ArgumentNullException.ThrowIfNull(install);
@@ -148,9 +152,11 @@ public static class LocalAiGatewayProviderDefinition
         return model;
     }
 
+    /// <summary>Rejects invalid or managed-provider fallback model identifiers.</summary>
     public static void ValidateFallbackModel(string? model)
         => LocalAiGatewayModelPolicy.ValidateFallbackModel(model);
 
+    /// <summary>Reads and validates a fallback primary-model JSON value.</summary>
     public static bool TryReadPrimaryModelJson(string json, out string? model)
     {
         model = null;
@@ -170,6 +176,7 @@ public static class LocalAiGatewayProviderDefinition
         }
     }
 
+    /// <summary>Builds an atomic Gateway batch that writes both provider definition and primary model.</summary>
     public static string BuildProviderBatchJson(LocalAiResolvedInstall install)
     {
         using JsonDocument provider = JsonDocument.Parse(BuildProviderJson(install));

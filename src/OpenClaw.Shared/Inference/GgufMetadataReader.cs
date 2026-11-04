@@ -1,8 +1,18 @@
+// <summary>
+// Reads the bounded GGUF metadata header needed to estimate local inference capacity. It accepts
+// non-seekable streams and must never read model tensor data or retain the source stream.
+// Usage:
+//   await using var stream = await response.Content.ReadAsStreamAsync(ct);
+//   GgufModelMetadata metadata = await GgufMetadataReader.ReadAsync(stream, ct);
+//   EstimateCapacity(metadata);
+// </summary>
+
 using System.Buffers.Binary;
 using System.Text;
 
 namespace OpenClaw.Shared.Inference;
 
+/// <summary>Describes the GGUF attention geometry recovered from the bounded metadata header.</summary>
 internal sealed record GgufModelMetadata(
     string Architecture,
     string? Name,
@@ -12,8 +22,7 @@ internal sealed record GgufModelMetadata(
     long KeyValueHeadDimension);
 
 /// <summary>
-/// Streams only the GGUF key/value header (never tensor data) to recover the attention
-/// geometry the capacity estimate needs. Works on non-seekable HTTP response streams.
+/// Reads GGUF header metadata needed to calculate local inference capacity without reading tensors.
 /// </summary>
 internal static class GgufMetadataReader
 {
@@ -29,6 +38,7 @@ internal static class GgufMetadataReader
         Bool = 7, String = 8, Array = 9, UInt64 = 10, Int64 = 11, Float64 = 12,
     }
 
+    /// <summary>Reads validated attention geometry from a GGUF stream, or throws <see cref="InvalidDataException"/>.</summary>
     public static async Task<GgufModelMetadata> ReadAsync(Stream stream, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(stream);

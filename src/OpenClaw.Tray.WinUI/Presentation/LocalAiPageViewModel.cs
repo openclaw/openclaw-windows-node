@@ -1,3 +1,12 @@
+// <summary>
+// Presents the Local AI Hub page and coordinates runtime, availability, and model-switch actions.
+// It owns page subscriptions and never lets a deactivated page update the visible state.
+// Usage:
+//   viewModel.Activate(null);
+//   bool started = await viewModel.StartAsync();
+//   viewModel.Deactivate();
+// </summary>
+
 using OpenClaw.Connection;
 using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared.Inference;
@@ -235,6 +244,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
 
     private bool HasManagedInstall => LocalAiRuntimePresentation.HasManagedInstall(_runtimeSnapshot);
 
+    /// <summary>Subscribes the page and starts runtime and availability refreshes.</summary>
     public void Activate(object? parameter)
     {
         ThrowIfDisposed();
@@ -253,6 +263,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         StartAvailabilityRefresh();
     }
 
+    /// <summary>Cancels page-owned refresh work and removes page subscriptions.</summary>
     public void Deactivate()
     {
         CancelRuntimeRefresh();
@@ -270,15 +281,24 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         IsActive = false;
     }
 
+    /// <summary>Starts the managed Local AI runtime when the current state permits it.</summary>
     public Task<bool> StartAsync() => RunRuntimeActionAsync(CanStart, _runtime.EnsureStartedAsync);
+    /// <summary>Stops or resolves the managed Local AI runtime when the current state permits it.</summary>
     public Task<bool> StopAsync() => RunRuntimeActionAsync(CanStop, _runtime.StopAsync);
+    /// <summary>Releases a stopped, reconciled Local AI ownership receipt.</summary>
     public Task<bool> ReleaseOwnershipAsync() => RunRuntimeActionAsync(CanReleaseOwnership, _runtime.ReleaseOwnershipAsync);
+    /// <summary>Restarts a healthy companion-managed Local AI runtime.</summary>
     public Task<bool> RestartAsync() => RunRuntimeActionAsync(CanRestart, _runtime.RestartAsync);
+    /// <summary>Opens the Local AI logs when an install is managed.</summary>
     public bool OpenLogs() => RunCommand(CanOpenLogs, _appCommands.OpenLocalAiLogs);
+    /// <summary>Opens setup when Local AI has no installed model.</summary>
     public bool RetrySetup() => RunCommand(CanRetrySetup, _appCommands.ShowLocalAiSetup);
+    /// <summary>Prepares and applies the selected model when it fits the current hardware.</summary>
     public Task<bool> ApplyModelAsync() => RunModelSwitchAsync(force: false);
+    /// <summary>Applies the previously warned model despite its hardware-fit warning.</summary>
     public Task<bool> ForceApplyModelAsync() => RunModelSwitchAsync(force: true);
 
+    /// <summary>Cancels a model switch while it remains in a cancellable phase.</summary>
     public void CancelModelSwitch()
     {
         if (CanCancelModelSwitch)
@@ -363,8 +383,11 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         }
     }
 
+    /// <summary>Requests a Gateway reconnect when the Local AI route is not connected.</summary>
     public bool RepairConnection() => RunCommand(CanRepairConnection, _appCommands.Reconnect);
+    /// <summary>Navigates to chat when the managed Local AI route is ready.</summary>
     public bool OpenChat() => RunCommand(CanOpenChat, () => _appCommands.Navigate("chat"));
+    /// <summary>Starts another availability probe when the prior result can be retried.</summary>
     public bool RecheckAvailability()
     {
         ThrowIfDisposed();

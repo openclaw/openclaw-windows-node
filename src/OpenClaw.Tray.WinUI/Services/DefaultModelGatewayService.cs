@@ -1,3 +1,12 @@
+// <summary>
+// Projects the connected Gateway's default-model state for the Settings page and creates writes bound
+// to that same authenticated Gateway connection. It does not own Local AI lifecycle state.
+// Usage:
+//   var gateway = new DefaultModelGatewayService(appState, getClient, getRegistry, getGatewayId, lifecycle);
+//   await gateway.RefreshAsync();
+//   IDefaultModelGatewayWrite write = gateway.BeginWrite(gateway.Current.GatewayId);
+//   await write.SetPrimaryModelAsync("openai/gpt-6"); // rejects a changed connection.
+// </summary>
 using System.ComponentModel;
 using System.Text.Json;
 using OpenClaw.Chat;
@@ -38,6 +47,7 @@ internal sealed class DefaultModelGatewayService : IDefaultModelGatewayService, 
 
     public event EventHandler? Changed;
 
+    /// <summary>Gets the current default-model state projected from the active Gateway.</summary>
     public DefaultModelGatewayState Current
     {
         get
@@ -76,6 +86,7 @@ internal sealed class DefaultModelGatewayService : IDefaultModelGatewayService, 
             : LocalAiGatewayDistroResolver.FindOwners(registry.GetAll()).Any(owner => owner.Id == activeId);
     }
 
+    /// <summary>Refreshes cached Gateway model and agent data when a Gateway is connected.</summary>
     public async Task RefreshAsync()
     {
         if (_getClient() is not { IsConnectedToGateway: true } client)
@@ -85,6 +96,7 @@ internal sealed class DefaultModelGatewayService : IDefaultModelGatewayService, 
         await client.RequestConfigAsync().ConfigureAwait(false);
     }
 
+    /// <summary>Creates a write restricted to the Gateway expected by the caller.</summary>
     public IDefaultModelGatewayWrite BeginWrite(string? expectedGatewayId)
     {
         IOperatorGatewayClient client = _getClient() is { IsConnectedToGateway: true } connected

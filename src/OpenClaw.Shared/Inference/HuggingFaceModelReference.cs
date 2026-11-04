@@ -1,12 +1,19 @@
+// <summary>
+// Parses user-entered Hugging Face model locations into a repository, revision, optional GGUF path,
+// and optional quantization hint. It validates syntax only and must never resolve or download Hub data.
+// Usage:
+//   if (HuggingFaceModelReference.TryParse(input, out var reference, out var error))
+//       ResolveFromHub(reference!); // resolution pins the revision and file separately.
+// </summary>
+
 using System.Text.RegularExpressions;
 using OpenClaw.Shared.Inference.Catalog;
 
 namespace OpenClaw.Shared.Inference;
 
 /// <summary>
-/// A user-typed Hugging Face model location: <c>owner/repo</c>, <c>owner/repo:QUANT</c>,
-/// <c>owner/repo/path/file.gguf</c>, or a huggingface.co / hf.co link. Resolution to an
-/// immutable revision and file happens against the Hub API, never here.
+/// Represents the validated, un-resolved parts of a user-entered Hugging Face model reference.
+/// Hub resolution is deliberately owned by the caller.
 /// </summary>
 internal sealed partial record HuggingFaceModelReference(
     string RepositoryId,
@@ -16,6 +23,7 @@ internal sealed partial record HuggingFaceModelReference(
 {
     private const string Usage = "Use owner/repo, owner/repo:Q4_K_M, or a huggingface.co link.";
 
+    /// <summary>Parses a supported repository identifier or Hub URL without contacting the Hub.</summary>
     public static bool TryParse(string? input, out HuggingFaceModelReference? reference, out string error)
     {
         reference = null;

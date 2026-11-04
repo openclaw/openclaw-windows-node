@@ -1,7 +1,21 @@
+// <summary>
+// Persists the native Gateway ownership receipt separately from the portable Local AI install receipt.
+// The store serializes route mutations under a file lease and atomically replaces the receipt. Pending,
+// rebind, and unconfirmed-primary journals must be settled by the lifecycle before normal route changes.
+// Usage:
+//   await using FileStream lease = await store.AcquireAsync(cancellationToken);
+//   LocalAiNativeBinding? binding = store.Load();
+//   if (binding is not null) store.Save(binding with { UnconfirmedPrimary = model });
+//   // The owner settles or clears the journal after reading Gateway configuration.
+// </summary>
 using System.Text.Json;
 
 namespace OpenClaw.Connection.LocalAi;
 
+/// <summary>
+/// Durable native Gateway ownership receipt. Its journals preserve recoverable intent across interrupted
+/// Gateway mutations and must be settled while the receipt lease is held.
+/// </summary>
 /// <param name="UnconfirmedPrimary">
 /// Write-ahead record of a cloud primary sent to the Gateway but not yet confirmed. The next
 /// Gateway config read settles it: if the Gateway shows this primary it becomes
@@ -22,24 +36,25 @@ public sealed record LocalAiNativeBinding(
 
 /// <summary>
 /// Write-ahead record of a model rebind. <c>CommitModelRebindAsync</c> writes and clears it
-/// inside one receipt-lease hold, so a journal on disk means the process stopped mid-commit;
-/// the runtime's next manifest load settles it to whichever model the manifest names.
-/// Rebinding writes nothing to the Gateway, so the binding's config hash stays valid for
-/// either outcome.
+/// inside one receipt-lease hold, so a journal on disk means the process stopped mid-commit.
+/// The runtime's next manifest load settles it to whichever model the manifest names.
 /// </summary>
 public sealed record LocalAiNativeModelRebind(string ModelRef, bool AddedAllowlistEntry);
 
 /// <summary>
-/// Separate from the portable artifact receipt. The write-ahead pending flag survives
-/// a crash between dispatching a Gateway mutation and recording its acknowledgement.
+/// Persists native Gateway ownership independently of the portable artifact receipt. Its file lease and
+/// atomic replacement make write-ahead route journals durable across process interruption.
 /// </summary>
 public sealed class LocalAiNativeBindingStore(LocalAiPaths paths)
 {
+    /// <summary>Whether the native Gateway ownership receipt exists.</summary>
     public bool Exists => File.Exists(PathFor("gateway-binding.json"));
+    /// <summary>Deletes the native Gateway ownership receipt after confirmed withdrawal.</summary>
     public void Delete() => File.Delete(PathFor("gateway-binding.json"));
 
     private string PathFor(string name) => paths.ResolveContainedPath(name, "Local AI Gateway binding");
 
+    /// <summary>Loads and validates the receipt, or returns null when no native ownership was recorded.</summary>
     public LocalAiNativeBinding? Load()
     {
         var path = PathFor("gateway-binding.json");
@@ -56,6 +71,7 @@ public sealed class LocalAiNativeBindingStore(LocalAiPaths paths)
         return binding;
     }
 
+    /// <summary>Saves a validated ownership receipt with same-directory atomic replacement.</summary>
     public void Save(LocalAiNativeBinding binding)
     {
         Directory.CreateDirectory(paths.RootDirectory);
@@ -75,6 +91,7 @@ public sealed class LocalAiNativeBindingStore(LocalAiPaths paths)
         }
     }
 
+    /// <summary>Acquires the exclusive receipt lease that serializes native Gateway mutations.</summary>
     public async Task<FileStream> AcquireAsync(CancellationToken ct)
     {
         Directory.CreateDirectory(paths.RootDirectory);

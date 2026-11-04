@@ -1,3 +1,11 @@
+// <summary>
+// Defines Gateway provider-management contracts and pure parsing, validation, and patch helpers.
+// Provider operations never select the default model and connection-bound login sessions fail closed.
+// Usage:
+//   var draft = new CustomModelProviderDraft("internal", url, ModelProviderWire.OpenAiCompletionsApi, null, ids);
+//   await gateway.AddCustomProviderAsync(draft);
+// </summary>
+
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -6,6 +14,7 @@ using OpenClaw.SetupEngine;
 
 namespace OpenClawTray.Presentation;
 
+/// <summary>Describes one Gateway sign-in option for a built-in provider.</summary>
 /// <param name="Id">The Gateway's <c>authChoice</c> wire ref for <c>models.authLogin</c>.</param>
 internal sealed record ModelProviderLoginOption(string Id, string Label, string Kind, string? Hint);
 
@@ -40,6 +49,7 @@ internal sealed class ModelProviderValidationException(CustomProviderValidationE
     public CustomProviderValidationError Error { get; } = error;
 }
 
+/// <summary>Captures a custom provider configuration before it is validated and sent to the Gateway.</summary>
 internal sealed record CustomModelProviderDraft(
     string ProviderId, string BaseUrl, string Api, string? ApiKey, IReadOnlyList<string> ModelIds);
 
@@ -50,9 +60,11 @@ internal sealed record CustomModelProviderDraft(
 internal interface IModelProviderGatewayService
 {
     ModelProviderCapabilities Capabilities { get; }
+    /// <summary>Loads the Gateway's built-in provider catalog and authentication capabilities.</summary>
     Task<IReadOnlyList<ModelProviderCatalogEntry>> LoadCatalogAsync();
-    /// <returns>The Gateway's warning, if any.</returns>
+    /// <summary>Saves an API key for a built-in provider and returns any Gateway warning.</summary>
     Task<string?> SetApiKeyAsync(string provider, string apiKey);
+    /// <summary>Adds a validated custom provider without changing the selected model.</summary>
     Task AddCustomProviderAsync(CustomModelProviderDraft draft);
     /// <summary>Binds a new sign-in to the current administrator Gateway connection.</summary>
     IModelProviderLogin BeginLogin();
@@ -67,6 +79,7 @@ internal interface IModelProviderGatewayService
 internal interface IModelProviderLogin
 {
     bool IsCurrent { get; }
+    /// <summary>Starts the bound Gateway sign-in flow for the selected authentication choice.</summary>
     Task<GatewayAiSetupWizardResult> StartAsync(string authChoice);
     /// <summary>Bare refresh when <paramref name="stepId"/> is null; otherwise answers that step.</summary>
     Task<GatewayAiSetupWizardResult> NextAsync(string? stepId, JsonElement? value);
@@ -74,6 +87,7 @@ internal interface IModelProviderLogin
     Task<string?> CancelAsync();
 }
 
+/// <summary>Signals that a connection-bound provider sign-in lost its original Gateway.</summary>
 internal sealed class ModelProviderConnectionChangedException : InvalidOperationException
 {
     public ModelProviderConnectionChangedException()
@@ -95,6 +109,7 @@ internal static partial class ModelProviderWire
     [GeneratedRegex("^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")]
     private static partial Regex ProviderIdPattern();
 
+    /// <summary>Parses Gateway authentication capability and provider status payloads into catalog entries.</summary>
     public static IReadOnlyList<ModelProviderCatalogEntry> ParseAuthStatus(JsonElement payload)
     {
         if (payload.ValueKind != JsonValueKind.Object ||
@@ -131,12 +146,14 @@ internal static partial class ModelProviderWire
         return entries.OrderBy(entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToArray();
     }
 
+    /// <summary>Splits user-entered model identifiers into distinct non-empty identifiers.</summary>
     public static IReadOnlyList<string> ParseModelIds(string? text) =>
         (text ?? string.Empty)
             .Split([',', '\r', '\n'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
+    /// <summary>Validates a custom provider draft against Gateway wire constraints and reserved identifiers.</summary>
     public static CustomProviderValidationError Validate(CustomModelProviderDraft draft, IEnumerable<string> reservedProviderIds)
     {
         if (!ProviderIdPattern().IsMatch(draft.ProviderId))
@@ -157,6 +174,7 @@ internal static partial class ModelProviderWire
         return CustomProviderValidationError.None;
     }
 
+    /// <summary>Returns whether the Gateway config already defines the provider identifier.</summary>
     public static bool ProviderExists(JsonElement config, string providerId) =>
         config.ValueKind == JsonValueKind.Object &&
         config.TryGetProperty("models", out JsonElement models) && models.ValueKind == JsonValueKind.Object &&

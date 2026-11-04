@@ -1,17 +1,32 @@
+// <summary>
+// Defines the endpoint-routing lifecycle shared by the Local AI runtime and its Gateway owner.
+// Implementations quiesce routing before native listener changes and publish it only after a healthy
+// endpoint is verified. Callers use the contract around start, stop, route ownership, and model changes.
+// Usage:
+//   await lifecycle.PrepareStartAsync(install, cancellationToken);
+//   LocalAiEndpointLifecycleResult result = await lifecycle.PublishAsync(install, cancellationToken);
+//   if (!result.Success) { /* preserve the receipt and report result.Detail */ }
+//   await lifecycle.SetPrimaryAndFallbackModelAsync(model, WritePrimaryAsync, cancellationToken);
+// </summary>
 namespace OpenClaw.Connection.LocalAi;
 
+/// <summary>Reports whether an endpoint lifecycle operation completed and, on failure, its user-facing detail.</summary>
 public sealed record LocalAiEndpointLifecycleResult(bool Success, string? Detail = null)
 {
+    /// <summary>Creates a successful lifecycle result.</summary>
     public static LocalAiEndpointLifecycleResult Ok() => new(true);
+    /// <summary>Creates a failed lifecycle result with user-facing detail.</summary>
     public static LocalAiEndpointLifecycleResult Failed(string detail) => new(false, detail);
 }
 
+/// <summary>Identifies why callers are withdrawing the managed Gateway route.</summary>
 public enum LocalAiQuiesceReason
 {
     EndpointCycle,
     Teardown,
 }
 
+/// <summary>Reports the observable stages of native runtime startup.</summary>
 public enum LocalAiRuntimeStartStage { StartingRuntime, CheckingConfiguration, PublishingProvider, VerifyingEndpoint }
 
 /// <summary>
@@ -21,22 +36,30 @@ public enum LocalAiRuntimeStartStage { StartingRuntime, CheckingConfiguration, P
 /// </summary>
 public interface ILocalAiEndpointLifecycle
 {
+    /// <summary>Whether this lifecycle has a durable Gateway route that callers can release.</summary>
     bool HasReleasableOwnership => false;
     /// <summary>Presentation hint only. Start must still revalidate the selected Gateway.</summary>
     bool RequiresNativeSelection => false;
+    /// <summary>Raised when the selected native Gateway changes.</summary>
     event EventHandler? SelectionChanged { add { } remove { } }
+    /// <summary>Whether the owner should automatically recover the endpoint after a process exit.</summary>
     bool AutomaticRecoveryEnabled => true;
+    /// <summary>Releases durable ownership after callers have stopped and withdrawn the route.</summary>
     Task ReleaseOwnershipAsync(CancellationToken cancellationToken)
         => throw new InvalidOperationException("There is no native Local AI ownership to release.");
+    /// <summary>Validates and prepares durable routing before the runtime starts.</summary>
     Task PrepareStartAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken)
         => Task.CompletedTask;
+    /// <summary>Prepares a stop for a runtime without a loadable installation receipt.</summary>
     Task PrepareUnownedStopAsync(CancellationToken cancellationToken)
         => Task.CompletedTask;
     /// <summary>Confirm withdrawal through the original owner without inferring provider ownership from damaged artifacts.</summary>
     Task ConfirmWithdrawnWithoutInstallAsync(CancellationToken cancellationToken)
         => throw new InvalidOperationException("Restore the Local AI installation receipt before resolving its Gateway route.");
+    /// <summary>Publishes a verified endpoint after runtime startup.</summary>
     Task<LocalAiEndpointLifecycleResult> CompleteStartAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken)
         => Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
+    /// <summary>Publishes a verified endpoint and reports startup progress.</summary>
     Task<LocalAiEndpointLifecycleResult> CompleteStartAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken,
         IProgress<LocalAiRuntimeStartStage>? progress) => CompleteStartAsync(install, cancellationToken);
 
@@ -83,15 +106,18 @@ public interface ILocalAiEndpointLifecycle
         await SetFallbackModelAsync(model, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Withdraws managed routing before the endpoint changes or is torn down.</summary>
     Task<LocalAiEndpointLifecycleResult> QuiesceAsync(
         LocalAiResolvedInstall install,
         LocalAiQuiesceReason reason = LocalAiQuiesceReason.Teardown,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Publishes managed routing for a verified Local AI endpoint.</summary>
     Task<LocalAiEndpointLifecycleResult> PublishAsync(
         LocalAiResolvedInstall install,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Publishes managed routing and reports the publication startup stage.</summary>
     Task<LocalAiEndpointLifecycleResult> PublishAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken,
         IProgress<LocalAiRuntimeStartStage>? progress)
     {

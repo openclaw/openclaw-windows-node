@@ -1,3 +1,12 @@
+// <summary>
+// Converts validated custom Hugging Face recipes into the catalog shapes used by local inference.
+// Recipes are receipt-owned immutable facts, and custom models always use generic llama.cpp profiles.
+// Usage:
+//   LocalCustomModel.Validate(recipe);
+//   LocalModelInfo model = LocalCustomModel.ToModelInfo(recipe);
+//   var profiles = LocalCustomModel.GetProfiles(recipe);
+// </summary>
+
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -5,9 +14,7 @@ using System.Text.RegularExpressions;
 namespace OpenClaw.Shared.Inference.Catalog;
 
 /// <summary>
-/// The verified identity and GGUF-derived capacity geometry of a user-supplied
-/// Hugging Face model. Persisted in the installation receipt so launch, gateway
-/// publication, and eligibility can rebuild the same pinned model without the catalog.
+/// Stores the validated identity, artifact pin, and GGUF capacity facts for a custom local model.
 /// </summary>
 public sealed record LocalCustomModelRecipe(
     string RepositoryId,
@@ -23,29 +30,31 @@ public sealed record LocalCustomModelRecipe(
     int TrainedContextTokens);
 
 /// <summary>
-/// Maps a custom recipe onto the same <see cref="LocalModelInfo"/> and profile shapes the
-/// catalog uses, so selection, memory math, receipts, and launch share one code path.
-/// Custom models always run on the generic llama.cpp runtime with no speculative draft.
+/// Converts and validates receipt-backed custom models for the normal local inference catalog flow.
 /// </summary>
 public static partial class LocalCustomModel
 {
     public const string IdPrefix = "hf-";
     private const string InvalidReceipt = "The custom Local AI model receipt is invalid.";
 
+    /// <summary>Returns whether an identifier uses the reserved custom-model namespace.</summary>
     public static bool IsCustomId(string? id) => id?.StartsWith(IdPrefix, StringComparison.Ordinal) == true;
 
+    /// <summary>Creates the stable receipt identity from a pinned repository revision and GGUF path.</summary>
     public static string CreateId(string repositoryId, string revisionSha, string filePath)
     {
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{repositoryId}@{revisionSha}/{filePath}"));
         return IdPrefix + Convert.ToHexStringLower(hash)[..16];
     }
 
+    /// <summary>Creates the stable identifier for a validated custom model recipe.</summary>
     public static string CreateId(LocalCustomModelRecipe recipe)
     {
         ArgumentNullException.ThrowIfNull(recipe);
         return CreateId(recipe.RepositoryId, recipe.RevisionSha, recipe.FilePath);
     }
 
+    /// <summary>Rejects a recipe whose persisted identity or capacity facts are unsafe to use.</summary>
     public static void Validate(LocalCustomModelRecipe recipe)
     {
         if (recipe is null)
@@ -78,6 +87,7 @@ public static partial class LocalCustomModel
         }
     }
 
+    /// <summary>Maps a validated custom recipe to the catalog model shape used by selection and launch.</summary>
     public static LocalModelInfo ToModelInfo(LocalCustomModelRecipe recipe)
     {
         Validate(recipe);

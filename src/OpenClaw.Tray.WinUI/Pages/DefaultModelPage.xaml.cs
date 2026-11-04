@@ -1,3 +1,11 @@
+// <summary>
+// Settings page view for selecting the Gateway default model and completing provider sign-in flows. Its view model
+// owns model choices, validation and Gateway writes; this code-behind only renders state and forwards user input.
+// It unsubscribes when unloaded so a retained view model cannot update a detached page.
+// Usage:
+//   frame.Navigate(typeof(DefaultModelPage));
+//   // NavigationScopeManager supplies and activates DefaultModelPageViewModel as the page DataContext.
+// </summary>
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -11,6 +19,9 @@ using OpenClawTray.Services;
 
 namespace OpenClawTray.Pages;
 
+/// <summary>
+/// Renders <see cref="DefaultModelPageViewModel"/> state and forwards model and provider actions from the Settings UI.
+/// </summary>
 public sealed partial class DefaultModelPage : Page
 {
     private DefaultModelPageViewModel? _viewModel;
@@ -23,6 +34,7 @@ public sealed partial class DefaultModelPage : Page
     private bool _suppressProviderSelection;
     private Task? _providerDialogTask;
 
+    /// <summary>Initializes the page and attaches its view-owned model-provider dialog callbacks.</summary>
     public DefaultModelPage()
     {
         InitializeComponent();

@@ -1,3 +1,12 @@
+// <summary>
+// Owns the Default model page flow for adding Gateway providers through keys, custom endpoints, and sign-in.
+// Uncertain sign-in requests retain their session so a response is never replayed to another Gateway.
+// Usage:
+//   await viewModel.LoadCatalogAsync();
+//   viewModel.SelectedProviderId = "openai";
+//   bool saved = await viewModel.SaveApiKeyAsync(apiKey);
+// </summary>
+
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
@@ -121,6 +130,7 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
     public ModelProviderLoginError LoginError { get; private set; }
     public string? LoginErrorDetail { get; private set; }
 
+    /// <summary>Refreshes connection capabilities and retires a sign-in invalidated by a Gateway change.</summary>
     public void UpdateCapabilities()
     {
         bool retired = _login is { IsCurrent: false };
@@ -154,6 +164,7 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
             _ = CancelLoginQuietlyAsync();
     }
 
+    /// <summary>Loads the available provider catalog for the active Gateway capabilities.</summary>
     public async Task LoadCatalogAsync()
     {
         if (!Capabilities.CanUseGatewayProviders)
@@ -194,6 +205,7 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
         Notify();
     }
 
+    /// <summary>Saves an API key for the selected built-in provider.</summary>
     public async Task<bool> SaveApiKeyAsync(string apiKey)
     {
         string trimmed = apiKey?.Trim() ?? string.Empty;
@@ -219,6 +231,7 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
         return true;
     }
 
+    /// <summary>Validates and adds a custom provider endpoint and its models.</summary>
     public async Task<bool> AddCustomProviderAsync(
         string providerId, string baseUrl, string api, string? apiKey, string modelIdsText)
     {
@@ -263,6 +276,7 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>Starts the selected provider's connection-bound Gateway sign-in session.</summary>
     public async Task StartLoginAsync()
     {
         if (!CanStartLogin || LoginOptions.FirstOrDefault(o => o.Id == _selectedLoginOptionId) is not { } option)
@@ -292,6 +306,7 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
         await PollGatewayStepsAsync();
     }
 
+    /// <summary>Submits an answer for the current Gateway sign-in wizard step.</summary>
     public async Task SubmitLoginAnswerAsync(string stepId, JsonElement? value)
     {
         if (_login is not { } login || LoginBusy || LoginPhase != GatewayAiSetupPhase.Running ||
@@ -311,6 +326,7 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
         await PollGatewayStepsAsync();
     }
 
+    /// <summary>Refreshes the active Gateway sign-in wizard without submitting an answer.</summary>
     public async Task RefreshLoginAsync()
     {
         if (_login is not { } login || LoginBusy)
@@ -328,6 +344,7 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
         await PollGatewayStepsAsync();
     }
 
+    /// <summary>Cancels the active Gateway sign-in session when it is still connection-current.</summary>
     public async Task CancelLoginAsync()
     {
         if (_login is not { } login || LoginCancelling)

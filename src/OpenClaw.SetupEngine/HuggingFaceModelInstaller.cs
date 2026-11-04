@@ -1,3 +1,13 @@
+// <summary>
+// Acquires immutable Hugging Face model assets into the shared cache, verifies their pinned digest,
+// and maintains the legacy compatibility copy owned by Local AI setup. Callers receive only verified
+// paths and must use the removal methods only for artifacts created by their transaction.
+// Usage:
+//   var installer = new HuggingFaceModelInstaller(httpClient);
+//   HuggingFaceModelInstallResult result = await installer.InstallAsync(dataDir, component, model, progress, ct);
+//   // result.ModelPath names verified cached weights; shared final artifacts survive rollback.
+// </summary>
+
 using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared.Inference.Catalog;
 using System.Net;
@@ -64,8 +74,10 @@ internal sealed record HuggingFaceAdditionalAssetInstallResult(
     HuggingFaceModelInstallDisposition Disposition,
     bool CreatedThisRun);
 
+/// <summary>Acquires and transactionally removes verified Hugging Face model artifacts.</summary>
 internal interface IHuggingFaceModelAcquirer
 {
+    /// <summary>Acquires or reuses verified primary model weights for a pinned catalog model.</summary>
     Task<HuggingFaceModelInstallResult> InstallAsync(
         string localDataDirectory,
         LocalAiComponentIdentity component,
@@ -87,8 +99,10 @@ internal interface IHuggingFaceModelAcquirer
         IProgress<HuggingFaceModelInstallProgress>? progress,
         CancellationToken cancellationToken);
 
+    /// <summary>Removes compatibility copies created for a completed primary-model acquisition.</summary>
     void RemoveInstalledModel(string localDataDirectory, HuggingFaceModelInstallResult install);
 
+    /// <summary>Removes resumable primary-model partial state when setup abandons acquisition.</summary>
     void RemovePartialModel(
         string localDataDirectory,
         LocalAiComponentIdentity component,
@@ -128,6 +142,7 @@ internal sealed partial class HuggingFaceModelInstaller : IHuggingFaceModelAcqui
 
     public event EventHandler<HuggingFaceModelInstallProgress>? ProgressChanged;
 
+    /// <summary>Acquires or reuses the verified weights and their compatibility copy for one model.</summary>
     public async Task<HuggingFaceModelInstallResult> InstallAsync(
         string localDataDirectory,
         LocalAiComponentIdentity component,
@@ -388,6 +403,7 @@ internal sealed partial class HuggingFaceModelInstaller : IHuggingFaceModelAcqui
         }
     }
 
+    /// <summary>Removes transaction-owned compatibility copies without deleting shared cache artifacts.</summary>
     public void RemoveInstalledModel(string localDataDirectory, HuggingFaceModelInstallResult install)
     {
         ArgumentNullException.ThrowIfNull(install);
@@ -405,6 +421,7 @@ internal sealed partial class HuggingFaceModelInstaller : IHuggingFaceModelAcqui
         File.Delete(deletePath);
     }
 
+    /// <summary>Removes a transaction-owned resumable partial for the specified model.</summary>
     public void RemovePartialModel(
         string localDataDirectory,
         LocalAiComponentIdentity component,

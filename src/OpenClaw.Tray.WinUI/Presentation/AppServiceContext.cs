@@ -1,3 +1,11 @@
+// <summary>
+// App-owned dependencies transferred to the presentation composition root. The App, not the DI
+// container, retains ownership of these singleton instances and disposes them during shutdown.
+// Usage:
+//   var context = new AppServiceContext(dispatcher, commands, settings, approvals, permissions);
+//   services.AddOpenClawTrayCore(context);
+// </summary>
+
 using OpenClaw.Shared.ExecApprovals;
 using OpenClaw.Connection.LocalAi;
 using OpenClawTray.Services;
