@@ -804,6 +804,7 @@ internal sealed class LocalAiGatewayLifecycle(
     {
         private LocalAiNativeBinding _binding = binding;
         private bool _applied;
+        public string? ServerVersion => rpc.ServerVersion;
 
         public async Task CompleteTeardownAsync(CancellationToken ct)
         {

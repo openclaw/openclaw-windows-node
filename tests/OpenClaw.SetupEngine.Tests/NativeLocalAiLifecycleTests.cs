@@ -2012,6 +2012,7 @@ public sealed class NativeLocalAiLifecycleTests
             GatewayDashboardBinding.Capture(Record), new string('A', 64), "agent:main:main");
         public long Generation => 1;
         public bool IsConnected { get; set; } = true;
+        public string? ServerVersion => "2026.9.8";
         public bool OfferDetectedModel { get; set; }
         public IReadOnlyCollection<string> Methods => OfferDetectedModel
             ? ["config.get", "config.patch", "openclaw.setup.verify", "openclaw.setup.detect", "openclaw.setup.activate"]

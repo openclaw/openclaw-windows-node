@@ -1,5 +1,6 @@
 using OpenClaw.Connection;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace OpenClawTray.Services;
 
@@ -77,5 +78,34 @@ internal sealed class WslLocalAiGatewayConfigurationTransport(
             .ConfigureAwait(false);
         return new(new(result.ExitCode, result.StandardOutput, result.StandardError,
             result.TimedOut, result.OutcomeIndeterminate), null);
+    }
+}
+
+/// <summary>Minimum Gateway whose live request path honors local reasoning_effort=none.</summary>
+internal static class LocalAiReasoningGatewayCompatibility
+{
+    private static readonly Regex VersionPattern = new(
+        @"(?<![0-9A-Za-z.+-])(?<year>\d{4})\.(?<month>\d{1,2})\.(?<patch>\d+)(?<prerelease>-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?(?![0-9A-Za-z.+-])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    public const string UpgradeMessage = "Local AI reasoning controls require OpenClaw Gateway 2026.9.8 or newer. Upgrade the Gateway before publishing this model.";
+
+    public static bool IsSupportedCliOutput(string? output) =>
+        !string.IsNullOrWhiteSpace(output) && IsSupported(VersionPattern.Match(output).Value);
+
+    public static bool IsSupported(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version)) return false;
+        Match match = VersionPattern.Match(version.Trim());
+        if (!match.Success || match.Length != version.Trim().Length ||
+            !int.TryParse(match.Groups["year"].Value, out int year) ||
+            !int.TryParse(match.Groups["month"].Value, out int month) ||
+            !int.TryParse(match.Groups["patch"].Value, out int patch) ||
+            month is < 1 or > 12) return false;
+        int releaseLine = (year, month, patch).CompareTo((2026, 9, 8));
+        // A prerelease of the floor itself was not part of the live proof.
+        bool unverifiedFloorPrerelease = releaseLine == 0 &&
+            match.Groups["prerelease"].Success &&
+            !Regex.IsMatch(match.Groups["prerelease"].Value, @"^-\d+$");
+        return releaseLine >= 0 && !unverifiedFloorPrerelease;
     }
 }

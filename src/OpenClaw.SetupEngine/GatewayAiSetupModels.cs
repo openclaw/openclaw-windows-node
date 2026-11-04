@@ -8,6 +8,7 @@ public interface IGatewayAiSetupTransport
     GatewayAiSetupRoute Route { get; }
     long Generation { get; }
     bool IsConnected { get; }
+    string? ServerVersion => null;
     IReadOnlyCollection<string> Methods { get; }
     IReadOnlyCollection<string> OperatorScopes { get; }
     void RequireRestartAuthority(GatewayAiSetupRoute expected)

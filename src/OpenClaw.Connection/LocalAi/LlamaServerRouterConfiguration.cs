@@ -294,7 +294,7 @@ public static class LlamaServerRouterConfiguration
         preset.Append("repeat-penalty = ").AppendLine(Invariant(sampling.RepetitionPenalty));
         preset.Append("presence-penalty = ").AppendLine(Invariant(sampling.PresencePenalty));
         preset.AppendLine("jinja = true");
-        preset.AppendLine("reasoning = on");
+        // Keep llama-server at its default auto mode so each request can turn reasoning off.
         preset.AppendLine("reasoning-format = deepseek");
         preset.AppendLine("context-shift = true");
         return preset.ToString();

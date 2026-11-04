@@ -67,7 +67,8 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             if (current.ProviderExists)
             {
                 _ = BuildProvider(install);
-                if (!MatchesProvider(current.ProviderJson!, install))
+                if (!MatchesProvider(current.ProviderJson!, install) &&
+                    !MatchesLegacyProvider(current.ProviderJson!, install))
                 {
                     return Failed("The llamacpp provider was changed outside the companion; preserving it and refusing to cycle the managed endpoint.");
                 }
@@ -174,8 +175,16 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
 
         GatewayCapture current = await CaptureGatewayAsync(cancellationToken).ConfigureAwait(false);
         LocalAiEndpointLifecycleResult admission = CheckPublication(current, install);
-        if (!admission.Success || current.ProviderExists)
+        if (!admission.Success)
             return admission;
+        LocalAiEndpointLifecycleResult compatibility = await CheckReasoningGatewayVersionAsync(
+            install, cancellationToken).ConfigureAwait(false);
+        if (!compatibility.Success)
+            return compatibility;
+        if (current.ProviderExists)
+            return MatchesProvider(current.ProviderJson!, install)
+                ? admission
+                : await MigrateLegacyProviderAsync(current, install, cancellationToken).ConfigureAwait(false);
 
         if (_atomicConfiguration is not null)
         {
@@ -252,8 +261,30 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
     }
 
     public async Task<LocalAiEndpointLifecycleResult> ValidatePublicationAsync(
-        LocalAiResolvedInstall install, CancellationToken ct = default) =>
-        CheckPublication(await CaptureGatewayAsync(ct).ConfigureAwait(false), install);
+        LocalAiResolvedInstall install, CancellationToken ct = default)
+    {
+        LocalAiEndpointLifecycleResult admission =
+            CheckPublication(await CaptureGatewayAsync(ct).ConfigureAwait(false), install);
+        return admission.Success
+            ? await CheckReasoningGatewayVersionAsync(install, ct).ConfigureAwait(false)
+            : admission;
+    }
+
+    private async Task<LocalAiEndpointLifecycleResult> CheckReasoningGatewayVersionAsync(
+        LocalAiResolvedInstall install, CancellationToken ct)
+    {
+        if (!LocalAiGatewayProviderDefinition.UsesReasoningEffortMetadata(install))
+            return LocalAiEndpointLifecycleResult.Ok();
+        if (_atomicConfiguration is not null)
+            return LocalAiReasoningGatewayCompatibility.IsSupported(_atomicConfiguration.ServerVersion)
+                ? LocalAiEndpointLifecycleResult.Ok()
+                : Failed(LocalAiReasoningGatewayCompatibility.UpgradeMessage);
+        LocalAiGatewayCommandOutcome version = await _configuration!.RunAsync(["--version"], ct).ConfigureAwait(false);
+        return version.Routed && version.Result!.Success &&
+               LocalAiReasoningGatewayCompatibility.IsSupportedCliOutput(version.Result.StandardOutput)
+            ? LocalAiEndpointLifecycleResult.Ok()
+            : Failed(LocalAiReasoningGatewayCompatibility.UpgradeMessage);
+    }
 
     private LocalAiEndpointLifecycleResult CheckPublication(GatewayCapture current, LocalAiResolvedInstall install)
     {
@@ -262,7 +293,8 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
         if (current.ProviderExists)
         {
-            return MatchesProvider(current.ProviderJson!, install) &&
+            return (MatchesProvider(current.ProviderJson!, install) ||
+                    MatchesLegacyProvider(current.ProviderJson!, install)) &&
                    current.PrimaryExists &&
                    string.Equals(current.PrimaryModel, managedPrimary, StringComparison.Ordinal)
                 ? LocalAiEndpointLifecycleResult.Ok()
@@ -281,6 +313,56 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         }
 
         return LocalAiEndpointLifecycleResult.Ok();
+    }
+
+    private async Task<LocalAiEndpointLifecycleResult> MigrateLegacyProviderAsync(
+        GatewayCapture current, LocalAiResolvedInstall install, CancellationToken ct)
+    {
+        // Change the owned model array only. The provider readback may redact
+        // the API key, so replaying the entire provider would destroy a secret.
+        string models = LocalAiGatewayProviderDefinition.BuildProviderModelsJson(install);
+        if (_atomicConfiguration is not null)
+        {
+            var patch = new JsonObject { ["models"] = new JsonObject
+            {
+                ["providers"] = new JsonObject { ["llamacpp"] = new JsonObject
+                {
+                    ["models"] = JsonNode.Parse(models),
+                } },
+            } };
+            LocalAiEndpointLifecycleResult applied = await ApplyAtomicAsync(current, patch, ct).ConfigureAwait(false);
+            if (!applied.Success) return applied;
+        }
+        else
+        {
+            using JsonDocument oldProvider = ParseBounded(current.ProviderJson!);
+            string oldModels = oldProvider.RootElement.GetProperty("models").GetRawText();
+            string[] args = ["config", "set", LocalAiGatewayProviderDefinition.ProviderModelsPath,
+                models, "--strict-json", "--replace", "--expect-current-json", oldModels];
+            // The CLI does not allow conditional expectations on dry runs.
+            // Validate the proposed array first; the actual write remains guarded.
+            LocalAiGatewayCommandOutcome dryRun = await _configuration!.RunAsync(
+                ["config", "set", LocalAiGatewayProviderDefinition.ProviderModelsPath,
+                    models, "--strict-json", "--replace", "--dry-run"], ct).ConfigureAwait(false);
+            if (!dryRun.Routed || !dryRun.Result!.Success)
+                return Failed("The legacy Local AI model settings could not be validated for migration. No Gateway configuration was changed.");
+            LocalAiGatewayCommandOutcome applied = await _configuration.RunAsync(args, ct).ConfigureAwait(false);
+            if (!applied.Routed || !applied.Result!.Success)
+                return Failed("The legacy Local AI model settings changed before migration could be confirmed. Reconnect the original Gateway to reconcile.");
+            LocalAiGatewayCommandOutcome restarted = await _configuration.RunAsync(
+                ["gateway", "restart"], ct).ConfigureAwait(false);
+            if (!restarted.Routed || !restarted.Result!.Success)
+                return Failed("The Local AI model settings were saved, but the WSL Gateway restart was not confirmed. Reconcile the original Gateway before retrying.");
+        }
+
+        GatewayCapture verified = await CaptureGatewayAsync(CancellationToken.None).ConfigureAwait(false);
+        return verified.Success && verified.ProviderExists &&
+               MatchesProvider(verified.ProviderJson!, install) &&
+               verified.PrimaryExists &&
+               string.Equals(verified.PrimaryModel,
+                   LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), StringComparison.Ordinal)
+            ? LocalAiEndpointLifecycleResult.Ok()
+            : Failed("The migrated Local AI route could not be verified. Preserve the endpoint and reconcile the original Gateway.");
     }
 
     private LocalAiEndpointLifecycleResult PublicationFailed(
@@ -417,6 +499,9 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
 
     private bool MatchesProvider(string json, LocalAiResolvedInstall install) =>
         LocalAiGatewayProviderDefinition.MatchesProviderJson(json, install, _getApiKey?.Invoke());
+
+    private bool MatchesLegacyProvider(string json, LocalAiResolvedInstall install) =>
+        LocalAiGatewayProviderDefinition.MatchesLegacyProviderJson(json, install, _getApiKey?.Invoke());
 
     private async Task<GatewayCapture> CaptureAtomicAsync(CancellationToken ct)
     {

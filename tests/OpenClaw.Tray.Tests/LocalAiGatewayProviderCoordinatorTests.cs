@@ -35,6 +35,121 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.Empty(Assert.Single(transport.ReplacementPaths));
     }
 
+    [Fact]
+    public async Task RpcValidation_RejectsOldGatewayBeforeModelStartup()
+    {
+        var transport = new AtomicTransport("{}") { ServerVersion = "2026.6.5" };
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = await coordinator.ValidatePublicationAsync(Install(28_765));
+
+        Assert.False(result.Success);
+        Assert.Contains("2026.9.8", result.Detail);
+        Assert.Empty(transport.Patches);
+    }
+
+    [Fact]
+    public async Task RpcPublish_RejectsOldGatewayBeforePatch()
+    {
+        var transport = new AtomicTransport("{}") { ServerVersion = "2026.9.7" };
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = await coordinator.PublishAsync(Install(28_765));
+
+        Assert.False(result.Success);
+        Assert.Contains("2026.9.8", result.Detail);
+        Assert.Empty(transport.Patches);
+    }
+
+    [Fact]
+    public async Task WslValidation_RejectsOldGatewayBeforeModelStartup()
+    {
+        var commands = new FakeWslCommandRunner(null) { GatewayVersion = "2026.6.5" };
+
+        var result = await CreateCoordinator(commands).ValidatePublicationAsync(Install(28_765));
+
+        Assert.False(result.Success);
+        Assert.Contains("2026.9.8", result.Detail);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("set") || call.Contains("restart"));
+    }
+
+    [Fact]
+    public async Task RpcPublish_MigratesOnlyLegacyModelArrayAndPreservesCredential()
+    {
+        var install = Install(28_765, "cloud/prior");
+        var transport = new AtomicTransport("{}");
+        transport.SetManaged(install);
+        var model = (JsonObject)transport.Config["models"]!["providers"]!["llamacpp"]!["models"]![0]!;
+        var compat = (JsonObject)model["compat"]!;
+        compat.Remove("supportsReasoningEffort");
+        compat.Remove("supportedReasoningEfforts");
+        compat.Remove("reasoningEffortMap");
+        model.Remove("thinkingLevelMap");
+        var oldProvider = transport.Config["models"]!["providers"]!["llamacpp"]!.ToJsonString();
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesLegacyProviderJson(oldProvider, install, "actual-local-secret"));
+        Assert.False(LocalAiGatewayProviderDefinition.MatchesProviderJson(oldProvider, install, "actual-local-secret"));
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Single(transport.Patches);
+        Assert.Equal([LocalAiGatewayProviderDefinition.ProviderModelsPath], Assert.Single(transport.ReplacementPaths));
+        Assert.False(transport.Patches[0].GetProperty("models").GetProperty("providers")
+            .GetProperty("llamacpp").TryGetProperty("apiKey", out _));
+        Assert.Equal("actual-local-secret", (string?)transport.Config["models"]?["providers"]?["llamacpp"]?["apiKey"]);
+        Assert.Equal("cloud/prior", install.Manifest.GatewayFallbackModel);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            transport.Config["models"]!["providers"]!["llamacpp"]!.ToJsonString(), install, "actual-local-secret"));
+    }
+
+    [Fact]
+    public async Task WslPublish_MigratesLegacyModelArrayWithoutOverwritingCredential()
+    {
+        var install = Install(28_765);
+        var legacy = JsonNode.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(install, "llama-local"))!.AsObject();
+        var model = (JsonObject)legacy["models"]![0]!;
+        var compat = (JsonObject)model["compat"]!;
+        compat.Remove("supportsReasoningEffort");
+        compat.Remove("supportedReasoningEfforts");
+        compat.Remove("reasoningEffortMap");
+        model.Remove("thinkingLevelMap");
+        var commands = new FakeWslCommandRunner(legacy.ToJsonString(),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        var coordinator = CreateCoordinator(commands);
+
+        var result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Equal("llama-local", JsonNode.Parse(commands.ProviderJson!)!["apiKey"]!.GetValue<string>());
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, install, "llama-local"));
+        Assert.Contains(commands.Calls, call => call.Contains("--expect-current-json"));
+        Assert.Contains(commands.Calls, call => call.Contains("gateway") && call.Contains("restart"));
+    }
+
+    [Fact]
+    public async Task WslPublish_OldGatewayRefusesLegacyMigrationBeforeWrite()
+    {
+        var install = Install(28_765);
+        var legacy = JsonNode.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(install))!.AsObject();
+        var model = (JsonObject)legacy["models"]![0]!;
+        var compat = (JsonObject)model["compat"]!;
+        compat.Remove("supportsReasoningEffort");
+        compat.Remove("supportedReasoningEfforts");
+        compat.Remove("reasoningEffortMap");
+        model.Remove("thinkingLevelMap");
+        var original = legacy.ToJsonString();
+        var commands = new FakeWslCommandRunner(original,
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)) { GatewayVersion = "2026.6.5" };
+
+        var result = await CreateCoordinator(commands).PublishAsync(install);
+
+        Assert.False(result.Success);
+        Assert.Contains("2026.9.8", result.Detail);
+        Assert.Equal(original, commands.ProviderJson);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("--expect-current-json"));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -127,6 +242,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     private sealed class AtomicTransport(string config) : ILocalAiGatewayAtomicConfigurationTransport
     {
         public JsonObject Config { get; } = JsonNode.Parse(config)!.AsObject();
+        public string? ServerVersion { get; init; } = "2026.9.8";
         public List<JsonElement> Patches { get; } = [];
         public List<string[]> ReplacementPaths { get; } = [];
         public bool DriftOnApply { get; init; }
@@ -1046,6 +1162,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         public string? ActiveProviderJson { get; private set; } = providerJson;
         public string? PrimaryModel { get; private set; } = primaryModel;
         public string? ProviderAfterApply { get; init; }
+        public string GatewayVersion { get; init; } = "2026.9.8";
         public string? PrimaryAfterApply { get; init; }
         public bool FailReads { get; init; }
         public HashSet<int> FailedReadCalls { get; init; } = [];
@@ -1069,10 +1186,31 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             Calls.Add(command.ToArray());
             StandardInputs.Add(standardInput);
             CommandObserved?.Invoke(Calls.Count);
+            if (command.Contains("--version"))
+                return Result(0, $"OpenClaw {GatewayVersion}");
             bool providerRead = command.Contains("get") &&
                 command.Contains(LocalAiGatewayProviderDefinition.ProviderPath);
             if (providerRead && (FailReads || FailedReadCalls.Contains(++_readCalls)))
                 return Result(1, string.Empty, "wsl.exe failed");
+            if (command.Contains("set") && command.Contains(LocalAiGatewayProviderDefinition.ProviderModelsPath))
+            {
+                int guard = command.ToList().IndexOf("--expect-current-json");
+                bool dryRun = command.Contains("--dry-run");
+                if (ProviderJson is null || dryRun && guard >= 0 || !dryRun && guard < 0)
+                    return Result(1, string.Empty);
+                var provider = JsonNode.Parse(ProviderJson)!.AsObject();
+                if (!dryRun)
+                {
+                    using var current = JsonDocument.Parse(provider["models"]!.ToJsonString());
+                    using var expected = JsonDocument.Parse(command[guard + 1]);
+                    if (!JsonElement.DeepEquals(current.RootElement, expected.RootElement))
+                        return Result(1, string.Empty);
+                    int path = command.ToList().IndexOf(LocalAiGatewayProviderDefinition.ProviderModelsPath);
+                    provider["models"] = JsonNode.Parse(command[path + 1]);
+                    ProviderJson = provider.ToJsonString();
+                }
+                return Result(0, string.Empty);
+            }
             if (command.Contains("/bin/sh"))
             {
                 if (ProviderAfterApply is not null)

@@ -10,6 +10,7 @@ internal sealed record LocalAiGatewayConfigurationSnapshot(JsonElement Config, s
 /// <summary>A coherent read and a conditional merge, never a read followed by an unguarded CLI write.</summary>
 internal interface ILocalAiGatewayAtomicConfigurationTransport
 {
+    string? ServerVersion { get; }
     Task<LocalAiGatewayConfigurationSnapshot> CaptureAsync(CancellationToken ct);
     Task ApplyAsync(LocalAiGatewayConfigurationSnapshot expected, JsonElement patch, CancellationToken ct,
         IReadOnlyList<string>? replacePaths = null);
@@ -26,6 +27,7 @@ internal sealed class LocalAiGatewayRpcConfigurationTransport : ILocalAiGatewayA
     private readonly GatewayAiSetupRoute _owner;
     private readonly long _generation;
     public string? LastConfirmedHash { get; private set; }
+    public string? ServerVersion => _transport.ServerVersion;
     public Action? BeforeMutationDispatch { get; set; }
 
     public LocalAiGatewayRpcConfigurationTransport(

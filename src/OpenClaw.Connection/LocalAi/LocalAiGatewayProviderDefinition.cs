@@ -11,6 +11,7 @@
 //   bool matches = LocalAiGatewayProviderDefinition.MatchesProviderJson(cliOutputJson, install);
 using OpenClaw.Shared.Inference.Catalog;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace OpenClaw.Connection.LocalAi;
 
@@ -41,7 +42,14 @@ public static class LocalAiGatewayProviderDefinition
     /// so the API key may be either its written value or the documented
     /// redaction marker; every routing and model field must still match.
     /// </summary>
-    public static bool MatchesProviderJson(string providerJson, LocalAiResolvedInstall install, string? apiKey = null)
+    public static bool MatchesProviderJson(string providerJson, LocalAiResolvedInstall install, string? apiKey = null) =>
+        MatchesProviderJson(providerJson, install, apiKey, legacy: false);
+
+    /// <summary>Recognizes only the exact provider shape published before effort metadata was added.</summary>
+    public static bool MatchesLegacyProviderJson(string providerJson, LocalAiResolvedInstall install, string? apiKey = null) =>
+        MatchesProviderJson(providerJson, install, apiKey, legacy: true);
+
+    private static bool MatchesProviderJson(string providerJson, LocalAiResolvedInstall install, string? apiKey, bool legacy)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerJson);
         ArgumentNullException.ThrowIfNull(install);
@@ -49,12 +57,12 @@ public static class LocalAiGatewayProviderDefinition
         try
         {
             using JsonDocument actual = JsonDocument.Parse(providerJson);
-            using JsonDocument expected = JsonDocument.Parse(BuildProviderJson(install, apiKey ?? "llama-local"));
+            using JsonDocument expected = JsonDocument.Parse(BuildProviderJson(install, apiKey ?? "llama-local", legacy));
             if (JsonEquals(actual.RootElement, expected.RootElement))
                 return true;
 
             using JsonDocument redacted = JsonDocument.Parse(
-                BuildProviderJson(install, CliRedactedApiKey));
+                BuildProviderJson(install, CliRedactedApiKey, legacy));
             return JsonEquals(actual.RootElement, redacted.RootElement);
         }
         catch (JsonException)
@@ -101,13 +109,26 @@ public static class LocalAiGatewayProviderDefinition
     }
 
     /// <summary>Builds the managed provider JSON for a resolved install and explicit local API credential.</summary>
-    public static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey)
+    public static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey) =>
+        BuildProviderJson(install, apiKey, legacy: false);
+
+    private static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey, bool legacy)
     {
         ArgumentNullException.ThrowIfNull(install);
         _ = LocalAiApiCredentialStore.RequireApiKey(apiKey);
         LocalModelInfo model = GetQualifiedModel(install);
         Uri endpoint = install.Endpoint
             ?? throw new InvalidOperationException("The verified Local AI endpoint is required.");
+        string[]? efforts = legacy ? null : model.ReasoningProfile switch
+        {
+            LocalModelReasoningProfile.Qwen38 => ["none", "low", "medium", "high"],
+            LocalModelReasoningProfile.QwenOnOff => ["none", "medium"],
+            _ => null,
+        };
+        object? thinkingLevelMap = efforts is null ? null :
+            model.ReasoningProfile == LocalModelReasoningProfile.QwenOnOff
+                ? new { minimal = (string?)null, high = (string?)null }
+                : new { minimal = (string?)null };
 
         var value = new
         {
@@ -127,12 +148,44 @@ public static class LocalAiGatewayProviderDefinition
                     contextWindow = install.Manifest.ContextLength,
                     contextTokens = install.Manifest.ContextLength,
                     maxTokens = GetMaximumOutputTokens(install.Manifest.ContextLength),
-                    compat = new { supportsTools = true, supportsUsageInStreaming = true },
+                    compat = new
+                    {
+                        supportsTools = true,
+                        supportsUsageInStreaming = true,
+                        supportsReasoningEffort = efforts is null ? (bool?)null : true,
+                        supportedReasoningEfforts = efforts,
+                        reasoningEffortMap = efforts is null ? null : new { off = "none" },
+                    },
+                    thinkingLevelMap,
                     api = ApiType,
                 },
             },
         };
-        return JsonSerializer.Serialize(value);
+        JsonObject provider = (JsonObject)JsonSerializer.SerializeToNode(value)!;
+        if (efforts is null)
+        {
+            // Keep the old shape for templates whose reasoning vocabulary has
+            // not been verified. Null map entries on qualified templates are
+            // meaningful and must remain in the serialized configuration.
+            JsonObject configuredModel = (JsonObject)((JsonArray)provider["models"]!)[0]!;
+            JsonObject compat = (JsonObject)configuredModel["compat"]!;
+            compat.Remove("supportsReasoningEffort");
+            compat.Remove("supportedReasoningEfforts");
+            compat.Remove("reasoningEffortMap");
+            configuredModel.Remove("thinkingLevelMap");
+        }
+        return provider.ToJsonString();
+    }
+
+    /// <summary>Whether this qualified template needs the Gateway's verified reasoning-effort path.</summary>
+    public static bool UsesReasoningEffortMetadata(LocalAiResolvedInstall install) =>
+        GetQualifiedModel(install).ReasoningProfile != LocalModelReasoningProfile.Unspecified;
+
+    /// <summary>Builds the exact model array for a guarded legacy-provider migration.</summary>
+    public static string BuildProviderModelsJson(LocalAiResolvedInstall install)
+    {
+        using JsonDocument provider = JsonDocument.Parse(BuildProviderJson(install));
+        return provider.RootElement.GetProperty("models").GetRawText();
     }
 
     /// <summary>Builds the Gateway primary-model identifier for a resolved managed install.</summary>
