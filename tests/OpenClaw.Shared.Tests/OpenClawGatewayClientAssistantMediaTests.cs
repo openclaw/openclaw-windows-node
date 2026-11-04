@@ -203,6 +203,121 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
     }
 
     [Fact]
+    public async Task ResolveUserAvatar_UsesGatewayRouteHeaderCredentialAndTypedStatuses()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("assistant-media-");
+        await server.StartAsync();
+        var handler = new SequentialMediaHandler(
+            BytesResponse([1, 2, 3], "image/png"),
+            new HttpResponseMessage(HttpStatusCode.NotFound),
+            new HttpResponseMessage(HttpStatusCode.Forbidden),
+            BytesResponse([1], "image/svg+xml"),
+            new HttpResponseMessage(HttpStatusCode.BadGateway));
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "paired-device-token",
+            identityPath: identity.Path,
+            assistantMediaAuthToken: "shared-http-token",
+            assistantMediaHandler: handler);
+        await client.ConnectAsync();
+        MarkHandshakeReady(client);
+
+        var ready = await client.ResolveUserAvatarAsync("gateway-owner", "7");
+        Assert.Equal(UserAvatarStatus.Ready, ready.Status);
+        Assert.Equal(new byte[] { 1, 2, 3 }, ready.Image!.Bytes);
+        Assert.Equal("/api/users/gateway-owner/avatar", handler.Requests[0].Uri.AbsolutePath);
+        Assert.Equal("?v=7", handler.Requests[0].Uri.Query);
+        Assert.Equal("shared-http-token", handler.Requests[0].AuthorizationParameter);
+        Assert.DoesNotContain("shared-http-token", handler.Requests[0].Uri.ToString(), StringComparison.Ordinal);
+
+        Assert.Equal(UserAvatarStatus.NotFound, (await client.ResolveUserAvatarAsync("a", null)).Status);
+        Assert.Equal(UserAvatarStatus.Unauthorized, (await client.ResolveUserAvatarAsync("a", null)).Status);
+        Assert.Equal(UserAvatarStatus.Failed, (await client.ResolveUserAvatarAsync("a", null)).Status);
+        Assert.Equal(UserAvatarStatus.Failed, (await client.ResolveUserAvatarAsync("a", null)).Status);
+    }
+
+    [Fact]
+    public async Task ResolveUserAvatar_WithoutConnectionIsCancelledNotAFailure()
+    {
+        using var identity = new TempDirectory("assistant-media-");
+        using var client = new OpenClawGatewayClient(
+            "ws://127.0.0.1:1", "token", identityPath: identity.Path,
+            assistantMediaHandler: new SequentialMediaHandler());
+        Assert.Equal(UserAvatarStatus.Cancelled, (await client.ResolveUserAvatarAsync("a", null)).Status);
+    }
+
+    [Fact]
+    public async Task ResolveUserAvatar_StalledBodyTimesOutAsFailureButCallerCancellationStaysCancelled()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("assistant-media-");
+        await server.StartAsync();
+        var handler = new SequentialMediaHandler(StalledBodyResponse(), StalledBodyResponse());
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "paired-device-token",
+            identityPath: identity.Path,
+            assistantMediaAuthToken: "shared-http-token",
+            assistantMediaHandler: handler);
+        await client.ConnectAsync();
+        MarkHandshakeReady(client);
+        client.UserAvatarTimeout = TimeSpan.FromMilliseconds(200);
+
+        var timedOut = await client.ResolveUserAvatarAsync("gateway-owner", null)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(UserAvatarStatus.Failed, timedOut.Status);
+
+        using var caller = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+        client.UserAvatarTimeout = TimeSpan.FromSeconds(30);
+        var cancelled = await client.ResolveUserAvatarAsync("gateway-owner", null, caller.Token)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(UserAvatarStatus.Cancelled, cancelled.Status);
+    }
+
+    [Fact]
+    public async Task ResolveUserAvatar_StalledHeadersAlsoTimeOut()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("assistant-media-");
+        await server.StartAsync();
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "paired-device-token",
+            identityPath: identity.Path,
+            assistantMediaAuthToken: "shared-http-token",
+            assistantMediaHandler: new HangingHeadersHandler());
+        await client.ConnectAsync();
+        MarkHandshakeReady(client);
+        client.UserAvatarTimeout = TimeSpan.FromMilliseconds(200);
+        var result = await client.ResolveUserAvatarAsync("gateway-owner", null).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(UserAvatarStatus.Failed, result.Status);
+    }
+
+    [Fact]
+    public void UserAvatarTimeout_DefaultsAndHonorsEnvironmentOverride()
+    {
+        var previous = Environment.GetEnvironmentVariable(OpenClawGatewayClient.UserAvatarTimeoutEnvironmentVariable);
+        try
+        {
+            using var identity = new TempDirectory("assistant-media-");
+            Environment.SetEnvironmentVariable(OpenClawGatewayClient.UserAvatarTimeoutEnvironmentVariable, null);
+            using var defaulted = new OpenClawGatewayClient("ws://127.0.0.1:1", "t", identityPath: identity.Path);
+            Assert.Equal(TimeSpan.FromMilliseconds(OpenClawGatewayClient.DefaultUserAvatarTimeoutMs), defaulted.UserAvatarTimeout);
+            Environment.SetEnvironmentVariable(OpenClawGatewayClient.UserAvatarTimeoutEnvironmentVariable, "1234");
+            using var overridden = new OpenClawGatewayClient("ws://127.0.0.1:1", "t", identityPath: identity.Path);
+            Assert.Equal(TimeSpan.FromMilliseconds(1234), overridden.UserAvatarTimeout);
+            Environment.SetEnvironmentVariable(OpenClawGatewayClient.UserAvatarTimeoutEnvironmentVariable, "-5");
+            using var invalid = new OpenClawGatewayClient("ws://127.0.0.1:1", "t", identityPath: identity.Path);
+            Assert.Equal(TimeSpan.FromMilliseconds(OpenClawGatewayClient.DefaultUserAvatarTimeoutMs), invalid.UserAvatarTimeout);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(OpenClawGatewayClient.UserAvatarTimeoutEnvironmentVariable, previous);
+        }
+    }
+
+    [Fact]
     public async Task ResolveLegacyMedia_DoesNotSendThisNetworkOrCgnatSource()
     {
         using var server = new LoopbackWebSocketServer();
@@ -402,6 +517,48 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json"),
         };
+
+    private static HttpResponseMessage StalledBodyResponse()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StalledContent() };
+        response.Content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        return response;
+    }
+
+    private sealed class StalledContent : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => Task.CompletedTask;
+        protected override bool TryComputeLength(out long length) { length = 0; return false; }
+        protected override Task<Stream> CreateContentReadStreamAsync() => Task.FromResult<Stream>(new StalledStream());
+    }
+
+    private sealed class StalledStream : Stream
+    {
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    private sealed class HangingHeadersHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
+    }
 
     private static HttpResponseMessage BytesResponse(byte[] data, string mimeType)
     {

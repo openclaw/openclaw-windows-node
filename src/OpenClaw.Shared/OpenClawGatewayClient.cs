@@ -2552,7 +2552,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     wizardCompletion.TryFault(requestMethod == "tts.speak"
                         ? new GatewaySpeechException(ClassifySpeechRejection(message))
                         : QuestionRequestError(pending.Method, root)
-                            ?? new InvalidOperationException(message));
+                            ?? GatewayRequestErrors.Create(
+                                message,
+                                TryGetErrorTopLevelCode(root),
+                                TryGetErrorDetailCode(root)));
                 }
                 else if (root.TryGetProperty("payload", out var wizPayload))
                 {

@@ -31,6 +31,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly GatewayStatusContent _gatewayStatusContent = new();
     private readonly Flyout _gatewayStatusFlyout = new() { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft };
     private readonly MenuFlyoutItem _connectionStatusItem = new();
+    private readonly MenuFlyoutItem _setUpProfileItem = new() { Visibility = Visibility.Collapsed };
     private readonly FontIcon _connectionStatusIcon = new();
     // Sidebar rows keyed by session key; SyncSessionItems keeps MenuItems in step with these.
     private readonly Dictionary<string, NavigationViewItem> _sessionItems = new(StringComparer.Ordinal);
@@ -75,7 +76,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _notifications = notifications;
         _openTimeline = openTimeline;
         _identity = new WorkspaceIdentitySource(UpdateOwnerIdentity,
-            category => Logger.Warn($"[Workspace] users.self unavailable ({category}); using owner fallback."));
+            category => Logger.Warn(WorkspaceIdentitySource.DescribeUnavailable(category)));
         _sessionMenu = new WorkspaceSessionMenuController(
             () => IsClosed ? null : CurrentApp.GatewayClient,
             key => _state.Sessions.FirstOrDefault(s => s.Key == key),
@@ -1011,12 +1012,47 @@ public sealed partial class WorkspaceWindow : WindowEx
         _ = _identity.RefreshAsync(invalidate);
     }
 
+    private UserAvatarImage? _shownAvatar;
+
     private void UpdateOwnerIdentity()
     {
-        OwnerName.Text = _identity.DisplayName ?? Text("Owner.Text");
-        OwnerPicture.DisplayName = _identity.DisplayName ?? "";
-        AutomationProperties.SetName(OwnerButton,
-            string.IsNullOrWhiteSpace(OwnerName.Text) ? Text("Owner.Text") : OwnerName.Text);
+        var name = _identity.DisplayName;
+        var unnamed = name is null && _identity.IsUnnamedProfile;
+        OwnerName.Text = name ?? Text(_identity.IsLoading ? "OwnerLoading.Text"
+            : unnamed ? "OwnerUnnamed.Text" : "OwnerUnavailable.Text");
+        _setUpProfileItem.Visibility = unnamed ? Visibility.Visible : Visibility.Collapsed;
+        OwnerPicture.DisplayName = name ?? "";
+        AutomationProperties.SetName(OwnerButton, OwnerName.Text);
+        var avatar = _identity.Avatar;
+        if (ReferenceEquals(avatar, _shownAvatar)) return;
+        _shownAvatar = avatar;
+        if (avatar is null)
+        {
+            OwnerPicture.ProfilePicture = null;
+            return;
+        }
+        AsyncEventHandlerGuard.Run(() => ShowOwnerAvatarAsync(avatar), new AppLogger(), nameof(UpdateOwnerIdentity));
+    }
+
+    private async Task ShowOwnerAvatarAsync(UserAvatarImage avatar)
+    {
+        Microsoft.UI.Xaml.Media.Imaging.BitmapImage image;
+        try
+        {
+            using var stream = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
+            await stream.WriteAsync(System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsBuffer(avatar.Bytes));
+            stream.Seek(0);
+            image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage { DecodePixelWidth = 48 };
+            await image.SetSourceAsync(stream);
+        }
+        catch (Exception ex) when (WorkspaceIdentitySource.IsAvatarDecodeFailure(ex))
+        {
+            if (ReferenceEquals(avatar, _shownAvatar)) OwnerPicture.ProfilePicture = null;
+            new AppLogger().Warn($"Owner avatar could not be decoded ({ex.GetType().Name}); initials shown.");
+            return;
+        }
+        if (ReferenceEquals(avatar, _shownAvatar))
+            OwnerPicture.ProfilePicture = image;
     }
 
     private void OnAssistantChanged(object sender, SelectionChangedEventArgs e)
@@ -1230,6 +1266,11 @@ public sealed partial class WorkspaceWindow : WindowEx
             item.Click += (_, _) => action();
             menu.Items.Add(item);
         }
+        _setUpProfileItem.Text = Text("SetUpProfile");
+        _setUpProfileItem.Icon = FluentIconCatalog.Build(FluentIconCatalog.OpenInBrowser);
+        AutomationProperties.SetAutomationId(_setUpProfileItem, "WorkspaceOwnerSetUpProfile");
+        _setUpProfileItem.Click += (_, _) => ((IAppCommands)CurrentApp).OpenDashboard("settings/profile");
+        menu.Items.Add(_setUpProfileItem);
         Add("Settings", () => OpenCompanion(CompanionPageId.Settings), FluentIconCatalog.Settings);
         Add("Usage", () => OpenCompanion(CompanionPageId.Usage), FluentIconCatalog.Money);
         Add("PairDevice", () => OpenCompanion(CompanionPageId.Channels), FluentIconCatalog.Devices);

@@ -168,7 +168,7 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         Capture(app, theme, "sidebar-composer");
         Invoke(Find(root, "WorkspaceOwner"));
-        Assert.Equal("Owner", Find(root, "WorkspaceOwner").Current.Name);
+        Assert.Equal("Profile unavailable", Find(root, "WorkspaceOwner").Current.Name);
         Assert.Equal("Disconnected", Find(root, "WorkspaceOwner").Current.HelpText);
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerConnectionStatus") is not null);
         Assert.Equal("Connection Status: Disconnected", FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.Name);

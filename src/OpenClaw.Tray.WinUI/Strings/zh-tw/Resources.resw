@@ -7978,7 +7978,10 @@
   <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
-  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_OwnerLoading.Text" xml:space="preserve"><value>正在載入設定檔</value></data>
+  <data name="WorkspaceShell_OwnerUnavailable.Text" xml:space="preserve"><value>設定檔無法使用</value></data>
+  <data name="WorkspaceShell_OwnerUnnamed.Text" xml:space="preserve"><value>尚未設定設定檔</value></data>
+  <data name="WorkspaceShell_SetUpProfile" xml:space="preserve"><value>在儀表板中設定設定檔</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>

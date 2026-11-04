@@ -7978,7 +7978,10 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
-  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_OwnerLoading.Text" xml:space="preserve"><value>Chargement du profil</value></data>
+  <data name="WorkspaceShell_OwnerUnavailable.Text" xml:space="preserve"><value>Profil indisponible</value></data>
+  <data name="WorkspaceShell_OwnerUnnamed.Text" xml:space="preserve"><value>Profil non configuré</value></data>
+  <data name="WorkspaceShell_SetUpProfile" xml:space="preserve"><value>Configurer le profil dans le tableau de bord</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
