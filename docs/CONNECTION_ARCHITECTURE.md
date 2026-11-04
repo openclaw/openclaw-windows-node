@@ -233,6 +233,9 @@ chrome. Sessions retains its independent subtle Add button.
 NavigationView has zero compact width. Home's icon is inline native content
 so it is not clipped by WinUI's zero-width icon column. The mode stays `Left`. Home,
 sessions, and the entire footer disappear, and content fills the vacated width.
+While the pane is hidden, the same footer control shows only Dashboard and the
+bell in the native `TitleBar` right header; it collapses again when the pane
+reopens or Settings is shown, so the actions never appear twice.
 The native 160ms slide goes directly to zero width; `PaneClosed` hides offscreen
 controls without a second layout step. Native motion preferences still apply.
 Both toggle states share a stable overlay position outside the animated pane,
@@ -247,15 +250,18 @@ text-button padding must not squeeze the glyph inside the fixed 40 DIP target.
 The companion uses a native TitleBar titled OpenClaw Settings with shared claw
 artwork. Search, Back, and Forward live beside the toggle in its stable sidebar
 toolbar. The native pane reserves 56 DIP above its items, including in compact mode.
-Connection status occupies the footer bar above Diagnostics and Settings;
-compact mode retains its icon-only target. Settings has no notification button.
-Workspace's bell opens `NotificationFlyoutContent` using the existing
+Chat and Settings end with one shared `WorkspacePaneFooter`: account, Dashboard,
+and the notifications bell, always visible. Settings' compact rail stacks the
+same three as 40 DIP icons, with connection status as a dot on the avatar.
+Diagnostics and App settings live at the end of "This Computer". Dashboard and
+Ctrl+Shift+D open the Gateway Dashboard home through `GatewayDashboardLauncher`.
+Each bell opens `NotificationFlyoutContent` using the existing
 `AppNotificationService`, without replacing chat or changing history. Its
 explicit Open notifications link and existing deep links retain the full page.
-Owner's connection entry shows the same `ConnectionStatusPresenter` label/accent
-as Settings, refreshed both on menu opening and every manager snapshot through
+The account menu's connection entry shows the `ConnectionStatusPresenter`
+label/accent, refreshed both on menu opening and every manager snapshot through
 `WindowManager`, including richer changes that keep the same legacy status.
-It opens `GatewayStatusContent`, shared with Settings,
+It opens `GatewayStatusContent` at the invoking account button
 using the current manager snapshot and existing reconnect/Connection actions.
 The flyout contents own named-control application; windows own popup lifetime
 and route side effects. Notification subscriptions detach when the flyout closes.
