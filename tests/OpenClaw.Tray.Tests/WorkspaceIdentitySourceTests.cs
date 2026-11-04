@@ -917,6 +917,38 @@ public sealed class WorkspaceIdentitySourceTests
         Assert.Equal(2, proxy.AvatarRequests.Count);
     }
 
+    [Fact]
+    public async Task UnresolvedExplicitRefetchKeepsTheImageAndTheNextRefreshRetriesItOnce()
+    {
+        var (client, proxy) = Gateway();
+        var first = new UserAvatarImage([1], "image/png");
+        var second = new UserAvatarImage([2], "image/png");
+        var attempts = 0;
+        proxy.Response = () => Task.FromResult(AvatarProfile("Ada", "1"));
+        proxy.Avatar = (_, _) => Task.FromResult(++attempts switch
+        {
+            1 => new UserAvatarResult(UserAvatarStatus.Ready, first),
+            2 => UserAvatarResult.Of(UserAvatarStatus.Cancelled),
+            _ => new UserAvatarResult(UserAvatarStatus.Ready, second),
+        });
+        var source = new WorkspaceIdentitySource(() => { }, category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        Assert.Same(first, source.Avatar);
+
+        await source.RefreshAsync(invalidate: true);
+        Assert.Equal(2, proxy.AvatarRequests.Count);
+        Assert.Same(first, source.Avatar);
+
+        await source.RefreshAsync();
+        Assert.Equal(3, proxy.AvatarRequests.Count);
+        Assert.Same(second, source.Avatar);
+
+        await source.RefreshAsync();
+        Assert.Equal(3, proxy.AvatarRequests.Count);
+        Assert.Same(second, source.Avatar);
+    }
+
     [Theory]
     [InlineData(typeof(InvalidOperationException))]
     [InlineData(typeof(UriFormatException))]
@@ -1015,7 +1047,7 @@ public sealed class WorkspaceIdentitySourceTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static async Task SupersedeAStalledReadThatLaterFaultsAsync()
+    private static async Task<WeakReference> SupersedeAStalledReadThatLaterFaultsAsync()
     {
         var (client, proxy) = Gateway();
         var stalled = new TaskCompletionSource<JsonElement>();
@@ -1027,11 +1059,14 @@ public sealed class WorkspaceIdentitySourceTests
         await Task.WhenAll(load, source.RefreshAsync(invalidate: true)).WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal("Grace", source.DisplayName);
         stalled.SetException(new SupersededReadFault());
+        return new WeakReference(stalled.Task);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void FaultATaskNobodyObserves() =>
         new TaskCompletionSource<JsonElement>().SetException(new UnobservedControlFault());
+
+    private const int CollectionPassBudget = 100;
 
     [Fact]
     public async Task SupersededReadThatLaterFaultsNeverSurfacesAsAnUnobservedTaskException()
@@ -1047,21 +1082,22 @@ public sealed class WorkspaceIdentitySourceTests
         TaskScheduler.UnobservedTaskException += handler;
         try
         {
-            await SupersedeAStalledReadThatLaterFaultsAsync();
+            var abandoned = await SupersedeAStalledReadThatLaterFaultsAsync();
             FaultATaskNobodyObserves();
 
-            // The control proves finalization ran and the detector works, so the absence check cannot pass vacuously.
-            var deadline = DateTime.UtcNow.AddSeconds(30);
-            while (!reported.Any(fault => fault is UnobservedControlFault) && DateTime.UtcNow < deadline)
+            // The control proves finalization ran and the detector works. The weak reference proves the
+            // abandoned read itself was collected, so the absence check cannot pass vacuously.
+            for (var pass = 0;
+                pass < CollectionPassBudget &&
+                !(reported.Any(fault => fault is UnobservedControlFault) && !abandoned.IsAlive);
+                pass++)
             {
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
-                await Task.Delay(10);
             }
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
 
             Assert.Contains(reported, fault => fault is UnobservedControlFault);
+            Assert.False(abandoned.IsAlive);
             Assert.DoesNotContain(reported, fault => fault is SupersededReadFault);
         }
         finally

@@ -13,6 +13,8 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
     private Task? _pending;
     private bool _refreshAgain;
     private bool _invalidateAgain;
+
+    /// <summary>An explicit invalidation owes one avatar refetch even for an unchanged key; it stays owed until an attempt resolves.</summary>
     private bool _forceAvatar;
 
     /// <summary>
@@ -223,7 +225,7 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
                     Avatar = null;
                     _avatarKey = null;
                 }
-                _forceAvatar = false;
+                if (!refetch) _forceAvatar = false;
                 changed();
                 if (refetch)
                 {
@@ -232,6 +234,7 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
                     if (_invalidateAgain) continue;
                     if (avatar.Resolved)
                     {
+                        _forceAvatar = false;
                         Avatar = avatar.Image;
                         _avatarKey = key;
                         changed();

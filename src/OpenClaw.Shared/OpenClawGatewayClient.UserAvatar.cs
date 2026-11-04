@@ -48,8 +48,9 @@ public partial class OpenClawGatewayClient
             : TimeSpan.FromMilliseconds(DefaultUserAvatarTimeoutMs);
 
     /// <summary>
-    /// Uri.EscapeDataString leaves "." and ".." intact, which would collapse the users/{id}/avatar route,
-    /// and it throws for oversized input. Both are rejected before a request is built.
+    /// Uri.EscapeDataString leaves "." and ".." intact, which would collapse the users/{id}/avatar route.
+    /// Identifiers are also capped far above any real profile id or revision so a malformed value cannot
+    /// build an unbounded request path. Both are rejected before a request is built.
     /// </summary>
     private static bool IsRoutableAvatarProfileId(string? profileId) =>
         !string.IsNullOrWhiteSpace(profileId)
