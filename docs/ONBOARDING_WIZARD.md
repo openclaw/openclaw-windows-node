@@ -36,7 +36,7 @@ minutes for new preparations, and 13.5 to 141 minutes for destination and legacy
 receipts.
 Before that restart, `SetupCompletionPreparation` bounds the production finishing
 operation, including finalization and restart publication, with one execution
-window using the same startup-derived budget (27 minutes by default). Failed
+window using the same startup-derived budget described above. Failed
 attempts and explicit retries share its original monotonic deadline. Deadline or
 window cancellation ends the presentation wait, not ownership of an admitted
 write or restart. Delegates receive cooperative cancellation, but cleanup still

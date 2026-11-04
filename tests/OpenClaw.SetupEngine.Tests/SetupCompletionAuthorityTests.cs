@@ -264,7 +264,7 @@ public sealed class SetupCompletionAuthorityTests
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             if (cancel) owner.Dispose();
-            else clock.Advance(TimeSpan.FromMinutes(27));
+            else clock.Advance(SetupNativeCompletionTiming.Execution);
             if (cancel)
                 await Assert.ThrowsAnyAsync<OperationCanceledException>(() => completion.WaitAsync(TimeSpan.FromSeconds(5)));
             else
@@ -327,7 +327,7 @@ public sealed class SetupCompletionAuthorityTests
         try
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            clock.Advance(TimeSpan.FromMinutes(7) - TimeSpan.FromTicks(1));
+            clock.Advance(SetupNativeCompletionTiming.Execution - TimeSpan.FromMinutes(20) - TimeSpan.FromTicks(1));
             Assert.False(retry.IsCompleted);
             clock.Advance(TimeSpan.FromTicks(1));
             var error = await Assert.ThrowsAsync<SetupNativeCompletionTimeoutException>(
@@ -366,7 +366,7 @@ public sealed class SetupCompletionAuthorityTests
         try
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            clock.Advance(TimeSpan.FromMinutes(27));
+            clock.Advance(SetupNativeCompletionTiming.Execution);
             await Assert.ThrowsAsync<SetupNativeCompletionTimeoutException>(
                 () => completion.WaitAsync(TimeSpan.FromSeconds(5)));
         }
@@ -393,7 +393,7 @@ public sealed class SetupCompletionAuthorityTests
             (_, _) => throw new InvalidOperationException("Must not finalize"),
             (_, _) => throw new InvalidOperationException("Must not publish"), clock);
         await Assert.ThrowsAsync<IOException>(owner.StartAsync);
-        clock.Advance(TimeSpan.FromMinutes(27) - TimeSpan.FromTicks(1));
+        clock.Advance(SetupNativeCompletionTiming.Execution - TimeSpan.FromTicks(1));
         Assert.True(owner.CanRetry);
         clock.Advance(TimeSpan.FromTicks(1));
         Assert.False(owner.CanRetry);
@@ -428,7 +428,7 @@ public sealed class SetupCompletionAuthorityTests
         try
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            clock.Advance(TimeSpan.FromMinutes(27));
+            clock.Advance(SetupNativeCompletionTiming.Execution);
             await Assert.ThrowsAsync<SetupNativeCompletionTimeoutException>(
                 () => completion.WaitAsync(TimeSpan.FromSeconds(5)));
             await cleaning.Task.WaitAsync(TimeSpan.FromSeconds(5));
