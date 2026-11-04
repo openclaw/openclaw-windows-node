@@ -817,11 +817,34 @@ public sealed class LocalAiOnboardingTests
             Assert.Equal("gateway", result.GatewayId);
             Assert.Equal(selected.ModelRef, result.ModelRef);
             Assert.Equal(1, runtime.Calls);
-            Assert.Equal(4, commands.Reads);
+            Assert.Equal(6, commands.Reads);
             Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingFiles,
                 LocalAiSetupStage.PreparingGateway, LocalAiSetupStage.StartingRuntime,
                 LocalAiSetupStage.PublishingProvider], stages);
         }
+    }
+
+    [Fact]
+    public async Task Host_FreshWslStart_DoesNotRepeatRuntimePublication()
+    {
+        using var directory = new TempDirectory();
+        var registry = Registry(directory.Path);
+        var install = Install();
+        var runtime = new FakeRuntime(RuntimeSnapshot(install, LocalAiRuntimeState.Stopped))
+        {
+            StartResult = RuntimeSnapshot(install, LocalAiRuntimeState.Healthy),
+        };
+        var commands = new ReadOnlyGateway(install, false);
+        var host = Host(registry, runtime, () => install,
+            () => new(commands, new LocalAiGatewayDistroResolver(registry), NullLogger.Instance));
+
+        var selected = await host.ObserveAsync(CancellationToken.None);
+        var result = await host.UseAsync(selected, CancellationToken.None);
+
+        Assert.Equal(selected.ModelRef, result.ModelRef);
+        Assert.Equal(1, runtime.Calls);
+        Assert.Equal(2, commands.Reads); // Admission only; the runtime owns fresh publication.
+        Assert.Equal(0, commands.RestartCalls);
     }
 
     private static SetupLocalAiHost Host(GatewayRegistry registry, FakeRuntime runtime,
@@ -881,14 +904,24 @@ public sealed class LocalAiOnboardingTests
     private sealed class ReadOnlyGateway(LocalAiResolvedInstall install, bool drifted) : IWslCommandRunner
     {
         public int Reads { get; private set; }
+        public int RestartCalls { get; private set; }
         public Func<int, Task>? AfterRead { get; init; }
         public async Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command,
             CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null,
             string? standardInput = null)
         {
             Assert.Equal("Managed", name);
-            Assert.Contains("get", command);
             Assert.Null(standardInput);
+            if (command.Contains("--version"))
+                return new WslCommandResult(0, "OpenClaw 2026.9.8", "");
+            if (command.Contains("gateway") && command.Contains("status"))
+                return new WslCommandResult(0, "{\"rpc\":{\"ok\":true,\"server\":{\"version\":\"2026.9.8\"}}}", "");
+            if (command.Contains("gateway") && command.Contains("restart"))
+            {
+                RestartCalls++;
+                return new WslCommandResult(0, "", "");
+            }
+            Assert.Contains("get", command);
             Reads++;
             if (AfterRead is not null) await AfterRead(Reads);
             return new WslCommandResult(0,

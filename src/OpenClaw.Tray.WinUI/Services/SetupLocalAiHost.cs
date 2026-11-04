@@ -248,6 +248,10 @@ internal sealed class SetupLocalAiHost(
             if (!admitted.Success)
                 throw new LocalAiSelectionRejectedException(admitted.Detail ?? "Local AI route publication was not admitted.");
         }
+        // A non-healthy runtime publishes the route as part of becoming healthy.
+        // Only an already-healthy runtime needs this host's separate publication.
+        bool republishExistingWslRoute = !selected.Target!.IsNative &&
+            runtime.Snapshot.State == LocalAiRuntimeState.Healthy;
         LocalAiRuntimeSnapshot started;
         try
         {
@@ -281,9 +285,12 @@ internal sealed class SetupLocalAiHost(
         if (!selected.Target.IsNative)
         {
             progress?.Report(LocalAiSetupStage.PublishingProvider);
-            var published = await provider!.PublishAsync(install, ct);
-            if (!published.Success)
-                throw new InvalidOperationException(published.Detail);
+            if (republishExistingWslRoute)
+            {
+                var published = await provider!.PublishAsync(install, ct);
+                if (!published.Success)
+                    throw new InvalidOperationException(published.Detail);
+            }
         }
         else
         {
