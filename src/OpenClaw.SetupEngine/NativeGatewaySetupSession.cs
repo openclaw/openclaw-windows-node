@@ -28,9 +28,10 @@ public sealed class NativeGatewaySetupSession(
     private bool _published;
     private string? _identityBinding;
     private IDisposable? _terminal;
-    private long _connectionAttempt;
+    // A logger can span replacement sessions after Retry.
+    private static long s_connectionAttempt;
 
-    internal long NextConnectionAttempt() => Interlocked.Increment(ref _connectionAttempt);
+    internal long NextConnectionAttempt() => Interlocked.Increment(ref s_connectionAttempt);
 
     internal void ReportHandshakeObservation(long connectionAttempt, GatewayHandshakeObservation observation)
     {

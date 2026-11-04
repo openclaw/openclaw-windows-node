@@ -443,12 +443,15 @@ Elapsed and previous-phase durations use a monotonic clock and restart for each
 transport generation. Stale generations, canceled client lifetimes and disposed
 clients cannot publish observations. Native setup forwards this stream through
 its session and host to the existing `SetupLogger` as `native.gateway.handshake`.
-The log's run ID, a session-local `connection_attempt` counter and
-`transport_generation` distinguish new clients (pairing or credential recovery)
-from socket retries. The connection owns one subscription across reconnects and
-removes it on failure or disposal. Only phase/category enums, counters, durations
-and bounded retry hints enter this stream. It carries no endpoint, identity,
-nonce, credential, response body, exception message or operation name, and does
+The log's run ID, a process-local monotonic `connection_attempt` counter and
+`transport_generation` distinguish new clients (pairing, credential recovery or
+replacement sessions after Retry) from socket retries. Attempt ordinals need not
+start at one within a log run. The connection owns one subscription across
+reconnects and removes it on failure or disposal. Only phase/category enums, counters, durations
+and bounded retry hints enter this stream. Transport failure categories inspect
+exception types and messages, never stack-frame text; existing connection failure
+policy is unchanged. It carries no endpoint, identity, nonce, credential, response
+body, exception message or operation name, and does
 not forward the general Shared client logger. These observations do not prove
 application readiness before `hello-ok`, change deadlines or alter admission.
 The sink retains the existing synchronous setup-log behavior, so elapsed values
@@ -456,6 +459,11 @@ can include time spent writing earlier observations. The logger projects this
 private typed payload directly to allowlisted primitive fields, preserving enum
 names such as `AuthorizationStarted` and `TokenDrift`; arbitrary log data still
 uses the existing free-text redactor.
+
+The current native setup page owns the file sink and disposes it when navigating
+to AI setup. Later session finalization/reconnect observations are not persisted
+to that file. This stream is not a complete end-to-end setup trace; logger
+lifetime changes belong to the setup logging owner.
 
 `ChatNavigationReadiness` settles operator readiness, its real deadline, and
 caller cancellation through one atomic completion source. A connected event
