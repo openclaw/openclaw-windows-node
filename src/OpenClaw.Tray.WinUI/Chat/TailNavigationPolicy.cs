@@ -99,6 +99,61 @@ internal sealed class TailNavigationQueue
     public bool IsScheduled { get; private set; }
 }
 
+internal enum InitialTailLanding
+{
+    Wait,
+    Landed,
+    Retry,
+    GiveUp,
+}
+
+// A dispatched bring-into-view can be dropped or reset by a concurrent layout
+// (for example a session switch restoring cached rows), leaving the reader at
+// the top. Initial positioning stays pending until the settled view is at the tail.
+internal sealed class InitialTailConfirmation
+{
+    public const int SettledFramesBeforeDecision = 2;
+    public const int MaxRetries = 3;
+    // Roughly two seconds at 60 fps; a view that never settles stops being observed.
+    public const int MaxObservedFrames = 120;
+
+    private int _settledFrames;
+    private int _retries;
+    private int _observedFrames;
+
+    public void Reset()
+    {
+        _settledFrames = 0;
+        _retries = 0;
+        _observedFrames = 0;
+    }
+
+    public InitialTailLanding Observe(bool idle, bool nearBottom)
+    {
+        if (++_observedFrames > MaxObservedFrames)
+            return InitialTailLanding.GiveUp;
+
+        if (!idle)
+        {
+            _settledFrames = 0;
+            return InitialTailLanding.Wait;
+        }
+
+        if (++_settledFrames < SettledFramesBeforeDecision)
+            return InitialTailLanding.Wait;
+
+        if (nearBottom)
+            return InitialTailLanding.Landed;
+
+        if (_retries >= MaxRetries)
+            return InitialTailLanding.GiveUp;
+
+        _retries++;
+        _settledFrames = 0;
+        return InitialTailLanding.Retry;
+    }
+}
+
 internal sealed class TailReflowCorrection
 {
     private bool _available;

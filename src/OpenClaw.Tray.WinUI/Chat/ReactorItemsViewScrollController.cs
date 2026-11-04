@@ -100,6 +100,8 @@ file sealed class InitialTailPositioner : IDisposable
     private bool _awaitingLayout;
     private bool _renderAfterLayout;
     private EventHandler<object>? _rendering;
+    private EventHandler<object>? _confirming;
+    private readonly InitialTailConfirmation _confirmation = new();
     private readonly PointerEventHandler _cancelPointerNavigation;
     private bool _awaitingIdle;
     private readonly TailReflowCorrection _reflowCorrection = new();
@@ -108,6 +110,7 @@ file sealed class InitialTailPositioner : IDisposable
     private WinUIScrollView? _scrollView;
     private bool _following;
     private bool _initialPending;
+    private bool _awaitingInitialRows;
     private readonly TailNavigationQueue _tailNavigationQueue = new();
     private bool _disposed;
 
@@ -138,6 +141,7 @@ file sealed class InitialTailPositioner : IDisposable
         _following = true;
         _initialPending = false;
         _valid = TailNavigationPolicy.TryCapture(tailIndex, displayedTailKey, itemCount, out _);
+        _awaitingInitialRows = !_valid;
         if (!_valid)
             return;
 
@@ -156,6 +160,18 @@ file sealed class InitialTailPositioner : IDisposable
         if (!_valid)
         {
             _tailNavigationQueue.Clear();
+            return;
+        }
+
+        // The first rows of a request that started empty take the initial path, so
+        // the bring waits for layout and its landing is confirmed. Input clears this.
+        if (_awaitingInitialRows)
+        {
+            _awaitingInitialRows = false;
+            _tailNavigationQueue.Clear();
+            _initialPending = true;
+            if (itemsView.IsLoaded)
+                AwaitLayout();
             return;
         }
 
@@ -258,9 +274,48 @@ file sealed class InitialTailPositioner : IDisposable
             if (!StartTailRequest(request))
                 AwaitLayout(renderAfterLayout);
             else if (!renderAfterLayout)
-                _initialPending = false;
+                ConfirmInitialLanding(initialRequest.Version);
         }))
             OpenClawTray.Services.Logger.Warn("Chat tail navigation could not be dispatched.");
+    }
+
+    private void ConfirmInitialLanding(int version)
+    {
+        DetachConfirmation();
+        _confirmation.Reset();
+        _confirming = (_, _) =>
+        {
+            if (_disposed || !_valid || !itemsView.IsLoaded || version != _version
+                || _scrollView is not { IsLoaded: true } scrollView)
+            {
+                DetachConfirmation();
+                return;
+            }
+
+            switch (_confirmation.Observe(
+                scrollView.State == ScrollingInteractionState.Idle, IsNearBottom(scrollView)))
+            {
+                case InitialTailLanding.Landed:
+                    DetachConfirmation();
+                    _initialPending = false;
+                    break;
+                case InitialTailLanding.Retry:
+                    if (!TailNavigationPolicy.TryCapture(
+                            _tailIndex, _displayedTailKey, _itemCount, out var request)
+                        || !StartTailRequest(request))
+                    {
+                        DetachConfirmation();
+                        _initialPending = false;
+                    }
+                    break;
+                case InitialTailLanding.GiveUp:
+                    DetachConfirmation();
+                    _initialPending = false;
+                    OpenClawTray.Services.Logger.Warn("Chat initial tail navigation did not land at the tail.");
+                    break;
+            }
+        };
+        CompositionTarget.Rendering += _confirming;
     }
 
     private void AttachScrollView()
@@ -324,6 +379,7 @@ file sealed class InitialTailPositioner : IDisposable
     {
         _version++;
         _initialPending = false;
+        _awaitingInitialRows = false;
         // Input without movement (copy, focus, wheel at the tail) keeps follow;
         // input that already left the tail stops it so the reader is not pulled back.
         _following = _scrollView is { } scrollView && IsNearBottom(scrollView);
@@ -391,6 +447,7 @@ file sealed class InitialTailPositioner : IDisposable
     {
         _version++;
         _initialPending = false;
+        _awaitingInitialRows = false;
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         DetachLayout();
@@ -400,6 +457,7 @@ file sealed class InitialTailPositioner : IDisposable
     private void DetachLayout()
     {
         DetachRendering();
+        DetachConfirmation();
         _awaitingIdle = false;
         _renderAfterLayout = false;
         if (_awaitingScrollView is { } scrollView)
@@ -420,6 +478,13 @@ file sealed class InitialTailPositioner : IDisposable
         if (_rendering is not null)
             CompositionTarget.Rendering -= _rendering;
         _rendering = null;
+    }
+
+    private void DetachConfirmation()
+    {
+        if (_confirming is not null)
+            CompositionTarget.Rendering -= _confirming;
+        _confirming = null;
     }
 
     private void DetachScrollView()
