@@ -584,8 +584,8 @@ the installed package can acknowledge a pending launch.
 `NativeGatewaySetupSession` starts one monotonic admission budget before its
 initial runtime preparation. `NativeGatewaySetupConnection` consumes the remainder
 through preparation, challenge authorization, startup-sidecar retries, pairing and
-operator hello. The default is the existing 210-second native allowance
-(180-second start, ten-second confirmation, twenty-second admission margin).
+operator hello. The default follows the existing 330-second native allowance
+(300-second start, ten-second confirmation, twenty-second admission margin).
 Reconnects, failed connections and credential recovery do not renew it.
 Successful admission ends that operation. Exhausted unadmitted sessions require
 new setup preparation, not another connection retry. Terminal handshake errors still fail immediately, caller/session
