@@ -33,8 +33,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     public const string AvatarRequestMethod = "http:users.avatar";
 
     /// <summary>
-    /// Flat colour of the photo served for <see cref="GatewayScenario.OwnerProfileId"/>. It is neither a
-    /// Windows accent nor the initials fallback, so finding it in a rendered window proves the photo was decoded.
+    /// Flat colour of the authenticated scenario profile's photo. It is neither a Windows accent nor the
+    /// initials fallback, so finding it in a rendered window proves the photo was decoded.
     /// </summary>
     public const int OwnerAvatarRgb = 0x2ECC40;
 
@@ -1068,7 +1068,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
 
     /// <summary>
     /// Serves the one plain-HTTP route the Companion window needs besides the WebSocket: the authenticated
-    /// profile photo. Any other HTTP request is left for the upgrade check, which rejects and records it.
+    /// scenario profile photo. Any other HTTP request is left for the upgrade check, which rejects and records it.
     /// </summary>
     private async Task<bool> TryServeAvatarAsync(NetworkStream stream, string[] head, CancellationToken ct)
     {
@@ -1078,7 +1078,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         // Credentials are judged before the profile, so an unauthenticated caller learns nothing about which ids exist.
         var (outcome, response) =
             !HasAcceptedBearer(head) ? ("error:UNAUTHORIZED", AvatarResponse("401 Unauthorized", null))
-            : profileId != GatewayScenario.OwnerProfileId ? ("error:NOT_FOUND", AvatarResponse("404 Not Found", null))
+            : profileId != _scenario.AuthenticatedProfileId ? ("error:NOT_FOUND", AvatarResponse("404 Not Found", null))
             : ("ok", AvatarResponse("200 OK", OwnerAvatarPng));
         var index = Record(AvatarRequestMethod, null);
         var recorded = "cancelled";

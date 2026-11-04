@@ -634,15 +634,39 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             var owner = FindById(run, "WorkspaceOwner")!;
             Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Personal workspace", owner.Current.HelpText);
-            Assert.Contains(run.Gateway.Requests, request => request.Method == "users.self" && request.Outcome == "ok");
-            // The photo arrives over plain HTTP after the name, so wait for the fixture to serve it before the test ends.
-            await run.WaitForAsync(() => Task.FromResult(run.Gateway.Requests.Any(request =>
-                request.Method == FixtureGatewayServer.AvatarRequestMethod && request.Outcome == "ok")),
-                "authenticated owner photo served");
-            // Native capture is strict and opt-in, so only screenshot runs also wait for the photo to be painted.
-            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
-                await WaitUiAsync(run, () => OwnerPhotoPainted(run), "owner photo painted in footer");
+            await WaitForAuthenticatedOwnerPhotoAsync(run);
         });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task OwnerFooterRendersSharedOwnerForGatewayOwnerProfile()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Shared owner",
+                "shared Gateway owner label in footer");
+            var owner = FindById(run, "WorkspaceOwner")!;
+            Assert.Equal("Shared owner", owner.Current.Name);
+            Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
+            await WaitForAuthenticatedOwnerPhotoAsync(run);
+        }, scenario: GatewayScenario.CreateBrowseWithOwnerProfile("gateway-owner", "Fixture Shared Person"));
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task OwnerFooterLoadsAvatarForProfileWithoutEmailOrUploadMetadata()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture Owner",
+                "named profile without avatar eligibility hints in footer");
+            var owner = FindById(run, "WorkspaceOwner")!;
+            Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
+            await WaitForAuthenticatedOwnerPhotoAsync(run);
+        }, scenario: GatewayScenario.CreateBrowseWithOwnerProfile("fixture-owner", "Fixture Owner"));
     }
 
     [GatewayFixtureUiFact]
@@ -1323,6 +1347,18 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         OwnedWindowCapture.Save(run, AppWindows(run).OrderByDescending(window =>
             window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name);
         return Task.CompletedTask;
+    }
+
+    private static async Task WaitForAuthenticatedOwnerPhotoAsync(GatewayFixtureRun run)
+    {
+        Assert.Contains(run.Gateway.Requests, request => request.Method == "users.self" && request.Outcome == "ok");
+        // The photo arrives over plain HTTP after the name, so wait for the fixture to serve it before the test ends.
+        await run.WaitForAsync(() => Task.FromResult(run.Gateway.Requests.Any(request =>
+            request.Method == FixtureGatewayServer.AvatarRequestMethod && request.Outcome == "ok")),
+            "authenticated owner photo served");
+        // Native capture is strict and opt-in, so only screenshot runs also wait for the photo to be painted.
+        if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+            await WaitUiAsync(run, () => OwnerPhotoPainted(run), "owner photo painted in footer");
     }
 
     /// <summary>Captures the Workspace window and reports whether the footer button shows the served photo's colour.</summary>
