@@ -621,6 +621,125 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         }
 
     [Fact]
+    public async Task HandshakeObservations_SuccessReportsOnlySafeOrderedPhaseTimings()
+    {
+        using var server = new LoopbackGatewayServer();
+        server.EnableHandshake();
+        server.SendGreetingOnAccept("""
+            {"type":"event","event":"connect.challenge","payload":{"nonce":"sensitive-nonce-sentinel","ts":1}}
+            """);
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl,
+            "sensitive-token-sentinel", NullLogger.Instance, identityPath: _identityDir);
+        var observations = new ConcurrentQueue<GatewayHandshakeObservation>();
+        client.HandshakeObserved += (_, _) => throw new InvalidOperationException("sensitive-subscriber-sentinel");
+        client.HandshakeObserved += (_, observation) => observations.Enqueue(observation);
+        client.HandshakeAuthorizationAsync = _ => Task.FromResult(ReconnectAuthorizationResult.AllowedResult);
+
+        await ConnectAndWaitAsync(client, server, configureHandshake: false);
+
+        var phases = observations.ToArray();
+        Assert.Equal(new[]
+        {
+            GatewayHandshakePhase.TransportConnecting, GatewayHandshakePhase.TransportConnected,
+            GatewayHandshakePhase.ChallengeReceived, GatewayHandshakePhase.AuthorizationStarted,
+            GatewayHandshakePhase.AuthorizationSucceeded, GatewayHandshakePhase.ConnectSending,
+            GatewayHandshakePhase.ConnectAccepted
+        }, phases.Select(item => item.Phase));
+        Assert.All(phases, item =>
+        {
+            Assert.Equal(1, item.TransportGeneration);
+            Assert.Null(item.FailureKind);
+            Assert.Null(item.RetryAfterMs);
+            Assert.InRange(item.PhaseElapsedMs, 0, item.ElapsedMs);
+        });
+        for (var index = 1; index < phases.Length; index++)
+        {
+            Assert.True(phases[index].ElapsedMs >= phases[index - 1].ElapsedMs);
+            Assert.Equal(phases[index].ElapsedMs - phases[index - 1].ElapsedMs,
+                phases[index].PhaseElapsedMs, precision: 6);
+        }
+        Assert.DoesNotContain("sensitive-", JsonSerializer.Serialize(phases));
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
+    [InlineData("AUTH_DEVICE_TOKEN_MISMATCH", false, GatewayHandshakePhase.ConnectRejected, GatewayErrorKind.DeviceTokenMismatch)]
+    [InlineData("AUTH_TOKEN_MISMATCH", false, GatewayHandshakePhase.ConnectRejected, GatewayErrorKind.Auth)]
+    [InlineData("PROTOCOL_MISMATCH", false, GatewayHandshakePhase.ConnectRejected, GatewayErrorKind.ProtocolMismatch)]
+    [InlineData("PAIRING_REQUIRED", false, GatewayHandshakePhase.PairingRequired, GatewayErrorKind.PairingRequired)]
+    [InlineData("UNAVAILABLE", false, GatewayHandshakePhase.ConnectRejected, GatewayErrorKind.Unknown)]
+    [InlineData("UNAVAILABLE", true, GatewayHandshakePhase.StartupUnavailable, null)]
+    public async Task HandshakeObservations_ConnectResultsAreCorrelatedAndSanitized(
+        string code, bool startup, GatewayHandshakePhase phase, GatewayErrorKind? failure)
+    {
+        using var server = new LoopbackGatewayServer();
+        server.SilenceMethod("connect");
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl,
+            "sensitive-token-sentinel", NullLogger.Instance, identityPath: _identityDir);
+        client.HandshakeAuthorizationAsync = _ => Task.FromResult(ReconnectAuthorizationResult.AllowedResult);
+        var result = new TaskCompletionSource<GatewayHandshakeObservation>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observations = new ConcurrentQueue<GatewayHandshakeObservation>();
+        client.HandshakeObserved += (_, observation) =>
+        {
+            observations.Enqueue(observation);
+            if (observation.Phase == phase) result.TrySetResult(observation);
+        };
+        await client.ConnectAsync();
+        using var connect = JsonDocument.Parse(await server.WaitFrameAsync("connect", 0, 20_000));
+        var id = connect.RootElement.GetProperty("id").GetString();
+        string Response(string? requestId) => JsonSerializer.Serialize(new
+        {
+            type = "res", id = requestId, ok = false,
+            error = new
+            {
+                code, message = "sensitive-error-sentinel", retryable = startup,
+                retryAfterMs = int.MaxValue,
+                details = new
+                {
+                    reason = "startup-sidecars", requestId = "sensitive-identity-sentinel",
+                    code = code == "PAIRING_REQUIRED" ? code : null
+                }
+            }
+        });
+        // Same payload without the pending connect ID is not a handshake result.
+        await server.SendTextToCurrentSocketAsync(Response("untracked"));
+        await server.SendTextToCurrentSocketAsync(Response(id));
+        var emitted = await result.Task.WaitAsync(TimeSpan.FromSeconds(20));
+
+        Assert.Equal(1, emitted.TransportGeneration);
+        Assert.Equal(failure, emitted.FailureKind);
+        Assert.Equal(startup ? 2000 : (int?)null, emitted.RetryAfterMs);
+        Assert.Single(observations, item => item.Phase == phase);
+        Assert.DoesNotContain("sensitive-", JsonSerializer.Serialize(observations));
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
+    public async Task HandshakeObservations_ReconnectAuthorizationExceptionHasNoRawDetails()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), "test-token");
+        server.StartupRejectionsRemaining = 1;
+        using var client = new OpenClawGatewayClient(server.Endpoint.ToString(),
+            "test-token", NullLogger.Instance, identityPath: _identityDir);
+        client.HandshakeAuthorizationAsync = _ => Task.FromResult(ReconnectAuthorizationResult.AllowedResult);
+        client.ReconnectAuthorizationAsync = _ => throw new InvalidOperationException("sensitive-provenance-sentinel");
+        var denied = new TaskCompletionSource<GatewayHandshakeObservation>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.HandshakeObserved += (_, observation) =>
+        {
+            if (observation.Phase == GatewayHandshakePhase.ReconnectAuthorizationDenied)
+                denied.TrySetResult(observation);
+        };
+
+        await client.ConnectAsync();
+        var emitted = await denied.Task.WaitAsync(TimeSpan.FromSeconds(20));
+
+        Assert.Equal(1, emitted.TransportGeneration);
+        Assert.Equal(GatewayErrorKind.Unknown, emitted.FailureKind);
+        Assert.DoesNotContain("sensitive-", JsonSerializer.Serialize(emitted));
+        Assert.Equal(1, server.ConnectionCount);
+    }
+
+    [Fact]
     public async Task StartupUnavailable_RetriesFreshAuthorizedSocketsWithoutAuthOrPairingFailure()
     {
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), "test-token");
@@ -629,6 +748,8 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         using var client = new OpenClawGatewayClient(
             server.Endpoint.ToString(), "test-token", logger, identityPath: _identityDir);
         var startups = new ConcurrentQueue<GatewayStartupUnavailable>();
+        var observations = new ConcurrentQueue<GatewayHandshakeObservation>();
+        client.HandshakeObserved += (_, observation) => observations.Enqueue(observation);
         var failures = new ConcurrentQueue<GatewayErrorKind>();
         var authFailures = new ConcurrentQueue<string>();
         var pairings = new ConcurrentQueue<string?>();
@@ -666,6 +787,20 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         Assert.All(startups, startup => Assert.Equal(100, startup.RetryAfterMs));
         Assert.Equal(3, reconnectChecks);
         Assert.Equal(4, handshakeChecks);
+        Assert.Equal(new long[] { 1, 2, 3 },
+            observations.Where(item => item.Phase == GatewayHandshakePhase.StartupUnavailable)
+                .Select(item => item.TransportGeneration));
+        Assert.Equal(4, Assert.Single(observations, item =>
+            item.Phase == GatewayHandshakePhase.ConnectAccepted).TransportGeneration);
+        Assert.Equal(new long[] { 1, 2, 3 },
+            observations.Where(item => item.Phase == GatewayHandshakePhase.Disconnected)
+                .Select(item => item.TransportGeneration));
+        Assert.Equal(new long[] { 1, 2, 3 },
+            observations.Where(item => item.Phase == GatewayHandshakePhase.ReconnectAuthorizationStarted)
+                .Select(item => item.TransportGeneration));
+        Assert.Equal(new long[] { 1, 2, 3 },
+            observations.Where(item => item.Phase == GatewayHandshakePhase.ReconnectAuthorizationSucceeded)
+                .Select(item => item.TransportGeneration));
         Assert.Empty(failures);
         Assert.Empty(authFailures);
         Assert.Empty(pairings);

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
+using OpenClaw.Shared;
 using OpenClaw.TestSupport;
 
 namespace OpenClaw.SetupEngine.Tests;
@@ -20,6 +21,42 @@ public class SetupLoggerTests : IDisposable
     {
         // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, recursive: true); } catch { }
+    }
+
+    [Fact]
+    public void HandshakeObservation_EnumValuesSurviveJsonlRedactionWithoutWeakeningGenericRedaction()
+    {
+        var path = Path.Combine(_tempDir, "handshake.jsonl");
+        var observations = Enum.GetValues<GatewayHandshakePhase>()
+            .Select(phase => new GatewayHandshakeObservation(3, phase, 10.5, 2.5))
+            .Concat(Enum.GetValues<GatewayErrorKind>()
+                .Select(kind => new GatewayHandshakeObservation(3, GatewayHandshakePhase.ConnectRejected, 10.5, 2.5, kind)))
+            .ToArray();
+        using (var logger = new SetupLogger(path))
+        {
+            foreach (var observation in observations)
+                logger.HandshakeObservation(2, observation);
+            logger.Info("generic event", new { token = "sensitive-token-sentinel" });
+        }
+
+        var lines = File.ReadAllLines(path);
+        Assert.Equal(observations.Length + 1, lines.Length);
+        for (var index = 0; index < observations.Length; index++)
+        {
+            using var json = JsonDocument.Parse(lines[index]);
+            Assert.Equal("native.gateway.handshake", json.RootElement.GetProperty("msg").GetString());
+            var data = json.RootElement.GetProperty("data");
+            Assert.Equal(observations[index].Phase.ToString(), data.GetProperty("phase").GetString());
+            if (observations[index].FailureKind is { } failure)
+                Assert.Equal(failure.ToString(), data.GetProperty("failure_kind").GetString());
+            Assert.Equal(2, data.GetProperty("connection_attempt").GetInt64());
+            Assert.Equal(3, data.GetProperty("transport_generation").GetInt64());
+            Assert.Equal(10.5, data.GetProperty("elapsed_ms").GetDouble());
+            Assert.Equal(2.5, data.GetProperty("phase_elapsed_ms").GetDouble());
+            Assert.DoesNotContain("[REDACTED]", lines[index]);
+        }
+        Assert.Contains("[REDACTED]", lines[^1]);
+        Assert.DoesNotContain("sensitive-", File.ReadAllText(path));
     }
 
     [Fact]

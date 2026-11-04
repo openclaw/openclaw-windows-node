@@ -28,6 +28,17 @@ public sealed class NativeGatewaySetupSession(
     private bool _published;
     private string? _identityBinding;
     private IDisposable? _terminal;
+    // A logger can span replacement sessions after Retry.
+    private static long s_connectionAttempt;
+
+    internal long NextConnectionAttempt() => Interlocked.Increment(ref s_connectionAttempt);
+
+    internal void ReportHandshakeObservation(long connectionAttempt, GatewayHandshakeObservation observation)
+    {
+        if (!_disposed && !_lifetime.IsCancellationRequested)
+            host.ReportHandshakeObservation(connectionAttempt, observation);
+    }
+
     public GatewayRecord Record { get; private set; } = record;
     public bool IsIsolated => draft.Contract == NativeGatewayContract.IsolatedSessionV1;
     public bool IsPublished => _published;
