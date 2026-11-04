@@ -55,8 +55,11 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Equal(UserAvatarStatus.Ready, result.Status);
         Assert.Equal("image/png", result.Image!.MimeType);
         AssertSolidPng(result.Image.Bytes, FixtureGatewayServer.OwnerAvatarRgb);
-        var served = Assert.Single(server.Requests, r => r.Method == FixtureGatewayServer.AvatarRequestMethod);
+        // The client returns once it has read the body, which can precede the server journalling the finished response.
+        var served = await server.WaitForCompletedRequestAsync(FixtureGatewayServer.AvatarRequestMethod)
+            .WaitAsync(Deadline);
         Assert.Equal("ok", served.Outcome);
+        Assert.Single(server.Requests, r => r.Method == FixtureGatewayServer.AvatarRequestMethod);
         Assert.Empty(server.UnexpectedRequests);
         Assert.Equal(GatewayScenario.MainSessionKey, (await connected.Client.RequestChatHistoryAsync()).SessionKey);
     }
