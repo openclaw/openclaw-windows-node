@@ -40,7 +40,7 @@ param(
     [ValidateRange(30, 3500)][int]$SetupTimeoutSeconds = 1500,
     [int]$CompanionProcessId,
     [ValidateRange(10, 600)][int]$RecorderStartTimeoutSeconds = 120,
-    [ValidateRange(10, 900)][int]$RecorderStopTimeoutSeconds = 300
+    [ValidateRange(90, 2400)][int]$RecorderStopTimeoutSeconds = 2000
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -95,6 +95,10 @@ if (Test-IsElevated) {
 if ($SetupTimeoutSeconds + 60 -ge $MaxRecordingSeconds) {
     throw 'MaxRecordingSeconds must exceed SetupTimeoutSeconds by at least 60 seconds.'
 }
+$wprStopTimeoutSeconds = [int][Math]::Min(1800, [Math]::Max(180, [Math]::Ceiling($MaxRecordingSeconds / 2)))
+if ($RecorderStopTimeoutSeconds -le ($wprStopTimeoutSeconds + 60)) {
+    throw 'RecorderStopTimeoutSeconds must exceed the WPR stop timeout by at least 60 seconds.'
+}
 $PayloadAppRoot = @($PayloadAppRoot | ForEach-Object {
     $full = [IO.Path]::GetFullPath($_)
     if (-not (Test-Path -LiteralPath (Join-Path $full 'openclaw.mjs') -PathType Leaf)) {
@@ -136,7 +140,8 @@ Write-Host "Run directory: $runDirectory"
 try {
     $recorderPaths = Start-GatewayTraceRecorder -ToolDirectory $toolDirectory -InstanceName $instanceName `
         -TracePath $tracePath -ControlDirectory $controlDirectory -MaxRecordingSeconds $MaxRecordingSeconds `
-        -StartTimeoutSeconds $RecorderStartTimeoutSeconds
+        -StartTimeoutSeconds $RecorderStartTimeoutSeconds -WprStartTimeoutSeconds 60 `
+        -WprStopTimeoutSeconds $wprStopTimeoutSeconds -WprControlTimeoutSeconds 30
     $recordingStartTicks = [DateTime]::UtcNow.ToFileTimeUtc()
     if (Test-IsElevated) { throw 'The setup controller unexpectedly became elevated.' }
 
@@ -192,11 +197,17 @@ try {
     if ($attempt) {
         try {
             $attemptLogLines = @(Read-SharedLines $attempt.Path)
-            $attempt = Get-CurrentSetupAttempt -Directory $SetupLogDirectory -SinceTicks $controllerStartTicks `
-                -Path $attempt.Path -AttemptStartTicks $attemptStartTicks -EndTicks $recordingStopTicks
+            $parsedSnapshot = Get-NativeSetupMilestones -Lines $attemptLogLines `
+                -AttemptStartTicks $attemptStartTicks -EndTicks $recordingStopTicks
+            if ($parsedSnapshot.Outcome -ne 'not-started') {
+                $attempt = [pscustomobject]@{ Path = $attempt.Path; Parsed = $parsedSnapshot }
+            } else {
+                $attempt = $null
+            }
         } catch {
             $errorDetail = 'setup-log-snapshot-failed'
             Write-Warning 'The selected setup attempt could not be snapshotted before recorder shutdown.'
+            $attempt = $null
         }
     }
     if ($null -ne $recorderPaths) {
@@ -240,6 +251,10 @@ if ($null -ne $attempt -and $result.recording_saved) {
     & (Join-Path $toolDirectory 'Get-GatewaySetupTraceSummary.ps1') -TracePath $tracePath -ResultPath $setupResultPath `
         -PayloadAppRoot $PayloadAppRoot -OutputPath $summaryPath | Out-Null
     Write-Host "Sanitized summary: $summaryPath"
+}
+if (-not $attempt) {
+    Write-Warning 'The selected setup attempt was not present in the stop-time snapshot.'
+    exit 1
 }
 if (-not $result.recording_saved) {
     Write-Warning "Setup was observed, but the WPR recording was not saved ($($result.recording_status))."

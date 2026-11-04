@@ -78,16 +78,24 @@ Assert-Equal 42 $clippedWithProcess[0].ProcessId 'clip keeps process id'
 # a non-UTC offset so a local-time reinterpretation would shift every milestone.
 function New-SetupLine([int]$Seconds, [string]$Level, [string]$Message) {
     $ts = [DateTimeOffset]::new(2026, 11, 3, 9, 0, 0, [TimeSpan]::FromHours(-5)).AddSeconds($Seconds).ToString('o')
-    [ordered]@{ ts = $ts; run = 'r'; level = $Level; msg = $Message } | ConvertTo-Json -Compress
+    $data = $null
+    if ($Message -match '^Native setup step: (Step\w+)\.$') {
+        $stepId = $Matches[1]
+        $Message = "step.started: $stepId"
+        $data = @{ step_id = $stepId }
+    } elseif ($Message -match '^Native Gateway setup failed during (\w+):') {
+        $data = @{ step = $Matches[1] }
+    }
+    [ordered]@{ ts = $ts; run = 'r'; level = $Level; msg = $Message; data = $data } | ConvertTo-Json -Compress
 }
 $failedAttempt = @(
-    New-SetupLine 0 'info' 'Native Gateway setup attempt started.'
+    New-SetupLine 0 'info' 'Native Gateway setup started.'
     New-SetupLine 1 'info' 'Native setup step: StepPrepare.'
     New-SetupLine 2 'warn' 'cmd.cancelled: caller cancellation observed'
     New-SetupLine 3 'error' 'Native Gateway setup failed during StepPrepare: TimeoutException: x'
 )
 $readyAttempt = @(
-    New-SetupLine 100 'info' 'Native Gateway setup attempt started.'
+    New-SetupLine 100 'info' 'Native Gateway setup started.'
     New-SetupLine 101 'info' 'Native setup step: StepPrepare.'
     New-SetupLine 110 'info' 'Preparing the isolated Gateway session...'
     New-SetupLine 130 'info' 'Validating native Gateway configuration...'
@@ -113,7 +121,7 @@ Assert-Equal 710000000 ($setup.Milestones[4].Ticks - $setup.Milestones[3].Ticks)
 $selectedAttemptStartTicks = [DateTimeOffset]::new(2026, 11, 3, 14, 1, 40, [TimeSpan]::Zero).UtcDateTime.ToFileTimeUtc()
 $cutoffTicks = [DateTimeOffset]::new(2026, 11, 3, 14, 5, 0, [TimeSpan]::Zero).UtcDateTime.ToFileTimeUtc()
 $selectedAttempt = Get-NativeSetupMilestones -Lines ($failedAttempt + $readyAttempt + @(
-    New-SetupLine 320 'info' 'Native Gateway setup attempt started.'
+    New-SetupLine 320 'info' 'Native Gateway setup started.'
     New-SetupLine 321 'info' 'Native setup step: StepPrepare.'
 )) -AttemptStartTicks $selectedAttemptStartTicks -EndTicks $cutoffTicks
 Assert-Equal 'incomplete' $selectedAttempt.Outcome 'pinned setup attempt is not replaced by a retry'
@@ -160,7 +168,7 @@ Assert-Equal 'busy' (Get-NativeSetupUiStateFromIds @('NativeGatewaySetupStatus',
 Assert-Equal 'unknown' (Get-NativeSetupUiStateFromIds @('NativeGatewaySetupStatus', 'ChoicesScroller')) 'mixed pages are not success'
 Assert-Equal 'unknown' (Get-NativeSetupUiStateFromIds @('RetryButton')) 'Retry elsewhere is not setup failure'
 $timedOutAttempt = @(
-    New-SetupLine 400 'info' 'Native Gateway setup attempt started.'
+    New-SetupLine 400 'info' 'Native Gateway setup started.'
     New-SetupLine 410 'info' 'Native setup step: StepVerify.'
     New-SetupLine 411 'info' 'Starting the packaged Gateway and verifying its listener...'
     New-SetupLine 412 'info' '[WS] Native Gateway start requested on port 1 (budget 180s).'
@@ -194,7 +202,7 @@ if ($node) {
         Assert-Equal 12.5 $selfTest.spans.'session-runtime-import'.elapsed_ms 'guard import span'
         Assert-Equal 25 $selfTest.spans.'plugin-config'.elapsed_ms 'guard plugin span'
         Assert-Equal 1 $selfTest.blocked.child 'guard blocked child process'
-        Assert-Equal 3 $selfTest.blocked.network 'guard blocked network APIs'
+        Assert-Equal 5 $selfTest.blocked.network 'guard blocked network APIs'
     }
 } else {
     Write-Warning 'node is not on PATH; skipped the startup guard self-test.'
@@ -281,6 +289,14 @@ try {
     $recording = Stop-GatewayTraceRecorder -InstanceName $instance -Paths $paths -StopTimeoutSeconds 1
     Assert-Equal 'failed: test' $recording.outcome 'recorder failure status is returned to controller'
     Assert-Equal $false $recording.instance_recording_after 'recorder stopped status is surfaced'
+    [ordered]@{
+        instance = $instance
+        outcome = 'saved'
+        cancel = 'not-needed'
+        instance_recording_after = 'false'
+    } | ConvertTo-Json -Compress | Set-Content -LiteralPath $paths.Status
+    $malformedRecording = Stop-GatewayTraceRecorder -InstanceName $instance -Paths $paths -StopTimeoutSeconds 1
+    Assert-Equal 'invalid-status' $malformedRecording.outcome 'malformed recorder status fails closed'
     $paths.Status = Join-Path $tempRoot 'missing-status.json'
     $missingRecording = Stop-GatewayTraceRecorder -InstanceName $instance -Paths $paths -StopTimeoutSeconds 0
     Assert-Equal 'missing-status' $missingRecording.outcome 'missing recorder status is a failure'

@@ -121,10 +121,8 @@ function Get-CompleteMpPerformanceReport {
 }
 
 $script:NativeSetupMilestonePatterns = [ordered]@{
-    'step-prepare' = '^Native setup step: StepPrepare\.$'
     'session-prepare' = '^Preparing the (isolated Gateway session|packaged Gateway runtime)\.\.\.$'
     'config-validation-start' = '^Validating native Gateway configuration\.\.\.$'
-    'step-verify' = '^Native setup step: StepVerify\.$'
     'gateway-start-requested' = '^\[WS\] Native Gateway start requested'
     'gateway-start-acknowledged' = '^\[WS\] Native Gateway start acknowledged'
     'readiness-timeout' = '^\[WS\] The package-managed Gateway did not report a verified listener'
@@ -134,7 +132,7 @@ $script:ListenerVerifiedMessage = 'Verifying the Gateway endpoint before connect
 
 function Get-NativeSetupMilestones {
     <#
-    Parses Companion native-setup JSONL lines for the last "setup attempt started" record and
+    Parses Companion native-setup JSONL lines for the last "Native Gateway setup started." record and
     returns UTC FILETIME milestones plus an outcome. The setup log has no explicit success
     record. 'listener-verified' is only the exact info record "Verifying the Gateway endpoint
     before connecting..." after the start acknowledgment. NativeGatewaySetupSession reports it
@@ -160,12 +158,17 @@ function Get-NativeSetupMilestones {
             Ticks = $ticks
             Level = if ($entry.PSObject.Properties['level']) { [string]$entry.level } else { '' }
             Message = [string]$entry.msg
-            Step = if ($entry.PSObject.Properties['data'] -and $entry.data -and $entry.data.PSObject.Properties['step']) { [string]$entry.data.step } else { $null }
+            Step = if ($entry.PSObject.Properties['data'] -and $entry.data -and $entry.data.PSObject.Properties['step_id']) {
+                [string]$entry.data.step_id
+            } else { $null }
+            FailedStep = if ($entry.PSObject.Properties['data'] -and $entry.data -and $entry.data.PSObject.Properties['step']) {
+                [string]$entry.data.step
+            } else { $null }
         }
     })
     $startIndex = -1
     for ($i = 0; $i -lt $records.Count; $i++) {
-        if ($records[$i].Message -eq 'Native Gateway setup attempt started.' -and
+        if ($records[$i].Message -in @('Native Gateway setup started.', 'Native Gateway setup attempt started.') -and
             ($AttemptStartTicks -eq 0 -or $records[$i].Ticks -eq $AttemptStartTicks)) {
             $startIndex = $i
         }
@@ -175,7 +178,7 @@ function Get-NativeSetupMilestones {
     }
     $nextStart = $records.Count
     for ($i = $startIndex + 1; $i -lt $records.Count; $i++) {
-        if ($records[$i].Message -eq 'Native Gateway setup attempt started.') {
+        if ($records[$i].Message -in @('Native Gateway setup started.', 'Native Gateway setup attempt started.')) {
             $nextStart = $i
             break
         }
@@ -192,14 +195,29 @@ function Get-NativeSetupMilestones {
     foreach ($record in $attempt | Select-Object -Skip 1) {
         if ($record.Message -like 'Native Gateway setup failed during *') {
             $outcome = 'failed'
-            $failedStep = if ($record.Message -match '^Native Gateway setup failed during (\w+):') { $Matches[1] } else { $record.Step }
+            $failedStep = if ($record.FailedStep) { $record.FailedStep }
+                elseif ($record.Message -match '^Native Gateway setup failed during (\w+):') { $Matches[1] }
+                else { $record.Step }
             $milestones.Add([pscustomobject]@{ Name = 'setup-failed'; Ticks = $record.Ticks })
             break
         }
-        if ($record.Message -eq 'Native Gateway setup cancelled.') {
+        if ($record.Message -in @('Native Gateway setup was cancelled.', 'Native Gateway setup cancelled.')) {
             $outcome = 'cancelled'
             $milestones.Add([pscustomobject]@{ Name = 'setup-cancelled'; Ticks = $record.Ticks })
             break
+        }
+        if ($record.Message -like 'step.started:*' -and $record.Step -in @('StepSupport', 'StepPackage', 'StepPrepare', 'StepVerify')) {
+            $stepMilestone = switch ($record.Step) {
+                'StepSupport' { 'step-support' }
+                'StepPackage' { 'step-package' }
+                'StepPrepare' { 'step-prepare' }
+                'StepVerify' { 'step-verify' }
+            }
+            if (-not $seen.ContainsKey($stepMilestone)) {
+                $seen[$stepMilestone] = $true
+                $milestones.Add([pscustomobject]@{ Name = $stepMilestone; Ticks = $record.Ticks })
+            }
+            continue
         }
         if ($validationOpen -and $record.Message -match '^cmd\.(done|cancelled|timeout)') {
             $validationOpen = $false
@@ -348,7 +366,8 @@ function Start-GatewayTraceRecorder {
     Returns the recorder control paths. Throws if the recorder does not report ready.
     #>
     param([string]$ToolDirectory, [string]$InstanceName, [string]$TracePath, [string]$ControlDirectory,
-        [int]$MaxRecordingSeconds, [int]$StartTimeoutSeconds)
+        [int]$MaxRecordingSeconds, [int]$StartTimeoutSeconds,
+        [int]$WprStartTimeoutSeconds, [int]$WprStopTimeoutSeconds, [int]$WprControlTimeoutSeconds)
     $paths = [pscustomobject]@{
         Ready = Join-Path $ControlDirectory 'recorder-ready.json'
         Stop = Join-Path $ControlDirectory 'recorder-stop'
@@ -359,7 +378,9 @@ function Start-GatewayTraceRecorder {
     $pwsh = (Get-Process -Id $PID).Path
     $recorder = Join-Path $ToolDirectory 'Start-GatewayStartupRecorder.ps1'
     $arguments = "-NoProfile -File `"$recorder`" -InstanceName $InstanceName -TracePath `"$TracePath`" " +
-        "-ControlDirectory `"$ControlDirectory`" -MaxRecordingSeconds $MaxRecordingSeconds"
+        "-ControlDirectory `"$ControlDirectory`" -MaxRecordingSeconds $MaxRecordingSeconds " +
+        "-WprStartTimeoutSeconds $WprStartTimeoutSeconds -WprStopTimeoutSeconds $WprStopTimeoutSeconds " +
+        "-WprControlTimeoutSeconds $WprControlTimeoutSeconds"
     Start-Process -FilePath $pwsh -Verb RunAs -ArgumentList $arguments | Out-Null
     $signal = Wait-ForFile -Paths @($paths.Ready, $paths.Status) -TimeoutSeconds $StartTimeoutSeconds
     if ($signal -ne $paths.Ready) { throw 'The elevated recorder did not report a started recording.' }
@@ -380,7 +401,12 @@ function Stop-GatewayTraceRecorder {
         Write-Warning "Recorder status could not be read for WPR instance $InstanceName."
         return [pscustomobject]@{ outcome = 'invalid-status'; cancel = 'unknown'; instance_recording_after = $null }
     }
-    if ($status.instance -ne $InstanceName -or [string]::IsNullOrWhiteSpace([string]$status.outcome)) {
+    if ($null -eq $status.PSObject.Properties['instance'] -or
+        $null -eq $status.PSObject.Properties['outcome'] -or
+        $null -eq $status.PSObject.Properties['instance_recording_after'] -or
+        $status.instance -isnot [string] -or $status.outcome -isnot [string] -or
+        $status.instance_recording_after -isnot [bool] -or
+        $status.instance -ne $InstanceName -or [string]::IsNullOrWhiteSpace($status.outcome)) {
         Write-Warning "Recorder status did not match WPR instance $InstanceName."
         return [pscustomobject]@{ outcome = 'invalid-status'; cancel = 'unknown'; instance_recording_after = $null }
     }

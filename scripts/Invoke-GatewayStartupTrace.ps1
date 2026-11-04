@@ -38,7 +38,7 @@ param(
     [ValidateRange(10, 1600)][int]$BenchmarkTimeoutSeconds = 240,
     [ValidateRange(60, 3600)][int]$MaxRecordingSeconds = 900,
     [ValidateRange(10, 600)][int]$RecorderStartTimeoutSeconds = 120,
-    [ValidateRange(10, 900)][int]$RecorderStopTimeoutSeconds = 300,
+    [ValidateRange(90, 2400)][int]$RecorderStopTimeoutSeconds = 2000,
     [switch]$SkipRecording
 )
 $ErrorActionPreference = 'Stop'
@@ -71,6 +71,10 @@ if (Test-IsElevated) {
 }
 if ($MaxRecordingSeconds -le (2 * $BenchmarkTimeoutSeconds + 300)) {
     throw 'MaxRecordingSeconds must exceed two benchmark timeouts plus 300 seconds for setup and cleanup.'
+}
+$wprStopTimeoutSeconds = [int][Math]::Min(1800, [Math]::Max(180, [Math]::Ceiling($MaxRecordingSeconds / 2)))
+if ($RecorderStopTimeoutSeconds -le ($wprStopTimeoutSeconds + 60)) {
+    throw 'RecorderStopTimeoutSeconds must exceed the WPR stop timeout by at least 60 seconds.'
 }
 $PayloadRoot = [IO.Path]::GetFullPath($PayloadRoot)
 foreach ($required in @('payload-metadata.json', 'app\openclaw.mjs')) {
@@ -112,7 +116,8 @@ try {
         $recorderLaunched = $true
         $recorderPaths = Start-GatewayTraceRecorder -ToolDirectory $toolDirectory -InstanceName $instanceName `
             -TracePath $tracePath -ControlDirectory $controlDirectory -MaxRecordingSeconds $MaxRecordingSeconds `
-            -StartTimeoutSeconds $RecorderStartTimeoutSeconds
+            -StartTimeoutSeconds $RecorderStartTimeoutSeconds -WprStartTimeoutSeconds 60 `
+            -WprStopTimeoutSeconds $wprStopTimeoutSeconds -WprControlTimeoutSeconds 30
     }
 
     if (Test-IsElevated) { throw 'The comparison controller unexpectedly became elevated.' }
@@ -140,8 +145,8 @@ if (-not $SkipRecording -and
     $comparisonExit = "failed: WPR recording was not saved ($($recorderResult.outcome))."
     Write-Warning $comparisonExit
 }
-if ((Test-Path -LiteralPath $resultPath) -and
-    ($SkipRecording -or ($recorderResult.outcome -eq 'saved' -and (Test-Path -LiteralPath $tracePath)))) {
+if ((Test-Path -LiteralPath $resultPath) -and -not $SkipRecording -and
+    $recorderResult.outcome -eq 'saved' -and (Test-Path -LiteralPath $tracePath)) {
     & (Join-Path $toolDirectory 'Get-GatewayStartupTraceSummary.ps1') -TracePath $tracePath -ResultPath $resultPath `
         -PayloadRoot $PayloadRoot -OutputPath $summaryPath | Out-Null
     Write-Host "Sanitized summary: $summaryPath"

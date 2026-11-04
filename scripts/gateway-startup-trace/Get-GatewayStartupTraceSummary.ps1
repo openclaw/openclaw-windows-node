@@ -135,7 +135,11 @@ $armValidity = @(
 if ($result.failure) {
     $comparisonStatus = 'rejected'
     $comparisonFailure = 'comparison-failed'
-} elseif (@($result.cleanup.PSObject.Properties | Where-Object { $_.Name -in 'stop', 'deprovision' -and $_.Value -ne 'reported-success' }).Count -gt 0) {
+} elseif (@($result.cleanup.PSObject.Properties | Where-Object {
+        ($_.Name -in 'stop', 'deprovision' -and $_.Value -ne 'reported-success') -or
+        ($_.Name -eq 'workspace' -and $_.Value -ne 'not-found') -or
+        ($_.Name -eq 'ownership_record' -and $_.Value -eq 'retained-after-deprovision')
+    }).Count -gt 0 -or $result.awake.release -notin @('not-needed', 'clear=ok;close=ok')) {
     $comparisonStatus = 'rejected'
     $comparisonFailure = 'cleanup-incomplete'
 } elseif (@($armValidity | Where-Object Status -ne 'captured').Count -gt 0) {

@@ -60,11 +60,12 @@ The recorder uses `OpenClawStartup-<guid>` with `-instancename` as the last WPR 
 start, status, stop and cancel. It refuses to start if that instance is already recording.
 It saves the trace when the controller writes its stop file. It cancels its own instance
 when `-MaxRecordingSeconds` elapses or when it fails. Start, stop, status and cancel calls
-are bounded. Defaults are 60 seconds for start, 180 for stop, and 30 for status or cancel;
-the start, stop and control limits can be changed with
-`OPENCLAW_TRACE_WPR_START_TIMEOUT_SECONDS`, `OPENCLAW_TRACE_WPR_STOP_TIMEOUT_SECONDS`
-and `OPENCLAW_TRACE_WPR_CONTROL_TIMEOUT_SECONDS`. A stop that times out is killed and
-followed by a cancel of the same instance. Recorder status is atomically published.
+are bounded. Start defaults to 60 seconds and status or cancel to 30 seconds. The controller
+gives WPR stop up to half the recording limit, with a 180-second minimum and 1800-second
+maximum, then allows at least 60 seconds for recorder status and controller shutdown. The
+controller's `-RecorderStopTimeoutSeconds` must exceed that WPR stop limit by 60 seconds.
+A stop that times out is killed and followed by a cancel of the same instance. Recorder
+status is atomically published.
 
 The setup controller requires `MaxRecordingSeconds` to exceed `SetupTimeoutSeconds` by at
 least 60 seconds. The startup comparison requires it to exceed two benchmark timeouts by

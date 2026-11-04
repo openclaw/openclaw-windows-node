@@ -15,7 +15,10 @@ param(
     [Parameter(Mandatory)][string]$InstanceName,
     [Parameter(Mandatory)][string]$TracePath,
     [Parameter(Mandatory)][string]$ControlDirectory,
-    [ValidateRange(60, 3600)][int]$MaxRecordingSeconds = 600
+    [ValidateRange(60, 3600)][int]$MaxRecordingSeconds = 600,
+    [ValidateRange(10, 180)][int]$WprStartTimeoutSeconds = 60,
+    [ValidateRange(60, 1800)][int]$WprStopTimeoutSeconds = 180,
+    [ValidateRange(10, 120)][int]$WprControlTimeoutSeconds = 30
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -39,12 +42,6 @@ function Write-ControlFile {
 }
 
 # WPR save can take minutes on large traces; status and cancel should return quickly.
-$wprStartTimeoutSeconds = 60
-$wprStopTimeoutSeconds = 180
-$wprControlTimeoutSeconds = 30
-if ($env:OPENCLAW_TRACE_WPR_START_TIMEOUT_SECONDS) { $wprStartTimeoutSeconds = [int]$env:OPENCLAW_TRACE_WPR_START_TIMEOUT_SECONDS }
-if ($env:OPENCLAW_TRACE_WPR_STOP_TIMEOUT_SECONDS) { $wprStopTimeoutSeconds = [int]$env:OPENCLAW_TRACE_WPR_STOP_TIMEOUT_SECONDS }
-if ($env:OPENCLAW_TRACE_WPR_CONTROL_TIMEOUT_SECONDS) { $wprControlTimeoutSeconds = [int]$env:OPENCLAW_TRACE_WPR_CONTROL_TIMEOUT_SECONDS }
 
 function Invoke-BoundedWpr {
     <# Runs wpr.exe with a deadline. Kills only that child on timeout and returns its exit code, or $null on timeout. #>

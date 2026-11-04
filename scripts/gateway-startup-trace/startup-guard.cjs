@@ -36,13 +36,13 @@ net.Socket.prototype.connect = deny("network");
 dgram.createSocket = deny("network");
 tls.connect = deny("network");
 for (const name of Object.keys(dns)) {
-  if (name === "lookup" || name === "lookupService" || name.startsWith("resolve")) {
+  if (name === "lookup" || name === "lookupService" || name === "reverse" || name.startsWith("resolve")) {
     dns[name] = deny("network");
   }
 }
 if (dns.promises) {
   for (const name of Object.keys(dns.promises)) {
-    if (name === "lookup" || name === "lookupService" || name.startsWith("resolve")) {
+    if (name === "lookup" || name === "lookupService" || name === "reverse" || name.startsWith("resolve")) {
       dns.promises[name] = deny("network");
     }
   }
