@@ -98,53 +98,18 @@
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Sandbox" Tag="sandbox" Content="Sandbox">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Sandbox_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_145" x:Name="NavDiagnostics" Tag="debug" Content="Diagnostics"
+                                        AutomationProperties.AutomationId="SettingsNavDiagnostics">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Debug_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_133" Tag="settings" Content="App settings"
+                                        AutomationProperties.AutomationId="SettingsNavSettings">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Settings_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                 </NavigationView.MenuItems>
-                <NavigationView.FooterMenuItems>
-                    <NavigationViewItemHeader IsEnabled="True">
-                        <NavigationViewItemHeader.Template>
-                            <ControlTemplate TargetType="NavigationViewItemHeader">
-                                <ContentPresenter Content="{TemplateBinding Content}" HorizontalContentAlignment="Stretch"/>
-                            </ControlTemplate>
-                        </NavigationViewItemHeader.Template>
-            <Grid x:Name="FooterStatusBar" Margin="4,4,4,8">
-
-                <Button x:Name="StatusPillButton"
-                        Height="40" Padding="8,0"
-                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                        Style="{StaticResource SubtleButtonStyle}"
-                        VerticalAlignment="Center"
-                        AutomationProperties.AutomationId="SettingsConnectionStatus"
-                        AutomationProperties.Name="Connection status">
-                    <Grid x:Name="StatusPillContent" ColumnSpacing="8" VerticalAlignment="Center">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <Ellipse x:Name="StatusPillDot" Width="10" Height="10" VerticalAlignment="Center" Fill="Gray"/>
-                        <TextBlock x:Name="StatusPillText" Grid.Column="1" Text="Disconnected" TextTrimming="CharacterEllipsis"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   VerticalAlignment="Center"/>
-                        <FontIcon x:Name="StatusPillChevron" Grid.Column="2" Glyph="&#xE70D;" FontSize="8" VerticalAlignment="Center"
-                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
-                    </Grid>
-                    <Button.Flyout>
-                        <Flyout x:Name="StatusFlyout" Placement="TopEdgeAlignedLeft" Opening="OnStatusFlyoutOpening">
-                            <controls:GatewayStatusContent x:Name="StatusContent"/>
-                        </Flyout>
-                    </Button.Flyout>
-                </Button>
-
-
-            </Grid>
-                    </NavigationViewItemHeader>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_145" x:Name="NavDiagnostics" Tag="debug" Content="Debug"
-                                AutomationProperties.AutomationId="SettingsNavDiagnostics">
-                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Debug_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_133" Tag="settings" Content="Settings"
-                                AutomationProperties.AutomationId="SettingsNavSettings">
-                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Settings_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            </NavigationView.FooterMenuItems>
+                <NavigationView.PaneFooter>
+                    <controls:WorkspacePaneFooter x:Name="PaneFooterControl" AutomationIdPrefix="Settings"/>
+                </NavigationView.PaneFooter>
 
             <Frame x:Name="ContentFrame" Navigated="OnContentFrameNavigated" NavigationFailed="OnContentFrameNavigationFailed">
                 <Frame.ContentTransitions>
