@@ -27,6 +27,9 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     private static readonly TimeSpan HandoffSettleTimeout =
         int.TryParse(Environment.GetEnvironmentVariable(HandoffSettleTimeoutVariable), out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(45);
+    // The footer photo is a flat disc about 24 DIPs across, so a painted one covers hundreds of pixels at any display scale.
+    private const int OwnerPhotoChannelTolerance = 8;
+    private const int OwnerPhotoMinimumPixels = 150;
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
@@ -632,7 +635,13 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Personal workspace", owner.Current.HelpText);
             Assert.Contains(run.Gateway.Requests, request => request.Method == "users.self" && request.Outcome == "ok");
-            await CaptureIfRequestedAsync(run, "owner-profile.png");
+            // The photo arrives over plain HTTP after the name, so wait for the fixture to serve it before the test ends.
+            await run.WaitForAsync(() => Task.FromResult(run.Gateway.Requests.Any(request =>
+                request.Method == FixtureGatewayServer.AvatarRequestMethod && request.Outcome == "ok")),
+                "authenticated owner photo served");
+            // Native capture is strict and opt-in, so only screenshot runs also wait for the photo to be painted.
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+                await WaitUiAsync(run, () => OwnerPhotoPainted(run), "owner photo painted in footer");
         });
     }
 
@@ -1314,5 +1323,47 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         OwnedWindowCapture.Save(run, AppWindows(run).OrderByDescending(window =>
             window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name);
         return Task.CompletedTask;
+    }
+
+    /// <summary>Captures the Workspace window and reports whether the footer button shows the served photo's colour.</summary>
+    private static bool OwnerPhotoPainted(GatewayFixtureRun run)
+    {
+        var ownerId = new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceOwner");
+        foreach (var window in AppWindows(run))
+        {
+            if (window.FindFirst(TreeScope.Descendants, ownerId) is not { } owner || owner.Current.IsOffscreen)
+                continue;
+            OwnedWindowCapture.Save(run, window, "owner-profile.png", owner);
+            return CountOwnerPhotoPixels(Path.Combine(run.ArtifactsDirectory, "owner-profile.png")) >= OwnerPhotoMinimumPixels;
+        }
+        return false;
+    }
+
+    /// <summary>Counts pixels inside the capture's asserted footer button that match the served photo's colour.</summary>
+    private static int CountOwnerPhotoPixels(string capturePath)
+    {
+        using var metadata = JsonDocument.Parse(File.ReadAllText(Path.ChangeExtension(capturePath, ".json")));
+        var button = metadata.RootElement.GetProperty("assertions")[0];
+        using var bitmap = new System.Drawing.Bitmap(capturePath);
+        var left = Math.Max(0, (int)button.GetProperty("left").GetDouble());
+        var top = Math.Max(0, (int)button.GetProperty("top").GetDouble());
+        var right = Math.Min(bitmap.Width, left + (int)button.GetProperty("Width").GetDouble());
+        var bottom = Math.Min(bitmap.Height, top + (int)button.GetProperty("Height").GetDouble());
+        var red = (FixtureGatewayServer.OwnerAvatarRgb >> 16) & 0xFF;
+        var green = (FixtureGatewayServer.OwnerAvatarRgb >> 8) & 0xFF;
+        var blue = FixtureGatewayServer.OwnerAvatarRgb & 0xFF;
+        var painted = 0;
+        for (var y = top; y < bottom; y++)
+        {
+            for (var x = left; x < right; x++)
+            {
+                var pixel = bitmap.GetPixel(x, y);
+                if (Math.Abs(pixel.R - red) <= OwnerPhotoChannelTolerance
+                    && Math.Abs(pixel.G - green) <= OwnerPhotoChannelTolerance
+                    && Math.Abs(pixel.B - blue) <= OwnerPhotoChannelTolerance)
+                    painted++;
+            }
+        }
+        return painted;
     }
 }

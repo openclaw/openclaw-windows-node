@@ -39,6 +39,7 @@ public sealed partial class GatewayScenario
     public const string VoiceSessionKey = "agent:main:fixture-voice";
     public const string VoiceTitle = "Fixture: historical realtime voice";
     public const string VoiceFinalSentinel = "FIXTURE VOICE FINAL: all historical voice messages loaded.";
+    public const string OwnerProfileId = "fixture-owner";
 
     private static readonly DateTimeOffset Epoch = new(2026, 8, 20, 12, 0, 0, TimeSpan.Zero);
     private readonly Session[] _sessions;
@@ -242,7 +243,7 @@ public sealed partial class GatewayScenario
         {
             ["users.self"] = JsonSerializer.SerializeToElement(new
             {
-                profile = new { id = "fixture-owner", displayName = "Fixture Owner", emails = new[] { "owner@example.test" } }
+                profile = new { id = OwnerProfileId, displayName = "Fixture Owner", emails = new[] { "owner@example.test" } }
             }),
             ["health"] = JsonSerializer.SerializeToElement(new
             {

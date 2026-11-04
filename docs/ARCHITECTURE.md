@@ -95,7 +95,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | CLI stdout/stderr/env capture | `OpenClaw.TestSupport.CliHarness` | authoritative |
 | Loopback MCP server for tests | `OpenClaw.TestSupport.FakeMcpServer` | authoritative |
 | Authenticated MCP HTTP client for app fixtures | `OpenClaw.TestSupport.McpClient` | authoritative |
-| Synthetic Gateway protocol/scenarios | `OpenClaw.TestSupport.Gateway.FixtureGatewayServer` + `GatewayScenario` | authoritative |
+| Synthetic Gateway protocol/scenarios, including the authenticated owner-avatar HTTP route | `OpenClaw.TestSupport.Gateway.FixtureGatewayServer` + `GatewayScenario` | authoritative |
 | Interactive synthetic Gateway state and run lifetime | `InteractiveGatewayRuntime` owns memory-only sessions, transcripts, idempotency, runs and decisions; `FixtureQuestion` validates question records and `FixturePlayback` owns host-side pacing. No production provider or page bypass | authoritative |
 | Fixture-backed app profile/process lifetime | `OpenClaw.GatewayFixtureHost.GatewayFixtureProfile` + `GatewayFixtureRun` | authoritative |
 | Explicit fixture context and host-effect isolation gate | `OpenClaw.Shared.GatewayFixtureIsolation` | authoritative |
