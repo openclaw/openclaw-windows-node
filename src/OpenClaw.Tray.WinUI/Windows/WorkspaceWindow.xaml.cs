@@ -1167,7 +1167,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         {
             ("Documentation", "https://docs.openclaw.ai"),
             ("Support", SupportLinks.OfficialSupportUrl),
-            ("Community", "https://discord.gg/clawd"),
+            ("Community", "https://openclaw.ai/discord?from=openclaw-windows-node-community"),
             ("ReleaseNotes", "https://docs.openclaw.ai/releases")
         })
         {
