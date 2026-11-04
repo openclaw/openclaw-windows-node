@@ -13,6 +13,7 @@ namespace OpenClawTray.Presentation;
 /// for new conversations (Gateway setup writes one for the agent it configures).
 /// </param>
 /// <param name="GatewayId">Active registry Gateway this state, including <paramref name="LocalAiRouteAvailable"/>, was projected for.</param>
+/// <param name="LocalAiReceiptOwnsGateway">A native Local AI ownership receipt names this Gateway. Unlike runtime evidence, it persists when the Local AI install cannot be loaded.</param>
 internal sealed record DefaultModelGatewayState(
     bool IsConnected,
     bool CanWriteConfig,
@@ -20,7 +21,8 @@ internal sealed record DefaultModelGatewayState(
     string? PrimaryModel,
     bool LocalAiRouteAvailable,
     string? DefaultAgentModel = null,
-    string? GatewayId = null)
+    string? GatewayId = null,
+    bool LocalAiReceiptOwnsGateway = false)
 {
     public static DefaultModelGatewayState Disconnected { get; } = new(false, false, [], null, false);
 

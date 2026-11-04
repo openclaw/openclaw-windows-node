@@ -60,6 +60,25 @@ public sealed class DefaultModelPageViewModelTests
     }
 
     [Fact]
+    public async Task CloudChoiceWithPendingReceiptAndUnloadableInstall_SendsNoPrimaryWrite()
+    {
+        // The receipt is pending and the install manifest cannot load, so runtime evidence is Unknown.
+        var gateway = new FakeGateway { State = State(Sonnet.SelectionId, localRoute: true) with { LocalAiReceiptOwnsGateway = true } };
+        var runtime = new RecordingRuntime(Installed(LocalAiRuntimeState.Failed) with
+        {
+            ModelEvidence = LocalAiModelEvidence.Unknown(DateTimeOffset.UtcNow),
+        }) { PendingReceipt = true };
+        using var viewModel = Create(gateway, runtime);
+
+        viewModel.SelectedOptionId = Gpt.SelectionId;
+        Assert.False(await viewModel.ApplyAsync());
+
+        Assert.Contains("unconfirmed Gateway change", viewModel.Error);
+        Assert.Empty(gateway.PrimaryWrites);
+        Assert.False(viewModel.StatusApplied);
+    }
+
+    [Fact]
     public async Task MultiSlashModelWithLocalAiInstalled_IsRejectedWithoutAnyWrite()
     {
         var nested = new ChatModelChoice("meta/llama-5", "Llama 5", "openrouter");

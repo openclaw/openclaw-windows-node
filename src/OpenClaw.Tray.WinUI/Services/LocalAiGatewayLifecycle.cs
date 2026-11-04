@@ -160,15 +160,17 @@ internal sealed class LocalAiGatewayLifecycle(
         var binding = _store.Load() ?? throw new InvalidOperationException("The Local AI ownership receipt is unavailable.");
         if (binding.AutomaticRecoveryEnabled)
             throw new InvalidOperationException("Stop Local AI before confirming its Gateway withdrawal.");
-        var current = await CaptureWithdrawnAsync(binding, ct).ConfigureAwait(false);
-        _store.Save(binding with { Pending = false, ConfigHash = current.Hash });
+        var (current, settled) = await CaptureWithdrawnAsync(binding, ct).ConfigureAwait(false);
+        _store.Save(settled with { Pending = false, ConfigHash = current.Hash });
     }
 
-    private async Task<LocalAiGatewayConfigurationSnapshot> CaptureWithdrawnAsync(LocalAiNativeBinding binding, CancellationToken ct)
+    private async Task<(LocalAiGatewayConfigurationSnapshot Current, LocalAiNativeBinding Binding)> CaptureWithdrawnAsync(
+        LocalAiNativeBinding binding, CancellationToken ct)
     {
         var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
         var current = await new LocalAiGatewayRpcConfigurationTransport(target, transport).CaptureAsync(ct).ConfigureAwait(false);
         var config = JsonNode.Parse(current.Config.GetRawText())!;
+        binding = SettleUnconfirmedPrimary(binding, config);
         if (binding.AddedAllowlistEntry &&
             config["agents"]?["defaults"]?["models"]?[binding.ModelRef] is { } entry &&
             entry is not JsonObject { Count: 0 })
@@ -179,7 +181,7 @@ internal sealed class LocalAiGatewayLifecycle(
             binding.AddedAllowlistEntry && config["agents"]?["defaults"]?["models"]?[binding.ModelRef] is not null)
             throw new InvalidOperationException(
                 "The original Gateway has not confirmed withdrawal. Restore the installation receipt, or use the original Gateway's configuration tools to remove the Local AI provider, restore its saved primary model, and remove its Companion-added allowlist entry. Keep the ownership receipt.");
-        return current;
+        return (current, binding);
     }
 
     public async Task ReleaseOwnershipAsync(CancellationToken ct)
@@ -207,6 +209,7 @@ internal sealed class LocalAiGatewayLifecycle(
         var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
         var current = await new LocalAiGatewayRpcConfigurationTransport(target, transport).CaptureAsync(ct).ConfigureAwait(false);
         var config = JsonNode.Parse(current.Config.GetRawText())!;
+        binding = SettleUnconfirmedPrimary(binding, config);
         if (config["models"]?["providers"]?["llamacpp"] is not null ||
             config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() != binding.PreviousPrimary)
             throw new InvalidOperationException("The original Gateway has not confirmed withdrawal. Its ownership receipt was retained.");
@@ -289,11 +292,25 @@ internal sealed class LocalAiGatewayLifecycle(
         // any same-value shortcut: writing the current fallback still strands a published provider.
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
         var binding = _store.Load();
-        if (binding?.Pending == true)
+        if (binding is null)
+        {
+            await writePrimary(ct).ConfigureAwait(false);
+            return;
+        }
+        if (binding.Pending)
             throw new InvalidOperationException(UnconfirmedGatewayChangeDetail);
+        if (binding.UnconfirmedPrimary is { } earlier && earlier != model)
+        {
+            // An earlier write may have landed; settle it first so the journal names a single candidate.
+            var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
+            var current = await new LocalAiGatewayRpcConfigurationTransport(target, transport).CaptureAsync(ct).ConfigureAwait(false);
+            binding = SettleUnconfirmedPrimary(binding, JsonNode.Parse(current.Config.GetRawText())!);
+        }
+        // Write-ahead: if the reply is lost, the process stops, or the save below fails, the next Gateway
+        // config read finds this journal and adopts whichever primary the Gateway shows.
+        _store.Save(binding with { UnconfirmedPrimary = model });
         await writePrimary(ct).ConfigureAwait(false);
-        if (binding is not null && binding.PreviousPrimary != model)
-            _store.Save(binding with { PreviousPrimary = model });
+        _store.Save(binding with { PreviousPrimary = model, UnconfirmedPrimary = null });
     }
 
     public async Task ReconcileVerifiedAsync(GatewayRecord record, IGatewayAiSetupTransport transport,
@@ -531,9 +548,11 @@ internal sealed class LocalAiGatewayLifecycle(
         if (binding is not null)
         {
             RequireBinding(binding, target);
+            var observed = JsonNode.Parse(current.Config.GetRawText())!;
+            binding = SettleUnconfirmedPrimary(binding, observed);
             if (binding.Pending || binding.ConfigHash != current.Hash)
             {
-                var pendingConfig = JsonNode.Parse(current.Config.GetRawText())!;
+                var pendingConfig = observed;
                 RequireOwnedAllowlist(binding, pendingConfig);
                 var provider = pendingConfig["models"]?["providers"]?["llamacpp"];
                 var primary = pendingConfig["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>();
@@ -614,6 +633,7 @@ internal sealed class LocalAiGatewayLifecycle(
             var rpc = new LocalAiGatewayRpcConfigurationTransport(target, transport);
             var current = await rpc.CaptureAsync(ct).ConfigureAwait(false);
             var config = JsonNode.Parse(current.Config.GetRawText())!;
+            binding = SettleUnconfirmedPrimary(binding, config);
             if (reason == LocalAiQuiesceReason.Teardown && binding.AddedAllowlistEntry &&
                 config["agents"]?["defaults"]?["models"]?[binding.ModelRef] is { } entry &&
                 entry is not JsonObject { Count: 0 })
@@ -722,6 +742,21 @@ internal sealed class LocalAiGatewayLifecycle(
         }
         RequireBinding(binding, target);
         return (target, transport);
+    }
+
+    /// <summary>
+    /// Settles a cloud primary journaled by <see cref="SetPrimaryAndFallbackModelAsync"/> against the
+    /// observed Gateway config: if the write landed, its target becomes the fallback; otherwise the
+    /// journal is dropped. Callers hold the receipt lease.
+    /// </summary>
+    private LocalAiNativeBinding SettleUnconfirmedPrimary(LocalAiNativeBinding binding, JsonNode config)
+    {
+        if (binding.UnconfirmedPrimary is not { } intended) return binding;
+        var settled = config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() == intended
+            ? binding with { PreviousPrimary = intended, UnconfirmedPrimary = null }
+            : binding with { UnconfirmedPrimary = null };
+        _store.Save(settled);
+        return settled;
     }
 
     private static void RequireOwnedAllowlist(LocalAiNativeBinding binding, JsonNode config)

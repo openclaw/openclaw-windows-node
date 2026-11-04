@@ -191,7 +191,9 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
     {
         // Local AI's fallback belongs to the Gateway it is bound to; another Gateway's
         // default must not change it or stop Local AI.
-        bool ownsRoute = LocalAiRuntimePresentation.HasManagedInstall(_localAi.Snapshot) && _state.LocalAiRouteAvailable;
+        // A saved native receipt counts even when the install cannot be loaded, so its Pending guard always runs before a write.
+        bool ownsRoute = _state.LocalAiRouteAvailable &&
+            (_state.LocalAiReceiptOwnsGateway || LocalAiRuntimePresentation.HasManagedInstall(_localAi.Snapshot));
         if (ownsRoute && !IsValidFallback(modelRef))
         {
             _error = "Local AI can only hand the Gateway back to a provider/model id with a single slash. Choose a different model.";

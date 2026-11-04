@@ -2,6 +2,11 @@ using System.Text.Json;
 
 namespace OpenClaw.Connection.LocalAi;
 
+/// <param name="UnconfirmedPrimary">
+/// Write-ahead record of a cloud primary sent to the Gateway but not yet confirmed. The next
+/// Gateway config read settles it: if the Gateway shows this primary it becomes
+/// <paramref name="PreviousPrimary"/>, otherwise it is dropped.
+/// </param>
 public sealed record LocalAiNativeBinding(
     string GatewayId,
     string EndpointBinding,
@@ -12,7 +17,8 @@ public sealed record LocalAiNativeBinding(
     bool AddedAllowlistEntry,
     bool Pending = false,
     bool AutomaticRecoveryEnabled = true,
-    LocalAiNativeModelRebind? RebindFrom = null);
+    LocalAiNativeModelRebind? RebindFrom = null,
+    string? UnconfirmedPrimary = null);
 
 /// <summary>
 /// Write-ahead record of a model rebind. <c>CommitModelRebindAsync</c> writes and clears it
@@ -46,6 +52,7 @@ public sealed class LocalAiNativeBindingStore(LocalAiPaths paths)
             .Any(value => string.IsNullOrWhiteSpace(value) || value.Length > 4096))
             throw new InvalidDataException("The Local AI Gateway binding is damaged.");
         LocalAiGatewayProviderDefinition.ValidateFallbackModel(binding.PreviousPrimary);
+        LocalAiGatewayProviderDefinition.ValidateFallbackModel(binding.UnconfirmedPrimary);
         return binding;
     }
 

@@ -1545,6 +1545,61 @@ public sealed class NativeLocalAiLifecycleTests
         Assert.Equal("openai/gpt-6", fixture.Store.Load()!.PreviousPrimary);
     }
 
+    private static Func<CancellationToken, Task> LandThenLoseReply(Fixture fixture, string model) => _ =>
+    {
+        fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"] = model;
+        fixture.Rpc.Revision++;
+        throw new TimeoutException("Simulated lost reply after the Gateway applied the primary.");
+    };
+
+    [Theory]
+    [InlineData("landed")]
+    [InlineData("not-sent")]
+    public async Task InterruptedCloudPrimaryWrite_StartAdoptsTheLandedPrimary(string outcome)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Func<CancellationToken, Task> write = outcome == "landed"
+            ? LandThenLoseReply(fixture, "openai/gpt-6")
+            : _ => throw new InvalidOperationException("Refused before dispatch.");
+
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            fixture.Lifecycle.SetPrimaryAndFallbackModelAsync("openai/gpt-6", write, default));
+        Assert.Equal("cloud/model", fixture.Store.Load()!.PreviousPrimary);
+        Assert.Equal("openai/gpt-6", fixture.Store.Load()!.UnconfirmedPrimary);
+
+        await fixture.Lifecycle.PrepareStartAsync(fixture.Install, default);
+        Assert.Equal(outcome == "landed" ? "openai/gpt-6" : "cloud/model", fixture.Store.Load()!.PreviousPrimary);
+        Assert.Null(fixture.Store.Load()!.UnconfirmedPrimary);
+    }
+
+    [Fact]
+    public async Task InterruptedCloudPrimaryWrite_ReleaseConfirmsWithdrawal()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        await Assert.ThrowsAnyAsync<Exception>(() => fixture.Lifecycle.SetPrimaryAndFallbackModelAsync(
+            "openai/gpt-6", LandThenLoseReply(fixture, "openai/gpt-6"), default));
+
+        await fixture.Lifecycle.ForgetWithdrawnAsync(Record.Id, default);
+        Assert.False(fixture.Store.Exists);
+    }
+
+    [Fact]
+    public async Task SecondCloudPrimaryWrite_SettlesTheEarlierUnconfirmedWriteFirst()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        await Assert.ThrowsAnyAsync<Exception>(() => fixture.Lifecycle.SetPrimaryAndFallbackModelAsync(
+            "openai/gpt-6", LandThenLoseReply(fixture, "openai/gpt-6"), default));
+        await Assert.ThrowsAnyAsync<Exception>(() => fixture.Lifecycle.SetPrimaryAndFallbackModelAsync(
+            "openai/gpt-7", _ => throw new InvalidOperationException("Refused before dispatch."), default));
+
+        await fixture.Lifecycle.PrepareStartAsync(fixture.Install, default);
+        Assert.Equal("openai/gpt-6", fixture.Store.Load()!.PreviousPrimary);
+        Assert.Null(fixture.Store.Load()!.UnconfirmedPrimary);
+    }
+
     [Fact]
     public async Task SetupRegistrationExcludesExplicitRelease()
     {

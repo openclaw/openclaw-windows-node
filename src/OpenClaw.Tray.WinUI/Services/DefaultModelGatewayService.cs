@@ -61,7 +61,9 @@ internal sealed class DefaultModelGatewayService : IDefaultModelGatewayService, 
                 primary,
                 IsLocalAiRouteAvailable(registry, activeId),
                 agentModel,
-                activeId);
+                activeId,
+                LocalAiReceiptOwnsGateway: activeId is not null && _localAiLifecycle.IsNativeMode &&
+                    _localAiLifecycle.OwnsGateway(activeId));
         }
     }
 
