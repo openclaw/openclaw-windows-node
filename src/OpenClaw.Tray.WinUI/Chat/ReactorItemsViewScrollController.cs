@@ -160,6 +160,13 @@ file sealed class InitialTailPositioner : IDisposable
         if (!_valid)
         {
             _tailNavigationQueue.Clear();
+            if (_initialPending)
+            {
+                _version++;
+                _initialPending = false;
+                _awaitingInitialRows = true;
+                DetachLayout();
+            }
             return;
         }
 
@@ -175,7 +182,8 @@ file sealed class InitialTailPositioner : IDisposable
             return;
         }
 
-        if (changed && _following && itemsView.IsLoaded)
+        if (changed && itemsView.IsLoaded
+            && TailNavigationPolicy.CanFollowTail(_following, _initialPending))
         {
             QueueTailRequest(_version, request);
         }
@@ -271,24 +279,51 @@ file sealed class InitialTailPositioner : IDisposable
                     _version, _tailIndex, _displayedTailKey, _itemCount, out var request))
                 return;
 
-            if (!StartTailRequest(request))
+            if (!renderAfterLayout)
+                ConfirmInitialLanding(initialRequest.Version, request);
+            else if (!StartTailRequest(request))
                 AwaitLayout(renderAfterLayout);
-            else if (!renderAfterLayout)
-                ConfirmInitialLanding(initialRequest.Version);
         }))
             OpenClawTray.Services.Logger.Warn("Chat tail navigation could not be dispatched.");
     }
 
-    private void ConfirmInitialLanding(int version)
+    private void ConfirmInitialLanding(int version, TailNavigationRequest request)
     {
         DetachConfirmation();
-        _confirmation.Reset();
+        var generation = _confirmation.Reset(GetRequestItem(request));
+        if (!StartTailRequest(request))
+        {
+            _confirmation.Invalidate();
+            AwaitLayout();
+            return;
+        }
+
+        ObserveInitialLanding(version, generation);
+    }
+
+    private bool IsInitialConfirmationCurrent(int version, int generation) =>
+        !_disposed && _valid && itemsView.IsLoaded && _initialPending
+        && version == _version && _confirmation.IsCurrent(generation);
+
+    private void ObserveInitialLanding(int version, int generation)
+    {
+        if (!IsInitialConfirmationCurrent(version, generation))
+            return;
+
         _confirming = (_, _) =>
         {
-            if (_disposed || !_valid || !itemsView.IsLoaded || version != _version
-                || _scrollView is not { IsLoaded: true } scrollView)
+            if (!IsInitialConfirmationCurrent(version, generation))
             {
                 DetachConfirmation();
+                return;
+            }
+
+            if (_scrollView is not { IsLoaded: true } scrollView
+                || !ReferenceEquals(scrollView, itemsView.ScrollView))
+            {
+                DetachConfirmation();
+                _confirmation.Invalidate();
+                AwaitLayout();
                 return;
             }
 
@@ -296,26 +331,59 @@ file sealed class InitialTailPositioner : IDisposable
                 scrollView.State == ScrollingInteractionState.Idle, IsNearBottom(scrollView)))
             {
                 case InitialTailLanding.Landed:
-                    DetachConfirmation();
-                    _initialPending = false;
+                    CompleteInitialLanding();
                     break;
                 case InitialTailLanding.Retry:
-                    if (!TailNavigationPolicy.TryCapture(
-                            _tailIndex, _displayedTailKey, _itemCount, out var request)
-                        || !StartTailRequest(request))
-                    {
-                        DetachConfirmation();
-                        _initialPending = false;
-                    }
+                    DetachConfirmation();
+                    QueueInitialTailRetry(version, generation);
                     break;
                 case InitialTailLanding.GiveUp:
-                    DetachConfirmation();
-                    _initialPending = false;
+                    CompleteInitialLanding();
                     OpenClawTray.Services.Logger.Warn("Chat initial tail navigation did not land at the tail.");
                     break;
             }
         };
         CompositionTarget.Rendering += _confirming;
+    }
+
+    private void QueueInitialTailRetry(int version, int generation)
+    {
+        // Starting a native bring from Rendering can deadlock the WinUI layout pass.
+        if (!itemsView.DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!IsInitialConfirmationCurrent(version, generation))
+                return;
+
+            if (!TailNavigationPolicy.TryCapture(
+                    _tailIndex, _displayedTailKey, _itemCount, out var request))
+            {
+                CompleteInitialLanding();
+                OpenClawTray.Services.Logger.Warn("Chat initial tail navigation retry could not start.");
+                return;
+            }
+
+            _confirmation.BeginAttempt(GetRequestItem(request));
+            if (!StartTailRequest(request))
+            {
+                CompleteInitialLanding();
+                OpenClawTray.Services.Logger.Warn("Chat initial tail navigation retry could not start.");
+                return;
+            }
+
+            ObserveInitialLanding(version, generation);
+        }))
+        {
+            if (IsInitialConfirmationCurrent(version, generation))
+                CompleteInitialLanding();
+            OpenClawTray.Services.Logger.Warn("Chat initial tail navigation retry could not be dispatched.");
+        }
+    }
+
+    private void CompleteInitialLanding()
+    {
+        DetachConfirmation();
+        _confirmation.Invalidate();
+        _initialPending = false;
     }
 
     private void AttachScrollView()
@@ -332,6 +400,8 @@ file sealed class InitialTailPositioner : IDisposable
             _scrollView.ViewChanged += OnViewChanged;
             _scrollView.StateChanged += OnScrollStateChanged;
             _scrollView.ExtentChanged += OnExtentChanged;
+            _scrollView.BringingIntoView += OnBringingIntoView;
+            _scrollView.ScrollCompleted += OnScrollCompleted;
             _inputScrollController = itemsView.VerticalScrollController;
             if (_inputScrollController is not null)
                 _inputScrollController.IsScrollingWithMouseChanged += OnControllerMouseChanged;
@@ -345,13 +415,30 @@ file sealed class InitialTailPositioner : IDisposable
                 && args.NewSize.Height == args.PreviousSize.Height))
             return;
 
+        _confirmation.GeometryChanged();
         _reflowCorrection.Arm();
     }
 
     private void OnExtentChanged(WinUIScrollView sender, object args)
     {
+        _confirmation.GeometryChanged();
         if (_reflowCorrection.TryConsume(_following, IsNearBottom(sender), _initialPending))
             AwaitLayout(renderAfterLayout: true);
+    }
+
+    private void OnBringingIntoView(WinUIScrollView sender, ScrollingBringingIntoViewEventArgs args)
+    {
+        if (!_initialPending || !ReferenceEquals(sender, _scrollView)
+            || args.RequestEventArgs?.TargetElement is not FrameworkElement target)
+            return;
+
+        _confirmation.BringingIntoView(args.CorrelationId, target.DataContext);
+    }
+
+    private void OnScrollCompleted(WinUIScrollView sender, ScrollingScrollCompletedEventArgs args)
+    {
+        if (_initialPending && ReferenceEquals(sender, _scrollView))
+            _confirmation.ScrollCompleted(args.CorrelationId);
     }
 
     private void OnScrollStateChanged(WinUIScrollView sender, object args)
@@ -391,6 +478,7 @@ file sealed class InitialTailPositioner : IDisposable
     private void OnViewChanged(WinUIScrollView sender, object args)
     {
         _following = IsNearBottom(sender);
+        _confirmation.GeometryChanged();
     }
 
     private void QueueTailRequest(int version, TailNavigationRequest request)
@@ -404,7 +492,7 @@ file sealed class InitialTailPositioner : IDisposable
                 || _disposed
                 || !_valid
                 || !itemsView.IsLoaded
-                || !_following)
+                || !TailNavigationPolicy.CanFollowTail(_following, _initialPending))
             {
                 return;
             }
@@ -440,6 +528,12 @@ file sealed class InitialTailPositioner : IDisposable
         return true;
     }
 
+    private object? GetRequestItem(TailNavigationRequest request) =>
+        itemsView.ItemsSource is System.Collections.IList items
+        && request.Index >= 0 && request.Index < items.Count
+            ? items[request.Index]
+            : null;
+
     private static bool IsNearBottom(WinUIScrollView scrollView) =>
         scrollView.ScrollableHeight - scrollView.VerticalOffset <= FollowThreshold;
 
@@ -447,7 +541,6 @@ file sealed class InitialTailPositioner : IDisposable
     {
         _version++;
         _initialPending = false;
-        _awaitingInitialRows = false;
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         DetachLayout();
@@ -458,6 +551,7 @@ file sealed class InitialTailPositioner : IDisposable
     {
         DetachRendering();
         DetachConfirmation();
+        _confirmation.Invalidate();
         _awaitingIdle = false;
         _renderAfterLayout = false;
         if (_awaitingScrollView is { } scrollView)
@@ -498,6 +592,8 @@ file sealed class InitialTailPositioner : IDisposable
             _scrollView.ViewChanged -= OnViewChanged;
             _scrollView.StateChanged -= OnScrollStateChanged;
             _scrollView.ExtentChanged -= OnExtentChanged;
+            _scrollView.BringingIntoView -= OnBringingIntoView;
+            _scrollView.ScrollCompleted -= OnScrollCompleted;
         }
 
         _scrollView = null;
