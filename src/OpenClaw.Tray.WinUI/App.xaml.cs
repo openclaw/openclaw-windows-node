@@ -845,7 +845,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _defaultModelGateway = new DefaultModelGatewayService(
                 _appState, () => GatewayClient, () => _gatewayRegistry,
                 () => _connectionManager?.CurrentSnapshot.GatewayId, _localAiGatewayLifecycle);
-            _modelProviderGateway = new ModelProviderGatewayService(() => GatewayClient);
+            _modelProviderGateway = new ModelProviderGatewayService(() => GatewayClient,
+                () => _gatewayRegistry?.GetActive()?.Id, () => _connectionManager?.CurrentSnapshot.GatewayId);
         }
 
         // Build the DI composition root AFTER the tray is up, so additive plumbing

@@ -7079,6 +7079,7 @@
   <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>已登入 {0}。請重新啟動閘道以使用其模型。</value></data>
   <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>已取消登入。</value></data>
   <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>登入未完成。</value></data>
+  <data name="DefaultModelPage_ProviderSignInInterrupted" xml:space="preserve"><value>閘道連線已變更，登入已停止。請重新開始登入。</value></data>
   <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>閘道無法完成此操作：{0}</value></data>
   <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>正在等待提供者...</value></data>
   <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>登入耗時過久。請重新檢查或取消。</value></data>

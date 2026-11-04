@@ -7080,6 +7080,7 @@ Controleer of de gateway actief is.</value>
   <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>Aangemeld bij {0}. Start de gateway opnieuw om de modellen te gebruiken.</value></data>
   <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>Aanmelden is geannuleerd.</value></data>
   <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>Aanmelden is niet voltooid.</value></data>
+  <data name="DefaultModelPage_ProviderSignInInterrupted" xml:space="preserve"><value>Aanmelden is gestopt omdat de gatewayverbinding is gewijzigd. Begin opnieuw om door te gaan.</value></data>
   <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>De gateway kon dit niet voltooien: {0}</value></data>
   <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>Wachten op de provider...</value></data>
   <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>Aanmelden duurt te lang. Controleer opnieuw of annuleer.</value></data>

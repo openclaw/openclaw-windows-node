@@ -7079,6 +7079,7 @@
   <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>已登录 {0}。请重启网关以使用其模型。</value></data>
   <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>登录已取消。</value></data>
   <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>登录未完成。</value></data>
+  <data name="DefaultModelPage_ProviderSignInInterrupted" xml:space="preserve"><value>网关连接已更改，登录已停止。请重新开始登录。</value></data>
   <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>网关无法完成此操作：{0}</value></data>
   <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>正在等待提供商...</value></data>
   <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>登录耗时过长。请重新检查或取消。</value></data>

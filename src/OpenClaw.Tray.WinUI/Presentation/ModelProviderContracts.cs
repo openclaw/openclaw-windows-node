@@ -54,11 +54,30 @@ internal interface IModelProviderGatewayService
     /// <returns>The Gateway's warning, if any.</returns>
     Task<string?> SetApiKeyAsync(string provider, string apiKey);
     Task AddCustomProviderAsync(CustomModelProviderDraft draft);
-    Task<GatewayAiSetupWizardResult> StartLoginAsync(string sessionId, string authChoice);
+    /// <summary>Binds a new sign-in to the current administrator Gateway connection.</summary>
+    IModelProviderLogin BeginLogin();
+}
+
+/// <summary>
+/// One <c>models.authLogin</c> wizard session, bound to the Gateway, client and authenticated
+/// connection epoch it started on. Each request rechecks the binding and is sent only on the
+/// captured epoch. Once the binding is lost the login is retired for good, so a retained answer
+/// is never transmitted to a replacement Gateway or session.
+/// </summary>
+internal interface IModelProviderLogin
+{
+    bool IsCurrent { get; }
+    Task<GatewayAiSetupWizardResult> StartAsync(string authChoice);
     /// <summary>Bare refresh when <paramref name="stepId"/> is null; otherwise answers that step.</summary>
-    Task<GatewayAiSetupWizardResult> NextLoginAsync(string sessionId, string? stepId, JsonElement? value);
+    Task<GatewayAiSetupWizardResult> NextAsync(string? stepId, JsonElement? value);
     /// <returns>The Gateway's reported session status (e.g. "cancelled").</returns>
-    Task<string?> CancelLoginAsync(string sessionId);
+    Task<string?> CancelAsync();
+}
+
+internal sealed class ModelProviderConnectionChangedException : InvalidOperationException
+{
+    public ModelProviderConnectionChangedException()
+        : base("The Gateway connection changed during sign-in. Start the sign-in again.") { }
 }
 
 /// <summary>Pure parsing, validation, and patch building for the provider wire contracts.</summary>

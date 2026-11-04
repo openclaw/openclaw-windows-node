@@ -7079,6 +7079,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>Connecté à {0}. Redémarrez la passerelle pour utiliser ses modèles.</value></data>
   <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>La connexion a été annulée.</value></data>
   <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>La connexion n'a pas abouti.</value></data>
+  <data name="DefaultModelPage_ProviderSignInInterrupted" xml:space="preserve"><value>La connexion s'est interrompue, car la liaison avec la passerelle a changé. Recommencez pour continuer.</value></data>
   <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>La passerelle n'a pas pu terminer l'opération : {0}</value></data>
   <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>En attente du fournisseur...</value></data>
   <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>La connexion prend trop de temps. Vérifiez à nouveau ou annulez.</value></data>

@@ -253,6 +253,7 @@ public sealed partial class DefaultModelPage : Page
             ModelProviderStatus.SignInFailed => (p.StatusDetail is { } detail
                 ? LocalizationHelper.Format("DefaultModelPage_ProviderRequestFailedFormat", detail)
                 : LocalizationHelper.GetString("DefaultModelPage_ProviderSignInFailed"), true),
+            ModelProviderStatus.SignInInterrupted => (LocalizationHelper.GetString("DefaultModelPage_ProviderSignInInterrupted"), true),
             ModelProviderStatus.RequestFailed => (LocalizationHelper.Format("DefaultModelPage_ProviderRequestFailedFormat", p.StatusDetail ?? string.Empty), true),
             ModelProviderStatus.Invalid => (LocalizationHelper.GetString(p.ValidationError switch
             {

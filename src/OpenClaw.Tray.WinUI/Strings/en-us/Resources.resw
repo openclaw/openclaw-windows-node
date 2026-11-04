@@ -7147,6 +7147,7 @@ Make sure the gateway is running.</value>
   <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>Signed in to {0}. Restart the Gateway to use its models.</value></data>
   <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>Sign-in was cancelled.</value></data>
   <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>Sign-in did not finish.</value></data>
+  <data name="DefaultModelPage_ProviderSignInInterrupted" xml:space="preserve"><value>Sign-in stopped because the Gateway connection changed. Start it again to continue.</value></data>
   <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>The Gateway could not complete this: {0}</value></data>
   <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>Waiting for the provider...</value></data>
   <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>Sign-in is taking too long. Check again or cancel.</value></data>

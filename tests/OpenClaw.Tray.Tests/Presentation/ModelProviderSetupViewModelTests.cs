@@ -199,6 +199,42 @@ public sealed class ModelProviderSetupViewModelTests
     }
 
     [Fact]
+    public async Task SignIn_ConnectionChangeRetiresFlowAndDropsTheRetainedAnswer()
+    {
+        var gateway = new FakeModelProviderGateway { Capabilities = All };
+        gateway.LoginResults.Enqueue(Running(new GatewayAiSetupWizardStep { Id = "key", Type = "text", Sensitive = true }));
+        var vm = Create(gateway);
+        await vm.LoadCatalogAsync();
+        await vm.StartLoginAsync();
+
+        gateway.LoginCurrent = false;
+        vm.UpdateCapabilities();
+
+        Assert.False(vm.LoginActive);
+        Assert.Null(vm.LoginStep);
+        Assert.Equal(ModelProviderStatus.SignInInterrupted, vm.Status);
+        await vm.SubmitLoginAnswerAsync("key", JsonSerializer.SerializeToElement("secret"));
+        Assert.Equal(["start:example/browser"], gateway.Calls);
+    }
+
+    [Fact]
+    public async Task SignIn_ChangeReportedAtSendRetiresFlow()
+    {
+        var gateway = new FakeModelProviderGateway { Capabilities = All };
+        gateway.LoginResults.Enqueue(Running(new GatewayAiSetupWizardStep { Id = "key", Type = "text", Sensitive = true }));
+        var vm = Create(gateway);
+        await vm.LoadCatalogAsync();
+        await vm.StartLoginAsync();
+
+        gateway.ThrowChangedOnNext = true;
+        await vm.SubmitLoginAnswerAsync("key", JsonSerializer.SerializeToElement("secret"));
+
+        Assert.False(vm.LoginActive);
+        Assert.Equal(ModelProviderStatus.SignInInterrupted, vm.Status);
+        Assert.Equal(ModelProviderLoginError.None, vm.LoginError);
+    }
+
+    [Fact]
     public async Task SaveApiKey_WithoutCapabilitySendsNothing()
     {
         var gateway = new FakeModelProviderGateway { Capabilities = new(false, true, true) };
@@ -287,21 +323,33 @@ internal sealed class FakeModelProviderGateway : IModelProviderGatewayService
         return Task.CompletedTask;
     }
 
-    public Task<GatewayAiSetupWizardResult> StartLoginAsync(string sessionId, string authChoice)
-    {
-        Calls.Add("start:" + authChoice);
-        return Task.FromResult(LoginResults.Dequeue());
-    }
+    public bool LoginCurrent { get; set; } = true;
+    public bool ThrowChangedOnNext { get; set; }
 
-    public Task<GatewayAiSetupWizardResult> NextLoginAsync(string sessionId, string? stepId, JsonElement? value)
-    {
-        Calls.Add(stepId is null ? "next:" : $"next:{stepId}={value?.GetRawText()}");
-        return Task.FromResult(LoginResults.Dequeue());
-    }
+    public IModelProviderLogin BeginLogin() => new FakeLogin(this);
 
-    public Task<string?> CancelLoginAsync(string sessionId)
+    private sealed class FakeLogin(FakeModelProviderGateway owner) : IModelProviderLogin
     {
-        Calls.Add("cancel");
-        return Task.FromResult(CancelStatuses.Dequeue());
+        public bool IsCurrent => owner.LoginCurrent;
+
+        public Task<GatewayAiSetupWizardResult> StartAsync(string authChoice)
+        {
+            owner.Calls.Add("start:" + authChoice);
+            return Task.FromResult(owner.LoginResults.Dequeue());
+        }
+
+        public Task<GatewayAiSetupWizardResult> NextAsync(string? stepId, JsonElement? value)
+        {
+            if (owner.ThrowChangedOnNext)
+                throw new ModelProviderConnectionChangedException();
+            owner.Calls.Add(stepId is null ? "next:" : $"next:{stepId}={value?.GetRawText()}");
+            return Task.FromResult(owner.LoginResults.Dequeue());
+        }
+
+        public Task<string?> CancelAsync()
+        {
+            owner.Calls.Add("cancel");
+            return Task.FromResult(owner.CancelStatuses.Dequeue());
+        }
     }
 }

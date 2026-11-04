@@ -16,6 +16,7 @@ internal enum ModelProviderStatus
     SignedInRestartRequired,
     SignInCancelled,
     SignInFailed,
+    SignInInterrupted,
     RequestFailed,
     Invalid,
 }
@@ -41,7 +42,7 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
     private readonly TimeSpan _loginPollInterval;
     private readonly Stopwatch _loginClock = new();
     private long _catalogGeneration;
-    private string? _loginSessionId;
+    private IModelProviderLogin? _login;
 
     public ModelProviderSetupViewModel(
         IModelProviderGatewayService service,
@@ -122,10 +123,17 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
 
     public void UpdateCapabilities()
     {
+        bool retired = _login is { IsCurrent: false };
+        if (retired)
+            RetireLogin();
         ModelProviderCapabilities previous = Capabilities;
         ModelProviderCapabilities current = _service.Capabilities;
         if (previous == current)
+        {
+            if (retired)
+                Notify();
             return;
+        }
         Capabilities = current;
         if (!current.CanUseGatewayProviders)
         {
@@ -142,7 +150,7 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
     /// <summary>Best-effort cancellation of an in-flight sign-in when the page goes away.</summary>
     public void Deactivate()
     {
-        if (_loginSessionId is not null)
+        if (_login is not null)
             _ = CancelLoginQuietlyAsync();
     }
 
@@ -259,8 +267,18 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
     {
         if (!CanStartLogin || LoginOptions.FirstOrDefault(o => o.Id == _selectedLoginOptionId) is not { } option)
             return;
-        string sessionId = Guid.NewGuid().ToString();
-        _loginSessionId = sessionId;
+        IModelProviderLogin login;
+        try
+        {
+            login = _service.BeginLogin();
+        }
+        catch (Exception ex) when (IsExpected(ex))
+        {
+            SetStatus(ModelProviderStatus.RequestFailed, option.Label, ex.Message);
+            Notify();
+            return;
+        }
+        _login = login;
         _loginClock.Restart();
         ClearStatus();
         LoginActive = true;
@@ -270,44 +288,63 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
         LoginPhase = GatewayAiSetupPhase.Uncertain;
         ClearLoginError();
         Notify();
-        await RunLoginRequestAsync(() => _service.StartLoginAsync(sessionId, option.Id));
+        await RunLoginRequestAsync(login, () => login.StartAsync(option.Id));
         await PollGatewayStepsAsync();
     }
 
     public async Task SubmitLoginAnswerAsync(string stepId, JsonElement? value)
     {
-        if (_loginSessionId is not { } sessionId || LoginBusy || LoginPhase != GatewayAiSetupPhase.Running ||
+        if (_login is not { } login || LoginBusy || LoginPhase != GatewayAiSetupPhase.Running ||
             LoginStep is not { } step || step.Id != stepId || step.Type == "progress" || step.Executor == "gateway")
             return;
+        if (!login.IsCurrent)
+        {
+            RetireLogin();
+            Notify();
+            return;
+        }
         LoginBusy = true;
         LoginPhase = GatewayAiSetupPhase.Uncertain;
         ClearLoginError();
         Notify();
-        await RunLoginRequestAsync(() => _service.NextLoginAsync(sessionId, stepId, value));
+        await RunLoginRequestAsync(login, () => login.NextAsync(stepId, value));
         await PollGatewayStepsAsync();
     }
 
     public async Task RefreshLoginAsync()
     {
-        if (_loginSessionId is not { } sessionId || LoginBusy)
+        if (_login is not { } login || LoginBusy)
             return;
+        if (!login.IsCurrent)
+        {
+            RetireLogin();
+            Notify();
+            return;
+        }
         LoginBusy = true;
         ClearLoginError();
         Notify();
-        await RunLoginRequestAsync(() => _service.NextLoginAsync(sessionId, null, null));
+        await RunLoginRequestAsync(login, () => login.NextAsync(null, null));
         await PollGatewayStepsAsync();
     }
 
     public async Task CancelLoginAsync()
     {
-        if (_loginSessionId is not { } sessionId || LoginCancelling)
+        if (_login is not { } login || LoginCancelling)
             return;
+        if (!login.IsCurrent)
+        {
+            // The Gateway ends connection-bound sessions itself; nothing is sent to a replacement.
+            RetireLogin();
+            Notify();
+            return;
+        }
         LoginCancelling = true;
         Notify();
         try
         {
-            string? status = await _service.CancelLoginAsync(sessionId);
-            if (_loginSessionId != sessionId)
+            string? status = await login.CancelAsync();
+            if (!ReferenceEquals(_login, login))
                 return;
             if (status == "cancelled")
             {
@@ -319,9 +356,14 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
                 SetLoginError(ModelProviderLoginError.CancelUnconfirmed, null);
             }
         }
+        catch (ModelProviderConnectionChangedException)
+        {
+            if (ReferenceEquals(_login, login))
+                RetireLogin();
+        }
         catch (Exception ex) when (IsExpected(ex))
         {
-            if (_loginSessionId == sessionId)
+            if (ReferenceEquals(_login, login))
             {
                 LoginPhase = GatewayAiSetupPhase.Uncertain;
                 SetLoginError(ModelProviderLoginError.Request, ex.Message);
@@ -346,18 +388,22 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
         }
     }
 
-    private async Task RunLoginRequestAsync(Func<Task<GatewayAiSetupWizardResult>> request)
+    private async Task RunLoginRequestAsync(IModelProviderLogin login, Func<Task<GatewayAiSetupWizardResult>> request)
     {
-        string? sessionId = _loginSessionId;
         try
         {
             GatewayAiSetupWizardResult result = await request();
-            if (_loginSessionId == sessionId)
+            if (ReferenceEquals(_login, login))
                 ApplyLoginResult(result);
+        }
+        catch (ModelProviderConnectionChangedException)
+        {
+            if (ReferenceEquals(_login, login))
+                RetireLogin();
         }
         catch (Exception ex) when (IsExpected(ex))
         {
-            if (_loginSessionId == sessionId)
+            if (ReferenceEquals(_login, login))
             {
                 LoginPhase = GatewayAiSetupPhase.Uncertain;
                 SetLoginError(ModelProviderLoginError.Request, ex.Message);
@@ -367,10 +413,10 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
 
     private async Task PollGatewayStepsAsync()
     {
-        string? sessionId = _loginSessionId;
+        IModelProviderLogin? login = _login;
         try
         {
-            while (sessionId is not null && _loginSessionId == sessionId && LoginActive &&
+            while (login is not null && ReferenceEquals(_login, login) && LoginActive &&
                    LoginPhase == GatewayAiSetupPhase.Running && IsGatewayOwned(LoginStep))
             {
                 if (_loginClock.Elapsed > LoginSessionTimeout)
@@ -382,14 +428,14 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
                 LoginBusy = true;
                 Notify();
                 await Task.Delay(_loginPollInterval);
-                if (_loginSessionId != sessionId)
+                if (!ReferenceEquals(_login, login))
                     break;
-                await RunLoginRequestAsync(() => _service.NextLoginAsync(sessionId, null, null));
+                await RunLoginRequestAsync(login, () => login.NextAsync(null, null));
             }
         }
         finally
         {
-            if (_loginSessionId == sessionId || _loginSessionId is null)
+            if (ReferenceEquals(_login, login) || _login is null)
             {
                 LoginBusy = false;
                 Notify();
@@ -435,7 +481,7 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
 
     private void EndLogin(ModelProviderStatus status, string? detail)
     {
-        _loginSessionId = null;
+        _login = null;
         _loginClock.Reset();
         LoginActive = false;
         LoginStep = null;
@@ -444,6 +490,9 @@ internal sealed class ModelProviderSetupViewModel : INotifyPropertyChanged
         ClearLoginError();
         SetStatus(status, LoginTitle, detail);
     }
+
+    /// <summary>Ends a sign-in whose Gateway connection changed; nothing more is sent for it.</summary>
+    private void RetireLogin() => EndLogin(ModelProviderStatus.SignInInterrupted, null);
 
     private static bool IsGatewayOwned(GatewayAiSetupWizardStep? step) =>
         step is null || step.Type == "progress" || step.Executor == "gateway";
