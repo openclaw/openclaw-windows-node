@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -54,9 +55,9 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
     public string? GetProcessCommandLine(int processId) =>
         WindowsTcpListenerSnapshot.GetProcessCommandLine(processId);
 
-    // Known admin-protected WSL install locations. The binary is not signature-checked: some genuine
-    // WSL builds ship an unsigned relay, and gateway ownership is proven inside the expected distro.
-    // A relay elsewhere is only a warning when that in-distro proof succeeds.
+    // Known admin-protected WSL install locations. Some genuine WSL relays are unsigned.
+    // A relay elsewhere is only a warning when the expected distro owns the guest port.
+    // That guest check does not prove the Windows listener forwards to that distro.
     // Under WindowsApps, only the root of Microsoft's WSL package qualifies; the publisher ID suffix
     // keeps other packaged apps from shipping their own wslrelay.exe.
     private const string WslPackageNamePrefix = "MicrosoftCorporationII.WindowsSubsystemForLinux_";
@@ -255,7 +256,7 @@ public sealed class ManagedLocalGatewayPortProvenanceService
     private readonly IManagedLocalGatewayPortPlatform _platform;
     private readonly IOpenClawLogger _logger;
     private readonly Func<string> _getUserProfilePath;
-    private readonly HashSet<string> _warnedRelayPaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, byte> _warnedRelayPaths = new(StringComparer.OrdinalIgnoreCase);
 
     internal ManagedLocalGatewayPortProvenanceService(
         IManagedLocalGatewayPortPlatform platform,
@@ -301,12 +302,12 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             record.SshTunnel is null &&
             (record.IsLocal || GatewayRecordEditing.ResolveManagedDistroName(record) is not null) &&
             GatewayRecordEditing.IsLoopbackEndpoint(record.Url);
-        // Prove ownership fresh at handoff time rather than trusting an earlier proof.
+        // Recheck the endpoint at handoff time rather than trusting an earlier result.
         return !needsProof ||
-            InspectCore(record).Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway;
+            InspectCore(record, requireRelayIdentity: true).Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway;
     }
 
-    private GatewayEndpointProvenance InspectCore(GatewayRecord record)
+    private GatewayEndpointProvenance InspectCore(GatewayRecord record, bool requireRelayIdentity = false)
     {
         if (record.SshTunnel is not null ||
             GatewayRecordEditing.ResolveManagedDistroName(record) is not { } managedDistroName ||
@@ -347,6 +348,22 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 GatewayEndpointProvenanceKind.ExpectedManagedGateway,
                 uri.Port,
                 Detail: $"Expected WSL gateway owns port {uri.Port} without a Windows relay listener.");
+        }
+
+        var firstListener = listeners[0];
+        if (requireRelayIdentity &&
+            (firstListener.ProcessId <= 0 ||
+             firstListener.ProcessStartTimeUtc is null ||
+             string.IsNullOrWhiteSpace(firstListener.ProcessPath) ||
+             listeners.Any(listener =>
+                 listener.ProcessId != firstListener.ProcessId ||
+                 listener.ProcessStartTimeUtc != firstListener.ProcessStartTimeUtc ||
+                 !string.Equals(listener.ProcessPath, firstListener.ProcessPath, StringComparison.OrdinalIgnoreCase))))
+        {
+            return new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.UnknownListener,
+                uri.Port,
+                Detail: "Windows relay listener identity was incomplete or inconsistent.");
         }
 
         var relayTrustByPath = listeners
@@ -524,7 +541,7 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             if (!trustedRelay)
             {
                 warning = $"{relayTrust.Detail} Continuing because distro '{managedDistroName}' confirms it owns port {port}.";
-                if (_warnedRelayPaths.Add(relayPath!))
+                if (_warnedRelayPaths.TryAdd(relayPath!, 0))
                     _logger.Warn($"[GatewayPort] {warning}");
             }
 
