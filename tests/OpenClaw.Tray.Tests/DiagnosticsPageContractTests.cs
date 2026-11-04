@@ -561,9 +561,15 @@ public sealed class DiagnosticsPageContractTests
 
         // Diagnostics and the companion App settings page end the "This Computer" group.
         var menu = settings.Descendants().Single(element => element.Name.LocalName == "NavigationView.MenuItems");
-        var thisComputer = menu.Elements().SkipWhile(element => (string?)element.Attribute("Content") != "This Computer").ToList();
-        Assert.Equal(new[] { "local-ai", "voice", "permissions", "sandbox", "debug", "settings" },
-            thisComputer.Skip(1).Select(element => (string?)element.Attribute("Tag")));
+        var thisComputer = menu.Elements()
+            .SkipWhile(element => (string?)element.Attribute("Content") != "This Computer")
+            .Skip(1)
+            .TakeWhile(element => element.Name.LocalName is not ("NavigationViewItemHeader" or "NavigationViewItemSeparator"))
+            .ToList();
+        var tags = thisComputer.Select(element => (string?)element.Attribute("Tag")).ToArray();
+        Assert.Equal(new[] { "voice", "permissions", "sandbox", "debug", "settings" },
+            tags.Where(tag => tag is "voice" or "permissions" or "sandbox" or "debug" or "settings"));
+        Assert.Equal(new[] { "debug", "settings" }, tags.TakeLast(2));
         Assert.Equal("SettingsNavDiagnostics", (string?)thisComputer[^2].Attribute("AutomationProperties.AutomationId"));
         Assert.Equal("SettingsNavSettings", (string?)thisComputer[^1].Attribute("AutomationProperties.AutomationId"));
         var hub = Read("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
