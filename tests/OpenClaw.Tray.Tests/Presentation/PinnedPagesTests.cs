@@ -36,8 +36,8 @@ public sealed class PinnedPagesTests
     [Fact]
     public void Visible_OmitsUnknownTags_ButStorageKeepsThem()
     {
-        var visible = PinnedPages.Visible(["future-page", "skills"]);
-        Assert.Equal(["skills"], visible.Select(page => page.Tag).ToArray());
+        var visible = PinnedPages.Visible(["future-page", "channels"]);
+        Assert.Equal(["channels"], visible.Select(page => page.Tag).ToArray());
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public sealed class PinnedPagesTests
         Assert.Equal(HubPageKind.Sandbox, HubPageRegistry.ResolvePage("sandbox"));
         Assert.Equal(tags.Length, tags.Distinct().Count());
         Assert.Equal(
-            ["connection", "sessions", "skills", "channels", "instances", "cron", "agentevents",
+            ["connection", "sessions", "channels", "instances", "cron", "agentevents",
              "config", "usage"],
             tags);
     }
@@ -77,20 +77,20 @@ public sealed class PinnedPagesTests
     {
         using var temp = new TempDir();
         var settings = new SettingsManager(temp.Path);
-        settings.SetPinnedPages("gw-a", ["settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "future-page", "connection"]);
+        settings.SetPinnedPages("gw-a", ["settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "skills", "future-page", "connection"]);
         settings.Save();
         using (var store = Store(temp.Path, out _))
         {
             Assert.Equal(["connection"], PinnedPages.Visible(store.Current.PinnedPagesFor("gw-a")).Select(page => page.Tag).ToArray());
-            store.Update(null, editor => editor.SetPagePinned("gw-a", "skills", true));
-            foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox", "bindings" })
+            store.Update(null, editor => editor.SetPagePinned("gw-a", "channels", true));
+            foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "skills" })
                 store.Update(null, editor => editor.SetPagePinned("gw-a", excluded, false));
         }
         using var reloaded = Store(temp.Path, out _);
-        Assert.Equal(["settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "future-page", "connection", "skills"],
+        Assert.Equal(["settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "skills", "future-page", "connection", "channels"],
             Tags(reloaded.Current.PinnedPagesFor("gw-a")));
-        Assert.Equal(["connection", "skills"], PinnedPages.Visible(reloaded.Current.PinnedPagesFor("gw-a")).Select(page => page.Tag).ToArray());
-        foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox", "bindings" })
+        Assert.Equal(["connection", "channels"], PinnedPages.Visible(reloaded.Current.PinnedPagesFor("gw-a")).Select(page => page.Tag).ToArray());
+        foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "skills" })
             Assert.Empty(PinnedPages.Toggle([], excluded, true));
     }
 
@@ -152,11 +152,11 @@ public sealed class PinnedPagesTests
         using (var store = Store(temp.Path, out _))
         {
             store.Update(null, e => e.SetPagePinned("gw-a", "cron", true));
-            store.Update(null, e => e.SetPagePinned("gw-a", "skills", true));
+            store.Update(null, e => e.SetPagePinned("gw-a", "channels", true));
             store.Update(null, e => e.SetPagePinned("gw-b", "usage", true));
         }
         using var reloaded = Store(temp.Path, out _);
-        Assert.Equal(["cron", "skills"], Tags(reloaded.Current.PinnedPagesFor("gw-a")));
+        Assert.Equal(["cron", "channels"], Tags(reloaded.Current.PinnedPagesFor("gw-a")));
         Assert.Equal(["usage"], Tags(reloaded.Current.PinnedPagesFor("gw-b")));
         Assert.Empty(reloaded.Current.PinnedPagesFor(null));
     }
@@ -339,7 +339,7 @@ public sealed class PinnedPagesTests
     public void WindowWiring_UsesTypedTag_SingleRoutePath_AndNeverRaisesSettingsSaved()
     {
         var pins = ReadSource("Windows", "WorkspaceWindow.Pins.cs");
-        Assert.Contains("OpenSettings(PinnedPages.ResolveRoute(pin.Tag, _agentId), embedded: true)", pins);
+        Assert.Contains("OpenSettings(PinnedPages.ResolveRoute(pin.Tag, SelectedAgentId), embedded: true)", pins);
         Assert.Contains("Width = 22", pins);
         var window = ReadSource("Windows", "WorkspaceWindow.xaml.cs");
         Assert.Contains("ApplySettingsPresentation(view)", window);

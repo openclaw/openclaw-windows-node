@@ -127,10 +127,12 @@ public sealed partial class GatewayScenario
     }
 
     /// <summary>Explicit synthetic setup replies only. The host never executes provider or package operations.</summary>
-    public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true)
+    public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true,
+        bool allowSessionMutations = false)
     {
         var browse = CreateBrowse();
-        return new(browse._sessions, browse._reads, responder, advertiseSetup);
+        return new(browse._sessions, browse._reads, responder, advertiseSetup,
+            allowSessionMutations: allowSessionMutations);
     }
 
     /// <summary>Synthetic historical Talk rows, not a recording of a user's conversation.</summary>
@@ -277,7 +279,6 @@ public sealed partial class GatewayScenario
                 ts = Epoch.ToUnixTimeMilliseconds(), channelOrder = Array.Empty<string>(),
                 channels = new { }, channelAccounts = new { }
             }),
-            ["skills.status"] = JsonSerializer.SerializeToElement(new { skills = Array.Empty<object>() }),
             ["usage.status"] = JsonSerializer.SerializeToElement(new
             {
                 updatedAt = Epoch.ToUnixTimeMilliseconds(), providers = Array.Empty<object>()
@@ -483,8 +484,13 @@ public sealed partial class GatewayScenario
 
     private object CreateConversation(JsonElement p)
     {
-        ValidateProperties(p, "parentSessionKey", "emitCommandHooks", "succeedsParent");
-        var parent = FindSession(RequiredString(p, "parentSessionKey"));
+        ValidateProperties(p, "parentSessionKey", "emitCommandHooks", "succeedsParent", "agentId");
+        var parent = p.TryGetProperty("parentSessionKey", out _)
+            ? FindSession(RequiredString(p, "parentSessionKey"))
+            : p.TryGetProperty("agentId", out _)
+                ? _sessions.FirstOrDefault(session => session.AgentId == RequiredString(p, "agentId"))
+                    ?? throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agent.")
+                : FindSession(MainSessionKey);
         OptionalBoolean(p, "emitCommandHooks");
         if (OptionalBoolean(p, "succeedsParent") == true)
             throw new FixtureRequestException("INVALID_PARAMS", "The fixture only supports parallel session creation.");
@@ -637,7 +643,6 @@ public sealed partial class GatewayScenario
         {
             "health" => ["deep", "probe"],
             "channels.status" => ["probe", "timeoutMs"],
-            "skills.status" => ["agentId"],
             _ => []
         });
         if (method == "health")
@@ -649,12 +654,6 @@ public sealed partial class GatewayScenario
         {
             OptionalBoolean(p, "probe");
             PositiveInt(p, "timeoutMs", 10000);
-        }
-        else if (method == "skills.status")
-        {
-            var agent = OptionalString(p, "agentId");
-            if (agent is not null and not ("main" or "research"))
-                throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agentId.");
         }
         return _reads[method];
     }
@@ -672,7 +671,7 @@ public sealed partial class GatewayScenario
         or "sessions.compaction.branch" or "node.invoke" or "exec.approval.resolve" or "node.rename"
         or "node.pair.approve" or "node.pair.reject" or "node.pair.remove" or "device.pair.approve"
         or "device.pair.reject" or "device.token.rotate" or "device.token.revoke" or "update.run"
-        or "cron.add" or "cron.update" or "cron.remove" or "cron.run" or "skills.install" or "skills.update"
+        or "cron.add" or "cron.update" or "cron.remove" or "cron.run"
         or "projects.add";
 
     internal static void ValidateProperties(JsonElement p, params string[] names)

@@ -179,7 +179,7 @@ public sealed partial class WorkspaceWindow
         }
         if (e.InvokedItemContainer?.Tag is not PinnedPageTag pin) return;
         // Agent-scoped pages target the assistant selected in Chat now, never the last Settings agent.
-        OpenSettings(PinnedPages.ResolveRoute(pin.Tag, _agentId), embedded: true);
+        OpenSettings(PinnedPages.ResolveRoute(pin.Tag, SelectedAgentId), embedded: true);
     }
 
     private void OnPagesFlyoutOpening(object sender, object e)

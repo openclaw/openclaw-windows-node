@@ -427,4 +427,19 @@ public class SetupLoggerTests : IDisposable
         Assert.Equal(LogLevel.Debug, entries[0].Level);
         Assert.Contains("state", entries[0].Message);
     }
+
+    [Fact]
+    public void LoggingAfterDispose_DoesNotThrowAndStopsWritingToFile()
+    {
+        var path = Path.Combine(_tempDir, "dispose-check.jsonl");
+        var logger = new SetupLogger(path);
+        logger.Info("before");
+        logger.Dispose();
+
+        logger.Info("after-dispose");
+
+        var content = File.ReadAllText(path);
+        Assert.Contains("before", content);
+        Assert.DoesNotContain("after-dispose", content);
+    }
 }

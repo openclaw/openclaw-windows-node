@@ -170,15 +170,15 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await CaptureIfRequestedAsync(run, "pins-offline-retained-disabled.png");
 
             Invoke(FindById(run, "WorkspacePagesCustomize")!);
-            await WaitUiAsync(run, () => FindById(run, "WorkspacePagesToggle:skills") is not null, "offline picker");
+            await WaitUiAsync(run, () => FindById(run, "WorkspacePagesToggle:channels") is not null, "offline picker");
             foreach (var tag in identities.Keys)
             {
                 var toggle = FindById(run, $"WorkspacePagesToggle:{tag}")!;
                 Assert.True(toggle.Current.IsEnabled);
                 Assert.Equal(ToggleState.On, ((TogglePattern)toggle.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
             }
-            Invoke(FindById(run, "WorkspacePagesToggle:skills")!);
-            await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:skills") is { Current.IsEnabled: false },
+            Invoke(FindById(run, "WorkspacePagesToggle:channels")!);
+            await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:channels") is { Current.IsEnabled: false },
                 "offline picker can add an unavailable page");
             Assert.Equal(composerIdentity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
             ReleaseHandshake();
@@ -190,7 +190,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 Assert.Equal(identity, retained.GetRuntimeId());
                 Assert.True(retained.Current.IsEnabled);
             }
-            Assert.True(FindById(run, "WorkspacePinnedPage:skills")!.Current.IsEnabled);
+            Assert.True(FindById(run, "WorkspacePinnedPage:channels")!.Current.IsEnabled);
             Invoke(FindById(run, "WorkspacePinnedPage:sessions")!);
             await WaitUiAsync(run, () => FindById(run, "SessionsPageMarker")?.Current.IsOffscreen == false, "restored pin remains usable");
             await CaptureIfRequestedAsync(run, "pins-reconnected-enabled.png");

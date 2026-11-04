@@ -173,12 +173,6 @@
   <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
     <value>在可用時開啟頻道設定，用於結構描述導向的驗證、QR、登入和儀表板流程。</value>
   </data>
-  <data name="StatusSkillsTitle.Text" xml:space="preserve">
-    <value>技能</value>
-  </data>
-  <data name="StatusSkillsDescription.Text" xml:space="preserve">
-    <value>當連線的閘道支援時，開啟閘道技能設定。</value>
-  </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / 排程</value>
   </data>
@@ -1105,9 +1099,6 @@
   <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
     <value>使用畫布</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
-    <value>啟用技能</value>
-  </data>
   <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
     <value>開機時啟動 OpenClaw</value>
   </data>
@@ -1284,9 +1275,6 @@
   </data>
   <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
     <value>視覺工作區</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
-    <value>設定 → 技能</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
     <value>來源不允許: 閘道拒絕此連線</value>
@@ -2076,18 +2064,6 @@
   <data name="CancelButton.Content" xml:space="preserve">
     <value>取消</value>
   </data>
-  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>🧩 技能</value>
-  </data>
-  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
-    <value>所有代理程式</value>
-  </data>
-  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
-    <value>未安裝技能</value>
-  </data>
-  <data name="MarketplaceLink.Content" xml:space="preserve">
-    <value>瀏覽技能市集 →</value>
-  </data>
   <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
     <value>總成本</value>
   </data>
@@ -2249,9 +2225,6 @@
   </data>
   <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
     <value>代理程式事件</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
-    <value>技能</value>
   </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>代理程式</value>
@@ -5026,27 +4999,6 @@
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>已儲存</value>
   </data>
-  <data name="SkillsPage_Skills.Text" xml:space="preserve">
-    <value>🧩 技能</value>
-  </data>
-  <data name="SkillsPage_AllAgents.Content" xml:space="preserve">
-    <value>所有代理</value>
-  </data>
-  <data name="SkillsPage_Enabled.Text" xml:space="preserve">
-    <value>已啟用</value>
-  </data>
-  <data name="SkillsPage_Disabled.Text" xml:space="preserve">
-    <value>已停用</value>
-  </data>
-  <data name="SkillsPage_LoadingSkills.Text" xml:space="preserve">
-    <value>正在載入技能…</value>
-  </data>
-  <data name="SkillsPage_NoSkillsInstalled.Text" xml:space="preserve">
-    <value>未安裝技能</value>
-  </data>
-  <data name="SkillsPage_SkillsExtendYourAgent.Text" xml:space="preserve">
-    <value>技能可擴充您代理的能力。透過 CLI 或 ClawHub 安裝技能。</value>
-  </data>
   <data name="UsagePage_GatewayDisconnected.Title" xml:space="preserve">
     <value>閘道已中斷</value>
   </data>
@@ -5223,12 +5175,6 @@
   </data>
   <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
     <value>開啟聊天</value>
-  </data>
-  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
-    <value>已啟用</value>
-  </data>
-  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
-    <value>已停用</value>
   </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>預覽</value>
@@ -6239,12 +6185,6 @@
   <data name="Command_GoToSettings_Title" xml:space="preserve">
     <value>Go to Settings</value>
   </data>
-  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
-    <value>Registered skills</value>
-  </data>
-  <data name="Command_GoToSkills_Title" xml:space="preserve">
-    <value>Go to Skills</value>
-  </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
   </data>
@@ -6705,21 +6645,6 @@
   </data>
   <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Open this session in Chat</value>
-  </data>
-  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
-    <value>已停用</value>
-  </data>
-  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
-    <value>已啟用</value>
-  </data>
-  <data name="SkillsPage_CountFormat" xml:space="preserve">
-    <value>({0}/{1} 已啟用)</value>
-  </data>
-  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
-    <value>已停用 ({0})</value>
-  </data>
-  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
-    <value>已啟用 ({0})</value>
   </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
@@ -7443,8 +7368,6 @@
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>與我的代理程式聊天</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>開啟 Chat，與代理程式聊天。</value></data>
   <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>與我的代理程式聊天，建議</value></data>
-  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>探索技能</value></data>
-  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>瀏覽代理程式的技能。不會自動安裝任何內容。</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>連接頻道</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp、Telegram 等。由您選擇何時登入。</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>重新檢查就緒狀態</value></data>
@@ -7794,7 +7717,6 @@
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>啟動並驗證 Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重試設定</value></data>
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>收集 Gateway 診斷資訊</value></data>
-  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>檢視設定記錄</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>收集 Gateway 診斷資訊以取得可檢視或分享的已遮蔽 ZIP，或在隔離的 Gateway 中開啟終端機。然後選擇「重試設定」。</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>Gateway 未在 {0} 秒內就緒。首次啟動可能較慢。請收集 Gateway 診斷資訊查看原因，然後選擇「重試設定」。若要允許更長的啟動時間，請將環境變數 {1} 設為秒數並重新啟動 Companion。</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>正在收集已遮蔽的 Gateway 診斷資訊...</value></data>
@@ -7803,6 +7725,9 @@
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>無法收集 Gateway 診斷資訊：{0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>無法開啟 Gateway 終端機：{0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>僅供預覽。不會安裝任何套件或啟動 Gateway。</value></data>
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>詳細活動</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>開啟記錄檔</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0}未完成</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>節點模式連線至 Gateway 並完成配對後，即可使用這些 Windows 功能。Windows 權限和命令核准仍然適用。</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>原生 Gateway 已設定</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}。您可以在 Companion 設定中變更這些選項。</value></data>
@@ -7844,7 +7769,6 @@
   <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
-  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
   <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
@@ -7945,7 +7869,6 @@
   <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
   <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
   <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
-  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
   <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
   <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
   <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>
@@ -8188,4 +8111,19 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在處理此問題。請重新整理以查看其狀態。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>請為每個問題選擇有效的答案。</value></data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>使用已連線 Gateway 的語音</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>聊天朗讀和自動回覆使用 Gateway 設定的語音。文字會傳送至 Gateway 及其語音供應商。金鑰保留在 Gateway 上。本機節點和 MCP 語音不受影響。</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>不會自動改用本機。若無法使用，請關閉此選項以使用本機供應商。</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>停止</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>正在產生 Gateway 語音…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Gateway 語音：{0}。</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>請在連線設定中連接 Gateway 以使用其語音。</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>此 Gateway 未宣告必要的語音 RPC。請更新 Gateway 或關閉 Gateway 語音。</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>Gateway 語音需要 operator.write 權限。請檢查 Gateway 對此裝置的核准。Companion 不會變更權限。</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>語音文字為空或超過 Companion 的 4096 字元限制。請選擇較短的訊息。</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>Gateway 傳回空白、無效或過大的音訊。請檢查其 TTS 設定。未播放任何音訊。</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>不支援此 Gateway 音訊格式。請在 Gateway 上設定 MP3 或 WAV 輸出。</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 語音已逾時。合成可能已完成。再次嘗試前請檢查 Gateway；未進行自動重試。</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 語音失敗。請檢查其語音設定和供應商配額。未改用本機或自動重試。</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 無法播放語音音訊。請檢查輸出裝置。未進行自動重試。</value></data>
 </root>

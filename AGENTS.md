@@ -19,6 +19,7 @@ requirement. A tool's successful exit is not proof that the intended work ran.
 | Select tests and required proof | [Windows testing](.agents/skills/openclaw-testing/SKILL.md); use the [proof skill](.agents/skills/openclaw-proof-validation/SKILL.md) for runtime evidence |
 | Simplify your own completed change before PR preparation | [PR simplification](.agents/skills/pr-simplify/SKILL.md); preserve distinct Windows contracts and reprove the reduced diff |
 | Prepare a local PR body and readiness handoff | [Windows PR preparation](.agents/skills/windows-pr-prepare/SKILL.md); publication needs separate authority |
+| Retrigger CI on a PR with failing checks | [retrigger-flaky-ci](.agents/skills/retrigger-flaky-ci/SKILL.md); rerun only failures unrelated to the PR's changes, otherwise warn |
 | Change a WinUI owner or its caller | [WinUI instructions](src/OpenClaw.Tray.WinUI/AGENTS.md) and the affected architecture ledger rows |
 | Debug Companion, setup, Gateway connection, node capabilities, packaging, or `system.run` | [Windows debugging](.agents/skills/openclaw-debugging/SKILL.md) |
 | Drive the app through local MCP | [windows-app-mcp](.agents/skills/windows-app-mcp/SKILL.md); use [winnode](.agents/skills/winnode/SKILL.md) for the shipped command contract |

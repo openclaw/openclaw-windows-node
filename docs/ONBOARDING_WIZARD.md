@@ -23,7 +23,7 @@ separate and does not claim or restore Companion management.
 
 After setup restarts Companion, destination handoff waits for native connection
 startup and any already-admitted Local AI recovery before fresh model verification.
-New preparation receipts start one execution window when issued, 27 minutes at
+New preparation receipts start one execution window when issued, 31 minutes at
 the default startup budget and longer with `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`,
 before restarting Companion. This includes old-process Local AI teardown, whose
 guarded WSL Gateway restart may exceed five minutes. First acquisition and retry
@@ -202,7 +202,7 @@ remain removed; the general security notice and provider/onboarding consent
 remain explicit. With an isolated-session Gateway package, the package provisions
 and runs the agent account; the known legacy proof package retains its original
 same-user runtime. The UI capability gate alone never proves isolation.
-Native and WSL use the **same focused `AiSetupPage` and three-choice `AiReadyPage`**,
+Native and WSL use the **same focused `AiSetupPage` and two-choice `AiReadyPage`**,
 not separate normal provider/model wizards. The classic `WizardPage` is an explicit
 compatibility option only when the required setup methods are unavailable.
 WSL is always visible. It is first when native is unavailable and second after a
@@ -274,7 +274,7 @@ Retry checks registration again before invoking WinGet. Companion does not downl
 change certificate trust, or uninstall packages on cancellation.
 
 Progress reuses the WSL spinner/checkmark rows. Normal completion uses the same
-verified-model heading and three destination choices as WSL, without a native-only
+verified-model heading and two destination choices as WSL, without a native-only
 Gateway/capabilities summary. Gateway details and Windows permissions remain in
 their existing Connection and Permissions settings. AI readiness does not imply
 that a Windows node is paired or that command approvals have been granted.
@@ -313,8 +313,8 @@ The native path:
    Native console output and scoped terminal/restart/cancel recovery appear only
    for errors, skipped/unavailable console output or uncertain outcomes in the
    shared page/provider dialog. Healthy provider selection has no extra native controls.
-4. The verified chooser offers **Talk to my agent**, **Connect channels**, and
-   **Explore skills**. Choosing a destination rechecks the same Gateway, package
+4. The verified chooser offers **Talk to my agent** and **Connect channels**.
+   Choosing a destination rechecks the same Gateway, package
    family and runtime contract, signing identity, agent, session and primary model.
    After draining the operator, setup retains isolated stop ownership through
    the explicit package restart. The legacy path first stops its own runtime
@@ -449,9 +449,9 @@ completion coordinator. Its celebrating mascot and "Your AI is ready" heading
 follow real primary-model verification, not discovery or browser sign-in.
 Showing the page creates no pending handoff and performs no finalization.
 
-The final screen has exactly three choices: **Talk to my agent**, with a visible
+The final screen has exactly two choices: **Talk to my agent**, with a visible
 Recommended badge, opens Chat; **Connect channels** opens Channels (WhatsApp,
-Telegram, and more); **Explore skills** opens Skills for the verified agent.
+Telegram, and more).
 There are no bottom Return or Skip buttons; the progress dots remain. Selecting
 a card is the final action, with no extra Finish button. These are navigation
 choices, never automatic sign-in, channel configuration, or skill installation.
@@ -461,8 +461,8 @@ channel focus behavior, but are not separate choices on this screen.
 Each explicit choice drains the prior AI page, rechecks the same Gateway,
 endpoint, agent, model and main session through bounded verification,
 then finalizes Windows choices once. The prior page drain has its own 30-second
-deadline. Fresh proof has a separate six-minute ceiling, allowing the
-native owner's 210-second reconnect budget, the existing 120-second exact-model
+deadline. Fresh proof has a separate eight-minute ceiling at the default startup
+budget, allowing the native owner's 330-second reconnect budget, the existing 120-second exact-model
 RPC budget and authority-check overhead. Neither deadline runs across finalization
 or destination publication: those retain caller cancellation and their underlying
 operation budgets, without abandoning or automatically replaying mutations.
@@ -476,19 +476,23 @@ verification. MCP-only/deferred routes do not claim verified AI.
 
 ### Native startup and completion deadlines
 
-A reported slow native cold start took about 136 seconds. Conditional on a
-successful package acknowledgement, Companion uses a three-minute startup
+A reported slow native cold start took about 136 seconds. Later reports on slow
+ARM64 and x64 hosts reached a verified listener after about 165 to 210 seconds
+([#1969](https://github.com/openclaw/openclaw-windows-node/issues/1969)), so the
+former three-minute budget rolled back starts that were still progressing.
+Conditional on a successful package acknowledgement, Companion uses a five-minute startup
 budget, with ten seconds for confirmation after a late acknowledgement, subject
-to the caller deadline (at most 190 seconds for start/status), then still requires fresh selected-port and process-sequence ownership
+to the caller deadline (at most 310 seconds for start/status), then still requires fresh selected-port and process-sequence ownership
 proof. It never treats an `unhealthy`/`starting` observation as ready, waits for
 an unrelated pre-existing start, or retries the start command while polling.
 If a listener appears between a pending status and the host snapshot, one immediate
 status recheck may admit only a fresh `running` attestation. The full selected-port,
 listener and process-sequence checks still run; another pending status or failed
 attribution rejects the start.
-The startup budget defaults to three minutes. Set `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`
+The startup budget defaults to five minutes. Set `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`
 to whole seconds (30 to 3600) before starting Companion to change it; the published
-connection phase and credential handoff budgets grow with a longer value.
+connection phase and credential handoff budgets follow it. Only the published connection
+phase keeps a 210-second floor for shorter values.
 
 When native setup fails after the package is installed, the setup page keeps the
 failed step, shows the typed failure (for a startup timeout: the phase, budget and
@@ -503,24 +507,26 @@ last package status) and offers recovery actions:
 
 The timeout guidance names the override variable. **Retry setup** reruns the full flow.
 
-The published native connection borrow gets up to 210 seconds for startup,
+The published native connection borrow gets up to 330 seconds at the default
+startup budget for startup,
 authenticated handshake and authorization before exact-model verification.
 Preflight and final inspection also consume that outer budget; the confirmation
 allowance never extends it. Slow surrounding work can therefore cancel confirmation.
-Native credential reauthorization also has a bounded 210-second allowance instead
+Native credential reauthorization also has a bounded 330-second allowance instead
 of the unrelated five-second SSH/listener-check budget. Non-native authorization
 keeps its existing deadline. Caller cancellation, superseded attempts, record drift
 and connection error states still reject admission.
 Page drain, selection
 verification, runtime startup and published-owner handoff are distinct lifetimes.
 
-`SetupNativeCompletionTiming` defines the published path's enforced phase ceilings:
-210 seconds for the first borrow, 1,020 seconds to join already-admitted Local AI
-recovery, 210 seconds for a fresh post-recovery borrow, 150 seconds for exact-model
+`SetupNativeCompletionTiming` defines the published path's enforced phase ceilings
+at the default startup budget:
+330 seconds for the first borrow, 1,020 seconds to join already-admitted Local AI
+recovery, 330 seconds for a fresh post-recovery borrow, 150 seconds for exact-model
 verification (including the existing 120-second RPC and authorization), and
-30 seconds for navigation. Their 1,620-second total bounds the execution window.
+30 seconds for navigation. Their 1,860-second total bounds the execution window.
 New preparation receipts also charge old-process teardown against this same
-window, so acquisition receives only the remaining time, not a fresh 27 minutes.
+window, so acquisition receives only the remaining time, not a fresh 31 minutes.
 A phase can fail earlier due to its underlying owner or caller cancellation;
 unused phase time is not a guarantee that a different phase may overrun its ceiling.
 Recovery waits never initiate or replay a provider mutation.
@@ -588,11 +594,6 @@ their independent connection-generation counters need not match. Missing
 authority fields in earlier development receipts fail closed and require new
 verification. The persisted endpoint binding includes the effective SSH local
 forwarding endpoint, which is checked before a fresh connection is attempted.
-
-The Skills handoff ignores unscoped cached status, loads a response-bound
-`skills.status` for the verified agent, and rechecks the same connected client
-before presentation. Its agent filter stays bound to that agent. An unavailable
-or changed Gateway does not consume the receipt as a successful page launch.
 
 Native setup offers the existing **Launch OpenClaw at sign-in** choice on
 **PC capabilities**, before package installation. Managed WSL keeps that choice
@@ -674,8 +675,8 @@ An invalid regular `restart.json` is rechecked and removed under its writer leas
 before reporting the error once. A newer valid handle, other handoff files and
 reparse paths are never removed by this recovery cleanup.
 
-After restart, native launch re-verifies ownership before mounting Chat,
-Channels or Skills. Legacy targeted Channels uses a fresh response from the bound Gateway,
+After restart, native launch re-verifies ownership before mounting Chat
+or Channels. Legacy targeted Channels uses a fresh response from the bound Gateway,
 never generic fallback rows as evidence of support. Missing authoritative
 metadata produces an unconfirmed/retry state; an offered-channel list that
 omits the target produces an unavailable state. Native Chat selects the verified
@@ -689,8 +690,8 @@ The setup flow walks users through:
 2. **Gateway** - Capability-gated native Gateway recommendation (with WSL fallback), existing, remote, local MCP only, or deferred setup
 3. **PC capabilities** - Strict, Balanced (Recommended), Open, and inline Fine-tune; Node mode, local MCP and Ollama sharing stay independent. No Gateway-installation disclosure, Windows-access advisory panel, or probe runs here.
 4. **Gateway setup** - Managed WSL reviews installation and replacement consent; native Gateway checks its package and prepares a dedicated profile without WSL or Local AI installation.
-5. **AI setup** - Native Gateway, WSL and existing/remote gateways use focused AI setup and live model verification, followed by the same three destination choices. Native uses its setup-owned runtime until finalization; WSL workspace integration remains WSL-only.
-6. **Completion** - Both verified focused AI flows open Chat, Channels or Skills. Only the explicit classic compatibility fallback retains its setup-complete and connection handoff.
+5. **AI setup** - Native Gateway, WSL and existing/remote gateways use focused AI setup and live model verification, followed by the same two destination choices. Native uses its setup-owned runtime until finalization; WSL workspace integration remains WSL-only.
+6. **Completion** - Both verified focused AI flows open Chat or Channels. Only the explicit classic compatibility fallback retains its setup-complete and connection handoff.
 
 `SetupWindow` owns one `SetupAccessDraft` over the same `SetupConfig` for the
 entire flow. The native connection contract separates verify-only **Check** from
@@ -1258,7 +1259,7 @@ The headless setup engine also treats one terminal wizard payload as completion 
 When the gateway config wizard surfaces an error and the active gateway is an app-managed WSL distro, the error state also offers **Open terminal** and **Restart gateway**. The wizard does not parse or classify the gateway's error text; it leaves the message visible and selectable so the user can copy any command the gateway reports. The buttons reuse the shared `GatewayTerminalLauncher` and `WslGatewayController` (in `OpenClaw.Connection`, also used by the Connections tab). Restart re-enters the gateway config wizard (the provider/model onboarding step - not the whole V2 onboarding, and without re-installing the WSL distro) so fixes such as newly-installed tools are picked up on `PATH`. Because the gateway restart clears its wizard session, this resumes at the first config question rather than the exact step that failed. Detection is gated on `GatewayRecord.SetupManagedDistroName`, so it never appears for remote/SSH gateways.
 
 ### Completion and recovery
-Focused setup finishes through the three-choice native page. Startup is reviewed
+Focused setup finishes through the two-choice native page. Startup is reviewed
 before completion and defaults on for a fresh, non-isolated setup. Recovery
 preserves that preference; isolated hosts keep it off. The classic completion
 page retains its summary and Open chat action. Errors retain diagnostics and
@@ -1395,7 +1396,7 @@ clean directory and checks every setup asset, including nested SVGs and notices.
 
 Run the repository-required build, Shared and Tray suites, plus
 `OpenClaw.SetupEngine.Tests` for the flow and AI protocol contracts.
-`AiReadyPageRenderingTests` covers the three destinations and isolated startup.
+`AiReadyPageRenderingTests` covers the two destinations and isolated startup.
 `ApprovedMock_FivePagesAndProviderPopup_LightAndDark` provides an opt-in native
 comparison without installation. Building fixtures alone is not rendered proof;
 high contrast and Windows text scaling need authorized visible validation.

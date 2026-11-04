@@ -25,7 +25,6 @@ internal static class PinnedPages
     [
         new("connection", "HubWindow_NavigationViewItem_88.Content", "Connection"),
         new("sessions", "HubWindow_NavigationViewItem_91.Content", "Sessions"),
-        new("skills", "HubWindow_NavigationViewItem_97.Content", "Skills"),
         new("channels", "HubWindow_NavigationViewItem_109.Content", "Channels"),
         new("instances", "HubWindow_NavigationViewItem_112.Content", "Instances"),
         new("cron", "HubWindow_NavigationViewItem_124.Content", "Cron"),
