@@ -1,5 +1,6 @@
 namespace OpenClaw.SetupEngine.Tests;
 
+[Collection(EnvironmentVariableCollection.Name)]
 public sealed class NativeGatewayCliTimeoutTests
 {
     [Fact]
@@ -11,6 +12,8 @@ public sealed class NativeGatewayCliTimeoutTests
             Environment.SetEnvironmentVariable(NativeGatewayCliTimeout.TimeoutEnvironmentVariable, null);
             // An isolated-session `openclaw config validate --json` was observed at ~131 s on ARM64.
             Assert.True(NativeGatewayCliTimeout.ResolveTimeout() > TimeSpan.FromSeconds(131));
+            Assert.Equal(NativeGatewayCliTimeout.ResolveTimeout(),
+                NativeGatewaySetupService.ConfigurationValidationTimeout);
         }
         finally
         {
@@ -30,10 +33,11 @@ public sealed class NativeGatewayCliTimeoutTests
         try
         {
             Environment.SetEnvironmentVariable(NativeGatewayCliTimeout.TimeoutEnvironmentVariable, value);
-            Assert.Equal(expectedSeconds is { } seconds
+            var expected = expectedSeconds is { } seconds
                 ? TimeSpan.FromSeconds(seconds)
-                : NativeGatewayCliTimeout.DefaultTimeout,
-                NativeGatewayCliTimeout.ResolveTimeout());
+                : NativeGatewayCliTimeout.DefaultTimeout;
+            Assert.Equal(expected, NativeGatewayCliTimeout.ResolveTimeout());
+            Assert.Equal(expected, NativeGatewaySetupService.ConfigurationValidationTimeout);
         }
         finally
         {
