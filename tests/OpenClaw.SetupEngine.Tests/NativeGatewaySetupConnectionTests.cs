@@ -15,6 +15,33 @@ public sealed class NativeGatewaySetupConnectionTests
     private const string StaleDeviceToken = "stale-operator-device-token-not-a-production-credential";
 
     [Fact]
+    public async Task ReplacementSessions_SharingLogRetainDistinctClientAttemptIdentities()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        using var log = new SetupLogger(Path.Combine(fixture.Temp.Path, "replacement-handshakes.jsonl"));
+        fixture.Host.HandshakeObservation = log.HandshakeObservation;
+        for (var session = 0; session < 2; session++)
+        {
+            await using var owner = await fixture.PrepareAsync();
+            await using var connection = await NativeGatewaySetupConnection.ConnectAsync(owner);
+            Assert.True(connection.IsConnected);
+        }
+        log.Dispose();
+
+        var entries = File.ReadAllLines(log.FilePath!)
+            .Select(line => JsonSerializer.Deserialize<JsonElement>(line))
+            .Where(entry => entry.GetProperty("msg").GetString() == "native.gateway.handshake")
+            .ToArray();
+        Assert.Single(entries.Select(entry => entry.GetProperty("run").GetString()).Distinct());
+        var accepted = entries.Select(entry => entry.GetProperty("data"))
+            .Where(data => data.GetProperty("phase").GetString() == "ConnectAccepted").ToArray();
+        Assert.Equal(2, accepted.Length);
+        Assert.All(accepted, data => Assert.Equal(1, data.GetProperty("transport_generation").GetInt64()));
+        Assert.Equal(2, accepted.Select(data => data.GetProperty("connection_attempt").GetInt64()).Distinct().Count());
+    }
+
+    [Fact]
     public async Task StartupRejections_RetryWithinSetupLifetimeWithoutRetiringAcceptedCredential()
     {
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
@@ -46,7 +73,8 @@ public sealed class NativeGatewaySetupConnectionTests
         Assert.Equal(4, Assert.Single(entries, entry =>
             entry.GetProperty("phase").GetString() == "ConnectAccepted")
             .GetProperty("transport_generation").GetInt64());
-        Assert.All(entries, entry => Assert.Equal(1, entry.GetProperty("connection_attempt").GetInt64()));
+        Assert.True(Assert.Single(entries.Select(entry => entry.GetProperty("connection_attempt").GetInt64())
+            .Distinct()) > 0);
         var output = File.ReadAllText(log.FilePath!);
         Assert.DoesNotContain(Token, output);
         Assert.DoesNotContain(StaleDeviceToken, output);

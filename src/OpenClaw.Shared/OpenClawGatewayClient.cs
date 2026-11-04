@@ -239,8 +239,26 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 _handshakeStartedTimestamp = _handshakePhaseTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
             }
             ObserveHandshake(connectionGeneration, phase,
-                failureKind ?? (error is null ? null : GatewayErrorClassifier.Classify(error.ToString())));
+                failureKind ?? (error is null ? null : ClassifyTransportObservation(error)));
         }
+    }
+
+    private static GatewayErrorKind ClassifyTransportObservation(Exception error)
+    {
+        var fallback = GatewayErrorKind.Unknown;
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
+            if (current is System.Security.Authentication.AuthenticationException)
+                return GatewayErrorKind.Tls;
+            if (current is System.Net.Sockets.SocketException or TimeoutException)
+                return GatewayErrorKind.Network;
+            var kind = GatewayErrorClassifier.Classify(current.Message);
+            if (kind != GatewayErrorKind.Unknown)
+                return kind;
+            if (current is System.Net.WebSockets.WebSocketException or System.Net.Http.HttpRequestException or IOException)
+                fallback = GatewayErrorKind.Network;
+        }
+        return fallback;
     }
 
     private void ObserveHandshake(long generation, GatewayHandshakePhase phase,

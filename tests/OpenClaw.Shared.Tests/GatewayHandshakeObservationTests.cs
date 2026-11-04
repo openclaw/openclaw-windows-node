@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Text.Json;
 using OpenClaw.Shared;
@@ -8,6 +10,57 @@ namespace OpenClaw.Shared.Tests;
 
 public sealed class GatewayHandshakeObservationTests
 {
+    [Fact]
+    public async Task RefusedTransport_ReportsNetworkWithoutClassifyingStackFrames()
+    {
+        using var temp = new TempDirectory();
+        using var reserved = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        reserved.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        var endpoint = (IPEndPoint)reserved.LocalEndPoint!;
+        using var client = new OpenClawGatewayClient($"ws://127.0.0.1:{endpoint.Port}", "fixture-token",
+            NullLogger.Instance, identityPath: temp.Path);
+        var failed = new TaskCompletionSource<GatewayHandshakeObservation>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.HandshakeObserved += (_, observation) =>
+        {
+            if (observation.Phase == GatewayHandshakePhase.Failed)
+                failed.TrySetResult(observation);
+        };
+
+        await client.ConnectAsync();
+        var observation = await failed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(GatewayErrorKind.Network, observation.FailureKind);
+        Assert.True(observation.TransportGeneration > 0);
+    }
+
+    [Theory]
+    [InlineData(GatewayErrorKind.Network)]
+    [InlineData(GatewayErrorKind.Tls)]
+    [InlineData(GatewayErrorKind.Auth)]
+    [InlineData(GatewayErrorKind.Unknown)]
+    public async Task TransportFailure_UsesExceptionCauseWithoutStackOrTypeName(GatewayErrorKind expected)
+    {
+        using var temp = new TempDirectory();
+        using var client = new ObservationClient(temp.Path);
+        var observations = new List<GatewayHandshakeObservation>();
+        client.HandshakeObserved += (_, observation) => observations.Add(observation);
+        Exception cause = expected switch
+        {
+            GatewayErrorKind.Network => new SocketException((int)SocketError.ConnectionRefused),
+            GatewayErrorKind.Tls => new System.Security.Authentication.AuthenticationException("sensitive-sentinel"),
+            GatewayErrorKind.Auth => new InvalidOperationException("unauthorized sensitive-sentinel"),
+            _ => new InvalidOperationException("sensitive-sentinel")
+        };
+        await client.BeginAttemptAsync(1);
+
+        client.ObserveTransport(1, GatewayHandshakePhase.Failed,
+            new InvalidOperationException("unrecognized outer failure", cause));
+
+        Assert.Equal(expected, Assert.Single(observations,
+            observation => observation.Phase == GatewayHandshakePhase.Failed).FailureKind);
+        Assert.DoesNotContain("sensitive-", JsonSerializer.Serialize(observations));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
