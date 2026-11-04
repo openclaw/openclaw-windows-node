@@ -71,6 +71,29 @@ function Get-StartupPhaseWindows {
     return $windows
 }
 
+function Get-StartupArmValidity {
+    param($Arm)
+    if ($null -eq $Arm -or $Arm.status -ne 'captured' -or $null -eq $Arm.trace) {
+        return [pscustomobject]@{
+            Status = if ($Arm) { [string]$Arm.status } else { 'missing' }
+            BlockedChild = 0
+            BlockedNetwork = 0
+            RejectionReason = $null
+        }
+    }
+    $blockedChild = if ($null -ne $Arm.trace.blocked) { [int]$Arm.trace.blocked.child } else { 0 }
+    $blockedNetwork = if ($null -ne $Arm.trace.blocked) { [int]$Arm.trace.blocked.network } else { 0 }
+    $reasons = @()
+    if ($blockedChild -gt 0) { $reasons += 'blocked-child-process' }
+    if ($blockedNetwork -gt 0) { $reasons += 'blocked-network' }
+    [pscustomobject]@{
+        Status = if ($reasons.Count -gt 0) { 'rejected' } else { 'captured' }
+        BlockedChild = $blockedChild
+        BlockedNetwork = $blockedNetwork
+        RejectionReason = $reasons -join ','
+    }
+}
+
 function ConvertTo-UtcFileTime {
     # ConvertFrom-Json in PowerShell 7 may already have turned ISO strings into DateTime values.
     param($Value)
@@ -122,13 +145,19 @@ function Get-NativeSetupMilestones {
     AI-setup page) is observed in the UI and supplied separately; see Resolve-NativeSetupOutcome.
     Only fixed message prefixes are read; message bodies are not returned.
     #>
-    param([string[]]$Lines)
+    param(
+        [string[]]$Lines,
+        [Int64]$AttemptStartTicks = 0,
+        [Int64]$EndTicks = [Int64]::MaxValue
+    )
     $records = @(foreach ($line in $Lines) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        try { $entry = $line | ConvertFrom-Json -DateKind String } catch { continue }
+        try { $entry = $line | ConvertFrom-Json } catch { continue }
         if ($null -eq $entry.PSObject.Properties['ts'] -or $null -eq $entry.PSObject.Properties['msg']) { continue }
+        $ticks = [Int64](ConvertTo-UtcFileTime $entry.ts)
+        if ($ticks -gt $EndTicks) { continue }
         [pscustomobject]@{
-            Ticks = [Int64](ConvertTo-UtcFileTime $entry.ts)
+            Ticks = $ticks
             Level = if ($entry.PSObject.Properties['level']) { [string]$entry.level } else { '' }
             Message = [string]$entry.msg
             Step = if ($entry.PSObject.Properties['data'] -and $entry.data -and $entry.data.PSObject.Properties['step']) { [string]$entry.data.step } else { $null }
@@ -136,12 +165,22 @@ function Get-NativeSetupMilestones {
     })
     $startIndex = -1
     for ($i = 0; $i -lt $records.Count; $i++) {
-        if ($records[$i].Message -eq 'Native Gateway setup attempt started.') { $startIndex = $i }
+        if ($records[$i].Message -eq 'Native Gateway setup attempt started.' -and
+            ($AttemptStartTicks -eq 0 -or $records[$i].Ticks -eq $AttemptStartTicks)) {
+            $startIndex = $i
+        }
     }
     if ($startIndex -lt 0) {
         return [pscustomobject]@{ Outcome = 'not-started'; FailedStep = $null; Milestones = @() }
     }
-    $attempt = @($records | Select-Object -Skip $startIndex)
+    $nextStart = $records.Count
+    for ($i = $startIndex + 1; $i -lt $records.Count; $i++) {
+        if ($records[$i].Message -eq 'Native Gateway setup attempt started.') {
+            $nextStart = $i
+            break
+        }
+    }
+    $attempt = @($records[$startIndex..($nextStart - 1)])
     $milestones = [Collections.Generic.List[object]]::new()
     $milestones.Add([pscustomobject]@{ Name = 'attempt-started'; Ticks = $attempt[0].Ticks })
     $seen = @{}
@@ -303,14 +342,6 @@ function Wait-ForFile {
     return $null
 }
 
-function Test-InstanceRecording {
-    # wpr requires -instancename to be the last argument.
-    param([string]$Name)
-    $wpr = Join-Path $env:SystemRoot 'System32\wpr.exe'
-    $output = & $wpr -status -instancename $Name 2>&1 | Out-String
-    return ($output -notmatch 'not recording')
-}
-
 function Start-GatewayTraceRecorder {
     <#
     Launches the elevated recorder through UAC and waits for it to report a started instance.
@@ -339,13 +370,32 @@ function Stop-GatewayTraceRecorder {
     param([string]$InstanceName, $Paths, [int]$StopTimeoutSeconds)
     [IO.File]::WriteAllText($Paths.Stop, 'stop')
     $signal = Wait-ForFile -Paths @($Paths.Status) -TimeoutSeconds $StopTimeoutSeconds
-    if ($null -ne $signal) {
+    if ($null -eq $signal) {
+        Write-Warning "Recorder status was not received for WPR instance $InstanceName."
+        return [pscustomobject]@{ outcome = 'missing-status'; cancel = 'unknown'; instance_recording_after = $null }
+    }
+    try {
         $status = Get-Content -LiteralPath $Paths.Status -Raw | ConvertFrom-Json
-        Write-Host "Recorder outcome: $($status.outcome); cancel: $($status.cancel)"
+    } catch {
+        Write-Warning "Recorder status could not be read for WPR instance $InstanceName."
+        return [pscustomobject]@{ outcome = 'invalid-status'; cancel = 'unknown'; instance_recording_after = $null }
     }
-    if ($null -eq $signal -or (Test-InstanceRecording $InstanceName)) {
+    if ($status.instance -ne $InstanceName -or [string]::IsNullOrWhiteSpace([string]$status.outcome)) {
+        Write-Warning "Recorder status did not match WPR instance $InstanceName."
+        return [pscustomobject]@{ outcome = 'invalid-status'; cancel = 'unknown'; instance_recording_after = $null }
+    }
+    Write-Host "Recorder outcome: $($status.outcome); cancel: $($status.cancel)"
+    if ($status.instance_recording_after -eq $true) {
         Write-Warning "WPR instance $InstanceName may still be recording. Run elevated: wpr.exe -cancel -instancename $InstanceName"
+        return [pscustomobject]@{
+            instance = $InstanceName
+            outcome = 'recording-still-active'
+            recorder_outcome = $status.outcome
+            cancel = $status.cancel
+            instance_recording_after = $true
+        }
     }
+    return $status
 }
 
-Export-ModuleMember -Function Get-IntervalUnionLength, Get-ClippedIntervals, Get-PayloadPackageGroup, Get-StartupPhaseWindows, ConvertTo-UtcFileTime, Get-CompleteMpPerformanceReport, Get-NativeSetupMilestones, Get-NativeSetupWindows, Resolve-NativeSetupOutcome, Read-SetupStopSignal, Get-NativeSetupUiStateFromIds, Get-NativeSetupUiState, Test-IsElevated, New-PrivateDirectory, Wait-ForFile, Test-InstanceRecording, Start-GatewayTraceRecorder, Stop-GatewayTraceRecorder
+Export-ModuleMember -Function Get-IntervalUnionLength, Get-ClippedIntervals, Get-PayloadPackageGroup, Get-StartupPhaseWindows, Get-StartupArmValidity, ConvertTo-UtcFileTime, Get-CompleteMpPerformanceReport, Get-NativeSetupMilestones, Get-NativeSetupWindows, Resolve-NativeSetupOutcome, Read-SetupStopSignal, Get-NativeSetupUiStateFromIds, Get-NativeSetupUiState, Test-IsElevated, New-PrivateDirectory, Wait-ForFile, Start-GatewayTraceRecorder, Stop-GatewayTraceRecorder

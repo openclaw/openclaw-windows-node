@@ -61,16 +61,27 @@ function Read-SharedLines {
 }
 
 function Get-CurrentSetupAttempt {
-    # Returns the newest log whose last attempt started at or after $SinceTicks.
-    param([string]$Directory, [Int64]$SinceTicks)
+    # Once selected, read only the same attempt from the same log, even if a retry starts.
+    param(
+        [string]$Directory,
+        [Int64]$SinceTicks,
+        [string]$Path,
+        [Int64]$AttemptStartTicks,
+        [Int64]$EndTicks = [Int64]::MaxValue
+    )
     if (-not (Test-Path -LiteralPath $Directory)) { return $null }
-    $logs = @(Get-ChildItem -LiteralPath $Directory -Filter 'native-setup-*.jsonl' -File |
-        Where-Object { $_.LastWriteTimeUtc.ToFileTimeUtc() -ge $SinceTicks } |
-        Sort-Object LastWriteTimeUtc -Descending)
+    $logs = if ($Path) {
+        @(Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue)
+    } else {
+        @(Get-ChildItem -LiteralPath $Directory -Filter 'native-setup-*.jsonl' -File |
+            Where-Object { $_.LastWriteTimeUtc.ToFileTimeUtc() -ge $SinceTicks } |
+            Sort-Object LastWriteTimeUtc -Descending)
+    }
     foreach ($log in $logs) {
-        $parsed = Get-NativeSetupMilestones -Lines (Read-SharedLines $log.FullName)
+        $parsed = Get-NativeSetupMilestones -Lines (Read-SharedLines $log.FullName) `
+            -AttemptStartTicks $AttemptStartTicks -EndTicks $EndTicks
         $started = @($parsed.Milestones | Where-Object Name -eq 'attempt-started')
-        if ($started.Count -eq 1 -and $started[0].Ticks -ge $SinceTicks) {
+        if ($started.Count -eq 1 -and ($AttemptStartTicks -gt 0 -or $started[0].Ticks -ge $SinceTicks)) {
             return [pscustomobject]@{ Path = $log.FullName; Parsed = $parsed }
         }
     }
@@ -80,6 +91,9 @@ function Get-CurrentSetupAttempt {
 if ($PSVersionTable.PSEdition -ne 'Core') { throw 'Run this script with PowerShell 7 (pwsh).' }
 if (Test-IsElevated) {
     throw 'Run this script unelevated. Only the recorder is elevated, through a UAC prompt.'
+}
+if ($SetupTimeoutSeconds + 60 -ge $MaxRecordingSeconds) {
+    throw 'MaxRecordingSeconds must exceed SetupTimeoutSeconds by at least 60 seconds.'
 }
 $PayloadAppRoot = @($PayloadAppRoot | ForEach-Object {
     $full = [IO.Path]::GetFullPath($_)
@@ -108,7 +122,10 @@ $summaryPath = Join-Path $runDirectory 'setup-summary.json'
 $manualStopPath = Join-Path $controlDirectory 'setup-stop'
 $instanceName = "OpenClawStartup-$runId"
 $recorderPaths = $null
+$recorderResult = $null
 $attempt = $null
+$attemptStartTicks = 0L
+$attemptLogLines = @()
 $stopReason = 'not-started'
 $errorDetail = $null
 $recordingStartTicks = 0L
@@ -133,7 +150,14 @@ try {
             $uiStopTicks = [DateTime]::UtcNow.ToFileTimeUtc()
             break
         }
-        $attempt = Get-CurrentSetupAttempt -Directory $SetupLogDirectory -SinceTicks $controllerStartTicks
+        $candidate = Get-CurrentSetupAttempt -Directory $SetupLogDirectory -SinceTicks $controllerStartTicks `
+            -Path $(if ($attempt) { $attempt.Path }) -AttemptStartTicks $attemptStartTicks
+        if ($candidate) {
+            $attempt = $candidate
+            if ($attemptStartTicks -eq 0) {
+                $attemptStartTicks = [Int64](@($attempt.Parsed.Milestones | Where-Object Name -eq 'attempt-started')[0].Ticks)
+            }
+        }
         if ($null -ne $attempt) {
             $outcome = $attempt.Parsed.Outcome
             if ($outcome -in @('failed', 'cancelled')) {
@@ -165,19 +189,28 @@ try {
     Write-Warning $errorDetail
 } finally {
     $recordingStopTicks = [DateTime]::UtcNow.ToFileTimeUtc()
+    if ($attempt) {
+        try {
+            $attemptLogLines = @(Read-SharedLines $attempt.Path)
+            $attempt = Get-CurrentSetupAttempt -Directory $SetupLogDirectory -SinceTicks $controllerStartTicks `
+                -Path $attempt.Path -AttemptStartTicks $attemptStartTicks -EndTicks $recordingStopTicks
+        } catch {
+            $errorDetail = 'setup-log-snapshot-failed'
+            Write-Warning 'The selected setup attempt could not be snapshotted before recorder shutdown.'
+        }
+    }
     if ($null -ne $recorderPaths) {
-        Stop-GatewayTraceRecorder -InstanceName $instanceName -Paths $recorderPaths -StopTimeoutSeconds $RecorderStopTimeoutSeconds
+        $recorderResult = Stop-GatewayTraceRecorder -InstanceName $instanceName -Paths $recorderPaths -StopTimeoutSeconds $RecorderStopTimeoutSeconds
     } elseif (Test-Path -LiteralPath $controlDirectory) {
         # The recorder may have started after the wait timed out; ask it to stop as well.
         [IO.File]::WriteAllText((Join-Path $controlDirectory 'recorder-stop'), 'stop')
     }
 }
 
-$attempt = Get-CurrentSetupAttempt -Directory $SetupLogDirectory -SinceTicks $controllerStartTicks
 $copiedLog = $null
 if ($null -ne $attempt) {
     $copiedLog = Join-Path $runDirectory 'native-setup.jsonl'
-    [IO.File]::WriteAllLines($copiedLog, [string[]](Read-SharedLines $attempt.Path))
+    [IO.File]::WriteAllLines($copiedLog, [string[]]$attemptLogLines)
 }
 $parsedOutcome = if ($attempt) { $attempt.Parsed.Outcome } else { 'not-observed' }
 # Assign through @() so an empty result serializes as [] rather than null.
@@ -196,13 +229,20 @@ $result = [ordered]@{
     outcome = $outcome
     failed_step = if ($attempt) { $attempt.Parsed.FailedStep } else { $null }
     milestones = $milestones
+    recording_status = if ($recorderResult) { $recorderResult.outcome } else { 'not-started' }
+    recording_saved = [bool]($recorderResult -and $recorderResult.outcome -eq 'saved' -and
+        $recorderResult.instance_recording_after -eq $false -and (Test-Path -LiteralPath $tracePath))
 }
 $result | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $setupResultPath -Encoding utf8
 Write-Host "Setup outcome: $($result.outcome); stop reason: $stopReason"
 
-if ($null -ne $attempt -and (Test-Path -LiteralPath $tracePath)) {
+if ($null -ne $attempt -and $result.recording_saved) {
     & (Join-Path $toolDirectory 'Get-GatewaySetupTraceSummary.ps1') -TracePath $tracePath -ResultPath $setupResultPath `
         -PayloadAppRoot $PayloadAppRoot -OutputPath $summaryPath | Out-Null
     Write-Host "Sanitized summary: $summaryPath"
+}
+if (-not $result.recording_saved) {
+    Write-Warning "Setup was observed, but the WPR recording was not saved ($($result.recording_status))."
+    exit 1
 }
 if ($stopReason -notin @('ai-setup-reached', 'ui-retry', 'failed', 'cancelled', 'manual')) { exit 1 }

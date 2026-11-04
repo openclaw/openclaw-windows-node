@@ -110,6 +110,18 @@ Assert-Equal 'attempt-started,step-prepare,session-prepare,config-validation-sta
 $attemptTicks = [DateTimeOffset]::new(2026, 11, 3, 14, 1, 40, [TimeSpan]::Zero).UtcDateTime.ToFileTimeUtc()
 Assert-Equal $attemptTicks $setup.Milestones[0].Ticks 'attempt start is UTC'
 Assert-Equal 710000000 ($setup.Milestones[4].Ticks - $setup.Milestones[3].Ticks) 'config validation span'
+$selectedAttemptStartTicks = [DateTimeOffset]::new(2026, 11, 3, 14, 1, 40, [TimeSpan]::Zero).UtcDateTime.ToFileTimeUtc()
+$cutoffTicks = [DateTimeOffset]::new(2026, 11, 3, 14, 5, 0, [TimeSpan]::Zero).UtcDateTime.ToFileTimeUtc()
+$selectedAttempt = Get-NativeSetupMilestones -Lines ($failedAttempt + $readyAttempt + @(
+    New-SetupLine 320 'info' 'Native Gateway setup attempt started.'
+    New-SetupLine 321 'info' 'Native setup step: StepPrepare.'
+)) -AttemptStartTicks $selectedAttemptStartTicks -EndTicks $cutoffTicks
+Assert-Equal 'incomplete' $selectedAttempt.Outcome 'pinned setup attempt is not replaced by a retry'
+Assert-Equal 'attempt-started,step-prepare,session-prepare,config-validation-start,config-validation-end,step-verify,gateway-start-requested,gateway-start-acknowledged,listener-verified' (($selectedAttempt.Milestones | ForEach-Object Name) -join ',') 'pinned attempt excludes later retry'
+$cutoffBeforeListener = [DateTimeOffset]::new(2026, 11, 3, 14, 4, 15, [TimeSpan]::Zero).UtcDateTime.ToFileTimeUtc()
+$truncatedAttempt = Get-NativeSetupMilestones -Lines ($failedAttempt + $readyAttempt) `
+    -AttemptStartTicks $selectedAttemptStartTicks -EndTicks $cutoffBeforeListener
+Assert-Equal $true (@($truncatedAttempt.Milestones | Where-Object Name -eq 'listener-verified').Count -eq 0) 'post-cutoff setup milestone excluded'
 $setupWindows = @(Get-NativeSetupWindows -Milestones $setup.Milestones -EndTicks ($setup.Milestones[-1].Ticks + 10))
 Assert-Equal 9 $setupWindows.Count 'setup windows include tail'
 Assert-Equal 'listener-verified..recording-stop' $setupWindows[-1].Phase 'setup tail window'
@@ -122,6 +134,17 @@ Assert-Equal 'reached-ai-setup' (Resolve-NativeSetupOutcome -ParsedOutcome $setu
 Assert-Equal 'failed-ui-only' (Resolve-NativeSetupOutcome -ParsedOutcome $setup.Outcome -StopReason 'ui-retry') 'Retry without a failure log'
 Assert-Equal 'incomplete' (Resolve-NativeSetupOutcome -ParsedOutcome $setup.Outcome -StopReason 'manual') 'manual stop is not success'
 Assert-Equal 'incomplete' (Resolve-NativeSetupOutcome -ParsedOutcome $setup.Outcome -StopReason 'timeout') 'timeout is not success'
+$validArm = [pscustomobject]@{
+    status = 'captured'
+    trace = [pscustomobject]@{ blocked = [pscustomobject]@{ child = 0; network = 0 } }
+}
+$blockedArm = [pscustomobject]@{
+    status = 'captured'
+    trace = [pscustomobject]@{ blocked = [pscustomobject]@{ child = 0; network = 1 } }
+}
+Assert-Equal 'captured' (Get-StartupArmValidity $validArm).Status 'unblocked arm is valid'
+Assert-Equal 'rejected' (Get-StartupArmValidity $blockedArm).Status 'blocked arm is rejected'
+Assert-Equal 'blocked-network' (Get-StartupArmValidity $blockedArm).RejectionReason 'blocked arm rejection reason'
 $signalPath = Join-Path ([IO.Path]::GetTempPath()) ('setup-stop-' + [guid]::NewGuid().ToString('N'))
 try {
     [IO.File]::WriteAllText($signalPath, "ai-setup-reached`n")
@@ -171,7 +194,7 @@ if ($node) {
         Assert-Equal 12.5 $selfTest.spans.'session-runtime-import'.elapsed_ms 'guard import span'
         Assert-Equal 25 $selfTest.spans.'plugin-config'.elapsed_ms 'guard plugin span'
         Assert-Equal 1 $selfTest.blocked.child 'guard blocked child process'
-        Assert-Equal 1 $selfTest.blocked.network 'guard blocked network'
+        Assert-Equal 3 $selfTest.blocked.network 'guard blocked network APIs'
     }
 } else {
     Write-Warning 'node is not on PATH; skipped the startup guard self-test.'
@@ -243,6 +266,24 @@ try {
     if ($status.outcome -notmatch 'not a task-owned' -or $status.cancel -ne 'not-needed' -or $status.instance_recording_after) {
         $failures.Add("recorder accepted an unowned instance name: $($status | ConvertTo-Json -Compress)")
     }
+
+    $paths = [pscustomobject]@{
+        Stop = Join-Path $tempRoot 'stop'
+        Status = Join-Path $tempRoot 'status.json'
+    }
+    $instance = 'OpenClawStartup-0123456789abcdef0123456789abcdef'
+    [ordered]@{
+        instance = $instance
+        outcome = 'failed: test'
+        cancel = 'canceled'
+        instance_recording_after = $false
+    } | ConvertTo-Json -Compress | Set-Content -LiteralPath $paths.Status
+    $recording = Stop-GatewayTraceRecorder -InstanceName $instance -Paths $paths -StopTimeoutSeconds 1
+    Assert-Equal 'failed: test' $recording.outcome 'recorder failure status is returned to controller'
+    Assert-Equal $false $recording.instance_recording_after 'recorder stopped status is surfaced'
+    $paths.Status = Join-Path $tempRoot 'missing-status.json'
+    $missingRecording = Stop-GatewayTraceRecorder -InstanceName $instance -Paths $paths -StopTimeoutSeconds 0
+    Assert-Equal 'missing-status' $missingRecording.outcome 'missing recorder status is a failure'
 } finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force
 }

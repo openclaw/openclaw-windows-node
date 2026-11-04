@@ -549,7 +549,7 @@ try {
         -GuardPath $guestGuard -ScriptPath $guestSelfTest -Arguments @() `
         -TimeoutMs $selfTestTimeoutMs -SelfTest $true
     if ($self.status -ne 'captured' -or $self.trace.blocked.child -ne 1 -or
-        $self.trace.blocked.network -ne 1 -or
+        $self.trace.blocked.network -ne 3 -or
         $self.trace.spans.'session-runtime-import'.elapsed_ms -ne 12.5 -or
         $self.trace.spans.'plugin-config'.elapsed_ms -ne 25) {
         $report.selftest = $self.status

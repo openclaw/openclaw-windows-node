@@ -25,17 +25,24 @@ $readyPath = Join-Path $ControlDirectory 'recorder-ready.json'
 $stopPath = Join-Path $ControlDirectory 'recorder-stop'
 $statusPath = Join-Path $ControlDirectory 'recorder-status.json'
 $started = $false
+$startAttempted = $false
+$stopSaved = $false
+$instanceRecordingAfter = $false
 $outcome = 'not-started'
 
 function Write-ControlFile {
     param([string]$Path, $Value)
     $json = $Value | ConvertTo-Json -Compress
-    [IO.File]::WriteAllText($Path, $json, [Text.UTF8Encoding]::new($false))
+    $temporaryPath = "$Path.$PID.tmp"
+    [IO.File]::WriteAllText($temporaryPath, $json, [Text.UTF8Encoding]::new($false))
+    [IO.File]::Move($temporaryPath, $Path, $true)
 }
 
 # WPR save can take minutes on large traces; status and cancel should return quickly.
-$wprStopTimeoutSeconds = 240
-$wprControlTimeoutSeconds = 60
+$wprStartTimeoutSeconds = 60
+$wprStopTimeoutSeconds = 180
+$wprControlTimeoutSeconds = 30
+if ($env:OPENCLAW_TRACE_WPR_START_TIMEOUT_SECONDS) { $wprStartTimeoutSeconds = [int]$env:OPENCLAW_TRACE_WPR_START_TIMEOUT_SECONDS }
 if ($env:OPENCLAW_TRACE_WPR_STOP_TIMEOUT_SECONDS) { $wprStopTimeoutSeconds = [int]$env:OPENCLAW_TRACE_WPR_STOP_TIMEOUT_SECONDS }
 if ($env:OPENCLAW_TRACE_WPR_CONTROL_TIMEOUT_SECONDS) { $wprControlTimeoutSeconds = [int]$env:OPENCLAW_TRACE_WPR_CONTROL_TIMEOUT_SECONDS }
 
@@ -81,6 +88,7 @@ try {
         throw 'The trace output already exists.'
     }
     if (Test-InstanceRecording) {
+        $instanceRecordingAfter = $true
         throw 'The named instance is already recording, so this recorder does not own it.'
     }
     $module = Get-Module -ListAvailable ConfigDefenderPerformance | Select-Object -First 1
@@ -92,10 +100,13 @@ try {
         throw 'The Defender performance profile is unavailable.'
     }
 
-    & $wpr -start "$defenderProfile!Scans.Light" -start FileIO.Light -start DiskIO.Light `
-        -start CPU.Light -filemode -instancename $InstanceName
-    if ($LASTEXITCODE -ne 0) {
-        throw "WPR start failed with exit code $LASTEXITCODE."
+    $startAttempted = $true
+    $start = Invoke-BoundedWpr "-start `"$defenderProfile!Scans.Light`" -start FileIO.Light -start DiskIO.Light -start CPU.Light -filemode -instancename $InstanceName" $wprStartTimeoutSeconds
+    if ($null -eq $start.ExitCode) {
+        throw "WPR start did not finish within $wprStartTimeoutSeconds seconds."
+    }
+    if ($start.ExitCode -ne 0) {
+        throw "WPR start failed with exit code $($start.ExitCode)."
     }
     $started = $true
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds($MaxRecordingSeconds)
@@ -122,28 +133,30 @@ try {
         throw "WPR stop failed with exit code $($stop.ExitCode)."
     }
     $started = $false
+    $stopSaved = $true
     $outcome = 'saved'
 } catch {
     $outcome = 'failed: ' + $_.Exception.Message
     Write-Warning $outcome
 } finally {
     $cancel = 'not-needed'
-    if ($started) {
+    if ($started -or ($startAttempted -and -not $stopSaved)) {
         $cancelResult = Invoke-BoundedWpr "-cancel -instancename $InstanceName" $wprControlTimeoutSeconds
         $cancel = if ($null -eq $cancelResult.ExitCode) { 'cancel-timed-out' }
             elseif ($cancelResult.ExitCode -eq 0) { 'canceled' }
             else { "cancel-exit-$($cancelResult.ExitCode)" }
     }
-    $stillRecording = $true
-    try { $stillRecording = Test-InstanceRecording } catch { }
+    if ($started -or $startAttempted) {
+        try { $instanceRecordingAfter = Test-InstanceRecording } catch { $instanceRecordingAfter = $true }
+    }
     Write-ControlFile $statusPath ([ordered]@{
         instance = $InstanceName
         outcome = $outcome
         cancel = $cancel
-        instance_recording_after = $stillRecording
+        instance_recording_after = $instanceRecordingAfter
         finished_utc = [DateTimeOffset]::UtcNow.ToString('O')
     })
-    if ($stillRecording) {
+    if ($instanceRecordingAfter) {
         Write-Warning "Instance $InstanceName may still be recording. Run: wpr.exe -cancel -instancename $InstanceName"
         Read-Host 'Press Enter to close this window after cancelling'
     }

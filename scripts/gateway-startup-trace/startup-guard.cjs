@@ -47,6 +47,16 @@ if (dns.promises) {
     }
   }
 }
+for (const Resolver of [dns.Resolver, dns.promises?.Resolver]) {
+  if (!Resolver?.prototype) {
+    continue;
+  }
+  for (const name of Object.getOwnPropertyNames(Resolver.prototype)) {
+    if (name === "reverse" || name.startsWith("resolve")) {
+      Resolver.prototype[name] = deny("network");
+    }
+  }
+}
 globalThis.fetch = async () => deny("network")();
 syncBuiltinESMExports();
 

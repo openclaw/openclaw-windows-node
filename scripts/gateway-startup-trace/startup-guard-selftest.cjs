@@ -24,6 +24,12 @@ assert.throws(() => require("node:child_process").spawn("not-executed"), {
 assert.throws(() => require("node:net").createConnection(1), {
   code: "OPENCLAW_COMPARISON_BLOCKED",
 });
+assert.throws(() => new (require("node:dns").Resolver)().resolve4("example.invalid"), {
+  code: "OPENCLAW_COMPARISON_BLOCKED",
+});
+assert.throws(() => new (require("node:dns").promises.Resolver)().resolve4("example.invalid"), {
+  code: "OPENCLAW_COMPARISON_BLOCKED",
+});
 process.stderr.write("[gateway] startup trace: cli.bootstrap.admission.session-runtime-import 12.5ms total=30.0ms start=17.5ms\n");
 process.stderr.write("[gateway] startup phase: cli.bootstrap.admission.agent-inventory starting total=30.2ms\n");
 process.stderr.write("[gateway] startup trace: cli.bootstrap.admission.plugin-config 25.0ms total=60.0ms start=35.0ms\n");

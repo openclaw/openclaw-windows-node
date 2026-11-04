@@ -39,7 +39,7 @@ $roots = @($PayloadAppRoot | ForEach-Object {
 })
 # Only fixed reason codes reach the shareable summary; raw error text stays in the private result.
 $allowedStopReasons = @('not-started', 'timeout', 'manual', 'ai-setup-reached', 'ui-retry', 'failed', 'cancelled', 'controller-error')
-$result = Get-Content -LiteralPath $ResultPath -Raw | ConvertFrom-Json -DateKind String
+$result = Get-Content -LiteralPath $ResultPath -Raw | ConvertFrom-Json
 $report = Get-CompleteMpPerformanceReport -Path $TracePath -TopFiles $TopFiles -TopScansPerFile $TopScansPerFile
 
 function Get-RelativePayloadPath {

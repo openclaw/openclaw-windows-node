@@ -69,8 +69,15 @@ function Get-SummedTicks {
 
 function Get-ArmSummary {
     param([string]$Name, $Arm)
-    if ($null -eq $Arm -or $Arm.status -ne 'captured' -or $null -eq $Arm.trace) {
-        return [ordered]@{ arm = $Name; status = if ($Arm) { $Arm.status } else { 'missing' } }
+    $validity = Get-StartupArmValidity $Arm
+    if ($validity.Status -ne 'captured') {
+        return [ordered]@{
+            arm = $Name
+            status = $validity.Status
+            blocked_child = $validity.BlockedChild
+            blocked_network = $validity.BlockedNetwork
+            rejection_reason = $validity.RejectionReason
+        }
     }
     $trace = $Arm.trace
     $scans = @($allScans | Where-Object ProcessId -eq ([int]$trace.pid))
@@ -106,6 +113,8 @@ function Get-ArmSummary {
         status = 'captured'
         elapsed_ms = $trace.elapsed_ms
         startup_to_first_phase_ms = $trace.startup_to_first_phase_ms
+        blocked_child = $validity.BlockedChild
+        blocked_network = $validity.BlockedNetwork
         cpu_user_ms = $trace.cpu_user_ms
         cpu_system_ms = $trace.cpu_system_ms
         payload_scans = $inRun.Count
@@ -117,7 +126,26 @@ function Get-ArmSummary {
     }
 }
 
+$comparisonStatus = 'captured'
+$comparisonFailure = $null
+$armValidity = @(
+    Get-StartupArmValidity $result.host
+    Get-StartupArmValidity $result.isolated
+)
+if ($result.failure) {
+    $comparisonStatus = 'rejected'
+    $comparisonFailure = 'comparison-failed'
+} elseif (@($result.cleanup.PSObject.Properties | Where-Object { $_.Name -in 'stop', 'deprovision' -and $_.Value -ne 'reported-success' }).Count -gt 0) {
+    $comparisonStatus = 'rejected'
+    $comparisonFailure = 'cleanup-incomplete'
+} elseif (@($armValidity | Where-Object Status -ne 'captured').Count -gt 0) {
+    $comparisonStatus = 'rejected'
+    $comparisonFailure = 'arm-not-valid'
+}
+
 $summary = [ordered]@{
+    comparison_status = $comparisonStatus
+    comparison_failure = $comparisonFailure
     payload_version = $result.payload_version
     payload_commit = $result.payload_commit
     architecture = $result.architecture

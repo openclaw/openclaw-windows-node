@@ -35,8 +35,8 @@ param(
     [string]$OutputDirectory = (Join-Path $env:LOCALAPPDATA 'OpenClawStartupTraces'),
     [ValidateSet('isolated-then-host', 'host-then-isolated')][string]$Order = 'isolated-then-host',
     [string]$MxcSdkVersion = '1.0.1',
-    [ValidateRange(10, 3600)][int]$BenchmarkTimeoutSeconds = 240,
-    [ValidateRange(60, 3600)][int]$MaxRecordingSeconds = 600,
+    [ValidateRange(10, 1600)][int]$BenchmarkTimeoutSeconds = 240,
+    [ValidateRange(60, 3600)][int]$MaxRecordingSeconds = 900,
     [ValidateRange(10, 600)][int]$RecorderStartTimeoutSeconds = 120,
     [ValidateRange(10, 900)][int]$RecorderStopTimeoutSeconds = 300,
     [switch]$SkipRecording
@@ -69,6 +69,9 @@ if ($PSVersionTable.PSEdition -ne 'Core') {
 if (Test-IsElevated) {
     throw 'Run this script unelevated. Only the recorder is elevated, through a UAC prompt, so the measured startup runs as the normal user.'
 }
+if ($MaxRecordingSeconds -le (2 * $BenchmarkTimeoutSeconds + 300)) {
+    throw 'MaxRecordingSeconds must exceed two benchmark timeouts plus 300 seconds for setup and cleanup.'
+}
 $PayloadRoot = [IO.Path]::GetFullPath($PayloadRoot)
 foreach ($required in @('payload-metadata.json', 'app\openclaw.mjs')) {
     if (-not (Test-Path -LiteralPath (Join-Path $PayloadRoot $required) -PathType Leaf)) {
@@ -99,6 +102,7 @@ $recorderPaths = [pscustomobject]@{
 $recorderLaunched = $false
 $nodePath = $null
 $comparisonExit = $null
+$recorderResult = $null
 
 Write-Host "Run directory: $runDirectory"
 try {
@@ -123,7 +127,7 @@ try {
     Write-Warning $comparisonExit
 } finally {
     if ($recorderLaunched) {
-        Stop-GatewayTraceRecorder -InstanceName $instanceName -Paths $recorderPaths -StopTimeoutSeconds $RecorderStopTimeoutSeconds
+        $recorderResult = Stop-GatewayTraceRecorder -InstanceName $instanceName -Paths $recorderPaths -StopTimeoutSeconds $RecorderStopTimeoutSeconds
     }
     if ($nodePath -and (Test-Path -LiteralPath $nodePath)) { Remove-Item -LiteralPath $nodePath -Force }
     $hostProfile = Join-Path $runDirectory 'host-profile'
@@ -131,7 +135,13 @@ try {
 }
 
 Write-Host "Comparison: $comparisonExit"
-if ((Test-Path -LiteralPath $resultPath) -and (Test-Path -LiteralPath $tracePath)) {
+if (-not $SkipRecording -and
+    ($null -eq $recorderResult -or $recorderResult.outcome -ne 'saved' -or -not (Test-Path -LiteralPath $tracePath))) {
+    $comparisonExit = "failed: WPR recording was not saved ($($recorderResult.outcome))."
+    Write-Warning $comparisonExit
+}
+if ((Test-Path -LiteralPath $resultPath) -and
+    ($SkipRecording -or ($recorderResult.outcome -eq 'saved' -and (Test-Path -LiteralPath $tracePath)))) {
     & (Join-Path $toolDirectory 'Get-GatewayStartupTraceSummary.ps1') -TracePath $tracePath -ResultPath $resultPath `
         -PayloadRoot $PayloadRoot -OutputPath $summaryPath | Out-Null
     Write-Host "Sanitized summary: $summaryPath"
