@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Audio;
@@ -116,6 +117,80 @@ public sealed class SpeechToTextServiceLifetimeTests
         }
     }
 
+    [Fact]
+    public async Task DisposeOnTheCallerContext_CompletesAfterInferenceReleasesTheGate()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new SpeechToTextService(new RecordingLogger())
+        {
+            TranscriptionOverride = token => HoldUntilReleased(entered, release, token)
+        };
+        using var finished = new SemaphoreSlim(0, 1);
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(new PostingSynchronizationContext());
+            try
+            {
+                var transcribe = service.TranscribeAsync([], "en");
+                if (!entered.Task.Wait(TimeSpan.FromSeconds(5)))
+                    throw new TimeoutException("Transcription did not hold the gate.");
+
+                service.Dispose();
+                transcribe.GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+            finally
+            {
+                finished.Release();
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "whisper-dispose-context"
+        };
+        thread.Start();
+
+        var disposeBlocked = SpinWait.SpinUntil(
+            () => entered.Task.IsCompleted
+                && (thread.ThreadState & ThreadState.WaitSleepJoin) != 0,
+            TimeSpan.FromSeconds(5));
+        Assert.True(disposeBlocked, "Dispose did not wait for the in-flight transcription.");
+        release.TrySetResult();
+
+        if (!await finished.WaitAsync(TimeSpan.FromSeconds(5)))
+        {
+            release.TrySetResult();
+            try
+            {
+                if (TranscriptionGate(service).CurrentCount == 0)
+                    TranscriptionGate(service).Release();
+            }
+            catch (SemaphoreFullException)
+            {
+            }
+
+            thread.Join(TimeSpan.FromSeconds(2));
+            Assert.Fail("Dispose stayed blocked after inference finished.");
+        }
+
+        Assert.Null(failure);
+    }
+
+    private static async IAsyncEnumerable<TranscriptionResult> HoldUntilReleased(
+        TaskCompletionSource entered,
+        TaskCompletionSource release,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        entered.TrySetResult();
+        await release.Task.WaitAsync(cancellationToken);
+        yield return new TranscriptionResult { Text = "done", Language = "en" };
+    }
+
     internal static string? ResolveTinyModel()
     {
         var configured = Environment.GetEnvironmentVariable("OPENCLAW_WHISPER_TEST_MODEL");
@@ -154,6 +229,14 @@ public sealed class SpeechToTextServiceLifetimeTests
         public void Warn(string message) { }
         public void Error(string message, Exception? ex = null) { }
     }
+}
+
+internal sealed class PostingSynchronizationContext : SynchronizationContext
+{
+    private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _queued = new();
+
+    public override void Post(SendOrPostCallback callback, object? state) =>
+        _queued.Enqueue((callback, state));
 }
 
 internal sealed class WhisperModelFactAttribute : FactAttribute

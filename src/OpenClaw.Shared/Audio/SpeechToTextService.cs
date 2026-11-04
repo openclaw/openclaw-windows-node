@@ -20,6 +20,8 @@ public sealed class SpeechToTextService : IDisposable
     private volatile string? _loadedModelPath;
     private volatile bool _disposed;
 
+    internal Func<CancellationToken, IAsyncEnumerable<TranscriptionResult>>? TranscriptionOverride { get; set; }
+
     public bool IsModelLoaded => _factory != null;
     public string? LoadedModelPath => _loadedModelPath;
 
@@ -83,49 +85,70 @@ public sealed class SpeechToTextService : IDisposable
         string language = "auto",
         CancellationToken cancellationToken = default)
     {
-        await _gate.WaitAsync(cancellationToken);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_factory == null)
-                throw new InvalidOperationException("No Whisper model is loaded. Call LoadModel first.");
-
-            // Whisper.net's WithLanguage expects either "auto" or a 2-letter
-            // ISO 639-1 code. The capability validator accepts the broader
-            // BCP-47 shape ("en-US", "zh-Hans-CN") because that's what the
-            // public docs advertise; normalize down here so Whisper actually
-            // sees something it understands.
-            var whisperLang = NormalizeForWhisper(language);
-            var builder = _factory.CreateBuilder()
-                .WithLanguage(whisperLang)
-                .WithThreads(Math.Max(1, Environment.ProcessorCount / 2));
-
-            using var processor = builder.Build();
-
-            using var wavStream = PcmToWavStream(samples, 16000);
-
-            var results = new List<TranscriptionResult>();
-            await foreach (var segment in processor.ProcessAsync(wavStream, cancellationToken))
-            {
-                var text = segment.Text?.Trim();
-                if (!string.IsNullOrEmpty(text))
-                {
-                    results.Add(new TranscriptionResult
-                    {
-                        Text = text,
-                        Start = segment.Start,
-                        End = segment.End,
-                        Language = whisperLang
-                    });
-                }
-            }
-
-            return results;
+            // ProcessAsync awaits capture the caller synchronization context.
+            // Dispose, LoadModel, and UnloadModel wait on this gate from that
+            // same context, so the enumerator has to start without it.
+            return await Task.Run(
+                () => TranscribeHeldAsync(samples, language, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    private async Task<List<TranscriptionResult>> TranscribeHeldAsync(
+        float[] samples,
+        string language,
+        CancellationToken cancellationToken)
+    {
+        if (TranscriptionOverride is { } transcribeOverride)
+        {
+            var overridden = new List<TranscriptionResult>();
+            await foreach (var result in transcribeOverride(cancellationToken).ConfigureAwait(false))
+                overridden.Add(result);
+            return overridden;
+        }
+
+        if (_factory == null)
+            throw new InvalidOperationException("No Whisper model is loaded. Call LoadModel first.");
+
+        // Whisper.net's WithLanguage expects either "auto" or a 2-letter
+        // ISO 639-1 code. The capability validator accepts the broader
+        // BCP-47 shape ("en-US", "zh-Hans-CN") because that's what the
+        // public docs advertise; normalize down here so Whisper actually
+        // sees something it understands.
+        var whisperLang = NormalizeForWhisper(language);
+        var builder = _factory.CreateBuilder()
+            .WithLanguage(whisperLang)
+            .WithThreads(Math.Max(1, Environment.ProcessorCount / 2));
+
+        using var processor = builder.Build();
+
+        using var wavStream = PcmToWavStream(samples, 16000);
+
+        var results = new List<TranscriptionResult>();
+        await foreach (var segment in processor.ProcessAsync(wavStream, cancellationToken).ConfigureAwait(false))
+        {
+            var text = segment.Text?.Trim();
+            if (!string.IsNullOrEmpty(text))
+            {
+                results.Add(new TranscriptionResult
+                {
+                    Text = text,
+                    Start = segment.Start,
+                    End = segment.End,
+                    Language = whisperLang
+                });
+            }
+        }
+
+        return results;
     }
 
     /// <summary>
