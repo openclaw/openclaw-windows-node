@@ -11,6 +11,7 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class NativeGatewaySetupConnectionTests
 {
+    private const int AdmissionBudgetSeconds = 330;
     private const string Token = "native-loopback-fixture-token-not-a-production-credential";
     private const string Model = "fixture/native-model";
     private const string StaleDeviceToken = "stale-operator-device-token-not-a-production-credential";
@@ -110,7 +111,7 @@ public sealed class NativeGatewaySetupConnectionTests
         var rejected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         fixture.Runtime.Ensure = _ =>
         {
-            clock.Advance(TimeSpan.FromSeconds(90));
+            clock.Advance(TimeSpan.FromSeconds(150));
             fixture.Runtime.Ensure = _ => Task.CompletedTask;
             return Task.CompletedTask;
         };
@@ -125,7 +126,7 @@ public sealed class NativeGatewaySetupConnectionTests
             if (firstAuthorization)
             {
                 firstAuthorization = false;
-                clock.Advance(TimeSpan.FromSeconds(90));
+                clock.Advance(TimeSpan.FromSeconds(150));
             }
             await owner.AuthorizeAsync(ct);
         }
@@ -140,7 +141,7 @@ public sealed class NativeGatewaySetupConnectionTests
             () => connecting.WaitAsync(TimeSpan.FromSeconds(5)));
 
         Assert.Equal(2000, error.Startup.RetryAfterMs);
-        Assert.Equal(TimeSpan.FromSeconds(210).Ticks, clock.GetTimestamp());
+        Assert.Equal(TimeSpan.FromSeconds(AdmissionBudgetSeconds).Ticks, clock.GetTimestamp());
         Assert.Equal(0, server.SharedCredentialConnects);
         Assert.Null(fixture.Host.ApprovedId);
     }
@@ -218,7 +219,7 @@ public sealed class NativeGatewaySetupConnectionTests
                 await context.DrainUntilCompletedAsync(freshAuthorization.Task);
                 Assert.Equal(2, server.ConnectionCount);
             }
-            clock.Advance(TimeSpan.FromSeconds(210));
+            clock.Advance(TimeSpan.FromSeconds(AdmissionBudgetSeconds));
             Assert.False(connecting.IsCompleted);
             if (cause == "caller") caller.Cancel();
             if (cause == "session") await owner.DisposeAsync();
@@ -290,7 +291,7 @@ public sealed class NativeGatewaySetupConnectionTests
         await using var owner = await fixture.PrepareAsync();
         fixture.Runtime.Ensure = ct =>
         {
-            clock.Advance(TimeSpan.FromSeconds(210));
+            clock.Advance(TimeSpan.FromSeconds(AdmissionBudgetSeconds));
             ct.ThrowIfCancellationRequested();
             return Task.CompletedTask;
         };
@@ -311,7 +312,7 @@ public sealed class NativeGatewaySetupConnectionTests
         await using var owner = await fixture.PrepareAsync();
         Task Deny(CancellationToken ct)
         {
-            clock.Advance(TimeSpan.FromSeconds(200));
+            clock.Advance(TimeSpan.FromSeconds(AdmissionBudgetSeconds - 10));
             throw new InvalidOperationException("fixture authorization denied");
         }
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -323,7 +324,7 @@ public sealed class NativeGatewaySetupConnectionTests
             return Task.CompletedTask;
         };
         await Assert.ThrowsAsync<TimeoutException>(() => NativeGatewaySetupConnection.ConnectAsync(owner));
-        Assert.Equal(TimeSpan.FromSeconds(210).Ticks, clock.GetTimestamp());
+        Assert.Equal(TimeSpan.FromSeconds(AdmissionBudgetSeconds).Ticks, clock.GetTimestamp());
         var starts = fixture.Events.Count(entry => entry == "start");
         await Assert.ThrowsAsync<TimeoutException>(() => NativeGatewaySetupConnection.ConnectAsync(owner));
         Assert.Equal(starts, fixture.Events.Count(entry => entry == "start"));

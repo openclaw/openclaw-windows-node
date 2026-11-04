@@ -249,10 +249,10 @@ public sealed class NativeGatewayPackageClient
         NativeGatewayPackage package, string attemptId, CancellationToken cancellationToken)
     {
         RequireAttemptId(attemptId);
-        var result = await _invoke(package,
+        var result = await InvokeAsync(package,
             ["gateway-service", "start", "--attempt-id", attemptId, "--json"], null, cancellationToken)
             .ConfigureAwait(false);
-        using var document = Parse(result.StandardOutput);
+        using var document = Parse(result, "gateway-service start");
         var root = document.RootElement;
         RequireIntegration(root, "gateway-service start");
         if (!SupportsLaunchReceipts(root)) throw Unsupported();
@@ -266,10 +266,10 @@ public sealed class NativeGatewayPackageClient
         NativeGatewayPackage package, string attemptId, CancellationToken cancellationToken)
     {
         RequireAttemptId(attemptId);
-        var result = await _invoke(package,
+        var result = await InvokeAsync(package,
             ["gateway-service", "stop", "--if-attempt-id", attemptId, "--json"], null, cancellationToken)
             .ConfigureAwait(false);
-        using var document = Parse(result.StandardOutput);
+        using var document = Parse(result, "gateway-service stop");
         var root = document.RootElement;
         RequireIntegration(root, "gateway-service stop");
         if (!SupportsLaunchReceipts(root)) throw Unsupported();

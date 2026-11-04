@@ -494,7 +494,7 @@ to whole seconds (30 to 3600) before starting Companion to change it; the publis
 connection phase and credential handoff budgets follow it. Only the published connection
 phase keeps a 210-second floor for shorter values.
 
-Staged native setup shares the existing 210-second default admission allowance
+Staged native setup shares the existing 330-second default admission allowance
 from initial runtime preparation through the first authenticated operator hello.
 Start-command time, listener verification, challenge authorization, startup-sidecar
 retry hints and pairing all consume that same remaining time. No reconnect or

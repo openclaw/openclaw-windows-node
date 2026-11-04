@@ -77,8 +77,11 @@ public sealed class NativeGatewayPackageClientTests
         Assert.Null(status.Launch);
     }
 
-    [Fact]
-    public async Task FailedStatusLogsSanitizedStderrButKeepsItOutOfExceptionMessages()
+    [Theory]
+    [InlineData("status")]
+    [InlineData("start")]
+    [InlineData("stop")]
+    public async Task FailedLifecycleLogsSanitizedStderrButKeepsItOutOfExceptionMessages(string operation)
     {
         var log = new RecordingLogger();
         var client = new NativeGatewayPackageClient((_, _, _) =>
@@ -86,13 +89,18 @@ public sealed class NativeGatewayPackageClientTests
                 "fatal: gateway listener unavailable\nAuthorization: Bearer abcdefghijklmnop0123456789")),
             log);
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => client.StatusAsync(s_package, CancellationToken.None));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => operation switch
+        {
+            "start" => client.StartAsync(s_package, "11111111111111111111111111111111", CancellationToken.None),
+            "stop" => client.StopAsync(s_package, "11111111111111111111111111111111", CancellationToken.None),
+            _ => client.StatusAsync(s_package, CancellationToken.None)
+        });
 
         Assert.Contains("exit code 3", error.Message);
         Assert.DoesNotContain("fatal", error.Message);
         Assert.Contains(log.Warnings,
-            warning => warning.Contains("clawctl gateway-service status --json stderr: fatal: gateway listener unavailable"));
+            warning => warning.Contains($"clawctl gateway-service {operation}") &&
+                warning.Contains("stderr: fatal: gateway listener unavailable"));
         Assert.DoesNotContain(log.Warnings, warning => warning.Contains("abcdefghijklmnop0123456789"));
     }
 
