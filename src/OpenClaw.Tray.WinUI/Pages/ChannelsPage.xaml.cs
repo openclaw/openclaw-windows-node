@@ -1,3 +1,12 @@
+// <summary>
+// Settings page that displays Gateway channel status and applies channel credential or configuration changes.
+// It observes AppState, reads the current Gateway configuration before full-config patches, and cancels page-owned
+// refresh and linking work when unloaded. The page does not own Gateway connection state or persisted configuration.
+// Usage:
+//   frame.Navigate(typeof(ChannelsPage));
+//   // The Settings host calls Initialize on the navigated page to attach AppState and refresh status.
+//   // The page cancels its work when the host removes it from the frame.
+// </summary>
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -24,14 +33,7 @@ using Windows.Storage.Streams;
 namespace OpenClawTray.Pages;
 
 /// <summary>
-/// Channels page — single-column Expander layout. See <c>ChannelsPage.xaml</c>
-/// for the architectural comment. Data flows from the gateway's
-/// <c>channels.status</c> response → <see cref="ChannelsStatusSnapshot"/> →
-/// <see cref="ChannelRecord"/>s → Expander cards built imperatively below.
-///
-/// Follows the single-app-model pattern (see <c>docs/DATA_FLOW_ARCHITECTURE.md</c>):
-/// the page observes <see cref="AppState"/> directly via <see cref="INotifyPropertyChanged"/>
-/// and routes commands through <see cref="App"/> globally; no <c>HubWindow</c> coupling.
+/// Renders channel status and invokes the Gateway-backed channel setup actions for the active Settings route.
 /// </summary>
 public sealed partial class ChannelsPage : Page
 {
@@ -165,6 +167,7 @@ public sealed partial class ChannelsPage : Page
     /// </summary>
     private CancellationTokenSource? _linkingCts;
 
+    /// <summary>Initializes the page's view controls and unload cleanup handler.</summary>
     public ChannelsPage()
     {
         InitializeComponent();
@@ -299,24 +302,7 @@ public sealed partial class ChannelsPage : Page
     private void CaptureConfigSnapshot(JsonElement envelope)
     {
         var snapshot = envelope.Clone();
-        var root = snapshot.TryGetProperty("parsed", out var parsed) ? parsed
-            : (snapshot.TryGetProperty("config", out var inner) ? inner : snapshot);
-
-        string? baseHash = null;
-        if (snapshot.TryGetProperty("baseHash", out var bh) && bh.ValueKind == JsonValueKind.String)
-            baseHash = bh.GetString();
-        else if (snapshot.TryGetProperty("hash", out var hashEl) && hashEl.ValueKind == JsonValueKind.String)
-            baseHash = hashEl.GetString();
-        else if (snapshot.TryGetProperty("raw", out var rawEl) && rawEl.ValueKind == JsonValueKind.String)
-        {
-            var rawContent = rawEl.GetString();
-            if (rawContent != null)
-            {
-                var bytes = System.Text.Encoding.UTF8.GetBytes(rawContent);
-                var hash = System.Security.Cryptography.SHA256.HashData(bytes);
-                baseHash = Convert.ToHexStringLower(hash);
-            }
-        }
+        GatewayConfigEnvelope.TryRead(snapshot, out var root, out var baseHash);
 
         // Atomic publish: a single field swap so readers always see a
         // consistent (root, baseHash) pair.

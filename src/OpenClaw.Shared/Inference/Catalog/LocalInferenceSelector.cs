@@ -1,3 +1,11 @@
+// <summary>
+// Selects deterministic local inference plans from hardware facts and the pinned model catalog.
+// Selection does not probe hardware or install artifacts, and GPU-specific recipes retain their adapter binding.
+// Usage:
+//   LocalInferenceSelectionResult selection = LocalInferenceSelector.Select(hardware, requestedModelId);
+//   if (selection.Plan is { } plan) Launch(plan);
+// </summary>
+
 using System.Runtime.InteropServices;
 
 namespace OpenClaw.Shared.Inference.Catalog;
@@ -68,19 +76,11 @@ public sealed record LocalInferenceSelectionResult
 }
 
 /// <summary>
-/// Pure selection from a hardware snapshot and optional model ID. The CPU
-/// architecture chooses only the native runtime. GPU names and CPU/GPU SKU
-/// pairings are not part of qualification for discrete GPUs -- the one
-/// deliberate exception is RTX Spark's default pick, routed through
-/// <see cref="RtxSparkInferenceSelector"/> because its unified-memory SKU
-/// cannot be identified by capacity fit-testing alone (see NVIDIA's fixed
-/// SKU-to-recipe table). An explicitly requested model ID uses the same
-/// capacity fit-test on every GPU, except when the request is the Spark SKU's
-/// own recommendation round-tripped through setup, which keeps that SKU's
-/// pinned profile and adapter binding.
+/// Selects a deterministic local inference plan from hardware facts and pinned catalog recipes.
 /// </summary>
 public static class LocalInferenceSelector
 {
+    /// <summary>Selects the requested catalog model or the hardware's recommended default plan.</summary>
     public static LocalInferenceSelectionResult Select(
         HostHardwareInfo hardware,
         string? requestedModelId = null) =>
@@ -96,6 +96,29 @@ public static class LocalInferenceSelector
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installedModelId);
         return Select(hardware, installedModelId, includeRetiredInstalledModel: true);
+    }
+
+    /// <summary>
+    /// Selects the best-fitting profile for a user-supplied Hugging Face model. Custom
+    /// models always use the generic runtime and are never bound to one adapter.
+    /// </summary>
+    public static LocalInferenceSelectionResult SelectCustom(HostHardwareInfo hardware, LocalModelInfo model)
+    {
+        ArgumentNullException.ThrowIfNull(hardware);
+        ArgumentNullException.ThrowIfNull(model);
+        if (model.CustomRecipe is null)
+            throw new ArgumentException("Only custom models can be selected by recipe.", nameof(model));
+
+        LlamaRuntimeVariant? runtime = LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, model.RuntimeFamily);
+        if (runtime is null)
+            return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.RuntimeUnavailable);
+        if (!hardware.HasNvidiaGpu)
+            return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.NoNvidiaGpu);
+
+        LocalInferenceRunProfile profile = SelectBestFittingProfile(hardware, runtime, model) ??
+            LocalModelCatalog.GetProfiles(model)[^1];
+        return LocalInferenceSelectionResult.Selected(
+            new LocalInferencePlan(runtime, model, profile, LocalInferenceModelSelectionOrigin.Explicit));
     }
 
     private static LocalInferenceSelectionResult Select(
