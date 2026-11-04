@@ -566,6 +566,18 @@ try {
             Assert-Throws { Get-IsolatedPlan } 'Preserved WSL storage overlaps'
             $state.Distros = @()
         }
+        Test-Case 'isolated cleanup rejects disposable profiles beneath Git checkout and worktree markers' {
+            $checkout = Join-Path $fixture 'checkout-ancestor'
+            $selectedProfile = Join-Path $checkout 'disposable-profile'
+            New-Item -ItemType Directory -Path $selectedProfile -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $checkout '.git') | Out-Null
+            Assert-Throws { Get-CleanIsolatedPlan $patch $fullName $layout @($selectedProfile) $companion } 'source checkout'
+            Remove-Item -LiteralPath (Join-Path $checkout '.git') -Force
+            Set-Content -LiteralPath (Join-Path $checkout '.git') -Value 'gitdir: ..\worktree-metadata'
+            Assert-Throws { Get-CleanIsolatedPlan $patch $fullName $layout @($selectedProfile) $companion } 'source checkout'
+            Remove-Item -LiteralPath (Join-Path $checkout '.git') -Force
+            $null = Get-IsolatedPlan
+        }
         Test-Case 'changed previews and package/session/profile drift fail before teardown' {
             $original = (Get-IsolatedPlan).Sha256
             Assert-Throws { Invoke-IsolatedApply '' } 'Missing or stale'

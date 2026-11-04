@@ -203,6 +203,18 @@ function Get-CleanTree([string]$Path) {
     }
 }
 
+function Assert-CleanNotWithinSourceCheckout([string]$Path) {
+    $cursor = Get-CleanFullPath $Path
+    while ($cursor) {
+        if (Test-Path -LiteralPath (Join-Path $cursor '.git')) {
+            throw "Refusing a disposable profile inside a source checkout: $Path"
+        }
+        $parent = Split-Path -Parent $cursor
+        if (-not $parent -or $parent.Equals($cursor, [StringComparison]::OrdinalIgnoreCase)) { break }
+        $cursor = $parent
+    }
+}
+
 function Get-CleanPackages([bool]$Dev) {
     $names = @('OpenClawFoundation.OpenClaw', 'OpenClawFoundation.OpenClawGateway', 'OpenClaw.Gateway')
     if ($Dev) { $names += 'OpenClawFoundation.OpenClaw.Dev' }
@@ -716,6 +728,7 @@ function Get-CleanIsolatedPlan([string]$Patch, [string]$FullName, [string]$Layou
     }
     $protected += Split-Path -Parent $companionFull
     foreach ($profile in $selected) {
+        Assert-CleanNotWithinSourceCheckout $profile
         foreach ($root in $protected) {
             $root = Get-CleanFullPath $root
             if ((Test-CleanWithin $profile $root) -or (Test-CleanWithin $root $profile)) {
@@ -789,6 +802,7 @@ function Invoke-OpenClawIsolatedClean {
         throw 'Patch registration remains. Companion profile deletion stopped.'
     }
     foreach ($profile in $plan.Profiles) {
+        Assert-CleanNotWithinSourceCheckout $profile
         Assert-CleanIsolatedProcesses $plan.Profiles $plan.Layout $plan.Companion
         Assert-CleanDistroStorage @(Get-CleanDistroRecords) @($profile)
         if ((Get-CleanProfileFingerprint $profile) -ne $plan.ProfileHashes[$profile]) {
