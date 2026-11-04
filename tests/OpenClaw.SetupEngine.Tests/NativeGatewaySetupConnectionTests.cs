@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading.Channels;
 using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.Shared;
@@ -167,6 +168,117 @@ public sealed class NativeGatewaySetupConnectionTests
         Assert.True(authorizations >= 2);
         Assert.Equal(TimeSpan.FromSeconds(21).Ticks, clock.GetTimestamp());
         Assert.Equal(2, server.ConnectionCount);
+    }
+
+    [Theory]
+    [InlineData("deadline")]
+    [InlineData("caller")]
+    [InlineData("session")]
+    [InlineData("fresh-transport")]
+    public async Task StartupDeadline_DelayedContinuationPreservesCurrentTransportAndCancellationCause(string cause)
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        server.StartupRejectionsRemaining = cause == "fresh-transport" ? 1 : int.MaxValue;
+        server.StartupRetryAfterMs = 2000;
+        var clock = new ManualTimeProvider();
+        using var fixture = CreateFixture(server, isolated: true, clock);
+        await using var owner = await fixture.PrepareAsync();
+        using var caller = new CancellationTokenSource();
+        var rejected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var freshAuthorization = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Host.HandshakeObservation = (_, observation) =>
+        {
+            if (observation.Phase == GatewayHandshakePhase.StartupUnavailable) rejected.TrySetResult();
+        };
+        async Task Authorize(CancellationToken ct)
+        {
+            if (cause == "fresh-transport" && server.ConnectionCount == 2)
+            {
+                freshAuthorization.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            }
+            await owner.AuthorizeAsync(ct);
+        }
+        var context = new QueuedSynchronizationContext();
+        var previous = SynchronizationContext.Current;
+        Task<NativeGatewaySetupConnection> connecting;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            connecting = NativeGatewaySetupConnection.ConnectWithBudgetAsync(
+                owner, Authorize, true, caller.Token, null);
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+
+        try
+        {
+            await context.DrainUntilCompletedAsync(rejected.Task);
+            if (cause == "fresh-transport")
+            {
+                await context.DrainUntilCompletedAsync(freshAuthorization.Task);
+                Assert.Equal(2, server.ConnectionCount);
+            }
+            clock.Advance(TimeSpan.FromSeconds(210));
+            Assert.False(connecting.IsCompleted);
+            if (cause == "caller") caller.Cancel();
+            if (cause == "session") await owner.DisposeAsync();
+            await context.DrainUntilCompletedAsync(connecting);
+
+            if (cause == "deadline")
+            {
+                var error = await Assert.ThrowsAsync<GatewayStartupUnavailableException>(() => connecting);
+                Assert.Equal(2000, error.Startup.RetryAfterMs);
+            }
+            else if (cause == "fresh-transport")
+            {
+                await Assert.ThrowsAsync<TimeoutException>(() => connecting);
+            }
+            else
+            {
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => connecting);
+            }
+            Assert.Equal(0, server.SharedCredentialConnects);
+            Assert.Null(fixture.Host.ApprovedId);
+        }
+        finally
+        {
+            caller.Cancel();
+            await context.DrainUntilCompletedAsync(connecting);
+        }
+    }
+
+    private sealed class QueuedSynchronizationContext : SynchronizationContext
+    {
+        private readonly Channel<(SendOrPostCallback Callback, object? State)> _callbacks =
+            Channel.CreateUnbounded<(SendOrPostCallback, object?)>();
+
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            _callbacks.Writer.TryWrite((callback, state));
+        }
+
+        public async Task DrainUntilCompletedAsync(Task task)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                while (!task.IsCompleted)
+                {
+                    var posted = _callbacks.Reader.WaitToReadAsync(timeout.Token).AsTask();
+                    if (await Task.WhenAny(task, posted) == task) break;
+                    await posted;
+                    if (!_callbacks.Reader.TryRead(out var callback)) continue;
+                    var previous = Current;
+                    try
+                    {
+                        SetSynchronizationContext(this);
+                        callback.Callback(callback.State);
+                    }
+                    finally { SetSynchronizationContext(previous); }
+                }
+            }
+            finally { timeout.Cancel(); }
+        }
     }
 
     [Fact]

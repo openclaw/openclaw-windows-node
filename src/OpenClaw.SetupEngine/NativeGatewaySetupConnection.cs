@@ -142,7 +142,12 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
             client.ConnectionFailure += ConnectionFailure;
             client.StatusChanged += StatusChanged;
             client.PairingRequired += PairingRequired;
-            using var cancellation = linked.Token.Register(client.Dispose);
+            GatewayStartupUnavailable? startupAtCancellation = null;
+            using var cancellation = linked.Token.Register(() =>
+            {
+                startupAtCancellation = client.StartupUnavailable;
+                client.Dispose();
+            });
             try
             {
                 progress?.Report(SetupLoadingStep.ConnectGateway);
@@ -155,11 +160,15 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
                 retained = true;
                 return connection;
             }
-            catch (OperationCanceledException error) when (
-                linked.IsCancellationRequested && client.StartupUnavailable is { } startup)
+            catch (OperationCanceledException error) when (linked.IsCancellationRequested)
             {
+                // Join an in-flight disposal callback before reading its current-transport snapshot.
+                cancellation.Dispose();
+                var startup = startupAtCancellation ?? client.StartupUnavailable;
                 client.Dispose();
-                throw new NativeAdmissionCanceledException(startup, error, linked.Token);
+                if (startup is not null)
+                    throw new NativeAdmissionCanceledException(startup, error, linked.Token);
+                throw;
             }
             catch (NativePairingException error) when (allowPairing && !pairingAttempted)
             {
