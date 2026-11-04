@@ -52,11 +52,13 @@ public sealed class NativeGatewaySetupConnectionTests
     }
 
     [Fact]
-    public async Task StartupRetry_ExistingSetupDeadlineRemainsFiniteAndReportsTypedStartup()
+    public async Task StartupRejection_ExistingSetupDeadlineRemainsFiniteAndReportsTypedStartup()
     {
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
-        server.StartupRejectionsRemaining = int.MaxValue;
+        server.StartupRejectionsRemaining = 1;
         server.StartupRetryAfterMs = 2000;
+        // Keep the rejected generation current at the deadline. Fresh-socket retries are covered separately.
+        server.CloseAfterStartupRejection = false;
         using var fixture = CreateFixture(server, isolated: true);
         await using var owner = await fixture.PrepareAsync();
 
@@ -64,6 +66,7 @@ public sealed class NativeGatewaySetupConnectionTests
             () => NativeGatewaySetupConnection.ConnectAsync(owner).WaitAsync(TimeSpan.FromSeconds(30)));
 
         Assert.Equal(2000, error.Startup.RetryAfterMs);
+        Assert.Equal(1, server.ConnectionCount);
         Assert.Equal(0, server.SharedCredentialConnects);
         Assert.Null(fixture.Host.ApprovedId);
     }
