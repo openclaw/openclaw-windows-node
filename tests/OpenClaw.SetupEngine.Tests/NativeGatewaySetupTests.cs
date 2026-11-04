@@ -934,7 +934,7 @@ public sealed class NativeGatewaySetupTests
         fixture.Host.Validate = () => clock.Advance(TimeSpan.FromSeconds(87));
         fixture.Runtime.Ensure = async cancellationToken =>
         {
-            Task startup = Task.Delay(TimeSpan.FromSeconds(165), clock, cancellationToken);
+            Task startup = Task.Delay(TimeSpan.FromSeconds(260), clock, cancellationToken);
             startupEntered.SetResult();
             await startup;
         };
@@ -942,11 +942,11 @@ public sealed class NativeGatewaySetupTests
         Task<NativeGatewaySetupSession> preparation =
             fixture.Service.PrepareAsync(fixture.Draft, CancellationToken.None);
         await startupEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        clock.Advance(TimeSpan.FromSeconds(165));
+        clock.Advance(TimeSpan.FromSeconds(260));
         await using var session = await preparation.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.False(session.IsIsolated);
-        Assert.Equal(TimeSpan.FromSeconds(252), TimeSpan.FromTicks(clock.GetTimestamp()));
+        Assert.Equal(TimeSpan.FromSeconds(347), TimeSpan.FromTicks(clock.GetTimestamp()));
         Assert.True(fixture.Events.IndexOf("validate") < fixture.Events.IndexOf("start"));
     }
 

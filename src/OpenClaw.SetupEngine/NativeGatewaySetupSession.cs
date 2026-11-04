@@ -37,8 +37,16 @@ public sealed class NativeGatewaySetupSession(
     internal TimeSpan BeginAdmission()
     {
         _admissionStartedAt ??= AdmissionTimeProvider.GetTimestamp();
+        return GetAdmissionRemaining()!.Value;
+    }
+
+    internal TimeSpan? GetAdmissionRemaining()
+    {
+        if (_admissionStartedAt is not { } startedAt)
+            return null;
+
         var remaining = IsolatedGatewayRuntime.AdmissionTimeout -
-            AdmissionTimeProvider.GetElapsedTime(_admissionStartedAt.Value);
+            AdmissionTimeProvider.GetElapsedTime(startedAt);
         return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
     }
 
@@ -86,6 +94,21 @@ public sealed class NativeGatewaySetupSession(
         if (!_published && !IsIsolated && !File.Exists(ReloadBackupPath))
             await RestartAsync(cancellationToken);
         await AuthorizeAsync(cancellationToken);
+    }
+
+    internal async Task PrepareConnectionForAdmissionAsync(CancellationToken cancellationToken)
+    {
+        if (_published || IsIsolated || File.Exists(ReloadBackupPath))
+            return;
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        await _gate.WaitAsync(linked.Token);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            await PrepareRestartCoreAsync(linked.Token);
+        }
+        finally { _gate.Release(); }
     }
 
     internal async Task PrepareAsync(CancellationToken cancellationToken)
@@ -346,23 +369,28 @@ public sealed class NativeGatewaySetupSession(
         await _gate.WaitAsync(linked.Token);
         try
         {
-            BeginWizard();
-            _terminal?.Dispose();
-            _terminal = null;
-            if (!IsIsolated)
-                await runtime.StopAsync(linked.Token);
-            // Upstream may have changed configuration before an error. Validate before restart.
-            if (!IsIsolated)
-            {
-                Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
-                SuspendReload();
-            }
-            await host.ValidateConfigurationAsync(package, environment, linked.Token);
+            await PrepareRestartCoreAsync(linked.Token);
             if (IsIsolated)
                 await runtime.RestartAsync(Record, linked.Token);
             await AuthorizeCoreAsync(linked.Token);
         }
         finally { _gate.Release(); }
+    }
+
+    private async Task PrepareRestartCoreAsync(CancellationToken cancellationToken)
+    {
+        BeginWizard();
+        _terminal?.Dispose();
+        _terminal = null;
+        if (!IsIsolated)
+            await runtime.StopAsync(cancellationToken);
+        // Upstream may have changed configuration before an error. Validate before restart.
+        if (!IsIsolated)
+        {
+            Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
+            SuspendReload();
+        }
+        await ValidateConfigurationAsync(cancellationToken);
     }
 
     public void MarkWizardCompleted() => _wizardCompleted = true;

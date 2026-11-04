@@ -76,7 +76,7 @@ public sealed class NativeGatewaySetupService(
     Func<INativeGatewayRuntime> runtimeFactory,
     TimeProvider? timeProvider = null)
 {
-    public static TimeSpan ConfigurationValidationTimeout { get; } = TimeSpan.FromMinutes(2);
+    public static TimeSpan ConfigurationValidationTimeout => NativeGatewayCliTimeout.ResolveTimeout();
 
     public async Task<NativeGatewaySetupDraft> CreateDraftAsync(CancellationToken cancellationToken)
     {

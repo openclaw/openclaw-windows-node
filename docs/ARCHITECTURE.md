@@ -563,11 +563,12 @@ connection phase budgets follow it. A late successful acknowledgement retains te
 seconds for status confirmation, extending the start/status ceiling to at most 310
 seconds at the default. This allowance remains subordinate to caller deadlines;
 the outer 330-second default connection budget also includes preflight, inspection
-and handshake work. Native setup configuration validation has its own two-minute
-command budget and must return successfully before the admission budget begins; its
-elapsed time does not reduce the admission window. Setup logs distinguish
-configuration-validation, admission, and startup timeout failures. Runtime status
-is polled every two seconds without issuing another start.
+and handshake work. Native setup configuration validation uses the native CLI
+timeout (four minutes by default, overridable with
+`OPENCLAW_SETUP_NATIVE_CLI_TIMEOUT`) and must return successfully before the
+admission budget begins; its elapsed time does not reduce the admission window.
+Setup logs distinguish configuration-validation, admission, and startup timeout
+failures. Runtime status is polled every two seconds without issuing another start.
 A timeout raises `NativeGatewayStartupTimeoutException` with its phase (start request or
 readiness), budget and last package status. Its message uses only validated lifecycle
 states and token-shaped readiness reason codes, never package prose.

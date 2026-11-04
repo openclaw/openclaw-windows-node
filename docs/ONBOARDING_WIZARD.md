@@ -510,8 +510,10 @@ phase keeps a 210-second floor for shorter values.
 
 Staged native setup shares the existing 330-second default admission allowance
 after successful native configuration validation through the first authenticated
-operator hello. Configuration validation has its own two-minute timeout and a
-confirmed zero-exit result; it does not consume the startup or admission budget.
+operator hello. Configuration validation uses the native CLI timeout (four
+minutes by default, overridable with `OPENCLAW_SETUP_NATIVE_CLI_TIMEOUT`) and
+requires a confirmed zero-exit result; it does not consume the startup or
+admission budget.
 Start-command time, listener verification, challenge authorization, startup-sidecar
 retry hints and pairing all consume that same remaining time. No reconnect or
 credential recovery grants a fresh window. A current typed startup rejection
