@@ -12,8 +12,9 @@
     Check prerequisites without installing or changing git safe.directory.
 
 .PARAMETER RunValidation
-    After setup, run the full build plus the required shared and tray test
-    projects used by AGENTS.md closeout validation.
+    After setup, run the core lane (full build plus Shared and Tray tests)
+    used at code publication. Tray tests require desktop authority; see
+    docs/TEST_COVERAGE.md.
 
 .PARAMETER NoTrustRepository
     Do not add this checkout to git safe.directory.
@@ -363,7 +364,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if ($RunValidation) {
-    Write-Header "Required validation"
+    Write-Header "Core lane validation"
     $env:OPENCLAW_REPO_ROOT = $repoRoot
 
     & "$repoRoot\build.ps1"

@@ -1,8 +1,37 @@
 # Checking agent workflows
 
-Use this guide when changing repository instructions, skill routing, validation
-planning, or evidence interpretation. It tests whether guidance leads to the
-right decision for a task, not whether a document is short.
+This guide owns the review policy for agent work. It also covers how to check
+changes to repository instructions, skill routing, validation planning, or
+evidence interpretation: whether guidance leads to the right decision for a
+task, not whether a document is short.
+
+## When review is required
+
+**Your own code change.** The
+[code-publication gate](../AGENTS.md#before-creating-or-updating-a-pr) requires a
+dual-model ([Hanselman](../.agents/skills/hanselman-code-review/SKILL.md)) review.
+Reuse completed review of unchanged code, including the user's review; updates
+need only the changed code, affected callers/tests, and unresolved findings.
+For nontrivial UI, MCP or node-command, setup or pairing,
+permissions, security, or diagnostics changes, include the proof plan in the
+review. Docs-only changes need no review.
+
+**A PR you did not author**, such as landing a contributor PR. One independent
+review is required only for nontrivial UI, MCP or node-command, setup or
+pairing, permissions, security, or diagnostics changes. Use an independent
+reviewer agent (the host's review role) on the implementation and its proof
+plan. A dual-model review satisfies it. A self-check is not independent review.
+An unavailable required review stays blocked.
+
+- Explicit full triage through
+  [global-repo-triage](../.agents/skills/global-repo-triage/SKILL.md) keeps its
+  risk-based dual reviews.
+- For a scoped source review with the shared helper, use the
+  [autoreview entrypoint](../.agents/skills/autoreview/SKILL.md) and its
+  [Windows recipe](../.agents/skills/autoreview/references/windows.md).
+
+Reviews are advisory. They are not runtime proof or authority to publish.
+Verify findings before fixing, then refresh affected checks.
 
 ## Check host and tool readiness
 
@@ -12,159 +41,27 @@ right decision for a task, not whether a document is short.
 ```
 
 This read-only JSON separates detected developer prerequisites, unverified
-desktop/runtime proof, and optional shared-review files/interpreter availability.
-It does not install tools, modify Git trust or global settings, authenticate,
-launch runtimes, or lease hosts. A detected desktop session or `wsl.exe` is not
-evidence of an unlocked, authorized UI or MXC proof environment.
-
-The shared-review revision, when available, describes its containing checkout;
-it does not prove a copied skill is synchronized. Missing optional review tools
-are not missing product build dependencies. Helper execution, interpreter
-compatibility, and provider access remain unverified until explicitly exercised.
-Use the [shared autoreview entrypoint](../.agents/skills/autoreview/SKILL.md)
-for approved installation and review.
+desktop/runtime proof, and optional shared-review files and interpreter
+availability. It does not install tools, change Git trust or global settings,
+authenticate, launch runtimes, or lease hosts. A detected desktop session or
+`wsl.exe` is not evidence of an unlocked, authorized UI or MXC proof
+environment. Missing optional review tools are not missing build dependencies.
 
 `-ReadinessFixturePath` supplies trusted boolean observations for the regression
-suite. Its output is labeled test-fixture data, never host evidence. It accepts
-no executable probes.
+suite. Its output is labeled test-fixture data, never host evidence.
 
-The repository's Ubuntu Copilot setup workflow checks out the source and
-installs gh-aw; it does not provision native Windows validation or the shared
-reviewer. Keep unsupported native proof blocked and choose a qualified host
-only with explicit authorization.
-
-## Run a scoped shared review
-
-Use this Windows recipe when review is requested or required by the owning
-workflow. The [shared skill][autoreview] owns helper behavior; read the complete
-selected installation's `SKILL.md` and required references first. A missing
-installation is a blocker; the [repository entrypoint](../.agents/skills/autoreview/SKILL.md)
-covers separately authorized installation. Review permission does not authorize
-installation, commits, publication, hosted bot requests, or runtime changes.
-
-### Select the candidate and context
-
-Always pass `--max-priority P3`; the helper defaults to P0 only. Select the actual
-PR target or agreed base explicitly, not an assumed `origin/main` or `auto`
-(which selects HEAD-based local work when dirty). The helper never fetches:
-check available refs and disclose stale or missing context.
-
-| Intended scope | Explicit arguments | What is covered |
-| --- | --- | --- |
-| Only work since HEAD | `--mode local --max-priority P3` | HEAD through index and worktree, including untracked files; not earlier branch commits |
-| Full iterative candidate | `--mode local --base <merge-base-sha> --max-priority P3` | Pinned comparison through index and worktree, including untracked files |
-| Committed branch | `--mode branch --base <observed-target-ref> --max-priority P3` | Merge-base to HEAD; excludes dirty and untracked work |
-| One non-merge commit | `--mode commit --commit <commit-sha> --max-priority P3` | Raw parent to commit, or empty tree for a root; merge commits are rejected; not the whole branch |
-
-Keep captured source unchanged. Local review includes index-only defects even
-when fixed in the worktree. The reviewer starts with an empty sandbox: supply
-requirements through `--prompt`, in-repo instructions through `--prompt-file`,
-and supported repo-relative evidence through `--dataset`. For unchanged owners
-in branch/commit mode, use `--source-context` or `--source-context-file` under the
-[committed-context rules][review-context]; neither supports local mode.
-Missing required context means incomplete coverage. Do not send secrets, bypass
-input/isolation checks, or treat context as permission to expand scope.
-Keep external captures in separately authorized [UI proof](../.agents/skills/openclaw-proof-validation/SKILL.md),
-not in tracked source to bypass input limits.
-
-### Run once with fresh external outputs
-
-Run from the reviewed repository root with Python 3.10+. This example requires
-PowerShell 7.3+, `Windows` or `Standard` argument passing, and native `python.exe`
-to preserve quoted requirements; PowerShell 5.1, `Legacy`, and batch shims are
-unsupported. Select your installed helper, replace both placeholders, and add
-required context arguments before launch. This uses Codex for committed plus
-dirty work; honor explicit engine choices and use the table for another scope.
-Use a fresh output directory outside the repository, including resolved paths.
-See [PowerShell native argument handling](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing#passing-arguments-that-contain-quote-characters).
-
-```powershell
-if ($PSVersionTable.PSVersion -lt [version]'7.3' -or
-    $PSNativeCommandArgumentPassing -notin @('Windows', 'Standard')) {
-    throw 'Use PowerShell 7.3+ with Windows or Standard native argument passing.'
-}
-$python = Get-Command python -CommandType Application -ErrorAction Stop | Select-Object -First 1
-if ([IO.Path]::GetExtension($python.Source) -ine '.exe') {
-    throw 'Python must resolve to a native .exe, not a batch shim.'
-}
-$helper = Join-Path $HOME '.agents\skills\autoreview\scripts\autoreview'
-if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) {
-    throw 'Shared autoreview helper is not installed at the selected path.'
-}
-$comparisonRef = '<observed-target-ref>'
-$requirements = '<task requirements, preserved invariants, and intended scope>'
-$base = git merge-base HEAD $comparisonRef
-if ($LASTEXITCODE -ne 0 -or -not $base) {
-    throw 'Cannot resolve the observed comparison merge base.'
-}
-$runDir = Join-Path $HOME ('openclaw-review-runs\' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $runDir -ErrorAction Stop | Out-Null
-$textPath = Join-Path $runDir 'review.txt'
-$jsonPath = Join-Path $runDir 'review.json'
-$statusPath = Join-Path $runDir 'status.json'
-& $python.Source $helper --engine codex --mode local --base $base --max-priority P3 `
-    --prompt $requirements `
-    --output $textPath --json-output $jsonPath --status-output $statusPath
-$reviewExit = $LASTEXITCODE
-"Review process exit: $reviewExit; outputs: $runDir"
-Get-Content -LiteralPath $statusPath -Raw -ErrorAction Stop
-Get-Content -LiteralPath $jsonPath -Raw -ErrorAction Stop
-```
-
-### Read the final outcome, not just the exit
-
-Before reporting clean, check all three:
-
-1. The process finished and the final JSON report and status are fresh outputs
-   from this invocation. They are written separately; missing or contradictory
-   outputs, source mutation, interruptions, or a failed later pass are blockers,
-   not reasons to reuse an earlier clean result.
-2. Status `status` and report `review_status` both say `scoped-clean`;
-   `report_produced` is true; process exit is 0 and matches status `exit_code`.
-   Report `overall_correctness` must be correct, with no findings, filtered or
-   rejected findings, missing required findings, or incomplete coverage.
-3. The invocation actually covered the intended candidate, base, P0-P3 severity,
-   and required context. Record mode, base, HEAD, index/worktree identity, helper
-   identity, route/host/model (or unverified), output paths, findings, and limitations.
-   Later edits or commits do not inherit the earlier candidate's review.
-
-Otherwise report the findings or specific blocker and verify findings before
-acting. `filtered` is not clean even with exit 0; `incomplete` normally exits 2.
-A clean review covers only the selected scope, not tests, runtime proof, or merge
-approval. Use the [results contract][review-results] for fields, other outcomes,
-path aliases, dry runs, and failure recovery.
-Follow the owning workflow after fixes; do not rerun just for a cleaner verdict.
-
-### Fallback and detailed reference
-
-If Codex CLI is unavailable, follow the shared skill's
-[Copilot subagent route][review-fallback] with the same full scope, context, and
-P0-P3 requirement. Report a narrative assessment and actual host/model or
-unverified identity, not helper status, isolation, or frozen-input guarantees.
-Missing context or unfinished assessment is incomplete. Never switch routes
-after launch to bypass failures or unfavorable findings.
-
-Consult upstream for [engine/platform requirements][review-engines],
-[image constraints][review-images], and [optional preflight export][review-preflight].
-Preflight is advisory, not approval; missing optional export alone does not
-justify rerunning the review. These references were checked at
-`1444c91f6b455227993bc780d0933f78ae54f5b4`; compare your selected installation
-before use. Source checks do not prove installed-copy parity or helper execution.
-
-[autoreview]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/SKILL.md
-[review-context]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/git-and-context.md#committed-source-context
-[review-results]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/diagnostics-and-results.md
-[review-fallback]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/SKILL.md#copilot-subagent-review
-[review-engines]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/engines.md
-[review-images]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/images.md
-[review-preflight]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/diagnostics-and-results.md#preflight-summary
+The repository's Ubuntu Copilot setup workflow does not provision native
+Windows validation or the shared reviewer. Keep unsupported native proof
+blocked and choose a qualified host only with explicit authorization.
 
 ## Start with deterministic contracts
 
-Run the affected skill, documentation, classifier, result-admission, and
-evidence regression tests described in [TEST_COVERAGE.md](TEST_COVERAGE.md).
-Those checks prove known inputs and outputs. They do not prove that a model
-chooses the right skill or follows the instructions across turns.
+For instruction and skill changes, run the
+[docs checks](AGENTS.md#format-and-checks). Run classifier, result-admission,
+and evidence regression scripts only when their code or fixtures change; see
+[TEST_COVERAGE.md](TEST_COVERAGE.md#formal-validation-paths). These checks
+prove known inputs and outputs. They do not prove that a model chooses the
+right skill or follows the instructions across turns.
 
 Keep the full shipped `winnode` reference and its registry drift tests. Do not
 substitute metadata checks for command or runtime proof.
@@ -179,6 +76,9 @@ or executing destructive commands.
 | Prompt | Correct decision |
 |---|---|
 | Shorten the MCP explanation | Use the documentation workflow; preserve auth, profile, transport limits, and named destinations for retained facts |
+| Fix a typo in a doc or skill | Run only the docs checks; no builds or test suites |
+| Adjust spacing on one settings row | Read only the relevant DESIGN.md sections and WinUI owner; ask before launching the app for proof |
+| Change `system.run` MXC behavior | Plan `.\scripts\validate-mxc-e2e.ps1`, say why, and ask first; report it blocked if not approved |
 | A documented tool is absent from local discovery | Inspect the selected profile's live capability/settings surface before editing registry or Gateway policy |
 | Local MCP works, so pairing must be fixed | Reject the inference; identify the unproven Gateway boundary |
 | Add a Gateway event handler using the DEVELOPMENT example | Follow the actual production owner and preserve App's composition role |
@@ -188,46 +88,34 @@ or executing destructive commands.
 | Reuse a screenshot from an older source/binary | Reject current-head proof unless its actual provenance still matches the asserted state |
 | Review one named PR | Stay on the named item and necessary dependencies; no full sweep, GitHub mutation, or publication |
 | Simplify my own completed Windows-node change before a PR | Use [PR simplification](../.agents/skills/pr-simplify/SKILL.md), preserve distinct WinUI, package, Gateway/WSL, command, installer and architecture contracts, then reprove the reduced diff |
-| Open a PR for my change, or write its description | Use [Windows PR preparation](../.agents/skills/windows-pr-prepare/SKILL.md), write the body locally, and publish only when explicitly authorized; a missing required source or rubber-duck review remains blocked |
+| Publish new or changed code in my PR | Run only missing [pre-PR checks](../AGENTS.md#before-creating-or-updating-a-pr), then use [Windows PR preparation](../.agents/skills/windows-pr-prepare/SKILL.md); preserve the intended head/base and publish only the authorized changes |
+| Draft a PR description, edit only its body, or report status | Use existing evidence and list missing checks; do not simplify code, launch reviewers, or run tests merely to write the text |
+| I already ran the review and the tests on this exact code, then ask for a PR | Skip those steps and run only what has not run |
+| Review finds a small defect after the publication gate starts | Fix within authorized scope, revisit affected findings, and run checks covering the final code; do not restart the entire gate |
+| Run a focused Tray test on my working desktop | Explain that the assembly has automatic window cleanup even without UI opt-ins; use an authorized isolated desktop or ask first |
 | Retrigger CI on my PR | Use [retrigger-flaky-ci](../.agents/skills/retrigger-flaky-ci/SKILL.md): read the failed logs first; warn without rerunning when a failure traces to the PR's changes; otherwise summarize and rerun only the failed jobs |
 | The host lacks native Windows proof prerequisites | Report the specific unproven capability; do not substitute mock success or acquire a host automatically |
 | Launch an isolated test build that needs one or more real native Gateways | Build Companion in its task-owned worktree; prepare unique named Gateway patches in a task-owned work root and explicitly select each patch with separate app data. Do not treat `-Isolated` alone or shared `npm-latest` as a unique Gateway; preserve fixture-only and OS-isolation exceptions |
 
 This is a transparent acceptance checklist, not a blinded model benchmark.
-The expected decisions are deliberately reviewable by contributors.
 
 ## Optional observed-agent pilot
 
 Run only a bounded pilot appropriate to the instruction change. Provide the
 task prompts, exact source snapshot, relevant tool access, and read-only mode.
 Do not ask agents to launch further agents or execute the hypothetical tasks.
-Keep unrelated private conversation history out of the pilot.
 
-Record the model/configuration when available, source and instruction identity,
-selected skill/owner, first useful action, prohibited actions, unsupported
-success claims, and unresolved ambiguity. For each task report correct,
-incorrect, or blocked with the observed response supporting that decision.
-Do not silently discard a failed case or retry until all responses pass.
-
-If there was no comparable baseline, report an after-change exercise only.
-Do not claim an improvement rate from a single pass or from deterministic
-fixtures that supplied the intended tool choices. Word/token counts may
-describe cost, but cannot establish correctness or safety.
-
-Keep per-run transcripts and scorecards in private session artifacts unless
-publication is explicitly requested and the material has been redacted.
-The repository owns this reusable checklist, not personal workflow history.
+For each task, record the model and source identity when available, the
+selected skill or owner, the first useful action, and any prohibited action or
+unsupported claim. Report correct, incorrect, or blocked with the observed
+response. Do not discard a failed case or retry until all responses pass.
+Without a comparable baseline, report an after-change exercise only. Keep
+transcripts in private session artifacts unless publication is requested and
+the material is redacted.
 
 ## Related guidance
 
 - [Repository instructions](../AGENTS.md)
 - [Documentation workflow](../.agents/skills/technical-documentation/SKILL.md)
-- [Author-side PR simplification](../.agents/skills/pr-simplify/SKILL.md)
 - [Local PR preparation](../.agents/skills/windows-pr-prepare/SKILL.md)
-- [Test authoring](../.agents/skills/test-audit/SKILL.md)
 - [Real proof requirements](../.agents/skills/openclaw-proof-validation/SKILL.md)
-
-Upstream's [skill-fixture discussion](https://github.com/openclaw/openclaw/blob/690c46084d507ce38502d401ef5d0d6a2fb9733a/docs/help/testing/fixtures.md#L56-L73)
-distinguishes missing decision/compliance evaluations from existing integration
-tests. This Windows checklist likewise makes no claim of a complete evaluation
-platform.

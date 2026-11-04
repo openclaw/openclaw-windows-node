@@ -66,4 +66,4 @@ pairing.
 
 ## Relationship to other validation
 
-Accessibility scans do not replace the required agent closeout validation in `AGENTS.md`. They are an additional focused lane for WinUI accessibility work and a formal CI gate documented in `docs\TEST_COVERAGE.md`.
+Accessibility scans are a focused lane for WinUI accessibility work and a formal CI gate documented in `docs\TEST_COVERAGE.md`. They open windows, so run them locally only when needed and after asking.

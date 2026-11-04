@@ -1,6 +1,6 @@
 ---
 name: uninstall
-description: Uninstall or hard-clean OpenClaw Companion, Windows node, native Gateway/MXC, WSL Gateway, and managed llama.cpp/Local AI state for a clean retest. Choose the existing dev CLI uninstall or the reviewed hard-clean procedure, inventory exact targets, and obtain destructive confirmation before acting.
+description: Uninstall or hard-clean OpenClaw Companion, native Gateway/MXC, WSL Gateway, and llama.cpp/Local AI state for a clean retest. Inventory exact targets first and confirm before deleting.
 ---
 
 # Uninstall and clean retest
@@ -18,17 +18,11 @@ ask for confirmation before stopping processes or changing installed state.
 | Demo/test device without Copilot | Copy `scripts\clean-uninstall.ps1` to the device. Run with Windows PowerShell 5.1; default is preview, `-ConfirmDestructive` applies. See [standalone usage](HARD-CLEAN.md#standalone-script-no-copilot-required). |
 | Ordinary installed-app removal | Settings > Apps > Installed apps. See `docs\SETUP.md`, Uninstalling. Retained state is intentional. |
 
-The standalone script's `-All` flag enables dev state, receipt-backed cached models,
-and owned release/dev WSL distro removal. It does not imply `-ConfirmDestructive`
-or discover custom profile paths. Review and confirm the expanded scope first.
-Use `-All -ExcludeCachedModels` to preserve external shared cached models while
-selecting the other built-in scopes. The exclusion overrides `-RemoveCachedModels`
-too; models inside deleted profiles or WSL filesystems are still removed.
-For explicitly identified leftover Windows isolated-profile registrations, use
-`-RemoveIsolatedProfilePath` with exact paths. Preview first; confirmed removal
-requires elevation as the same user and accepts only unloaded, non-special
-`S-1-5-110` profiles. `-All` never selects these automatically. See HARD-CLEAN.md
-for the distinction between profile cleanup and native session teardown.
+The standalone script's flags, including `-All`, `-ExcludeCachedModels`, and
+`-RemoveIsolatedProfilePath`, are listed in the
+[HARD-CLEAN option table](HARD-CLEAN.md#standalone-script-no-copilot-required).
+`-All` never implies `-ConfirmDestructive` or discovers custom profile paths.
+Review and confirm the expanded scope first.
 
 Existing helpers are narrower than a hard clean:
 
@@ -44,11 +38,10 @@ behavior, process selection, and WSL scope differ.
 
 ## Dev-build engine uninstall
 
-`OpenClaw.Tray.WinUI.exe` embeds the SetupEngine and accepts `--uninstall` directly, so
-no installer is required to exercise this path; a local `dotnet build` output works.
-This walks a real (not just installed-via-Inno-Setup) uninstall of dev/test state:
-WSL gateway distro, `openclaw` CLI inside WSL, gateway systemd service, Tailscale
-state, and the tray's AppData files.
+`OpenClaw.Tray.WinUI.exe` embeds the SetupEngine and accepts `--uninstall`
+directly, so a local `dotnet build` output is enough. It runs a real uninstall
+of dev/test state: WSL gateway distro, `openclaw` CLI inside WSL, gateway
+systemd service, Tailscale state, and the tray's AppData files.
 
 This is destructive. Confirm with the user before the final `--confirm-destructive`
 run, and call out anything it will touch that isn't disposable dev state (e.g. a WSL
@@ -113,26 +106,29 @@ distro or Tailscale session actually in use).
    Get-Content out.log
    ```
 
-   Review the "Would rollback: ..." lines for each of the ~37 steps. Note the
+   Review the "Would rollback: ..." line for each of the 34 setup steps. Note the
    `--data-dir` / `--distro-name` printed at the top; dev-branch builds use
    `OpenClawTray-Dev` / `OpenClawGateway-Dev`, separate from a real install's
    `OpenClawTray` / `OpenClawGateway`. Confirm that the printed data directories
    are exactly `%APPDATA%\OpenClawTray-Dev` and
    `%LOCALAPPDATA%\OpenClawTray-Dev`. Stop if they point anywhere else.
 
-4. **Check for real state the dry-run doesn't surface**, e.g. a live WSL distro:
+4. **Check for real state the dry-run doesn't surface**, e.g. a live WSL distro
+   and the Dev startup task:
 
    ```powershell
-   wsl -l -v
+   wsl.exe --list --verbose
+   Get-ScheduledTask -TaskName 'OpenClaw Companion (Dev)' -ErrorAction SilentlyContinue
    ```
 
    If the distro named in step 3's output is present, flag to the user that it will be
    unregistered (`wsl --unregister`), permanently deleting its filesystem.
 
    The dry-run only logs rollback step IDs, not the concrete files each step would
-   touch. If it matters to the user's situation, inspect `%APPDATA%\OpenClawTray-Dev\`
-   directly before consenting (gateway registry, `windows-node-context.json`, Local AI
-   config, Tailscale state).
+   touch. If it matters to the user's situation, inspect them before consenting:
+   `%APPDATA%\OpenClawTray-Dev` holds the Gateway registry and settings, and
+   `%LOCALAPPDATA%\OpenClawTray-Dev` holds `windows-node-context.json` and
+   Local AI state.
 
 5. **Confirm with the user**, then run the real uninstall the same way:
 
@@ -151,7 +147,7 @@ distro or Tailscale session actually in use).
    successful run as failed:
 
    ```powershell
-   wsl -l -v   # target distro should no longer be listed
+   wsl.exe --list --verbose   # target distro should no longer be listed
    # The current run's own log/journal remain under Logs\Setup (they are open during
    # cleanup); success = that directory holds only uninstall-engine-<this-run> files
    Get-ChildItem "$env:APPDATA\OpenClawTray-Dev\Logs\Setup"   # only this run's uninstall-engine-* files expected
@@ -159,10 +155,11 @@ distro or Tailscale session actually in use).
    Test-Path "$env:LOCALAPPDATA\OpenClawTray-Dev\run.marker"  # should be False
    Test-Path "$env:APPDATA\OpenClawTray-Dev\exec-approvals.json"  # should be False
    Test-Path "$env:LOCALAPPDATA\OpenClawTray-Dev\windows-node-context.json"  # should be False, if it existed
-   # settings.json: GatewayUrl removed; EnableNodeMode/AutoStart reset to false unless
-   # other gateway records remain
+   # settings.json: GatewayUrl removed (key absent); EnableNodeMode/AutoStart reset to false
+   # unless other gateway records remain
    # Get-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name OpenClawTray-Dev -ErrorAction SilentlyContinue
    # should error/be absent (autostart registry key removed)
+   Get-ScheduledTask -TaskName 'OpenClaw Companion (Dev)' -ErrorAction SilentlyContinue   # should return nothing
    ```
 
    The current run's own active log and journal under `%APPDATA%\OpenClawTray-Dev\Logs\Setup`
@@ -175,8 +172,4 @@ distro or Tailscale session actually in use).
 
 - Log and journal for each run are printed at the end of stdout, under
   `%APPDATA%\OpenClawTray[-Dev]\Logs\Setup\uninstall-engine-<timestamp>.jsonl`.
-- For a real installed app (not a dev build), the user-facing path is **Settings → Apps
-  → Installed apps → OpenClaw Companion → Uninstall**; see `docs/SETUP.md#uninstalling`
-  and the README's Uninstall section. The procedure above exercises the underlying
-  CLI path directly. For a native or full clean-retest workflow, use
-  [HARD-CLEAN.md](HARD-CLEAN.md).
+- For a native or full clean retest, use [HARD-CLEAN.md](HARD-CLEAN.md).

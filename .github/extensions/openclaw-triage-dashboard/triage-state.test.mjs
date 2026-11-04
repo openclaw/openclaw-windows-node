@@ -136,6 +136,8 @@ async function loadExtensionHarness() {
     const processUrl = moduleUrl(`
         import { promisify } from "node:util";
         export const calls = [];
+        let issue;
+        export function setIssue(value) { issue = value; }
         let release;
         let barrier;
         export function pause() { barrier = new Promise(resolve => { release = resolve; }); }
@@ -144,9 +146,10 @@ async function loadExtensionHarness() {
         execFile[promisify.custom] = async (file, args) => {
             calls.push(args);
             if (barrier) await barrier;
-            return { stdout: JSON.stringify(args[0] === "pr"
+            const value = args[0] === "pr"
                 ? [{ number: 1308, state: "OPEN", headRefOid: "abc123" }]
-                : []) };
+                : args[1] === "view" ? issue : issue?.state === "OPEN" ? [issue] : [];
+            return { stdout: JSON.stringify(value) };
         };
         export function execFileSync() { return process.execPath; }
     `);
@@ -215,7 +218,7 @@ test("real open handler serves inert bootstrap and preserves explicit-state refr
         const html = await (await request("/")).text();
         assert.match(html, /Load or generate triage state/);
         assert.match(html, /global-repo-triage/);
-        assert.match(html, /fresh <code>instanceId/);
+        assert.match(html, /actionName: update_state/);
         for (const name of ["refresh", "request_next_action", "request_merge"]) {
             await assert.rejects(invoke(instanceId, name, { number: 1308, headSha: "abc1234" }),
                 { code: "triage_not_loaded" });
@@ -253,6 +256,53 @@ test("real open handler serves inert bootstrap and preserves explicit-state refr
     );
     assert.deepEqual(gh.calls.map((args) => args.slice(0, 2)), [["pr", "list"], ["issue", "list"]]);
 
+    const updateAction = dashboard.actions.find((action) => action.name === "update_state");
+    assert.ok(updateAction, "The canvas must expose an in-place state update action");
+    assert.equal(updateAction.inputSchema, TRIAGE_INPUT_SCHEMA);
+    for (const title of ["Revised triage", "Final triage"]) {
+        const updated = await invoke("populated", "update_state", dashboardInput({
+            title,
+            refreshSeconds: 120,
+            items: [inputItem({ decision: "NEEDS_INFO", nextAction: "Await author evidence." })],
+        }));
+        assert.equal(updated.title, title);
+        assert.equal(updated.items[0].decision, "NEEDS_INFO");
+        await invoke("populated", "refresh");
+        const served = await (await populated.request("/state")).json();
+        assert.equal(served.title, title);
+        assert.equal(served.items[0].nextAction, "Await author evidence.");
+        assert.deepEqual(
+            [...timers].map((timer) => timer.milliseconds).sort((left, right) => left - right),
+            [2_000, 120_000],
+        );
+    }
+    for (const input of [{}, dashboardInput({ items: [] }), dashboardInput({ repo: "other/repo" })]) {
+        await assert.rejects(invoke("populated", "update_state", input));
+    }
+    assert.equal((await (await populated.request("/state")).json()).title, "Final triage");
+    assert.equal(timers.size, 2);
+
+    const reportWithIssue = dashboardInput({
+        items: [inputItem(), inputItem({
+            type: "issue",
+            number: 42,
+            url: "https://github.com/openclaw/openclaw-windows-node/issues/42",
+            expectedChecks: [],
+            reviewedHeadSha: "",
+            decision: "NEEDS_INFO",
+        })],
+    });
+    gh.setIssue({ number: 42, state: "CLOSED", stateReason: "COMPLETED" });
+    await invoke("populated", "update_state", reportWithIssue);
+    await invoke("populated", "refresh");
+    assert.equal((await (await populated.request("/state")).json()).items.some((item) => item.number === 42), false);
+    gh.setIssue({ number: 42, state: "OPEN" });
+    const replacement = await invoke("populated", "update_state", reportWithIssue);
+    assert.ok(replacement.items.some((item) => item.number === 42),
+        "A replacement report must not lose a reopened issue to cached closed state");
+    await invoke("populated", "refresh");
+    assert.equal((await (await populated.request("/state")).json()).items.find((item) => item.number === 42).live.state, "OPEN");
+
     gh.pause();
     const pendingRefresh = invoke("populated", "refresh");
     await open("populated", undefined);
@@ -265,9 +315,19 @@ test("real open handler serves inert bootstrap and preserves explicit-state refr
     assert.equal(timers.size, 0);
     assert.equal(sent.length, 0);
 
+    await invoke("populated", "update_state", dashboardInput({ title: "Loaded in place" }));
+    await invoke("populated", "refresh");
+    const loaded = await (await populated.request("/state")).json();
+    assert.equal(loaded.isBootstrap, undefined);
+    assert.equal(loaded.title, "Loaded in place");
+    assert.equal(timers.size, 2);
+    assert.equal(sent.length, 0);
+
     await dashboard.onClose({ instanceId: "populated" });
     opened.delete("populated");
+    assert.equal(timers.size, 0);
     await assert.rejects(invoke("populated", "refresh"), { code: "instance_not_found" });
+    await assert.rejects(invoke("populated", "update_state", dashboardInput()), { code: "instance_not_found" });
     assert.equal((await open("populated", null)).result.status, "No triage state loaded");
 });
 
@@ -1154,7 +1214,7 @@ test("global triage defaults adversarial reviews to one coordinated PR child ses
     const skill = readFileSync(skillUrl, "utf8");
 
     assert.match(skill, /Every adversarially reviewed PR must run in one coordinated[\s\S]*child project session/);
-    assert.match(skill, /Call `list_projects`/);
+    assert.match(skill, /Call `list_repositories`/);
     assert.match(skill, /Call `list_sessions_and_chats` once/);
     assert.match(skill, /call `open_pr_session`/);
     assert.match(skill, /Never use one child session to review multiple PRs/);
@@ -1280,7 +1340,8 @@ test("item actions route to one reusable child session", () => {
     assert.match(routing.prompt, /from_project_session_id or from_session_id/);
     assert.match(routing.prompt, /rather than an earlier creator/);
     assert.match(routing.prompt, /saved triage-state JSON/);
-    assert.match(routing.prompt, /reopen the same dashboard instance ID/);
+    assert.match(routing.prompt, /invoke update_state on the existing dashboard instance ID/);
+    assert.match(routing.prompt, /Do not open a replacement panel/);
     assert.match(routing.prompt, /does not authorize a GitHub mutation/);
     assert.match(routing.prompt, /changedFields may contain only:/);
     assert.match(routing.prompt, /Do not copy the baseline values into values/);
@@ -1297,7 +1358,7 @@ test("issue actions use a distinct stable child session name", () => {
 
     assert.equal(routing.sessionName, "Triage Issue #42");
     assert.match(routing.prompt, /openclaw\/openclaw-windows-node Issue #42/);
-    assert.match(routing.prompt, /list_projects/);
+    assert.match(routing.prompt, /list_repositories/);
     assert.match(routing.prompt, /project_id/);
     assert.match(routing.prompt, /call create_session/);
     assert.doesNotMatch(routing.prompt, /open_pr_session/);
@@ -1506,10 +1567,6 @@ test("live GitHub collection and session review data are reflected in the canvas
     assert.match(
         source,
         /catch \(error\) \{\s*if \(entry\.triage !== triage\) return entry\.state;\s*entry\.triage = reconcileOpenInventory\(entry\.triage, entry\.pullRequests, entry\.issues\);/,
-    );
-    assert.match(
-        source,
-        /entry\.triage = reconcileOpenInventory\(triage, entry\.pullRequests, entry\.issues\);\s*entry\.state = mergeSessionData/,
     );
 });
 

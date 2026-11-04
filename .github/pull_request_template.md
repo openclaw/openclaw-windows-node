@@ -46,20 +46,6 @@ in the diff or optional <details>; include technical detail only when it explain
 behavior or a material tradeoff. Do not hide risks or required actions in <details>.
 -->
 
-## Evidence
-
-<!--
-Show the most useful proof that this change works. Screenshots, screencasts,
-terminal output, focused tests, CI results, live observations, redacted logs,
-and artifact links are all useful. Include before/after evidence for visual
-changes when it clarifies the result.
-
-Reviewers will inspect the code, tests, and CI. Use this section to make the
-validation easy to understand, not to restate the diff.
-Summarize what was checked and the result; note meaningful gaps. Link long output
-or put it in optional <details>, keeping the useful evidence summary visible.
--->
-
 ## Change Type
 
 - [ ] Bug fix
@@ -93,13 +79,13 @@ required. Declaring a pool schedules proof; it does not claim the proof ran.
 ## Validation
 
 <!--
-Include exact commands and pass/fail counts. Baseline after code changes:
-- `./build.ps1`
-- `dotnet test ./tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj --no-restore`
-- `dotnet test ./tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj --no-restore`
-
-Add focused tests when relevant. In fresh worktrees, confirm tests actually ran
-and report non-zero test counts.
+Include exact commands and results, with pass/fail counts. For code publication,
+follow AGENTS.md's pre-PR gate and docs/TEST_COVERAGE.md's execution safety rules.
+Reuse current-code results, including the user's; note the dual-model review
+outcome. Drafting or editing only this description does not trigger checks:
+report missing evidence rather than running tests to fill the template.
+CI is the full gate.
+In fresh worktrees, confirm tests actually ran and report non-zero test counts.
 For inventory-bound proof, link the local execution summary described in
 docs/PROOF_POOLS.md. A valid summary is not complete pool, visual, or binary-provenance proof.
 -->
@@ -110,7 +96,11 @@ docs/PROOF_POOLS.md. A valid summary is not complete pool, visual, or binary-pro
 Paste at least one current-head proof item that directly demonstrates the
 changed behavior. Use copied live output, screenshots or video, UI diagnostics,
 `winnode` output, raw MCP JSON-RPC, gateway invoke output, redacted runtime
-logs, or linked artifacts.
+logs, or linked artifacts. Include before/after evidence for visual changes
+when it clarifies the result. Summarize what was checked and note meaningful
+gaps; link long output or put it in optional <details>.
+
+Docs-only or no runtime change: write N/A and the reason.
 -->
 
 - Environment tested:

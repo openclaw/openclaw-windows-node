@@ -9,8 +9,9 @@ responsibility out of a god object, it records the move here and (for
 high-regression closures) adds a guard test. A later PR that tries to move the
 work back then shows up as either a visible ledger edit or a failing test.
 
-See `AGENTS.md` → "Architecture Guardrails" for the hard rules, and the full
-multi-PR refactor plan for the reasoning behind each boundary.
+See [the WinUI agent instructions](../src/OpenClaw.Tray.WinUI/AGENTS.md#large-refactors)
+for the hard rules, and the full multi-PR refactor plan for the reasoning
+behind each boundary.
 
 ## How to use this document
 

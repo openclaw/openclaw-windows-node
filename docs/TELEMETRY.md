@@ -508,3 +508,4 @@ Before adding new exported telemetry:
 4. Add focused tests for names, outcomes, and filtering behavior.
 5. Update this document if the change creates a new convention or expands the telemetry boundary.
 6. Include validation and real behavior proof when the change affects user-visible configuration or exporter behavior.
+7. For exporter or protocol changes, provide current-head collector proof for every affected signal and protocol, or document the blocker.

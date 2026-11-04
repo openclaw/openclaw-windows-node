@@ -15,19 +15,17 @@ reuse or clone `https://github.com/openclaw/agent-skills` and run
 `python3 scripts/install-skills autoreview` from that checkout. On Windows, use
 `python`; `--mode copy` is available when symlinks are unavailable.
 
+Review is required only as described in the
+[review policy](../../../docs/AGENT_WORKFLOWS.md#when-review-is-required).
 Prefer the shared `scripts/autoreview` helper with Python from the repository being
 reviewed, preserving its working directory. Follow the
-[Windows invocation and result-reading recipe](../../../docs/AGENT_WORKFLOWS.md#run-a-scoped-shared-review)
-before launch. Always use `--max-priority P3`, select mode/base explicitly, and
-supply required context. Check fresh final report/status, process outcome, and
-coverage together; exit zero alone is not a clean P0-P3 assessment.
+[Windows invocation and result-reading recipe](references/windows.md) before
+launch. Always use `--max-priority P3`, select mode/base explicitly, and supply
+required context. Exit zero alone is not a clean P0-P3 assessment.
 
-If Codex CLI is unavailable, follow the canonical skill's independent Copilot
-subagent fallback with the same scope, context, and P0-P3 severity. Report its
-actual host/model (or unverified identity), coverage, and limitations as a
-narrative assessment, not helper status or isolation guarantees. Never use
-fallback to bypass failures or findings. Follow all canonical and repository
-review requirements.
+If Codex CLI is unavailable, use the canonical skill's Copilot subagent fallback
+with the same scope and severity, and report its actual host and model. Never
+use fallback to bypass failures or findings.
 
 Keep shared fixes and instructions upstream in `openclaw/agent-skills`. Update
 the shared checkout once for all symlinked consumers; reinstall copy-mode skills

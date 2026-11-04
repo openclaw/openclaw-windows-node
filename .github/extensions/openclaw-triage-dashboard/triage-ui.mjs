@@ -563,9 +563,9 @@ export function renderDashboardHtml() {
       <ol>
         <li>Ask the agent to use the <code>global-repo-triage</code> skill, review current evidence, and save
           <code>global-triage-YYYY-MM-DD.json</code> as a session artifact. Keep GitHub mutations read-only until you approve them.</li>
-        <li>To load that artifact or an existing one, ask the agent to read its JSON and call <code>open_canvas</code>
-          for <code>openclaw-triage-dashboard</code> with the parsed version-1 object as <code>input</code>
-          and a fresh <code>instanceId</code>.</li>
+        <li>To load that artifact or an existing one, ask the agent to read its JSON and call <code>invoke_canvas_action</code>
+          with <code>actionName: update_state</code>, this panel's <code>instanceId</code>,
+          and the parsed version-1 object as <code>input</code>.</li>
       </ol>
       <p class="muted">Reopening this panel may only focus it. No files are loaded automatically.
         The skill's <code>templates\\triage-state.template.json</code> is a format example, not reviewed evidence.</p>

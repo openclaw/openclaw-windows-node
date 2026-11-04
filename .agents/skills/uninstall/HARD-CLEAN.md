@@ -150,25 +150,7 @@ Run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File
 These use temporary fixtures and mocked package/process/WSL operations, not a real
 uninstall.
 
-## Sources and the gap this closes
-
-The October 2, 2026 hard clean from the "avoid premature timeouts" session used
-this order: preserve diagnostics, inventory, stop the exact Companion instance,
-run native `clawctl teardown`, remove Gateway and Companion packages, remove
-reviewed residual state and receipt-linked model files, then verify absence.
-The user subsequently reinstalled successfully. Its old PIDs, ports, package
-versions, account name, and profile paths must never be reused as current targets.
-
-[Pedro's OpenClaw Windows node wiper](https://gist.github.com/larroy/23f0758401c2ac75ae28fe71888dbbd6)
-is useful prior art for dry-run-first inventory, installed-app removal before
-deleting the uninstaller's directory, and residual AppData/registry cleanup.
-Do not download and execute it as this skill's implementation. The version
-reviewed here matches processes/packages broadly, does not invoke native MXC
-teardown, and does not cover receipt-linked Hugging Face weights or arbitrary
-isolated profiles. It lists scheduled tasks in its description but has no task
-removal implementation. It deliberately preserves WSL, unlike the dev engine.
-
-Current ownership references:
+## Ownership references
 
 - `src\OpenClaw.Connection\NativeGateway\NativeGatewayPaths.cs`: per-gateway
   `gateways\<id>\native-gateway` state and package-qualified CLI aliases.
@@ -192,10 +174,13 @@ For example, these commands only list candidates:
 Get-AppxPackage | Where-Object { $_.Name -like '*OpenClaw*' } |
     Select-Object Name, PackageFullName, PackageFamilyName, InstallLocation
 Get-CimInstance Win32_Process |
-    Where-Object { $_.Name -match '^(OpenClaw.*|llama-server|openclaw-wsl-keepalive)\.exe$' } |
+    Where-Object { $_.Name -match '^(OpenClaw.*|llama-server)\.exe$' } |
     Select-Object ProcessId, ParentProcessId, CreationDate, ExecutablePath
 wsl.exe --list --verbose
 ```
+
+Keepalives are `wsl.exe` processes running `-d <owned distro> -- sleep infinity`.
+Match them locally and record only PID and creation time.
 
 Record command failures as unknown, not "absent". Do not print raw command lines,
 environment blocks, gateway configuration, tokens, keys, or entire receipts into
@@ -245,10 +230,7 @@ model caches, WSL, unrelated profiles, and test harnesses. Ask separately about
 unclear scope; "clean retest" alone is not permission to remove every cache or
 another session's data.
 
-For the original hard clean, external model deletion was restricted to two
-explicitly approved receipt-linked GGUF files. It did not delete the Hugging Face
-hub, model repositories, or unrelated blobs. Reproduce that boundary, not those
-historical filenames. Never sweep `*.gguf`.
+Delete only approved receipt-linked model files. Never sweep `*.gguf`.
 
 ## 3. Execute in ownership order
 
@@ -263,10 +245,11 @@ teardown or uninstall: the remaining state may be needed for recovery.
    `node.exe`, `llama-server.exe`, or `OpenClaw*` processes. Companion supplies the
    Windows node feature; a node reset does not require uninstalling system Node.js.
 2. **Tear down native Gateway while its CLI and session metadata still exist.**
-   Resolve `clawctl.exe` from the selected package's qualified alias under
-   `%LOCALAPPDATA%\Microsoft\WindowsApps\<verified-family>\clawctl.exe`, not an
-   arbitrary PATH executable. Check `teardown --help`. After confirmation, the
-   previously verified package contract was:
+   Resolve the CLI from the selected package's qualified alias under
+   `%LOCALAPPDATA%\Microsoft\WindowsApps\<verified-family>\`: `clawctl.exe` for
+   the Store package, `clawctl-<patch>.exe` for a dev patch. Never use an
+   arbitrary PATH executable. Check `teardown --help`; after confirmation, the
+   expected contract is:
 
    ```powershell
    # $clawctl is the already reviewed package-qualified executable.
@@ -305,7 +288,7 @@ teardown or uninstall: the remaining state may be needed for recovery.
    -ErrorAction Stop`. External model assets are individual file removals,
    without `-Recurse`. Never pipe discovery results directly into deletion.
 
-### Mandatory path guards
+### Path guards
 
 Every deletion target must be a fully qualified, normalized literal path already
 listed in the approved plan. Reject empty paths, wildcards, filesystem/home/

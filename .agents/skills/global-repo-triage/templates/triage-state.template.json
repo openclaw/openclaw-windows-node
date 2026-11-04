@@ -17,16 +17,12 @@
       "effort": "Quick",
       "risk": "Low",
       "owner": "Maintainer",
-      "nextAction": "Wait for the exact-head test and both architecture builds.",
+      "nextAction": "Wait for the exact-head CI Gate.",
       "proofPools": [],
       "proofStatus": "not-applicable",
       "reviewStatus": "complete",
       "reviewedHeadSha": "0123456789abcdef0123456789abcdef01234567",
-      "expectedChecks": [
-        "test",
-        "build (win-x64)",
-        "build (win-arm64)"
-      ],
+      "expectedChecks": ["CI Gate"],
       "dependencies": []
     },
     {

@@ -294,7 +294,7 @@ public class McpToolBridge
         ["system.which"] =
             "Resolve executable names to absolute paths by searching PATH (PATHEXT-aware on Windows). Args: bins (string[], required). Returns { bins: { name: resolvedPath, ... } } including only names that were found.",
         ["system.execApprovals.get"] =
-            "Return the V2 exec approvals snapshot: { path, exists, hash, file: { version, defaults: { security, ask, askFallback, autoAllowSkills }, agents: { agentId: { security, ask, askFallback, autoAllowSkills, allowlist: [{ id, pattern, lastUsedAt?, lastResolvedPath? }] } } } }. Socket credentials are redacted. Pass hash as baseHash to system.execApprovals.set.",
+            "Return the V2 exec approvals snapshot: { path, exists, hash, file: { version, defaults: { security, ask, askFallback, autoAllowSkills }, agents: { agentId: { security, ask, askFallback, autoAllowSkills, allowlist: [{ id, pattern, lastUsedAt?, lastResolvedPath? }] } } } }. Socket credentials are redacted. Pass hash as baseHash to system.execApprovals.set. The first call can migrate a legacy approvals file or create the default file.",
         ["system.execApprovals.set"] =
             "Replace the V2 exec approvals file using compare-and-swap. Args: baseHash (required hash from system.execApprovals.get), file (required full { version, defaults, agents } object). Remote updates may preserve or remove existing allowlist grants but cannot add or change grants or set full access. Returns the updated { path, exists, hash, file } snapshot.",
 

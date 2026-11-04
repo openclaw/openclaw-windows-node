@@ -8,7 +8,7 @@ namespace OpenClaw.Tray.Tests;
 /// default and verify the AutoStart setting round-trips through persistence.
 ///
 /// The ReadyPage WinUI component itself is verified manually + via screenshot
-/// (per AGENTS.md UX rules); these tests cover the contract it relies on.
+/// (see the openclaw-proof-validation skill); these tests cover the contract it relies on.
 /// </summary>
 public sealed class AutoStartDefaultTests : IDisposable
 {

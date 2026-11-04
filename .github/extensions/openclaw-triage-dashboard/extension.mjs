@@ -13,9 +13,11 @@ import {
 } from "@github/copilot-sdk/extension";
 import {
     CANVAS_INPUT_SCHEMA,
+    TRIAGE_INPUT_SCHEMA,
     mergeAdversarialReviews,
     mergeLiveState,
     normalizeCanvasInput,
+    normalizeTriageInput,
     reconcileOpenInventory,
 } from "./triage-state.mjs";
 import {
@@ -538,16 +540,16 @@ function reconfigureInstance(entry, triage) {
     clearInterval(entry.taskTimer);
     entry.timer = null;
     entry.taskTimer = null;
+    entry.triage = triage;
+    entry.pullRequests = [];
+    entry.issues = [];
     if (triage.isBootstrap) {
-        entry.triage = triage;
-        entry.pullRequests = [];
-        entry.issues = [];
         entry.state = triage;
         sendState(entry);
         return;
     }
-    entry.triage = reconcileOpenInventory(triage, entry.pullRequests, entry.issues);
     entry.state = mergeSessionData(mergeLiveState(entry.triage, entry.pullRequests, entry.issues));
+    sendState(entry);
     entry.timer = setInterval(() => {
         refreshEntry(entry).catch(() => {});
     }, triage.refreshSeconds * 1_000);
@@ -586,6 +588,18 @@ const dashboard = createCanvas({
     description: "Shows live OpenClaw triage checks, execution-plan progress, proof gates, and guarded actions.",
     inputSchema: CANVAS_INPUT_SCHEMA,
     actions: [
+        {
+            name: "update_state",
+            description: "Replace this panel's triage input in place with a saved, validated report.",
+            inputSchema: TRIAGE_INPUT_SCHEMA,
+            handler: async (context) => {
+                const entry = instances.get(context.instanceId);
+                if (!entry) throw new CanvasError("instance_not_found", "Triage canvas is not open");
+                const triage = normalizeTriageInput(context.input);
+                reconfigureInstance(entry, triage);
+                return entry.state;
+            },
+        },
         {
             name: "refresh",
             description: "Refresh GitHub checks and item state now.",

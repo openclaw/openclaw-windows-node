@@ -1394,7 +1394,8 @@ clean directory and checks every setup asset, including nested SVGs and notices.
 
 ### Focused validation
 
-Run the repository-required build, Shared and Tray suites, plus
+Run the checks that cover the change (see the
+[validation policy](TEST_COVERAGE.md#validation-policy)), including
 `OpenClaw.SetupEngine.Tests` for the flow and AI protocol contracts.
 `AiReadyPageRenderingTests` covers the two destinations and isolated startup.
 `ApprovedMock_FivePagesAndProviderPopup_LightAndDark` provides an opt-in native
