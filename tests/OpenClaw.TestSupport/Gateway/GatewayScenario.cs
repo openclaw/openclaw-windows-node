@@ -55,7 +55,6 @@ public sealed partial class GatewayScenario
     private readonly bool _publishedModelCatalog;
     private readonly bool _allowSessionMutations;
     private readonly bool _allowChatSend;
-    private readonly bool _allowSkillUpdates;
     public bool IsInteractive { get; }
     private readonly ContextUsageFixture? _contextUsage;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
@@ -64,7 +63,7 @@ public sealed partial class GatewayScenario
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _allowSkillUpdates ? "search-navigation" : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -77,8 +76,7 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
-        bool allowSkillUpdates = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false)
     {
         _sessions = sessions;
         _reads = reads;
@@ -88,7 +86,6 @@ public sealed partial class GatewayScenario
         _allowSessionMutations = allowSessionMutations;
         IsInteractive = interactive;
         _allowChatSend = allowChatSend;
-        _allowSkillUpdates = allowSkillUpdates;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         _contextUsage = contextUsage;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
@@ -100,11 +97,10 @@ public sealed partial class GatewayScenario
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
-            .Concat(allowSkillUpdates ? ["skills.update"] : [])
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
-            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog, allowSkillUpdates,
+            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog,
             sessions = sessions.Select(s => new { s.Row, s.Messages }), reads, cronJobs
         });
         Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant();
@@ -147,7 +143,8 @@ public sealed partial class GatewayScenario
                 }
             };
         reads["config.schema"] = JsonSerializer.SerializeToElement(schema);
-        return new(browse._sessions, reads, allowSkillUpdates: true);
+        reads["skills.status"] = JsonSerializer.SerializeToElement(new { skills = Array.Empty<object>() });
+        return new(browse._sessions, reads);
     }
 
     public void RenameSession(string sessionKey, string label, long? updatedAt = null)
@@ -172,10 +169,12 @@ public sealed partial class GatewayScenario
     }
 
     /// <summary>Explicit synthetic setup replies only. The host never executes provider or package operations.</summary>
-    public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true)
+    public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true,
+        bool allowSessionMutations = false)
     {
         var browse = CreateBrowse();
-        return new(browse._sessions, browse._reads, responder, advertiseSetup);
+        return new(browse._sessions, browse._reads, responder, advertiseSetup,
+            allowSessionMutations: allowSessionMutations);
     }
 
     /// <summary>Synthetic historical Talk rows, not a recording of a user's conversation.</summary>
@@ -322,7 +321,6 @@ public sealed partial class GatewayScenario
                 ts = Epoch.ToUnixTimeMilliseconds(), channelOrder = Array.Empty<string>(),
                 channels = new { }, channelAccounts = new { }
             }),
-            ["skills.status"] = JsonSerializer.SerializeToElement(new { skills = Array.Empty<object>() }),
             ["usage.status"] = JsonSerializer.SerializeToElement(new
             {
                 updatedAt = Epoch.ToUnixTimeMilliseconds(), providers = Array.Empty<object>()
@@ -471,14 +469,6 @@ public sealed partial class GatewayScenario
                 throw new FixtureRequestException("INVALID_PARAMS", "Chat run was not issued for this fixture session.");
             return new { ok = true, runId };
         }
-        if (_allowSkillUpdates && method == "skills.update")
-        {
-            ValidateProperties(parameters, "skillKey", "enabled");
-            if (RequiredString(parameters, "skillKey") != "fixture-navigation")
-                throw new FixtureRequestException("INVALID_PARAMS", "Unknown synthetic skill.");
-            OptionalBoolean(parameters, "enabled");
-            return new { ok = true };
-        }
         if (IsWrite(method))
             throw new FixtureRequestException("FIXTURE_READ_ONLY", "Fixture Gateway is read-only. This operation is not executed.");
         return method switch
@@ -578,8 +568,13 @@ public sealed partial class GatewayScenario
 
     private object CreateConversation(JsonElement p)
     {
-        ValidateProperties(p, "parentSessionKey", "emitCommandHooks", "succeedsParent");
-        var parent = FindSession(RequiredString(p, "parentSessionKey"));
+        ValidateProperties(p, "parentSessionKey", "emitCommandHooks", "succeedsParent", "agentId");
+        var parent = p.TryGetProperty("parentSessionKey", out _)
+            ? FindSession(RequiredString(p, "parentSessionKey"))
+            : p.TryGetProperty("agentId", out _)
+                ? _sessions.FirstOrDefault(session => session.AgentId == RequiredString(p, "agentId"))
+                    ?? throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agent.")
+                : FindSession(MainSessionKey);
         OptionalBoolean(p, "emitCommandHooks");
         if (OptionalBoolean(p, "succeedsParent") == true)
             throw new FixtureRequestException("INVALID_PARAMS", "The fixture only supports parallel session creation.");
@@ -767,7 +762,7 @@ public sealed partial class GatewayScenario
         or "sessions.compaction.branch" or "node.invoke" or "exec.approval.resolve" or "node.rename"
         or "node.pair.approve" or "node.pair.reject" or "node.pair.remove" or "device.pair.approve"
         or "device.pair.reject" or "device.token.rotate" or "device.token.revoke" or "update.run"
-        or "cron.add" or "cron.update" or "cron.remove" or "cron.run" or "skills.install" or "skills.update"
+        or "cron.add" or "cron.update" or "cron.remove" or "cron.run"
         or "projects.add";
 
     internal static void ValidateProperties(JsonElement p, params string[] names)

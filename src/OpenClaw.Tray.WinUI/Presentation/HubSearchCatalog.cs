@@ -114,7 +114,7 @@ internal static class HubSearchCatalog
             var target = group switch
             {
                 HubSearchGroup.Automations => new HubSearchTarget(HubSearchTargetKind.Page, agent.Length == 0 ? "cron" : $"agent:{agent}:cron", id),
-                HubSearchGroup.Skills => new(HubSearchTargetKind.Page, $"agent:{agentId}:skills", id),
+                HubSearchGroup.Skills => new(HubSearchTargetKind.Dashboard, dashboardSupported ? "/skills" : ""),
                 HubSearchGroup.Agents => new(HubSearchTargetKind.Page, $"agent:{id}"),
                 _ => new(HubSearchTargetKind.Dashboard, "/settings/model-providers")
             };

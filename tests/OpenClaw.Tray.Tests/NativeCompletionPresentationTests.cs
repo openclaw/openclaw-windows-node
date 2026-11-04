@@ -194,26 +194,6 @@ public sealed class NativeCompletionPresentationTests
     }
 
     [Fact]
-    public void ChooserHasThreeNativeActions_RecommendationAndErrorOnlyRecovery_NoFooterButtons()
-    {
-        var page = XDocument.Parse(Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml"));
-        var actions = page.Descendants().Where(element => element.Name.LocalName == "SettingsCard").ToArray();
-        Assert.Equal(["Chat", "Channels", "Skills"], actions.Select(element => element.Attribute("Tag")?.Value));
-        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(x + "Name") is "SkipButton" or "ReturnButton");
-        var recovery = Assert.Single(page.Descendants(), element => (string?)element.Attribute(x + "Name") == "RecoveryButton");
-        Assert.Contains(recovery.Ancestors(), element => element.Name.LocalName == "InfoBar");
-        var badge = Assert.Single(actions[0].Descendants(), element => (string?)element.Attribute(x + "Name") == "RecommendedBadge");
-        Assert.Equal("RecommendedBadge", badge.Name.LocalName);
-        Assert.Contains(page.Descendants(), element => element.Name.LocalName == "SetupProgressIndicator");
-        Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(x + "Name") == "FinishButton");
-        var source = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml.cs");
-        Assert.Contains("args.IsCurrent()", source);
-        Assert.Contains("args.Coordinator.SelectAsync(destination)", source);
-        Assert.DoesNotContain("Launcher.LaunchUri", source);
-    }
-
-    [Fact]
     public void NativeConnectionProgress_HasItsOwnRowAboveWrappableActions()
     {
         var page = XDocument.Parse(Read(@"src\OpenClaw.SetupEngine.UI\Pages\SetupNativeConnectionPage.xaml"));
@@ -240,60 +220,6 @@ public sealed class NativeCompletionPresentationTests
         Assert.DoesNotContain("GatewayAiSetupCompletion", dashboard);
         Assert.DoesNotContain("OpenPendingAsync", dashboard);
         Assert.DoesNotContain("Issue(GatewayAiSetupCompletion", Read(@"src\OpenClaw.Tray.WinUI\Services\SetupDashboardHandoffStore.cs"));
-    }
-
-    [Fact]
-    public void NativeChatHandoff_UsesWorkspaceBindingWithoutReopeningCompanionChat()
-    {
-        // retirement_condition: replace with mounted native handoff tests when authorized UI proof is available.
-        var manager = Read(@"src\OpenClaw.Tray.WinUI\Services\WindowManager.cs");
-        var handoff = manager[manager.IndexOf("public async Task ShowNativeSetupAsync", StringComparison.Ordinal)..];
-        Assert.True(handoff.IndexOf("if (_isShuttingDown)", StringComparison.Ordinal) <
-            handoff.IndexOf("ShowWorkspace(destination", StringComparison.Ordinal));
-        Assert.Contains("if (request.WorkspaceDestination is { } destination)", manager);
-        Assert.Contains("ShowWorkspace(destination, activate: false, preserveCurrent: false, nativeRequest: request)", manager);
-        Assert.Contains("await workspace.WaitForNativeSetupAsync(request, ct)", manager);
-        Assert.Contains("ShowWorkspace(WorkspaceDestination.Settings(\"settings\"), activate: false, preserveCurrent: false, nativeRequest: request,", manager);
-        Assert.Contains("settingsTag: request.PageTag", manager);
-        Assert.Contains("await workspace.WaitForNativeSetupAsync(request, ct)", manager);
-        Assert.DoesNotContain("ShowCompanion", manager);
-        Assert.DoesNotContain("await hub.WaitForNativeSetupAsync", manager);
-        var workspace = Read(@"src\OpenClaw.Tray.WinUI\Windows\WorkspaceWindow.xaml.cs");
-        var binding = workspace[workspace.IndexOf("internal void NavigateNativeSetup(SetupNativeNavigationRequest request)", StringComparison.Ordinal)..];
-        Assert.True(binding.IndexOf("_chat.BindNativeSetupRequest(request)", StringComparison.Ordinal) <
-            binding.IndexOf("_chat.Initialize(this)", StringComparison.Ordinal));
-        Assert.Contains("_chat.RetainNativeSetupForDestination(Destination)", workspace);
-        Assert.Contains("await _chat.WaitForNativeSetupAsync(request, ct)", workspace);
-        Assert.Contains("request.RequireWorkspaceDestination(Destination)", workspace);
-        var chat = Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs");
-        Assert.Contains("_nativeSetupBinding.RequireCurrent(request, ct)", chat);
-        Assert.Contains("!_nativeSetupPresentation.IsReady", chat);
-        Assert.Contains("if (target is not null) _pendingSessionKey = target", chat);
-        var settingsRoute = workspace[workspace.IndexOf("internal async Task WaitForNativeSetupAsync(", StringComparison.Ordinal)..
-            workspace.IndexOf("internal async Task StartAgentChatAsync", StringComparison.Ordinal)];
-        Assert.Contains("if (request.WorkspaceDestination is null)", settingsRoute);
-        Assert.Contains("await _settings.WaitForNativeSetupAsync(request, ct)", settingsRoute);
-        Assert.DoesNotContain("await _chat.WaitForNativeSetupAsync", settingsRoute[..settingsRoute.IndexOf("request.RequireWorkspaceDestination(Destination);", StringComparison.Ordinal)]);
-        var settingsView = Read(@"src\OpenClaw.Tray.WinUI\Controls\SettingsShellView.xaml.cs");
-        Assert.DoesNotMatch(@"new\s+ChatPage\b|typeof\(ChatPage\)|\bMountReactorChat\b", settingsView);
-        var agentIntent = workspace[workspace.IndexOf("internal async Task StartAgentChatAsync", StringComparison.Ordinal)..];
-        Assert.True(agentIntent.IndexOf("_chat.InvalidateNativeSetupForNavigation()", StringComparison.Ordinal) <
-            agentIntent.IndexOf("_agentId = agent.Id", StringComparison.Ordinal));
-        var newSession = workspace[workspace.IndexOf("private async Task NewSessionAsync()", StringComparison.Ordinal)..
-            workspace.IndexOf("private Task ForkSessionAsync(", StringComparison.Ordinal)];
-        Assert.Contains("await CreateAndSelectSessionAsync(", newSession);
-        var createIntent = workspace[workspace.IndexOf("private async Task CreateAndSelectSessionAsync(", StringComparison.Ordinal)..
-            workspace.IndexOf("internal void ShowInfo(", StringComparison.Ordinal)];
-        Assert.Contains("_chat.InvalidateNativeSetupForNavigation()", createIntent);
-        Assert.Contains("await client.CreateSessionAsync", createIntent);
-        Assert.True(createIntent.IndexOf("_chat.InvalidateNativeSetupForNavigation()", StringComparison.Ordinal) <
-            createIntent.IndexOf("await client.CreateSessionAsync", StringComparison.Ordinal));
-        var removal = chat[chat.IndexOf("internal void ClearRemovedSession(", StringComparison.Ordinal)..
-            chat.IndexOf("private void ShowRemovedSession()", StringComparison.Ordinal)];
-        Assert.Contains("InvalidateNativeSetupForNavigation();", removal);
-        Assert.DoesNotContain("_nativeSetupBinding.Invalidate();", removal);
-        Assert.True(removal.IndexOf("InvalidateNativeSetupForNavigation();", StringComparison.Ordinal) <
-            removal.IndexOf("DisposeReactorHost();", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -354,20 +280,6 @@ public sealed class NativeCompletionPresentationTests
         Assert.Contains("SetupHandoffAcquisitionStatus.Busy", launcher);
         Assert.True(launcher.IndexOf("lease.Consume();", StringComparison.Ordinal) <
             launcher.IndexOf("ClearRestartRecovery();", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void SkillsEntryIsBoundReadOnlyAndWaitedBeforeReceiptConsumption()
-    {
-        var source = Read(@"src\OpenClaw.Tray.WinUI\Pages\SkillsPage.xaml.cs");
-        Assert.Contains("_nativeSetupRequest = e.Parameter as SetupNativeNavigationRequest", source);
-        Assert.Contains("SetupNativeSkills.LoadAsync(request, RequireNativeClient, ct)", source);
-        Assert.Contains("if (_nativeSetupRequest is not null) return;", source);
-        Assert.Contains("CurrentAgentId != request.Completion.Verification.AgentId", source);
-        Assert.Contains("AgentFilterCombo.IsEnabled = false", source);
-        Assert.DoesNotContain("InstallSkillAsync", source);
-        Assert.Contains("await skills.WaitForNativeSetupAsync(request, ct)",
-            Read(@"src\OpenClaw.Tray.WinUI\Controls\SettingsShellView.xaml.cs"));
     }
 
     [Fact]

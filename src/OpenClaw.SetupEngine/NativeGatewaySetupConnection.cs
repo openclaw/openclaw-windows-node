@@ -118,6 +118,12 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
                 linked.Token.ThrowIfCancellationRequested();
                 return new(owner, client, authorize);
             }
+            catch (TimeoutException) when (
+                !linked.IsCancellationRequested && client.StartupUnavailable is { } startup)
+            {
+                client.Dispose();
+                throw new GatewayStartupUnavailableException(startup);
+            }
             catch (NativePairingException error) when (allowPairing && !pairingAttempted)
             {
                 pairingAttempted = true;

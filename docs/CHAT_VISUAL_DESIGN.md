@@ -93,6 +93,20 @@ use the card fill above that content layer.
 
 ## Controls and states
 
+Initial transcript tail navigation retains its native layout gate. A viewport
+resize can arm one additional discrete tail request if realizing variable-height
+rows moves the extent away from a followed tail. This correction waits for
+layout, a rendering boundary, and an idle scroll view. Resizing does not itself
+start a bring, and this is not a continuous extent-follow loop. A correction does
+not start while initial positioning is still pending, so it cannot impose its
+follow requirement on that initial request. A reader who has scrolled up is not
+pulled back down. Pointer, keyboard, touch, and scrollbar interaction cancel
+pending navigation; follow state is then taken from the current position, so a
+click or key press at the tail keeps following new replies. The correction
+rechecks follow eligibility at dispatch so a newer UI Automation scroll-away also
+takes precedence. Session replacement, unload, and disposal fence late callbacks.
+Native bottom anchoring and the existing follow threshold are unchanged.
+
 Pending agent questions replace the writing surface visually, not structurally.
 The same mounted composer and unsent draft return when the question is collapsed
 or resolved. Expanding the dock cancels voice capture and rejects late transcripts
@@ -152,6 +166,19 @@ hover/pressed resources. Disabled and keyboard-focus states remain native.
 Gateway dashboard management lives in a Connection settings card rather than
 occupying a row above the chat surface. Settings' Chat rail action opens Workspace
 without changing the selected Settings page or discarding the chat draft.
+
+Workspace retains the chosen assistant and existing conversation across a
+reconnect to the same Gateway. Clearing a temporary connection cache is not an
+agent removal and does not select the Gateway default. Assistant selection and
+conversation creation wait for a fresh authoritative roster. A changed Gateway
+cannot reuse the previous Gateway's cached roster or remembered selection.
+When a current roster actually removes the chosen agent, its explicit-selection
+or legacy-default policy applies.
+
+Session summary metadata, such as a health payload's count, path and recent
+entries, does not replace the conversation roster. Only a session collection
+can remove absent rows; a genuine empty array or legacy empty map still clears
+the roster.
 
 An authoritative empty conversation shows **Recent chats** instead of quick-start
 suggestions when the active agent has eligible conversations. The list includes

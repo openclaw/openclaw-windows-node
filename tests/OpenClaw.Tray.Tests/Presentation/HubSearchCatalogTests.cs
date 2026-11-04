@@ -16,7 +16,7 @@ public sealed class HubSearchCatalogTests
                 element => element.Element("value")!.Value);
         var commands = HubPageRegistry.BuildCommands(new("main", true, null, [],
             resources.ToImmutableDictionary()));
-        Assert.Contains(commands, command => command.Title == "Go to Bindings");
+        Assert.Contains(commands, command => command.Title == "Go to Config");
         var items = HubSearchCatalog.Navigation(commands, true, true, key => resources[key]).ToArray();
         Assert.All(items, item =>
         {
@@ -24,7 +24,7 @@ public sealed class HubSearchCatalogTests
             Assert.Single(item.Icon);
             Assert.InRange(item.Icon[0], '\uE000', '\uF8FF');
         });
-        Assert.Equal("Bindings", Assert.Single(items, item => item.Target.Value == "bindings").Title);
+        Assert.Equal("Config", Assert.Single(items, item => item.Target.Value == "config").Title);
         Assert.Equal("Event Stream", Assert.Single(items, item => item.Target.Value == "agentevents").Title);
         Assert.Equal("Dashboard", Assert.Single(items, item => item.Target.Kind == HubSearchTargetKind.Dashboard).Title);
         Assert.Contains(HubSearch.Find(items, "Agent Events"), match => match.Item.Target.Value == "agentevents");
@@ -98,14 +98,16 @@ public sealed class HubSearchCatalogTests
     }
 
     [Fact]
-    public void ScopedSkillsKeepAgentIdentityInBothTargetAndStableIdentity()
+    public void ScopedSkillsKeepAgentIdentityAndOpenTheDashboardRatherThanARetiredNativePage()
     {
         using var json = JsonDocument.Parse("""{"skills":[{"name":"Weather","skillKey":"weather"}]}""");
         var a = Assert.Single(HubSearchCatalog.ParseCatalog("skills.status", json.RootElement, "alpha", true));
         var b = Assert.Single(HubSearchCatalog.ParseCatalog("skills.status", json.RootElement, "beta", true));
         Assert.NotEqual(a.Id, b.Id);
-        Assert.Equal(new(HubSearchTargetKind.Page, "agent:alpha:skills", "weather"), a.Target);
-        Assert.Equal(new(HubSearchTargetKind.Page, "agent:beta:skills", "weather"), b.Target);
+        Assert.Equal(new(HubSearchTargetKind.Dashboard, "/skills"), a.Target);
+        Assert.Equal(new(HubSearchTargetKind.Dashboard, "/skills"), b.Target);
+        var fallback = Assert.Single(HubSearchCatalog.ParseCatalog("skills.status", json.RootElement, "alpha", false));
+        Assert.Equal(new(HubSearchTargetKind.Dashboard, ""), fallback.Target);
     }
 
     [Fact]

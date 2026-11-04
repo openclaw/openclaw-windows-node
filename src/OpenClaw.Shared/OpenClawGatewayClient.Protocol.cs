@@ -564,7 +564,7 @@ public partial class OpenClawGatewayClient
         {
             var payload = await SendResponseRequestAsync("sessions.search",
                 new { query, limit = GatewaySearchProtocol.MessageLimit, scope = GatewaySearchProtocol.Scope() },
-                GatewaySearchProtocol.MessageTimeoutMilliseconds, callerCancellation: cancellationToken, searchRead: true).ConfigureAwait(false);
+                GatewaySearchProtocol.MessageTimeoutMilliseconds, requestCancellationToken: cancellationToken, searchRead: true).ConfigureAwait(false);
             if (payload.ValueKind != JsonValueKind.Object ||
                 !payload.TryGetProperty("results", out var hits) || hits.ValueKind != JsonValueKind.Array)
                 throw new InvalidDataException("Invalid transcript search response.");
@@ -580,7 +580,7 @@ public partial class OpenClawGatewayClient
             search = query, limit = 50, includeDerivedTitles = true,
             includeGlobal = false, includeUnknown = false, configuredAgentsOnly = true,
             excludeSubagents = true, excludeCron = true, excludeSystem = true, excludeDock = true
-        }, GatewaySearchProtocol.CatalogTimeoutMilliseconds, callerCancellation: cancellationToken, searchRead: true).ConfigureAwait(false);
+        }, GatewaySearchProtocol.CatalogTimeoutMilliseconds, requestCancellationToken: cancellationToken, searchRead: true).ConfigureAwait(false);
         if (!TryGetSessionsPayload(rows, out var sessions) || sessions.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException("Invalid session search response.");
         return new(ParseDetachedSessionRows(rows), [],
@@ -596,9 +596,9 @@ public partial class OpenClawGatewayClient
         if (method == "cron.list")
             return GatewaySearchProtocol.ReadAutomationPagesAsync(
                 (args, ct) => SendResponseRequestAsync(method, args, GatewaySearchProtocol.CatalogTimeoutMilliseconds,
-                    callerCancellation: ct, searchRead: true), parameters, cancellationToken);
+                    requestCancellationToken: ct, searchRead: true), parameters, cancellationToken);
         return SendResponseRequestAsync(method, parameters, GatewaySearchProtocol.CatalogTimeoutMilliseconds,
-            callerCancellation: cancellationToken, searchRead: true);
+            requestCancellationToken: cancellationToken, searchRead: true);
     }
 
     // ── sessions.files.list / sessions.files.get ──

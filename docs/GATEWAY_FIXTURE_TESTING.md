@@ -20,17 +20,15 @@ The main-search UI regressions exercise icon/shortcut opening and immediate
 reopening, shared Settings search, draft-preserving dismissal, read-only setting
 navigation and native conversation navigation from a message hit. Keyboard
 regressions also exercise Enter on Show more/Retry, immediate cross-shell
-reopening, absent Config sections and agent-owned Skills recovery. Focused
+reopening, absent Config sections and Dashboard-only skill results. Focused
 cases cover a failed Config reveal followed by manual navigation to a section
 with the same field name, and session title/recency changes while result or
 input focus is active, including user-controlled result scroll. The
 search-navigation scenario adds optional schema fields without corresponding
-saved values. Read-response overrides and a selected-agent skills gate model
-failures and an in-flight reconnect. This test-only scenario also acknowledges
-`skills.update` for one synthetic skill so a manual toggle can trigger the
-production shared refresh and selected-agent reload. Search itself never sends
-that mutation. No provider is contacted, no skill is installed or changed on
-disk, and config writes remain rejected. Keyboard
+saved values and a read-only skill catalog. Read-response overrides model
+failures and long descriptions. Skills are explicitly labeled Dashboard
+destinations rather than retired native pages. No provider is contacted, no
+skill mutation is accepted, and config writes remain rejected. Keyboard
 journeys use the shared native SendInput helper, with the fixture opt-in,
 foreground ownership and released-modifier guards intact. Open-popup Axe scans
 cover empty results, matching results and source-status states, including a
@@ -41,11 +39,53 @@ The long-description search journey checks that source status and More/Retry
 share the native results scroller, after the last result, with no fixed
 keyboard-help footer. It verifies the complete last description can be
 scrolled into view and expanded without a status/action region covering it.
-Native page-name proof searches the old Agent Events alias and Bindings,
+Native page-name proof searches the old Agent Events alias and Config,
 checks plain destination names, captures the actual symbol icons and navigates
 to the corresponding native pages without sending chat or config writes.
 
 ## Build and explore
+
+### Assistant continuity capture
+
+The opt-in UI case
+`SelectedAssistantAndConversationSurviveTransientRosterLossButNotAuthoritativeRemoval`
+selects an assistant and conversation through normal UI Automation. It closes
+only fixture-owned connections, holds the next connection's `agents.list`
+responses, and then releases the unchanged roster. It then sends one message
+through the ordinary composer and requires the fixture Gateway to record a
+successful `chat.send` for the restored conversation. A second reconnect returns
+an authoritative roster without that assistant and requires a fresh selection.
+`FixtureGatewayServer.SetAgentsRoster`, `HoldAgentsList`, and `ReleaseAgentsList`
+control only this synthetic producer; authentication and the production client
+are unchanged. With `-Screenshots`, the case saves five owned-HWND PrintWindow
+PNGs and adjacent UIA assertion metadata in the fixture artifact directory.
+Without requested screenshots, the same UIA selection and protocol assertions
+still run, but no pixel proof is claimed. Requested capture remains strict:
+blank or unavailable native pixels fail instead of producing a fallback image.
+
+Use the opt-in UI runner described below with this exact method-name filter.
+These captures show actual Workspace controls with synthetic Gateway data, not
+installed-app or live-provider behavior.
+
+`UnsupportedAgentListing_PreservesLegacySessionsAndDefaultCreation` exercises
+a different compatibility path. After a fixture-owned reconnect, the actual
+client receives `unknown method: agents.list` while `sessions.list` still works.
+Workspace must show the legacy sessions and enable new-conversation creation
+with the Gateway's default target. The assistant selector remains unavailable,
+because no authoritative agent roster was delivered. A pending or failed listing
+is not treated as an explicitly unsupported method.
+
+The disconnected assistant menu still exposes its existing connection guidance.
+This does not authorize session creation or treat a pending connected roster as
+available.
+
+`VerifiedSetupBindingClearsBeforeNewConversationResponse` starts with a real
+production handoff receipt and a synthetic model-verification response. It
+holds the fixture's session-creation response and checks that the prior bound
+setup warning is already cleared, then releases creation and observes the
+ordinary selected conversation. Existing warning recovery coverage checks the
+navigation path; the shutdown guard has a mounted WindowManager case. These
+are behavioral handoff checks, not source-text ordering assertions.
 
 Build the current app first, then pass its executable explicitly. An installed
 app is never discovered or selected implicitly.
@@ -103,6 +143,11 @@ The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
 orders work; this is deliberately not sequential packet playback.
+
+MCP startup retries transient sharing and lock violations when reading the
+published token file, within the existing startup deadline. Missing-file,
+permission and other I/O failures are not hidden.
+The token value is never included in readiness diagnostics.
 
 ## Run the application smoke
 
@@ -172,6 +217,9 @@ interactive question lifecycles remain owned by the explicit interactive scenari
 `GatewayFixtureStartupTests` exercise parent and foreign browser-control startup
 without launching the app. Cancellation and readiness failures must reap the
 owned child, remove its readiness file, and release both listener ports.
+They share the nonparallel `Gateway fixture environment` collection so another
+test cannot allocate a just-released ephemeral port before the cleanup rebind
+assertion. Occupancy, child-exit, readiness-file and rebind checks remain required.
 The Shared browser-proxy regression runs the production client and a default-handler
 control in separate test-host processes with explicit proxy settings. It does not
 change the test runner's environment or cached default proxy.

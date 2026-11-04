@@ -145,6 +145,13 @@ public sealed partial class ChatPage : Page
     internal void SuspendSurface()
     {
         _pageActive = false;
+        if ((App.Current as App)?.ChatSpeech is { } speech)
+        {
+            speech.SpeechStateChanged -= OnSpeechStateChanged;
+            SpeechStatusBar.IsOpen = false;
+            speech.StopGatewaySpeaking();
+            speech.SetSpeechTarget(null);
+        }
         _surfaceGeneration++;
         InvalidatePendingSessionNavigation();
         ReconcileNativeSetupObserver();
@@ -222,8 +229,25 @@ public sealed partial class ChatPage : Page
         OpenClawTray.Chat.DebugChatSurfaceOverrides.Changed -= OnDebugOverrideChanged;
         OpenClawTray.Chat.DebugChatSurfaceOverrides.Changed += OnDebugOverrideChanged;
 
+        if (CurrentApp.ChatSpeech is { } speech)
+        {
+            speech.SpeechStateChanged -= OnSpeechStateChanged;
+            speech.SpeechStateChanged += OnSpeechStateChanged;
+            OnSpeechStateChanged(speech.SpeechState);
+        }
         ApplyChatSurface();
     }
+
+    private void OnSpeechStateChanged(GatewaySpeechPlaybackState state)
+    {
+        if (!_pageActive || !ReferenceEquals(CurrentApp.ChatSpeech?.SpeechState, state)) return;
+        SpeechStatusBar.Message = GatewaySpeechPresentation.Format(state, LocalizationHelper.GetString);
+        SpeechStatusBar.Severity = state.Phase == GatewaySpeechPhase.Failed
+            ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
+        SpeechStatusBar.IsOpen = state.Phase != GatewaySpeechPhase.Idle;
+    }
+
+    private void OnStopGatewaySpeech(object sender, RoutedEventArgs e) => CurrentApp.StopChatSpeaking();
 
     internal void CloseSurface()
     {
@@ -268,6 +292,7 @@ public sealed partial class ChatPage : Page
         if (!string.IsNullOrEmpty(sessionKey) && _nativeSetupBinding.Request is { } request &&
             sessionKey != request.Completion.Target.SessionKey)
             InvalidateNativeSetupForNavigation();
+        (App.Current as App)?.ChatSpeech?.SetSpeechTarget(sessionKey);
         _pendingSessionKey = sessionKey;
         if (!string.IsNullOrEmpty(sessionKey))
             _sessionRemoved = false;
@@ -277,6 +302,8 @@ public sealed partial class ChatPage : Page
 
     internal void ClearRemovedSession(string key)
     {
+        CurrentApp.ChatSpeech?.StopGatewaySpeaking();
+        CurrentApp.ChatSpeech?.SetSpeechTarget(null);
         _sessionRemoved = true;
         _surfaceGeneration++;
         _pendingSessionKey = null;
@@ -307,6 +334,7 @@ public sealed partial class ChatPage : Page
         if (_nativeSetupBinding.Request is { } request &&
             sessionKey != request.Completion.Target.SessionKey)
             InvalidateNativeSetupForNavigation();
+        (App.Current as App)?.ChatSpeech?.SetSpeechTarget(sessionKey);
         _mountedThreadId = sessionKey;
         SessionSelected?.Invoke(sessionKey, previousSessionKey);
     }
@@ -472,6 +500,8 @@ public sealed partial class ChatPage : Page
             forceRemount = false;
         }
 
+        CurrentApp.ChatSpeech?.SetSpeechTarget(pendingSessionKey ?? _reactorHost?.CurrentThreadId ?? threadIdToMount);
+
         if (_reactorHost is not null
             && ReferenceEquals(_mountedProvider, provider)
             && !forceRemount)
@@ -515,12 +545,20 @@ public sealed partial class ChatPage : Page
             onSessionNavigationStarting: () =>
             {
                 if (_pageActive && ReferenceEquals(_reactorHost, mountedHost))
+                {
+                    CurrentApp.ChatSpeech?.StopGatewaySpeaking();
                     InvalidateNativeSetupForNavigation();
+                }
             },
             onSessionSelected: (sessionKey, previousSessionKey) =>
             {
                 if (ReferenceEquals(_reactorHost, mountedHost))
                     OnComposerSessionSelected(sessionKey, previousSessionKey);
+            },
+            onSpeechTargetChanged: sessionKey =>
+            {
+                if (_pageActive && ReferenceEquals(_reactorHost, mountedHost))
+                    CurrentApp.ChatSpeech?.SetSpeechTarget(sessionKey);
             });
         mountedHost = ownerWindow.MountReactorChat(
             ChatHost,
@@ -534,6 +572,7 @@ public sealed partial class ChatPage : Page
         _reactorHost = mountedHost;
         _mountedProvider = provider;
         _mountedThreadId = threadIdToMount;
+        CurrentApp.ChatSpeech?.SetSpeechTarget(_reactorHost?.CurrentThreadId ?? threadIdToMount);
 
         ConsumePendingVoice();
     }
@@ -644,7 +683,7 @@ public sealed partial class ChatPage : Page
                         .Add(new ChatTimelineItem(
                             $"accessibility-user-{id}",
                             ChatTimelineItemKind.User,
-                            "Verify the native chat surface."))
+                            $"Verify the native chat surface. Session: {id}."))
                         .Add(new ChatTimelineItem(
                             $"accessibility-assistant-{id}",
                             ChatTimelineItemKind.Assistant,

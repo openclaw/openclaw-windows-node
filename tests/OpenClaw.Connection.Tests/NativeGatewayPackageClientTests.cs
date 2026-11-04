@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using OpenClaw.Connection.NativeGateway;
+using OpenClaw.Shared;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -9,6 +10,35 @@ public sealed class NativeGatewayPackageClientTests
     private static readonly NativeGatewayPackage s_package =
         new("OpenClaw.Gateway_123456789abcd", "2026.9.5.5",
             @"C:\package\openclaw.exe", @"C:\package\clawctl.exe");
+
+    [Fact]
+    public async Task FailedStatusLogsSanitizedStderrButKeepsItOutOfExceptionMessages()
+    {
+        var log = new RecordingLogger();
+        var client = new NativeGatewayPackageClient((_, _, _) =>
+            Task.FromResult(new NativeGatewayCommandResult(3, "not json",
+                "fatal: gateway listener unavailable\nAuthorization: Bearer abcdefghijklmnop0123456789")),
+            log);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.StatusAsync(s_package, CancellationToken.None));
+
+        Assert.Contains("exit code 3", error.Message);
+        Assert.DoesNotContain("fatal", error.Message);
+        Assert.Contains(log.Warnings,
+            warning => warning.Contains("clawctl gateway-service status --json stderr: fatal: gateway listener unavailable"));
+        Assert.DoesNotContain(log.Warnings, warning => warning.Contains("abcdefghijklmnop0123456789"));
+    }
+
+    private sealed class RecordingLogger : IOpenClawLogger
+    {
+        public List<string> Warnings { get; } = [];
+        public List<string> Debugs { get; } = [];
+        public void Info(string message) { }
+        public void Debug(string message) => Debugs.Add(message);
+        public void Warn(string message) => Warnings.Add(message);
+        public void Error(string message, Exception? ex = null) { }
+    }
 
     [Fact]
     public async Task DetectAcceptsOnlyVersionedIsolatedContract()

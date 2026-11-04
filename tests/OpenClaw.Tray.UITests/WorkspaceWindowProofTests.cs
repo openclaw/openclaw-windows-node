@@ -13,6 +13,37 @@ public sealed class WorkspaceWindowProofTests
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
+    public async Task OfflineAssistantMenuKeepsConnectionEntryWithoutEnablingSessionCreation(string theme)
+    {
+        using var app = new AccessibilityAppFixture(
+            initializeAxe: false, theme: theme, syntheticData: false);
+        await app.NavigateAsync("chat", "ChatPage", "WorkspaceOwner");
+        var workspace = AutomationElement.FromHandle(app.HubWindowHandle);
+        var pid = workspace.Current.ProcessId;
+        Assert.False(Find(workspace, "WorkspaceSessionsAdd").Current.IsEnabled);
+        var selector = Find(workspace, "WorkspaceAssistantSelector");
+        Assert.True(selector.Current.IsEnabled);
+        var dropdown = (ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+        dropdown.Expand();
+        await WaitUntilAsync(() => ProcessWindows(pid).Cast<AutomationElement>().Any(window =>
+            window.FindFirst(TreeScope.Descendants, new PropertyCondition(
+                AutomationElement.AutomationIdProperty, "WorkspaceNewAgent")) is not null));
+        var entry = ProcessWindows(pid).Cast<AutomationElement>()
+            .Select(window => window.FindFirst(TreeScope.Descendants, new PropertyCondition(
+                AutomationElement.AutomationIdProperty, "WorkspaceNewAgent")))
+            .First(item => item is not null)!;
+        Assert.Equal("New agent", entry.Current.Name);
+        Assert.True(entry.Current.IsEnabled);
+        dropdown.Collapse();
+        AutomationElement? restoredCreation = null;
+        await WaitUntilAsync(() => (restoredCreation = FindOrNull(workspace, "WorkspaceSessionsAdd")) is not null);
+        Assert.NotNull(restoredCreation);
+        Assert.False(restoredCreation.Current.IsEnabled);
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
     public async Task SidebarActionBackplates_AlignWithNavigationItems(string theme)
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme,
@@ -376,9 +407,9 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal(workspaceHandle, app.HubWindowHandle);
         Capture(app, "System", "retention-02-settings-permissions");
 
-        Invoke(Find(root, "SettingsBack"));
+        await InvokeWhenEnabledAsync(root, "SettingsBack");
         await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
-        Invoke(Find(root, "SettingsBack"));
+        await InvokeWhenEnabledAsync(root, "SettingsBack");
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         AssertComposerRetained();
         await WaitUntilAsync(() => FindOrNull(root, "ChatComposerInput")?.Current.HasKeyboardFocus == true);
@@ -487,14 +518,18 @@ public sealed class WorkspaceWindowProofTests
         var workspace = app.HubWindowHandle;
         var root = AutomationElement.FromHandle(workspace);
         var composerIdentity = Find(root, "ChatComposerInput").GetRuntimeId();
-        foreach (var key in new[] { "agent:main:main", "agent:main:fork" })
+        foreach (var key in new[] { "agent:main:fork", "agent:main:main", "agent:main:fork" })
         {
-            var item = Find(root, $"WorkspaceSession:{key}");
+            var id = key == "agent:main:main" ? "WorkspaceNavHome" : $"WorkspaceSession:{key}";
+            var item = Find(root, id);
             Assert.False(item.Current.IsOffscreen);
             ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
-            await WaitUntilAsync(() => SelectionState(root, $"WorkspaceSession:{key}") == true);
+            await WaitUntilAsync(() => SelectionState(root, id) == true);
+            await WaitUntilAsync(() => root.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
+                .Cast<AutomationElement>().Any(text => text.Current.Name.Contains($"Session: {key}.", StringComparison.Ordinal)));
             Assert.Equal(composerIdentity, Find(root, "ChatComposerInput").GetRuntimeId());
-            await WaitUntilAsync(() => SelectionState(root, "WorkspaceNavHome") == false);
+            await WaitUntilAsync(() => SelectionState(root, "WorkspaceNavHome") == (key == "agent:main:main"));
         }
         var input = Find(root, "ChatComposerInput");
         const string draft = "Keep the selected session draft while opening Settings";
@@ -581,8 +616,16 @@ public sealed class WorkspaceWindowProofTests
         Assert.False(Find(workspaceElement, "WorkspaceSessionsAdd").Current.IsEnabled);
         var sessionsHeader = FindHeading(workspaceElement, "Sessions").Current.BoundingRectangle;
         var initialHomeBounds = Find(workspaceElement, "WorkspaceNavHome").Current.BoundingRectangle;
-        Assert.True(sessionsHeader.Top >= initialHomeBounds.Bottom - 1);
-        Assert.InRange(sessionsHeader.Top - initialHomeBounds.Bottom, -1, 36);
+        var customize = Find(workspaceElement, "WorkspacePagesCustomize").Current.BoundingRectangle;
+        var scale = Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle.Width / 40;
+        Assert.InRange((customize.Top - initialHomeBounds.Top) / scale, -1, 4);
+        Assert.True(customize.Right <= initialHomeBounds.Right + 1);
+        // NavigationViewItemSeparator is decorative and has no automation peer.
+        // Its native spacing separates Home from the first and only section header.
+        Assert.InRange((sessionsHeader.Top - initialHomeBounds.Bottom) / scale, 4, 48);
+        foreach (var obsolete in new[] { "Pages", "Pin pages here with the customize button." })
+            Assert.Null(workspaceElement.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, obsolete)));
         foreach (var id in new[] { "WorkspaceNavAgents", "WorkspaceNavDashboards", "WorkspaceNavSystems",
             "WorkspaceNavAutomations", "WorkspaceNavPlugins", "WorkspaceMore", "WorkspacePageHeading" })
             Assert.Null(workspaceElement.FindFirst(TreeScope.Descendants,
@@ -648,8 +691,7 @@ public sealed class WorkspaceWindowProofTests
         foreach (var (route, page, marker) in new[]
         {
             ("cron", "CronPage", "CronPageMarker"),
-            ("sessions", "SessionsPage", "SessionsPageMarker"),
-            ("skills", "SkillsPage", "SkillsPageMarker")
+            ("sessions", "SessionsPage", "SessionsPageMarker")
         })
         {
             await app.NavigateAsync(route, page, marker);
@@ -870,6 +912,16 @@ public sealed class WorkspaceWindowProofTests
 
     private static void Invoke(AutomationElement element) =>
         ((InvokePattern)element.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+
+    private static async Task InvokeWhenEnabledAsync(AutomationElement root, string id)
+    {
+        await WaitUntilAsync(() =>
+        {
+            try { return FindOrNull(root, id) is { Current.IsEnabled: true }; }
+            catch (ElementNotAvailableException) { return false; }
+        });
+        Invoke(Find(root, id));
+    }
 
     private static AutomationElement WaitForMenuItem(int pid, string name)
     {

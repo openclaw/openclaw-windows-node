@@ -40,16 +40,17 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
     private TaskCompletionSource? _sessionMutationGate;
+    private TaskCompletionSource? _agentsListGate;
+    private JsonElement? _agentsRoster;
+    private bool _agentsListUnsupported;
     private TaskCompletionSource? _chatSendGate;
+    private TaskCompletionSource? _connectionHandshakeGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
     private int _chatEventSequence;
     private TaskCompletionSource? _nextSessionListGate;
     private TaskCompletionSource? _heldSessionList;
     private TaskCompletionSource? _sessionListCaptured;
     private readonly Dictionary<string, Func<JsonElement, object>> _readResponses = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (TaskCompletionSource Release, TaskCompletionSource Captured)> _heldReads = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _nextReads = new(StringComparer.Ordinal);
-    private string? _heldSkillsAgent;
     private readonly TaskCompletionSource _handshake = NewSignal();
     private readonly TaskCompletionSource _accepted = NewSignal();
     private TaskCompletionSource _requestChanged = NewSignal();
@@ -89,6 +90,12 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     /// rejection can be exercised through the production connect path.
     /// </summary>
     public Action? DeviceTokenRejected { get; set; }
+
+    /// <summary>Pre-authentication startup rejections before this fixture admits an operator.</summary>
+    public int StartupRejectionsRemaining { get; set; }
+    public int StartupRetryAfterMs { get; set; } = 100;
+    public Action? StartupRejected { get; set; }
+    public bool CloseAfterStartupRejection { get; set; } = true;
 
     /// <summary>Connect attempts that presented no device token, so the shared credential was judged.</summary>
     public int SharedCredentialConnects => Volatile.Read(ref _sharedCredentialConnects);
@@ -159,6 +166,28 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         // Zero recipients is expected during a scripted disconnect. Histories remain
         // authoritative for reconnect; never retain message or question content here.
         lock (_sync) _events.Add(new GatewayFixtureEvent(eventName, delivered));
+    }
+
+    /// <summary>Holds new handshakes so native reconnect UI can be observed without racing the server.</summary>
+    public void HoldConnectionHandshakes()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (_connectionHandshakeGate is not null)
+                throw new InvalidOperationException("Connection handshakes are already held.");
+            _connectionHandshakeGate = NewSignal();
+        }
+    }
+
+    public void ReleaseConnectionHandshakes()
+    {
+        lock (_sync)
+        {
+            var gate = _connectionHandshakeGate ?? throw new InvalidOperationException("Connection handshakes are not held.");
+            _connectionHandshakeGate = null;
+            gate.TrySetResult();
+        }
     }
 
     public async Task CloseConnectionsAsync(CancellationToken cancellationToken = default)
@@ -353,6 +382,43 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }, cancellationToken);
     }
 
+    /// <summary>Replaces only the synthetic agents.list response; authentication remains unchanged.</summary>
+    public void SetAgentsRoster(JsonElement roster)
+    {
+        if (roster.ValueKind != JsonValueKind.Object ||
+            !roster.TryGetProperty("agents", out var agents) || agents.ValueKind != JsonValueKind.Array)
+            throw new ArgumentException("An agents roster object is required.", nameof(roster));
+        lock (_sync)
+            _agentsRoster = roster.Clone();
+    }
+
+    public void RejectAgentsListAsUnsupported()
+    {
+        lock (_sync)
+            _agentsListUnsupported = true;
+    }
+
+    public void HoldAgentsList()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (_agentsListGate is not null)
+                throw new InvalidOperationException("An agents listing is already held.");
+            _agentsListGate = NewSignal();
+        }
+    }
+
+    public void ReleaseAgentsList()
+    {
+        lock (_sync)
+        {
+            var gate = _agentsListGate ?? throw new InvalidOperationException("No agents listing is held.");
+            _agentsListGate = null;
+            gate.TrySetResult();
+        }
+    }
+
     /// <summary>Hold one listing snapshot while subsequent requests remain independent.</summary>
     public Task HoldNextSessionList()
     {
@@ -391,30 +457,6 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     public void ClearSearchReadOverride(string method)
     {
         lock (_sync) _readResponses.Remove(method);
-    }
-
-    public Task HoldNextSkillsRead(string agentId)
-    {
-        lock (_sync)
-        {
-            if (_heldReads.ContainsKey("skills.status"))
-                throw new InvalidOperationException("A skills read is already held.");
-            var held = (Release: NewSignal(), Captured: NewSignal());
-            _heldReads.Add("skills.status", held);
-            _nextReads.Add("skills.status");
-            _heldSkillsAgent = agentId;
-            return held.Captured.Task;
-        }
-    }
-
-    public void ReleaseSkillsRead()
-    {
-        lock (_sync)
-        {
-            if (!_heldReads.Remove("skills.status", out var held)) return;
-            _nextReads.Remove("skills.status");
-            held.Release.TrySetResult();
-        }
     }
 
     /// <summary>Releases the gate immediately. Await response/UI readiness separately after releasing.</summary>
@@ -672,6 +714,30 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 throw new FixtureRequestException("INVALID_REQUEST", "Operator is already connected.");
                             if (method != "connect")
                                 throw new FixtureRequestException("AUTH_REQUIRED", "Operator connect is required before reading fixture data.");
+                            Task? handshakeGate;
+                            lock (_sync) handshakeGate = _connectionHandshakeGate?.Task;
+                            if (handshakeGate is not null) await handshakeGate.WaitAsync(connection.Token);
+                            if (StartupRejectionsRemaining > 0)
+                            {
+                                StartupRejectionsRemaining--;
+                                await SendAsync(socket, sendLock, new
+                                {
+                                    type = "res", id, ok = false,
+                                    error = new
+                                    {
+                                        code = "UNAVAILABLE", message = "Gateway starting", retryable = true,
+                                        retryAfterMs = StartupRetryAfterMs, details = new { reason = "startup-sidecars" }
+                                    }
+                                }, connection.Token);
+                                Complete(requestIndex, "error:UNAVAILABLE");
+                                StartupRejected?.Invoke();
+                                if (CloseAfterStartupRejection)
+                                {
+                                    await socket.CloseOutputAsync((WebSocketCloseStatus)1013, "gateway starting", connection.Token);
+                                    return;
+                                }
+                                continue;
+                            }
                             var role = Authenticate(parameters, nonce);
                             await SendAsync(socket, sendLock, new
                             {
@@ -699,11 +765,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     {
                         gate = method is "sessions.patch" or "sessions.delete" or "sessions.create"
                             ? _sessionMutationGate?.Task
+                            : method == "agents.list" ? _agentsListGate?.Task
                             : method == "chat.send"
                                 ? _chatSendGate?.Task
                             : method == "sessions.list" ? _nextSessionListGate?.Task
-                            : method == "skills.status" && ReadString(parameters, "agentId") == _heldSkillsAgent &&
-                                _nextReads.Remove(method) ? _heldReads[method].Release.Task
                             : method == "chat.history" && key is not null && _historyGates.TryGetValue(key, out var held)
                                 ? held.Task : null;
                         abortOutcome = method == "chat.abort" ? _chatAbortGate?.Task : null;
@@ -714,7 +779,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                         gate, abortOutcome, connection.Token));
                 }
             }
-            catch (OperationCanceledException) when (connection.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (connection.IsCancellationRequested ||
+                socket?.State is WebSocketState.Aborted or WebSocketState.Closed) { }
             catch (WebSocketException) when (activeConnection is null ||
                 socket?.State is WebSocketState.Aborted or WebSocketState.Closed) { }
             catch (IOException) when (connection.IsCancellationRequested) { }
@@ -782,7 +848,17 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 }
                 Func<JsonElement, object>? readResponse;
                 lock (_sync) _readResponses.TryGetValue(method, out readResponse);
+                JsonElement? agentsRoster;
+                bool agentsListUnsupported;
+                lock (_sync)
+                {
+                    agentsRoster = method == "agents.list" ? _agentsRoster : null;
+                    agentsListUnsupported = method == "agents.list" && _agentsListUnsupported;
+                }
+                if (agentsListUnsupported)
+                    throw new FixtureRequestException("INVALID_REQUEST", "unknown method: agents.list");
                 payload = readResponse is not null ? readResponse(parameters)
+                    : agentsRoster is { } roster ? roster
                     : Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
                     ? await Interactive.RespondAsync(method, parameters, cancellationToken)
                     : _scenario.Respond(method, parameters,
@@ -819,9 +895,6 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 lock (_sync) _subscriptions.Add(connectionId);
             if (method == "sessions.list" && gate is not null)
                 lock (_sync) _sessionListCaptured?.TrySetResult();
-            if (method == "skills.status" && gate is not null)
-                lock (_sync)
-                    if (_heldReads.TryGetValue(method, out var held)) held.Captured.TrySetResult();
             if (gate is not null)
                 await gate.WaitAsync(cancellationToken);
             if (abortOutcome is not null && await abortOutcome.WaitAsync(cancellationToken))
@@ -1038,6 +1111,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             _sessionMutationGate = null;
             _chatSendGate?.TrySetCanceled();
             _chatSendGate = null;
+            _connectionHandshakeGate?.TrySetCanceled();
+            _connectionHandshakeGate = null;
             _chatAbortGate?.TrySetCanceled();
             _chatAbortGate = null;
         }

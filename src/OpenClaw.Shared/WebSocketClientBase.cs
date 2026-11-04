@@ -104,11 +104,14 @@ public abstract class WebSocketClientBase : IDisposable
     private int _reconnectAttempts;
     private int _reconnectLoopActive;
     private long _connectionGeneration;
+    private long _clientAbortedGeneration = -1;
     private int _remoteCloseStatusCode = -1;
     private string? _remoteCloseStatusDescription;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private static readonly int[] BackoffMs = { 1000, 2000, 4000, 8000, 15000, 30000, 60000 };
     private static readonly TimeSpan DefaultConnectAttemptTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan DefaultKeepAliveInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultKeepAliveTimeout = TimeSpan.FromSeconds(30);
 
     protected readonly string _token;
     protected readonly IOpenClawLogger _logger;
@@ -213,6 +216,18 @@ public abstract class WebSocketClientBase : IDisposable
     /// <summary>Maximum time allowed for one WebSocket HTTP upgrade attempt.</summary>
     protected virtual TimeSpan ConnectAttemptTimeout => DefaultConnectAttemptTimeout;
 
+    /// <summary>Idle time before the socket sends a WebSocket ping to the Gateway.</summary>
+    protected virtual TimeSpan KeepAliveInterval => DefaultKeepAliveInterval;
+
+    /// <summary>
+    /// Time allowed for the pong. Without this limit a peer that keeps its TCP connection open
+    /// but stops responding, such as a frozen Gateway behind the WSL relay, is never detected.
+    /// </summary>
+    protected virtual TimeSpan KeepAliveTimeout => DefaultKeepAliveTimeout;
+
+    /// <summary>A protocol-specific retry delay for the rejected socket, or normal transport backoff.</summary>
+    protected virtual int? GetReconnectDelayMs(long sourceConnectionGeneration) => null;
+
     protected WebSocketClientBase(string gatewayUrl, string token, IOpenClawLogger? logger = null)
     {
         if (string.IsNullOrEmpty(gatewayUrl))
@@ -275,7 +290,8 @@ public abstract class WebSocketClientBase : IDisposable
             RaiseStatusChanged(ConnectionStatus.Connecting);
             _logger.Info($"Connecting to {ClientRole}: {GatewayUrlForDisplay}");
 
-            ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
+            ws.Options.KeepAliveInterval = KeepAliveInterval;
+            ws.Options.KeepAliveTimeout = KeepAliveTimeout;
 
             // Set Origin header (convert ws/wss to http/https)
             var uri = new Uri(_gatewayUrl);
@@ -451,6 +467,7 @@ public abstract class WebSocketClientBase : IDisposable
             !ReferenceEquals(_webSocket, ws))
             return;
 
+        Interlocked.Exchange(ref _clientAbortedGeneration, expectedGeneration);
         try { ws.Abort(); }
         catch (Exception ex) { _logger.Debug($"{ClientRole} WebSocket abort threw: {ex.Message}"); }
     }
@@ -573,6 +590,19 @@ public abstract class WebSocketClientBase : IDisposable
                 RaiseStatusChanged(ConnectionStatus.Disconnected);
             }
         }
+        catch (OperationCanceledException) when (
+            !_cts.Token.IsCancellationRequested &&
+            Interlocked.Read(ref _clientAbortedGeneration) != connectionGeneration)
+        {
+            // Nothing here asked for this cancellation, so the socket aborted itself: the keep-alive
+            // pong never arrived. Report it like any other lost connection.
+            _logger.Warn($"{ClientRole} connection stopped answering keep-alive pings");
+            if (IsCurrentConnection(ws, connectionGeneration))
+            {
+                OnDisconnected();
+                RaiseStatusChanged(ConnectionStatus.Disconnected);
+            }
+        }
         catch (OperationCanceledException) { /* Expected on shutdown/disconnect. */ }
         catch (ObjectDisposedException) { /* CTS or WebSocket disposed during shutdown */ }
         catch (Exception ex)
@@ -622,16 +652,18 @@ public abstract class WebSocketClientBase : IDisposable
                 && ShouldAutoReconnect()
                 && IsReconnectOwner(ownerSocket, ownerGeneration))
             {
-                var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
-                // Add 0-25% jitter to prevent thundering herd when multiple clients
-                // (operator + node) reconnect on the same schedule
-                var jitter = Random.Shared.Next(0, delay / 4);
-                delay += jitter;
+                var delay = GetReconnectDelayMs(ownerGeneration);
+                if (delay is null)
+                {
+                    var backoff = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
+                    // Preserve transport jitter, but honor a bounded application retry hint exactly.
+                    delay = backoff + Random.Shared.Next(0, backoff / 4);
+                }
                 _reconnectAttempts++;
                 _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
                 RaiseStatusChanged(ConnectionStatus.Connecting);
 
-                await Task.Delay(delay, _cts.Token);
+                await Task.Delay(delay.Value, _cts.Token);
 
                 if (_cts.Token.IsCancellationRequested
                     || _disposed

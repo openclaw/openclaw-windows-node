@@ -1,7 +1,7 @@
 namespace OpenClaw.SetupEngine;
 
 // Values are persisted in restart receipts. Keep legacy channel destinations stable.
-public enum SetupNativeDestination { Chat = 0, WhatsApp = 1, Telegram = 2, Channels = 3, Skills = 4 }
+public enum SetupNativeDestination { Chat = 0, WhatsApp = 1, Telegram = 2, Channels = 3 }
 
 /// <summary>A UI destination, not a model role or an authorization claim.</summary>
 public sealed record SetupNativeTarget(SetupNativeDestination Destination, string SessionKey)

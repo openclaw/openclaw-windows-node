@@ -17,7 +17,7 @@ using System.Text;
 
 namespace OpenClaw.Connection.LocalAi;
 
-/// <summary>A deterministic lazy-load router configuration for a qualified local inference install.</summary>
+/// <summary>Represents the deterministic argv, environment, preset, and model alias for one router launch.</summary>
 public sealed record LlamaServerRouterLaunchPlan(
     ImmutableArray<string> Arguments,
     ImmutableDictionary<string, string> Environment,
@@ -25,21 +25,23 @@ public sealed record LlamaServerRouterLaunchPlan(
     string PresetContent,
     string ModelAlias);
 
+/// <summary>Builds deterministic llama-server launch plans from validated Local AI installation receipts.</summary>
 public static class LlamaServerRouterConfiguration
 {
-    /// <summary>Resolves the exact catalog plan recorded by a validated installation receipt.</summary>
+    /// <summary>Resolves and validates the exact qualified runtime, model, and profile recorded by an install receipt.</summary>
     public static LocalInferencePlan ResolveInstalledPlan(LocalAiResolvedInstall install)
     {
         ArgumentNullException.ThrowIfNull(install);
         LocalAiInstallManifest manifest = install.Manifest;
         LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.FindInstalled(manifest.RuntimeId)
             ?? throw new InvalidDataException("The managed llama-server runtime is no longer qualified.");
-        LocalModelInfo model = LocalModelCatalog.FindInstalled(manifest.ModelCatalogId, manifest.ModelAsset.SourceUrl)
+        LocalModelInfo model = LocalAiInstalledModel.Resolve(manifest)
             ?? throw new InvalidDataException("The managed local AI model is no longer qualified.");
         return new LocalInferencePlan(runtime, model, ResolveQualifiedReceipt(manifest, runtime, model),
             LocalInferenceModelSelectionOrigin.Explicit, manifest.SelectedGpuId);
     }
 
+    /// <summary>Builds the inspection launch plan using receipt paths for a validated Local AI install.</summary>
     public static LlamaServerRouterLaunchPlan Build(
         LocalAiPaths paths,
         LocalAiResolvedInstall install,

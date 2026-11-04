@@ -192,7 +192,9 @@ public sealed class NativeGatewaySetupSession(
         host.ReportProgress(NativeGatewaySetupStage.VerifyingEndpoint);
         var provenance = await runtime.InspectAsync(Record, cancellationToken);
         if (provenance.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway)
-            throw new InvalidOperationException("Native gateway ownership could not be verified. No credential was sent.");
+            throw new InvalidOperationException(provenance.Detail is { Length: > 0 } detail
+                ? $"Native gateway ownership could not be verified. No credential was sent. {detail}"
+                : "Native gateway ownership could not be verified. No credential was sent.");
         cancellationToken.ThrowIfCancellationRequested();
     }
 

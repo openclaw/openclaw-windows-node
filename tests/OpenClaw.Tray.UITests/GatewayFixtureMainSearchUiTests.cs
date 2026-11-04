@@ -174,6 +174,7 @@ public sealed partial class GatewayFixtureUiTests
         await WithAppAsync(async run =>
         {
             var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            await SelectSessionAsync(run, GatewayScenario.LongTitle, GatewayScenario.LongSessionKey);
             Assert.Null(FindById(run, "WorkspaceSearchBox"));
             Send(run, window, "^e");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "icon-only search opened");
@@ -189,8 +190,11 @@ public sealed partial class GatewayFixtureUiTests
             OwnedWindowCapture.Save(run, window, "main-search-message-result.png", FindById(run, "SearchResultsList")!);
             SearchEdit(run, "WorkspaceSearchBox").SetFocus();
             Send(run, window, "{ENTER}");
-            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is null &&
-                SessionSelected(run, GatewayScenario.MainTitle), "exact native conversation after search");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is null, "search closed after activation");
+            await WaitComposerSelectionAsync(run, GatewayScenario.MainSessionKey);
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceNavHome") is { } home &&
+                ((SelectionItemPattern)home.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
+                "canonical main conversation selected as Home");
             Assert.Equal(MainSearchDraft, ComposerText(run));
         });
     }
@@ -293,7 +297,7 @@ public sealed partial class GatewayFixtureUiTests
             foreach (var (query, title, marker) in new[]
             {
                 ("Agent Events", "Event Stream", "AgentEventsPageMarker"),
-                ("Bindings", "Bindings", "BindingsPageMarker")
+                ("Config", "Config", "ConfigPageMarker")
             })
             {
                 Send(run, window, "^k");
@@ -559,15 +563,14 @@ public sealed partial class GatewayFixtureUiTests
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task MainSearch_SkillsRevealRecoversAfterReconnectAndLaterAgentMatchedRefresh()
+    public async Task MainSearch_SkillsAreDashboardDestinationsRatherThanRetiredNativePages()
     {
         await WithAppAsync(async run =>
         {
-            var revision = 1;
             object SkillData(System.Text.Json.JsonElement parameters)
             {
                 var selected = parameters.TryGetProperty("agentId", out var agent) && agent.GetString() == "main";
-                return new { skills = new[] { new { name = selected ? $"Navigation skill revision {Volatile.Read(ref revision)}" : "Foreign agent skill",
+                return new { skills = new[] { new { name = selected ? "Navigation skill" : "Foreign agent skill",
                     skillKey = selected ? "fixture-navigation" : "foreign-skill", description = "Synthetic navigation skill", enabled = true } } };
             }
             run.Gateway.OverrideSearchRead("skills.status", SkillData);
@@ -575,33 +578,14 @@ public sealed partial class GatewayFixtureUiTests
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
             var edit = SearchEdit(run, "WorkspaceSearchBox");
-            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Navigation skill revision");
-            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith("Navigation skill revision 1.", StringComparison.Ordinal) == true,
+            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Navigation skill");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith("Navigation skill.", StringComparison.Ordinal) == true,
                 "selected-agent skill result");
-            var held = run.Gateway.HoldNextSkillsRead("main");
-            try
-            {
-                edit.SetFocus();
-                Send(run, window, "{ENTER}");
-                await held.WaitAsync(TimeSpan.FromSeconds(10));
-                await WaitUiAsync(run, () => FindById(run, "SkillsLoading") is { Current.IsOffscreen: false }, "in-flight skill reveal");
-                var connections = run.Gateway.ConnectionCount;
-                Interlocked.Exchange(ref revision, 2);
-                await run.Gateway.CloseConnectionsAsync();
-                await WaitUiAsync(run, () => run.Gateway.ConnectionCount > connections &&
-                    FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "Navigation skill revision 2")) is not null &&
-                    FindById(run, "SkillsLoading") is null or { Current.IsOffscreen: true }, "skills recover on the fresh connection");
-            }
-            finally { run.Gateway.ReleaseSkillsRead(); }
+            Assert.Contains("Dashboard", FindById(run, "SearchResult_0")!.Current.Name);
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "skills.update");
-            Interlocked.Exchange(ref revision, 3);
-            Invoke(FindById(run, "SkillToggle:fixture-navigation")!);
-            await WaitUiAsync(run, () => FindInApp(run,
-                new PropertyCondition(AutomationElement.NameProperty, "Navigation skill revision 3")) is not null,
-                "later shared update triggers an agent-owned reload");
-            Assert.Contains(run.Gateway.Requests, request => request.Method == "skills.update" && request.Outcome == "ok");
             Assert.Null(FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "Foreign agent skill")));
-            OwnedWindowCapture.Save(run, window, "search-skills-reconnected.png", FindById(run, "SkillsPageMarker")!);
+            Assert.Null(FindById(run, "SkillsPageMarker"));
+            OwnedWindowCapture.Save(run, window, "search-skills-dashboard.png", FindById(run, "SearchResult_0")!);
         }, scenario: GatewayScenario.CreateSearchNavigation());
     }
 

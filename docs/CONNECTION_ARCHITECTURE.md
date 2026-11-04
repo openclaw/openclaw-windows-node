@@ -296,7 +296,7 @@ meaning and is not the main Workspace route.
 Verified native setup completion follows the same window boundary. Chat binds
 the receipt's exact session to Workspace's retained ChatPage and waits for the
 native composer before activating the window and consuming the receipt.
-Channels and Skills keep typed companion navigation. Both paths retain fresh
+Channels keeps typed companion navigation. Both paths retain fresh
 gateway, endpoint, identity, agent, and session checks; selecting a different
 Workspace destination invalidates an in-flight chat handoff.
 Admitted assistant changes and new-conversation creation invalidate that binding
@@ -316,8 +316,9 @@ Both native window entry points use `WorkspaceNavigation.Dispatch` to reject
 unknown prefixed routes before creating a companion or forwarding navigation.
 `app.navigate` reports this rejection as an MCP tool error, not a successful
 no-op.
-Unprefixed companion routes, including `cron`, `sessions`, `skills`, `usage`,
-and `agent:<id>:workspace`, are unchanged.
+Unprefixed companion routes, including `cron`, `sessions`, `usage`,
+and `agent:<id>:workspace`, are unchanged. Skills management is available in the
+Gateway web dashboard, not a native companion page.
 
 The removed `WorkspaceContentPage` and `WorkspacePageRenderer` no longer host
 placeholder management pages. Native Cron keeps its existing companion
@@ -405,6 +406,25 @@ orchestration. Three narrower owners sit behind it:
 `NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and connection
 interfaces/DTOs/enums remain separate. This project has zero WinUI dependencies
 and is independently testable.
+
+Operator connect responses are transient application-startup state only when a
+correlated current-socket rejection has `error.code=UNAVAILABLE`,
+`retryable=true`, and `details.reason=startup-sidecars`, without a competing
+structured detail code. `OpenClawGatewayClient.StartupUnavailable` and
+`StartupUnavailableReceived` retain that typed state without raising auth,
+pairing, or terminal error events. The reconnect loop honors `retryAfterMs`
+after the Gateway closes the socket, flooring finite numbers and clamping them
+to 100 through 2000 milliseconds (500 when absent or invalid). Other
+`UNAVAILABLE` responses and close code 1013 alone retain ordinary behavior.
+The startup projection excludes the old rejection as soon as a fresh transport
+attempt owns a new generation, including while its HTTP upgrade is pending.
+Successful handshakes and failed transport attempts clear stored startup state
+rather than relabeling a network error as startup.
+Reconnect and pre-credential handshake authorization still run on every fresh
+socket. Native setup retains its existing 20-second handshake wait and linked
+cancellation lifetime. If that deadline expires while a typed startup rejection
+is current, it throws `GatewayStartupUnavailableException`, not an auth or
+pairing failure, without extending the deadline or changing credentials.
 
 `ChatNavigationReadiness` settles operator readiness, its real deadline, and
 caller cancellation through one atomic completion source. A connected event

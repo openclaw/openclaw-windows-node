@@ -13,7 +13,6 @@ public sealed partial class GatewayFixtureUiTests
     [GatewayFixtureUiTheory]
     [InlineData(null, false)]
     [InlineData(SetupNativeDestination.Channels, false)]
-    [InlineData(SetupNativeDestination.Skills, false)]
     [InlineData(SetupNativeDestination.Chat, false)]
     [InlineData(SetupNativeDestination.Chat, true)]
     [Trait("Category", "GatewayFixture")]
@@ -35,6 +34,14 @@ public sealed partial class GatewayFixtureUiTests
             var identity = composer.GetRuntimeId();
             const string draft = "Keep this draft behind the shared-root dialog";
             ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+            // Native text can update before the controlled composer accepts the draft.
+            await WaitUiAsync(run, () =>
+                FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false } input
+                && input.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
+                && ((ValuePattern)pattern).Current.Value == draft
+                && FindById(run, "ChatComposerPrimaryAction") is
+                    { Current.Name: "Send", Current.IsEnabled: true },
+                "composer draft accepted before modal navigation");
             if (settingsOrigin)
             {
                 await run.InvokeAsync("app.navigate", new { page = "sessions" });
@@ -66,14 +73,12 @@ public sealed partial class GatewayFixtureUiTests
             var route = destination switch
             {
                 SetupNativeDestination.Channels => "channels",
-                SetupNativeDestination.Skills => "skills",
                 SetupNativeDestination.Chat => "chat",
                 _ => "settings"
             };
             var marker = destination switch
             {
                 SetupNativeDestination.Channels => "ChannelsPageMarker",
-                SetupNativeDestination.Skills => "SkillsPageMarker",
                 SetupNativeDestination.Chat => "ChatComposerInput",
                 _ => "SettingsPageMarker"
             };
@@ -104,9 +109,23 @@ public sealed partial class GatewayFixtureUiTests
                     var receiptPath = Path.Combine(run.Profile.DataDirectory, "setup-dashboard-handoff", "pending.json");
                     if (!File.Exists(receiptPath)) return target == SetupNativeDestination.Chat;
                     if (target == SetupNativeDestination.Chat) return false;
-                    using var receipt = JsonDocument.Parse(await File.ReadAllTextAsync(receiptPath));
+                    string text;
+                    try
+                    {
+                        // The app writes the receipt via a temp file plus File.Move(..., overwrite: true);
+                        // the read can lose that race even after File.Exists, so treat IO errors as not-yet.
+                        await using var stream = new FileStream(receiptPath, FileMode.Open, FileAccess.Read,
+                            FileShare.ReadWrite | FileShare.Delete);
+                        using var reader = new StreamReader(stream);
+                        text = await reader.ReadToEndAsync();
+                    }
+                    catch (IOException)
+                    {
+                        return false;
+                    }
+                    using var receipt = JsonDocument.Parse(text);
                     return receipt.RootElement.GetProperty("State").GetString() == "retry";
-                }, "native request settled after rejecting the unavailable destination");
+                }, description: "native request settled after rejecting the unavailable destination", timeout: HandoffSettleTimeout);
                 Assert.Contains(run.Gateway.Requests,
                     request => request.Method == "openclaw.setup.verify" && request.Outcome == "ok");
                 var registry = new GatewayRegistry(run.Profile.DataDirectory);
@@ -150,7 +169,10 @@ public sealed partial class GatewayFixtureUiTests
             await run.InvokeAsync("app.navigate", new { page = "chat" });
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false }, "retained chat");
             Assert.Equal(identity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
-            Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+            var draftWatch = Stopwatch.StartNew();
+            await WaitUiAsync(run, () => ((ValuePattern)FindById(run, "ChatComposerInput")!
+                .GetCurrentPattern(ValuePattern.Pattern)).Current.Value == draft, "retained chat draft after the Settings round trip");
+            output.WriteLine($"Retained draft observed after {draftWatch.ElapsedMilliseconds} ms.");
             if (destination == SetupNativeDestination.Chat)
                 Assert.True(SessionSelected(run, GatewayScenario.OtherSessionTitle));
             await run.InvokeAsync("app.navigate", new { page = route });

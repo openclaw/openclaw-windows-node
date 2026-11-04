@@ -1,3 +1,14 @@
+// <summary>
+// Authenticated WebSocket implementation of the operator Gateway protocol. It owns connection
+// state, request correlation, protocol projections, and notification publication for one Gateway.
+// Callers configure it at composition time and must observe events rather than mutate its snapshots.
+// Usage:
+//   var client = new OpenClawGatewayClient(gatewayUrl, token, logger);
+//   client.SessionsUpdated += (_, sessions) => RenderSessions(sessions);
+//   await client.ConnectAsync(cancellationToken);
+//   await client.RequestSessionsAsync();
+// </summary>
+
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
@@ -14,6 +25,10 @@ namespace OpenClaw.Shared;
 
 public sealed record SessionUsageSnapshot(SessionInfo[] Sessions, long? Timestamp);
 
+/// <summary>
+/// Implements the authenticated operator Gateway client over a reconnecting WebSocket transport.
+/// It translates protocol messages into typed events and guards requests by connection state.
+/// </summary>
 public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 {
     private const string OperatorRole = "operator";
@@ -88,6 +103,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// as <see cref="OpenClaw.Chat.ChatComposeTarget.IsReady"/>.
     /// </summary>
     public bool HasHandshakeSnapshot => Volatile.Read(ref _hasHandshakeSnapshot);
+    public bool IsAgentsListUnsupported => Volatile.Read(ref _agentsListUnsupported);
     private string? _operatorDeviceId;
     private string[] _grantedOperatorScopes = Array.Empty<string>();
     private string _connectAuthToken;
@@ -129,7 +145,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private bool _authFailed;
     private readonly HandshakeChallengeGate _handshakeChallengeGate = new();
     private bool _protocolMismatch;
-    private string? _lastSkillsStatusAgentId;
     private readonly bool _tokenIsBootstrapToken;
     private readonly bool _bootstrapPairAsNode;
     private readonly bool _ignoreStoredDeviceToken;
@@ -160,6 +175,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private void ResetUnsupportedMethodFlags()
     {
+        var agentsListWasUnsupported = _agentsListUnsupported;
         _usageStatusUnsupported = false;
         _usageCostUnsupported = false;
         _sessionPreviewUnsupported = false;
@@ -171,6 +187,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _agentFilesListUnsupported = false;
         _agentFileGetUnsupported = false;
         _operatorReadScopeUnavailable = false;
+        if (agentsListWasUnsupported)
+            AgentsListUnsupportedChanged?.Invoke(this, false);
     }
 
     /// <summary>
@@ -202,6 +220,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override Task OnConnectedAsync()
     {
+        Volatile.Write(ref _startupRejection, null);
         CancelScheduledSessionRefresh();
         lock (_sessionsLock)
         {
@@ -232,6 +251,31 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         return !_authFailed && !_protocolMismatch;
     }
 
+    private sealed record StartupRejection(long Generation, GatewayStartupUnavailable Startup);
+    private StartupRejection? _startupRejection;
+
+    /// <summary>Structured startup rejection for the current transport generation only.</summary>
+    public GatewayStartupUnavailable? StartupUnavailable
+    {
+        get
+        {
+            var rejection = Volatile.Read(ref _startupRejection);
+            return rejection is not null && IsCurrentConnectionGeneration(rejection.Generation)
+                ? rejection.Startup : null;
+        }
+    }
+
+    /// <summary>Transient application startup, not authentication failure or pairing admission.</summary>
+    public event EventHandler<GatewayStartupUnavailable>? StartupUnavailableReceived;
+
+    protected override int? GetReconnectDelayMs(long sourceConnectionGeneration)
+    {
+        var rejection = Volatile.Read(ref _startupRejection);
+        return rejection?.Generation == sourceConnectionGeneration &&
+            IsCurrentConnectionGeneration(sourceConnectionGeneration)
+                ? rejection.Startup.RetryAfterMs : null;
+    }
+
     protected override void OnDisconnected()
     {
         CancelScheduledSessionRefresh();
@@ -257,6 +301,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnDisposing()
     {
+        Volatile.Write(ref _startupRejection, null);
         CancelScheduledSessionRefresh();
         Volatile.Write(ref _pendingSigningIdentity, null);
         Volatile.Write(ref _authenticatedSigningIdentity, null);
@@ -291,7 +336,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<JsonElement>? CronListUpdated;
     public event EventHandler<JsonElement>? CronStatusUpdated;
     public event EventHandler<JsonElement>? CronRunsUpdated;
-    public event EventHandler<JsonElement>? SkillsStatusUpdated;
     public event EventHandler<JsonElement>? ConfigUpdated;
     public event EventHandler? ConfigurationChanged;
     public event EventHandler<JsonElement>? ConfigSchemaUpdated;
@@ -312,6 +356,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler? ModelCatalogInvalidated;
     public event EventHandler<PresenceEntry[]>? PresenceUpdated;
     public event EventHandler<JsonElement>? AgentsListUpdated;
+    public event EventHandler<bool>? AgentsListUnsupportedChanged;
     public event EventHandler<JsonElement>? AgentFilesListUpdated;
     public event EventHandler<JsonElement>? AgentFileContentUpdated;
 
@@ -399,6 +444,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnConnectionException(Exception exception)
     {
+        Volatile.Write(ref _startupRejection, null);
         RaiseConnectionFailure(GatewayErrorClassifier.Classify(exception.ToString()));
     }
 
@@ -411,6 +457,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     protected void RaiseConnectionFailure(GatewayErrorKind kind) =>
         ConnectionFailure?.Invoke(this, kind);
 
+    /// <summary>
+    /// Creates a Gateway client for one endpoint and credential context. The client initializes or
+    /// loads its device identity before it can authenticate and publish Gateway state.
+    /// </summary>
     public OpenClawGatewayClient(
         string gatewayUrl,
         string token,
@@ -461,6 +511,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             ref _assistantMediaAuthToken,
             string.IsNullOrWhiteSpace(token) ? null : token);
 
+    /// <summary>Closes the active transport, drains pending requests, and publishes disconnected state.</summary>
     public async Task DisconnectAsync()
     {
         if (IsConnected)
@@ -479,6 +530,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _logger.Info("Disconnected");
     }
 
+    /// <summary>Verifies the connection, reconnecting through the transport policy when it is unavailable.</summary>
     public async Task CheckHealthAsync()
     {
         if (!IsConnected)
@@ -509,11 +561,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
+    /// <summary>Sends a chat message without exposing the accepted run details.</summary>
     public async Task SendChatMessageAsync(string message, string? sessionKey = null, string? sessionId = null, IReadOnlyList<ChatAttachment>? attachments = null)
     {
         _ = await SendChatMessageForRunAsync(message, sessionKey, sessionId, attachments).ConfigureAwait(false);
     }
 
+    /// <summary>Sends a chat message and returns the Gateway result identifying its accepted run.</summary>
     public async Task<ChatSendResult> SendChatMessageForRunAsync(
         string message,
         string? sessionKey = null,
@@ -1372,21 +1426,28 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// </summary>
     private const string HandshakePendingError =
         "Gateway handshake has not completed (hello-ok pending)";
+    private const string ConnectionChangedBeforeSendError =
+        "The Gateway connection changed before the request could be sent.";
 
     public Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000) =>
         SendResponseRequestAsync(method, parameters, timeoutMs);
 
     private const string SearchRequestIdPrefix = "search:";
 
+    public Task<JsonElement> SendWizardRequestOnConnectionAsync(
+        string method, object? parameters, long connectionEpoch, int timeoutMs = 30000) =>
+        SendResponseRequestAsync(method, parameters, timeoutMs, connectionEpoch);
+
     private async Task<JsonElement> SendResponseRequestAsync(
         string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null,
-        CancellationToken callerCancellation = default, bool searchRead = false)
+        CancellationToken requestCancellationToken = default, bool searchRead = false)
     {
-        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken, callerCancellation);
-        lifetime.Token.ThrowIfCancellationRequested();
+        using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken, requestCancellationToken);
+        var requestToken = requestCancellation.Token;
+        requestToken.ThrowIfCancellationRequested();
         var connectionGeneration = GetReadyConnectionGeneration(method);
         if (expectedConnectionEpoch.HasValue && connectionGeneration != expectedConnectionEpoch.Value)
-            throw new InvalidOperationException("The Gateway connection changed before the request could be sent.");
+            throw new InvalidOperationException(ConnectionChangedBeforeSendError);
 
         // #1418: wizard requests are application RPCs (models.list,
         // device.pair.list, pairing approvals, update.status, chat.abort,
@@ -1407,12 +1468,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             var sent = await SendRawAsync(
                     SerializeRequest(requestId, method, parameters),
                     connectionGeneration,
-                    lifetime.Token)
-                .WaitAsync(lifetime.Token)
+                    requestToken)
+                .WaitAsync(requestToken)
                 .ConfigureAwait(false);
             if (!sent)
                 throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");
-            return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), lifetime.Token);
+            return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), requestToken);
         }
         catch (TimeoutException ex)
         {
@@ -1637,28 +1698,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         await SendTrackedRequestAsync("cron.runs", new { id, limit, offset });
     }
 
-    // Skills/plugin management
-
-    public async Task RequestSkillsStatusAsync(string? agentId = null)
-    {
-        _lastSkillsStatusAgentId = string.IsNullOrWhiteSpace(agentId) ? null : agentId;
-
-        if (_lastSkillsStatusAgentId is not null)
-            await SendTrackedRequestAsync("skills.status", new { agentId = _lastSkillsStatusAgentId });
-        else
-            await SendTrackedRequestAsync("skills.status");
-    }
-
-    public Task<bool> InstallSkillAsync(string skillId)
-    {
-        return TrySendTrackedRequestAsync("skills.install", new { id = skillId });
-    }
-
-    public Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled)
-    {
-        return TrySendTrackedRequestAsync("skills.update", new { skillKey, enabled });
-    }
-
     // Gateway config management
 
     public async Task RequestConfigAsync()
@@ -1696,13 +1735,23 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// <see cref="PatchConfigAsync"/> stays for legacy callers that don't
     /// care about the gateway's reply.
     /// </summary>
-    public async Task<ConfigPatchResult> PatchConfigDetailedAsync(JsonElement fullConfig, string? baseHash, int timeoutMs = 15000)
+    public Task<ConfigPatchResult> PatchConfigDetailedAsync(JsonElement fullConfig, string? baseHash, int timeoutMs = 15000) =>
+        PatchConfigCoreAsync(fullConfig, baseHash, timeoutMs, null);
+
+    public Task<ConfigPatchResult> PatchConfigOnConnectionAsync(
+        JsonElement fullConfig, string? baseHash, long connectionEpoch, int timeoutMs = 15000) =>
+        SessionMutationConnectionEpoch == connectionEpoch
+            ? PatchConfigCoreAsync(fullConfig, baseHash, timeoutMs, connectionEpoch)
+            : Task.FromException<ConfigPatchResult>(new InvalidOperationException(ConnectionChangedBeforeSendError));
+
+    private async Task<ConfigPatchResult> PatchConfigCoreAsync(
+        JsonElement fullConfig, string? baseHash, int timeoutMs, long? expectedConnectionEpoch)
     {
         var raw = fullConfig.GetRawText();
         object payload = baseHash != null ? new { raw, baseHash } : (object)new { raw };
         try
         {
-            var response = await SendWizardRequestAsync("config.patch", payload, timeoutMs);
+            var response = await SendResponseRequestAsync("config.patch", payload, timeoutMs, expectedConnectionEpoch);
             _logger.Info("config.patch succeeded");
             return new ConfigPatchResult
             {
@@ -2534,10 +2583,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     okWiz.ValueKind == JsonValueKind.False)
                 {
                     var message = TryGetErrorMessage(root) ?? "wizard request failed";
-                    wizardCompletion.TryFault(QuestionRequestError(pending.Method, root)
-                        ?? (pending.Method == "sessions.search" ? new GatewayRequestException(message,
-                            root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
-                                ? GetString(error, "code") : null) : new InvalidOperationException(message)));
+                    wizardCompletion.TryFault(requestMethod == "tts.speak"
+                        ? new GatewaySpeechException(ClassifySpeechRejection(message))
+                        : QuestionRequestError(pending.Method, root)
+                            ?? (requestId?.StartsWith(SearchRequestIdPrefix, StringComparison.Ordinal) == true ? new GatewayRequestException(message,
+                                root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
+                                    ? GetString(error, "code") : null) : new InvalidOperationException(message)));
                 }
                 else if (root.TryGetProperty("payload", out var wizPayload))
                 {
@@ -2623,6 +2674,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             }
 
             _logger.Info($"[HANDSHAKE] Received hello-ok!");
+            Volatile.Write(ref _startupRejection, null);
             Volatile.Write(ref _pairingRequiredAwaitingApproval, false);
             Volatile.Write(ref _pairingRequiredRequestId, null);
             _authFailed = false;
@@ -2826,14 +2878,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             case "cron.runs":
                 CronRunsUpdated?.Invoke(this, payload.Clone());
                 return true;
-            case "skills.status":
-                SkillsStatusUpdated?.Invoke(this, payload.Clone());
-                return true;
-            case "skills.install":
-            case "skills.update":
-                // Re-fetch the same skills scope so filtered views do not jump back to all agents.
-                _ = RequestSkillsStatusAsync(_lastSkillsStatusAgentId);
-                return true;
             case "config.get":
                 ConfigUpdated?.Invoke(this, payload.Clone());
                 return true;
@@ -2951,6 +2995,17 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         if (method == "connect")
         {
+            if (!_authFailed && !_protocolMismatch && detailCode is null &&
+                _handshakeChallengeGate.IsAuthorized(sourceConnectionGeneration) &&
+                GatewayStartupUnavailable.Parse(root) is { } startup)
+            {
+                Volatile.Write(ref _startupRejection, new(sourceConnectionGeneration, startup));
+                _logger.Info($"[HANDSHAKE] Gateway startup pending; retry in {startup.RetryAfterMs}ms.");
+                StartupUnavailableReceived?.Invoke(this, startup);
+                RaiseStatusChanged(ConnectionStatus.Connecting);
+                return;
+            }
+
             _logger.Warn($"[HANDSHAKE] Connect error from gateway: message=\"{message}\", detailCode={detailCode ?? "none"}");
             // Log raw JSON for debugging (truncated)
             var rawJson = root.ToString() ?? "";
@@ -3093,6 +3148,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 case "agents.list":
                     _agentsListUnsupported = true;
                     _logger.Warn("agents.list unsupported on gateway");
+                    AgentsListUnsupportedChanged?.Invoke(this, true);
                     return;
                 case "agents.files.list":
                     _agentFilesListUnsupported = true;
@@ -4707,23 +4763,40 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         GatewaySelfUpdated?.Invoke(this, info);
     }
 
+    private static bool IsSessionMapKey(string key) =>
+        key is not ("recent" or "count" or "path" or "defaults" or "ts") &&
+        (key.Equals("global", StringComparison.OrdinalIgnoreCase) ||
+         key.Contains(':') || key.Contains("agent") || key.Contains("session"));
+
     private void ParseSessions(JsonElement sessions)
     {
         try
         {
+            var envelope = sessions;
+            if (envelope.ValueKind == JsonValueKind.Object &&
+                envelope.TryGetProperty("sessions", out var rows))
+                sessions = rows;
+            if (sessions.ValueKind is not (JsonValueKind.Array or JsonValueKind.Object))
+            {
+                _logger.Warn("[SESSIONS] Ignoring a payload without a session roster.");
+                return;
+            }
+            if (sessions.ValueKind == JsonValueKind.Object &&
+                sessions.EnumerateObject().Any() &&
+                !sessions.EnumerateObject().Any(property => IsSessionMapKey(property.Name)))
+            {
+                _logger.Debug("[SESSIONS] Ignoring session metadata without roster rows.");
+                return;
+            }
             SessionInfo[] snapshot;
-            var timestamp = sessions.ValueKind == JsonValueKind.Object &&
-                sessions.TryGetProperty("ts", out var ts) &&
+            var timestamp = envelope.ValueKind == JsonValueKind.Object &&
+                envelope.TryGetProperty("ts", out var ts) &&
                 ts.ValueKind == JsonValueKind.Number &&
                 ts.TryGetInt64(out var value) && value > 0
                     ? (long?)value
                     : null;
             lock (_sessionsLock)
             {
-                var envelope = sessions;
-                if (envelope.ValueKind == JsonValueKind.Object
-                    && envelope.TryGetProperty("sessions", out var rows))
-                    sessions = rows;
                 _sessionThinkingDefaults = envelope.ValueKind == JsonValueKind.Object
                     && envelope.TryGetProperty("defaults", out var defaults)
                     && defaults.ValueKind == JsonValueKind.Object
@@ -4746,13 +4819,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     {
                         var sessionKey = prop.Name;
 
-                        if (sessionKey is "recent" or "count" or "path" or "defaults" or "ts")
-                            continue;
-
-                        if (!sessionKey.Equals("global", StringComparison.OrdinalIgnoreCase) &&
-                            !sessionKey.Contains(':') &&
-                            !sessionKey.Contains("agent") &&
-                            !sessionKey.Contains("session"))
+                        if (!IsSessionMapKey(sessionKey))
                             continue;
 
                         var item = prop.Value;

@@ -2,11 +2,186 @@ using System.Text.Json;
 using System.Xml.Linq;
 using OpenClaw.Shared;
 using OpenClawTray.Presentation;
+using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests.Presentation;
 
 public sealed class WorkspaceNavigationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DisconnectAndReturningRoster_PreserveExplicitAgentInsteadOfGatewayDefault(
+        bool sessionsArriveFirst)
+    {
+        using var roster = JsonDocument.Parse(
+            """{"defaultId":"main","selectionRequired":true,"agents":[{"id":"main"},{"id":"coordinator"}]}""");
+        var sessions = new[]
+        {
+            new SessionInfo { Key = "agent:main:main", AgentId = "main" },
+            new SessionInfo { Key = "agent:coordinator:dashboard:proof", AgentId = "coordinator" },
+        };
+        var state = new AppState
+        {
+            Status = ConnectionStatus.Connected,
+            AgentsList = roster.RootElement,
+            Sessions = sessions,
+        };
+        var selection = new WorkspaceAgentSelection();
+        selection.Select("coordinator");
+        selection.Refresh("gateway", state.AgentsList, WorkspaceProjection.Agents(state.AgentsList, state.Sessions), true);
+        state.PropertyChanged += (_, change) =>
+        {
+            if (change.PropertyName is nameof(AppState.AgentsList) or nameof(AppState.Sessions) or nameof(AppState.Status))
+                selection.Refresh("gateway", state.AgentsList,
+                    WorkspaceProjection.Agents(state.AgentsList, state.Sessions),
+                    rosterUpdated: change.PropertyName == nameof(AppState.AgentsList));
+        };
+
+        state.Status = ConnectionStatus.Disconnected;
+        state.ClearCachedData();
+        Assert.Equal("coordinator", selection.AgentId);
+        Assert.False(selection.IsReady);
+        Assert.False(selection.HasCurrentRoster);
+        state.Status = ConnectionStatus.Connected;
+        if (sessionsArriveFirst)
+        {
+            state.Sessions = sessions;
+            state.AgentsList = roster.RootElement;
+        }
+        else
+        {
+            state.AgentsList = roster.RootElement;
+            state.Sessions = sessions;
+        }
+
+        Assert.Equal("coordinator", selection.AgentId);
+        Assert.True(selection.IsReady);
+        Assert.Equal("agent:coordinator:dashboard:proof",
+            Assert.Single(WorkspaceProjection.Sessions(state.Sessions, selection.AgentId, new WorkspaceSessionOrder())).Key);
+    }
+
+    [Theory]
+    [InlineData(true, null)]
+    [InlineData(false, "main")]
+    public void AuthoritativeRosterRemoval_UsesItsSelectionPolicy(bool required, string? expectedAgent)
+    {
+        using var initial = JsonDocument.Parse("""{"agents":[{"id":"main"},{"id":"coordinator"}]}""");
+        using var removed = JsonDocument.Parse(
+            $$"""{"defaultId":"main","selectionRequired":{{required.ToString().ToLowerInvariant()}},"agents":[{"id":"main"}]}""");
+        var selection = new WorkspaceAgentSelection();
+        selection.Select("coordinator");
+        selection.Refresh("gateway", initial.RootElement, WorkspaceProjection.Agents(initial.RootElement, []), true);
+        selection.Refresh("gateway", null, []);
+        Assert.Equal("coordinator", selection.AgentId);
+        Assert.False(selection.IsReady);
+
+        selection.Refresh("gateway", removed.RootElement, WorkspaceProjection.Agents(removed.RootElement, []), true);
+
+        Assert.Equal(expectedAgent, selection.AgentId);
+        Assert.True(selection.HasCurrentRoster);
+        Assert.Equal(!required, selection.IsReady);
+    }
+
+    [Fact]
+    public void ExplicitlyUnsupportedRoster_PreservesLegacySessionsAndDefaultCreation()
+    {
+        using var previousRoster = JsonDocument.Parse(
+            """{"defaultId":"main","agents":[{"id":"main"},{"id":"research"}]}""");
+        var sessions = new[]
+        {
+            new SessionInfo { Key = "agent:main:main", AgentId = "main" },
+            new SessionInfo { Key = "agent:research:existing", AgentId = "research" },
+        };
+        var selection = new WorkspaceAgentSelection();
+        selection.Select("research");
+        selection.Refresh("legacy", null, []);
+        Assert.False(selection.HasSessionAccess);
+        Assert.False(selection.IsReady);
+
+        var agents = WorkspaceProjection.Agents(previousRoster.RootElement, sessions);
+        selection.Refresh("legacy", previousRoster.RootElement, agents, rosterUpdated: true);
+        Assert.True(selection.HasCurrentRoster);
+        selection.Refresh("legacy", previousRoster.RootElement, agents,
+            rosterUpdated: true, rosterUnsupported: true);
+
+        Assert.False(selection.HasCurrentRoster);
+        Assert.True(selection.HasSessionAccess);
+        Assert.True(selection.IsReady);
+        Assert.Null(selection.AgentId);
+        Assert.Equal(new[] { "agent:main:main", "agent:research:existing" },
+            WorkspaceProjection.Sessions(sessions, selection.AgentId, new WorkspaceSessionOrder())
+                .Select(session => session.Key).OrderBy(key => key, StringComparer.Ordinal));
+
+        selection.Refresh("different-gateway", null, [], rosterUnsupported: true);
+        Assert.False(selection.HasSessionAccess);
+        Assert.False(selection.IsReady);
+    }
+
+    [Theory]
+    [InlineData(ConnectionStatus.Disconnected, true)]
+    [InlineData(ConnectionStatus.Error, true)]
+    [InlineData(ConnectionStatus.Connecting, false)]
+    [InlineData(ConnectionStatus.Connected, false)]
+    public void AssistantMenuRetainsOfflineConnectionGuidanceWithoutAuthorizingSessionCreation(
+        ConnectionStatus status, bool menuAvailable)
+    {
+        var selection = new WorkspaceAgentSelection();
+        selection.Refresh("gateway", null, []);
+
+        Assert.Equal(menuAvailable, selection.CanOpenAssistantMenu(status));
+        Assert.False(selection.HasCurrentRoster);
+        Assert.False(selection.HasSessionAccess);
+        Assert.False(selection.IsReady);
+        Assert.Null(selection.AgentId);
+    }
+
+    [Fact]
+    public void GatewaySwitch_DoesNotAdmitThePreviousGatewayRosterOrSelection()
+    {
+        using var previous = JsonDocument.Parse("""{"defaultId":"main","agents":[{"id":"main"},{"id":"coordinator"}]}""");
+        using var current = JsonDocument.Parse(
+            """{"defaultId":"main","selectionRequired":true,"agents":[{"id":"main"},{"id":"coordinator"}]}""");
+        var selection = new WorkspaceAgentSelection();
+        selection.Refresh("previous", previous.RootElement, WorkspaceProjection.Agents(previous.RootElement, []), true);
+        selection.Select("coordinator");
+
+        selection.Refresh("current", previous.RootElement, WorkspaceProjection.Agents(previous.RootElement, []));
+        Assert.Null(selection.AgentId);
+        Assert.False(selection.HasCurrentRoster);
+        Assert.False(selection.IsReady);
+        selection.Refresh("current", null, [], true);
+        selection.Refresh("current", current.RootElement, WorkspaceProjection.Agents(current.RootElement, []), true);
+        Assert.Null(selection.AgentId);
+        Assert.True(selection.HasCurrentRoster);
+        Assert.False(selection.IsReady);
+
+        selection.Select("coordinator");
+        selection.Refresh("current", current.RootElement, WorkspaceProjection.Agents(current.RootElement, []));
+        Assert.Equal("coordinator", selection.AgentId);
+        Assert.True(selection.IsReady);
+    }
+
+    [Fact]
+    public void InitialCachedRoster_WaitsForCurrentResponseWithoutLosingRequestedAgent()
+    {
+        using var roster = JsonDocument.Parse(
+            """{"defaultId":"main","selectionRequired":true,"agents":[{"id":"main"},{"id":"coordinator"}]}""");
+        var agents = WorkspaceProjection.Agents(roster.RootElement, []);
+        var selection = new WorkspaceAgentSelection();
+        selection.Select("coordinator");
+
+        selection.Refresh("gateway", roster.RootElement, agents);
+
+        Assert.Equal("coordinator", selection.AgentId);
+        Assert.False(selection.HasCurrentRoster);
+        Assert.False(selection.IsReady);
+        selection.Refresh("gateway", roster.RootElement, agents, rosterUpdated: true);
+        Assert.Equal("coordinator", selection.AgentId);
+        Assert.True(selection.HasCurrentRoster);
+        Assert.True(selection.IsReady);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("replacement")]
@@ -92,6 +267,48 @@ public sealed class WorkspaceNavigationTests
         Assert.True(history.GoForward());
         Assert.Equal(WorkspaceDestination.Settings("permissions"), history.Current);
         Assert.False(history.Navigate(WorkspaceDestination.Settings("permissions")));
+    }
+
+    [Fact]
+    public void EmbeddedSettings_IsDistinctHistoryEntry_AndReturnsToChat()
+    {
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "chat-a"));
+        Assert.True(history.Navigate(WorkspaceDestination.Settings("permissions", embedded: true)));
+        Assert.True(history.Current.Embedded);
+        Assert.False(history.Navigate(WorkspaceDestination.Settings("permissions", embedded: true)));
+        Assert.True(history.Navigate(WorkspaceDestination.Settings("permissions")));
+        Assert.False(history.Current.Embedded);
+        Assert.Equal(new(WorkspacePageId.Home, "chat-a"), history.ChatDestination);
+        Assert.True(history.GoBack());
+        Assert.True(history.Current.Embedded);
+    }
+
+    [Fact]
+    public void SettingsExitFocus_SameSavedControl_HistoryRestores_SidebarActivationDoesNot()
+    {
+        var saved = new object();
+        Assert.Same(saved, WorkspaceDestination.SettingsExitFocus(saved, SettingsExitCause.History));
+        Assert.Null(WorkspaceDestination.SettingsExitFocus(saved, SettingsExitCause.SidebarActivation));
+        Assert.Null(WorkspaceDestination.SettingsExitFocus<object>(null, SettingsExitCause.History));
+    }
+
+    [Fact]
+    public void PrunedFallback_KeepsEmbeddedPresentation_OnlyForSettings()
+    {
+        Assert.Equal(WorkspaceDestination.Settings("connection", embedded: true),
+            WorkspaceDestination.PrunedFallback(WorkspaceDestination.Settings("cron", embedded: true), "connection"));
+        Assert.Equal(WorkspaceDestination.Settings("connection"),
+            WorkspaceDestination.PrunedFallback(WorkspaceDestination.Settings("cron"), "connection"));
+        Assert.Equal(WorkspaceDestination.Settings("connection"),
+            WorkspaceDestination.PrunedFallback(new(WorkspacePageId.Home, "chat-a"), "connection"));
+
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "chat-a"));
+        history.Navigate(WorkspaceDestination.Settings("cron", embedded: true));
+        Assert.True(history.PruneSettings(tag => tag == "cron",
+            WorkspaceDestination.PrunedFallback(history.Current, "connection")));
+        Assert.Equal(WorkspaceDestination.Settings("connection", embedded: true), history.Current);
     }
 
     [Fact]
@@ -213,7 +430,7 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
-    public void ColdNativeSetup_ChannelsAndSkills_AwaitSettingsRenderInsteadOfThrowing()
+    public void ColdNativeSetup_Channels_AwaitSettingsRenderInsteadOfThrowing()
     {
         var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         var wait = workspace[workspace.IndexOf("internal async Task WaitForNativeSetupAsync", StringComparison.Ordinal)..];
@@ -229,7 +446,6 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("_pendingSettingsRequest.Consume()", workspace);
         Assert.Contains("_pendingSettingsRequest.Clear();\n        LeaveSettings();", workspace.Replace("\r\n", "\n"));
         Assert.Equal("channels", WorkspaceNavigation.NormalizeSettingsTag("channels", "main"));
-        Assert.Equal("skills", WorkspaceNavigation.NormalizeSettingsTag("skills", "main"));
         Assert.Contains("NormalizeNativeSetupTag(request.PageTag)", workspace);
     }
 
@@ -794,9 +1010,13 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains(assistant.Descendants(), element => (string?)element.Attribute("ResourceKey") == "SubtleFillColorSecondaryBrush");
         Assert.Contains(assistant.Descendants(), element => (string?)element.Attribute("ResourceKey") == "SubtleFillColorTertiaryBrush");
         var headers = document.Descendants().Where(element => element.Name.LocalName == "NavigationViewItemHeader").ToArray();
-        Assert.DoesNotContain(headers, element => (string?)element.Attribute(x + "Name") == "PagesHeader");
+        Assert.DoesNotContain(headers, element => (string?)element.Attribute(x + "Name") is "PagesHeader" or "PagesEmpty");
+        var separator = document.Descendants().Single(element => element.Name.LocalName == "NavigationViewItemSeparator");
+        Assert.Equal("home", (string?)separator.ElementsBeforeSelf().Last().Attribute("Tag"));
+        var customize = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "PagesCustomizeButton");
+        Assert.Contains(customize.Ancestors(), element => (string?)element.Attribute(x + "Name") == "HomeItem");
         var sessions = headers.Single(element => (string?)element.Attribute(x + "Name") == "SessionsHeader");
-        Assert.Equal("home", (string?)sessions.ElementsBeforeSelf().Last().Attribute("Tag"));
+        Assert.Equal("SessionsSeparator", (string?)sessions.ElementsBeforeSelf().Last().Attribute(x + "Name"));
         Assert.Equal("True", (string?)sessions.Attribute("IsEnabled"));
         Assert.Contains(sessions.Descendants(), element => element.Name.LocalName == "ContentPresenter"
             && (string?)element.Attribute("Content") == "{TemplateBinding Content}");
@@ -1123,17 +1343,19 @@ public sealed class WorkspaceNavigationTests
         Assert.False(WorkspaceProjection.RequiresAgentSelection(null, [], null));
     }
 
-    [Fact]
-    public void SessionCreation_GuardsMutationAndExplainsDisabledAction()
+    [Theory]
+    [InlineData("null", null, false)]
+    [InlineData("""{"defaultId":"main"}""", "main", false)]
+    [InlineData("""{"agents":null}""", "coordinator", false)]
+    [InlineData("""{"agents":[]}""", null, true)]
+    [InlineData("""{"selectionRequired":true,"agents":[{"id":"coordinator"}]}""", null, false)]
+    [InlineData("""{"selectionRequired":true,"agents":[{"id":"coordinator"}]}""", "coordinator", true)]
+    public void SessionCreation_RequiresAuthoritativeRosterAndReadySelection(
+        string payload, string? selectedAgent, bool expected)
     {
-        var source = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
-        var handler = source[source.IndexOf("private async Task NewSessionAsync()", StringComparison.Ordinal)..
-            source.IndexOf("internal void ShowError", StringComparison.Ordinal)];
-        Assert.True(handler.IndexOf("WorkspaceProjection.RequiresAgentSelection", StringComparison.Ordinal) <
-            handler.IndexOf("client.CreateSessionAsync", StringComparison.Ordinal));
-        Assert.Contains("ShowError(Text(\"SelectAssistant\"))", handler);
-        Assert.Contains("&& !selectionRequired", source);
-        Assert.Contains("AutomationProperties.SetHelpText(NewSessionButton", source);
+        using var json = JsonDocument.Parse(payload);
+        Assert.Equal(expected, WorkspaceProjection.IsAgentSelectionReady(
+            json.RootElement, WorkspaceProjection.Agents(json.RootElement, []), selectedAgent));
     }
 
     [Fact]
@@ -1166,12 +1388,38 @@ public sealed class WorkspaceNavigationTests
     {
         var sessions = WorkspaceProjection.Sessions([
             new SessionInfo { Key = "agent:main:main", IsMain = true },
+            new SessionInfo { Key = "agent:main:fork", DisplayName = "Main session" },
             new SessionInfo { Key = "agent:research:main", IsMain = true },
             new SessionInfo { Key = "agent:main:subagent:worker", IsBackground = true }
         ], "main", new WorkspaceSessionOrder());
         var session = Assert.Single(sessions);
-        Assert.Equal("agent:main:main", session.Key);
+        Assert.Equal("agent:main:fork", session.Key);
         Assert.Equal("main", session.AgentId);
+    }
+
+    [Fact]
+    public void Home_UsesSelectedAgentCanonicalIdentity_AndOnlyThatConversationLeavesSidebar()
+    {
+        var source = new[]
+        {
+            new SessionInfo { Key = "agent:main:canonical", IsMain = true, DisplayName = "Renamed" },
+            new SessionInfo { Key = "agent:main:main", DisplayName = "Another conversation" },
+            new SessionInfo { Key = "agent:main:fork", DisplayName = "Main session", Pinned = true },
+            new SessionInfo { Key = "agent:research:main", DisplayName = "Renamed research" },
+        };
+        Assert.Equal("agent:main:canonical", WorkspaceProjection.HomeSessionKey(source, "main", "agent:main:canonical"));
+        Assert.Equal("agent:main:canonical", WorkspaceProjection.HomeSessionKey(source, "main"));
+        Assert.Equal("agent:main:canonical", WorkspaceProjection.HomeSessionKey(source, null));
+        Assert.Null(WorkspaceProjection.HomeSessionKey([
+            new SessionInfo { Key = "agent:main:main", IsMain = true },
+            new SessionInfo { Key = "agent:research:main", IsMain = true },
+        ], null));
+        Assert.Equal("agent:research:main", WorkspaceProjection.HomeSessionKey(source, "research", "agent:main:canonical"));
+        Assert.Equal("agent:new-agent:main", WorkspaceProjection.HomeSessionKey([], "new-agent"));
+        Assert.Null(WorkspaceProjection.HomeSessionKey([], null));
+        Assert.Equal(new[] { "agent:main:fork", "agent:main:main" },
+            WorkspaceProjection.Sessions(source, "main", new WorkspaceSessionOrder(), "agent:main:canonical").Select(row => row.Key));
+        Assert.Empty(WorkspaceProjection.Sessions(source, "research", new WorkspaceSessionOrder(), "agent:main:canonical"));
     }
 
     [Fact]
@@ -1282,7 +1530,8 @@ public sealed class WorkspaceNavigationTests
             new SessionInfo { Key = "agent:main:older", UpdatedAt = new DateTime(2026, 1, 1) },
             new SessionInfo { Key = key, Classification = classification, IsBackground = background, UpdatedAt = new DateTime(2026, 1, 2) }
         };
-        Assert.Equal(new[] { key, "agent:main:older" }, WorkspaceProjection.Sessions(sessions, "main", new WorkspaceSessionOrder()).Select(s => s.Key));
+        var expected = key == "agent:main:main" ? new[] { "agent:main:older" } : new[] { key, "agent:main:older" };
+        Assert.Equal(expected, WorkspaceProjection.Sessions(sessions, "main", new WorkspaceSessionOrder()).Select(s => s.Key));
         Assert.Equal(key, Assert.Single(WorkspaceProjection.Agents(agents.RootElement, sessions)).LatestSessionKey);
     }
 
