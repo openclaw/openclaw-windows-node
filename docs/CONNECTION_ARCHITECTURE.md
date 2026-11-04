@@ -416,8 +416,10 @@ pairing, or terminal error events. The reconnect loop honors `retryAfterMs`
 after the Gateway closes the socket, flooring finite numbers and clamping them
 to 100 through 2000 milliseconds (500 when absent or invalid). Other
 `UNAVAILABLE` responses and close code 1013 alone retain ordinary behavior.
-Fresh transports and successful handshakes clear the startup state; failed
-transport attempts clear it rather than relabeling a network error as startup.
+The startup projection excludes the old rejection as soon as a fresh transport
+attempt owns a new generation, including while its HTTP upgrade is pending.
+Successful handshakes and failed transport attempts clear stored startup state
+rather than relabeling a network error as startup.
 Reconnect and pre-credential handshake authorization still run on every fresh
 socket. Native setup retains its existing 20-second handshake wait and linked
 cancellation lifetime. If that deadline expires while a typed startup rejection

@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text.Json;
 using Xunit;
@@ -5940,6 +5942,38 @@ public class OpenClawGatewayClientTests
         Assert.Null(client.StartupUnavailable);
         Assert.Contains(expected, failures);
         Assert.False(helper.ShouldAutoReconnectForTest());
+    }
+
+    [Fact]
+    public async Task StartupUnavailable_FreshUpgradePending_DoesNotReportPreviousRejection()
+    {
+        using var identity = new TempDirectory("startup-upgrade-");
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: $"ws://127.0.0.1:{port}", identityPath: identity.Path);
+        using var client = helper.Client;
+        helper.TrackPendingRequest("startup", "connect");
+        helper.ProcessRawMessage("""
+            {"type":"res","id":"startup","ok":false,"error":{"code":"UNAVAILABLE","retryable":true,"details":{"reason":"startup-sidecars"}}}
+            """);
+        Assert.NotNull(client.StartupUnavailable);
+        helper.OnDisconnected();
+        Assert.NotNull(client.StartupUnavailable);
+
+        var connect = client.ConnectAsync();
+        try
+        {
+            using var peer = await listener.AcceptTcpClientAsync().WaitAsync(CloseHandshakeTimeout);
+            Assert.False(connect.IsCompleted);
+            Assert.Null(client.StartupUnavailable);
+        }
+        finally
+        {
+            client.Dispose();
+            await connect.WaitAsync(CloseHandshakeTimeout);
+        }
     }
 
     [Fact]

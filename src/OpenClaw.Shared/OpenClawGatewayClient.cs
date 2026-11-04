@@ -239,8 +239,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private sealed record StartupRejection(long Generation, GatewayStartupUnavailable Startup);
     private StartupRejection? _startupRejection;
 
-    /// <summary>Current structured startup rejection. Cleared when a fresh transport opens.</summary>
-    public GatewayStartupUnavailable? StartupUnavailable => Volatile.Read(ref _startupRejection)?.Startup;
+    /// <summary>Structured startup rejection for the current transport generation only.</summary>
+    public GatewayStartupUnavailable? StartupUnavailable
+    {
+        get
+        {
+            var rejection = Volatile.Read(ref _startupRejection);
+            return rejection is not null && IsCurrentConnectionGeneration(rejection.Generation)
+                ? rejection.Startup : null;
+        }
+    }
 
     /// <summary>Transient application startup, not authentication failure or pairing admission.</summary>
     public event EventHandler<GatewayStartupUnavailable>? StartupUnavailableReceived;
