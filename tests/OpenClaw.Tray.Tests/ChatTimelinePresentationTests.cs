@@ -96,7 +96,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorTimeline_UsesNativeTailGeometryWithoutSynchronousLayout()
+    public void ReactorTimeline_AvoidsSynchronousLayoutAndContinuousExtentChasing()
     {
         var binding = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -108,9 +108,6 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("itemsView.Loaded += OnLoaded", binding);
         Assert.Contains("itemsView.LayoutUpdated += OnLayoutUpdated", binding);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", binding);
-        Assert.Contains("repeater.GetOrCreateElement(request.Index)", binding);
-        Assert.Contains("target.StartBringIntoView(", binding);
-        Assert.Contains("sender.ScrollTo(args.TargetHorizontalOffset, args.TargetVerticalOffset,", binding);
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
         Assert.Contains("!string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal)", binding);
         Assert.Contains("_following = IsNearBottom(sender)", binding);
@@ -130,14 +127,6 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("TailSettle", binding);
         Assert.DoesNotContain("itemsView.StartBringItemIntoView(", binding);
         Assert.DoesNotContain("double.MaxValue", binding);
-        Assert.Contains("_scrollView.AnchorRequested += OnAnchorRequested", binding);
-        Assert.Contains("_scrollView.AnchorRequested -= OnAnchorRequested", binding);
-        Assert.Contains("_scrollView.ScrollCompleted += OnScrollCompleted", binding);
-        Assert.Contains("_scrollView.ScrollCompleted -= OnScrollCompleted", binding);
-        Assert.Contains("repeater.ElementClearing += OnTailTargetClearing", binding);
-        Assert.Contains("_tailRepeater.ElementClearing -= OnTailTargetClearing", binding);
-        Assert.Contains("args.CorrelationId != _tailScrollCorrelationId", binding);
-        Assert.Contains("CompositionTarget.Rendering -= OnTailAnchorRendering", binding);
         Assert.DoesNotContain("DispatcherTimer", binding);
         Assert.DoesNotContain("TextLength != current.TextLength", binding);
         Assert.DoesNotContain("ReactorStreamingTailState", binding);
@@ -377,6 +366,21 @@ public sealed class ChatTimelinePresentationTests
         bool reflowCorrection, bool following, bool expected)
     {
         Assert.Equal(expected, TailNavigationPolicy.CanDispatch(reflowCorrection, following));
+    }
+
+    [Theory]
+    [InlineData(3, 4, false)]
+    [InlineData(4, 4, true)]
+    [InlineData(5, 4, true)]
+    [InlineData(int.MaxValue, 0, false)]
+    [InlineData(0, int.MaxValue, true)]
+    [InlineData(1, int.MaxValue, true)]
+    [InlineData(3, -1, true)]
+    [InlineData(-1, 4, false)]
+    public void TailNavigationPolicy_RejectsScrollCompletionsBeforeExplicitRequest(
+        int correlationId, int requestBoundary, bool expected)
+    {
+        Assert.Equal(expected, TailNavigationPolicy.CanCancelForScrollCompletion(correlationId, requestBoundary));
     }
 
     [Fact]

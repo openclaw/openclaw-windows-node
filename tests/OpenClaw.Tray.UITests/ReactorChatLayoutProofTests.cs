@@ -1346,8 +1346,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 }));
             if (width == 1007 && !append)
             {
-                await CaptureAsync(surface, "HistoryTail-after-tall-message");
-                await SettleAsync();
+                // Read away as soon as the tail appears, without waiting for anchor retention.
                 await ui.RunOnUIAsync(() =>
                     Assert.Single(FindDescendants<ItemsView>(host)).ScrollView.ScrollTo(0, 0,
                         new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore)));
@@ -1374,10 +1373,16 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 await ui.RunOnUIAsync(() =>
                     Assert.InRange(Assert.Single(FindDescendants<ItemsView>(host)).ScrollView.VerticalOffset, 0, 1));
 
-                await ui.RunOnUIAsync(() => provider.Publish(appended with
+                await ui.RunOnUIAsync(() =>
                 {
-                    HistoryRevisions = new Dictionary<string, long> { ["proof"] = 2 },
-                }));
+                    // Its delayed completion must not cancel the newer explicit history jump.
+                    Assert.Single(FindDescendants<ItemsView>(host)).ScrollView.ScrollTo(0, 0,
+                        new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                    provider.Publish(appended with
+                    {
+                        HistoryRevisions = new Dictionary<string, long> { ["proof"] = 2 },
+                    });
+                });
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                     () =>
                     {
@@ -1398,6 +1403,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                         return $"Offset={scroll.VerticalOffset}; maximum={scroll.ScrollableHeight}; " +
                             $"newest={(newest is null ? "unrealized" : Bounds(newest, scroll).ToString())}";
                     }));
+                await CaptureAsync(surface, "HistoryTail-after-explicit-jump");
             }
         }, scenario: append ? "standard" : "loading");
     }
