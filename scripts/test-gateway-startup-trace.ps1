@@ -268,14 +268,24 @@ try {
     $retryLines = @(
         ([ordered]@{ ts = $firstRetryTimestamp.ToString('O'); run = 'r'; level = 'info'; msg = 'Native Gateway setup started.'; data = $null } | ConvertTo-Json -Compress)
         ([ordered]@{ ts = $selectedRetryTimestamp.ToString('O'); run = 'r'; level = 'info'; msg = 'Native Gateway setup started.'; data = $null } | ConvertTo-Json -Compress)
+        ([ordered]@{
+            ts = $currentTimestamp.AddSeconds(-4).ToString('O')
+            run = 'r'
+            level = 'info'
+            msg = 'step.started: Check device support'
+            data = @{ step_id = 'StepSupport' }
+        } | ConvertTo-Json -Compress)
     )
     [IO.File]::WriteAllLines($retryLog, [string[]]$retryLines)
     $selectedRetryTicks = $firstRetryTimestamp.UtcDateTime.ToFileTimeUtc()
     $pinnedRetry = Get-CurrentSetupAttempt -Directory $setupLogsRoot -SinceTicks $sinceTicks `
         -Path $retryLog -AttemptStartTicks $selectedRetryTicks
+    $unpinnedRetry = Get-CurrentSetupAttempt -Directory $setupLogsRoot -SinceTicks $sinceTicks `
+        -Path $retryLog -AttemptStartTicks 0
     Assert-Equal $retryLog $pinnedRetry.Path 'retry remains pinned to selected setup log'
     Assert-Equal $selectedRetryTicks $pinnedRetry.Parsed.Milestones[0].Ticks 'retry remains pinned to selected attempt'
     Assert-Equal 1 $pinnedRetry.Parsed.Milestones.Count 'later retry milestones are excluded from pinned attempt'
+    Assert-Equal 2 $unpinnedRetry.Parsed.Milestones.Count 'unpinned selection includes latest retry step'
 } finally {
     Remove-Item -LiteralPath $setupLogsRoot -Recurse -Force
 }
