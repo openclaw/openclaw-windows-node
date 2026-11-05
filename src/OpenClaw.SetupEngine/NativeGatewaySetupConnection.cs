@@ -66,6 +66,13 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
         NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, bool allowPairing,
         CancellationToken ct, IProgress<SetupLoadingStep>? progress)
     {
+        if (allowPairing && owner.GetAdmissionRemaining() is TimeSpan priorRemaining &&
+            priorRemaining == TimeSpan.Zero)
+            throw new TimeoutException("The native Gateway connection budget expired before operator admission.");
+
+        if (allowPairing)
+            await owner.PrepareConnectionForAdmissionAsync(ct);
+
         var remaining = owner.BeginAdmission();
         using var deadline = new CancellationTokenSource(remaining, owner.AdmissionTimeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, owner.LifetimeToken, deadline.Token);
@@ -77,7 +84,7 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
             if (remaining == TimeSpan.Zero)
                 throw new TimeoutException("The native Gateway connection budget expired before operator admission.");
             if (allowPairing)
-                await owner.PrepareConnectionAsync(linked.Token);
+                await owner.AuthorizeAsync(linked.Token);
             var connection = await ConnectCoreAsync(owner, authorize, allowPairing, linked.Token, progress);
             owner.EndAdmission();
             return connection;
