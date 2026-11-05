@@ -26,19 +26,8 @@ public sealed partial class GatewayScenario
         schema["schema"]!["properties"]!["messages"]!["properties"]!["fixtureLabels"] =
             JsonNode.Parse("""{"type":"array","title":"Fixture labels","items":{"type":"string"}}""");
         reads["config.schema"] = JsonSerializer.SerializeToElement(schema);
-        reads["usage.status"] = JsonSerializer.SerializeToElement(new
-        {
-            updatedAt = Epoch.ToUnixTimeMilliseconds(),
-            providers = new object[]
-            {
-                new { provider = "fixture", displayName = "Fixture Provider", plan = "Pro", error = "Fixture quota warning", windows = new[] { new { label = "Quota", usedPercent = 37 } } },
-                new { provider = "fixture-empty", displayName = "Fixture Empty" }
-            }
-        });
         return new GatewayScenario(browse._sessions, reads, accessibilityBaseline: true);
     }
-
-    public int AccessibilityLastRequestedDays => Volatile.Read(ref _accessibilityLastRequestedDays);
 
     public void AdvanceAccessibilityUsage()
     {
@@ -65,17 +54,17 @@ public sealed partial class GatewayScenario
     {
         ValidateProperties(parameters, "days");
         var days = PositiveInt(parameters, "days", 30);
-        Volatile.Write(ref _accessibilityLastRequestedDays, days);
         var changed = Volatile.Read(ref _accessibilityUsageRevision) != 0;
+        var firstDayCost = (days == 7 ? 0.75 : 1.25) * (changed ? 2 : 1);
         return new
         {
             updatedAt = Epoch.AddSeconds(changed ? 1 : 0).ToUnixTimeMilliseconds(), days,
             daily = new[]
             {
-                new { date = "2026-10-31", totalCost = changed ? 2.50 : 1.25 },
+                new { date = "2026-10-31", totalCost = firstDayCost },
                 new { date = "2026-10-30", totalCost = 0.50 }
             },
-            totals = new { input = 0, output = 0, cacheRead = 0, cacheWrite = 0, totalTokens = 0, totalCost = changed ? 3.00 : 1.75, missingCostEntries = 0 }
+            totals = new { input = 0, output = 0, cacheRead = 0, cacheWrite = 0, totalTokens = 0, totalCost = firstDayCost + 0.50, missingCostEntries = 0 }
         };
     }
 }

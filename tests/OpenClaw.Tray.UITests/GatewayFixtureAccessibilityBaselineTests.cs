@@ -1,10 +1,60 @@
 using System.Windows.Automation;
 using OpenClaw.TestSupport.Gateway;
+using OpenClaw.GatewayFixtureHost;
 
 namespace OpenClaw.Tray.UITests;
 
 public sealed partial class GatewayFixtureUiTests
 {
+    private AutomationElement ConfigRowRemoveButton(AutomationElement window, AutomationElement edit)
+    {
+        var bounds = edit.Current.BoundingRectangle;
+        var buttons = window.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)).Cast<AutomationElement>()
+            .Where(button => !button.Current.IsOffscreen)
+            .Where(button =>
+            {
+                var rect = button.Current.BoundingRectangle;
+                return rect.Left >= bounds.Right - 1 && rect.Top < bounds.Bottom && rect.Bottom > bounds.Top;
+            }).ToArray();
+        output.WriteLine($"Row geometry: edit=[{bounds}], adjacent buttons={buttons.Length}.");
+        foreach (var button in buttons)
+            output.WriteLine($"Adjacent button: class=[{button.Current.ClassName}] id=[{button.Current.AutomationId}] name=[{button.Current.Name}] bounds=[{button.Current.BoundingRectangle}].");
+        return Assert.Single(buttons);
+    }
+
+    private async Task<AutomationElement> OpenAccessibilityConfigAsync(GatewayFixtureRun run)
+    {
+        await run.InvokeAsync("app.navigate", new { page = "config" });
+        await WaitUiAsync(run, () => FindById(run, "ConfigPageMarker") is not null, "Config page navigation");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await run.Gateway.WaitForCompletedRequestAsync("config.schema", cancellationToken: deadline.Token);
+        await run.Gateway.WaitForCompletedRequestAsync("config.get", cancellationToken: deadline.Token);
+        output.WriteLine("Config schema and config.get responses completed.");
+        var marker = new PropertyCondition(AutomationElement.AutomationIdProperty, "ConfigPageMarker");
+        var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants, marker) is not null);
+        var treeCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Tree);
+        await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants, treeCondition) is not null, "mounted Config tree");
+        var tree = window.FindFirst(TreeScope.Descendants, treeCondition);
+        Assert.NotNull(tree);
+        var itemCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem);
+        AutomationElement? messages = null;
+        await WaitUiAsync(run, () => (messages = tree.FindAll(TreeScope.Descendants, itemCondition).Cast<AutomationElement>()
+            .SingleOrDefault(e => e.Current.Name.EndsWith("Messages", StringComparison.Ordinal))) is not null, "Messages tree item");
+        output.WriteLine($"Config tree peer id=[{tree.Current.AutomationId}], Messages peer type=[{messages!.Current.ControlType.ProgrammaticName}].");
+        var hwnd = new IntPtr(window.Current.NativeWindowHandle);
+        await NativeKeyboardProof.ActivateAsync(hwnd);
+        messages.SetFocus();
+        await WaitUiAsync(run, () => Automation.Compare(messages, AutomationElement.FocusedElement), "Messages item focused");
+        NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
+        await WaitUiAsync(run, () => window.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Cast<AutomationElement>()
+            .Any(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
+                && ((ValuePattern)pattern).Current.Value == "alpha"), "Messages item invoked and alpha editor mounted");
+        output.WriteLine("Messages activation mounted the alpha editor.");
+        return window;
+    }
+
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
@@ -32,30 +82,6 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Equal("Sessions", list.Current.Name);
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
-
-    [GatewayFixtureUiFact]
-    [Trait("Category", "GatewayFixture")]
-    [Trait("Category", "Accessibility")]
-    public async Task UsageProviderRow_ExposesItsVisibleDataOnTheListItemPeer()
-    {
-        await WithAppAsync(async run =>
-        {
-            await run.InvokeAsync("app.navigate", new { page = "usage" });
-            await WaitUiAsync(run, () => FindById(run, "UsagePageMarker") is not null
-                && FindText(run, "Fixture Provider") is not null
-                && FindText(run, "Fixture quota warning") is not null, "populated provider row");
-            var text = FindText(run, "Fixture Provider")!;
-            var walker = TreeWalker.ControlViewWalker;
-            var row = walker.GetParent(text);
-            while (row is not null && row.Current.ControlType != ControlType.ListItem)
-                row = walker.GetParent(row);
-            Assert.NotNull(row);
-            output.WriteLine($"Provider row: name=[{row.Current.Name}], id=[{row.Current.AutomationId}], class=[{row.Current.ClassName}]");
-            foreach (var expected in new[] { "Fixture Provider", "Pro", "37% used", "Fixture quota warning" })
-                Assert.Contains(expected, row.Current.Name, StringComparison.Ordinal);
-        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
-    }
-
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
@@ -114,33 +140,7 @@ public sealed partial class GatewayFixtureUiTests
     {
         await WithAppAsync(async run =>
         {
-            await run.InvokeAsync("app.navigate", new { page = "config" });
-            await WaitUiAsync(run, () => FindById(run, "ConfigPageMarker") is not null, "Config page navigation");
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await run.Gateway.WaitForCompletedRequestAsync("config.schema", cancellationToken: deadline.Token);
-            await run.Gateway.WaitForCompletedRequestAsync("config.get", cancellationToken: deadline.Token);
-            output.WriteLine("Config schema and config.get responses completed.");
-            var marker = new PropertyCondition(AutomationElement.AutomationIdProperty, "ConfigPageMarker");
-            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants, marker) is not null);
-            var treeCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Tree);
-            await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants, treeCondition) is not null, "mounted Config tree");
-            var tree = window.FindFirst(TreeScope.Descendants, treeCondition);
-            Assert.NotNull(tree);
-            var itemCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem);
-            AutomationElement? messages = null;
-            await WaitUiAsync(run, () => (messages = tree.FindAll(TreeScope.Descendants, itemCondition).Cast<AutomationElement>()
-                .SingleOrDefault(e => e.Current.Name.EndsWith("Messages", StringComparison.Ordinal))) is not null, "Messages tree item");
-            output.WriteLine($"Config tree peer id=[{tree.Current.AutomationId}], Messages peer type=[{messages!.Current.ControlType.ProgrammaticName}].");
-            var hwnd = new IntPtr(window.Current.NativeWindowHandle);
-            await NativeKeyboardProof.ActivateAsync(hwnd);
-            messages.SetFocus();
-            await WaitUiAsync(run, () => Automation.Compare(messages, AutomationElement.FocusedElement), "Messages item focused");
-            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
-            await WaitUiAsync(run, () => window.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Cast<AutomationElement>()
-                .Any(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
-                    && ((ValuePattern)pattern).Current.Value == "alpha"), "Messages item invoked and alpha editor mounted");
-            output.WriteLine("Messages activation mounted the alpha editor.");
+            var window = await OpenAccessibilityConfigAsync(run);
             var edits = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
             var alpha = edits.Cast<AutomationElement>().FirstOrDefault(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var value)
                 && ((ValuePattern)value).Current.Value == "alpha");
@@ -165,57 +165,15 @@ public sealed partial class GatewayFixtureUiTests
     {
         await WithAppAsync(async run =>
         {
-            await run.InvokeAsync("app.navigate", new { page = "config" });
-            await WaitUiAsync(run, () => FindById(run, "ConfigPageMarker") is not null, "Config page navigation");
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await run.Gateway.WaitForCompletedRequestAsync("config.schema", cancellationToken: deadline.Token);
-            await run.Gateway.WaitForCompletedRequestAsync("config.get", cancellationToken: deadline.Token);
-            output.WriteLine("Config schema and config.get responses completed.");
-            var marker = new PropertyCondition(AutomationElement.AutomationIdProperty, "ConfigPageMarker");
-            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants, marker) is not null);
-            var treeCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Tree);
-            await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants, treeCondition) is not null, "mounted Config tree");
-            var tree = window.FindFirst(TreeScope.Descendants, treeCondition);
-            Assert.NotNull(tree);
-            var itemCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem);
-            AutomationElement? messages = null;
-            await WaitUiAsync(run, () => (messages = tree.FindAll(TreeScope.Descendants, itemCondition).Cast<AutomationElement>()
-                .SingleOrDefault(e => e.Current.Name.EndsWith("Messages", StringComparison.Ordinal))) is not null, "Messages tree item");
-            output.WriteLine($"Config tree peer id=[{tree.Current.AutomationId}], Messages peer type=[{messages!.Current.ControlType.ProgrammaticName}].");
-            var hwnd = new IntPtr(window.Current.NativeWindowHandle);
-            await NativeKeyboardProof.ActivateAsync(hwnd);
-            messages.SetFocus();
-            await WaitUiAsync(run, () => Automation.Compare(messages, AutomationElement.FocusedElement), "Messages item focused");
-            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
-            await WaitUiAsync(run, () => window.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Cast<AutomationElement>()
-                .Any(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
-                    && ((ValuePattern)pattern).Current.Value == "alpha"), "Messages item invoked and alpha editor mounted");
-            output.WriteLine("Messages activation mounted the alpha editor.");
+            var window = await OpenAccessibilityConfigAsync(run);
             var edits = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
             var alpha = edits.Cast<AutomationElement>().FirstOrDefault(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var value)
                 && ((ValuePattern)value).Current.Value == "alpha");
             Assert.NotNull(alpha);
             var bravo = edits.Cast<AutomationElement>().Single(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var value)
                 && ((ValuePattern)value).Current.Value == "bravo");
-            AutomationElement RowButton(AutomationElement edit)
-            {
-                var bounds = edit.Current.BoundingRectangle;
-                var buttons = window.FindAll(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)).Cast<AutomationElement>()
-                    .Where(button => !button.Current.IsOffscreen)
-                    .Where(button =>
-                    {
-                        var rect = button.Current.BoundingRectangle;
-                        return rect.Left >= bounds.Right - 1 && rect.Top < bounds.Bottom && rect.Bottom > bounds.Top;
-                    }).ToArray();
-                output.WriteLine($"Row geometry: edit=[{bounds}], adjacent buttons={buttons.Length}.");
-                foreach (var button in buttons)
-                    output.WriteLine($"Adjacent button: class=[{button.Current.ClassName}] id=[{button.Current.AutomationId}] name=[{button.Current.Name}] bounds=[{button.Current.BoundingRectangle}].");
-                return Assert.Single(buttons);
-            }
-            var alphaRemove = RowButton(alpha!);
-            var bravoRemove = RowButton(bravo);
+            var alphaRemove = ConfigRowRemoveButton(window, alpha!);
+            var bravoRemove = ConfigRowRemoveButton(window, bravo);
             Assert.False(Automation.Compare(alphaRemove, bravoRemove));
             output.WriteLine($"Alpha remove: name=[{alphaRemove.Current.Name}], type=[{alphaRemove.Current.ControlType.ProgrammaticName}]; Bravo remove: name=[{bravoRemove.Current.Name}].");
             Assert.Equal("Remove item", alphaRemove.Current.Name);
@@ -231,56 +189,15 @@ public sealed partial class GatewayFixtureUiTests
     {
         await WithAppAsync(async run =>
         {
-            await run.InvokeAsync("app.navigate", new { page = "config" });
-            await WaitUiAsync(run, () => FindById(run, "ConfigPageMarker") is not null, "Config page navigation");
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await run.Gateway.WaitForCompletedRequestAsync("config.schema", cancellationToken: deadline.Token);
-            await run.Gateway.WaitForCompletedRequestAsync("config.get", cancellationToken: deadline.Token);
-            output.WriteLine("Config schema and config.get responses completed.");
-            var marker = new PropertyCondition(AutomationElement.AutomationIdProperty, "ConfigPageMarker");
-            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants, marker) is not null);
-            var treeCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Tree);
-            await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants, treeCondition) is not null, "mounted Config tree");
-            var tree = window.FindFirst(TreeScope.Descendants, treeCondition);
-            Assert.NotNull(tree);
-            var itemCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem);
-            AutomationElement? messages = null;
-            await WaitUiAsync(run, () => (messages = tree.FindAll(TreeScope.Descendants, itemCondition).Cast<AutomationElement>()
-                .SingleOrDefault(e => e.Current.Name.EndsWith("Messages", StringComparison.Ordinal))) is not null, "Messages tree item");
-            output.WriteLine($"Config tree peer id=[{tree.Current.AutomationId}], Messages peer type=[{messages!.Current.ControlType.ProgrammaticName}].");
+            var window = await OpenAccessibilityConfigAsync(run);
             var hwnd = new IntPtr(window.Current.NativeWindowHandle);
-            await NativeKeyboardProof.ActivateAsync(hwnd);
-            messages.SetFocus();
-            await WaitUiAsync(run, () => Automation.Compare(messages, AutomationElement.FocusedElement), "Messages item focused");
-            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Enter);
-            await WaitUiAsync(run, () => window.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Cast<AutomationElement>()
-                .Any(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
-                    && ((ValuePattern)pattern).Current.Value == "alpha"), "Messages item invoked and alpha editor mounted");
-            output.WriteLine("Messages activation mounted the alpha editor.");
             var edits = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
             var alpha = edits.Cast<AutomationElement>().FirstOrDefault(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var value)
                 && ((ValuePattern)value).Current.Value == "alpha");
             Assert.NotNull(alpha);
             var bravo = edits.Cast<AutomationElement>().Single(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var value)
                 && ((ValuePattern)value).Current.Value == "bravo");
-            AutomationElement RowButton(AutomationElement edit)
-            {
-                var bounds = edit.Current.BoundingRectangle;
-                var buttons = window.FindAll(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)).Cast<AutomationElement>()
-                    .Where(button => !button.Current.IsOffscreen)
-                    .Where(button =>
-                    {
-                        var rect = button.Current.BoundingRectangle;
-                        return rect.Left >= bounds.Right - 1 && rect.Top < bounds.Bottom && rect.Bottom > bounds.Top;
-                    }).ToArray();
-                output.WriteLine($"Row geometry: edit=[{bounds}], adjacent buttons={buttons.Length}.");
-                foreach (var button in buttons)
-                    output.WriteLine($"Adjacent button: class=[{button.Current.ClassName}] id=[{button.Current.AutomationId}] name=[{button.Current.Name}] bounds=[{button.Current.BoundingRectangle}].");
-                return Assert.Single(buttons);
-            }
-            var alphaRemove = RowButton(alpha!);
+            var alphaRemove = ConfigRowRemoveButton(window, alpha!);
             alpha!.SetFocus();
             await WaitUiAsync(run, () => Automation.Compare(alpha, AutomationElement.FocusedElement), "alpha editor focused");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
@@ -302,7 +219,7 @@ public sealed partial class GatewayFixtureUiTests
             var remainingBravo = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))
                 .Cast<AutomationElement>().Single(e => e.TryGetCurrentPattern(ValuePattern.Pattern, out var value)
                     && ((ValuePattern)value).Current.Value == "bravo");
-            var bravoRemove = RowButton(remainingBravo);
+            var bravoRemove = ConfigRowRemoveButton(window, remainingBravo);
             var reachedBravo = Automation.Compare(bravoRemove, focused);
             bool reachedDiscard = Automation.Compare(discard, focused);
             for (var i = 0; i < 40 && !(reachedDiscard && reachedBravo); i++)
@@ -352,42 +269,47 @@ public sealed partial class GatewayFixtureUiTests
                 if (row.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll)) ((ScrollItemPattern)scroll).ScrollIntoView();
                 return row.Current.Name;
             }
+            async Task<string> SelectPeriodAndReadRow(string periodId, string expectedCost)
+            {
+                var period = FindById(run, periodId);
+                Assert.NotNull(period);
+                Invoke(period);
+                await WaitUiAsync(run, () => FindText(run, "2026-10-31") is not null
+                    && RowFor("2026-10-31").FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.NameProperty, expectedCost)) is not null
+                    && ReadRow("2026-10-31").Contains(expectedCost, StringComparison.Ordinal),
+                    $"period row and accessible name updated to {expectedCost}");
+                return ReadRow("2026-10-31");
+            }
             var provider = ReadRow("Fixture Provider");
             var empty = ReadRow("Fixture Empty");
-            var first = ReadRow("2026-10-31");
+            var first = await SelectPeriodAndReadRow("Period7DaysItem", "$0.75");
             var second = ReadRow("2026-10-30");
             output.WriteLine($"Initial rows: provider=[{provider}], empty=[{empty}], day1=[{first}], day2=[{second}].");
             scenario.AdvanceAccessibilityUsage();
             await run.InvokeAsync("app.navigate", new { page = "settings" });
             await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is not null, "leave Usage");
             await run.InvokeAsync("app.navigate", new { page = "usage" });
-            await WaitUiAsync(run, () => FindText(run, "Fixture changed warning") is not null
-                && FindText(run, "$2.50") is not null, "changed usage snapshot");
+            await WaitUiAsync(run, () => FindText(run, "Fixture changed warning") is not null, "changed usage snapshot");
             var changedProvider = ReadRow("Fixture Provider");
-            var changedDay = ReadRow("2026-10-31");
-            var sevenDays = FindById(run, "Period7DaysItem");
-            var thirtyDays = FindById(run, "Period30DaysItem");
-            Assert.NotNull(sevenDays);
-            Assert.NotNull(thirtyDays);
-            Invoke(sevenDays);
-            await WaitUiAsync(run, () => scenario.AccessibilityLastRequestedDays == 7, "7-day request");
-            Invoke(thirtyDays);
-            await WaitUiAsync(run, () => scenario.AccessibilityLastRequestedDays == 30, "30-day request");
-            await WaitUiAsync(run, () => FindText(run, "$2.50") is not null, "30-day rows realized");
-            var switched = ReadRow("2026-10-31");
-            output.WriteLine($"Changed rows: provider=[{changedProvider}], day1=[{changedDay}], after period=[{switched}].");
+            var changedDay = await SelectPeriodAndReadRow("Period7DaysItem", "$1.50");
+            var thirtyDayRow = await SelectPeriodAndReadRow("Period30DaysItem", "$2.50");
+            var sevenDayRow = await SelectPeriodAndReadRow("Period7DaysItem", "$1.50");
+            output.WriteLine($"Changed rows: provider=[{changedProvider}], day1=[{changedDay}], 30 days=[{thirtyDayRow}], 7 days=[{sevenDayRow}].");
             foreach (var expected in new[] { "Fixture Provider", "Pro", "37% used", "Fixture quota warning" })
                 Assert.Contains(expected, provider, StringComparison.Ordinal);
             Assert.Equal("Fixture Empty", empty);
             Assert.Contains("2026-10-31", first, StringComparison.Ordinal);
-            Assert.Contains("$1.25", first, StringComparison.Ordinal);
+            Assert.Contains("$0.75", first, StringComparison.Ordinal);
             Assert.Contains("2026-10-30", second, StringComparison.Ordinal);
             Assert.Contains("$0.50", second, StringComparison.Ordinal);
             foreach (var expected in new[] { "Fixture Provider", "Pro", "53% used", "Fixture changed warning" })
                 Assert.Contains(expected, changedProvider, StringComparison.Ordinal);
             Assert.Contains("2026-10-31", changedDay, StringComparison.Ordinal);
-            Assert.Contains("$2.50", changedDay, StringComparison.Ordinal);
-            Assert.Equal(changedDay, switched);
+            Assert.Contains("$1.50", changedDay, StringComparison.Ordinal);
+            Assert.Contains("2026-10-31", thirtyDayRow, StringComparison.Ordinal);
+            Assert.Contains("$2.50", thirtyDayRow, StringComparison.Ordinal);
+            Assert.Equal(changedDay, sevenDayRow);
         }, scenario: scenario);
     }
 

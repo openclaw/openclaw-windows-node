@@ -53,7 +53,6 @@ public sealed partial class GatewayScenario
 
     private readonly bool _accessibilityBaseline;
     private int _accessibilityUsageRevision;
-    private int _accessibilityLastRequestedDays;
     private readonly bool _allowAgentCreation;
     private readonly bool _publishedModelCatalog;
     private readonly bool _allowSessionMutations;

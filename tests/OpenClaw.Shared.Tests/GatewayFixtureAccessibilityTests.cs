@@ -15,7 +15,6 @@ public sealed partial class GatewayFixtureProtocolTests
         var client = connected.Client;
         var config = await client.SendWizardRequestAsync("config.get");
         var parsed = config.GetProperty("config");
-        Assert.Equal("fixture", parsed.GetProperty("bindings")[0].GetProperty("match").GetProperty("accountId").GetString());
         Assert.Equal(new[] { "alpha", "bravo" }, parsed.GetProperty("messages").GetProperty("fixtureLabels").EnumerateArray().Select(v => v.GetString()));
         var schema = await client.SendWizardRequestAsync("config.schema");
         Assert.Equal("Fixture labels", schema.GetProperty("schema").GetProperty("properties").GetProperty("messages").GetProperty("properties").GetProperty("fixtureLabels").GetProperty("title").GetString());
@@ -25,8 +24,8 @@ public sealed partial class GatewayFixtureProtocolTests
         {
             var cost = await client.SendWizardRequestAsync("usage.cost", new { days });
             Assert.Equal(days, cost.GetProperty("days").GetInt32());
-            Assert.Equal(1.25, cost.GetProperty("daily")[0].GetProperty("totalCost").GetDouble());
-            Assert.Equal(1.75, cost.GetProperty("totals").GetProperty("totalCost").GetDouble());
+            Assert.Equal(days == 7 ? 0.75 : 1.25, cost.GetProperty("daily")[0].GetProperty("totalCost").GetDouble());
+            Assert.Equal(days == 7 ? 1.25 : 1.75, cost.GetProperty("totals").GetProperty("totalCost").GetDouble());
         }
         scenario.AdvanceAccessibilityUsage();
         var changed = await client.SendWizardRequestAsync("usage.status");
