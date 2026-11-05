@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using OpenClaw.Shared;
 using OpenClawTray.Presentation;
 
@@ -12,6 +13,8 @@ public sealed class HubSearchControllerTests
         internal bool Connected = true;
         internal long Generation = 1;
         internal string[] Scopes = ["operator.read"];
+        internal string[] Methods = ["sessions.search", "sessions.list"];
+        internal JsonElement Catalog;
         internal readonly List<string> Requests = [];
         internal readonly Dictionary<string, TaskCompletionSource<GatewaySearchResult>> Queries = [];
         protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
@@ -19,8 +22,9 @@ public sealed class HubSearchControllerTests
             "get_IsConnectedToGateway" or "get_HasHandshakeSnapshot" => Connected,
             "get_ServerHandshakeGeneration" => Generation,
             "get_GrantedOperatorScopes" => Scopes,
-            "get_AdvertisedServerMethods" => new[] { "sessions.search", "sessions.list" },
+            "get_AdvertisedServerMethods" => Methods,
             "SearchSessionsAsync" => Search((string)args![0]!, (bool)args[1]!),
+            "ReadSearchCatalogAsync" => Task.FromResult(Catalog),
             _ => throw new NotSupportedException(method?.Name)
         };
 
@@ -48,6 +52,25 @@ public sealed class HubSearchControllerTests
             complete();
             return pending.Task.WaitAsync(CompletionTimeout);
         }
+    }
+
+    [Fact]
+    public void ReleasedSkillsRouteFlowsThroughTheControllerWithoutEnablingTheWholeDashboardCatalog()
+    {
+        var client = DispatchProxy.Create<IOperatorGatewayClient, GatewayProxy>();
+        var proxy = (GatewayProxy)client;
+        proxy.Methods = ["skills.status"];
+        using var json = JsonDocument.Parse("""{"skills":[{"name":"Weather","skillKey":"weather"}]}""");
+        proxy.Catalog = json.RootElement;
+        using var controller = new HubSearchController(() => new(client, "main", "2026.11.1", [], []),
+            new InlineDispatcher(), _ => { }, TimeSpan.Zero);
+        controller.Open();
+        controller.SetQuery("Weather");
+
+        var skill = Assert.Single(controller.Results).Item;
+        Assert.Equal(new(HubSearchTargetKind.Dashboard, "/skills"), skill.Target);
+        Assert.Equal("/skills", skill.DashboardPath);
+        Assert.True(controller.HasDashboardCompatibilityWarning);
     }
 
     [Fact]

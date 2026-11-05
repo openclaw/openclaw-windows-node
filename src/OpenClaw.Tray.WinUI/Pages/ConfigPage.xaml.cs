@@ -71,7 +71,7 @@ public sealed partial class ConfigPage : Page
         {
             _searchPath = null;
             _searchField = null;
-            _detailRenderVersion++;
+            CancelDetailRender();
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
             UnsubscribePermissionClient();
             _searchDebounceTimer.Stop();
@@ -400,7 +400,7 @@ public sealed partial class ConfigPage : Page
 
     internal void RevealSearchPath(string path)
     {
-        _detailRenderVersion++;
+        CancelDetailRender();
         _searchField = null;
         _searchPath = path;
         RestoreSelectedDetail();
@@ -1426,6 +1426,12 @@ public sealed partial class ConfigPage : Page
             if (renderVersion == _detailRenderVersion)
                 DetailLoadingOverlay.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private void CancelDetailRender()
+    {
+        _detailRenderVersion++;
+        DetailLoadingOverlay.Visibility = Visibility.Collapsed;
     }
 
     private bool MatchesSearch(string path, JsonElement schemaNode)

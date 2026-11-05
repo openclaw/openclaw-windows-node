@@ -147,21 +147,22 @@ public sealed partial class SearchHost : UserControl
             }).ToArray();
             _displayedGroups = groups;
             ResultsList.ItemsSource = new CollectionViewSource { IsSourceGrouped = true, Source = groups }.View;
-            ResultsList.SelectedItem = selected is null ? rows.FirstOrDefault() : rows.FirstOrDefault(row => row.Item.Id == selected);
+            var survivingSelection = rows.FirstOrDefault(row => row.Item.Id == selected);
+            ResultsList.SelectedItem = survivingSelection ?? rows.FirstOrDefault();
             _displayedItems = items;
             _displayedGeneration = _controller.Generation;
             if (offset is not null || restoreFocus)
             {
                 ResultsList.UpdateLayout();
                 if (offset.HasValue) scroll?.ChangeView(null, offset.Value, null, disableAnimation: true);
-                if (restoreFocus && ResultsList.SelectedItem is SearchDisplayRow current)
+                if (restoreFocus && survivingSelection is { } current)
                 {
                     ResultsList.ScrollIntoView(current);
                     ResultsList.UpdateLayout();
                     if (ResultsList.ContainerFromItem(current) is ListViewItem container)
                         container.Focus(FocusState.Keyboard);
                 }
-                else if (inputFocus) SearchBox.Focus(FocusState.Programmatic);
+                else if (inputFocus || restoreFocus) SearchBox.Focus(FocusState.Programmatic);
             }
         }
         var statuses = _controller.Statuses.Select(status =>

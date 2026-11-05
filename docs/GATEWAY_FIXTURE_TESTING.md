@@ -24,11 +24,17 @@ reopening, absent Config sections and Dashboard-only skill results. Focused
 cases cover a failed Config reveal followed by manual navigation to a section
 with the same field name, and session title/recency changes while result or
 input focus is active, including user-controlled result scroll. The
-search-navigation scenario adds optional schema fields without corresponding
+disappearing-result case renames the focused conversation out of the query,
+checks input focus and the remaining selection, then repeats with no matches.
+Config detail cancellation is also exercised directly on the real page before
+its pending continuation, so a search reveal cannot retain the loading overlay.
+The search-navigation scenario adds optional schema fields without corresponding
 saved values and a read-only skill catalog. Read-response overrides model
 failures and long descriptions. Skills are explicitly labeled Dashboard
-destinations rather than retired native pages. No provider is contacted, no
-skill mutation is accepted, and config writes remain rejected. Keyboard
+destinations rather than retired native pages. The separately verified `/skills`
+route on released Gateway `2026.11.1` does not enable its other unverified
+Dashboard routes; unknown versions retain root fallback. No provider is contacted,
+no skill mutation is accepted, and config writes remain rejected. Keyboard
 journeys use the shared native SendInput helper, with the fixture opt-in,
 foreground ownership and released-modifier guards intact. Open-popup Axe scans
 cover empty results, matching results and source-status states, including a

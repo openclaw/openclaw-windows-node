@@ -605,6 +605,67 @@ public sealed partial class GatewayFixtureUiTests
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task MainSearch_DisappearingFocusedResultReturnsToInputAndSelectsTheNextMatch()
+    {
+        var scenario = GatewayScenario.CreateSearchNavigation();
+        await WithAppAsync(async run =>
+        {
+            run.Gateway.OverrideSearchRead("sessions.list", _ => new { sessions = Array.Empty<object>() });
+            run.Gateway.FailSearchRead("sessions.search");
+            var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
+            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture:");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox")?.Current.ItemStatus
+                .Contains("searching", StringComparison.OrdinalIgnoreCase) != true &&
+                FindInApp(run, new PropertyCondition(AutomationElement.NameProperty,
+                    GatewayScenario.EmptyTitle + ". main. ")) is { Current.IsOffscreen: false }, "settled conversations");
+            var row = FindInApp(run, new PropertyCondition(AutomationElement.NameProperty,
+                GatewayScenario.EmptyTitle + ". main. "))!;
+            ((SelectionItemPattern)row.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            row.SetFocus();
+            scenario.RenameSession(GatewayScenario.EmptySessionKey, "Renamed conversation");
+            await run.Gateway.NotifySessionsChangedAsync();
+            await WaitUiAsync(run, () => FindInApp(run, new PropertyCondition(AutomationElement.NameProperty,
+                    GatewayScenario.EmptyTitle + ". main. ")) is null &&
+                edit.Current.HasKeyboardFocus, "vanished result returns focus to the query");
+            var selected = ((SelectionPattern)FindById(run, "SearchResultsList")!
+                .GetCurrentPattern(SelectionPattern.Pattern)).Current.GetSelection();
+            var next = Assert.Single(selected);
+            Assert.StartsWith(GatewayScenario.MainTitle + ".", next.Current.Name, StringComparison.Ordinal);
+            Send(run, window, "{ENTER}");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is null, "Enter closes search");
+            await WaitComposerSelectionAsync(run, GatewayScenario.MainSessionKey);
+
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup for last match");
+            edit = SearchEdit(run, "WorkspaceSearchBox");
+            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Renamed conversation");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name
+                .StartsWith("Renamed conversation.", StringComparison.Ordinal) == true &&
+                !edit.Current.ItemStatus.Contains("searching", StringComparison.OrdinalIgnoreCase), "single settled match");
+            row = FindById(run, "SearchResult_0")!;
+            row.SetFocus();
+            scenario.RenameSession(GatewayScenario.EmptySessionKey, "No longer matches");
+            await run.Gateway.NotifySessionsChangedAsync();
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0") is null && edit.Current.HasKeyboardFocus,
+                "last disappearing result returns focus to the query");
+            Send(run, window, "{ENTER}");
+            Send(run, window, OrderingProbe);
+            await WaitUiAsync(run, () =>
+            {
+                var value = ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).Current.Value;
+                return value.Length == "Renamed conversation".Length + OrderingProbe.Length &&
+                    value.Replace(OrderingProbe, "", StringComparison.Ordinal) == "Renamed conversation";
+            }, "ordering probe reaches the query after inert Enter");
+            Assert.NotNull(FindById(run, "WorkspaceSearchBox"));
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "chat.send");
+        }, scenario: scenario);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task MainSearch_CrossSurfaceImmediateReopeningKeepsTheCurrentSearchUsable()
     {
         await WithAppAsync(async run =>

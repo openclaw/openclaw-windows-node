@@ -111,6 +111,31 @@ public sealed class HubSearchCatalogTests
     }
 
     [Fact]
+    public void ReleasedSkillsRouteDoesNotEnableOtherUnverifiedDashboardRoutes()
+    {
+        const string release = "2026.11.1";
+        Assert.False(HubSearchCatalog.SupportsDashboard(release));
+        Assert.True(HubSearchCatalog.SupportsSkillsDashboard(release));
+        using var json = JsonDocument.Parse("""{"skills":[{"name":"Weather","skillKey":"weather"}],"models":[{"id":"one"}]}""");
+        var skill = Assert.Single(HubSearchCatalog.ParseCatalog("skills.status", json.RootElement, "main",
+            HubSearchCatalog.SupportsDashboard(release), HubSearchCatalog.SupportsSkillsDashboard(release)));
+        Assert.Equal(new(HubSearchTargetKind.Dashboard, "/skills"), skill.Target);
+        Assert.Equal("/skills", skill.DashboardPath);
+        Assert.Empty(HubSearchCatalog.ParseCatalog("models.list", json.RootElement, "main",
+            HubSearchCatalog.SupportsDashboard(release), HubSearchCatalog.SupportsSkillsDashboard(release)));
+        Assert.Null(HubSearchCatalog.Counterpart("config", HubSearchCatalog.SupportsDashboard(release)));
+    }
+
+    [Theory]
+    [InlineData("2026.10.9", true)]
+    [InlineData("2026.11.1", true)]
+    [InlineData("2026.11.1-beta.1", false)]
+    [InlineData("2026.11.2", false)]
+    [InlineData(null, false)]
+    public void SkillsRoutingOnlyUsesSpecificallyVerifiedReleases(string? version, bool expected) =>
+        Assert.Equal(expected, HubSearchCatalog.SupportsSkillsDashboard(version));
+
+    [Fact]
     public void ModelsWithTheSameIdAcrossProvidersAreDistinctNavigationTargets()
     {
         using var json = JsonDocument.Parse("""{"models":[{"id":"one","provider":"a","name":""},{"id":"one","provider":"b","name":" "}]}""");

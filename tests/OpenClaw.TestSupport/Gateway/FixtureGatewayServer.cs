@@ -466,7 +466,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
 
     public void OverrideSearchRead(string method, Func<JsonElement, object> response)
     {
-        if (method is not ("skills.status" or "sessions.search"))
+        if (method is not ("skills.status" or "sessions.search" or "sessions.list"))
             throw new ArgumentException("Only search reads may be overridden.", nameof(method));
         lock (_sync) _readResponses[method] = response;
     }
@@ -872,6 +872,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 }
                 Func<JsonElement, object>? readResponse;
                 lock (_sync) _readResponses.TryGetValue(method, out readResponse);
+                if (method == "sessions.list" && !id.StartsWith("search:", StringComparison.Ordinal))
+                    readResponse = null;
                 JsonElement? agentsRoster;
                 bool agentsListUnsupported;
                 lock (_sync)

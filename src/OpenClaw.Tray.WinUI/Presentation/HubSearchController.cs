@@ -284,7 +284,8 @@ internal sealed class HubSearchController(
                 }
                 if (payload.TryGetProperty("hasMore", out var more) && more.ValueKind == JsonValueKind.True)
                     Post(generation, context, () => _states[group] = "Partial");
-                return HubSearchCatalog.ParseCatalog(method, payload, context.AgentId, supported);
+                return HubSearchCatalog.ParseCatalog(method, payload, context.AgentId, supported,
+                    HubSearchCatalog.SupportsSkillsDashboard(context.GatewayVersion));
             });
     }
 

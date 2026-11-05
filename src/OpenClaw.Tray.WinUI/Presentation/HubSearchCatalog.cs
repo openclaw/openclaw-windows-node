@@ -28,6 +28,11 @@ internal static class HubSearchCatalog
         OpenClawReleaseVersion.TryParseStable(version, out var release) &&
         release.Year == 2026 && release.Month == 10 && release.Patch == 9;
 
+    internal static bool SupportsSkillsDashboard(string? version) =>
+        SupportsDashboard(version) ||
+        OpenClawReleaseVersion.TryParseStable(version, out var release) &&
+        release.Year == 2026 && release.Month == 11 && release.Patch == 1;
+
     // Released session-url-contract exactKey grammar. Never derive a shortened session identity.
     internal static string? SessionPath(string key, bool? isMain = null)
     {
@@ -89,7 +94,7 @@ internal static class HubSearchCatalog
     }
 
     internal static IReadOnlyList<HubSearchItem> ParseCatalog(
-        string method, JsonElement payload, string agentId, bool dashboardSupported)
+        string method, JsonElement payload, string agentId, bool dashboardSupported, bool skillsDashboardSupported = false)
     {
         var (property, group) = method switch
         {
@@ -103,6 +108,7 @@ internal static class HubSearchCatalog
             rows.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException("Invalid search catalog response.");
         var items = new List<HubSearchItem>();
+        var skillsSupported = dashboardSupported || skillsDashboardSupported;
         foreach (var row in rows.EnumerateArray())
         {
             var id = Text(row, group == HubSearchGroup.Skills ? "skillKey" : "id");
@@ -114,7 +120,7 @@ internal static class HubSearchCatalog
             var target = group switch
             {
                 HubSearchGroup.Automations => new HubSearchTarget(HubSearchTargetKind.Page, agent.Length == 0 ? "cron" : $"agent:{agent}:cron", id),
-                HubSearchGroup.Skills => new(HubSearchTargetKind.Dashboard, dashboardSupported ? "/skills" : ""),
+                HubSearchGroup.Skills => new(HubSearchTargetKind.Dashboard, skillsSupported ? "/skills" : ""),
                 HubSearchGroup.Agents => new(HubSearchTargetKind.Page, $"agent:{id}"),
                 _ => new(HubSearchTargetKind.Dashboard, "/settings/model-providers")
             };
@@ -132,7 +138,7 @@ internal static class HubSearchCatalog
                 JsonSerializer.Serialize(new[] { group.ToString(), group == HubSearchGroup.Skills ? agentId : provider, id }),
                 group, name, detail, "\uE8A5", target,
                 $"{id} {Text(row, "name")} {Text(row, "source")} {Text(row, "workspace")} {Text(row, "alias")} {provider} {Tags(row)}",
-                dashboardSupported ? dashboard : null));
+                (group == HubSearchGroup.Skills ? skillsSupported : dashboardSupported) ? dashboard : null));
         }
         return items;
     }
