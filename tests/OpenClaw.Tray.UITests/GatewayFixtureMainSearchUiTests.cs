@@ -369,10 +369,13 @@ public sealed partial class GatewayFixtureUiTests
             more!.SetFocus();
             Send(run, window, "{ENTER}");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_5") is not null, "more results without closing search");
-            var final = FindById(run, "SearchResult_5")!;
-            ((ScrollItemPattern)final.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+            edit.SetFocus();
+            ScrollSearch(run);
             await WaitUiAsync(run, () => IsFullyVisibleInScrollViewport(FindById(run, "SearchResult_5")),
                 "expanded last description");
+            Assert.Contains("Final line remains readable.", FindById(run, "SearchResult_5")!.Current.Name);
+            Assert.True(FindById(run, "SearchMore") is null or { Current.IsOffscreen: true });
+            OwnedWindowCapture.Save(run, window, "search-expanded-last-description.png", list);
             Assert.NotNull(FindById(run, "WorkspaceSearchBox"));
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "skills.update");
         }, scenario: GatewayScenario.CreateSearchNavigation());
@@ -643,6 +646,7 @@ public sealed partial class GatewayFixtureUiTests
             case "^e": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.E, control: true); break;
             case "^f": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.F, control: true); break;
             case "%{LEFT}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Left, alt: true); break;
+            case "%{RIGHT}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Right, alt: true); break;
             case "{ESC}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Escape); break;
             case "{ENTER}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Enter); break;
             case "^{ENTER}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Enter, control: true); break;
