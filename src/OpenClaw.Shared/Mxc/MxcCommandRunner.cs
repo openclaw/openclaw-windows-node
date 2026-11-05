@@ -30,9 +30,6 @@ public sealed class MxcCommandRunner : ICommandRunner
         : this(new NodeSandboxExecutor(new NodeSandboxPolicyStore(settingsProvider), settingsDirectoryProvider,
             availabilityProvider, logger, spawn, probe, scratchRoot, contextProvider)) { }
 
-    internal static string GetDefaultScratchRoot(string? overrideRoot, string localAppData) =>
-        NodeSandboxExecutor.GetDefaultScratchRoot(overrideRoot, localAppData);
-
     public string CapturePolicy() => _executor.CapturePolicy();
 
     public async Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)

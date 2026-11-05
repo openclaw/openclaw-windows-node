@@ -15,6 +15,7 @@ namespace OpenClaw.Shared.Tests.FileTransfer;
 [Collection("MxcOwnership")]
 public sealed partial class InstalledFileWorkerResolverTests : IDisposable
 {
+    private static readonly TimeSpan ActiveCopyTimeout = TimeSpan.FromSeconds(15);
     private readonly string _root = Path.Combine(Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? Directory.GetCurrentDirectory(),
         ".file-resolver-test-data", Guid.NewGuid().ToString("N"));
     private readonly string _payload;
@@ -333,10 +334,8 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
     [InlineData("replaced")]
     [InlineData("hardlink")]
     [InlineData("reparse")]
-    [InlineData("locked")]
-    [InlineData("published-ea")]
     [InlineData("create-obstacle")]
-    public async Task ActiveFailureRetainsUnprovenOrLockedPreparationInsteadOfDeletingForeignObjects(string obstacle)
+    public async Task TamperFailureRetainsUnprovenPreparationInsteadOfDeletingForeignObjects(string obstacle)
     {
         var product = CreateProcessPayload();
         var resolver = ProcessResolver(product);
@@ -344,15 +343,18 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
         var marker = Path.Combine(_root, "foreign-marker");
         File.WriteAllText(marker, "preserve");
         var markerIdentity = NativeIdentity(marker);
-        using var cancel = new CancellationTokenSource();
-        FileStream? held = null;
         (uint Volume, ulong Index)? obstacleIdentity = null;
+        (uint Volume, ulong Index)? originalIdentity = null;
         var image = Path.Combine(preparation, "OpenClaw.FileWorker.exe");
         var observation = ObserveActiveCopy(preparation, () =>
         {
+            originalIdentity = NativeIdentity(image);
             switch (obstacle)
             {
-                case "added": File.WriteAllText(Path.Combine(preparation, "foreign"), "preserve"); break;
+                case "added":
+                    File.Copy(marker, Path.Combine(preparation, "foreign"));
+                    obstacleIdentity = NativeIdentity(Path.Combine(preparation, "foreign"));
+                    break;
                 case "replaced":
                     File.Move(image, Path.Combine(_root, "original-image"));
                     File.Copy(marker, image);
@@ -362,18 +364,106 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
                     File.Move(image, Path.Combine(_root, "original-image"));
                     File.CreateSymbolicLink(image, marker);
                     break;
-                case "locked": held = new FileStream(image, FileMode.Open, FileAccess.Read, FileShare.Read); break;
-                case "published-ea":
-                    WriteCacheEa(preparation, Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(ReadCacheEa(preparation))
-                        .Replace("\"preparing\"", "\"published\"", StringComparison.Ordinal)));
-                    break;
                 case "create-obstacle":
                     var directory = Directory.CreateDirectory(Path.Combine(preparation, "payload-manifest.json")).FullName;
                     File.Copy(marker, Path.Combine(directory, "marker"));
                     obstacleIdentity = NativeIdentity(Path.Combine(directory, "marker"));
                     break;
             }
-            if (obstacle != "create-obstacle") cancel.Cancel();
+            if (obstacle is "replaced" or "hardlink" or "reparse")
+                obstacleIdentity = NativeNoFollowIdentity(image);
+        });
+        // No cancellation competes with verification. An earlier tamper failure
+        // must remain a typed cache failure, not become a later cancellation.
+        var error = Record.Exception(() => { using var lease = resolver.Resolve(Cache); });
+        await observation;
+        var failure = Assert.IsType<FileCommandException>(error);
+        Assert.Equal("FILE_WORKER_CACHE_CLEANUP_BLOCKED", failure.Code);
+        Assert.Contains("cleanup is blocked", failure.Message);
+        Assert.Contains("retained", failure.Message);
+        if (obstacle == "create-obstacle")
+        {
+            Assert.Equal(obstacleIdentity, NativeIdentity(Path.Combine(preparation, "payload-manifest.json", "marker")));
+            Assert.Equal("preserve", File.ReadAllText(Path.Combine(preparation, "payload-manifest.json", "marker")));
+        }
+        if (obstacle is "replaced" or "hardlink" or "reparse")
+            Assert.Equal(obstacleIdentity, NativeNoFollowIdentity(image));
+        Assert.Equal(preparation, Assert.Single(Directory.GetDirectories(Cache)));
+        Assert.True(File.Exists(image));
+        Assert.Equal(markerIdentity, NativeIdentity(marker));
+        Assert.Equal("preserve", File.ReadAllText(marker));
+        if (obstacle == "added")
+        {
+            Assert.Equal(obstacleIdentity, NativeIdentity(Path.Combine(preparation, "foreign")));
+            Assert.Equal("preserve", File.ReadAllText(Path.Combine(preparation, "foreign")));
+        }
+        if (obstacle is "replaced" or "reparse") Assert.Equal("preserve", File.ReadAllText(image));
+        if (obstacle is "replaced" or "reparse")
+        {
+            Assert.Equal(originalIdentity, NativeIdentity(Path.Combine(_root, "original-image")));
+            Assert.Equal("abc", File.ReadAllText(Path.Combine(_root, "original-image")));
+        }
+        if (obstacle == "hardlink")
+        {
+            Assert.Equal(originalIdentity, NativeIdentity(Path.Combine(_root, "image-alias")));
+            Assert.Equal(originalIdentity, NativeIdentity(image));
+            Assert.Equal("abc", File.ReadAllText(Path.Combine(_root, "image-alias")));
+            Assert.Equal("abc", File.ReadAllText(image));
+        }
+        using var state = System.Text.Json.JsonDocument.Parse(ReadCacheEa(preparation));
+        Assert.Equal("preparing", state.RootElement.GetProperty("state").GetString());
+        var expectedNames = new[] { "OpenClaw.FileWorker.exe", "OpenClaw.FileWorker.runtimeconfig.json", "coreclr.dll", "payload-manifest.json" };
+        Assert.Equal((obstacle == "added" ? expectedNames.Append("foreign") : expectedNames).Order(),
+            Directory.GetFileSystemEntries(preparation).Select(Path.GetFileName).Order());
+        var retained = Directory.GetFiles(preparation).ToDictionary(path => Path.GetFileName(path)!, path => (NativeIdentity(path), File.ReadAllBytes(path)));
+        var retry = Assert.Throws<NotSupportedException>(() => resolver.Resolve(Cache));
+        Assert.Contains("uncertain preparation", retry.Message);
+        Assert.Equal(retained.Keys.Order(), Directory.GetFiles(preparation).Select(Path.GetFileName).Order());
+        foreach (var (name, snapshot) in retained)
+        {
+            Assert.Equal(snapshot.Item1, NativeIdentity(Path.Combine(preparation, name!)));
+            Assert.Equal(snapshot.Item2, File.ReadAllBytes(Path.Combine(preparation, name!)));
+        }
+    }
+
+    [Theory]
+    [InlineData("added")]
+    [InlineData("locked")]
+    [InlineData("published-ea")]
+    [InlineData("none")]
+    public async Task CancellationBeforeVerificationResumesPreservesItsTokenAndOnlyUnprovenObjects(string obstacle)
+    {
+        var product = CreateProcessPayload();
+        var resolver = ProcessResolver(product);
+        var preparation = ProcessPreparation(product);
+        var image = Path.Combine(preparation, "OpenClaw.FileWorker.exe");
+        var marker = Path.Combine(_root, "foreign-marker");
+        File.WriteAllText(marker, "preserve");
+        var markerIdentity = NativeIdentity(marker);
+        (uint Volume, ulong Index)? imageIdentity = null;
+        (uint Volume, ulong Index)? foreignIdentity = null;
+        byte[]? expectedEa = null;
+        using var cancel = new CancellationTokenSource();
+        SafeFileHandle? held = null;
+        var observation = ObserveActiveCopy(preparation, () =>
+        {
+            imageIdentity = NativeIdentity(image);
+            held = HoldVerificationOpen(image, obstacle == "locked", () =>
+            {
+                if (obstacle == "added")
+                {
+                    File.Copy(marker, Path.Combine(preparation, "foreign"));
+                    foreignIdentity = NativeIdentity(Path.Combine(preparation, "foreign"));
+                }
+                expectedEa = ReadCacheEa(preparation);
+                if (obstacle == "published-ea")
+                {
+                    expectedEa = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(expectedEa)
+                        .Replace("\"preparing\"", "\"published\"", StringComparison.Ordinal));
+                    WriteCacheEa(preparation, expectedEa);
+                }
+                cancel.Cancel();
+            });
         });
         Exception? error;
         try
@@ -382,27 +472,54 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
             await observation;
         }
         finally { held?.Dispose(); }
-        if (obstacle == "create-obstacle")
-        {
-            var failure = Assert.IsType<FileCommandException>(error);
-            Assert.Equal("FILE_WORKER_CACHE_CLEANUP_BLOCKED", failure.Code);
-            Assert.Contains("cleanup is blocked", failure.Message);
-            Assert.Equal(obstacleIdentity, NativeIdentity(Path.Combine(preparation, "payload-manifest.json", "marker")));
-        }
-        else
-        {
-            var failure = Assert.IsType<OperationCanceledException>(error);
-            Assert.Contains("cleanup is blocked", failure.Message);
-            Assert.Contains("retained", failure.Message);
-        }
-        Assert.Equal(preparation, Assert.Single(Directory.GetDirectories(Cache)));
-        Assert.True(File.Exists(image));
+        var failure = Assert.IsType<OperationCanceledException>(error);
+        Assert.Equal(cancel.Token, failure.CancellationToken);
         Assert.Equal(markerIdentity, NativeIdentity(marker));
         Assert.Equal("preserve", File.ReadAllText(marker));
-        if (obstacle == "added") Assert.Equal("preserve", File.ReadAllText(Path.Combine(preparation, "foreign")));
-        if (obstacle is "replaced" or "reparse") Assert.Equal("preserve", File.ReadAllText(image));
+        if (obstacle == "none")
+        {
+            Assert.Null(failure.InnerException);
+            Assert.False(Directory.Exists(preparation));
+            Assert.Empty(Directory.GetDirectories(Cache));
+            using var recovered = resolver.Resolve(Cache);
+            Assert.Equal(preparation, recovered.PayloadDirectory);
+            Assert.Equal(4, Directory.GetFiles(preparation).Length);
+            return;
+        }
+        var causes = Assert.IsType<AggregateException>(failure.InnerException).InnerExceptions;
+        Assert.Equal(2, causes.Count);
+        Assert.Equal(cancel.Token, Assert.IsType<OperationCanceledException>(causes[0]).CancellationToken);
+        var cleanup = Assert.IsType<NotSupportedException>(causes[1]);
+        Assert.Contains(obstacle switch
+        {
+            "added" => "inventory changed",
+            "locked" => "cannot be opened for rollback",
+            _ => "no longer provably unpublished",
+        }, cleanup.Message);
+        Assert.Contains("cleanup is blocked", failure.Message);
+        Assert.Contains("retained", failure.Message);
+        Assert.Equal(preparation, Assert.Single(Directory.GetDirectories(Cache)));
+        Assert.Equal(imageIdentity, NativeIdentity(image));
+        Assert.Equal("abc", File.ReadAllText(image));
+        Assert.Equal(expectedEa, ReadCacheEa(preparation));
+        if (obstacle == "added")
+        {
+            Assert.Equal(foreignIdentity, NativeIdentity(Path.Combine(preparation, "foreign")));
+            Assert.Equal("preserve", File.ReadAllText(Path.Combine(preparation, "foreign")));
+        }
+        var expectedNames = new[] { "OpenClaw.FileWorker.exe", "OpenClaw.FileWorker.runtimeconfig.json", "coreclr.dll", "payload-manifest.json" };
+        Assert.Equal((obstacle == "added" ? expectedNames.Append("foreign") : expectedNames).Order(),
+            Directory.GetFiles(preparation).Select(Path.GetFileName).Order());
+        var retained = Directory.GetFiles(preparation).ToDictionary(path => Path.GetFileName(path)!, path => (NativeIdentity(path), File.ReadAllBytes(path)));
         var retry = Assert.Throws<NotSupportedException>(() => resolver.Resolve(Cache));
         Assert.Contains(obstacle == "published-ea" ? "ownership changed" : "uncertain preparation", retry.Message);
+        Assert.Equal(retained.Keys.Order(), Directory.GetFiles(preparation).Select(Path.GetFileName).Order());
+        foreach (var (name, snapshot) in retained)
+        {
+            Assert.Equal(snapshot.Item1, NativeIdentity(Path.Combine(preparation, name!)));
+            Assert.Equal(snapshot.Item2, File.ReadAllBytes(Path.Combine(preparation, name!)));
+        }
+        Assert.Equal(expectedEa, ReadCacheEa(preparation));
     }
 
     [Fact]
@@ -429,7 +546,6 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
     }
 
     [Theory]
-    [InlineData("added")]
     [InlineData("digest")]
     [InlineData("replaced-identical")]
     public async Task ChangedPreparationCannotPublishEvenWithoutCancellation(string mutation)
@@ -440,8 +556,7 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
         var image = Path.Combine(path, "OpenClaw.FileWorker.exe");
         var observation = ObserveActiveCopy(path, () =>
         {
-            if (mutation == "added") File.WriteAllText(Path.Combine(path, "foreign"), "preserve");
-            else if (mutation == "digest") File.WriteAllText(image, "bad");
+            if (mutation == "digest") File.WriteAllText(image, "bad");
             else
             {
                 File.Move(image, Path.Combine(_root, "original-apphost"));
@@ -462,8 +577,7 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
             using var state = System.Text.Json.JsonDocument.Parse(ReadCacheEa(path));
             Assert.Equal("preparing", state.RootElement.GetProperty("state").GetString());
             Assert.Contains("uncertain preparation", Assert.Throws<NotSupportedException>(() => resolver.Resolve(Cache)).Message);
-            Assert.Equal(mutation == "added" ? "preserve" : "abc",
-                File.ReadAllText(mutation == "added" ? Path.Combine(path, "foreign") : image));
+            Assert.Equal("abc", File.ReadAllText(image));
         }
     }
 
@@ -570,10 +684,71 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
                 if (!File.Exists(runtime)) return false;
                 observedBytes = new FileInfo(runtime).Length;
                 return observedBytes > 0;
-            }, TimeSpan.FromSeconds(15)), "The resolver must reach a nonempty real runtime copy.");
+            }, ActiveCopyTimeout), "The resolver must reach a nonempty real runtime copy.");
             Assert.InRange(observedBytes, 1, 64L * 1024 * 1024 - 1);
             action();
         }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+    private static SafeFileHandle HoldVerificationOpen(string image, bool blockDelete, Action beforeResume)
+    {
+        const uint requestLevelOne = 0x90000;
+        const uint acknowledgeWithoutLevelTwo = 0x90050;
+        const int ioPending = 997;
+        var handle = CreateFileW(@"\\?\" + image, 0x80000000, blockDelete ? 1u : 7u,
+            IntPtr.Zero, 3, 0x40200000, IntPtr.Zero);
+        using var signal = new ManualResetEvent(false);
+        var size = IntPtr.Size == 8 ? 32 : 20;
+        var overlapped = Marshal.AllocHGlobal(size);
+        try
+        {
+            Assert.False(handle.IsInvalid);
+            Marshal.Copy(new byte[size], 0, overlapped, size);
+            Marshal.WriteIntPtr(overlapped, IntPtr.Size == 8 ? 24 : 16, signal.SafeWaitHandle.DangerousGetHandle());
+            Assert.False(DeviceIoControl(handle, requestLevelOne, IntPtr.Zero, 0, IntPtr.Zero, 0, out _, overlapped));
+            Assert.Equal(ioPending, Marshal.GetLastWin32Error());
+            Assert.True(signal.WaitOne(ActiveCopyTimeout), "Verification must break the real apphost oplock.");
+            Assert.True(GetOverlappedResult(handle, overlapped, out _, false));
+            // The real read open is pending its oplock acknowledgement. It cannot
+            // verify/publish or begin rollback until the obstacle and token exist.
+            beforeResume();
+            if (!blockDelete)
+            {
+                // Closing acknowledges the break without retaining a file object
+                // that could itself keep the preparation directory nonempty.
+                handle.Dispose();
+                return handle;
+            }
+            signal.Reset();
+            Marshal.Copy(new byte[size], 0, overlapped, size);
+            Marshal.WriteIntPtr(overlapped, IntPtr.Size == 8 ? 24 : 16, signal.SafeWaitHandle.DangerousGetHandle());
+            if (!DeviceIoControl(handle, acknowledgeWithoutLevelTwo, IntPtr.Zero, 0, IntPtr.Zero, 0, out _, overlapped))
+            {
+                Assert.Equal(ioPending, Marshal.GetLastWin32Error());
+                Assert.True(signal.WaitOne(ActiveCopyTimeout), "The apphost oplock acknowledgement must complete.");
+                Assert.True(GetOverlappedResult(handle, overlapped, out _, false));
+            }
+            return handle;
+        }
+        catch
+        {
+            if (!handle.IsInvalid)
+            {
+                CancelIoEx(handle, overlapped);
+                GetOverlappedResult(handle, overlapped, out _, true);
+            }
+            handle.Dispose();
+            throw;
+        }
+        finally
+        {
+            if (!handle.IsClosed && !handle.IsInvalid)
+            {
+                CancelIoEx(handle, overlapped);
+                GetOverlappedResult(handle, overlapped, out _, true);
+            }
+            Marshal.FreeHGlobal(overlapped);
+        }
+    }
 
     private string ProcessPreparation(string product)
     {
@@ -733,6 +908,14 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
     private static (uint Volume, ulong Index) NativeIdentity(string path)
     {
         using var file = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        Assert.True(GetFileInformationByHandle(file, out var identity));
+        return (identity.Volume, ((ulong)identity.IndexHigh << 32) | identity.IndexLow);
+    }
+
+    private static (uint Volume, ulong Index) NativeNoFollowIdentity(string path)
+    {
+        using var file = CreateFileW(@"\\?\" + path, 0x80, 7, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero);
+        Assert.False(file.IsInvalid);
         Assert.True(GetFileInformationByHandle(file, out var identity));
         return (identity.Volume, ((ulong)identity.IndexHigh << 32) | identity.IndexLow);
     }
@@ -1256,4 +1439,8 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool DeviceIoControl(SafeFileHandle file, uint control, IntPtr input, uint inputSize,
         IntPtr output, uint outputSize, out uint returned, IntPtr overlapped);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetOverlappedResult(SafeFileHandle file, IntPtr overlapped, out uint transferred,
+        [MarshalAs(UnmanagedType.Bool)] bool wait);
 }

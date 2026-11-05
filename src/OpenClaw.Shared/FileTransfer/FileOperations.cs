@@ -34,9 +34,6 @@ public sealed class FileOperations(NodeSandboxExecutor executor) : IUploadRetent
         return result;
     }
 
-    public Task<FileOperationResult> ReapAsync(UploadRootIdentity root, CancellationToken stop) =>
-        RecoverUploadsAsync(root.Path, root, stop);
-
     public Task<FileOperationResult> RecoverUploadsAsync(string rootPath, UploadRootIdentity? identity, CancellationToken stop) =>
         executor.RunFileAsync(new FixedFileWorkload<FileOperationResult>(
             (io, token) => ExchangeAsync(io, new(FileOperation.ReapUploads, ""), null, identity, token, rootPath),

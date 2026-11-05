@@ -496,11 +496,22 @@ Active-failure regressions observe nonempty output during that real 64 MiB
 copy, then cancel or place a native byte-range read lock on the pinned source.
 They prove same-version retry after identity-backed unpublished rollback and
 that a real copy I/O error survives the executor as a cache-specific command
-failure. Separate fixtures inject added, replaced, hardlinked, reparse or
-locked children, and a create obstacle containing an independently identified
-foreign marker. Cleanup must fail explicitly without deleting those objects.
-An independently changed native EA also blocks rollback of otherwise owned
-children, rather than deleting an entry whose publication is no longer disproven.
+failure. Separate failure-first fixtures inject added, replaced, hardlinked or
+reparse children, and a create obstacle containing an independently identified
+foreign marker. They do not also request cancellation: verification may observe
+tampering before a later cancellation, and that failure must remain a typed
+cache cleanup failure. Cancellation-first cases hold a real apphost verification
+open pending on a native file oplock. They add a foreign child, retain a
+non-delete-sharing read handle, or independently change the native EA, then
+request cancellation before acknowledging the pending open. These cases prove
+both the original cancellation token and the distinct cleanup refusal, without
+depending on mutation-versus-cancellation scheduling or supplying a fake owner
+result. Cleanup must retain the exact foreign, replacement, alias and locked
+file identities and bytes, and reject execution on retry. A changed native EA
+blocks rollback of otherwise owned children, rather than deleting an entry
+whose publication is no longer disproven. A matching no-obstacle control
+requires ordinary cancellation, successful rollback and same-version retry;
+the oplock fixture itself must not manufacture a cleanup failure.
 Native EA notifications observe the atomic `preparing` to `published` transition
 and trigger cancellation after commit, which must retain the published file
 identity for verified reuse. A read-only child handle held across completion

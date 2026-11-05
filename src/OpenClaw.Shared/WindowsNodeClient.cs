@@ -641,7 +641,7 @@ public class WindowsNodeClient : WebSocketClientBase
         }
 
         var generation = CurrentConnectionGeneration;
-        var deadline = CreateInvocationDeadline(payload, command, invocation!.Token);
+        var deadline = CreateInvocationDeadline(payload, invocation!.Token);
         GatewayFileInvocation? fileInvocation = null;
         if (NeedsFileChannel(command, args))
         {
@@ -699,7 +699,7 @@ public class WindowsNodeClient : WebSocketClientBase
             (command == "file.fetch" && args.TryGetProperty("transport", out var transport) &&
                 transport.ValueKind == JsonValueKind.String && transport.GetString() == "binary"));
 
-    private static CancellationTokenSource CreateInvocationDeadline(JsonElement payload, string command, CancellationToken ct)
+    private static CancellationTokenSource CreateInvocationDeadline(JsonElement payload, CancellationToken ct)
     {
         var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         if (payload.TryGetProperty("timeoutMs", out var value) && value.ValueKind == JsonValueKind.Number &&

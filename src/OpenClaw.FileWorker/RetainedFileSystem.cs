@@ -331,9 +331,6 @@ internal sealed class NativeEntry : IDisposable
         finally { Marshal.FreeHGlobal(buffer); }
     }
 
-    internal void Delete()
-        => SetDeleteOnClose(true);
-
     internal void CancelKernelDeleteOnClose()
     {
         var flags = Marshal.AllocHGlobal(4);
@@ -346,12 +343,12 @@ internal sealed class NativeEntry : IDisposable
         finally { Marshal.FreeHGlobal(flags); }
     }
 
-    private void SetDeleteOnClose(bool delete)
+    internal void Delete()
     {
         var flag = Marshal.AllocHGlobal(1);
         try
         {
-            Marshal.WriteByte(flag, delete ? (byte)1 : (byte)0);
+            Marshal.WriteByte(flag, 1);
             if (!Native.SetInfo(Handle, 4, flag, 1)) Native.ThrowLastError("retained-handle deletion");
         }
         finally { Marshal.FreeHGlobal(flag); }

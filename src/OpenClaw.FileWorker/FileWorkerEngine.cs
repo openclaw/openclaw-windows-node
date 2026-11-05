@@ -266,14 +266,12 @@ internal sealed class FileWorkerEngine
                 using var file = fs.OpenChild(parent, target.Name, data: true, write: true);
                 file.Match(target.Existing.Binding);
                 if (request.RejectHardlinks && file.Links > 1) throw new FileCommandException("HARDLINK_TARGET_DENIED", "The target gained another hard link.");
-                var started = false;
                 try
                 {
-                    started = true;
                     file.Write(bytes!, 0);
                     file.Finish(size);
                 }
-                catch (Exception ex) when (started && ex is IOException or FileCommandException or UnauthorizedAccessException)
+                catch (Exception ex) when (ex is IOException or FileCommandException or UnauthorizedAccessException)
                 {
                     throw new FileCommandException("WRITE_UNCERTAIN", "The in-place overwrite failed after it began. The original file identity remains, but its contents may be partial. Do not retry automatically.");
                 }

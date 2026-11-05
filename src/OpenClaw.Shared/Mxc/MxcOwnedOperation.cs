@@ -122,7 +122,6 @@ internal sealed class MxcOwnedOperation : IDisposable
     private FileId _identity;
     internal string Path { get; private set; } = "";
     internal string Scratch => System.IO.Path.Combine(Path, "scratch");
-    internal string Worker => System.IO.Path.Combine(Path, "worker");
     internal bool ProcessSettled { get; set; }
     internal void RetainPayload(IDisposable? payload) => _payload = payload;
 

@@ -66,7 +66,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
     [InlineData("\t")]
     public void DefaultScratchRoot_IgnoresMissingOrBlankOverride(string? value)
     {
-        var root = MxcCommandRunner.GetDefaultScratchRoot(value, _root);
+        var root = NodeSandboxExecutor.GetDefaultScratchRoot(value, _root);
         Assert.Equal(Path.Combine(_root, "OpenClawMxc", "Runs"), root);
         Assert.True(Path.IsPathFullyQualified(root));
         Assert.False(Directory.Exists(_root));
@@ -117,7 +117,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
     {
         var explicitRoot = Path.Combine(_root, "local");
         Assert.Equal(Path.Combine(explicitRoot, "OpenClawMxc", "Runs"),
-            MxcCommandRunner.GetDefaultScratchRoot(explicitRoot, Path.Combine(_root, "fallback")));
+            NodeSandboxExecutor.GetDefaultScratchRoot(explicitRoot, Path.Combine(_root, "fallback")));
     }
 
     [Theory]
