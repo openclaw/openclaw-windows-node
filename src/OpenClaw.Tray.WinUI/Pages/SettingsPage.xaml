@@ -12,7 +12,7 @@
     </Page.Resources>
 
     <Grid>
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto">
             <!--
                 Grid wrapper is required: ScrollViewer measures its direct
                 child with infinite available width, which makes
@@ -20,7 +20,7 @@
                 left-shift the column. A Grid in between gives the
                 StackPanel a finite viewport-width slot so Stretch fills
                 up to MaxWidth and centers with growing side margins.
-                (Pattern matches ConnectionPage / SkillsPage.)
+                (Pattern matches ConnectionPage.)
             -->
             <Grid HorizontalAlignment="Stretch">
                 <StackPanel Padding="24" Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
@@ -97,7 +97,21 @@
                     bottom settings row past the scroll viewport clip.
                 -->
                 <InfoBar x:Name="StoreMigrationStatus" Visibility="Collapsed"
-                         IsOpen="False" IsClosable="True" Closed="OnStoreMigrationStatusClosed"/>
+                         IsOpen="False" IsClosable="True" Closed="OnStoreMigrationStatusClosed">
+                    <InfoBar.Content>
+                        <TextBlock x:Name="StoreMigrationSetupAddress"
+                                   TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True"
+                                   Visibility="Collapsed"
+                                   AutomationProperties.AutomationId="SettingsStoreMigrationSetupAddress"/>
+                    </InfoBar.Content>
+                    <InfoBar.ActionButton>
+                        <HyperlinkButton x:Name="StoreMigrationDownloadSetup"
+                                         x:Uid="Migration2_InnoDownloadSetup"
+                                         Visibility="Collapsed" Click="OnDownloadMigrationSetup"
+                                         AutomationProperties.AutomationId="SettingsStoreMigrationDownloadSetup"/>
+                    </InfoBar.ActionButton>
+                </InfoBar>
 
                 <TextBlock x:Uid="SettingsPage_General" Text="General" Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>

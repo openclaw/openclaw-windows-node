@@ -342,7 +342,8 @@ public class GatewayConnectionManagerTests : IDisposable
             BeforeEnsure = () =>
             {
                 if (!reconnecting) return;
-                clock.Advance(outcome == "expired" ? TimeSpan.FromSeconds(210) : TimeSpan.FromSeconds(187));
+                clock.Advance(NativeGatewayEndpointSecurity.CredentialHandoffTimeout -
+                    (outcome == "expired" ? TimeSpan.Zero : TimeSpan.FromSeconds(23)));
                 if (outcome == "changed")
                     _registry.AddOrUpdate(_registry.GetById("native")! with { Url = "ws://127.0.0.1:19999" });
                 if (outcome == "cancelled") handshake.Cancel();
@@ -5129,6 +5130,75 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.True(operatorLifecycle.IsDisposed);
         Assert.Null(manager.OperatorClient);
         Assert.Equal(expectedNodeUrl, node.LastGatewayUrl);
+    }
+
+    // Models a settings-driven full reconnect (fire-and-forget operator connect) followed by a
+    // same-gateway node-only reconnect before the new operator handshake completes. Both calls are
+    // serialized by the transition semaphore, so awaiting ReconnectAsync first preserves caller order.
+    [Fact]
+    public async Task ConnectNodeOnlyAsync_SameGatewayDuringPendingOperatorReconnect_KeepsOperatorRecoverable()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-token", false, "test");
+        var node = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node,
+            isNodeEnabled: () => true,
+            shouldStartNodeConnection: (_, _) => true);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+        await manager.ReconnectAsync();
+        Assert.Equal(2, _factory.CreatedClients.Count);
+        var pendingOperator = _factory.CreatedClients[1];
+        Assert.False(pendingOperator.IsDisposed);
+        Assert.Equal(RoleConnectionState.Connecting, manager.CurrentSnapshot.OperatorState);
+        var nodeConnectsBefore = node.ConnectCount;
+
+        await manager.ConnectNodeOnlyAsync("gw-1");
+
+        Assert.Equal(nodeConnectsBefore + 1, node.ConnectCount);
+        var liveOperator = Assert.Single(_factory.CreatedClients.Skip(1), lifecycle => !lifecycle.IsDisposed);
+        Assert.Same(liveOperator.DataClient, manager.OperatorClient);
+        await InvokeHandshakeSucceededAsync(manager);
+        Assert.Equal(RoleConnectionState.Connected, manager.CurrentSnapshot.OperatorState);
+        Assert.Equal(nodeConnectsBefore + 1, node.ConnectCount);
+        Assert.Equal(2, _factory.CreatedClients.Count);
+    }
+
+    [Fact]
+    public async Task ConnectNodeOnlyAsync_ChangedGatewayDuringPendingOperatorReconnect_DisposesPendingOperator()
+    {
+        SetupGateway("gw-1", "wss://test-1");
+        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-token", false, "test");
+        var node = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+        await manager.ReconnectAsync();
+        var pendingOperator = _factory.CreatedClients[^1];
+        Assert.False(pendingOperator.IsDisposed);
+        Assert.Equal(RoleConnectionState.Connecting, manager.CurrentSnapshot.OperatorState);
+        _registry.AddOrUpdate(new GatewayRecord { Id = "gw-2", Url = "wss://test-2" });
+        _registry.SetActive("gw-2");
+
+        await manager.ConnectNodeOnlyAsync("gw-2");
+
+        Assert.True(pendingOperator.IsDisposed);
+        Assert.Null(manager.OperatorClient);
+        Assert.Equal("wss://test-2", node.LastGatewayUrl);
     }
 
     [Fact]

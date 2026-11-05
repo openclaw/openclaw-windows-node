@@ -180,7 +180,7 @@ public sealed class TrayMenuPopupCompositionTests
     {
         var path = Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
+            "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
         return File.ReadAllText(path);
     }
 
@@ -290,24 +290,28 @@ public sealed class TrayMenuPopupCompositionTests
     }
 
     [Fact]
-    public void HubWindow_NavigateTo_Normalizes_LegacyNodesTag_BeforeSelectingNavItem()
+    public void SettingsShellView_NavigateTo_Normalizes_LegacyNodesTag_BeforeSelectingNavItem()
     {
         var src = ReadHubWindowXaml();
+        var navigation = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Presentation", "WorkspaceNavigation.cs"));
         var registry = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Presentation", "HubPageRegistry.cs"));
 
         // Legacy "nodes" deep links must still land on the Instances rail
-        // item. NavigateTo applies the registry normalization before NavigateInternal
-        // (which is what actually highlights the rail item via
+        // item. NavigateTo applies the registry normalization before the host
+        // renders the section (which highlights the rail item via
         // FindNavItemForTag and calls Frame.Navigate).
         var aliasIndex = registry.IndexOf("\"nodes\" => \"instances\"", StringComparison.Ordinal);
-        var funnelIndex = src.IndexOf("NavigateInternal(HubPageRegistry.NormalizeTag(tag, _currentAgentId))", StringComparison.Ordinal);
+        var funnelIndex = src.IndexOf("NavigateRequested?.Invoke(WorkspaceNavigation.NormalizeSettingsTag(tag, _currentAgentId))", StringComparison.Ordinal);
         var selectIndex = src.IndexOf("FindNavItemForTag(NavView.MenuItems, tag)", StringComparison.Ordinal);
 
         Assert.True(aliasIndex >= 0, "HubPageRegistry must keep legacy 'nodes' deep links pointing at 'instances'.");
-        Assert.True(funnelIndex >= 0, "NavigateTo must normalize the tag before routing through NavigateInternal.");
-        Assert.True(selectIndex >= 0, "NavigateInternal must select a nav item by tag before falling back to direct navigation.");
+        Assert.Contains("HubPageRegistry.NormalizeTag(tag, agentId)", navigation);
+        Assert.True(funnelIndex >= 0, "NavigateTo must normalize the tag before handing it to the host history.");
+        Assert.True(selectIndex >= 0, "The rail sync must select a nav item by tag before falling back to direct navigation.");
     }
 
 }

@@ -186,12 +186,6 @@
   <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
     <value>Open channel setup for schema-driven auth, QR, login, and dashboard flows where available.</value>
   </data>
-  <data name="StatusSkillsTitle.Text" xml:space="preserve">
-    <value>Skills</value>
-  </data>
-  <data name="StatusSkillsDescription.Text" xml:space="preserve">
-    <value>Open gateway skills configuration when the connected gateway supports it.</value>
-  </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / schedules</value>
   </data>
@@ -1128,9 +1122,6 @@ Use one of these options:
   <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
     <value>Use Canvas</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
-    <value>Enable Skills</value>
-  </data>
   <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
     <value>Launch OpenClaw at startup</value>
   </data>
@@ -1307,9 +1298,6 @@ Use one of these options:
   </data>
   <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
     <value>Visual workspace</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
-    <value>Settings → Skills</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
     <value>Origin not allowed: gateway rejects this connection</value>
@@ -1531,15 +1519,6 @@ Use one of these options:
   </data>
   <data name="ClearButton.Text" xml:space="preserve">
     <value>Clear</value>
-  </data>
-  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
-    <value>Bindings</value>
-  </data>
-  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Message routing rules</value>
-  </data>
-  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
-    <value>Refresh</value>
   </data>
   <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
     <value>🖥️ This Computer</value>
@@ -2048,6 +2027,24 @@ Use one of these options:
   <data name="PermissionsPage_Button_123.Content" xml:space="preserve">
     <value>Open Windows Privacy Settings</value>
   </data>
+  <data name="SessionsPage_TextBlock_10.Text" xml:space="preserve">
+    <value>💬 Sessions</value>
+  </data>
+  <data name="SessionsPage_Button_57.Content" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="SessionsPage_Button_59.Content" xml:space="preserve">
+    <value>Compact</value>
+  </data>
+  <data name="SessionsPage_Button_61.Content" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="SessionsPage_TextBlock_73.Text" xml:space="preserve">
+    <value>No active sessions</value>
+  </data>
+  <data name="SessionsPage_TextBlock_84.Text" xml:space="preserve">
+    <value>🤖 Available Models</value>
+  </data>
   <data name="SettingsPage_TextBlock_16.Text" xml:space="preserve">
     <value>⚙️ Settings</value>
   </data>
@@ -2113,18 +2110,6 @@ Use one of these options:
   </data>
   <data name="CancelButton.Content" xml:space="preserve">
     <value>Cancel</value>
-  </data>
-  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>🧩 Skills</value>
-  </data>
-  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
-    <value>All Agents</value>
-  </data>
-  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
-    <value>No skills installed</value>
-  </data>
-  <data name="MarketplaceLink.Content" xml:space="preserve">
-    <value>Browse Skills Marketplace →</value>
   </data>
   <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
     <value>Total Cost</value>
@@ -2288,9 +2273,6 @@ Use one of these options:
   <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
     <value>Event Stream</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
-    <value>Skills</value>
-  </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>Agents</value>
   </data>
@@ -2302,9 +2284,6 @@ Use one of these options:
   </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
     <value>Instances</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
-    <value>Bindings</value>
   </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Config</value>
@@ -2322,7 +2301,7 @@ Use one of these options:
     <value>Capabilities</value>
   </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>Settings</value>
+    <value>App settings</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Permissions</value>
@@ -2419,18 +2398,6 @@ Use one of these options:
   </data>
   <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
     <value>Please wait while the connection is established...</value>
-  </data>
-  <data name="PriorityInfoBar.Title" xml:space="preserve">
-    <value>Routing priority</value>
-  </data>
-  <data name="PriorityInfoBar.Message" xml:space="preserve">
-    <value>Bindings control which agent handles messages from each channel. Priority: peer &gt; account &gt; channel &gt; default.</value>
-  </data>
-  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
-    <value>Single-agent mode</value>
-  </data>
-  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
-    <value>All messages route to the default agent. Add bindings for multi-agent routing.</value>
   </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
     <value>Edit gateway configuration (openclaw.json) with a schema-guided form.</value>
@@ -3146,6 +3113,12 @@ Use one of these options:
   </data>
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Reasoning</value>
+  </data>
+  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
+    <value>Tokens per second: latest model response, mean (μ), and 95th percentile (p95) over recent model calls in this session. ~ marks a live estimate while streaming.</value>
+  </data>
+  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
+    <value>Context window usage</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
     <value>Message Assistant (Enter to send)</value>
@@ -4199,18 +4172,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
     <value>Connection Status</value>
   </data>
-  <data name="BindingsPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>Gateway disconnected</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>Connect to a gateway to load bindings.</value>
-  </data>
-  <data name="BindingsPage_OpenConnection.Content" xml:space="preserve">
-    <value>Open Connection</value>
-  </data>
-  <data name="BindingsPage_LoadingBindings.Text" xml:space="preserve">
-    <value>Loading bindings...</value>
-  </data>
   <data name="ConnectionPage_ApprovalsWaitingOnYou.Text" xml:space="preserve">
     <value>Approvals waiting on you</value>
   </data>
@@ -4847,6 +4808,15 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SandboxPage_64MiB.Content" xml:space="preserve">
     <value>64 MiB</value>
   </data>
+  <data name="SessionsPage_Sessions.Text" xml:space="preserve">
+    <value>Sessions</value>
+  </data>
+  <data name="SessionsPage_Refresh.Text" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="SessionsPage_All.Text" xml:space="preserve">
+    <value>All</value>
+  </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
     <value>Show completed</value>
   </data>
@@ -4886,6 +4856,33 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="SessionsPage_OpenConnection.Content" xml:space="preserve">
     <value>Open Connection</value>
+  </data>
+  <data name="SessionsPage_LoadingSessions.Text" xml:space="preserve">
+    <value>Loading sessions...</value>
+  </data>
+  <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
+    <value>No sessions</value>
+  </data>
+  <data name="SessionsPage_Reset.Text" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="SessionsPage_Compact.Text" xml:space="preserve">
+    <value>Compact</value>
+  </data>
+  <data name="SessionsPage_Checkpoints.Text" xml:space="preserve">
+    <value>Checkpoints</value>
+  </data>
+  <data name="SessionsPage_Checkpoints.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>View, branch or restore compaction checkpoints</value>
+  </data>
+  <data name="SessionsPage_ExportTranscript.Text" xml:space="preserve">
+    <value>Export transcript</value>
+  </data>
+  <data name="SessionsPage_ExportTranscript.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Save the conversation transcript to a text file</value>
+  </data>
+  <data name="SessionsPage_Delete.Text" xml:space="preserve">
+    <value>Delete</value>
   </data>
   <data name="SessionActionPrompt_Reset_Title" xml:space="preserve">
     <value>Reset session?</value>
@@ -5006,27 +5003,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>Saved</value>
-  </data>
-  <data name="SkillsPage_Skills.Text" xml:space="preserve">
-    <value>🧩 Skills</value>
-  </data>
-  <data name="SkillsPage_AllAgents.Content" xml:space="preserve">
-    <value>All Agents</value>
-  </data>
-  <data name="SkillsPage_Enabled.Text" xml:space="preserve">
-    <value>Enabled</value>
-  </data>
-  <data name="SkillsPage_Disabled.Text" xml:space="preserve">
-    <value>Disabled</value>
-  </data>
-  <data name="SkillsPage_LoadingSkills.Text" xml:space="preserve">
-    <value>Loading skills...</value>
-  </data>
-  <data name="SkillsPage_NoSkillsInstalled.Text" xml:space="preserve">
-    <value>No skills installed</value>
-  </data>
-  <data name="SkillsPage_SkillsExtendYourAgent.Text" xml:space="preserve">
-    <value>Skills extend your agent's capabilities. Install skills via the CLI or ClawHub.</value>
   </data>
   <data name="UsagePage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Gateway disconnected</value>
@@ -5196,11 +5172,14 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
     <value>Clear</value>
   </data>
-  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
-    <value>Enabled</value>
+  <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
+    <value>Conversations this gateway is currently handling, grouped by channel.</value>
   </data>
-  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
-    <value>Disabled</value>
+  <data name="SessionsPage_EmptyHint.Text" xml:space="preserve">
+    <value>Sessions appear here when a channel is connected and traffic is flowing.</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
+    <value>Open chat</value>
   </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>Preview</value>
@@ -6138,20 +6117,11 @@ Make sure the gateway is running.</value>
   <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
     <value>Offline</value>
   </data>
-  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
-    <value>Could not load bindings</value>
-  </data>
   <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
     <value>Agent event log</value>
   </data>
   <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
     <value>Go to Agent Events</value>
-  </data>
-  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
-    <value>Gateway bindings</value>
-  </data>
-  <data name="Command_GoToBindings_Title" xml:space="preserve">
-    <value>Go to Bindings</value>
   </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
@@ -6218,12 +6188,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
     <value>Go to Settings</value>
-  </data>
-  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
-    <value>Registered skills</value>
-  </data>
-  <data name="Command_GoToSkills_Title" xml:space="preserve">
-    <value>Go to Skills</value>
   </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
@@ -6678,20 +6642,11 @@ Make sure the gateway is running.</value>
   <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
     <value>Open terminal</value>
   </data>
-  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
-    <value>Disabled</value>
+  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Open in chat</value>
   </data>
-  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
-    <value>Enabled</value>
-  </data>
-  <data name="SkillsPage_CountFormat" xml:space="preserve">
-    <value>({0}/{1} enabled)</value>
-  </data>
-  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
-    <value>Disabled ({0})</value>
-  </data>
-  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
-    <value>Enabled ({0})</value>
+  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open this session in Chat</value>
   </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
@@ -6867,9 +6822,6 @@ Make sure the gateway is running.</value>
   <data name="HubWindow_StatusFlyout_Approve.Content" xml:space="preserve">
     <value>Approve…</value>
   </data>
-  <data name="HubWindow_StatusPill_Tooltip" xml:space="preserve">
-    <value>Connection status</value>
-  </data>
   <data name="HubWindow_Bell_Tooltip" xml:space="preserve">
     <value>Notifications</value>
   </data>
@@ -7023,6 +6975,9 @@ Make sure the gateway is running.</value>
   <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
     <value>Needs attention</value>
   </data>
+  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
+    <value>Last run stopped</value>
+  </data>
   <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
     <value>Gateway update required</value>
   </data>
@@ -7096,8 +7051,6 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Open logs</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>Model</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>Retry setup or download</value></data>
-  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>Opens setup to choose another model. Replacing the existing Local Gateway still requires confirmation.</value></data>
-  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>Change model</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>Gateway connection</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>Repair connection</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>Open chat</value></data>
@@ -7121,6 +7074,89 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>{0} context · {1} KV · Loads on first request</value></data>
   <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>Go to Local AI</value></data>
   <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>View llama-server, model, and gateway status</value></data>
+  <data name="HubWindow_NavigationViewItemHeader_Model.Content" xml:space="preserve"><value>Model</value></data>
+  <data name="HubWindow_NavigationViewItem_DefaultModel.Content" xml:space="preserve"><value>Default model</value></data>
+  <data name="Command_GoToDefaultModel_Title" xml:space="preserve"><value>Go to Default model</value></data>
+  <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>Choose the model the Gateway uses</value></data>
+  <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>Model</value></data>
+  <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>Custom Hugging Face model (optional)</value></data>
+  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>owner/repo, owner/repo:Q4_K_M, or a huggingface.co link</value></data>
+  <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>Public, single-file GGUF models only. When this is filled in, it is used instead of the selection above.</value></data>
+  <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>This model may not fit</value></data>
+  <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>It needs about {0:F1} GB of GPU memory and {1} has {2:F1} GB. It may fail to start or run slowly.</value></data>
+  <data name="LocalAiPage_ForceApplyButton.Content" xml:space="preserve"><value>Switch anyway</value></data>
+  <data name="LocalAiPage_ApplyModelButton.Content" xml:space="preserve"><value>Switch model</value></data>
+  <data name="LocalAiPage_CancelModelSwitchButton.Content" xml:space="preserve"><value>Cancel</value></data>
+  <data name="LocalAiPage_ModelOptionFormat" xml:space="preserve"><value>{0} ({1}, {2} context, {3} KV)</value></data>
+  <data name="LocalAiPage_ModelOptionCurrent" xml:space="preserve"><value>{0} (current)</value></data>
+  <data name="LocalAiPage_ModelOptionRecommended" xml:space="preserve"><value>{0} (recommended)</value></data>
+  <data name="LocalAiPage_SwitchPhase_Resolving" xml:space="preserve"><value>Checking the model...</value></data>
+  <data name="LocalAiPage_SwitchPhase_Downloading" xml:space="preserve"><value>Downloading the model</value></data>
+  <data name="LocalAiPage_SwitchPhase_Verifying" xml:space="preserve"><value>Verifying the download</value></data>
+  <data name="LocalAiPage_SwitchPhase_InstallingRuntime" xml:space="preserve"><value>Installing llama-server</value></data>
+  <data name="LocalAiPage_SwitchPhase_StoppingRuntime" xml:space="preserve"><value>Stopping the current model</value></data>
+  <data name="LocalAiPage_SwitchPhase_StartingRuntime" xml:space="preserve"><value>Starting the new model</value></data>
+  <data name="LocalAiPage_SwitchPhase_LoadingModel" xml:space="preserve"><value>Loading and testing the new model</value></data>
+  <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>Restoring the previous model</value></data>
+  <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB of {1:F1} GB</value></data>
+  <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>Model change canceled.</value></data>
+  <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>A model change is still finishing. You can change the model again when it completes.</value></data>
+  <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>Default model</value></data>
+  <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>The Gateway uses this model for new conversations. Each chat can still pick its own model.</value></data>
+  <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>Connect to a Gateway to choose its model</value></data>
+  <data name="DefaultModelPage_OpenConnectionButton.Content" xml:space="preserve"><value>Open Connection</value></data>
+  <data name="DefaultModelPage_ReadOnly.Title" xml:space="preserve"><value>This Gateway connection cannot change configuration</value></data>
+  <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>Default model</value></data>
+  <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>Use this model</value></data>
+  <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Refresh</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Manage Local AI</value></data>
+  <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>Local AI: {0}</value></data>
+  <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (sign in to the provider first)</value></data>
+  <data name="DefaultModelPage_Applied" xml:space="preserve"><value>The default model was updated.</value></data>
+  <data name="DefaultModelPage_AddProviderTitle.Text" xml:space="preserve"><value>Add a model provider</value></data>
+  <data name="DefaultModelPage_AddProviderIntro.Text" xml:space="preserve"><value>Connect one of the Gateway's providers, or add your own OpenAI- or Anthropic-compatible endpoint. New models appear in the list above.</value></data>
+  <data name="DefaultModelPage_ProviderKindGateway.Content" xml:space="preserve"><value>Gateway provider</value></data>
+  <data name="DefaultModelPage_ProviderKindCustom.Content" xml:space="preserve"><value>Custom endpoint</value></data>
+  <data name="DefaultModelPage_ProviderSelector.Header" xml:space="preserve"><value>Provider</value></data>
+  <data name="DefaultModelPage_ProviderApiKey.Header" xml:space="preserve"><value>API key</value></data>
+  <data name="DefaultModelPage_SaveApiKeyButton.Content" xml:space="preserve"><value>Save API key</value></data>
+  <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>Sign-in method</value></data>
+  <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>Sign in</value></data>
+  <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>Provider ID</value></data>
+  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>Base URL</value></data>
+  <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API type</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI-compatible (Chat Completions)</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiResponses.Content" xml:space="preserve"><value>OpenAI Responses</value></data>
+  <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
+  <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API key (optional for OpenAI-compatible)</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>Model IDs</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>Add provider</value></data>
+  <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0} (connected)</value></data>
+  <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>Loading providers...</value></data>
+  <data name="DefaultModelPage_ProviderCatalogEmpty" xml:space="preserve"><value>This Gateway has no providers to connect.</value></data>
+  <data name="DefaultModelPage_ProviderCatalogFailedFormat" xml:space="preserve"><value>Could not load providers: {0}</value></data>
+  <data name="DefaultModelPage_ProviderCatalogUnsupported" xml:space="preserve"><value>This Gateway version cannot connect providers from here. Use a custom endpoint, or update the Gateway.</value></data>
+  <data name="DefaultModelPage_ProviderApiKeySaved" xml:space="preserve"><value>API key saved for {0}. Its models appear in the list above.</value></data>
+  <data name="DefaultModelPage_CustomProviderAdded" xml:space="preserve"><value>Added {0}. Its models appear in the list above.</value></data>
+  <data name="DefaultModelPage_ProviderSignedIn" xml:space="preserve"><value>Signed in to {0}.</value></data>
+  <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>Signed in to {0}. Restart the Gateway to use its models.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>Sign-in was cancelled.</value></data>
+  <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>Sign-in did not finish.</value></data>
+  <data name="DefaultModelPage_ProviderSignInInterrupted" xml:space="preserve"><value>Sign-in stopped because the Gateway connection changed. Start it again to continue.</value></data>
+  <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>The Gateway could not complete this: {0}</value></data>
+  <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>Waiting for the provider...</value></data>
+  <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>Sign-in is taking too long. Check again or cancel.</value></data>
+  <data name="DefaultModelPage_ProviderSignInUnsupported" xml:space="preserve"><value>The Gateway sent a sign-in step this app cannot show. Cancel and try again from the Gateway dashboard.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelUnconfirmed" xml:space="preserve"><value>The Gateway has not confirmed the cancellation yet. Try again.</value></data>
+  <data name="DefaultModelPage_CustomInvalidProviderId" xml:space="preserve"><value>Use lowercase letters, numbers, and hyphens for the provider ID.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdReserved" xml:space="preserve"><value>That ID belongs to a built-in provider. Choose another ID.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdInUse" xml:space="preserve"><value>A provider with that ID already exists.</value></data>
+  <data name="DefaultModelPage_CustomInvalidBaseUrl" xml:space="preserve"><value>Enter an http or https base URL.</value></data>
+  <data name="DefaultModelPage_CustomApiKeyRequired" xml:space="preserve"><value>This API type needs an API key.</value></data>
+  <data name="DefaultModelPage_CustomMissingModels" xml:space="preserve"><value>Enter at least one model ID.</value></data>
+  <data name="DefaultModelPage_CustomInvalidModelId" xml:space="preserve"><value>Model IDs cannot contain spaces.</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>See why</value></data>
   <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>Checking Local AI requirements</value></data>
   <data name="Onboarding_LocalAi_CheckingMessage" xml:space="preserve"><value>OpenClaw is checking the NVIDIA GPU, driver, CUDA, memory, and WSL requirements.</value></data>
@@ -7158,6 +7194,7 @@ Make sure the gateway is running.</value>
   <data name="Chat_Model_Other" xml:space="preserve"><value>Other models</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>No matching models</value></data>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Search models</value></data>
+  <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Add model provider...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Remove attachment</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Loading messages...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 queued message</value></data>
@@ -7479,8 +7516,6 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Talk to my agent</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Open Chat with your agent.</value></data>
   <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Talk to my agent, recommended</value></data>
-  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>Explore skills</value></data>
-  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Browse skills for your agent. Nothing is installed automatically.</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Connect channels</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram, and more. You choose when to sign in.</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Check readiness again</value></data>
@@ -7698,6 +7733,18 @@ Choose {1} to exit this preview without starting migration and continue using th
 
 Your settings, gateway, files, and models stay in place.</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>Your setup has been validated and migration completion recorded.
+
+1. Open Installed apps.
+Remove: {0} (desktop installer)
+Keep: {1}, version {2} (Microsoft Store)
+Leave all other apps installed.
+
+2. Return here and choose Retry to verify removal and finish.
+
+Your settings, gateway, files, and models stay in place.</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>Remove the previous app</value>
   </data>
@@ -7760,6 +7807,17 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Migration2_InnoGranted" xml:space="preserve">
     <value>Migration consent was saved. Install and open the Store version to continue. Keep this app installed until migration completion is confirmed.</value>
   </data>
+  <data name="Migration2_InnoRepairRequired" xml:space="preserve">
+    <value>Required installation files are missing or invalid. Download the full OpenClaw Setup installer. Exit OpenClaw, run Setup over this installation as the same Windows user, then reopen the app and retry migration. Do not uninstall OpenClaw first.
+
+Setup repairs the installation files. Migration must still pass the Store app’s compatibility checks.</value>
+  </data>
+  <data name="Migration2_InnoSetupLinkFailed" xml:space="preserve">
+    <value>Windows could not open the Setup download link. Copy this address into your browser: {0}. Do not uninstall OpenClaw first.</value>
+  </data>
+  <data name="Migration2_InnoDownloadSetup.Content" xml:space="preserve">
+    <value>Download Setup to repair</value>
+  </data>
   <data name="Migration2_InnoFailed" xml:space="preserve">
     <value>OpenClaw could not save migration consent or open the Store listing. Check the app log and retry. Do not uninstall this app.</value>
   </data>
@@ -7774,13 +7832,13 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Install a local WSL gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Checking native gateway support...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>Native gateway support is available on this device.</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>To use the native gateway, update your device to a Windows version that supports it.
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Windows reports that the isolation-session capability required by the native gateway is unavailable. A newer Windows version alone does not guarantee availability. You can install a local WSL gateway or connect to an existing gateway instead.
 
-Native gateway support is coming soon to all devices. Until it is broadly available, join the Windows Insider Program, select the Beta or Experimental channel, and choose Windows 11, version 26H1 under Advanced options during enrollment. Returning to Windows 11, version 25H2/26H2 requires a clean reinstall.
+If you need to update Windows, you can join the Windows Insider Program, select the Beta or Experimental channel, and choose Windows 11, version 26H1 under Advanced options during enrollment. Returning to Windows 11, version 25H2/26H2 requires a clean reinstall.
 
-After enrolling, return to Settings &gt; Windows Update and check for updates. It may take a few minutes for the update to appear. Feature availability can vary by device. After updating, reopen this page to check support again.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>To use the native gateway, update your device to a Windows version that supports it.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>coming soon to all devices.</value></data>
+After enrolling, return to Settings &gt; Windows Update and check for updates. It may take a few minutes for the update to appear. Feature availability can vary by device. You can reopen this page to check support again.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Windows reports that the isolation-session capability required by the native gateway is unavailable.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableAlternatives" xml:space="preserve"><value>You can install a local WSL gateway or connect to an existing gateway instead.</value></data>
   <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Windows Insider Program</value></data>
   <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta or Experimental</value></data>
   <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11, version 26H1</value></data>
@@ -7794,6 +7852,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Continue with the same Gateway setup wizard used for WSL, here in Companion. Companion validates configuration and health before connecting. Existing WSL gateways and your default OpenClaw profile are not replaced.</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>If the Gateway is not installed, setup installs it from Microsoft Store using WinGet, then verifies the package before continuing automatically.</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>Installing the Gateway from Microsoft Store using WinGet...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>Still installing the Gateway from Microsoft Store. This can take several minutes ({0} min elapsed).</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet completed. Verifying Gateway registration and execution aliases before continuing...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion will prepare your Gateway, then help you connect your AI.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway recovery</value></data>
@@ -7806,15 +7865,18 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Start and verify the Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Retry setup</value></data>
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>Collect Gateway diagnostics</value></data>
-  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>View setup log</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>Collect Gateway diagnostics for a redacted ZIP you can review or share, or open a terminal inside the isolated Gateway. Then choose Retry setup.</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>The Gateway did not become ready within {0} seconds. The first start can be slow. Collect Gateway diagnostics to see why, then choose Retry setup. To allow a longer start, set the {1} environment variable to a number of seconds and restart Companion.</value></data>
+  <data name="Onboarding_Native_RegistrationGuidance" xml:space="preserve"><value>Windows could not register the Gateway package for your Windows user. Install OpenClaw Gateway from Microsoft Store, or run {0} in PowerShell. Then choose Retry setup.</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>Collecting redacted Gateway diagnostics...</value></data>
   <data name="Onboarding_Native_DiagnosticsSaved" xml:space="preserve"><value>Gateway diagnostics saved to {0}.</value></data>
   <data name="Onboarding_Native_DiagnosticsNoPath" xml:space="preserve"><value>The Gateway package collected diagnostics but did not report where it saved them.</value></data>
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>Gateway diagnostics could not be collected: {0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>The Gateway terminal could not be opened: {0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Preview only. No package will be installed or Gateway started.</value></data>
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>Detailed activity</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>Open log file</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0} did not complete</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>These Windows capabilities become usable after Node Mode connects and pairs with the Gateway. Windows permissions and command approvals still apply.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway configured</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. You can change these choices in Companion Settings.</value></data>
@@ -7855,7 +7917,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
-  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
   <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
@@ -7870,7 +7931,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
   <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
-  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
@@ -7926,6 +7986,10 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
   <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
   <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
+  <data name="SessionsPage_Archived" xml:space="preserve"><value>Archived</value></data>
+  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>No archived sessions.</value></data>
+  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>Archived sessions are unavailable on this gateway.</value></data>
+  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>Unarchive session</value></data>
   <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
   <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
   <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>
@@ -7953,7 +8017,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
   <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
   <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
-  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
   <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
   <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
   <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>
@@ -7981,15 +8044,20 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
   <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>Shared owner</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
+  <data name="WorkspaceShell_PagesCustomize.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Customize pages</value></data>
   <data name="WorkspaceShell_MoreButton.Content" xml:space="preserve"><value>More</value></data>
   <data name="WorkspaceShell_Refresh.Content" xml:space="preserve"><value>Refresh</value></data>
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
   <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Open Dashboard</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Open Dashboard (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Forward</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Forward</value></data>
   <data name="WorkspaceShell_Back.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Back</value></data>
@@ -8104,1088 +8172,51 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>This session is no longer empty, so the pending location selection was cancelled. Review the session and send again to continue in its current location.</value>
   </data>
+  <data name="Chat_Questions_Refresh" xml:space="preserve"><value>Refresh questions</value></data>
+  <data name="Chat_Questions_Answered" xml:space="preserve"><value>Question answered</value></data>
+  <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>Question cancelled</value></data>
+  <data name="Chat_Questions_Expired" xml:space="preserve"><value>Question expired</value></data>
+  <data name="Chat_Questions_Waiting" xml:space="preserve"><value>Waiting for your answer</value></data>
+  <data name="Chat_Questions_WebRequired" xml:space="preserve"><value>Open web chat to answer this question. It requires resource selection or secret-store controls.</value></data>
+  <data name="Chat_Questions_Answer" xml:space="preserve"><value>Your answer</value></data>
+  <data name="Chat_Questions_OpenLink" xml:space="preserve"><value>Open question link</value></data>
+  <data name="Chat_Questions_LinkFailed" xml:space="preserve"><value>The question link could not be opened.</value></data>
+  <data name="Chat_Questions_SendFailed" xml:space="preserve"><value>The answer could not be sent. Refresh and try again.</value></data>
+  <data name="Chat_Questions_Reconnect" xml:space="preserve"><value>Reconnect and refresh questions before answering.</value></data>
+  <data name="Chat_Questions_Submitting" xml:space="preserve"><value>Submitting...</value></data>
+  <data name="Chat_Questions_Submit" xml:space="preserve"><value>Submit answer</value></data>
+  <data name="Chat_Questions_Cancel" xml:space="preserve"><value>Cancel question</value></data>
+  <data name="Chat_Questions_RefreshFailed" xml:space="preserve"><value>Questions could not be refreshed. Retry or open web chat.</value></data>
+  <data name="Chat_Questions_Unavailable" xml:space="preserve"><value>This question is expired or disconnected. Refresh before answering.</value></data>
+  <data name="Chat_Questions_Unconfirmed" xml:space="preserve"><value>The answer was not confirmed. Refresh to check its status before retrying.</value></data>
+  <data name="Chat_Questions_Invalid" xml:space="preserve"><value>An agent question could not be read. Refresh or open web chat to respond.</value></data>
+  <data name="Chat_Run_Finished" xml:space="preserve"><value>Finished</value></data>
+  <data name="Chat_Run_Approval" xml:space="preserve"><value>Waiting for approval</value></data>
+  <data name="Chat_Run_Answer" xml:space="preserve"><value>Waiting for your answer</value></data>
+  <data name="Chat_Run_Compacting" xml:space="preserve"><value>Compacting context</value></data>
+  <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>Retrying after context compaction</value></data>
+  <data name="Chat_Run_Retry" xml:space="preserve"><value>Retrying the model request</value></data>
+  <data name="Chat_Run_Thinking" xml:space="preserve"><value>Thinking</value></data>
+  <data name="Chat_Run_Responding" xml:space="preserve"><value>Responding</value></data>
+  <data name="Chat_Run_Working" xml:space="preserve"><value>Working</value></data>
+  <data name="Chat_Run_Tool" xml:space="preserve"><value>Running {0}</value></data>
+  <data name="Chat_Questions_NoLongerAvailable" xml:space="preserve"><value>Question no longer available</value></data>
+  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0:N0} output tokens</value></data>
+  <data name="Chat_Questions_OtherPlaceholder" xml:space="preserve"><value>Type your own answer here</value></data>
+  <data name="Chat_Questions_KeyboardHint" xml:space="preserve"><value>Enter adds a line / Ctrl+Enter to continue</value></data>
+  <data name="Chat_Questions_Expand" xml:space="preserve"><value>Expand question</value></data>
+  <data name="Chat_Questions_Collapse" xml:space="preserve"><value>Collapse question</value></data>
+  <data name="Chat_Questions_PreviousRequest" xml:space="preserve"><value>Previous request</value></data>
+  <data name="Chat_Questions_NextRequest" xml:space="preserve"><value>Next request</value></data>
+  <data name="Chat_Questions_Back" xml:space="preserve"><value>Back</value></data>
+  <data name="Chat_Questions_Skip" xml:space="preserve"><value>Skip</value></data>
+  <data name="Chat_Questions_SubmitShort" xml:space="preserve"><value>Submit</value></data>
+  <data name="Chat_Questions_Next" xml:space="preserve"><value>Next</value></data>
   <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>Get support</value></data>
   <data name="Chat_Welcome_WhatCanYouDo" xml:space="preserve"><value>What can you do?</value></data>
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Summarize my recent sessions</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me configure a channel</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Check system health</value></data>
-  <data name="SessionsHub_ActionFailed" xml:space="preserve">
-    <value>Action failed</value>
-  </data>
-  <data name="SessionsHub_ActiveMinutes" xml:space="preserve">
-    <value>Active within (minutes)</value>
-  </data>
-  <data name="SessionsHub_ActiveMinutesDisabled" xml:space="preserve">
-    <value>Applies to the Active view only.</value>
-  </data>
-  <data name="SessionsHub_ActiveMinutesHelp" xml:space="preserve">
-    <value>Only show sessions updated within this many minutes.</value>
-  </data>
-  <data name="SessionsHub_ActiveMinutesPlaceholder" xml:space="preserve">
-    <value>Any time</value>
-  </data>
-  <data name="SessionsHub_AdminOnly" xml:space="preserve">
-    <value>Requires administrator access</value>
-  </data>
-  <data name="SessionsHub_AdminRequiredBody" xml:space="preserve">
-    <value>You can view worktrees. Creating, removing, restoring, and cleaning them requires administrator access on this Gateway.</value>
-  </data>
-  <data name="SessionsHub_AdminRequiredTip" xml:space="preserve">
-    <value>Requires administrator access on this Gateway</value>
-  </data>
-  <data name="SessionsHub_AdminRequiredTitle" xml:space="preserve">
-    <value>Administrator access required</value>
-  </data>
-  <data name="SessionsHub_AgentFilter" xml:space="preserve">
-    <value>Agent</value>
-  </data>
-  <data name="SessionsHub_AgentOwner" xml:space="preserve">
-    <value>Agent: {0}</value>
-  </data>
-  <data name="SessionsHub_AllAgents" xml:space="preserve">
-    <value>All agents</value>
-  </data>
-  <data name="SessionsHub_Archive" xml:space="preserve">
-    <value>Archive</value>
-  </data>
-  <data name="SessionsHub_Archived" xml:space="preserve">
-    <value>Archived</value>
-  </data>
-  <data name="SessionsHub_ArchivedFormat" xml:space="preserve">
-    <value>Archived &quot;{0}&quot;.</value>
-  </data>
-  <data name="SessionsHub_ArchiveFailed" xml:space="preserve">
-    <value>Couldn't archive the session</value>
-  </data>
-  <data name="SessionsHub_ArchiveReasonAge" xml:space="preserve">
-    <value>Archived automatically after a period of inactivity</value>
-  </data>
-  <data name="SessionsHub_ArchiveReasonCap" xml:space="preserve">
-    <value>Archived automatically to stay within the active session limit</value>
-  </data>
-  <data name="SessionsHub_ArchiveReasonManual" xml:space="preserve">
-    <value>Archived by a person</value>
-  </data>
-  <data name="SessionsHub_ArchiveReasonRestart" xml:space="preserve">
-    <value>Archived while recovering from a Gateway restart</value>
-  </data>
-  <data name="SessionsHub_ArchiveReasonStaleDashboard" xml:space="preserve">
-    <value>Archived because its dashboard was no longer used</value>
-  </data>
-  <data name="SessionsHub_Assign" xml:space="preserve">
-    <value>Assign</value>
-  </data>
-  <data name="SessionsHub_AssignFailed" xml:space="preserve">
-    <value>Couldn't assign the owner</value>
-  </data>
-  <data name="SessionsHub_AssignOwner" xml:space="preserve">
-    <value>Assign owner</value>
-  </data>
-  <data name="SessionsHub_AssignOwnerNamed" xml:space="preserve">
-    <value>Assign an owner for {0}</value>
-  </data>
-  <data name="SessionsHub_AssignToMe" xml:space="preserve">
-    <value>Assign to me</value>
-  </data>
-  <data name="SessionsHub_ChannelWebchat" xml:space="preserve">
-    <value>Web chat</value>
-  </data>
-  <data name="SessionsHub_Checkpoints" xml:space="preserve">
-    <value>Checkpoints</value>
-  </data>
-  <data name="SessionsHub_CleanDone" xml:space="preserve">
-    <value>Cleanup finished. Removed {0} worktrees, deleted {1} orphaned checkouts, and pruned {2} snapshots.</value>
-  </data>
-  <data name="SessionsHub_CleanFailed" xml:space="preserve">
-    <value>Cleanup didn't finish</value>
-  </data>
-  <data name="SessionsHub_Cleaning" xml:space="preserve">
-    <value>Cleaning up...</value>
-  </data>
-  <data name="SessionsHub_CleanIssues" xml:space="preserve">
-    <value>Some items were skipped: {0}</value>
-  </data>
-  <data name="SessionsHub_CleanNow" xml:space="preserve">
-    <value>Clean up now</value>
-  </data>
-  <data name="SessionsHub_CleanNowTip" xml:space="preserve">
-    <value>Remove idle worktrees, orphaned checkouts, and expired snapshots</value>
-  </data>
-  <data name="SessionsHub_CleanStillRunning" xml:space="preserve">
-    <value>Cleanup is still running on the Gateway. Refresh later to see the result.</value>
-  </data>
-  <data name="SessionsHub_ClearSelection" xml:space="preserve">
-    <value>Clear selection</value>
-  </data>
-  <data name="SessionsHub_CloseSearch" xml:space="preserve">
-    <value>Close search</value>
-  </data>
-  <data name="SessionsHub_CloudWorker" xml:space="preserve">
-    <value>Cloud worker</value>
-  </data>
-  <data name="SessionsHub_CountMany" xml:space="preserve">
-    <value>{0} sessions</value>
-  </data>
-  <data name="SessionsHub_CountOne" xml:space="preserve">
-    <value>1 session</value>
-  </data>
-  <data name="SessionsHub_Create" xml:space="preserve">
-    <value>Create</value>
-  </data>
-  <data name="SessionsHub_DateNoActivity" xml:space="preserve">
-    <value>No activity</value>
-  </data>
-  <data name="SessionsHub_DateOlder" xml:space="preserve">
-    <value>Older</value>
-  </data>
-  <data name="SessionsHub_DateThisWeek" xml:space="preserve">
-    <value>Earlier this week</value>
-  </data>
-  <data name="SessionsHub_DateToday" xml:space="preserve">
-    <value>Today</value>
-  </data>
-  <data name="SessionsHub_DateYesterday" xml:space="preserve">
-    <value>Yesterday</value>
-  </data>
-  <data name="SessionsHub_Delete" xml:space="preserve">
-    <value>Delete</value>
-  </data>
-  <data name="SessionsHub_DeleteAll" xml:space="preserve">
-    <value>Delete all</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchived" xml:space="preserve">
-    <value>Delete all archived</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedBody" xml:space="preserve">
-    <value>Permanently delete {0} archived sessions and their transcripts? This can't be undone.</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedTip" xml:space="preserve">
-    <value>Permanently delete every archived session</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedTitle" xml:space="preserve">
-    <value>Delete all archived sessions?</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedWorktrees" xml:space="preserve">
-    <value>{0} of these sessions have managed worktrees. A worktree that is still in use or has unsaved work is preserved and listed after deletion.</value>
-  </data>
-  <data name="SessionsHub_DeleteBlocked" xml:space="preserve">
-    <value>This session can't be deleted.</value>
-  </data>
-  <data name="SessionsHub_DeletedMany" xml:space="preserve">
-    <value>Deleted {0} sessions.</value>
-  </data>
-  <data name="SessionsHub_DeletedOne" xml:space="preserve">
-    <value>Deleted 1 session.</value>
-  </data>
-  <data name="SessionsHub_DeleteFailed" xml:space="preserve">
-    <value>Couldn't delete</value>
-  </data>
-  <data name="SessionsHub_DeleteFailures" xml:space="preserve">
-    <value>{0} couldn't be deleted. First error: {1}</value>
-  </data>
-  <data name="SessionsHub_DeleteGroup" xml:space="preserve">
-    <value>Delete group</value>
-  </data>
-  <data name="SessionsHub_DeleteGroupBody" xml:space="preserve">
-    <value>Delete the group &quot;{0}&quot;? Its sessions aren't deleted; they become ungrouped.</value>
-  </data>
-  <data name="SessionsHub_DeleteGroupTitle" xml:space="preserve">
-    <value>Delete group?</value>
-  </data>
-  <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
-    <value>Deleting a session that isn't archived requires administrator access. Archive it first, or ask an administrator.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelected" xml:space="preserve">
-    <value>Delete selected</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedBodyMany" xml:space="preserve">
-    <value>Permanently delete {0} sessions and their transcripts? This can't be undone.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedBodyOne" xml:space="preserve">
-    <value>Permanently delete the selected session and its transcript? This can't be undone.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedNoneAllowed" xml:space="preserve">
-    <value>None of the selected sessions can be deleted with your access. Main sessions can't be deleted, and active sessions need administrator access.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedSkipped" xml:space="preserve">
-    <value>{0} selected sessions will be skipped because they can't be deleted with your access.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedTitle" xml:space="preserve">
-    <value>Delete selected sessions?</value>
-  </data>
-  <data name="SessionsHub_Details" xml:space="preserve">
-    <value>Details</value>
-  </data>
-  <data name="SessionsHub_DetailsFor" xml:space="preserve">
-    <value>Details for {0}</value>
-  </data>
-  <data name="SessionsHub_DisconnectedBody" xml:space="preserve">
-    <value>Connect to a Gateway to see and manage its sessions.</value>
-  </data>
-  <data name="SessionsHub_DisconnectedTitle" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="SessionsHub_EmptyActiveBody" xml:space="preserve">
-    <value>Sessions appear here when you or a channel start a conversation.</value>
-  </data>
-  <data name="SessionsHub_EmptyActiveTitle" xml:space="preserve">
-    <value>No active sessions</value>
-  </data>
-  <data name="SessionsHub_EmptyAllBody" xml:space="preserve">
-    <value>This Gateway doesn't have any sessions yet.</value>
-  </data>
-  <data name="SessionsHub_EmptyAllTitle" xml:space="preserve">
-    <value>No sessions yet</value>
-  </data>
-  <data name="SessionsHub_EmptyArchivedBody" xml:space="preserve">
-    <value>Sessions you archive are kept here until you restore or delete them.</value>
-  </data>
-  <data name="SessionsHub_EmptyArchivedTitle" xml:space="preserve">
-    <value>No archived sessions</value>
-  </data>
-  <data name="SessionsHub_EmptyFilteredBody" xml:space="preserve">
-    <value>Try a different search or reset the filters.</value>
-  </data>
-  <data name="SessionsHub_EmptyFilteredTitle" xml:space="preserve">
-    <value>No sessions match these filters</value>
-  </data>
-  <data name="SessionsHub_EmptyGroup" xml:space="preserve">
-    <value>No sessions in this group</value>
-  </data>
-  <data name="SessionsHub_FactAgent" xml:space="preserve">
-    <value>Agent</value>
-  </data>
-  <data name="SessionsHub_FactArchivedAt" xml:space="preserve">
-    <value>Archived on</value>
-  </data>
-  <data name="SessionsHub_FactArchiveReason" xml:space="preserve">
-    <value>Archive reason</value>
-  </data>
-  <data name="SessionsHub_FactChannel" xml:space="preserve">
-    <value>Channel</value>
-  </data>
-  <data name="SessionsHub_FactCreated" xml:space="preserve">
-    <value>Created</value>
-  </data>
-  <data name="SessionsHub_FactKey" xml:space="preserve">
-    <value>Session key</value>
-  </data>
-  <data name="SessionsHub_FactModel" xml:space="preserve">
-    <value>Model</value>
-  </data>
-  <data name="SessionsHub_FactPinned" xml:space="preserve">
-    <value>Pinned</value>
-  </data>
-  <data name="SessionsHub_FactProvider" xml:space="preserve">
-    <value>Provider</value>
-  </data>
-  <data name="SessionsHub_FactSessionId" xml:space="preserve">
-    <value>Session ID</value>
-  </data>
-  <data name="SessionsHub_FactTokens" xml:space="preserve">
-    <value>Tokens used</value>
-  </data>
-  <data name="SessionsHub_FactUpdated" xml:space="preserve">
-    <value>Last updated</value>
-  </data>
-  <data name="SessionsHub_FactWorktree" xml:space="preserve">
-    <value>Worktree</value>
-  </data>
-  <data name="SessionsHub_Fast" xml:space="preserve">
-    <value>Fast mode</value>
-  </data>
-  <data name="SessionsHub_Filters" xml:space="preserve">
-    <value>Filters</value>
-  </data>
-  <data name="SessionsHub_FiltersCount" xml:space="preserve">
-    <value>Filters ({0})</value>
-  </data>
-  <data name="SessionsHub_ForceRemove" xml:space="preserve">
-    <value>Remove anyway</value>
-  </data>
-  <data name="SessionsHub_ForceRemoveBody" xml:space="preserve">
-    <value>The Gateway couldn't safely remove &quot;{0}&quot;: {1}&#x0A;&#x0A;Removing it anyway discards any uncommitted changes in the worktree. This can't be undone.</value>
-  </data>
-  <data name="SessionsHub_ForceRemoveTitle" xml:space="preserve">
-    <value>Remove the worktree anyway?</value>
-  </data>
-  <data name="SessionsHub_Group" xml:space="preserve">
-    <value>Group</value>
-  </data>
-  <data name="SessionsHub_GroupBy" xml:space="preserve">
-    <value>Group by</value>
-  </data>
-  <data name="SessionsHub_GroupByAgent" xml:space="preserve">
-    <value>Group by agent</value>
-  </data>
-  <data name="SessionsHub_GroupByCategory" xml:space="preserve">
-    <value>Group by custom group</value>
-  </data>
-  <data name="SessionsHub_GroupByChannel" xml:space="preserve">
-    <value>Group by channel</value>
-  </data>
-  <data name="SessionsHub_GroupByDate" xml:space="preserve">
-    <value>Group by date</value>
-  </data>
-  <data name="SessionsHub_GroupByKind" xml:space="preserve">
-    <value>Group by kind</value>
-  </data>
-  <data name="SessionsHub_GroupByNone" xml:space="preserve">
-    <value>No grouping</value>
-  </data>
-  <data name="SessionsHub_GroupByPerson" xml:space="preserve">
-    <value>Group by owner</value>
-  </data>
-  <data name="SessionsHub_GroupFailed" xml:space="preserve">
-    <value>Couldn't update groups</value>
-  </data>
-  <data name="SessionsHub_GroupOptions" xml:space="preserve">
-    <value>Options for group {0}</value>
-  </data>
-  <data name="SessionsHub_GroupOther" xml:space="preserve">
-    <value>Other</value>
-  </data>
-  <data name="SessionsHub_IncludeGlobal" xml:space="preserve">
-    <value>Include global sessions</value>
-  </data>
-  <data name="SessionsHub_IncludeUnknown" xml:space="preserve">
-    <value>Include sessions without routing information</value>
-  </data>
-  <data name="SessionsHub_Inherit" xml:space="preserve">
-    <value>Use default</value>
-  </data>
-  <data name="SessionsHub_KindChannel" xml:space="preserve">
-    <value>Channel conversation</value>
-  </data>
-  <data name="SessionsHub_KindCron" xml:space="preserve">
-    <value>Scheduled task</value>
-  </data>
-  <data name="SessionsHub_KindDirect" xml:space="preserve">
-    <value>Direct conversation</value>
-  </data>
-  <data name="SessionsHub_KindGlobal" xml:space="preserve">
-    <value>Global session</value>
-  </data>
-  <data name="SessionsHub_KindGroup" xml:space="preserve">
-    <value>Group conversation</value>
-  </data>
-  <data name="SessionsHub_KindMain" xml:space="preserve">
-    <value>Main session</value>
-  </data>
-  <data name="SessionsHub_KindOther" xml:space="preserve">
-    <value>Other session</value>
-  </data>
-  <data name="SessionsHub_KindSubagent" xml:space="preserve">
-    <value>Subagent</value>
-  </data>
-  <data name="SessionsHub_KindThread" xml:space="preserve">
-    <value>Thread</value>
-  </data>
-  <data name="SessionsHub_KindUnknown" xml:space="preserve">
-    <value>Unrouted session</value>
-  </data>
-  <data name="SessionsHub_Label" xml:space="preserve">
-    <value>Name</value>
-  </data>
-  <data name="SessionsHub_LabelPlaceholder" xml:space="preserve">
-    <value>Use the generated title</value>
-  </data>
-  <data name="SessionsHub_LastRunError" xml:space="preserve">
-    <value>The last run failed</value>
-  </data>
-  <data name="SessionsHub_LevelAuto" xml:space="preserve">
-    <value>Automatic</value>
-  </data>
-  <data name="SessionsHub_LevelFull" xml:space="preserve">
-    <value>Full detail</value>
-  </data>
-  <data name="SessionsHub_LevelOff" xml:space="preserve">
-    <value>Off</value>
-  </data>
-  <data name="SessionsHub_LevelOn" xml:space="preserve">
-    <value>On</value>
-  </data>
-  <data name="SessionsHub_LevelStream" xml:space="preserve">
-    <value>Stream as it thinks</value>
-  </data>
-  <data name="SessionsHub_LevelUltrafast" xml:space="preserve">
-    <value>Ultra fast</value>
-  </data>
-  <data name="SessionsHub_Limit" xml:space="preserve">
-    <value>Sessions to load</value>
-  </data>
-  <data name="SessionsHub_LimitHelp" xml:space="preserve">
-    <value>How many sessions to request from the Gateway at a time.</value>
-  </data>
-  <data name="SessionsHub_ListLabel" xml:space="preserve">
-    <value>Sessions</value>
-  </data>
-  <data name="SessionsHub_LoadFailedTitle" xml:space="preserve">
-    <value>Couldn't load sessions</value>
-  </data>
-  <data name="SessionsHub_Loading" xml:space="preserve">
-    <value>Loading sessions...</value>
-  </data>
-  <data name="SessionsHub_LoadMore" xml:space="preserve">
-    <value>Load more</value>
-  </data>
-  <data name="SessionsHub_MainCannotArchive" xml:space="preserve">
-    <value>The main session can't be archived. Reset it instead to start fresh.</value>
-  </data>
-  <data name="SessionsHub_MoreNamed" xml:space="preserve">
-    <value>More actions for {0}</value>
-  </data>
-  <data name="SessionsHub_Move" xml:space="preserve">
-    <value>Move</value>
-  </data>
-  <data name="SessionsHub_MoveToGroup" xml:space="preserve">
-    <value>Move to group</value>
-  </data>
-  <data name="SessionsHub_MoveToGroupNamed" xml:space="preserve">
-    <value>Move {0} to a group</value>
-  </data>
-  <data name="SessionsHub_NeedsWrite" xml:space="preserve">
-    <value>Requires write access on this Gateway</value>
-  </data>
-  <data name="SessionsHub_NewGroup" xml:space="preserve">
-    <value>New group</value>
-  </data>
-  <data name="SessionsHub_NewGroupBody" xml:space="preserve">
-    <value>Groups organize sessions for everyone using this Gateway.</value>
-  </data>
-  <data name="SessionsHub_NewGroupEllipsis" xml:space="preserve">
-    <value>New group...</value>
-  </data>
-  <data name="SessionsHub_NewGroupPlaceholder" xml:space="preserve">
-    <value>Group name</value>
-  </data>
-  <data name="SessionsHub_NewGroupTitle" xml:space="preserve">
-    <value>Create a group</value>
-  </data>
-  <data name="SessionsHub_NewWorktree" xml:space="preserve">
-    <value>New worktree</value>
-  </data>
-  <data name="SessionsHub_NewWorktreeBase" xml:space="preserve">
-    <value>Base branch</value>
-  </data>
-  <data name="SessionsHub_NewWorktreeBasePlaceholder" xml:space="preserve">
-    <value>Repository default</value>
-  </data>
-  <data name="SessionsHub_NewWorktreeBranchesLoading" xml:space="preserve">
-    <value>Loading branches...</value>
-  </data>
-  <data name="SessionsHub_NewWorktreeBranchesUnavailable" xml:space="preserve">
-    <value>Branches aren't available for this repository. You can type a branch name.</value>
-  </data>
-  <data name="SessionsHub_NewWorktreeCreate" xml:space="preserve">
-    <value>Create worktree</value>
-  </data>
-  <data name="SessionsHub_NewWorktreeName" xml:space="preserve">
-    <value>Name (optional)</value>
-  </data>
-  <data name="SessionsHub_NewWorktreeNameInvalid" xml:space="preserve">
-    <value>Use lowercase letters, numbers, and hyphens, starting with a letter or number.</value>
-  </data>
-  <data name="SessionsHub_NewWorktreeNamePlaceholder" xml:space="preserve">
-    <value>Generated if empty</value>
-  </data>
-  <data name="SessionsHub_NewWorktreeNotGit" xml:space="preserve">
-    <value>This folder isn't a Git repository.</value>
-  </data>
-  <data name="SessionsHub_NewWorktreeRepo" xml:space="preserve">
-    <value>Repository folder</value>
-  </data>
-  <data name="SessionsHub_NewWorktreeRepoPlaceholder" xml:space="preserve">
-    <value>Path to a Git repository on the Gateway host</value>
-  </data>
-  <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
-    <value>Create a worktree</value>
-  </data>
-  <data name="SessionsHub_NextPage" xml:space="preserve">
-    <value>Next page</value>
-  </data>
-  <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
-    <value>There are no archived sessions you can delete.</value>
-  </data>
-  <data name="SessionsHub_NoOwners" xml:space="preserve">
-    <value>No people or agents available</value>
-  </data>
-  <data name="SessionsHub_NotAvailable" xml:space="preserve">
-    <value>Not available</value>
-  </data>
-  <data name="SessionsHub_OpenInChat" xml:space="preserve">
-    <value>Open in chat</value>
-  </data>
-  <data name="SessionsHub_OpenInChatNamed" xml:space="preserve">
-    <value>Open {0} in chat</value>
-  </data>
-  <data name="SessionsHub_Organization" xml:space="preserve">
-    <value>Ownership and grouping</value>
-  </data>
-  <data name="SessionsHub_Overrides" xml:space="preserve">
-    <value>Session settings</value>
-  </data>
-  <data name="SessionsHub_OwnedBy" xml:space="preserve">
-    <value>Owner: {0}</value>
-  </data>
-  <data name="SessionsHub_Owner" xml:space="preserve">
-    <value>Owner</value>
-  </data>
-  <data name="SessionsHub_PageOf" xml:space="preserve">
-    <value>Page {0} of {1}</value>
-  </data>
-  <data name="SessionsHub_PageRange" xml:space="preserve">
-    <value>Showing {0} to {1} of {2}</value>
-  </data>
-  <data name="SessionsHub_PageRangeOfServer" xml:space="preserve">
-    <value>Showing {0} to {1} of {2} loaded ({3} on the Gateway)</value>
-  </data>
-  <data name="SessionsHub_PageSize" xml:space="preserve">
-    <value>Sessions per page</value>
-  </data>
-  <data name="SessionsHub_PlacementActive" xml:space="preserve">
-    <value>Running on a cloud worker</value>
-  </data>
-  <data name="SessionsHub_PlacementFailed" xml:space="preserve">
-    <value>Cloud worker failed</value>
-  </data>
-  <data name="SessionsHub_PlacementLocal" xml:space="preserve">
-    <value>Running on the Gateway</value>
-  </data>
-  <data name="SessionsHub_PlacementReclaimed" xml:space="preserve">
-    <value>Returned to the Gateway</value>
-  </data>
-  <data name="SessionsHub_PlacementStarting" xml:space="preserve">
-    <value>Cloud worker starting</value>
-  </data>
-  <data name="SessionsHub_PlacementStopping" xml:space="preserve">
-    <value>Cloud worker stopping</value>
-  </data>
-  <data name="SessionsHub_PreservedBusy" xml:space="preserve">
-    <value>still in use</value>
-  </data>
-  <data name="SessionsHub_PreservedCleanupFailed" xml:space="preserve">
-    <value>cleanup failed</value>
-  </data>
-  <data name="SessionsHub_PreservedLocked" xml:space="preserve">
-    <value>locked by another process</value>
-  </data>
-  <data name="SessionsHub_PreservedOwnerMismatch" xml:space="preserve">
-    <value>owned by another session</value>
-  </data>
-  <data name="SessionsHub_PreservedSnapshotFailed" xml:space="preserve">
-    <value>safety snapshot failed</value>
-  </data>
-  <data name="SessionsHub_PreservedWorktrees" xml:space="preserve">
-    <value>Kept worktrees: {0}.</value>
-  </data>
-  <data name="SessionsHub_PreviousPage" xml:space="preserve">
-    <value>Previous page</value>
-  </data>
-  <data name="SessionsHub_ReadOnlyBody" xml:space="preserve">
-    <value>You can browse and search sessions. Changing, archiving, or deleting them requires write access on this Gateway.</value>
-  </data>
-  <data name="SessionsHub_ReadOnlyTitle" xml:space="preserve">
-    <value>View-only access</value>
-  </data>
-  <data name="SessionsHub_Reasoning" xml:space="preserve">
-    <value>Show reasoning</value>
-  </data>
-  <data name="SessionsHub_Refresh" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
-  <data name="SessionsHub_Remove" xml:space="preserve">
-    <value>Remove</value>
-  </data>
-  <data name="SessionsHub_RemoveFromGroup" xml:space="preserve">
-    <value>Remove from group</value>
-  </data>
-  <data name="SessionsHub_RemoveWorktreeBody" xml:space="preserve">
-    <value>Remove the worktree &quot;{0}&quot;? The Gateway takes a safety snapshot first, so you can restore it later.</value>
-  </data>
-  <data name="SessionsHub_RemoveWorktreeFailed" xml:space="preserve">
-    <value>Couldn't remove the worktree</value>
-  </data>
-  <data name="SessionsHub_RemoveWorktreeRefused" xml:space="preserve">
-    <value>The Gateway declined to remove it safely.</value>
-  </data>
-  <data name="SessionsHub_RemoveWorktreeTitle" xml:space="preserve">
-    <value>Remove worktree?</value>
-  </data>
-  <data name="SessionsHub_RenameGroup" xml:space="preserve">
-    <value>Rename group</value>
-  </data>
-  <data name="SessionsHub_RenameGroupBody" xml:space="preserve">
-    <value>Sessions in this group move to the new name.</value>
-  </data>
-  <data name="SessionsHub_RenameGroupTitle" xml:space="preserve">
-    <value>Rename group</value>
-  </data>
-  <data name="SessionsHub_ResetFilters" xml:space="preserve">
-    <value>Reset filters</value>
-  </data>
-  <data name="SessionsHub_Restore" xml:space="preserve">
-    <value>Restore</value>
-  </data>
-  <data name="SessionsHub_RestoreWorktreeFailed" xml:space="preserve">
-    <value>Couldn't restore the worktree</value>
-  </data>
-  <data name="SessionsHub_Retry" xml:space="preserve">
-    <value>Try again</value>
-  </data>
-  <data name="SessionsHub_RoleAssistant" xml:space="preserve">
-    <value>Assistant</value>
-  </data>
-  <data name="SessionsHub_RoleUser" xml:space="preserve">
-    <value>You</value>
-  </data>
-  <data name="SessionsHub_RowHelp" xml:space="preserve">
-    <value>Expand or collapse the session's details</value>
-  </data>
-  <data name="SessionsHub_RowsPerPage" xml:space="preserve">
-    <value>{0} per page</value>
-  </data>
-  <data name="SessionsHub_Save" xml:space="preserve">
-    <value>Save</value>
-  </data>
-  <data name="SessionsHub_Search" xml:space="preserve">
-    <value>Search</value>
-  </data>
-  <data name="SessionsHub_Searching" xml:space="preserve">
-    <value>Searching transcripts...</value>
-  </data>
-  <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
-    <value>Filter by name or key</value>
-  </data>
-  <data name="SessionsHub_SearchTranscripts" xml:space="preserve">
-    <value>Search transcripts</value>
-  </data>
-  <data name="SessionsHub_SearchTranscriptsTip" xml:space="preserve">
-    <value>Find text in the messages of the sessions shown by the current filters</value>
-  </data>
-  <data name="SessionsHub_Select" xml:space="preserve">
-    <value>Select</value>
-  </data>
-  <data name="SessionsHub_SelectedMany" xml:space="preserve">
-    <value>{0} selected</value>
-  </data>
-  <data name="SessionsHub_SelectedOne" xml:space="preserve">
-    <value>1 selected</value>
-  </data>
-  <data name="SessionsHub_SelectNamed" xml:space="preserve">
-    <value>Select {0}</value>
-  </data>
-  <data name="SessionsHub_SelectPage" xml:space="preserve">
-    <value>Select this page</value>
-  </data>
-  <data name="SessionsHub_SelectTip" xml:space="preserve">
-    <value>Choose several sessions to delete at once</value>
-  </data>
-  <data name="SessionsHub_ShowAll" xml:space="preserve">
-    <value>Show all sessions</value>
-  </data>
-  <data name="SessionsHub_ShowDetails" xml:space="preserve">
-    <value>Show details</value>
-  </data>
-  <data name="SessionsHub_ShowDetailsNamed" xml:space="preserve">
-    <value>Show details for {0}</value>
-  </data>
-  <data name="SessionsHub_Sort" xml:space="preserve">
-    <value>Sort</value>
-  </data>
-  <data name="SessionsHub_SortNameAsc" xml:space="preserve">
-    <value>Name, A to Z</value>
-  </data>
-  <data name="SessionsHub_SortNameDesc" xml:space="preserve">
-    <value>Name, Z to A</value>
-  </data>
-  <data name="SessionsHub_SortNewest" xml:space="preserve">
-    <value>Recently updated</value>
-  </data>
-  <data name="SessionsHub_SortOldest" xml:space="preserve">
-    <value>Least recently updated</value>
-  </data>
-  <data name="SessionsHub_StatusActive" xml:space="preserve">
-    <value>Active</value>
-  </data>
-  <data name="SessionsHub_StatusAll" xml:space="preserve">
-    <value>All</value>
-  </data>
-  <data name="SessionsHub_StatusArchived" xml:space="preserve">
-    <value>Archived</value>
-  </data>
-  <data name="SessionsHub_StatusFilter" xml:space="preserve">
-    <value>Session status</value>
-  </data>
-  <data name="SessionsHub_StatusQueued" xml:space="preserve">
-    <value>Queued</value>
-  </data>
-  <data name="SessionsHub_StopWorker" xml:space="preserve">
-    <value>Stop cloud worker</value>
-  </data>
-  <data name="SessionsHub_StopWorkerBody" xml:space="preserve">
-    <value>Stop the cloud worker for &quot;{0}&quot; and return the session to the Gateway? Work in progress on the worker is captured before it stops.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerBusy" xml:space="preserve">
-    <value>Wait for the current turn to finish before stopping the worker.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerDone" xml:space="preserve">
-    <value>Stopped the cloud worker for &quot;{0}&quot;.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerFailed" xml:space="preserve">
-    <value>Couldn't stop the cloud worker</value>
-  </data>
-  <data name="SessionsHub_StopWorkerHelp" xml:space="preserve">
-    <value>Stopping returns the session to the Gateway.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerTitle" xml:space="preserve">
-    <value>Stop cloud worker?</value>
-  </data>
-  <data name="SessionsHub_StopWorkerUnavailable" xml:space="preserve">
-    <value>This worker can't be stopped right now.</value>
-  </data>
-  <data name="SessionsHub_Subtitle" xml:space="preserve">
-    <value>Browse, organize, and clean up the conversations on this Gateway.</value>
-  </data>
-  <data name="SessionsHub_TabSessions" xml:space="preserve">
-    <value>Sessions</value>
-  </data>
-  <data name="SessionsHub_TabsLabel" xml:space="preserve">
-    <value>Sessions page sections</value>
-  </data>
-  <data name="SessionsHub_TabWorktrees" xml:space="preserve">
-    <value>Worktrees</value>
-  </data>
-  <data name="SessionsHub_Thinking" xml:space="preserve">
-    <value>Thinking level</value>
-  </data>
-  <data name="SessionsHub_ThinkingHigh" xml:space="preserve">
-    <value>High</value>
-  </data>
-  <data name="SessionsHub_ThinkingLow" xml:space="preserve">
-    <value>Low</value>
-  </data>
-  <data name="SessionsHub_ThinkingMedium" xml:space="preserve">
-    <value>Medium</value>
-  </data>
-  <data name="SessionsHub_ThinkingMinimal" xml:space="preserve">
-    <value>Minimal</value>
-  </data>
-  <data name="SessionsHub_ThinkingXHigh" xml:space="preserve">
-    <value>Extra high</value>
-  </data>
-  <data name="SessionsHub_TimeDays" xml:space="preserve">
-    <value>{0} d ago</value>
-  </data>
-  <data name="SessionsHub_TimeHours" xml:space="preserve">
-    <value>{0} h ago</value>
-  </data>
-  <data name="SessionsHub_TimeJustNow" xml:space="preserve">
-    <value>Just now</value>
-  </data>
-  <data name="SessionsHub_TimeMinutes" xml:space="preserve">
-    <value>{0} min ago</value>
-  </data>
-  <data name="SessionsHub_TimeNever" xml:space="preserve">
-    <value>Never</value>
-  </data>
-  <data name="SessionsHub_Title" xml:space="preserve">
-    <value>Sessions</value>
-  </data>
-  <data name="SessionsHub_TokensWithContext" xml:space="preserve">
-    <value>{0} of {1} context</value>
-  </data>
-  <data name="SessionsHub_TranscriptArchivedExcludedMany" xml:space="preserve">
-    <value>{0} archived sessions also match. Choose All or Archived to include them.</value>
-  </data>
-  <data name="SessionsHub_TranscriptArchivedExcludedOne" xml:space="preserve">
-    <value>1 archived session also matches. Choose All or Archived to include it.</value>
-  </data>
-  <data name="SessionsHub_TranscriptFailed" xml:space="preserve">
-    <value>Search didn't complete</value>
-  </data>
-  <data name="SessionsHub_TranscriptHint" xml:space="preserve">
-    <value>Search the messages of the sessions that match the current agent and status filters.</value>
-  </data>
-  <data name="SessionsHub_TranscriptIndexingBody" xml:space="preserve">
-    <value>The Gateway is still building its search index, so some matches may be missing. Try again in a moment.</value>
-  </data>
-  <data name="SessionsHub_TranscriptIndexingTitle" xml:space="preserve">
-    <value>Indexing transcripts</value>
-  </data>
-  <data name="SessionsHub_TranscriptLabel" xml:space="preserve">
-    <value>Search session transcripts</value>
-  </data>
-  <data name="SessionsHub_TranscriptMatchMany" xml:space="preserve">
-    <value>{0} matches</value>
-  </data>
-  <data name="SessionsHub_TranscriptMatchOne" xml:space="preserve">
-    <value>1 match</value>
-  </data>
-  <data name="SessionsHub_TranscriptNeedsConnection" xml:space="preserve">
-    <value>Connect to the Gateway to search transcripts.</value>
-  </data>
-  <data name="SessionsHub_TranscriptNoMatchesBody" xml:space="preserve">
-    <value>No messages contain &quot;{0}&quot;.</value>
-  </data>
-  <data name="SessionsHub_TranscriptNoMatchesTitle" xml:space="preserve">
-    <value>No matches</value>
-  </data>
-  <data name="SessionsHub_TranscriptPlaceholder" xml:space="preserve">
-    <value>Search messages</value>
-  </data>
-  <data name="SessionsHub_TranscriptScope" xml:space="preserve">
-    <value>Searching: {0}</value>
-  </data>
-  <data name="SessionsHub_TranscriptTitle" xml:space="preserve">
-    <value>Search transcripts</value>
-  </data>
-  <data name="SessionsHub_TranscriptTruncated" xml:space="preserve">
-    <value>Showing the best matches. Refine the search to see others.</value>
-  </data>
-  <data name="SessionsHub_TranscriptUnsupported" xml:space="preserve">
-    <value>This Gateway doesn't support transcript search. Update the Gateway to use it.</value>
-  </data>
-  <data name="SessionsHub_Unarchive" xml:space="preserve">
-    <value>Unarchive</value>
-  </data>
-  <data name="SessionsHub_UnarchivedFormat" xml:space="preserve">
-    <value>Restored &quot;{0}&quot; to active sessions.</value>
-  </data>
-  <data name="SessionsHub_UnarchiveFailed" xml:space="preserve">
-    <value>Couldn't unarchive the session</value>
-  </data>
-  <data name="SessionsHub_UnarchiveNamed" xml:space="preserve">
-    <value>Unarchive {0}</value>
-  </data>
-  <data name="SessionsHub_Unassigned" xml:space="preserve">
-    <value>Unassigned</value>
-  </data>
-  <data name="SessionsHub_Undo" xml:space="preserve">
-    <value>Undo</value>
-  </data>
-  <data name="SessionsHub_UndoFailed" xml:space="preserve">
-    <value>Couldn't undo</value>
-  </data>
-  <data name="SessionsHub_Ungrouped" xml:space="preserve">
-    <value>Ungrouped</value>
-  </data>
-  <data name="SessionsHub_Unread" xml:space="preserve">
-    <value>Unread</value>
-  </data>
-  <data name="SessionsHub_Unsupported" xml:space="preserve">
-    <value>This Gateway doesn't support this action. Update the Gateway to use it.</value>
-  </data>
-  <data name="SessionsHub_UnsupportedTitle" xml:space="preserve">
-    <value>Sessions aren't available</value>
-  </data>
-  <data name="SessionsHub_UpdateFailed" xml:space="preserve">
-    <value>Couldn't update the session</value>
-  </data>
-  <data name="SessionsHub_Verbose" xml:space="preserve">
-    <value>Tool output detail</value>
-  </data>
-  <data name="SessionsHub_WorktreeActive" xml:space="preserve">
-    <value>Active</value>
-  </data>
-  <data name="SessionsHub_WorktreeColActive" xml:space="preserve">
-    <value>Last active</value>
-  </data>
-  <data name="SessionsHub_WorktreeColName" xml:space="preserve">
-    <value>Worktree</value>
-  </data>
-  <data name="SessionsHub_WorktreeColOwner" xml:space="preserve">
-    <value>Owner</value>
-  </data>
-  <data name="SessionsHub_WorktreeColRepo" xml:space="preserve">
-    <value>Repository</value>
-  </data>
-  <data name="SessionsHub_WorktreeColStatus" xml:space="preserve">
-    <value>Status</value>
-  </data>
-  <data name="SessionsHub_WorktreeCreated" xml:space="preserve">
-    <value>Created the worktree.</value>
-  </data>
-  <data name="SessionsHub_WorktreeCreateFailed" xml:space="preserve">
-    <value>Couldn't create the worktree</value>
-  </data>
-  <data name="SessionsHub_WorktreeFromBase" xml:space="preserve">
-    <value>{0}, based on {1}</value>
-  </data>
-  <data name="SessionsHub_WorktreeOpenOwner" xml:space="preserve">
-    <value>Open the owning session {0} in chat</value>
-  </data>
-  <data name="SessionsHub_WorktreeOwnerManual" xml:space="preserve">
-    <value>Created manually</value>
-  </data>
-  <data name="SessionsHub_WorktreeOwnerSession" xml:space="preserve">
-    <value>Session</value>
-  </data>
-  <data name="SessionsHub_WorktreeOwnerWorkboard" xml:space="preserve">
-    <value>Workboard</value>
-  </data>
-  <data name="SessionsHub_WorktreeRemoved" xml:space="preserve">
-    <value>Removed &quot;{0}&quot;. You can restore it from this list.</value>
-  </data>
-  <data name="SessionsHub_WorktreeRestorable" xml:space="preserve">
-    <value>Can be restored</value>
-  </data>
-  <data name="SessionsHub_WorktreeRestored" xml:space="preserve">
-    <value>Restored &quot;{0}&quot;.</value>
-  </data>
-  <data name="SessionsHub_WorktreeRowName" xml:space="preserve">
-    <value>{0}, branch {1}, owner {2}, {3}</value>
-  </data>
-  <data name="SessionsHub_WorktreesDisconnected" xml:space="preserve">
-    <value>Connect to a Gateway to see its managed worktrees.</value>
-  </data>
-  <data name="SessionsHub_WorktreesEmptyBody" xml:space="preserve">
-    <value>Worktrees created for sessions, workboards, or by hand appear here.</value>
-  </data>
-  <data name="SessionsHub_WorktreesEmptyTitle" xml:space="preserve">
-    <value>No worktrees</value>
-  </data>
-  <data name="SessionsHub_WorktreesFailed" xml:space="preserve">
-    <value>Couldn't load worktrees</value>
-  </data>
-  <data name="SessionsHub_WorktreesLoading" xml:space="preserve">
-    <value>Loading worktrees...</value>
-  </data>
-  <data name="SessionsHub_WorktreesUnsupported" xml:space="preserve">
-    <value>This Gateway doesn't manage worktrees. Update the Gateway to use them.</value>
-  </data>
-  <data name="SessionsHub_WorktreesUnsupportedTitle" xml:space="preserve">
-    <value>Worktrees aren't available</value>
-  </data>
-  <data name="SessionsHub_Yes" xml:space="preserve">
-    <value>Yes</value>
-  </data>
-  <data name="SessionsHub_DeleteInterrupted" xml:space="preserve">
-    <value>Stopped early: {0} remaining sessions weren't confirmed as deleted. Refresh to check.</value>
-  </data>
-  <data name="SessionsHub_DeleteRefused" xml:space="preserve">
-    <value>The Gateway didn't delete {0} of them.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectionChanged" xml:space="preserve">
-    <value>The list changed while you were confirming, so nothing was deleted. Review your selection and try again.</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedWorktreesOne" xml:space="preserve">
-    <value>One of these sessions has a managed worktree. A worktree that is still in use or has unsaved work is preserved and listed after deletion.</value>
-  </data>
-  <data name="SessionsHub_Appearance" xml:space="preserve">
-    <value>Appearance</value>
-  </data>
-  <data name="SessionsHub_ColorBlue" xml:space="preserve">
-    <value>Blue</value>
-  </data>
-  <data name="SessionsHub_ColorCyan" xml:space="preserve">
-    <value>Cyan</value>
-  </data>
-  <data name="SessionsHub_ColorFor" xml:space="preserve">
-    <value>Color for {0}</value>
-  </data>
-  <data name="SessionsHub_ColorGreen" xml:space="preserve">
-    <value>Green</value>
-  </data>
-  <data name="SessionsHub_ColorHeader" xml:space="preserve">
-    <value>Color</value>
-  </data>
-  <data name="SessionsHub_ColorMenu" xml:space="preserve">
-    <value>Color</value>
-  </data>
-  <data name="SessionsHub_ColorNone" xml:space="preserve">
-    <value>No color</value>
-  </data>
-  <data name="SessionsHub_ColorOrange" xml:space="preserve">
-    <value>Orange</value>
-  </data>
-  <data name="SessionsHub_ColorPink" xml:space="preserve">
-    <value>Pink</value>
-  </data>
-  <data name="SessionsHub_ColorPurple" xml:space="preserve">
-    <value>Purple</value>
-  </data>
-  <data name="SessionsHub_ColorRed" xml:space="preserve">
-    <value>Red</value>
-  </data>
-  <data name="SessionsHub_ColorYellow" xml:space="preserve">
-    <value>Yellow</value>
-  </data>
-  <data name="SessionsHub_IconBook" xml:space="preserve">
-    <value>Book</value>
-  </data>
-  <data name="SessionsHub_IconBot" xml:space="preserve">
-    <value>Bot</value>
-  </data>
-  <data name="SessionsHub_IconBraces" xml:space="preserve">
-    <value>Code</value>
-  </data>
-  <data name="SessionsHub_IconCoins" xml:space="preserve">
-    <value>Coins</value>
-  </data>
-  <data name="SessionsHub_IconDefault" xml:space="preserve">
-    <value>Default icon</value>
-  </data>
-  <data name="SessionsHub_IconFor" xml:space="preserve">
-    <value>Icon for {0}</value>
-  </data>
-  <data name="SessionsHub_IconHeader" xml:space="preserve">
-    <value>Icon</value>
-  </data>
-  <data name="SessionsHub_IconKanban" xml:space="preserve">
-    <value>Board</value>
-  </data>
-  <data name="SessionsHub_IconMenu" xml:space="preserve">
-    <value>Icon</value>
-  </data>
-  <data name="SessionsHub_IconMonitor" xml:space="preserve">
-    <value>Monitor</value>
-  </data>
-  <data name="SessionsHub_Selected" xml:space="preserve">
-    <value>Selected</value>
-  </data>
-  <data name="SessionsHub_StatActive" xml:space="preserve">
-    <value>Active sessions</value>
-  </data>
-  <data name="SessionsHub_StatAll" xml:space="preserve">
-    <value>All sessions</value>
-  </data>
-  <data name="SessionsHub_StatArchived" xml:space="preserve">
-    <value>Archived sessions</value>
-  </data>
-  <data name="SessionsHub_StatAttention" xml:space="preserve">
-    <value>Need attention</value>
-  </data>
-  <data name="SessionsHub_StatPinned" xml:space="preserve">
-    <value>Pinned</value>
-  </data>
-  <data name="SessionsHub_StatsLabel" xml:space="preserve">
-    <value>Session summary</value>
-  </data>
-  <data name="SessionsHub_StatUnread" xml:space="preserve">
-    <value>Unread</value>
-  </data>
-  <data name="SessionsHub_StatWorking" xml:space="preserve">
-    <value>Working now</value>
-  </data>
-  <data name="SessionsHub_ScopeActiveWithin" xml:space="preserve">
-    <value>updated in the last {0} min</value>
-  </data>
-  <data name="SessionsHub_ScopeNameContains" xml:space="preserve">
-    <value>name contains &quot;{0}&quot;</value>
-  </data>
-  <data name="SessionsHub_ScopeGlobalIncluded" xml:space="preserve">
-    <value>global sessions included</value>
-  </data>
-  <data name="SessionsHub_ScopeGlobalExcluded" xml:space="preserve">
-    <value>global sessions excluded</value>
-  </data>
-  <data name="SessionsHub_ScopeUnknownIncluded" xml:space="preserve">
-    <value>sessions without routing information included</value>
-  </data>
-  <data name="SessionsHub_ScopeUnknownExcluded" xml:space="preserve">
-    <value>sessions without routing information excluded</value>
-  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node Sandbox</value>
   </data>
@@ -9221,5 +8252,572 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
     <value>Checking Windows sandbox support.</value>
+  </data>
+  <data name="Chat_Status_PrimaryRestored" xml:space="preserve"><value>Primary model restored</value></data>
+  <data name="Chat_Status_FallbackSwitching" xml:space="preserve"><value>Switching to a fallback model</value></data>
+  <data name="Chat_Status_FallbackModel" xml:space="preserve"><value>Using fallback model: {0}</value></data>
+  <data name="Chat_Status_StreamIncomplete" xml:space="preserve"><value>Live response is incomplete. Reconnect or reload conversation history to recover.</value></data>
+  <data name="Chat_Run_ElapsedHours" xml:space="preserve"><value>{0}h {1}m {2}s</value></data>
+  <data name="Chat_Run_ElapsedMinutes" xml:space="preserve"><value>{1}m {2}s</value></data>
+  <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}s</value></data>
+  <data name="Chat_Questions_Resolving" xml:space="preserve"><value>This question is being resolved. Refresh to check its status.</value></data>
+  <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choose a valid answer for each question.</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>Remove item</value>
+  </data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Use connected Gateway voice</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>Chat Read Aloud and automatic replies use the Gateway's configured voice. Text is sent to the Gateway and its speech provider. Keys stay on the Gateway. Local node and MCP speech are unchanged.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>No automatic local fallback. If unavailable, turn this option off to use your local provider.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>Stop</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>Generating Gateway speech…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Gateway voice: {0}.</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>Connect to a Gateway in Connection settings to use its voice.</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>This Gateway does not advertise the required speech RPCs. Update the Gateway or turn off Gateway voice.</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>Gateway voice needs operator.write authority. Review this device’s Gateway approval. Companion will not change permissions.</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>Speech text is empty or exceeds Companion’s 4096-character limit. Select a shorter message.</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>The Gateway returned empty, invalid, or oversized audio. Check its TTS configuration. Nothing was played.</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>This Gateway audio format is not supported. Configure MP3 or WAV output on the Gateway.</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway speech timed out. Synthesis may have completed. Check the Gateway before trying again; no automatic retry was made.</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway speech failed. Check its voice configuration and provider quota. No local fallback or automatic retry was made.</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows could not play the speech audio. Check your output device. No automatic retry was made.</value></data>
+<data name="SessionsHub_ActionFailed" xml:space="preserve">
+    <value>Action failed</value>
+  </data>
+<data name="SessionsHub_ActiveMinutesDisabled" xml:space="preserve">
+    <value>Applies to the Active view only.</value>
+  </data>
+<data name="SessionsHub_ActiveMinutesPlaceholder" xml:space="preserve">
+    <value>Any time</value>
+  </data>
+<data name="SessionsHub_AdminRequiredBody" xml:space="preserve">
+    <value>You can view worktrees. Creating, removing, restoring, and cleaning them requires administrator access on this Gateway.</value>
+  </data>
+<data name="SessionsHub_AdminRequiredTitle" xml:space="preserve">
+    <value>Administrator access required</value>
+  </data>
+<data name="SessionsHub_AgentOwner" xml:space="preserve">
+    <value>Agent: {0}</value>
+  </data>
+<data name="SessionsHub_Archive" xml:space="preserve">
+    <value>Archive</value>
+  </data>
+<data name="SessionsHub_ArchivedFormat" xml:space="preserve">
+    <value>Archived &quot;{0}&quot;.</value>
+  </data>
+<data name="SessionsHub_ArchiveReasonAge" xml:space="preserve">
+    <value>Archived automatically after a period of inactivity</value>
+  </data>
+<data name="SessionsHub_ArchiveReasonManual" xml:space="preserve">
+    <value>Archived by a person</value>
+  </data>
+<data name="SessionsHub_ArchiveReasonStaleDashboard" xml:space="preserve">
+    <value>Archived because its dashboard was no longer used</value>
+  </data>
+<data name="SessionsHub_AssignFailed" xml:space="preserve">
+    <value>Couldn't assign the owner</value>
+  </data>
+<data name="SessionsHub_AssignOwnerNamed" xml:space="preserve">
+    <value>Assign an owner for {0}</value>
+  </data>
+<data name="SessionsHub_ChannelWebchat" xml:space="preserve">
+    <value>Web chat</value>
+  </data>
+<data name="SessionsHub_CleanDone" xml:space="preserve">
+    <value>Cleanup finished. Removed {0} worktrees, deleted {1} orphaned checkouts, and pruned {2} snapshots.</value>
+  </data>
+<data name="SessionsHub_Cleaning" xml:space="preserve">
+    <value>Cleaning up...</value>
+  </data>
+<data name="SessionsHub_CleanNow" xml:space="preserve">
+    <value>Clean up now</value>
+  </data>
+<data name="SessionsHub_CleanStillRunning" xml:space="preserve">
+    <value>Cleanup is still running on the Gateway. Refresh later to see the result.</value>
+  </data>
+<data name="SessionsHub_CloseSearch" xml:space="preserve">
+    <value>Close search</value>
+  </data>
+<data name="SessionsHub_CountMany" xml:space="preserve">
+    <value>{0} sessions</value>
+  </data>
+<data name="SessionsHub_Create" xml:space="preserve">
+    <value>Create</value>
+  </data>
+<data name="SessionsHub_DateOlder" xml:space="preserve">
+    <value>Older</value>
+  </data>
+<data name="SessionsHub_DateToday" xml:space="preserve">
+    <value>Today</value>
+  </data>
+<data name="SessionsHub_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+<data name="SessionsHub_DeleteAllArchived" xml:space="preserve">
+    <value>Delete all archived</value>
+  </data>
+<data name="SessionsHub_DeleteAllArchivedTip" xml:space="preserve">
+    <value>Permanently delete every archived session</value>
+  </data>
+<data name="SessionsHub_DeleteAllArchivedWorktrees" xml:space="preserve">
+    <value>{0} of these sessions have managed worktrees. A worktree that is still in use or has unsaved work is preserved and listed after deletion.</value>
+  </data>
+<data name="SessionsHub_DeletedMany" xml:space="preserve">
+    <value>Deleted {0} sessions.</value>
+  </data>
+<data name="SessionsHub_DeleteFailed" xml:space="preserve">
+    <value>Couldn't delete</value>
+  </data>
+<data name="SessionsHub_DeleteGroup" xml:space="preserve">
+    <value>Delete group</value>
+  </data>
+<data name="SessionsHub_DeleteGroupTitle" xml:space="preserve">
+    <value>Delete group?</value>
+  </data>
+<data name="SessionsHub_DeleteSelected" xml:space="preserve">
+    <value>Delete selected</value>
+  </data>
+<data name="SessionsHub_DeleteSelectedBodyOne" xml:space="preserve">
+    <value>Permanently delete the selected session and its transcript? This can't be undone.</value>
+  </data>
+<data name="SessionsHub_DeleteSelectedSkipped" xml:space="preserve">
+    <value>{0} selected sessions will be skipped because they can't be deleted with your access.</value>
+  </data>
+<data name="SessionsHub_Details" xml:space="preserve">
+    <value>Details</value>
+  </data>
+<data name="SessionsHub_DisconnectedBody" xml:space="preserve">
+    <value>Connect to a Gateway to see and manage its sessions.</value>
+  </data>
+<data name="SessionsHub_EmptyActiveBody" xml:space="preserve">
+    <value>Sessions appear here when you or a channel start a conversation.</value>
+  </data>
+<data name="SessionsHub_EmptyAllBody" xml:space="preserve">
+    <value>This Gateway doesn't have any sessions yet.</value>
+  </data>
+<data name="SessionsHub_EmptyArchivedBody" xml:space="preserve">
+    <value>Sessions you archive are kept here until you restore or delete them.</value>
+  </data>
+<data name="SessionsHub_EmptyFilteredBody" xml:space="preserve">
+    <value>Try a different search or reset the filters.</value>
+  </data>
+<data name="SessionsHub_EmptyGroup" xml:space="preserve">
+    <value>No sessions in this group</value>
+  </data>
+<data name="SessionsHub_FactArchivedAt" xml:space="preserve">
+    <value>Archived on</value>
+  </data>
+<data name="SessionsHub_FactChannel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+<data name="SessionsHub_FactKey" xml:space="preserve">
+    <value>Session key</value>
+  </data>
+<data name="SessionsHub_FactPinned" xml:space="preserve">
+    <value>Pinned</value>
+  </data>
+<data name="SessionsHub_FactSessionId" xml:space="preserve">
+    <value>Session ID</value>
+  </data>
+<data name="SessionsHub_FactUpdated" xml:space="preserve">
+    <value>Last updated</value>
+  </data>
+<data name="SessionsHub_Fast" xml:space="preserve">
+    <value>Fast mode</value>
+  </data>
+<data name="SessionsHub_FiltersCount" xml:space="preserve">
+    <value>Filters ({0})</value>
+  </data>
+<data name="SessionsHub_ForceRemoveBody" xml:space="preserve">
+    <value>The Gateway couldn't safely remove &quot;{0}&quot;: {1}&#x0A;&#x0A;Removing it anyway discards any uncommitted changes in the worktree. This can't be undone.</value>
+  </data>
+<data name="SessionsHub_Group" xml:space="preserve">
+    <value>Group</value>
+  </data>
+<data name="SessionsHub_GroupByAgent" xml:space="preserve">
+    <value>Group by agent</value>
+  </data>
+<data name="SessionsHub_GroupByChannel" xml:space="preserve">
+    <value>Group by channel</value>
+  </data>
+<data name="SessionsHub_GroupByKind" xml:space="preserve">
+    <value>Group by kind</value>
+  </data>
+<data name="SessionsHub_GroupByPerson" xml:space="preserve">
+    <value>Group by owner</value>
+  </data>
+<data name="SessionsHub_GroupOptions" xml:space="preserve">
+    <value>Options for group {0}</value>
+  </data>
+<data name="SessionsHub_IncludeGlobal" xml:space="preserve">
+    <value>Include global sessions</value>
+  </data>
+<data name="SessionsHub_Inherit" xml:space="preserve">
+    <value>Use default</value>
+  </data>
+<data name="SessionsHub_KindCron" xml:space="preserve">
+    <value>Scheduled task</value>
+  </data>
+<data name="SessionsHub_KindGlobal" xml:space="preserve">
+    <value>Global session</value>
+  </data>
+<data name="SessionsHub_KindMain" xml:space="preserve">
+    <value>Main session</value>
+  </data>
+<data name="SessionsHub_KindSubagent" xml:space="preserve">
+    <value>Subagent</value>
+  </data>
+<data name="SessionsHub_KindUnknown" xml:space="preserve">
+    <value>Unrouted session</value>
+  </data>
+<data name="SessionsHub_LabelPlaceholder" xml:space="preserve">
+    <value>Use the generated title</value>
+  </data>
+<data name="SessionsHub_LevelAuto" xml:space="preserve">
+    <value>Automatic</value>
+  </data>
+<data name="SessionsHub_LevelOff" xml:space="preserve">
+    <value>Off</value>
+  </data>
+<data name="SessionsHub_LevelStream" xml:space="preserve">
+    <value>Stream as it thinks</value>
+  </data>
+<data name="SessionsHub_Limit" xml:space="preserve">
+    <value>Sessions to load</value>
+  </data>
+<data name="SessionsHub_ListLabel" xml:space="preserve">
+    <value>Sessions</value>
+  </data>
+<data name="SessionsHub_Loading" xml:space="preserve">
+    <value>Loading sessions...</value>
+  </data>
+<data name="SessionsHub_MainCannotArchive" xml:space="preserve">
+    <value>The main session can't be archived. Reset it instead to start fresh.</value>
+  </data>
+<data name="SessionsHub_Move" xml:space="preserve">
+    <value>Move</value>
+  </data>
+<data name="SessionsHub_MoveToGroupNamed" xml:space="preserve">
+    <value>Move {0} to a group</value>
+  </data>
+<data name="SessionsHub_NewGroup" xml:space="preserve">
+    <value>New group</value>
+  </data>
+<data name="SessionsHub_NewGroupEllipsis" xml:space="preserve">
+    <value>New group...</value>
+  </data>
+<data name="SessionsHub_NewGroupTitle" xml:space="preserve">
+    <value>Create a group</value>
+  </data>
+<data name="SessionsHub_NewWorktreeBase" xml:space="preserve">
+    <value>Base branch</value>
+  </data>
+<data name="SessionsHub_NewWorktreeBranchesLoading" xml:space="preserve">
+    <value>Loading branches...</value>
+  </data>
+<data name="SessionsHub_NewWorktreeCreate" xml:space="preserve">
+    <value>Create worktree</value>
+  </data>
+<data name="SessionsHub_NewWorktreeNameInvalid" xml:space="preserve">
+    <value>Use lowercase letters, numbers, and hyphens, starting with a letter or number.</value>
+  </data>
+<data name="SessionsHub_NewWorktreeNotGit" xml:space="preserve">
+    <value>This folder isn't a Git repository.</value>
+  </data>
+<data name="SessionsHub_NewWorktreeRepoPlaceholder" xml:space="preserve">
+    <value>Path to a Git repository on the Gateway host</value>
+  </data>
+<data name="SessionsHub_NextPage" xml:space="preserve">
+    <value>Next page</value>
+  </data>
+<data name="SessionsHub_NoOwners" xml:space="preserve">
+    <value>No people or agents available</value>
+  </data>
+<data name="SessionsHub_OpenInChat" xml:space="preserve">
+    <value>Open in chat</value>
+  </data>
+<data name="SessionsHub_Organization" xml:space="preserve">
+    <value>Ownership and grouping</value>
+  </data>
+<data name="SessionsHub_OwnedBy" xml:space="preserve">
+    <value>Owner: {0}</value>
+  </data>
+<data name="SessionsHub_PageOf" xml:space="preserve">
+    <value>Page {0} of {1}</value>
+  </data>
+<data name="SessionsHub_PageRangeOfServer" xml:space="preserve">
+    <value>Showing {0} to {1} of {2} loaded ({3} on the Gateway)</value>
+  </data>
+<data name="SessionsHub_PlacementActive" xml:space="preserve">
+    <value>Running on a cloud worker</value>
+  </data>
+<data name="SessionsHub_PlacementLocal" xml:space="preserve">
+    <value>Running on the Gateway</value>
+  </data>
+<data name="SessionsHub_PlacementStarting" xml:space="preserve">
+    <value>Cloud worker starting</value>
+  </data>
+<data name="SessionsHub_PreservedBusy" xml:space="preserve">
+    <value>still in use</value>
+  </data>
+<data name="SessionsHub_PreservedLocked" xml:space="preserve">
+    <value>locked by another process</value>
+  </data>
+<data name="SessionsHub_PreservedSnapshotFailed" xml:space="preserve">
+    <value>safety snapshot failed</value>
+  </data>
+<data name="SessionsHub_PreviousPage" xml:space="preserve">
+    <value>Previous page</value>
+  </data>
+<data name="SessionsHub_ReadOnlyTitle" xml:space="preserve">
+    <value>View-only access</value>
+  </data>
+<data name="SessionsHub_Refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+<data name="SessionsHub_RemoveFromGroup" xml:space="preserve">
+    <value>Remove from group</value>
+  </data>
+<data name="SessionsHub_RemoveWorktreeFailed" xml:space="preserve">
+    <value>Couldn't remove the worktree</value>
+  </data>
+<data name="SessionsHub_RemoveWorktreeTitle" xml:space="preserve">
+    <value>Remove worktree?</value>
+  </data>
+<data name="SessionsHub_RenameGroupBody" xml:space="preserve">
+    <value>Sessions in this group move to the new name.</value>
+  </data>
+<data name="SessionsHub_ResetFilters" xml:space="preserve">
+    <value>Reset filters</value>
+  </data>
+<data name="SessionsHub_RestoreWorktreeFailed" xml:space="preserve">
+    <value>Couldn't restore the worktree</value>
+  </data>
+<data name="SessionsHub_RoleAssistant" xml:space="preserve">
+    <value>Assistant</value>
+  </data>
+<data name="SessionsHub_RowHelp" xml:space="preserve">
+    <value>Expand or collapse the session's details</value>
+  </data>
+<data name="SessionsHub_Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+<data name="SessionsHub_Searching" xml:space="preserve">
+    <value>Searching transcripts...</value>
+  </data>
+<data name="SessionsHub_SearchTranscripts" xml:space="preserve">
+    <value>Search transcripts</value>
+  </data>
+<data name="SessionsHub_Select" xml:space="preserve">
+    <value>Select</value>
+  </data>
+<data name="SessionsHub_SelectedOne" xml:space="preserve">
+    <value>1 selected</value>
+  </data>
+<data name="SessionsHub_SelectPage" xml:space="preserve">
+    <value>Select this page</value>
+  </data>
+<data name="SessionsHub_ShowAll" xml:space="preserve">
+    <value>Show all sessions</value>
+  </data>
+<data name="SessionsHub_ShowDetailsNamed" xml:space="preserve">
+    <value>Show details for {0}</value>
+  </data>
+<data name="SessionsHub_SortNameAsc" xml:space="preserve">
+    <value>Name, A to Z</value>
+  </data>
+<data name="SessionsHub_SortNewest" xml:space="preserve">
+    <value>Recently updated</value>
+  </data>
+<data name="SessionsHub_StatusActive" xml:space="preserve">
+    <value>Active</value>
+  </data>
+<data name="SessionsHub_StatusArchived" xml:space="preserve">
+    <value>Archived</value>
+  </data>
+<data name="SessionsHub_StatusQueued" xml:space="preserve">
+    <value>Queued</value>
+  </data>
+<data name="SessionsHub_StopWorkerBody" xml:space="preserve">
+    <value>Stop the cloud worker for &quot;{0}&quot; and return the session to the Gateway? Work in progress on the worker is captured before it stops.</value>
+  </data>
+<data name="SessionsHub_StopWorkerDone" xml:space="preserve">
+    <value>Stopped the cloud worker for &quot;{0}&quot;.</value>
+  </data>
+<data name="SessionsHub_StopWorkerHelp" xml:space="preserve">
+    <value>Stopping returns the session to the Gateway.</value>
+  </data>
+<data name="SessionsHub_StopWorkerUnavailable" xml:space="preserve">
+    <value>This worker can't be stopped right now.</value>
+  </data>
+<data name="SessionsHub_TabSessions" xml:space="preserve">
+    <value>Sessions</value>
+  </data>
+<data name="SessionsHub_TabWorktrees" xml:space="preserve">
+    <value>Worktrees</value>
+  </data>
+<data name="SessionsHub_ThinkingHigh" xml:space="preserve">
+    <value>High</value>
+  </data>
+<data name="SessionsHub_ThinkingMedium" xml:space="preserve">
+    <value>Medium</value>
+  </data>
+<data name="SessionsHub_ThinkingXHigh" xml:space="preserve">
+    <value>Extra high</value>
+  </data>
+<data name="SessionsHub_TimeHours" xml:space="preserve">
+    <value>{0} h ago</value>
+  </data>
+<data name="SessionsHub_TimeMinutes" xml:space="preserve">
+    <value>{0} min ago</value>
+  </data>
+<data name="SessionsHub_Title" xml:space="preserve">
+    <value>Sessions</value>
+  </data>
+<data name="SessionsHub_TranscriptArchivedExcludedMany" xml:space="preserve">
+    <value>{0} archived sessions also match. Choose All or Archived to include them.</value>
+  </data>
+<data name="SessionsHub_TranscriptFailed" xml:space="preserve">
+    <value>Search didn't complete</value>
+  </data>
+<data name="SessionsHub_TranscriptIndexingBody" xml:space="preserve">
+    <value>The Gateway is still building its search index, so some matches may be missing. Try again in a moment.</value>
+  </data>
+<data name="SessionsHub_TranscriptLabel" xml:space="preserve">
+    <value>Search session transcripts</value>
+  </data>
+<data name="SessionsHub_TranscriptMatchOne" xml:space="preserve">
+    <value>1 match</value>
+  </data>
+<data name="SessionsHub_TranscriptNoMatchesBody" xml:space="preserve">
+    <value>No messages contain &quot;{0}&quot;.</value>
+  </data>
+<data name="SessionsHub_TranscriptPlaceholder" xml:space="preserve">
+    <value>Search messages</value>
+  </data>
+<data name="SessionsHub_TranscriptTitle" xml:space="preserve">
+    <value>Search transcripts</value>
+  </data>
+<data name="SessionsHub_TranscriptUnsupported" xml:space="preserve">
+    <value>This Gateway doesn't support transcript search. Update the Gateway to use it.</value>
+  </data>
+<data name="SessionsHub_UnarchivedFormat" xml:space="preserve">
+    <value>Restored &quot;{0}&quot; to active sessions.</value>
+  </data>
+<data name="SessionsHub_UnarchiveNamed" xml:space="preserve">
+    <value>Unarchive {0}</value>
+  </data>
+<data name="SessionsHub_Undo" xml:space="preserve">
+    <value>Undo</value>
+  </data>
+<data name="SessionsHub_Ungrouped" xml:space="preserve">
+    <value>Ungrouped</value>
+  </data>
+<data name="SessionsHub_Unsupported" xml:space="preserve">
+    <value>This Gateway doesn't support this action. Update the Gateway to use it.</value>
+  </data>
+<data name="SessionsHub_UpdateFailed" xml:space="preserve">
+    <value>Couldn't update the session</value>
+  </data>
+<data name="SessionsHub_WorktreeActive" xml:space="preserve">
+    <value>Active</value>
+  </data>
+<data name="SessionsHub_WorktreeColName" xml:space="preserve">
+    <value>Worktree</value>
+  </data>
+<data name="SessionsHub_WorktreeColRepo" xml:space="preserve">
+    <value>Repository</value>
+  </data>
+<data name="SessionsHub_WorktreeCreated" xml:space="preserve">
+    <value>Created the worktree.</value>
+  </data>
+<data name="SessionsHub_WorktreeFromBase" xml:space="preserve">
+    <value>{0}, based on {1}</value>
+  </data>
+<data name="SessionsHub_WorktreeOwnerManual" xml:space="preserve">
+    <value>Created manually</value>
+  </data>
+<data name="SessionsHub_WorktreeOwnerWorkboard" xml:space="preserve">
+    <value>Workboard</value>
+  </data>
+<data name="SessionsHub_WorktreeRestorable" xml:space="preserve">
+    <value>Can be restored</value>
+  </data>
+<data name="SessionsHub_WorktreeRowName" xml:space="preserve">
+    <value>{0}, branch {1}, owner {2}, {3}</value>
+  </data>
+<data name="SessionsHub_WorktreesEmptyBody" xml:space="preserve">
+    <value>Worktrees created for sessions, workboards, or by hand appear here.</value>
+  </data>
+<data name="SessionsHub_WorktreesFailed" xml:space="preserve">
+    <value>Couldn't load worktrees</value>
+  </data>
+<data name="SessionsHub_WorktreesUnsupported" xml:space="preserve">
+    <value>This Gateway doesn't manage worktrees. Update the Gateway to use them.</value>
+  </data>
+<data name="SessionsHub_Yes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+<data name="SessionsHub_DeleteRefused" xml:space="preserve">
+    <value>The Gateway didn't delete {0} of them.</value>
+  </data>
+<data name="SessionsHub_DeleteAllArchivedWorktreesOne" xml:space="preserve">
+    <value>One of these sessions has a managed worktree. A worktree that is still in use or has unsaved work is preserved and listed after deletion.</value>
+  </data>
+<data name="SessionsHub_ColorBlue" xml:space="preserve">
+    <value>Blue</value>
+  </data>
+<data name="SessionsHub_ColorFor" xml:space="preserve">
+    <value>Color for {0}</value>
+  </data>
+<data name="SessionsHub_ColorHeader" xml:space="preserve">
+    <value>Color</value>
+  </data>
+<data name="SessionsHub_ColorNone" xml:space="preserve">
+    <value>No color</value>
+  </data>
+<data name="SessionsHub_ColorPink" xml:space="preserve">
+    <value>Pink</value>
+  </data>
+<data name="SessionsHub_ColorRed" xml:space="preserve">
+    <value>Red</value>
+  </data>
+<data name="SessionsHub_IconBook" xml:space="preserve">
+    <value>Book</value>
+  </data>
+<data name="SessionsHub_IconBraces" xml:space="preserve">
+    <value>Code</value>
+  </data>
+<data name="SessionsHub_IconDefault" xml:space="preserve">
+    <value>Default icon</value>
+  </data>
+<data name="SessionsHub_IconHeader" xml:space="preserve">
+    <value>Icon</value>
+  </data>
+<data name="SessionsHub_IconMenu" xml:space="preserve">
+    <value>Icon</value>
+  </data>
+<data name="SessionsHub_Selected" xml:space="preserve">
+    <value>Selected</value>
+  </data>
+<data name="SessionsHub_StatAll" xml:space="preserve">
+    <value>All sessions</value>
+  </data>
+<data name="SessionsHub_StatAttention" xml:space="preserve">
+    <value>Need attention</value>
+  </data>
+<data name="SessionsHub_StatsLabel" xml:space="preserve">
+    <value>Session summary</value>
+  </data>
+<data name="SessionsHub_StatWorking" xml:space="preserve">
+    <value>Working now</value>
+  </data>
+<data name="SessionsHub_ScopeNameContains" xml:space="preserve">
+    <value>name contains &quot;{0}&quot;</value>
+  </data>
+<data name="SessionsHub_ScopeGlobalExcluded" xml:space="preserve">
+    <value>global sessions excluded</value>
+  </data>
+<data name="SessionsHub_ScopeUnknownExcluded" xml:space="preserve">
+    <value>sessions without routing information excluded</value>
   </data>
 </root>

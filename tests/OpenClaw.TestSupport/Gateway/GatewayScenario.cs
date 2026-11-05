@@ -39,6 +39,7 @@ public sealed partial class GatewayScenario
     public const string VoiceSessionKey = "agent:main:fixture-voice";
     public const string VoiceTitle = "Fixture: historical realtime voice";
     public const string VoiceFinalSentinel = "FIXTURE VOICE FINAL: all historical voice messages loaded.";
+    public const string OwnerProfileId = "fixture-owner";
 
     private static readonly DateTimeOffset Epoch = new(2026, 8, 20, 12, 0, 0, TimeSpan.Zero);
     private readonly Session[] _sessions;
@@ -51,6 +52,8 @@ public sealed partial class GatewayScenario
         "logs.tail",
     ];
 
+    private readonly bool _accessibilityBaseline;
+    private int _accessibilityUsageRevision;
     private readonly bool _allowAgentCreation;
     private readonly bool _publishedModelCatalog;
     private readonly bool _allowSessionMutations;
@@ -62,17 +65,18 @@ public sealed partial class GatewayScenario
     private readonly List<object> _createdAgents = [];
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
-
     private readonly string[]? _hubMethods;
     private readonly bool _hubReadOnly;
 
-    public string Name => _hubMethods is not null ? (_hubReadOnly ? SessionsHubReadOnlyName : SessionsHubName) : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _hubMethods is not null ? (_hubReadOnly ? SessionsHubReadOnlyName : SessionsHubName)
+        : _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
     public string ContractProvenance =>
         "OpenClaw.Shared GatewayProtocolContract/OpenClawGatewayClient and Protocol/gateway-protocol-snapshot.json";
     public string Sha256 { get; }
+    public string AuthenticatedProfileId { get; }
     public IReadOnlyList<string> SessionKeys { get; }
     public IReadOnlyList<string> ReadMethods { get; }
 
@@ -80,12 +84,22 @@ public sealed partial class GatewayScenario
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
         bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
-        string[]? hubMethods = null, bool hubReadOnly = false)
+        bool accessibilityBaseline = false, string[]? hubMethods = null, bool hubReadOnly = false)
     {
+        _accessibilityBaseline = accessibilityBaseline;
         _hubMethods = hubMethods;
         _hubReadOnly = hubReadOnly;
         _sessions = sessions;
         _reads = reads;
+        if (!reads.TryGetValue("users.self", out var self) ||
+            !self.TryGetProperty("profile", out var profile) ||
+            !profile.TryGetProperty("id", out var profileId) ||
+            profileId.ValueKind != JsonValueKind.String)
+            throw new ArgumentException("The fixture scenario must provide users.self with a profile id.", nameof(reads));
+        var authenticatedProfileId = profileId.GetString();
+        if (string.IsNullOrWhiteSpace(authenticatedProfileId))
+            throw new ArgumentException("The fixture scenario must provide users.self with a profile id.", nameof(reads));
+        AuthenticatedProfileId = authenticatedProfileId;
         _setup = setup;
         _allowAgentCreation = allowAgentCreation;
         _publishedModelCatalog = publishedModelCatalog;
@@ -120,6 +134,7 @@ public sealed partial class GatewayScenario
         InteractiveName => CreateInteractive(),
         SessionsHubName => CreateSessionsHub(),
         SessionsHubReadOnlyName => CreateSessionsHub(readOnly: true),
+        "accessibility-baseline" => CreateAccessibilityBaseline(),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
 
@@ -137,10 +152,12 @@ public sealed partial class GatewayScenario
     }
 
     /// <summary>Explicit synthetic setup replies only. The host never executes provider or package operations.</summary>
-    public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true)
+    public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true,
+        bool allowSessionMutations = false)
     {
         var browse = CreateBrowse();
-        return new(browse._sessions, browse._reads, responder, advertiseSetup);
+        return new(browse._sessions, browse._reads, responder, advertiseSetup,
+            allowSessionMutations: allowSessionMutations);
     }
 
     /// <summary>Synthetic historical Talk rows, not a recording of a user's conversation.</summary>
@@ -250,7 +267,7 @@ public sealed partial class GatewayScenario
         {
             ["users.self"] = JsonSerializer.SerializeToElement(new
             {
-                profile = new { id = "fixture-owner", displayName = "Fixture Owner", emails = new[] { "owner@example.test" } }
+                profile = new { id = OwnerProfileId, displayName = "Fixture Owner", emails = new[] { "owner@example.test" } }
             }),
             ["health"] = JsonSerializer.SerializeToElement(new
             {
@@ -265,13 +282,28 @@ public sealed partial class GatewayScenario
                 selectionRequired = requireAgentSelection,
                 agents = new[]
                 {
-                    new { id = "main", name = "Fixture Main", identity = new { name = "Fixture Main" } },
-                    new { id = "research", name = "Fixture Research", identity = new { name = "Fixture Research" } }
+                    new { id = "main", name = "Fixture Main", workspace = "/fixture/workspace", identity = new { name = "Fixture Main" } },
+                    new { id = "research", name = "Fixture Research", workspace = "/fixture/research", identity = new { name = "Fixture Research" } }
                 }
             }),
             ["node.list"] = JsonSerializer.SerializeToElement(new { ts = Epoch.ToUnixTimeMilliseconds(), nodes = Array.Empty<object>() }),
+            ["question.list"] = JsonSerializer.SerializeToElement(new { questions = Array.Empty<object>() }),
+            ["projects.list"] = JsonSerializer.SerializeToElement(new { projects = Array.Empty<object>(), recents = Array.Empty<object>() }),
+            ["environments.list"] = JsonSerializer.SerializeToElement(new
+            {
+                environments = new[]
+                {
+                    new { id = "gateway:fixture", type = "local", label = "Fixture Gateway", status = "available" }
+                }
+            }),
             ["node.pair.list"] = JsonSerializer.SerializeToElement(new { pending = Array.Empty<object>(), paired = Array.Empty<object>() }),
             ["device.pair.list"] = JsonSerializer.SerializeToElement(new { pending = Array.Empty<object>(), paired = Array.Empty<object>() }),
+            ["question.list"] = JsonSerializer.SerializeToElement(new { questions = Array.Empty<object>() }),
+            ["channels.status"] = JsonSerializer.SerializeToElement(new
+            {
+                ts = Epoch.ToUnixTimeMilliseconds(), channelOrder = Array.Empty<string>(),
+                channels = new { }, channelAccounts = new { }
+            }),
             ["usage.status"] = JsonSerializer.SerializeToElement(new
             {
                 updatedAt = Epoch.ToUnixTimeMilliseconds(), providers = Array.Empty<object>()
@@ -308,6 +340,27 @@ public sealed partial class GatewayScenario
             publishedModelCatalog: publishedModelCatalog);
     }
 
+    /// <summary>
+    /// Creates a browse fixture with a profile whose avatar eligibility is resolved by the Gateway.
+    /// It intentionally omits hasAvatar; when email is null, it also omits emails.
+    /// </summary>
+    public static GatewayScenario CreateBrowseWithOwnerProfile(string profileId, string displayName, string? email = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        var browse = CreateBrowse();
+        var reads = browse._reads.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        var profile = new JsonObject
+        {
+            ["id"] = profileId,
+            ["displayName"] = displayName,
+        };
+        if (email is not null)
+            profile["emails"] = new JsonArray(JsonValue.Create(email));
+        reads["users.self"] = JsonSerializer.SerializeToElement(new JsonObject { ["profile"] = profile });
+        return new GatewayScenario(browse._sessions, reads);
+    }
+
     internal object CreateHello(string connectionId, string role = "operator")
     {
         if (role is not ("operator" or "node"))
@@ -342,7 +395,7 @@ public sealed partial class GatewayScenario
                     : IsInteractive
                         ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
                         : _hubMethods is not null ? (_hubReadOnly ? new[] { "operator.read" } : new[] { "operator.admin", "operator.write", "operator.read" })
-                        : _contextUsage is not null ? new[] { "operator.read", "operator.write" }
+                        : _contextUsage is not null || _accessibilityBaseline ? new[] { "operator.read", "operator.write" }
                         : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null
                             ? new[] { "operator.admin", "operator.read" }
                             : new[] { _setup is null ? "operator.read" : "operator.admin" }
@@ -366,8 +419,6 @@ public sealed partial class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters, Func<string, bool>? containsModelSession = null)
     {
-        if (RespondSessionsHub(method, parameters) is { } hubReply)
-            return hubReply;
         if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
             return RespondCron(method, parameters);
         if (_contextUsage is not null && method == "chat.send")
@@ -432,7 +483,8 @@ public sealed partial class GatewayScenario
             "sessions.preview" => Preview(parameters),
             "chat.history" => History(parameters),
             "models.list" => Models(parameters, containsModelSession ?? ContainsSession),
-            "usage.cost" => Cost(parameters),
+            "usage.cost" => _accessibilityBaseline ? AccessibilityCost(parameters) : Cost(parameters),
+            "usage.status" when _accessibilityBaseline => AccessibilityStatus(parameters),
             _ when _reads.ContainsKey(method) => Read(method, parameters),
             _ => throw new FixtureRequestException("METHOD_NOT_FOUND", "Unknown fixture Gateway method.", unexpected: true)
         };
@@ -450,24 +502,14 @@ public sealed partial class GatewayScenario
 
     private object ListSessions(JsonElement p)
     {
-        ValidateProperties(p, "agentId", "limit", "offset", "activeMinutes", "includeGlobal", "includeUnknown", "includeDerivedTitles",
-            "includeLastMessage", "archived", "search", "source", "excludeDock");
+        ValidateProperties(p, "agentId", "limit", "activeMinutes", "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage", "archived");
         var agent = OptionalString(p, "agentId");
         if (agent is not null && agent is not ("main" or "research"))
             throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agentId.");
         var limit = PositiveInt(p, "limit", int.MaxValue);
-        var offset = p.TryGetProperty("offset", out var offsetValue)
-            ? offsetValue.ValueKind == JsonValueKind.Number && offsetValue.TryGetInt32(out var parsedOffset) && parsedOffset >= 0
-                ? parsedOffset : throw new FixtureRequestException("INVALID_PARAMS", "offset must be a nonnegative integer.")
-            : 0;
         var activeMinutes = PositiveInt(p, "activeMinutes", int.MaxValue);
-        foreach (var flag in new[] { "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage", "excludeDock" })
+        foreach (var flag in new[] { "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage" })
             OptionalBoolean(p, flag);
-        var search = p.TryGetProperty("search", out var searchValue) && searchValue.ValueKind == JsonValueKind.String
-            ? searchValue.GetString()?.Trim() : null;
-        bool? archived = p.TryGetProperty("archived", out var archivedValue)
-            && archivedValue.ValueKind == JsonValueKind.String && archivedValue.GetString() == "all"
-                ? null : OptionalBoolean(p, "archived") ?? false;
         JsonObject[] rows;
         lock (_sessionChanges)
         {
@@ -476,11 +518,8 @@ public sealed partial class GatewayScenario
                 .Select(s => _sessionChanges.TryGetValue(s.Key, out var changed)
                     ? changed?.DeepClone().AsObject() : JsonSerializer.SerializeToNode(s.Row)!.AsObject())
                 .OfType<JsonObject>()
-                .Where(row => archived is null || (row["archived"]?.GetValue<bool>() ?? false) == archived)
-                .Where(row => string.IsNullOrEmpty(search)
-                    || row["label"]?.GetValue<string>().Contains(search, StringComparison.OrdinalIgnoreCase) == true
-                    || row["key"]!.GetValue<string>().Contains(search, StringComparison.OrdinalIgnoreCase))
-                .Skip(offset).Take(limit).ToArray();
+                .Where(row => (row["archived"]?.GetValue<bool>() ?? false) == (OptionalBoolean(p, "archived") ?? false))
+                .Take(limit).ToArray();
         }
         var listing = JsonSerializer.SerializeToElement(new
         {
@@ -493,8 +532,13 @@ public sealed partial class GatewayScenario
 
     private object CreateConversation(JsonElement p)
     {
-        ValidateProperties(p, "parentSessionKey", "emitCommandHooks", "succeedsParent");
-        var parent = FindSession(RequiredString(p, "parentSessionKey"));
+        ValidateProperties(p, "parentSessionKey", "emitCommandHooks", "succeedsParent", "agentId");
+        var parent = p.TryGetProperty("parentSessionKey", out _)
+            ? FindSession(RequiredString(p, "parentSessionKey"))
+            : p.TryGetProperty("agentId", out _)
+                ? _sessions.FirstOrDefault(session => session.AgentId == RequiredString(p, "agentId"))
+                    ?? throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agent.")
+                : FindSession(MainSessionKey);
         OptionalBoolean(p, "emitCommandHooks");
         if (OptionalBoolean(p, "succeedsParent") == true)
             throw new FixtureRequestException("INVALID_PARAMS", "The fixture only supports parallel session creation.");
@@ -643,11 +687,21 @@ public sealed partial class GatewayScenario
 
     private JsonElement Read(string method, JsonElement p)
     {
-        ValidateProperties(p, method == "health" ? ["deep", "probe"] : []);
+        ValidateProperties(p, method switch
+        {
+            "health" => ["deep", "probe"],
+            "channels.status" => ["probe", "timeoutMs"],
+            _ => []
+        });
         if (method == "health")
         {
             OptionalBoolean(p, "deep");
             OptionalBoolean(p, "probe");
+        }
+        else if (method == "channels.status")
+        {
+            OptionalBoolean(p, "probe");
+            PositiveInt(p, "timeoutMs", 10000);
         }
         return _reads[method];
     }
@@ -665,7 +719,8 @@ public sealed partial class GatewayScenario
         or "sessions.compaction.branch" or "node.invoke" or "exec.approval.resolve" or "node.rename"
         or "node.pair.approve" or "node.pair.reject" or "node.pair.remove" or "device.pair.approve"
         or "device.pair.reject" or "device.token.rotate" or "device.token.revoke" or "update.run"
-        or "cron.add" or "cron.update" or "cron.remove" or "cron.run" or "skills.install" or "skills.update";
+        or "cron.add" or "cron.update" or "cron.remove" or "cron.run"
+        or "projects.add";
 
     internal static void ValidateProperties(JsonElement p, params string[] names)
     {

@@ -35,9 +35,9 @@ public sealed class ExecApprovalV2DialogPromptHandler : IExecApprovalV2PromptHan
     private static async Task<ExecApprovalPromptOutcome> ShowDialogAsync(
         DispatcherQueue dispatcherQueue, ExecApprovalPromptView view, CancellationToken cancellationToken)
     {
-        // Already denied by the core; do not flash a window for a dead request.
+        // Already cancelled by the core; do not flash a window for a dead request.
         if (cancellationToken.IsCancellationRequested)
-            return ExecApprovalPromptOutcome.Deny;
+            return ExecApprovalPromptOutcome.Failed;
 
         var dialog = new ExecApprovalDialog(view);
         using var registration = cancellationToken.Register(() =>

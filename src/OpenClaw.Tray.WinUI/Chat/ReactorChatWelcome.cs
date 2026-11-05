@@ -106,18 +106,16 @@ internal static class ReactorChatWelcome
     {
         var button = Button(content ?? TextBlock(text).TextWrapping(TextWrapping.Wrap), action)
             .IsEnabled(enabled).MinHeight(40).BorderThickness(0)
-            .AutomationId(id).AutomationName(text);
-        if (content is not null)
-            button = button
-                .HorizontalContentAlignment(HorizontalAlignment.Stretch)
-                .HelpText(lastUsed ?? "")
-                .ToolTip(string.IsNullOrEmpty(lastUsed) ? text : $"{text}\n{lastUsed}");
-        return button
             .Resources(resources =>
             {
                 ChatVisuals.ToolbarButtonResources(resources);
                 resources.Set("ButtonBackground", Theme.Ref("ControlAltFillColorSecondaryBrush"));
             })
-            .HAlign(HorizontalAlignment.Stretch);
+            .HAlign(HorizontalAlignment.Stretch)
+            .AutomationId(id).AutomationName(text);
+        return content is null ? button : button
+            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .HelpText(lastUsed ?? "")
+            .ToolTip(string.IsNullOrEmpty(lastUsed) ? text : $"{text}\n{lastUsed}");
     }
 }

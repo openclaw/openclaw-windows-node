@@ -20,6 +20,14 @@ If the validation host is macOS, read [PARALLELS.md](PARALLELS.md) for the optio
 
 ## Required validation
 
+First follow [execution-target routing](../../../docs/TEST_COVERAGE.md#choose-the-local-execution-target):
+app-only proof defaults to the isolated fixture Gateway; native-Gateway E2E
+defaults to [named side-by-side patches](../native-gateway-from-source/SKILL.md#default-multi-instance-native-gateway-testing)
+on an authorized, capable Windows client host, locally or in future cloud lanes.
+Use separate VMs for OS/clean-image isolation or unavailable host capabilities,
+not one VM per Gateway. Preserve required real MXC/WSL proof and explicit
+authority for existing shared Gateways.
+
 Select the changed contract before running checks. Use the
 [read-only validation plan](../../../docs/TEST_COVERAGE.md#explain-the-validation-plan)
 to distinguish hosted lanes, mandatory local code-change closeout, and custom
@@ -59,6 +67,12 @@ Gateway pairing/provider proof. An interactive `ready` result is not a passed
 scenario.
 
 For live app proof outside that fixture, select the Gateway before launching.
+For an isolated build that needs a real native Gateway, the default is the
+[task-owned build and named-patch workflow](../native-gateway-from-source/SKILL.md#prepare-an-isolated-test-build):
+build Companion in its own worktree, prepare a uniquely named Gateway patch in
+a task-owned work root, and launch with that patch and separate app data.
+The launcher's shared `npm-latest` / `packaged` defaults are not per-test
+instances; `-Isolated` alone does not create a unique Gateway.
 The [local launcher](../../../run-app-local.ps1) has these distinct effects:
 
 | Option | Actual boundary |

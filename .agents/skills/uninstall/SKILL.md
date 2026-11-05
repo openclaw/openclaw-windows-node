@@ -11,6 +11,15 @@ Creating or updating cleanup tooling is not permission to uninstall anything.
 Inventory first, show the exact proposed targets and preserved resources, then
 ask for confirmation before stopping processes or changing installed state.
 
+For a named side-by-side development patch, use the standalone script's
+`-IsolatedOnly` mode with exact package/layout/Companion identity and explicit
+disposable directories, not ordinary default cleanup. Preview first; apply
+requires `-ConfirmDestructive` and the unchanged preview's
+`-ExpectedPreviewSha256`. The caller must separately stop its verified owned
+Companion; this mode never stops processes or removes other installs, WSL or
+external caches. See [isolated patch cleanup](HARD-CLEAN.md#one-owned-development-patch-and-disposable-companion-data)
+for required inventory, lifecycle checks, commands and concurrent-session limits.
+
 | User intent | Procedure |
 | --- | --- |
 | Exercise the dev build's WSL uninstall engine | **Dev-build engine uninstall** below. |

@@ -635,13 +635,19 @@ public class WindowsNodeClient : WebSocketClientBase
                     requestId,
                     response.Ok,
                     response.Payload,
-                    response.Error),
+                    response.Error,
+                    response.ErrorCode),
                 error => SendNodeInvokeResultAsync(requestId, false, null, error),
                 invocation!),
             CancellationToken.None);
     }
     
-    private async Task SendNodeInvokeResultAsync(string requestId, bool success, object? payload, string? error)
+    private async Task SendNodeInvokeResultAsync(
+        string requestId,
+        bool success,
+        object? payload,
+        string? error,
+        string? errorCode = null)
     {
         // Gateway expects: id (not requestId), nodeId, ok, payload (not result)
         var response = new
@@ -655,7 +661,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 nodeId = _deviceIdentity.DeviceId,  // Our device ID
                 ok = success,
                 payload = payload,
-                error = error == null ? null : new { message = error }
+                error = error == null ? null : new { code = errorCode, message = error }
             }
         };
         
@@ -1837,7 +1843,7 @@ public class WindowsNodeClient : WebSocketClientBase
             id = response.Id,
             ok = response.Ok,
             payload = response.Payload,
-            error = response.Ok ? null : new { message = response.Error }
+            error = response.Ok ? null : new { code = response.ErrorCode, message = response.Error }
         };
         
         await SendRawAsync(JsonSerializer.Serialize(msg, s_ignoreNullOptions));

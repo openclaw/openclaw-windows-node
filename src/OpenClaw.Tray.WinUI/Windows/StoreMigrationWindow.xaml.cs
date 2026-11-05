@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -157,6 +158,15 @@ public sealed partial class StoreMigrationWindow : Window
             StoreMigrationStage.InspectionFailed => "InspectionFailed",
             _ => "Preparing"
         }));
+        if (!string.IsNullOrWhiteSpace(_workflow.RemovalSourceDisplayName) &&
+            !string.IsNullOrWhiteSpace(_workflow.RemovalStoreDisplayName) &&
+            !string.IsNullOrWhiteSpace(_workflow.RemovalStoreVersion))
+        {
+            Status.Text = string.Format(CultureInfo.CurrentCulture,
+                LocalizationHelper.GetString("Migration2_AwaitingRemovalWithApps"),
+                _workflow.RemovalSourceDisplayName, _workflow.RemovalStoreDisplayName,
+                _workflow.RemovalStoreVersion);
+        }
         var warningKey = _workflow.Stage switch
         {
             StoreMigrationStage.Consent => "Consent",
