@@ -23,6 +23,15 @@ public sealed partial class GatewayFixtureUiTests
                 "Settings page mounted");
             var window = Assert.Single(AppWindows(run), candidate => candidate.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsPageMarker")) is not null);
+            if (FindById(run, "AppNotificationInfoBar") is { Current.IsOffscreen: false } notification)
+            {
+                var close = notification.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "CloseButton"));
+                Assert.NotNull(close);
+                Invoke(close);
+                await WaitUiAsync(run, () => FindById(run, "AppNotificationInfoBar") is not
+                    { Current.IsOffscreen: false }, "notification dismissed before Settings capture");
+            }
             // WinUI Borders do not expose automation peers. Observe their real
             // heading and action controls instead of the decorative containers.
             var heading = window.FindFirst(TreeScope.Descendants, new AndCondition(
@@ -31,14 +40,13 @@ public sealed partial class GatewayFixtureUiTests
             Assert.NotNull(heading);
             var setup = FindById(run, "OpenLocalGatewaySetupButton");
             Assert.NotNull(setup);
-            ScrollSettingsSectionIntoView(heading);
-            await WaitUiAsync(run, () => !heading.Current.IsOffscreen && !setup.Current.IsOffscreen,
-                "Local Gateway heading and setup action visible");
-
             var developer = window.FindFirst(TreeScope.Descendants, new AndCondition(
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text),
                 new PropertyCondition(AutomationElement.NameProperty, "Developer")));
             Assert.NotNull(developer);
+            await ScrollSettingsSectionIntoViewAsync(run, developer);
+            await WaitUiAsync(run, () => !heading.Current.IsOffscreen && !setup.Current.IsOffscreen,
+                "Local Gateway heading and setup action visible");
             var asserted = new List<AutomationElement> { heading, setup, developer };
             // Onboarding remains an active-WSL action. Coexistence exposes removal,
             // not onboarding of the currently selected native Gateway.
@@ -103,9 +111,9 @@ public sealed partial class GatewayFixtureUiTests
         });
     }
 
-    private static void ScrollSettingsSectionIntoView(AutomationElement section)
+    private static async Task ScrollSettingsSectionIntoViewAsync(GatewayFixtureRun run, AutomationElement sectionEnd)
     {
-        for (var parent = TreeWalker.ControlViewWalker.GetParent(section); parent is not null;
+        for (var parent = TreeWalker.ControlViewWalker.GetParent(sectionEnd); parent is not null;
             parent = TreeWalker.ControlViewWalker.GetParent(parent))
         {
             if (!parent.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern))
@@ -113,12 +121,21 @@ public sealed partial class GatewayFixtureUiTests
             var scroll = (ScrollPattern)pattern;
             if (!scroll.Current.VerticallyScrollable)
                 return;
-            var viewport = parent.Current.BoundingRectangle;
-            Assert.InRange(scroll.Current.VerticalViewSize, 0.01, 99.99);
-            var travel = viewport.Height * (100 / scroll.Current.VerticalViewSize - 1);
-            var offset = travel * scroll.Current.VerticalScrollPercent / 100
-                + section.Current.BoundingRectangle.Top - viewport.Top - 32;
-            scroll.SetScrollPercent(ScrollPattern.NoScroll, Math.Clamp(offset / travel * 100, 0, 100));
+            var scrollOwner = parent;
+            // Observe the section's trailing heading instead of deriving offsets
+            // from clipped UIA bounds, which differ with the mounted WSL cards.
+            await WaitUiAsync(run, () =>
+            {
+                var viewport = scrollOwner.Current.BoundingRectangle;
+                var end = sectionEnd.Current.BoundingRectangle;
+                if (!sectionEnd.Current.IsOffscreen && end.Height > 0
+                    && end.Top >= viewport.Top && end.Bottom <= viewport.Bottom)
+                    return true;
+                Assert.True(scroll.Current.VerticalScrollPercent < 100,
+                    "Reached the end of Settings without revealing the complete Gateway section.");
+                scroll.Scroll(ScrollAmount.NoAmount, ScrollAmount.SmallIncrement);
+                return false;
+            }, "complete Gateway section through the Developer heading visible");
             return;
         }
         throw new InvalidOperationException("The mounted Settings section has no accessible scroll owner.");

@@ -30,6 +30,7 @@ internal static class OwnedTrayTooltipCapture
             Icon? icon = null;
             await run.WaitForAsync(() => Task.FromResult((icon = FindIcon(run)) is not null),
                 "notification icon registered by the owned app");
+            WriteShellObservation(run, icon!.Value);
             if (!IsIconVisible(icon!.Value))
             {
                 var tray = AutomationElement.FromHandle(FindWindow("Shell_TrayWnd", null));
@@ -92,8 +93,36 @@ internal static class OwnedTrayTooltipCapture
 
     private static bool IsIconVisible(Icon icon)
     {
+        using var dpi = new PhysicalDpiScope();
         var element = AutomationElement.FromPoint(new System.Windows.Point(icon.Bounds.CenterX, icon.Bounds.CenterY));
-        return !element.Current.IsOffscreen && element.Current.Name.StartsWith("OpenClaw", StringComparison.Ordinal);
+        GetWindowThreadProcessId(FindWindow("Shell_TrayWnd", null), out var shellPid);
+        // The icon is already bound by HWND and ID. Shell accessibility providers
+        // need not expose its tooltip as the hit-tested element's name.
+        return !element.Current.IsOffscreen && shellPid != 0 && element.Current.ProcessId == shellPid;
+    }
+
+    private static void WriteShellObservation(GatewayFixtureRun run, Icon icon)
+    {
+        using var dpi = new PhysicalDpiScope();
+        var taskbarHandle = FindWindow("Shell_TrayWnd", null);
+        Assert.NotEqual(IntPtr.Zero, taskbarHandle);
+        var taskbar = AutomationElement.FromHandle(taskbarHandle);
+        var hit = AutomationElement.FromPoint(new System.Windows.Point(icon.Bounds.CenterX, icon.Bounds.CenterY));
+        var buttons = taskbar.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button))
+            .Cast<AutomationElement>().Select(element => new
+            {
+                element.Current.Name, element.Current.AutomationId, element.Current.ProcessId,
+                element.Current.IsOffscreen
+            }).ToArray();
+        File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "notification-area.json"),
+            JsonSerializer.Serialize(new
+            {
+                run.AppProcessId, iconWindow = $"0x{icon.Window:X}",
+                x = icon.Bounds.CenterX, y = icon.Bounds.CenterY,
+                hit = new { hit.Current.Name, hit.Current.AutomationId, hit.Current.ProcessId,
+                    hit.Current.IsOffscreen }, buttons
+            }, new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private static AutomationElement? FindTooltip() =>
