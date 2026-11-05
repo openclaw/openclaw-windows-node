@@ -9,6 +9,7 @@ namespace OpenClaw.E2ETests.Setup;
 /// <summary>Bounded CDP adapter for the disposable Gateway proof; never logs credential-bearing URLs.</summary>
 internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
 {
+    internal const string ProfileDirectoryPrefix = "search-browser-";
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(100);
     private readonly Process _process;
@@ -33,7 +34,7 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
         var edge = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
             "Microsoft", "Edge", "Application", "msedge.exe");
         if (!File.Exists(edge)) throw new FileNotFoundException("Preinstalled Edge is required for browser-route proof.", edge);
-        var profile = Path.Combine(dataDirectory, $"search-browser-{Guid.NewGuid():N}");
+        var profile = Path.Combine(dataDirectory, $"{ProfileDirectoryPrefix}{Guid.NewGuid():N}");
         Directory.CreateDirectory(profile);
         var start = new ProcessStartInfo(edge)
         {

@@ -993,7 +993,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         return !file.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
             .Any(segment => segment.Equals("gateways", StringComparison.OrdinalIgnoreCase) ||
-                segment.StartsWith("search-browser-", StringComparison.OrdinalIgnoreCase));
+                segment.StartsWith(GatewaySearchBrowserProof.ProfileDirectoryPrefix, StringComparison.OrdinalIgnoreCase));
     }
 
     private const string TrayExecutableOverrideEnvironmentVariable = "OPENCLAW_E2E_TRAY_EXE";
