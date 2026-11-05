@@ -94,6 +94,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     public int StartupRejectionsRemaining { get; set; }
     public int StartupRetryAfterMs { get; set; } = 100;
     public Action? StartupRejected { get; set; }
+    public bool CloseAfterStartupRejection { get; set; } = true;
 
     /// <summary>Connect attempts that presented no device token, so the shared credential was judged.</summary>
     public int SharedCredentialConnects => Volatile.Read(ref _sharedCredentialConnects);
@@ -714,8 +715,12 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 }, connection.Token);
                                 Complete(requestIndex, "error:UNAVAILABLE");
                                 StartupRejected?.Invoke();
-                                await socket.CloseOutputAsync((WebSocketCloseStatus)1013, "gateway starting", connection.Token);
-                                return;
+                                if (CloseAfterStartupRejection)
+                                {
+                                    await socket.CloseOutputAsync((WebSocketCloseStatus)1013, "gateway starting", connection.Token);
+                                    return;
+                                }
+                                continue;
                             }
                             var role = Authenticate(parameters, nonce);
                             await SendAsync(socket, sendLock, new

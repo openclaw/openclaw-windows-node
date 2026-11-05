@@ -1041,8 +1041,11 @@ public class OpenClawGatewayClientTests
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
-    [Fact]
-    public async Task ConfirmedMutation_RefusesCapturedEpochAfterConnectionChanged()
+    [Theory]
+    [InlineData("delete")]
+    [InlineData("wizard")]
+    [InlineData("config.patch")]
+    public async Task ConfirmedMutation_RefusesCapturedEpochAfterConnectionChanged(string request)
     {
         using var server = new LoopbackWebSocketServer();
         using var identity = new TempDirectory("session-mutation-");
@@ -1051,9 +1054,15 @@ public class OpenClawGatewayClientTests
         using var client = helper.Client;
         await client.ConnectAsync();
         helper.MarkHandshakeReady();
-        var epoch = client.SessionMutationConnectionEpoch!.Value;
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            client.DeleteSessionConfirmedAsync("agent:test:session", epoch - 1));
+        var stale = client.SessionMutationConnectionEpoch!.Value - 1;
+        using var emptyConfig = JsonDocument.Parse("{}");
+        Task send = request switch
+        {
+            "delete" => client.DeleteSessionConfirmedAsync("agent:test:session", stale),
+            "wizard" => client.SendWizardRequestOnConnectionAsync("config.get", new { }, stale),
+            _ => client.PatchConfigOnConnectionAsync(emptyConfig.RootElement, "h1", stale),
+        };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => send);
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 

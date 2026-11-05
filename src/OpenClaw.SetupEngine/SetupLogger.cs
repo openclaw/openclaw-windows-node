@@ -94,6 +94,26 @@ public sealed partial class SetupLogger : IDisposable
         });
     }
 
+    public void CommandExitObserved(int exitCode, TimeSpan elapsed)
+        => Write(LogLevel.Debug, "cmd.exit: direct child exit observed", new
+        {
+            exit_code = exitCode,
+            elapsed_ms = elapsed.TotalMilliseconds
+        });
+
+    public void CommandCancelled(
+        string phase, bool directChildExitObserved, bool stdoutEofObserved,
+        bool stderrEofObserved, bool timedOut, TimeSpan elapsed)
+        => Write(LogLevel.Warn, "cmd.cancelled: caller cancellation observed", new
+        {
+            phase,
+            direct_child_exit_observed = directChildExitObserved,
+            stdout_eof_observed = stdoutEofObserved,
+            stderr_eof_observed = stderrEofObserved,
+            timed_out = timedOut,
+            elapsed_ms = elapsed.TotalMilliseconds
+        });
+
     public void Decision(string description, string chosen)
         => Write(LogLevel.Info, $"decision: {description} → {chosen}");
 

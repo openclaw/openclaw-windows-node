@@ -112,7 +112,8 @@ public sealed class PermissionSettingsWriterRoutingTests
         Assert.Contains("WorkspaceSearchFlyout", xaml);
         Assert.DoesNotContain("Navigate(", open);
         Assert.Contains("_settings.OpenCommandCenter()", open);
-        Assert.Contains("WorkspaceSearchFlyout.ShowAt", open);
+        Assert.Contains("_workspaceSearchShow.ShowAt(anchor)", open);
+        Assert.Contains("new FlyoutShowRequest(WorkspaceSearchFlyout, OpenCommandCenter)", workspace);
         Assert.Contains("Root.IsLoaded", open);
         Assert.Contains("OpenModalDialog() is { } dialog", open);
         Assert.Contains("_commandCenterPending", open);

@@ -233,6 +233,9 @@ chrome. Sessions retains its independent subtle Add button.
 NavigationView has zero compact width. Home's icon is inline native content
 so it is not clipped by WinUI's zero-width icon column. The mode stays `Left`. Home,
 sessions, and the entire footer disappear, and content fills the vacated width.
+While the pane is hidden, the same footer control shows only Dashboard and the
+bell in the native `TitleBar` right header; it collapses again when the pane
+reopens or Settings is shown, so the actions never appear twice.
 The native 160ms slide goes directly to zero width; `PaneClosed` hides offscreen
 controls without a second layout step. Native motion preferences still apply.
 Both toggle states share a stable overlay position outside the animated pane,
@@ -247,15 +250,18 @@ text-button padding must not squeeze the glyph inside the fixed 40 DIP target.
 The companion uses a native TitleBar titled OpenClaw Settings with shared claw
 artwork. Search, Back, and Forward live beside the toggle in its stable sidebar
 toolbar. The native pane reserves 56 DIP above its items, including in compact mode.
-Connection status occupies the footer bar above Diagnostics and Settings;
-compact mode retains its icon-only target. Settings has no notification button.
-Workspace's bell opens `NotificationFlyoutContent` using the existing
+Chat and Settings end with one shared `WorkspacePaneFooter`: account, Dashboard,
+and the notifications bell, always visible. Settings' compact rail stacks the
+same three as 40 DIP icons, with connection status as a dot on the avatar.
+Diagnostics and App settings live at the end of "This Computer". Dashboard and
+Ctrl+Shift+D open the Gateway Dashboard home through `GatewayDashboardLauncher`.
+Each bell opens `NotificationFlyoutContent` using the existing
 `AppNotificationService`, without replacing chat or changing history. Its
 explicit Open notifications link and existing deep links retain the full page.
-Owner's connection entry shows the same `ConnectionStatusPresenter` label/accent
-as Settings, refreshed both on menu opening and every manager snapshot through
+The account menu's connection entry shows the `ConnectionStatusPresenter`
+label/accent, refreshed both on menu opening and every manager snapshot through
 `WindowManager`, including richer changes that keep the same legacy status.
-It opens `GatewayStatusContent`, shared with Settings,
+It opens `GatewayStatusContent` at the invoking account button
 using the current manager snapshot and existing reconnect/Connection actions.
 The flyout contents own named-control application; windows own popup lifetime
 and route side effects. Notification subscriptions detach when the flyout closes.
@@ -871,7 +877,11 @@ combined current-node-attempt check. A per-gateway, per-role attempt guard
 (reset on handshake success / node pairing) prevents
 clear→reconnect→mismatch loops.
 
-**Security - trust gate and endpoint provenance.** Clearing a device token downgrades to the more powerful shared/bootstrap credential, so `IsRecoverySafeEndpoint` restricts recovery to trusted endpoints: an owned SSH tunnel, a validated TLS (`wss`/`https`) endpoint, or a setup-managed WSL loopback gateway proven by `ManagedLocalGatewayPortProvenanceService`. The managed-local proof accepts either the existing verified Windows WSL relay identity or a relayless mirrored-networking endpoint with a complete empty Windows listener snapshot, positive expected-distro systemd MainPID ownership, and an immediate second complete empty snapshot. Strong credentials repeat that relayless proof immediately before use. Loopback is not treated as identity by itself: incomplete capture or any unknown, conflicting, or changed Windows listener blocks fallback, so a wrong local process cannot return a device-token mismatch to induce disclosure of the shared credential. A plain `ws://` remote endpoint is never eligible.
+**Security - trust gate and endpoint provenance.** Clearing a device token downgrades to the more powerful shared/bootstrap credential, so `IsRecoverySafeEndpoint` restricts recovery to an owned SSH tunnel, a validated TLS (`wss`/`https`) endpoint, or a setup-managed WSL loopback gateway checked by `ManagedLocalGatewayPortProvenanceService`. The managed-local check accepts either a `wslrelay` listener whose expected distro reports systemd MainPID ownership of the guest port, or a relayless mirrored-networking endpoint with a complete empty Windows listener snapshot, positive expected-distro systemd MainPID ownership, and an immediate second complete empty snapshot.
+
+The relay binary is not signature-checked because some genuine WSL builds ship it unsigned. A relay outside the standard WSL install locations (Program Files\WSL, System32, or the root of Microsoft's WSL Store package) is accepted when the distro check succeeds, with a logged warning and provenance detail naming the path and expected locations. The guest check does **not** prove the Windows listener forwards to that distro. A local program named `wslrelay.exe` at a nonstandard path could pass while the expected gateway listens in WSL and could receive shared or bootstrap credentials. Accepting it with a warning is an explicit compatibility and security tradeoff.
+
+Strong credential handoffs repeat the classification before use. Interactive HTTP and dashboard handoff also requires all relevant Windows relay listeners to share a complete PID, start time, and executable path; relayless proof retains its empty-snapshot exception. Incomplete capture, an unknown or conflicting listener, or a listener change during the check blocks fallback. A plain `ws://` remote endpoint is never eligible.
 
 ### Automatic managed-local WSL gateway repair (tray)
 

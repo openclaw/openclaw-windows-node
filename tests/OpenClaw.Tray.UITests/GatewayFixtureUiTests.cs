@@ -22,6 +22,12 @@ public sealed class GatewayFixtureUiFactAttribute : FactAttribute
 [Collection("Gateway fixture UI")]
 public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 {
+    private const string HandoffSettleTimeoutVariable = "OPENCLAW_GATEWAY_FIXTURE_HANDOFF_TIMEOUT_SECONDS";
+    // Sender process, app relaunch, verify RPC and receipt persistence; hosted runners exceeded 20 s.
+    private static readonly TimeSpan HandoffSettleTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(HandoffSettleTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(45);
+
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     public async Task HomeSidebar_CustomizeDoesNotNavigate_AndHomeRestoresCanonicalConversation()

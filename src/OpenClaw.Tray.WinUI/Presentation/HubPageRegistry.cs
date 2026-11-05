@@ -1,3 +1,11 @@
+// <summary>
+// Defines Hub page identities, command metadata, route normalization, and command search.
+// UI hosts resolve tags through this registry instead of duplicating navigation conventions.
+// Usage:
+//   HubPageKind? page = HubPageRegistry.ResolvePage("local-ai");
+//   var commands = HubPageRegistry.BuildCommands(context);
+// </summary>
+
 using System.Collections.Immutable;
 using System.Globalization;
 #if !OPENCLAW_TRAY_TESTS
@@ -6,10 +14,12 @@ using OpenClawTray.Pages;
 
 namespace OpenClawTray.Presentation;
 
+/// <summary>Enumerates pages available from the companion Hub.</summary>
 internal enum HubPageKind
 {
     Connection,
     LocalAi,
+    DefaultModel,
     Channels,
     Instances,
     Config,
@@ -42,17 +52,21 @@ internal enum HubSettingToggle
     BrowserControl
 }
 
+/// <summary>Describes an action initiated by a Hub command.</summary>
 internal sealed record HubCommandAction(
     HubCommandActionKind Kind,
     string? Value = null,
     HubSettingToggle? Toggle = null)
 {
+    /// <summary>Creates a navigation action for a companion tag.</summary>
     public static HubCommandAction Navigate(string tag) =>
         new(HubCommandActionKind.Navigate, tag);
 
+    /// <summary>Creates an action that opens a Dashboard path.</summary>
     public static HubCommandAction OpenDashboard(string? path = null) =>
         new(HubCommandActionKind.OpenDashboard, path);
 
+    /// <summary>Creates an action that toggles a Hub setting.</summary>
     public static HubCommandAction ToggleSetting(HubSettingToggle toggle) =>
         new(HubCommandActionKind.ToggleSetting, Toggle: toggle);
 }
@@ -80,6 +94,7 @@ internal sealed record HubCommandContext(
     ImmutableArray<string> SessionKeys,
     ImmutableDictionary<string, string> Resources);
 
+/// <summary>Centralizes Hub routes, command construction, page resolution, and command search.</summary>
 internal static class HubPageRegistry
 {
     internal static string GetNativeSetupPage(OpenClaw.SetupEngine.SetupNativeDestination destination) => destination switch
@@ -96,6 +111,8 @@ internal static class HubPageRegistry
         "Command_GoToConnection_Subtitle",
         "Command_GoToLocalAi_Title",
         "Command_GoToLocalAi_Subtitle",
+        "Command_GoToDefaultModel_Title",
+        "Command_GoToDefaultModel_Subtitle",
         "Command_GoToChat_Title",
         "Command_GoToChat_Subtitle",
         "Command_GoToSessions_Title",
@@ -133,6 +150,7 @@ internal static class HubPageRegistry
         "Command_ToggleBrowserControl_Title"
     ];
 
+    /// <summary>Maps a route alias to its canonical companion tag for the current agent.</summary>
     public static string NormalizeTag(string tag, string currentAgentId) => tag switch
     {
         "home" or "general" => "connection",
@@ -143,10 +161,12 @@ internal static class HubPageRegistry
         _ => tag
     };
 
+    /// <summary>Resolves a normalized route tag to its Hub page, or null for an unknown tag.</summary>
     public static HubPageKind? ResolvePage(string? tag) => tag switch
     {
         "connection" => HubPageKind.Connection,
         "local-ai" => HubPageKind.LocalAi,
+        "model" => HubPageKind.DefaultModel,
         "channels" => HubPageKind.Channels,
         "nodes" or "instances" => HubPageKind.Instances,
         "config" => HubPageKind.Config,
@@ -217,6 +237,7 @@ internal static class HubPageRegistry
     {
         HubPageKind.Connection => typeof(ConnectionPage),
         HubPageKind.LocalAi => typeof(LocalAiPage),
+        HubPageKind.DefaultModel => typeof(DefaultModelPage),
         HubPageKind.Channels => typeof(ChannelsPage),
         HubPageKind.Instances => typeof(InstancesPage),
         HubPageKind.Config => typeof(ConfigPage),
@@ -235,12 +256,14 @@ internal static class HubPageRegistry
     };
 #endif
 
+    /// <summary>Builds the commands currently available for the supplied Hub context.</summary>
     public static ImmutableArray<HubCommand> BuildCommands(HubCommandContext context)
     {
         var commands = ImmutableArray.CreateBuilder<HubCommand>();
 
         AddNavigation(commands, context, "🔌", "Command_GoToConnection", "connection");
         AddNavigation(commands, context, "AI", "Command_GoToLocalAi", "local-ai");
+        AddNavigation(commands, context, "AI", "Command_GoToDefaultModel", "model");
         AddNavigation(commands, context, "💬", "Command_GoToChat", "chat");
         AddNavigation(commands, context, "🧠", "Command_GoToSessions", "sessions");
         AddNavigation(commands, context, "🧠", "Command_GoToAgentEvents", "agentevents");
@@ -291,6 +314,7 @@ internal static class HubPageRegistry
         return commands.ToImmutable();
     }
 
+    /// <summary>Returns commands matching the user query by title, subtitle, or route metadata.</summary>
     public static ImmutableArray<HubCommand> SearchCommands(
         IEnumerable<HubCommand> commands,
         string? query)

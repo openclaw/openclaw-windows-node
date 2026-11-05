@@ -105,6 +105,12 @@ pending navigation; follow state is then taken from the current position, so a
 click or key press at the tail keeps following new replies. The correction
 rechecks follow eligibility at dispatch so a newer UI Automation scroll-away also
 takes precedence. Session replacement, unload, and disposal fence late callbacks.
+Initial landing confirmation waits for the current tail item's native bring to
+complete and its layout to settle before retrying; missing events remain bounded.
+It schedules retries after the rendering callback returns and fences them against
+cancellation or replacement. If rows or the native scroll view disappear during
+initial positioning, it rearms when they return. Normal follow cannot interrupt
+initial positioning.
 Native bottom anchoring and the existing follow threshold are unchanged.
 
 Pending agent questions replace the writing surface visually, not structurally.

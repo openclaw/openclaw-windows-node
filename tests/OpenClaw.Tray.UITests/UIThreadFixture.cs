@@ -7,7 +7,31 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Windows.ApplicationModel.DynamicDependency;
 
+// Windows App SDK bootstrap must not run while other test collections execute: hosted runners
+// froze the whole testhost inside Bootstrap.Initialize while non-UI collections started in parallel.
+// Almost every test already shares the serialized UI collection, so this only serializes the few
+// classes outside it.
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
+
 namespace OpenClaw.Tray.UITests;
+
+// PresentationCore's module initializer calls SetProcessDPIAware when native UIA first loads WPF,
+// which launched-app collections (Gateway fixture UI, Accessibility app) can trigger before the
+// UIThreadFixture initializes. Lock the testhost's PerMonitorV2 default at assembly load, before
+// any HWND, like the product manifest; the fixture still asserts the locked context.
+internal static class TestHostDpiInitializer
+{
+    [System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void Initialize()
+    {
+        try { OnboardingNativeProof.LockProcessDpi(); }
+        catch
+        {
+            // slopwatch-ignore: SW003 A module initializer must not throw; the fixture asserts
+            // the locked context where a failure can fail tests with a clear message.
+        }
+    }
+}
 
 /// <summary>
 /// Bootstraps a single WinUI3 <see cref="Application"/> + hidden <see cref="Window"/>
@@ -320,8 +344,10 @@ public sealed class UIThreadFixture : IDisposable
             ResetContainerAsync().WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
             // Release projected XAML objects while their dispatcher and native
             // reference trackers still exist, not after Application.Exit.
+            Console.WriteLine("UIThreadFixture: dispose finalizer drain begin");
             GC.Collect();
             GC.WaitForPendingFinalizers();
+            Console.WriteLine("UIThreadFixture: dispose finalizer drain end");
             YieldToRenderAsync().WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
         }
         try
