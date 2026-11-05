@@ -336,6 +336,12 @@ public sealed class MediaResolver : IDisposable
     /// </summary>
     private async Task<ImageSource?> SvgFromBytesAsync(byte[] bytes, CancellationToken cancellationToken)
     {
+        if (SvgGeometryBudget.IsUnsupportedEncoding(bytes))
+        {
+            _logger.Warn("[A2UI] SVG rejected before decode: non-UTF-8 encoding (UTF-16/UTF-32) is unsupported");
+            return null;
+        }
+
         if (SvgGeometryBudget.Exceeds(bytes))
         {
             _logger.Warn($"[A2UI] SVG rejected before decode: geometry attributes exceed {SvgGeometryBudget.MaxAttributeChars} characters");

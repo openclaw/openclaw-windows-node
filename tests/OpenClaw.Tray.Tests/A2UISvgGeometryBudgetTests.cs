@@ -58,4 +58,40 @@ public sealed class A2UISvgGeometryBudgetTests
     {
         Assert.True(Exceeds(Svg($"<path\nd = \"{new string('1', Budget + 1)}\"/>")));
     }
+
+    [Fact]
+    public void Exceeds_CommentContainingAttributeLikeText_DoesNotHideRealAttribute()
+    {
+        Assert.True(Exceeds(Svg($"<!-- d=' --><path d='{new string('1', Budget + 1)}'/>")));
+    }
+
+    [Fact]
+    public void Exceeds_OversizedAttributeInsideComment_IsIgnored()
+    {
+        Assert.False(Exceeds(Svg($"<!-- d='{new string('1', Budget + 1)}' --><path d='M0 0'/>")));
+    }
+
+    [Fact]
+    public void Exceeds_CdataAndProcessingInstruction_AreSkipped()
+    {
+        Assert.False(Exceeds(Svg($"<![CDATA[ d='{new string('1', Budget + 1)}' ]]><?pi d='{new string('1', Budget + 1)}'?>")));
+        Assert.True(Exceeds(Svg($"<![CDATA[ d=' ]]><path d='{new string('1', Budget + 1)}'/>")));
+    }
+
+    [Fact]
+    public void Exceeds_QuotedValueContainingAttributeText_IsNotRescanned()
+    {
+        Assert.False(Exceeds(Svg($"<path id=\" d='{new string('1', Budget + 1)}'\" d='M0 0'/>")));
+    }
+
+    [Fact]
+    public void IsUnsupportedEncoding_RejectsUtf16Utf32AndNul_AcceptsUtf8()
+    {
+        Assert.True(SvgGeometryBudget.IsUnsupportedEncoding(Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes("<svg/>")).ToArray()));
+        Assert.True(SvgGeometryBudget.IsUnsupportedEncoding(Encoding.BigEndianUnicode.GetPreamble().Concat(Encoding.BigEndianUnicode.GetBytes("<svg/>")).ToArray()));
+        Assert.True(SvgGeometryBudget.IsUnsupportedEncoding(Encoding.Unicode.GetBytes("<svg/>")));
+        Assert.True(SvgGeometryBudget.IsUnsupportedEncoding(new byte[] { 0, 0, 0xFE, 0xFF, 0, 0, 0, (byte)'<' }));
+        Assert.False(SvgGeometryBudget.IsUnsupportedEncoding(Encoding.UTF8.GetBytes(Svg(""))));
+        Assert.False(SvgGeometryBudget.IsUnsupportedEncoding(new byte[] { 0xEF, 0xBB, 0xBF, (byte)'<', (byte)'s' }));
+    }
 }
