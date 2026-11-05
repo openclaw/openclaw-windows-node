@@ -62,6 +62,74 @@ public sealed class GatewayHandshakeObservationTests
     }
 
     [Theory]
+    [InlineData(54012)]
+    [InlineData(54290)]
+    [InlineData(55001)]
+    [InlineData(55020)]
+    [InlineData(55030)]
+    public async Task RefusedTransport_WrappedPortMessage_IsNetwork(int port)
+    {
+        await AssertTransportFailureAsync(
+            new System.Net.WebSockets.WebSocketException(
+                $"No connection could be made because the target machine actively refused it. (127.0.0.1:{port})",
+                new SocketException((int)SocketError.ConnectionRefused)),
+            GatewayErrorKind.Network);
+    }
+
+    [Theory]
+    [InlineData(GatewayErrorKind.Network, "unauthorized")]
+    [InlineData(GatewayErrorKind.Network, "503 server error")]
+    [InlineData(GatewayErrorKind.Tls, "unauthorized")]
+    [InlineData(GatewayErrorKind.Tls, "503 server error")]
+    public async Task TransportFailure_TypedCauseWinsOverWrapperMessage(GatewayErrorKind expected, string message)
+    {
+        Exception cause = expected == GatewayErrorKind.Tls
+            ? new System.Security.Authentication.AuthenticationException("sensitive-sentinel")
+            : new SocketException((int)SocketError.ConnectionRefused);
+
+        await AssertTransportFailureAsync(
+            new InvalidOperationException(message, new IOException("unrecognized wrapper", cause)), expected);
+    }
+
+    [Fact]
+    public async Task TransportFailure_TypedTimeoutWinsOverWrapperMessage()
+    {
+        await AssertTransportFailureAsync(
+            new InvalidOperationException("HTTP 401", new TimeoutException("sensitive-sentinel")),
+            GatewayErrorKind.Network);
+    }
+
+    [Theory]
+    [InlineData("401", GatewayErrorKind.Auth)]
+    [InlineData("429", GatewayErrorKind.RateLimited)]
+    [InlineData("500", GatewayErrorKind.Server)]
+    [InlineData("502", GatewayErrorKind.Server)]
+    [InlineData("503", GatewayErrorKind.Server)]
+    public async Task TransportFailure_HttpStatusWithoutTypedCause_RemainsActionable(
+        string status, GatewayErrorKind expected)
+    {
+        await AssertTransportFailureAsync(
+            new System.Net.WebSockets.WebSocketException(
+                $"The server returned status code '{status}' when status code '101' was expected."),
+            expected);
+    }
+
+    private static async Task AssertTransportFailureAsync(Exception error, GatewayErrorKind expected)
+    {
+        using var temp = new TempDirectory();
+        using var client = new ObservationClient(temp.Path);
+        var observations = new List<GatewayHandshakeObservation>();
+        client.HandshakeObserved += (_, observation) => observations.Add(observation);
+        await client.BeginAttemptAsync(1);
+
+        client.ObserveTransport(1, GatewayHandshakePhase.Failed, error);
+
+        Assert.Equal(expected, Assert.Single(observations,
+            observation => observation.Phase == GatewayHandshakePhase.Failed).FailureKind);
+        Assert.DoesNotContain("sensitive-", JsonSerializer.Serialize(observations));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task SupersededAuthorization_CannotEmitSuccessOrFailure(bool throws)
