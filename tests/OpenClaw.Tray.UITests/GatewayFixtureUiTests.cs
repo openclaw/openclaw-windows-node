@@ -666,6 +666,13 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             var owner = FindById(run, "WorkspaceOwner")!;
             Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
             await WaitForAuthenticatedOwnerPhotoAsync(run);
+            await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "SettingsOwner") is
+                { Current.IsOffscreen: false, Current.Name: "Fixture Owner" },
+                "authenticated owner in newly created Settings footer");
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+                await WaitUiAsync(run, () => OwnerPhotoPainted(run, "SettingsOwner", "settings-owner-profile.png"),
+                    "cached owner photo painted in newly created Settings footer");
         }, scenario: GatewayScenario.CreateBrowseWithOwnerProfile("fixture-owner", "Fixture Owner"));
     }
 
@@ -1362,15 +1369,16 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     }
 
     /// <summary>Captures the Workspace window and reports whether the footer button shows the served photo's colour.</summary>
-    private static bool OwnerPhotoPainted(GatewayFixtureRun run)
+    private static bool OwnerPhotoPainted(GatewayFixtureRun run, string ownerAutomationId = "WorkspaceOwner",
+        string captureName = "owner-profile.png")
     {
-        var ownerId = new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceOwner");
+        var ownerId = new PropertyCondition(AutomationElement.AutomationIdProperty, ownerAutomationId);
         foreach (var window in AppWindows(run))
         {
             if (window.FindFirst(TreeScope.Descendants, ownerId) is not { } owner || owner.Current.IsOffscreen)
                 continue;
-            OwnedWindowCapture.Save(run, window, "owner-profile.png", owner);
-            return CountOwnerPhotoPixels(Path.Combine(run.ArtifactsDirectory, "owner-profile.png")) >= OwnerPhotoMinimumPixels;
+            OwnedWindowCapture.Save(run, window, captureName, owner);
+            return CountOwnerPhotoPixels(Path.Combine(run.ArtifactsDirectory, captureName)) >= OwnerPhotoMinimumPixels;
         }
         return false;
     }
