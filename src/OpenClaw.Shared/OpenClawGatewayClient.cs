@@ -2660,7 +2660,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                         : QuestionRequestError(pending.Method, root)
                             ?? (requestId?.StartsWith(SearchRequestIdPrefix, StringComparison.Ordinal) == true ? new GatewayRequestException(message,
                                 root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
-                                    ? GetString(error, "code") : null) : new InvalidOperationException(message)));
+                                    ? GetString(error, "code") : null) : GatewayRequestErrors.Create(
+                                message,
+                                TryGetErrorTopLevelCode(root),
+                                TryGetErrorDetailCode(root))));
                 }
                 else if (root.TryGetProperty("payload", out var wizPayload))
                 {

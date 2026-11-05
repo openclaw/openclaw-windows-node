@@ -37,8 +37,16 @@ public sealed class NativeGatewaySetupSession(
     internal TimeSpan BeginAdmission()
     {
         _admissionStartedAt ??= AdmissionTimeProvider.GetTimestamp();
+        return GetAdmissionRemaining()!.Value;
+    }
+
+    internal TimeSpan? GetAdmissionRemaining()
+    {
+        if (_admissionStartedAt is not { } startedAt)
+            return null;
+
         var remaining = IsolatedGatewayRuntime.AdmissionTimeout -
-            AdmissionTimeProvider.GetElapsedTime(_admissionStartedAt.Value);
+            AdmissionTimeProvider.GetElapsedTime(startedAt);
         return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
     }
 
@@ -88,32 +96,81 @@ public sealed class NativeGatewaySetupSession(
         await AuthorizeAsync(cancellationToken);
     }
 
-    internal async Task PrepareAsync(CancellationToken cancellationToken)
+    internal async Task PrepareConnectionForAdmissionAsync(CancellationToken cancellationToken)
     {
-        var remaining = BeginAdmission();
-        using var deadline = new CancellationTokenSource(remaining, AdmissionTimeProvider);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token, deadline.Token);
+        if (_published || IsIsolated || File.Exists(ReloadBackupPath))
+            return;
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        await _gate.WaitAsync(linked.Token);
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (remaining == TimeSpan.Zero)
-                throw new TimeoutException("The native Gateway connection budget expired during preparation.");
-            await _gate.WaitAsync(linked.Token);
-            try
-            {
-                if (!IsIsolated)
-                    SuspendReload();
-                await host.ValidateConfigurationAsync(package, environment, linked.Token);
-                await AuthorizeCoreAsync(linked.Token);
-            }
-            finally { _gate.Release(); }
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            await PrepareRestartCoreAsync(linked.Token);
+        }
+        finally { _gate.Release(); }
+    }
+
+    internal async Task PrepareAsync(CancellationToken cancellationToken)
+    {
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        await _gate.WaitAsync(operation.Token);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!IsIsolated)
+                SuspendReload();
+            await ValidateConfigurationAsync(operation.Token);
+            await AuthorizeWithinAdmissionBudgetAsync(operation.Token);
+        }
+        finally { _gate.Release(); }
+    }
+
+    private async Task ValidateConfigurationAsync(CancellationToken cancellationToken)
+    {
+        using var deadline = new CancellationTokenSource(
+            NativeGatewaySetupService.ConfigurationValidationTimeout, AdmissionTimeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        try
+        {
+            await host.ValidateConfigurationAsync(package, environment, linked.Token);
+            linked.Token.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException error) when (
-            deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
+            deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested &&
+            !_lifetime.IsCancellationRequested)
         {
-            throw new TimeoutException("The native Gateway did not finish preparation within its connection budget.", error);
+            int seconds = (int)NativeGatewaySetupService.ConfigurationValidationTimeout.TotalSeconds;
+            throw new TimeoutException(
+                $"Native Gateway configuration validation exceeded its {seconds}-second budget.", error);
         }
     }
+
+    private async Task AuthorizeWithinAdmissionBudgetAsync(CancellationToken cancellationToken)
+    {
+        var remaining = BeginAdmission();
+        if (remaining == TimeSpan.Zero)
+            throw CreateAdmissionTimeout();
+
+        using var deadline = new CancellationTokenSource(remaining, AdmissionTimeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetime.Token, deadline.Token);
+        try
+        {
+            await AuthorizeCoreAsync(linked.Token);
+        }
+        catch (OperationCanceledException error) when (
+            deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested &&
+            !_lifetime.IsCancellationRequested)
+        {
+            throw CreateAdmissionTimeout(error);
+        }
+    }
+
+    private static TimeoutException CreateAdmissionTimeout(Exception? innerException = null) =>
+        new($"The native Gateway admission budget of " +
+            $"{IsolatedGatewayRuntime.AdmissionTimeout.TotalSeconds:0} seconds expired after configuration validation.",
+            innerException);
 
     public async Task AuthorizeAsync(CancellationToken cancellationToken)
     {
@@ -312,23 +369,28 @@ public sealed class NativeGatewaySetupSession(
         await _gate.WaitAsync(linked.Token);
         try
         {
-            BeginWizard();
-            _terminal?.Dispose();
-            _terminal = null;
-            if (!IsIsolated)
-                await runtime.StopAsync(linked.Token);
-            // Upstream may have changed configuration before an error. Validate before restart.
-            if (!IsIsolated)
-            {
-                Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
-                SuspendReload();
-            }
-            await host.ValidateConfigurationAsync(package, environment, linked.Token);
+            await PrepareRestartCoreAsync(linked.Token);
             if (IsIsolated)
                 await runtime.RestartAsync(Record, linked.Token);
             await AuthorizeCoreAsync(linked.Token);
         }
         finally { _gate.Release(); }
+    }
+
+    private async Task PrepareRestartCoreAsync(CancellationToken cancellationToken)
+    {
+        BeginWizard();
+        _terminal?.Dispose();
+        _terminal = null;
+        if (!IsIsolated)
+            await runtime.StopAsync(cancellationToken);
+        // Upstream may have changed configuration before an error. Validate before restart.
+        if (!IsIsolated)
+        {
+            Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
+            SuspendReload();
+        }
+        await ValidateConfigurationAsync(cancellationToken);
     }
 
     public void MarkWizardCompleted() => _wizardCompleted = true;

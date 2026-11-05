@@ -39,6 +39,7 @@ public sealed partial class GatewayScenario
     public const string VoiceSessionKey = "agent:main:fixture-voice";
     public const string VoiceTitle = "Fixture: historical realtime voice";
     public const string VoiceFinalSentinel = "FIXTURE VOICE FINAL: all historical voice messages loaded.";
+    public const string OwnerProfileId = "fixture-owner";
 
     private static readonly DateTimeOffset Epoch = new(2026, 8, 20, 12, 0, 0, TimeSpan.Zero);
     private readonly Session[] _sessions;
@@ -72,6 +73,7 @@ public sealed partial class GatewayScenario
     public string ContractProvenance =>
         "OpenClaw.Shared GatewayProtocolContract/OpenClawGatewayClient and Protocol/gateway-protocol-snapshot.json";
     public string Sha256 { get; }
+    public string AuthenticatedProfileId { get; }
     public IReadOnlyList<string> SessionKeys { get; }
     public IReadOnlyList<string> ReadMethods { get; }
 
@@ -84,6 +86,15 @@ public sealed partial class GatewayScenario
         _accessibilityBaseline = accessibilityBaseline;
         _sessions = sessions;
         _reads = reads;
+        if (!reads.TryGetValue("users.self", out var self) ||
+            !self.TryGetProperty("profile", out var profile) ||
+            !profile.TryGetProperty("id", out var profileId) ||
+            profileId.ValueKind != JsonValueKind.String)
+            throw new ArgumentException("The fixture scenario must provide users.self with a profile id.", nameof(reads));
+        var authenticatedProfileId = profileId.GetString();
+        if (string.IsNullOrWhiteSpace(authenticatedProfileId))
+            throw new ArgumentException("The fixture scenario must provide users.self with a profile id.", nameof(reads));
+        AuthenticatedProfileId = authenticatedProfileId;
         _setup = setup;
         _allowAgentCreation = allowAgentCreation;
         _publishedModelCatalog = publishedModelCatalog;
@@ -289,7 +300,7 @@ public sealed partial class GatewayScenario
         {
             ["users.self"] = JsonSerializer.SerializeToElement(new
             {
-                profile = new { id = "fixture-owner", displayName = "Fixture Owner", emails = new[] { "owner@example.test" } }
+                profile = new { id = OwnerProfileId, displayName = "Fixture Owner", emails = new[] { "owner@example.test" } }
             }),
             ["health"] = JsonSerializer.SerializeToElement(new
             {
@@ -360,6 +371,27 @@ public sealed partial class GatewayScenario
         return new GatewayScenario(sessions, reads, allowAgentCreation: allowAgentCreation,
             allowSessionMutations: allowSessionMutations, allowChatSend: allowChatSend,
             publishedModelCatalog: publishedModelCatalog);
+    }
+
+    /// <summary>
+    /// Creates a browse fixture with a profile whose avatar eligibility is resolved by the Gateway.
+    /// It intentionally omits hasAvatar; when email is null, it also omits emails.
+    /// </summary>
+    public static GatewayScenario CreateBrowseWithOwnerProfile(string profileId, string displayName, string? email = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        var browse = CreateBrowse();
+        var reads = browse._reads.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        var profile = new JsonObject
+        {
+            ["id"] = profileId,
+            ["displayName"] = displayName,
+        };
+        if (email is not null)
+            profile["emails"] = new JsonArray(JsonValue.Create(email));
+        reads["users.self"] = JsonSerializer.SerializeToElement(new JsonObject { ["profile"] = profile });
+        return new GatewayScenario(browse._sessions, reads);
     }
 
     internal object CreateHello(string connectionId, string role = "operator")

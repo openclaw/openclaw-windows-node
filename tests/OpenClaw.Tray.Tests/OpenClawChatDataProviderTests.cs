@@ -8045,11 +8045,39 @@ public class OpenClawChatDataProviderTests
     [Fact]
     public async Task QueuedSend_InFlightAckWithoutLifecycle_RequeuesAndRetriesSameIdempotencyKey()
     {
+        var dispatchDeadline = TimeSpan.FromMilliseconds(300);
+        var retryEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRetry = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var requeued = new TaskCompletionSource<ChatDataSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var committed = new TaskCompletionSource<ChatDataSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendCount = 0;
         using var activities = new ChatActivityCollector();
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await using var providerLifetime = provider;
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "in_flight" });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "started" });
+        bridge.SendBehavior = (_, _, _) =>
+        {
+            if (Interlocked.Increment(ref sendCount) != 3)
+                return Task.CompletedTask;
+            retryEntered.TrySetResult();
+            return releaseRetry.Task;
+        };
+        provider.Changed += (_, e) =>
+        {
+            var queued = GetQueuedMessages(e.Snapshot, "main");
+            if (Volatile.Read(ref sendCount) >= 2 &&
+                queued.Count == 1 && queued[0].Text == "Hello" &&
+                queued[0].SendState == ChatQueuedMessageSendState.Queued &&
+                e.Snapshot.Timelines["main"].Entries.All(item =>
+                    item.Kind != ChatTimelineItemKind.User || item.Text != "Hello"))
+                requeued.TrySetResult(e.Snapshot);
+            if (queued.Count == 0 &&
+                e.Snapshot.Timelines.TryGetValue("main", out var timeline) &&
+                timeline.Entries.Any(item => item.Kind == ChatTimelineItemKind.User && item.Text == "Hello"))
+                committed.TrySetResult(e.Snapshot);
+        };
         await provider.LoadAsync();
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
@@ -8057,7 +8085,6 @@ public class OpenClawChatDataProviderTests
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
         await provider.SendMessageAsync("main", "Hello");
 
-        var postFinalSnapshotStart = snapshots.Count;
         bridge.RaiseChat(new ChatMessageInfo
         {
             SessionKey = "main",
@@ -8065,39 +8092,39 @@ public class OpenClawChatDataProviderTests
             Text = "first response",
             State = "final",
         });
-        for (var i = 0; i < 30 && bridge.SentMessages.Count < 2; i++)
-            await Task.Delay(10);
-
+        var requeuedSnapshot = await requeued.Task.WaitAsync(dispatchDeadline);
         Assert.Equal(2, bridge.SentMessages.Count);
         var firstAttemptKey = bridge.SentIdempotencyKeys[1];
-        ChatDataSnapshot? requeuedSnapshot = null;
-        for (var i = 0; i < 30 && requeuedSnapshot is null; i++)
+        var deferred = Assert.Single(GetQueuedMessages(requeuedSnapshot, "main"));
+        Assert.Equal("Hello", deferred.Text);
+        Assert.Equal(ChatQueuedMessageSendState.Queued, deferred.SendState);
+        Assert.DoesNotContain(requeuedSnapshot.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "Hello");
+
+        ChatDataSnapshot committedSnapshot;
+        try
         {
-            requeuedSnapshot = snapshots
-                .Skip(postFinalSnapshotStart)
-                .LastOrDefault(snapshot =>
-                {
-                    var queued = GetQueuedMessages(snapshot, "main");
-                    return queued.Count == 1 &&
-                        queued[0].Text == "Hello" &&
-                        queued[0].SendState == ChatQueuedMessageSendState.Queued &&
-                        snapshot.Timelines["main"].Entries.Count(e =>
-                            e.Kind == ChatTimelineItemKind.User && e.Text == "Hello") == 0;
-                });
-            if (requeuedSnapshot is null)
-                await Task.Delay(10);
+            bridge.RaiseSessions(new[] { MainSession() });
+            await retryEntered.Task.WaitAsync(dispatchDeadline);
+
+            Assert.Equal(3, bridge.SentMessages.Count);
+            Assert.Equal(firstAttemptKey, bridge.SentIdempotencyKeys[2]);
+            var sending = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+            Assert.Equal("Hello", sending.Text);
+            Assert.Equal(ChatQueuedMessageSendState.Sending, sending.SendState);
+            Assert.False(committed.Task.IsCompleted);
+
+            releaseRetry.TrySetResult();
+            committedSnapshot = await committed.Task.WaitAsync(dispatchDeadline);
         }
-
-        Assert.NotNull(requeuedSnapshot);
-
-        bridge.RaiseSessions(new[] { MainSession() });
-        for (var i = 0; i < 30 && bridge.SentMessages.Count < 3; i++)
-            await Task.Delay(10);
-
+        finally
+        {
+            releaseRetry.TrySetResult();
+        }
         Assert.Equal(3, bridge.SentMessages.Count);
         Assert.Equal(firstAttemptKey, bridge.SentIdempotencyKeys[2]);
-        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+        Assert.Empty(GetQueuedMessages(committedSnapshot, "main"));
+        Assert.Single(committedSnapshot.Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.User && e.Text == "Hello");
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
@@ -8108,7 +8135,6 @@ public class OpenClawChatDataProviderTests
             .Select(activity => activity.GetTagItem(ChatTelemetryTracker.AdmissionStatusTag))
             .ToArray();
         Assert.Equal(new object?[] { "accepted", "deferred", "accepted" }, admissionStatuses);
-        await provider.DisposeAsync();
     }
 
     [Fact]
@@ -8969,9 +8995,29 @@ public class OpenClawChatDataProviderTests
     [Fact]
     public async Task StopResponseAsync_WithQueuedFollowUp_WaitsForConfirmedTerminalEvent()
     {
+        var dispatchDeadline = TimeSpan.FromMilliseconds(200);
+        var followUpEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFollowUp = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var committed = new TaskCompletionSource<ChatDataSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendCount = 0;
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await using var providerLifetime = provider;
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "started" });
+        bridge.SendBehavior = (_, _, _) =>
+        {
+            if (Interlocked.Increment(ref sendCount) != 2)
+                return Task.CompletedTask;
+            followUpEntered.TrySetResult();
+            return releaseFollowUp.Task;
+        };
+        provider.Changed += (_, e) =>
+        {
+            if (GetQueuedMessages(e.Snapshot, "main").Count == 0 &&
+                e.Snapshot.Timelines.TryGetValue("main", out var timeline) &&
+                timeline.Entries.Any(item => item.Kind == ChatTimelineItemKind.User && item.Text == "second"))
+                committed.TrySetResult(e.Snapshot);
+        };
         await provider.LoadAsync();
         bridge.RaiseStatus(ConnectionStatus.Connected);
         snapshots.Clear();
@@ -8986,14 +9032,30 @@ public class OpenClawChatDataProviderTests
         var waiting = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
         Assert.Equal(ChatQueuedMessageSendState.Queued, waiting.SendState);
 
-        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
-        for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
-            await Task.Delay(10);
+        ChatDataSnapshot committedSnapshot;
+        try
+        {
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
+            await followUpEntered.Task.WaitAsync(dispatchDeadline);
 
+            Assert.Contains("run-1", bridge.AbortedRunIds);
+            Assert.Equal(new[] { "first", "second" }, bridge.SentMessages);
+            var sending = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+            Assert.Equal("second", sending.Text);
+            Assert.Equal(ChatQueuedMessageSendState.Sending, sending.SendState);
+            Assert.False(committed.Task.IsCompleted);
+
+            releaseFollowUp.TrySetResult();
+            committedSnapshot = await committed.Task.WaitAsync(dispatchDeadline);
+        }
+        finally
+        {
+            releaseFollowUp.TrySetResult();
+        }
         Assert.Contains("run-1", bridge.AbortedRunIds);
         Assert.Equal(new[] { "first", "second" }, bridge.SentMessages);
-        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+        Assert.Empty(GetQueuedMessages(committedSnapshot, "main"));
+        Assert.Single(committedSnapshot.Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.User && e.Text == "second");
     }
 

@@ -84,6 +84,9 @@ public sealed partial class WorkspacePaneFooter : UserControl
         ApplyOwnerToolTip();
     }
 
+    internal void ApplyAvatar(Microsoft.UI.Xaml.Media.ImageSource? image) =>
+        OwnerPicture.ProfilePicture = image;
+
     internal void ApplyConnection(string label, ConnectionStatusAccent accent)
     {
         _connectionLabel = label;

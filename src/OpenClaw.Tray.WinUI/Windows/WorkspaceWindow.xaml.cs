@@ -81,7 +81,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _notifications = notifications;
         _openTimeline = openTimeline;
         _identity = new WorkspaceIdentitySource(UpdateOwnerIdentity,
-            category => Logger.Warn($"[Workspace] users.self unavailable ({category}); using owner fallback."));
+            category => Logger.Warn(WorkspaceIdentitySource.DescribeUnavailable(category)));
         _sessionMenu = new WorkspaceSessionMenuController(
             () => IsClosed ? null : CurrentApp.GatewayClient,
             key => _state.Sessions.FirstOrDefault(s => s.Key == key),
@@ -1002,11 +1002,52 @@ public sealed partial class WorkspaceWindow : WindowEx
         _ = _identity.RefreshAsync(invalidate);
     }
 
+    private UserAvatarImage? _shownAvatar;
+    private Microsoft.UI.Xaml.Media.Imaging.BitmapImage? _ownerImage;
+
     private void UpdateOwnerIdentity()
     {
-        var name = string.IsNullOrWhiteSpace(_identity.DisplayName) ? Text("Owner.Text") : _identity.DisplayName;
+        var name = _identity.DisplayName;
+        // macOS parity: the shared-credential owner is labelled as such; no known profile shows Owner.
+        var label = _identity.IsSharedOwner ? Text("SharedOwner.Text") : name ?? Text("Owner.Text");
+        var avatar = _identity.Avatar;
+        var avatarChanged = !ReferenceEquals(avatar, _shownAvatar);
+        if (avatarChanged)
+        {
+            _shownAvatar = avatar;
+            _ownerImage = null;
+        }
         foreach (var footer in Footers)
-            footer.ApplyIdentity(name, _identity.DisplayName ?? "");
+        {
+            footer.ApplyIdentity(label, name ?? "");
+            footer.ApplyAvatar(_ownerImage);
+        }
+        if (!avatarChanged || avatar is null) return;
+        AsyncEventHandlerGuard.Run(() => ShowOwnerAvatarAsync(avatar), new AppLogger(), nameof(UpdateOwnerIdentity));
+    }
+
+    private async Task ShowOwnerAvatarAsync(UserAvatarImage avatar)
+    {
+        Microsoft.UI.Xaml.Media.Imaging.BitmapImage image;
+        try
+        {
+            using var stream = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
+            await stream.WriteAsync(System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsBuffer(avatar.Bytes));
+            stream.Seek(0);
+            image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage { DecodePixelWidth = 48 };
+            await image.SetSourceAsync(stream);
+        }
+        catch (Exception ex) when (WorkspaceIdentitySource.IsAvatarDecodeFailure(ex))
+        {
+            new AppLogger().Warn($"Owner avatar could not be decoded ({ex.GetType().Name}); initials shown.");
+            return;
+        }
+        if (ReferenceEquals(avatar, _shownAvatar))
+        {
+            _ownerImage = image;
+            foreach (var footer in Footers)
+                footer.ApplyAvatar(image);
+        }
     }
 
     /// <summary>Every live footer: Chat pane, Chat title bar and, once created, Settings pane.</summary>

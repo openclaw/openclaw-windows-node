@@ -336,6 +336,76 @@ public sealed class NativeGatewaySetupConnectionTests
     }
 
     [Fact]
+    public async Task SlowRestartValidation_DoesNotReduceStartupBudgetAfterFinalizationFailure()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        var clock = new ManualTimeProvider();
+        using var fixture = CreateFixture(server, timeProvider: clock);
+        await using var owner = await fixture.PrepareAsync();
+        await using (var initial = await NativeGatewaySetupConnection.ConnectAsync(owner))
+            Assert.True(initial.IsConnected);
+
+        owner.MarkWizardCompleted();
+        fixture.Host.HealthAsync = () =>
+            Task.FromException(new InvalidOperationException("fixture health failure"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => owner.CompleteAsync(default));
+        Assert.False(File.Exists(fixture.ConfigPath + ".setup-reload.json"));
+
+        fixture.Events.Clear();
+        fixture.Host.Validate = () => clock.Advance(TimeSpan.FromSeconds(87));
+        var delayStartup = true;
+        fixture.Runtime.Ensure = _ =>
+        {
+            if (delayStartup)
+            {
+                delayStartup = false;
+                clock.Advance(TimeSpan.FromSeconds(260));
+            }
+            return Task.CompletedTask;
+        };
+
+        await using var retry = await NativeGatewaySetupConnection.ConnectAsync(owner)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(retry.IsConnected);
+        Assert.Equal(TimeSpan.FromSeconds(347), TimeSpan.FromTicks(clock.GetTimestamp()));
+        Assert.True(fixture.Events.IndexOf("validate") < fixture.Events.IndexOf("start"));
+    }
+
+    [Fact]
+    public async Task ExpiredFinalizationAdmission_DoesNotRunRestartPreflightOnRetry()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        var clock = new ManualTimeProvider();
+        using var fixture = CreateFixture(server, timeProvider: clock);
+        await using var owner = await fixture.PrepareAsync();
+        var connection = await NativeGatewaySetupConnection.ConnectAsync(owner);
+        var client = new GatewayAiSetupClient(connection);
+        await client.DetectAsync();
+        client.SelectCandidate("existing-model", Model);
+        await client.StartSelectedAsync();
+        Assert.True((await client.VerifyAsync()).Ok);
+        var proof = client.GetVerifiedCompletion();
+        await connection.DisposeAsync();
+
+        fixture.Host.Health = () => fixture.Runtime.Provenance = GatewayEndpointProvenanceKind.UnknownListener;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            owner.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default));
+        Assert.False(File.Exists(fixture.ConfigPath + ".setup-reload.json"));
+
+        clock.Advance(TimeSpan.FromSeconds(AdmissionBudgetSeconds));
+        fixture.Runtime.Provenance = GatewayEndpointProvenanceKind.ExpectedManagedGateway;
+        fixture.Events.Clear();
+
+        await Assert.ThrowsAsync<TimeoutException>(() => NativeGatewaySetupConnection.ConnectAsync(owner));
+
+        Assert.DoesNotContain("stop", fixture.Events);
+        Assert.DoesNotContain("validate", fixture.Events);
+        Assert.DoesNotContain("start", fixture.Events);
+        Assert.Equal(2, server.ConnectionCount);
+    }
+
+    [Fact]
     public async Task StartupRetry_CallerCancellationStopsRecovery()
     {
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
