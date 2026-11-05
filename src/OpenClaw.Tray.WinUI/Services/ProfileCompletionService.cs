@@ -18,19 +18,32 @@ internal static class ProfileCompletionEligibility
 }
 
 /// <summary>
-/// When the workspace may offer completion without being asked. Any start qualifies, including the first start
-/// after an app update, so existing installs with a blank owner are offered too, once per Gateway and process,
-/// until the user saves or skips. A setup run that is still open defers the offer without consuming it; the
-/// post-setup restart is exempt because its setup window is only the handoff that finishes setup.
+/// When the workspace fills the owner profile without asking: on any start, including the first start after an
+/// app update, once per Gateway record and process. A Skip in the owner-menu dialog is remembered and suppresses it.
 /// </summary>
-internal static class ProfileCompletionAutoOffer
+internal static class ProfileAutoFillPolicy
 {
-    public static bool ShouldOffer(
-        string? gatewayId, string? offeredGatewayId, bool declined, bool isPostSetupRestart, bool setupWindowOpen) =>
+    public static bool ShouldAttempt(string? gatewayId, string? attemptedGatewayId, bool declined) =>
         gatewayId is not null &&
-        !string.Equals(gatewayId, offeredGatewayId, StringComparison.Ordinal) &&
-        !declined &&
-        (isPostSetupRestart || !setupWindowOpen);
+        !string.Equals(gatewayId, attemptedGatewayId, StringComparison.Ordinal) &&
+        !declined;
+}
+
+internal sealed record ProfileAutoFillResult(ProfileOffer Offer, ProfileSaveResult? Save)
+{
+    /// <summary>
+    /// Nothing was read (not connected, read failed) or the context moved before a field was written, so a later
+    /// identity update may try again. Uncertain, denied, and failed writes are not retried in the same process.
+    /// </summary>
+    public bool RetryLater =>
+        Offer == ProfileOffer.Unavailable ||
+        Save is { } save && (save.Name is ProfileStep.ConnectionLost or ProfileStep.ContextChanged ||
+                             save.Photo is ProfileStep.ConnectionLost or ProfileStep.ContextChanged);
+
+    /// <summary>A write was sent, so the shown identity should be re-read from the Gateway.</summary>
+    public bool MayHaveChanged =>
+        Save is { } save && (save.Name is ProfileStep.Saved or ProfileStep.Uncertain ||
+                             save.Photo is ProfileStep.Saved or ProfileStep.Uncertain);
 }
 
 internal enum ProfileOffer
@@ -77,9 +90,10 @@ internal sealed record ProfileSaveResult(ProfileStep Name, ProfileStep Photo)
 }
 
 /// <summary>
-/// Optional completion of a blank Gateway owner profile from the current Windows account.
+/// Completion of a blank Gateway owner profile from the current Windows account, automatically (<see cref="AutoFillAsync"/>)
+/// or through the owner-menu dialog (<see cref="PrepareAsync"/> then <see cref="SaveAsync"/>).
 /// The Gateway has no conditional write, so each field is re-read immediately before it is written and an
-/// existing value is kept; this narrows but cannot eliminate a concurrent edit. Nothing is written before Save.
+/// existing value is kept; this narrows but cannot eliminate a concurrent edit.
 /// </summary>
 internal sealed class ProfileCompletionService(
     Func<IOperatorGatewayClient?> getClient,
@@ -118,7 +132,32 @@ internal sealed class ProfileCompletionService(
         string.Equals(gatewayId, getGatewayId(), StringComparison.Ordinal) && isEligible();
 
     /// <summary>Reads the profile (a network read, no write) and then the Windows account, only when a suggestion is useful.</summary>
-    public async Task<ProfilePreparation> PrepareAsync(CancellationToken cancellationToken)
+    public Task<ProfilePreparation> PrepareAsync(CancellationToken cancellationToken) =>
+        PrepareCoreAsync(automatic: false, cancellationToken);
+
+    /// <summary>
+    /// Mac parity. A macOS Gateway fills a blank owner name from its host account on every owner connection and
+    /// serves the host account photo while no avatar is uploaded, without asking. A WSL or native Windows Gateway
+    /// cannot read the Windows account, so the app supplies the same values: each blank field independently, never
+    /// replacing an existing value, and nothing when the account field is unavailable or the profile is not writable.
+    /// </summary>
+    public async Task<ProfileAutoFillResult> AutoFillAsync(CancellationToken cancellationToken)
+    {
+        var preparation = await PrepareCoreAsync(automatic: true, cancellationToken);
+        if (preparation is not { Offer: ProfileOffer.Offer, Account: { } account })
+            return new ProfileAutoFillResult(preparation.Offer, null);
+
+        var name = preparation.OfferName && account.NameStatus == AccountFieldStatus.Available &&
+            ProfileNamePolicy.TryNormalize(account.DisplayName, out var normalized) ? normalized : null;
+        var photo = preparation.OfferPhoto && account.PhotoStatus == AccountFieldStatus.Available ? account.Photo : null;
+        if (name is null && photo is null)
+            return new ProfileAutoFillResult(ProfileOffer.Offer, null);
+
+        return new ProfileAutoFillResult(ProfileOffer.Offer,
+            await SaveAsync(preparation, name, photo, retryNameOnly: false, retryPhotoOnly: false, cancellationToken));
+    }
+
+    private async Task<ProfilePreparation> PrepareCoreAsync(bool automatic, CancellationToken cancellationToken)
     {
         var none = new ProfilePreparation(ProfileOffer.Unavailable, null, false, false, false, null);
         var client = getClient();
@@ -144,16 +183,23 @@ internal sealed class ProfileCompletionService(
         if (!IsSame(client, gatewayId))
             return none;
 
-        // Only the canonical, entirely blank owner is offered a suggestion; a named, email-backed, or photo profile is left alone.
-        if (self.Id != OwnerProfileId || self.HasName || self.HasEmail || self.HasAvatar)
-            return new ProfilePreparation(ProfileOffer.NotNeeded, self.Id,             CanWrite(client), false, false, null, gatewayId, client);
+        // Only the canonical owner is ever completed. The dialog is offered only when it is entirely blank; the
+        // automatic fill takes each blank field on its own, and reads nothing from Windows when it cannot write.
+        // A name or an email already identifies the owner, so neither is replaced by the Windows name.
+        var offerName = !self.HasName && !self.HasEmail;
+        var offerPhoto = !self.HasAvatar;
+        var canWrite = CanWrite(client);
+        var needed = self.Id == OwnerProfileId &&
+            (automatic ? canWrite && (offerName || offerPhoto) : offerName && offerPhoto);
+        if (!needed)
+            return new ProfilePreparation(ProfileOffer.NotNeeded, self.Id, canWrite, false, false, null, gatewayId, client);
 
         var account = await provider.ReadAsync(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsSame(client, gatewayId))
             return none;
 
-        return new ProfilePreparation(ProfileOffer.Offer, self.Id, CanWrite(client), true, true, account, gatewayId, client);
+        return new ProfilePreparation(ProfileOffer.Offer, self.Id, canWrite, offerName, offerPhoto, account, gatewayId, client);
     }
 
     /// <summary>

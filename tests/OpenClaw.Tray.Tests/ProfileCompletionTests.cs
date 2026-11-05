@@ -27,16 +27,17 @@ public class ProfileCompletionTests
         public Func<string, Task<JsonElement>>? OnWrite;
         public Action? OnSelfRead;
         public List<string> Methods = [];
+        public Dictionary<string, JsonElement> Payloads = [];
 
         protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
         {
             "get_IsConnectedToGateway" => Connected,
             "get_GrantedOperatorScopes" => Scopes,
-            "SendWizardRequestAsync" => Send((string)args![0]!),
+            "SendWizardRequestAsync" => Send((string)args![0]!, args[1]),
             _ => throw new NotSupportedException(method?.Name),
         };
 
-        private Task<JsonElement> Send(string method)
+        private Task<JsonElement> Send(string method, object? parameters)
         {
             Methods.Add(method);
             if (method == "users.self")
@@ -44,6 +45,7 @@ public class ProfileCompletionTests
                 OnSelfRead?.Invoke();
                 return Task.FromResult(JsonSerializer.SerializeToElement(SelfProfile));
             }
+            Payloads[method] = JsonSerializer.SerializeToElement(parameters);
             return OnWrite is null
                 ? Task.FromResult(JsonSerializer.SerializeToElement(new { profile = new { id = "gateway-owner" } }))
                 : OnWrite(method);
@@ -580,46 +582,176 @@ public class ProfileCompletionTests
         Assert.DoesNotContain(proxy.Methods, m => m.StartsWith("users.set", StringComparison.Ordinal));
     }
 
-    [Theory]
-    // An existing install that was only updated (no setup this run) is offered too.
-    [InlineData("gw", null, false, false, false, true)]
-    [InlineData("gw", null, false, true, false, true)]
-    // The post-setup restart's handoff window does not block; an in-progress setup run defers.
-    [InlineData("gw", null, false, true, true, true)]
-    [InlineData("gw", null, false, false, true, false)]
-    // Once per Gateway and process, a remembered Skip, and no active Gateway all suppress it.
-    [InlineData("gw", "gw", false, false, false, false)]
-    [InlineData("gw", "other", false, false, false, true)]
-    [InlineData("gw", null, true, false, false, false)]
-    [InlineData(null, null, false, true, false, false)]
-    public void AutoOffer_CoversUpdatedInstalls_OncePerGateway_AndDefersDuringSetup(
-        string? gatewayId, string? offered, bool declined, bool postSetupRestart, bool setupOpen, bool expected) =>
-        Assert.Equal(expected, ProfileCompletionAutoOffer.ShouldOffer(gatewayId, offered, declined, postSetupRestart, setupOpen));
-
     [Fact]
-    public void Window_AutomaticOfferIsNotLimitedToPostSetupRestart()
+    public async Task AutoFill_BlankOwner_FillsNameAndPhotoWithoutAPrompt_WithExactPayloads()
     {
-        var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? FindRoot();
-        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
-        var start = source.IndexOf("private void MaybeOfferProfileCompletion()", StringComparison.Ordinal);
-        var body = source[start..source.IndexOf("private void RetryProfileCompletionAfter", start, StringComparison.Ordinal)];
-        Assert.Contains("ProfileCompletionAutoOffer.ShouldOffer(", body);
-        Assert.Contains("CurrentApp.GetOnboardingWindowHandle() != IntPtr.Zero", body);
-        Assert.DoesNotContain("!CurrentApp.IsPostSetupRestart", body);
-        Assert.True(body.IndexOf("ShouldOffer(", StringComparison.Ordinal) < body.IndexOf("_profileOfferedGatewayId = id", StringComparison.Ordinal));
+        var (service, proxy, provider, _) = Create();
+        var result = await service.AutoFillAsync(CancellationToken.None);
+        Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.Saved), result.Save);
+        Assert.Equal(1, provider.Reads);
+        Assert.Equal(["users.self", "users.self", "users.setDisplayName", "users.self", "users.setAvatar"], proxy.Methods);
+        Assert.Equal("gateway-owner", proxy.Payloads["users.setDisplayName"].GetProperty("profileId").GetString());
+        Assert.Equal("Ada Lovelace", proxy.Payloads["users.setDisplayName"].GetProperty("displayName").GetString());
+        Assert.Equal(AccountPhotoPolicy.Png, proxy.Payloads["users.setAvatar"].GetProperty("mime").GetString());
+        Assert.Equal(Convert.ToBase64String(Photo.Bytes), proxy.Payloads["users.setAvatar"].GetProperty("avatarBase64").GetString());
+        Assert.True(result.MayHaveChanged);
+        Assert.False(result.RetryLater);
+    }
+
+    [Theory]
+    // An updated install whose owner already has a name still gets the missing photo, and the reverse.
+    [InlineData("named", "users.setAvatar")]
+    [InlineData("avatar", "users.setDisplayName")]
+    // An email already identifies the owner, so only the photo is filled.
+    [InlineData("email", "users.setAvatar")]
+    public async Task AutoFill_FillsOnlyBlankFields(string kind, string expectedWrite)
+    {
+        var (service, proxy, _, _) = Create();
+        proxy.SelfProfile = kind switch
+        {
+            "named" => new { profile = new { id = "gateway-owner", displayName = "Barbara", hasAvatar = false } },
+            "avatar" => new { profile = new { id = "gateway-owner", hasAvatar = true } },
+            _ => (object)new { profile = new { id = "gateway-owner", emails = new[] { "a@example.com" }, hasAvatar = false } },
+        };
+        var result = await service.AutoFillAsync(CancellationToken.None);
+        Assert.Equal([expectedWrite], proxy.Methods.Where(m => m.StartsWith("users.set", StringComparison.Ordinal)));
+        Assert.Equal(expectedWrite == "users.setAvatar" ? ProfileStep.NotAttempted : ProfileStep.Saved, result.Save!.Name);
+        Assert.Equal(expectedWrite == "users.setAvatar" ? ProfileStep.Saved : ProfileStep.NotAttempted, result.Save.Photo);
+    }
+
+    [Theory]
+    [InlineData("complete")]
+    [InlineData("provider")]
+    [InlineData("readOnly")]
+    public async Task AutoFill_NothingMissingNotOwnerOrNotWritable_NeverReadsAccountOrWrites(string kind)
+    {
+        var (service, proxy, provider, _) = Create();
+        if (kind == "readOnly") proxy.Scopes = ["operator.read"];
+        proxy.SelfProfile = kind switch
+        {
+            "complete" => new { profile = new { id = "gateway-owner", displayName = "Barbara", hasAvatar = true } },
+            "provider" => new { profile = new { id = "github-123", displayName = (string?)null, hasAvatar = false } },
+            _ => proxy.SelfProfile,
+        };
+        var result = await service.AutoFillAsync(CancellationToken.None);
+        Assert.Equal(ProfileOffer.NotNeeded, result.Offer);
+        Assert.Null(result.Save);
+        Assert.Equal(0, provider.Reads);
+        Assert.Equal(["users.self"], proxy.Methods);
+        Assert.False(result.RetryLater);
     }
 
     [Fact]
-    public void Window_RechecksForOpenModalAfterPreparation_AndDoesNotConsumeAutomaticOffer()
+    public async Task AutoFill_AccountUnavailable_WritesNothing_AndIsNotRetried()
     {
-        var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? FindRoot();
-        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
+        var (service, proxy, provider, _) = Create(AccountIdentityResult.Unavailable(AccountFieldStatus.Denied));
+        var result = await service.AutoFillAsync(CancellationToken.None);
+        Assert.Null(result.Save);
+        Assert.Equal(1, provider.Reads);
+        Assert.Equal(["users.self"], proxy.Methods);
+        Assert.False(result.RetryLater);
+        Assert.False(result.MayHaveChanged);
+    }
+
+    [Fact]
+    public async Task AutoFill_OnlyAvailableAccountFieldIsWritten()
+    {
+        var (service, proxy, _, _) = Create(new AccountIdentityResult(AccountFieldStatus.Denied, null, AccountFieldStatus.Available, Photo));
+        var result = await service.AutoFillAsync(CancellationToken.None);
+        Assert.Equal(new ProfileSaveResult(ProfileStep.NotAttempted, ProfileStep.Saved), result.Save);
+        Assert.DoesNotContain("users.setDisplayName", proxy.Methods);
+    }
+
+    [Fact]
+    public async Task AutoFill_NameSetMeanwhile_IsKept_AndPhotoStillFilled()
+    {
+        var (service, proxy, _, _) = Create();
+        proxy.OnSelfRead = () =>
+        {
+            if (proxy.Methods.Count(m => m == "users.self") == 2)
+                proxy.SelfProfile = new { profile = new { id = "gateway-owner", displayName = "Someone", hasAvatar = false } };
+        };
+        var result = await service.AutoFillAsync(CancellationToken.None);
+        Assert.Equal(new ProfileSaveResult(ProfileStep.ExistingValue, ProfileStep.Saved), result.Save);
+        Assert.DoesNotContain("users.setDisplayName", proxy.Methods);
+    }
+
+    [Theory]
+    [MemberData(nameof(TransportLosses))]
+    public async Task AutoFill_ConnectionLostBeforeAnyWrite_IsRetriedLater(Exception loss)
+    {
+        var (service, proxy, _, _) = Create();
+        proxy.OnSelfRead = () => { if (proxy.Methods.Count(m => m == "users.self") == 2) throw loss; };
+        var result = await service.AutoFillAsync(CancellationToken.None);
+        Assert.Equal(new ProfileSaveResult(ProfileStep.ConnectionLost, ProfileStep.ConnectionLost), result.Save);
+        Assert.True(result.RetryLater);
+        Assert.False(result.MayHaveChanged);
+        Assert.DoesNotContain(proxy.Methods, m => m.StartsWith("users.set", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AutoFill_UncertainWrite_IsNotRetriedInTheSameProcess_ButRefreshes()
+    {
+        var (service, proxy, _, _) = Create();
+        proxy.OnWrite = _ => Task.FromException<JsonElement>(new TimeoutException());
+        var result = await service.AutoFillAsync(CancellationToken.None);
+        Assert.Equal(new ProfileSaveResult(ProfileStep.Uncertain, ProfileStep.NotAttempted), result.Save);
+        Assert.False(result.RetryLater);
+        Assert.True(result.MayHaveChanged);
+    }
+
+    [Fact]
+    public async Task AutoFill_Disconnected_IsRetriedLater_WithoutReadingAccount()
+    {
+        var (service, proxy, provider, _) = Create();
+        proxy.Connected = false;
+        var result = await service.AutoFillAsync(CancellationToken.None);
+        Assert.Equal(ProfileOffer.Unavailable, result.Offer);
+        Assert.True(result.RetryLater);
+        Assert.Equal(0, provider.Reads);
+    }
+
+    [Theory]
+    // Any start qualifies, including an updated install that never ran setup; once per Gateway and process.
+    [InlineData("gw", null, false, true)]
+    [InlineData("gw", "other", false, true)]
+    [InlineData("gw", "gw", false, false)]
+    // A Skip in the owner-menu dialog is remembered; no active Gateway means nothing to fill.
+    [InlineData("gw", null, true, false)]
+    [InlineData(null, null, false, false)]
+    public void AutoFillPolicy_OncePerGateway_HonorsSkip(string? gatewayId, string? attempted, bool declined, bool expected) =>
+        Assert.Equal(expected, ProfileAutoFillPolicy.ShouldAttempt(gatewayId, attempted, declined));
+
+    [Fact]
+    public void Window_AutomaticFillHasNoPrompt_AndRunsForNamedOwnersToo()
+    {
+        var source = WorkspaceWindowSource();
+        var start = source.IndexOf("private void MaybeAutoFillProfile()", StringComparison.Ordinal);
+        var body = source[start..source.IndexOf("private void RetryProfileCompletionAfter", start, StringComparison.Ordinal)];
+        Assert.Contains("ProfileAutoFillPolicy.ShouldAttempt(", body);
+        Assert.Contains("_profileCompletion.AutoFillAsync(", body);
+        Assert.DoesNotContain("ProfileCompletionDialog", body);
+        Assert.DoesNotContain("OpenModalDialog", body);
+        Assert.True(body.IndexOf("ShouldAttempt(", StringComparison.Ordinal) < body.IndexOf("_profileAutoFillGatewayId = id", StringComparison.Ordinal));
+        Assert.Contains("if (eligible && _identity.HasProfile && !_identity.IsLoading) MaybeAutoFillProfile();", source);
+    }
+
+    [Fact]
+    public void Window_ManualReviewRechecksForOpenModalAfterPreparation()
+    {
+        var source = WorkspaceWindowSource();
         var body = source[source.IndexOf("private async Task CompleteProfileAsync", StringComparison.Ordinal)..];
         var prepare = body.IndexOf("PrepareAsync", StringComparison.Ordinal);
         var recheck = body.IndexOf("OpenModalDialog() is { } blocker", StringComparison.Ordinal);
         var show = body.IndexOf("dialog.ShowAsync()", StringComparison.Ordinal);
         Assert.True(prepare >= 0 && prepare < recheck && recheck < show);
-        Assert.Contains("if (!fallbackToDashboard) _profileOfferedGatewayId = null;", source);
+        Assert.Contains("RetryProfileCompletionAfter(blocker);", body);
+    }
+
+    private static string WorkspaceWindowSource()
+    {
+        var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? FindRoot();
+        return File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
     }
 
     private static string FindRoot()

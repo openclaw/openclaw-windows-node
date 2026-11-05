@@ -49,8 +49,9 @@ public sealed partial class WorkspaceWindow : WindowEx
         new WindowsAccountIdentityProvider());
     private readonly ProfileCompletionDeclineStore _profileDeclines =
         new(System.IO.Path.Combine(SettingsManager.SettingsDirectoryPath, "profile-completion-declined.json"));
-    private bool _showingProfileCompletion;
-    private string? _profileOfferedGatewayId;
+    // One profile operation at a time: the automatic fill and the owner-menu dialog share one service.
+    private bool _profileCompletionBusy;
+    private string? _profileAutoFillGatewayId;
     private IOperatorGatewayClient? _refreshingClient;
     private readonly HubCommandExecutor _commandExecutor = new();
     private string? _agentId;
@@ -912,9 +913,9 @@ public sealed partial class WorkspaceWindow : WindowEx
         OwnerName.Text = name ?? Text(_identity.IsLoading ? "OwnerLoading.Text"
             : unnamed ? "OwnerUnnamed.Text" : "OwnerUnavailable.Text");
         _setUpProfileItem.Visibility = unnamed ? Visibility.Visible : Visibility.Collapsed;
-        var canComplete = unnamed && ProfileCompletionEligibility.IsEligible(CurrentApp.Registry?.GetActive());
-        _completeProfileItem.Visibility = canComplete ? Visibility.Visible : Visibility.Collapsed;
-        if (canComplete) MaybeOfferProfileCompletion();
+        var eligible = ProfileCompletionEligibility.IsEligible(CurrentApp.Registry?.GetActive());
+        _completeProfileItem.Visibility = unnamed && eligible ? Visibility.Visible : Visibility.Collapsed;
+        if (eligible && _identity.HasProfile && !_identity.IsLoading) MaybeAutoFillProfile();
         OwnerPicture.DisplayName = name ?? "";
         AutomationProperties.SetName(OwnerButton, OwnerName.Text);
         var avatar = _identity.Avatar;
@@ -987,36 +988,52 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
     }
 
-    /// <summary>Optional, once per Gateway record and process, on any start including after an update; declining is remembered without any profile data.</summary>
-    private void MaybeOfferProfileCompletion()
+    /// <summary>
+    /// Fills blank owner fields from the Windows account without asking, as the macOS Gateway does from its host
+    /// account. Once per Gateway record and process, on any start including after an update; a Skip in the
+    /// owner-menu dialog is remembered without any profile data and stops it.
+    /// </summary>
+    private void MaybeAutoFillProfile()
     {
         var id = CurrentApp.Registry?.ActiveGatewayId;
-        if (_showingProfileCompletion || OpenModalDialog() is not null ||
-            !ProfileCompletionAutoOffer.ShouldOffer(id, _profileOfferedGatewayId,
-                id is not null && _profileDeclines.IsDeclined(id),
-                CurrentApp.IsPostSetupRestart, CurrentApp.GetOnboardingWindowHandle() != IntPtr.Zero))
+        if (_profileCompletionBusy ||
+            !ProfileAutoFillPolicy.ShouldAttempt(id, _profileAutoFillGatewayId, id is not null && _profileDeclines.IsDeclined(id)))
             return;
-        _profileOfferedGatewayId = id;
-        AsyncEventHandlerGuard.Run(() => CompleteProfileAsync(fallbackToDashboard: false), new AppLogger(), nameof(MaybeOfferProfileCompletion));
+        _profileAutoFillGatewayId = id;
+        AsyncEventHandlerGuard.Run(AutoFillProfileAsync, new AppLogger(), nameof(MaybeAutoFillProfile));
     }
 
-    private void RetryProfileCompletionAfter(ContentDialog blocker, bool fallbackToDashboard)
+    private async Task AutoFillProfileAsync()
     {
-        if (!fallbackToDashboard) _profileOfferedGatewayId = null;
+        _profileCompletionBusy = true;
+        ProfileAutoFillResult result;
+        try
+        {
+            result = await _profileCompletion.AutoFillAsync(CancellationToken.None);
+        }
+        finally
+        {
+            _profileCompletionBusy = false;
+        }
+        new AppLogger().Info($"Owner profile auto-fill: {result.Offer}, name {result.Save?.Name}, photo {result.Save?.Photo}.");
+        // Nothing was read or written for this context; a later identity update tries again.
+        if (result.RetryLater) _profileAutoFillGatewayId = null;
+        if (result.MayHaveChanged && !IsClosed)
+            RefreshOwnerIdentity(invalidate: true);
+    }
+
+    private void RetryProfileCompletionAfter(ContentDialog blocker) =>
         blocker.Closed += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
-            if (IsClosed) return;
-            if (fallbackToDashboard)
-                AsyncEventHandlerGuard.Run(() => CompleteProfileAsync(fallbackToDashboard: true), new AppLogger(), nameof(RetryProfileCompletionAfter));
-            else
-                UpdateOwnerIdentity();
+            if (!IsClosed)
+                AsyncEventHandlerGuard.Run(CompleteProfileAsync, new AppLogger(), nameof(RetryProfileCompletionAfter));
         });
-    }
 
-    private async Task CompleteProfileAsync(bool fallbackToDashboard)
+    /// <summary>The owner-menu review: edit or skip the suggested name and photo, or open the dashboard profile page.</summary>
+    private async Task CompleteProfileAsync()
     {
-        if (_showingProfileCompletion || Root.XamlRoot is null) return;
-        _showingProfileCompletion = true;
+        if (_profileCompletionBusy || Root.XamlRoot is null) return;
+        _profileCompletionBusy = true;
         try
         {
             var gatewayId = CurrentApp.Registry?.ActiveGatewayId;
@@ -1024,17 +1041,15 @@ public sealed partial class WorkspaceWindow : WindowEx
             if (IsClosed) return;
             if (preparation.Offer != ProfileOffer.Offer)
             {
-                if (fallbackToDashboard) ((IAppCommands)CurrentApp).OpenDashboard("settings/profile");
-                // A transient failure (connection lost, timeout) must not consume the once-per-Gateway automatic offer.
-                else if (preparation.Offer == ProfileOffer.Unavailable) _profileOfferedGatewayId = null;
+                ((IAppCommands)CurrentApp).OpenDashboard("settings/profile");
                 return;
             }
 
             // Preparation awaited the Gateway, so another dialog may have opened meanwhile. Never stack on it:
-            // wait for it to close, then offer again, and do not consume the automatic once-per-Gateway offer.
+            // wait for it to close, then open the review.
             if (OpenModalDialog() is { } blocker)
             {
-                RetryProfileCompletionAfter(blocker, fallbackToDashboard);
+                RetryProfileCompletionAfter(blocker);
                 return;
             }
 
@@ -1047,7 +1062,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
         finally
         {
-            _showingProfileCompletion = false;
+            _profileCompletionBusy = false;
         }
     }
 
@@ -1205,7 +1220,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _completeProfileItem.Icon = FluentIconCatalog.Build(FluentIconCatalog.Settings);
         AutomationProperties.SetAutomationId(_completeProfileItem, "WorkspaceOwnerCompleteProfile");
         _completeProfileItem.Click += (_, _) =>
-            AsyncEventHandlerGuard.Run(() => CompleteProfileAsync(fallbackToDashboard: true), new AppLogger(), nameof(BuildOwnerMenu));
+            AsyncEventHandlerGuard.Run(CompleteProfileAsync, new AppLogger(), nameof(BuildOwnerMenu));
         menu.Items.Add(_completeProfileItem);
         menu.Items.Add(_setUpProfileItem);
         Add("Settings", () => OpenCompanion(CompanionPageId.Settings), FluentIconCatalog.Settings);
