@@ -2254,13 +2254,13 @@
     <value>功能</value>
   </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>設定</value>
+    <value>應用程式設定</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>權限</value>
   </data>
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
-    <value>偵錯</value>
+    <value>診斷</value>
   </data>
   <data name="Onboarding_UnknownPage" xml:space="preserve">
     <value>未知頁面</value>
@@ -6820,9 +6820,6 @@
   <data name="HubWindow_StatusFlyout_Approve.Content" xml:space="preserve">
     <value>Approve…</value>
   </data>
-  <data name="HubWindow_StatusPill_Tooltip" xml:space="preserve">
-    <value>Connection status</value>
-  </data>
   <data name="HubWindow_Bell_Tooltip" xml:space="preserve">
     <value>Notifications</value>
   </data>
@@ -7978,7 +7975,8 @@
   <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
-  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>擁有者</value></data>
+  <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>共用擁有者</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
@@ -7989,6 +7987,9 @@
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
   <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>通知</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>開啟儀表板</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>開啟儀表板 (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>前進</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>前進</value></data>
   <data name="WorkspaceShell_Back.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Back</value></data>
@@ -8194,6 +8195,9 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在處理此問題。請重新整理以查看其狀態。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>請為每個問題選擇有效的答案。</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>移除項目</value>
+  </data>
   <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>使用已連線 Gateway 的語音</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>聊天朗讀和自動回覆使用 Gateway 設定的語音。文字會傳送至 Gateway 及其語音供應商。金鑰保留在 Gateway 上。本機節點和 MCP 語音不受影響。</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>不會自動改用本機。若無法使用，請關閉此選項以使用本機供應商。</value></data>

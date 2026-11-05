@@ -2301,7 +2301,7 @@ Use one of these options:
     <value>Capabilities</value>
   </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>Settings</value>
+    <value>App settings</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Permissions</value>
@@ -6822,9 +6822,6 @@ Make sure the gateway is running.</value>
   <data name="HubWindow_StatusFlyout_Approve.Content" xml:space="preserve">
     <value>Approve…</value>
   </data>
-  <data name="HubWindow_StatusPill_Tooltip" xml:space="preserve">
-    <value>Connection status</value>
-  </data>
   <data name="HubWindow_Bell_Tooltip" xml:space="preserve">
     <value>Notifications</value>
   </data>
@@ -8047,6 +8044,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
   <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>Shared owner</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
@@ -8057,6 +8055,9 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
   <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Open Dashboard</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Open Dashboard (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Forward</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Forward</value></data>
   <data name="WorkspaceShell_Back.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Back</value></data>
@@ -8261,6 +8262,9 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>This question is being resolved. Refresh to check its status.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choose a valid answer for each question.</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>Remove item</value>
+  </data>
   <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Use connected Gateway voice</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>Chat Read Aloud and automatic replies use the Gateway's configured voice. Text is sent to the Gateway and its speech provider. Keys stay on the Gateway. Local node and MCP speech are unchanged.</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>No automatic local fallback. If unavailable, turn this option off to use your local provider.</value></data>

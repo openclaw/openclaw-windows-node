@@ -2255,13 +2255,13 @@ Gebruik een van deze opties:
     <value>Mogelijkheden</value>
   </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>Instellingen</value>
+    <value>App-instellingen</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Machtigingen</value>
   </data>
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
-    <value>Foutopsporing</value>
+    <value>Diagnostiek</value>
   </data>
   <data name="Onboarding_UnknownPage" xml:space="preserve">
     <value>Onbekende pagina</value>
@@ -6821,9 +6821,6 @@ Controleer of de gateway actief is.</value>
   <data name="HubWindow_StatusFlyout_Approve.Content" xml:space="preserve">
     <value>Approve…</value>
   </data>
-  <data name="HubWindow_StatusPill_Tooltip" xml:space="preserve">
-    <value>Connection status</value>
-  </data>
   <data name="HubWindow_Bell_Tooltip" xml:space="preserve">
     <value>Notifications</value>
   </data>
@@ -7979,7 +7976,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
-  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Eigenaar</value></data>
+  <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>Gedeelde eigenaar</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
@@ -7990,6 +7988,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
   <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Meldingen</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Dashboard openen</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Dashboard openen (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Vooruit</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Vooruit</value></data>
   <data name="WorkspaceShell_Back.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Back</value></data>
@@ -8195,6 +8196,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Deze vraag wordt afgehandeld. Vernieuw om de status te controleren.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Kies een geldig antwoord voor elke vraag.</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>Item verwijderen</value>
+  </data>
   <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Stem van verbonden Gateway gebruiken</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>Voorlezen en automatische antwoorden gebruiken de ingestelde Gateway-stem. Tekst wordt naar de Gateway en de spraakprovider gestuurd. Sleutels blijven op de Gateway. Lokale node- en MCP-spraak blijven ongewijzigd.</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>Geen automatische lokale terugval. Schakel deze optie uit om bij onbeschikbaarheid uw lokale provider te gebruiken.</value></data>

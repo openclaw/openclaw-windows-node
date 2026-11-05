@@ -34,6 +34,19 @@ deadlines from earlier versions also remain unchanged. A restart with a differen
 startup override retains the stored deadline within supported bounds: 27 to 141
 minutes for new preparations, and 13.5 to 141 minutes for destination and legacy
 receipts.
+Before that restart, `SetupCompletionPreparation` bounds the production finishing
+operation, including finalization and restart publication, with one execution
+window using the same startup-derived budget described above. Failed
+attempts and explicit retries share its original monotonic deadline. Deadline or
+window cancellation ends the presentation wait, not ownership of an admitted
+write or restart. Delegates receive cooperative cancellation, but cleanup still
+joins the actual work and prior page drain.
+Retry and Back are unavailable while that work remains pending, and expiry cannot
+admit another attempt. An uncertain finalization cannot replay unless the existing
+owner confirms that only committed finalization remains to resume. A late restart
+publication, including a committed-publication failure, never authorizes a second
+launch. This in-process budget is separate from the persisted post-restart
+handoff deadline described above.
 A failed attempt remains available for explicit Retry,
 but automatic reactivation does not show the same failure dialog again. Successful
 runtime checks alone do not prove that a full, potentially longer chat turn has finished.
@@ -480,10 +493,11 @@ A reported slow native cold start took about 136 seconds. Later reports on slow
 ARM64 and x64 hosts reached a verified listener after about 165 to 210 seconds
 ([#1969](https://github.com/openclaw/openclaw-windows-node/issues/1969)), so the
 former three-minute budget rolled back starts that were still progressing.
-Conditional on a successful package acknowledgement, Companion uses a five-minute startup
-budget, with ten seconds for confirmation after a late acknowledgement, subject
-to the caller deadline (at most 310 seconds for start/status), then still requires fresh selected-port and process-sequence ownership
-proof. It never treats an `unhealthy`/`starting` observation as ready, waits for
+Companion uses a five-minute absolute startup budget from before the package start
+request, with ten seconds for confirmation after a late acknowledgement, subject to
+the caller deadline (at most 310 seconds for start/status), then still requires
+fresh selected-port and process-sequence ownership proof. It never treats an
+`unhealthy`/`starting` observation as ready, waits for
 an unrelated pre-existing start, or retries the start command while polling.
 If a listener appears between a pending status and the host snapshot, one immediate
 status recheck may admit only a fresh `running` attestation. The full selected-port,
@@ -493,6 +507,36 @@ The startup budget defaults to five minutes. Set `OPENCLAW_NATIVE_GATEWAY_START_
 to whole seconds (30 to 3600) before starting Companion to change it; the published
 connection phase and credential handoff budgets follow it. Only the published connection
 phase keeps a 210-second floor for shorter values.
+
+Staged native setup shares the existing 330-second default admission allowance
+after successful native configuration validation through the first authenticated
+operator hello. Configuration validation uses the native CLI timeout (four
+minutes by default, overridable with `OPENCLAW_SETUP_NATIVE_CLI_TIMEOUT`) and
+requires a confirmed zero-exit result; it does not consume the startup or
+admission budget.
+Start-command time, listener verification, challenge authorization, startup-sidecar
+retry hints and pairing all consume that same remaining time. No reconnect or
+credential recovery grants a fresh window. A current typed startup rejection
+reports startup still pending at expiry; terminal authentication, protocol and
+ownership failures do not retry. Caller cancellation remains cancellation.
+An exhausted session needs new setup preparation rather than another connection retry.
+This does not require the Gateway's broad `/startupz` sidecar readiness to finish
+before an operator connection is attempted.
+
+The current package status contract does not expose attempt-bound startup-phase
+progress. Repeated unchanged status snapshots and unverified Gateway log lines
+do not extend a deadline. Progress-aware waiting needs a validated package signal
+associated with the owned launch attempt; until then the absolute startup ceiling
+and listener ownership checks remain authoritative.
+
+On newer packages advertising `integration.gatewayLaunch={version:1}`, Companion
+also correlates its launch before dispatch and conditionally stops only that
+attempt, including after a lost start acknowledgement. An adopted launch grants
+no cleanup ownership. A refused conditional stop never retries unconditionally.
+Shipping isolated-session-v1 packages without that optional advertisement retain
+their existing lifecycle behavior; malformed advertised support is an error,
+not a legacy fallback. Listener/process-sequence proof is required independently
+on both paths. See the [native lifecycle contract](ARCHITECTURE.md#isolated-listener-proof-and-legacy-process-ownership).
 
 When native setup fails after the package is installed, the setup page keeps the
 failed step, shows the typed failure (for a startup timeout: the phase, budget and

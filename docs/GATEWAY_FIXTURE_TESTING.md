@@ -137,13 +137,20 @@ tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
+On an authorized, exclusive interactive desktop, add `-KeyboardProof` to run the
+separate foreground keyboard fixture lane as well. It enables native input only
+in that child test process and rejects failed, skipped, and zero-test runs. The
+default fixture lane excludes those keyboard-dependent cases; it does not claim
+their proof.
+
 ### Saved Gateway ownership and released profiles
 
 `GatewayManagement_UsesSavedOwnershipWithoutSetupState` renders native-only,
 native-plus-WSL, and WSL-only saved profiles with no `setup-state.json`. These
 cases use credential-free, MCP-only profiles: their package/distro markers are
 synthetic and never authorize a connection, native package, or WSL process.
-The real Settings page must show WSL management only for the WSL cases.
+The real Settings page must show WSL removal only for the WSL cases. Onboarding
+remains visible only when WSL is active, not when the selected Gateway is native.
 With `-Screenshots`, the cases retain complete Settings captures and the actual
 Shell tooltip. The tooltip capture first resolves icon ID 1 against this app's
 owned native window, then hovers that icon; an app-name match alone is not proof
@@ -181,7 +188,8 @@ mismatch, failed case, or zero/skipped selection is not compatibility proof.
 The ordinary `windows-latest` CI UI job runs this script against its explicitly
 built Debug x64 app after installing the Windows App Runtime selected by
 `Directory.Build.props`. Its dedicated step enables the fixture opt-in only for
-the child test processes and selects `Category=GatewayFixture`, including the
+the child test processes and selects `Category=GatewayFixture` without keyboard-only
+cases, including the
 context-usage and chat-run correlation scenarios. The general UI test step
 excludes that category so each scenario runs once. TRX, synthetic request logs,
 run receipts and owned-window screenshots are uploaded in `test-results-ui`
@@ -507,6 +515,24 @@ the unexpected-request assertions still surface them as smoke failures.
 Non-interactive scenario responder exceptions still propagate through server
 cleanup, preserving negative-test guards. Only interactive runtime faults are
 translated into `INTERNAL` responses and recorded as unexpected requests.
+
+The server also answers one plain HTTP request: the authenticated scenario
+profile's photo at `GET /api/users/<profile id>/avatar`, which the Workspace
+footer sends after `users.self` returns a profile. The browse scenario serves
+`fixture-owner`; owner-identity UI cases can select another synthetic profile
+with `CreateBrowseWithOwnerProfile`, and the HTTP route serves that scenario's
+authenticated profile ID. A request with the shared
+Gateway token (or the issued device token once the server accepts one) for the
+scenario profile receives a small solid-colour PNG. A missing or wrong
+credential receives 401 and an unknown profile receives 404. Each request is recorded as
+`http:users.avatar` with only its outcome, never the credential, the profile id
+or the query string. The 401 and 404 outcomes are unexpected requests, so a
+broken photo path fails the smoke instead of quietly falling back to initials.
+Any other request that is not a WebSocket upgrade is still rejected as an unexpected `<upgrade>`.
+`OwnerFooterUsesAuthenticatedProfileAndLiveConnectionStatus` waits for the served
+photo. With `-Screenshots` it also counts footer pixels in that photo's colour in
+the captured Workspace window, so the capture shows the image was decoded and
+painted, not only requested.
 
 Add new behavior at the server boundary. Do not introduce fixture providers,
 demo branches in pages, bypasses in the connection manager, or a second chat

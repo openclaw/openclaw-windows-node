@@ -84,7 +84,7 @@ public sealed partial class GatewayFixtureUiTests
 
     private static AutomationElement? FindCronWindow(GatewayFixtureRun run) =>
         AppWindows(run).SingleOrDefault(window => window.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsConnectionStatus")) is not null);
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsOwner")) is not null);
 
     private static AutomationElement CronWindow(GatewayFixtureRun run) =>
         FindCronWindow(run) ?? throw new InvalidOperationException("Owned Settings window is unavailable.");

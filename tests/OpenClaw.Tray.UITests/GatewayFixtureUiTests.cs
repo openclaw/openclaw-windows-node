@@ -27,6 +27,9 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     private static readonly TimeSpan HandoffSettleTimeout =
         int.TryParse(Environment.GetEnvironmentVariable(HandoffSettleTimeoutVariable), out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(45);
+    // The footer photo is a flat disc about 24 DIPs across, so a painted one covers hundreds of pixels at any display scale.
+    private const int OwnerPhotoChannelTolerance = 8;
+    private const int OwnerPhotoMinimumPixels = 150;
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
@@ -631,9 +634,46 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             var owner = FindById(run, "WorkspaceOwner")!;
             Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Personal workspace", owner.Current.HelpText);
-            Assert.Contains(run.Gateway.Requests, request => request.Method == "users.self" && request.Outcome == "ok");
-            await CaptureIfRequestedAsync(run, "owner-profile.png");
+            await WaitForAuthenticatedOwnerPhotoAsync(run);
         });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task OwnerFooterRendersSharedOwnerForGatewayOwnerProfile()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Shared owner",
+                "shared Gateway owner label in footer");
+            var owner = FindById(run, "WorkspaceOwner")!;
+            Assert.Equal("Shared owner", owner.Current.Name);
+            Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
+            await WaitForAuthenticatedOwnerPhotoAsync(run);
+        }, scenario: GatewayScenario.CreateBrowseWithOwnerProfile("gateway-owner", "Fixture Shared Person"));
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task OwnerFooterLoadsAvatarForProfileWithoutEmailOrUploadMetadata()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture Owner",
+                "named profile without avatar eligibility hints in footer");
+            var owner = FindById(run, "WorkspaceOwner")!;
+            Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
+            await WaitForAuthenticatedOwnerPhotoAsync(run);
+            await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "SettingsOwner") is
+                { Current.IsOffscreen: false, Current.Name: "Fixture Owner" },
+                "authenticated owner in newly created Settings footer");
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+                await WaitUiAsync(run, () => OwnerPhotoPainted(run, "SettingsOwner", "settings-owner-profile.png"),
+                    "cached owner photo painted in newly created Settings footer");
+        }, scenario: GatewayScenario.CreateBrowseWithOwnerProfile("fixture-owner", "Fixture Owner"));
     }
 
     [GatewayFixtureUiFact]
@@ -1316,5 +1356,60 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         OwnedWindowCapture.Save(run, AppWindows(run).OrderByDescending(window =>
             window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name);
         return Task.CompletedTask;
+    }
+
+    private static async Task WaitForAuthenticatedOwnerPhotoAsync(GatewayFixtureRun run)
+    {
+        Assert.Contains(run.Gateway.Requests, request => request.Method == "users.self" && request.Outcome == "ok");
+        // The photo arrives over plain HTTP after the name, so wait for the fixture to serve it before the test ends.
+        await run.WaitForAsync(() => Task.FromResult(run.Gateway.Requests.Any(request =>
+            request.Method == FixtureGatewayServer.AvatarRequestMethod && request.Outcome == "ok")),
+            "authenticated owner photo served");
+        // Native capture is strict and opt-in, so only screenshot runs also wait for the photo to be painted.
+        if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+            await WaitUiAsync(run, () => OwnerPhotoPainted(run), "owner photo painted in footer");
+    }
+
+    /// <summary>Captures the Workspace window and reports whether the footer button shows the served photo's colour.</summary>
+    private static bool OwnerPhotoPainted(GatewayFixtureRun run, string ownerAutomationId = "WorkspaceOwner",
+        string captureName = "owner-profile.png")
+    {
+        var ownerId = new PropertyCondition(AutomationElement.AutomationIdProperty, ownerAutomationId);
+        foreach (var window in AppWindows(run))
+        {
+            if (window.FindFirst(TreeScope.Descendants, ownerId) is not { } owner || owner.Current.IsOffscreen)
+                continue;
+            OwnedWindowCapture.Save(run, window, captureName, owner);
+            return CountOwnerPhotoPixels(Path.Combine(run.ArtifactsDirectory, captureName)) >= OwnerPhotoMinimumPixels;
+        }
+        return false;
+    }
+
+    /// <summary>Counts pixels inside the capture's asserted footer button that match the served photo's colour.</summary>
+    private static int CountOwnerPhotoPixels(string capturePath)
+    {
+        using var metadata = JsonDocument.Parse(File.ReadAllText(Path.ChangeExtension(capturePath, ".json")));
+        var button = metadata.RootElement.GetProperty("assertions")[0];
+        using var bitmap = new System.Drawing.Bitmap(capturePath);
+        var left = Math.Max(0, (int)button.GetProperty("left").GetDouble());
+        var top = Math.Max(0, (int)button.GetProperty("top").GetDouble());
+        var right = Math.Min(bitmap.Width, left + (int)button.GetProperty("Width").GetDouble());
+        var bottom = Math.Min(bitmap.Height, top + (int)button.GetProperty("Height").GetDouble());
+        var red = (FixtureGatewayServer.OwnerAvatarRgb >> 16) & 0xFF;
+        var green = (FixtureGatewayServer.OwnerAvatarRgb >> 8) & 0xFF;
+        var blue = FixtureGatewayServer.OwnerAvatarRgb & 0xFF;
+        var painted = 0;
+        for (var y = top; y < bottom; y++)
+        {
+            for (var x = left; x < right; x++)
+            {
+                var pixel = bitmap.GetPixel(x, y);
+                if (Math.Abs(pixel.R - red) <= OwnerPhotoChannelTolerance
+                    && Math.Abs(pixel.G - green) <= OwnerPhotoChannelTolerance
+                    && Math.Abs(pixel.B - blue) <= OwnerPhotoChannelTolerance)
+                    painted++;
+            }
+        }
+        return painted;
     }
 }

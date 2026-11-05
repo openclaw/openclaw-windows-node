@@ -18,8 +18,8 @@ internal sealed class NativeGatewaySetupHost(
         logger.Info(message);
         progress?.Invoke(message);
     }
-
-
+    public void ReportHandshakeObservation(long connectionAttempt, OpenClaw.Shared.GatewayHandshakeObservation observation) =>
+        logger.HandshakeObservation(connectionAttempt, observation);
 
     public Task<NativeGatewayContract> DetectContractAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken) =>
@@ -116,7 +116,8 @@ internal sealed class NativeGatewaySetupHost(
         IReadOnlyDictionary<string, string> environment,
         CancellationToken cancellationToken) =>
         RunAsync(package.OpenClawAliasPath, ["config", "validate", "--json"], environment,
-            CliCommandTimeout, "Validating native Gateway configuration...", cancellationToken);
+            NativeGatewaySetupService.ConfigurationValidationTimeout,
+            "Validating native Gateway configuration...", cancellationToken);
 
     public Task VerifyHealthAsync(
         NativeGatewayPackage package,
@@ -166,7 +167,9 @@ internal sealed class NativeGatewaySetupHost(
         {
             var detail = SetupLogger.Sanitize(result.Stderr + Environment.NewLine + result.Stdout).Trim();
             throw new InvalidOperationException(
-                $"{message} {(result.TimedOut ? "Timed out." : $"Exit code {result.ExitCode}.")} {detail}");
+                $"{message} {(result.TimedOut
+                    ? $"Timed out after {timeout.TotalSeconds:0} seconds."
+                    : $"Exit code {result.ExitCode}.")} {detail}");
         }
         if (arguments is ["setup"] && !string.IsNullOrWhiteSpace(result.Stdout))
             Report(SetupLogger.Sanitize(result.Stdout).Trim());

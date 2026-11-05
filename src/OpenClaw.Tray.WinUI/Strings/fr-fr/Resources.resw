@@ -2254,13 +2254,13 @@ Utilisez l'une de ces options :
     <value>Fonctionnalités</value>
   </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>Paramètres</value>
+    <value>Paramètres de l'application</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Autorisations</value>
   </data>
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
-    <value>Débogage</value>
+    <value>Diagnostics</value>
   </data>
   <data name="Onboarding_UnknownPage" xml:space="preserve">
     <value>Page inconnue</value>
@@ -6820,9 +6820,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="HubWindow_StatusFlyout_Approve.Content" xml:space="preserve">
     <value>Approve…</value>
   </data>
-  <data name="HubWindow_StatusPill_Tooltip" xml:space="preserve">
-    <value>Connection status</value>
-  </data>
   <data name="HubWindow_Bell_Tooltip" xml:space="preserve">
     <value>Notifications</value>
   </data>
@@ -7978,7 +7975,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
-  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Propriétaire</value></data>
+  <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>Propriétaire partagé</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
@@ -7989,6 +7987,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
   <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Ouvrir le tableau de bord</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Ouvrir le tableau de bord (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Suivant</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Suivant</value></data>
   <data name="WorkspaceShell_Back.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Back</value></data>
@@ -8194,6 +8195,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Cette question est en cours de résolution. Actualisez pour vérifier son état.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choisissez une réponse valide pour chaque question.</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>Supprimer l’élément</value>
+  </data>
   <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Utiliser la voix de la Gateway connectée</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>La lecture du chat et des réponses automatiques utilise la voix configurée sur la Gateway. Le texte est envoyé à la Gateway et à son fournisseur vocal. Les clés restent sur la Gateway. La synthèse locale du nœud et de MCP ne change pas.</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>Aucun repli local automatique. En cas d’indisponibilité, désactivez cette option pour utiliser le fournisseur local.</value></data>

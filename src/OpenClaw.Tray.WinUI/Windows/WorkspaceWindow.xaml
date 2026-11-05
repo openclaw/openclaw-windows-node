@@ -12,28 +12,23 @@
             <DataTemplate x:Key="AgentIdentityTemplate">
                 <controls:AgentIdentityBadge/>
             </DataTemplate>
-            <Style x:Key="ConnectionBadgeIcon" TargetType="FontIcon">
-                <Setter Property="Glyph" Value="&#xE91F;"/>
-                <Setter Property="FontSize" Value="10"/>
-            </Style>
-            <Style x:Key="ConnectionBadgeNeutral" TargetType="FontIcon" BasedOn="{StaticResource ConnectionBadgeIcon}">
-                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorNeutralBrush}"/>
-            </Style>
-            <Style x:Key="ConnectionBadgeSuccess" TargetType="FontIcon" BasedOn="{StaticResource ConnectionBadgeIcon}">
-                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}"/>
-            </Style>
-            <Style x:Key="ConnectionBadgeCaution" TargetType="FontIcon" BasedOn="{StaticResource ConnectionBadgeIcon}">
-                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCautionBrush}"/>
-            </Style>
-            <Style x:Key="ConnectionBadgeCritical" TargetType="FontIcon" BasedOn="{StaticResource ConnectionBadgeIcon}">
-                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}"/>
-            </Style>
         </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <TitleBar x:Name="WorkspaceTitleBar" Title="OpenClaw" AutomationProperties.AutomationId="WorkspaceTitleBar"/>
+        <TitleBar x:Name="WorkspaceTitleBar" Title="OpenClaw" AutomationProperties.AutomationId="WorkspaceTitleBar">
+            <TitleBar.Resources>
+                <!-- TitleBar switches to its 48 DIP expanded height whenever RightHeader is set, even
+                     while that content is collapsed. Keep the compact 32 DIP chrome in every state. -->
+                <x:Double x:Key="TitleBarExpandedHeight">32</x:Double>
+            </TitleBar.Resources>
+            <TitleBar.RightHeader>
+                <!-- Shown only while the Chat pane is hidden, so Dashboard and the bell stay one click away. -->
+                <controls:WorkspacePaneFooter x:Name="TitleBarFooter" AutomationIdPrefix="WorkspaceTitleBar"
+                                              Visibility="Collapsed" Margin="0,0,4,0" VerticalAlignment="Center"/>
+            </TitleBar.RightHeader>
+        </TitleBar>
         <Grid x:Name="NavigationSection" Grid.Row="1">
         <NavigationView x:Name="NavView"
                         AutomationProperties.AutomationId="WorkspaceNavigation"
@@ -52,7 +47,6 @@
                 <x:Double x:Key="NavigationViewItemOnLeftIconBoxHeight">22</x:Double>
                 <Thickness x:Key="NavigationViewItemSeparatorMargin">0,2,0,2</Thickness>
                 <SvgImageSource x:Key="Chat_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Chat.svg"/>
-                <SvgImageSource x:Key="Notifications_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Notifications.svg"/>
             </NavigationView.Resources>
             <NavigationView.PaneHeader>
                 <StackPanel Margin="4,8,4,8" Spacing="8">
@@ -191,46 +185,7 @@
                 <NavigationViewItemHeader x:Name="SessionsEmpty" FontWeight="Normal"/>
             </NavigationView.MenuItems>
             <NavigationView.PaneFooter>
-                <Grid x:Name="ExpandedFooter" ColumnSpacing="4" Margin="4,8,4,8">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                    <Button x:Name="OwnerButton" Style="{StaticResource SubtleButtonStyle}" Padding="8" HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Stretch" AutomationProperties.AutomationId="WorkspaceOwner">
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <PersonPicture x:Name="OwnerPicture" Width="24" Height="24" VerticalAlignment="Center"
-                                           IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
-                            <StackPanel Grid.Column="1">
-                                <TextBlock x:Name="OwnerName" TextTrimming="CharacterEllipsis"/>
-                                <Grid ColumnSpacing="4">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <FontIcon x:Name="OwnerStatusDot" Style="{StaticResource ConnectionBadgeNeutral}"
-                                              VerticalAlignment="Center" IsHitTestVisible="False"
-                                              AutomationProperties.AccessibilityView="Raw"/>
-                                    <TextBlock x:Name="OwnerDetail" Grid.Column="1" TextTrimming="CharacterEllipsis"
-                                               Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                </Grid>
-                            </StackPanel>
-                        </Grid>
-                    </Button>
-                    <Button x:Name="NotificationsButton" x:Uid="WorkspaceShell_NotificationsButton" Grid.Column="1"
-                            Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}"
-                            CornerRadius="{ThemeResource ControlCornerRadius}"
-                            Style="{StaticResource SubtleButtonStyle}" Padding="8" VerticalAlignment="Center"
-                            AutomationProperties.AutomationId="WorkspaceNotifications">
-                        <Grid>
-                            <ImageIcon Source="{StaticResource Notifications_Icon}" Width="20" Height="20"
-                                       AutomationProperties.AccessibilityView="Raw"/>
-                            <InfoBadge x:Name="NotificationsBadge" Value="0" Visibility="Collapsed"
-                                       HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-6,-8,0"/>
-                        </Grid>
-                        <Button.Flyout>
-                            <Flyout x:Name="NotificationsFlyout" Placement="TopEdgeAlignedLeft"
-                                    Opening="OnNotificationsOpening" Closed="OnNotificationsClosed">
-                                <controls:NotificationFlyoutContent x:Name="NotificationContent"/>
-                            </Flyout>
-                        </Button.Flyout>
-                    </Button>
-                </Grid>
+                <controls:WorkspacePaneFooter x:Name="ChatFooter" AutomationIdPrefix="Workspace"/>
             </NavigationView.PaneFooter>
             <Grid>
                 <Grid.RowDefinitions>

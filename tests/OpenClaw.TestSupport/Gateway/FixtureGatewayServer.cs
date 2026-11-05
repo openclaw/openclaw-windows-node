@@ -26,6 +26,26 @@ public sealed record GatewayFixtureEvent(string Event, int DeliveredConnections)
 /// </summary>
 public sealed class FixtureGatewayServer : IAsyncDisposable
 {
+    /// <summary>
+    /// Request label for the one plain-HTTP route the fixture serves, the authenticated profile photo.
+    /// The colon is outside the WebSocket method alphabet, so it cannot collide with a Gateway method.
+    /// </summary>
+    public const string AvatarRequestMethod = "http:users.avatar";
+
+    /// <summary>
+    /// Flat colour of the authenticated scenario profile's photo. It is neither a Windows accent nor the
+    /// initials fallback, so finding it in a rendered window proves the photo was decoded.
+    /// </summary>
+    public const int OwnerAvatarRgb = 0x2ECC40;
+
+    private const string AvatarRoutePrefix = "/api/users/";
+    private const string AvatarRouteSuffix = "/avatar";
+    private const int MaximumRequestHeadBytes = 16 * 1024;
+
+    // An 8x8 PNG of OwnerAvatarRgb. A constant keeps this library free of an image-encoding dependency.
+    private static readonly byte[] OwnerAvatarPng = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mPQO+OAFTEMLQkAqApOgZtsmosAAAAASUVORK5CYII=");
+
     private readonly GatewayScenario _scenario;
     private readonly byte[] _tokenHash;
     private readonly TcpListener _listener;
@@ -89,6 +109,12 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     /// rejection can be exercised through the production connect path.
     /// </summary>
     public Action? DeviceTokenRejected { get; set; }
+
+    /// <summary>Pre-authentication startup rejections before this fixture admits an operator.</summary>
+    public int StartupRejectionsRemaining { get; set; }
+    public int StartupRetryAfterMs { get; set; } = 100;
+    public Action? StartupRejected { get; set; }
+    public bool CloseAfterStartupRejection { get; set; } = true;
 
     /// <summary>Connect attempts that presented no device token, so the shared credential was judged.</summary>
     public int SharedCredentialConnects => Volatile.Read(ref _sharedCredentialConnects);
@@ -618,7 +644,11 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             ActiveConnection? activeConnection = null;
             try
             {
-                socket = await UpgradeAsync(tcp.GetStream(), connection.Token);
+                var stream = tcp.GetStream();
+                var head = await ReadRequestHeadAsync(stream, connection.Token);
+                if (await TryServeAvatarAsync(stream, head, connection.Token))
+                    return;
+                socket = await UpgradeAsync(stream, head, connection.Token);
                 var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
                 await SendAsync(socket, sendLock, new
                 {
@@ -695,6 +725,27 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                             Task? handshakeGate;
                             lock (_sync) handshakeGate = _connectionHandshakeGate?.Task;
                             if (handshakeGate is not null) await handshakeGate.WaitAsync(connection.Token);
+                            if (StartupRejectionsRemaining > 0)
+                            {
+                                StartupRejectionsRemaining--;
+                                await SendAsync(socket, sendLock, new
+                                {
+                                    type = "res", id, ok = false,
+                                    error = new
+                                    {
+                                        code = "UNAVAILABLE", message = "Gateway starting", retryable = true,
+                                        retryAfterMs = StartupRetryAfterMs, details = new { reason = "startup-sidecars" }
+                                    }
+                                }, connection.Token);
+                                Complete(requestIndex, "error:UNAVAILABLE");
+                                StartupRejected?.Invoke();
+                                if (CloseAfterStartupRejection)
+                                {
+                                    await socket.CloseOutputAsync((WebSocketCloseStatus)1013, "gateway starting", connection.Token);
+                                    return;
+                                }
+                                continue;
+                            }
                             var role = Authenticate(parameters, nonce);
                             await SendAsync(socket, sendLock, new
                             {
@@ -1020,24 +1071,104 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }
     }
 
-    private static async Task<WebSocket> UpgradeAsync(NetworkStream stream, CancellationToken ct)
+    /// <summary>
+    /// Reads one HTTP request head, exactly through CRLFCRLF so a coalesced first WebSocket frame is not consumed.
+    /// Same bounded leaf as Shared.Tests LoopbackWebSocketServer.
+    /// </summary>
+    private static async Task<string[]> ReadRequestHeadAsync(NetworkStream stream, CancellationToken ct)
     {
-        // Same bounded HTTP upgrade leaf as Shared.Tests LoopbackWebSocketServer.
-        // Read exactly through CRLFCRLF so a coalesced first WebSocket frame is not consumed.
         var headers = new List<byte>();
         var next = new byte[1];
-        while (headers.Count < 16 * 1024)
+        while (headers.Count < MaximumRequestHeadBytes)
         {
             if (await stream.ReadAsync(next.AsMemory(), ct) == 0)
-                throw new EndOfStreamException("Connection ended during the fixture WebSocket upgrade.");
+                throw new EndOfStreamException("Connection ended during the fixture HTTP request head.");
             headers.Add(next[0]);
             if (headers.Count >= 4 && headers[^4] == '\r' && headers[^3] == '\n'
                 && headers[^2] == '\r' && headers[^1] == '\n')
                 break;
         }
-        if (headers.Count == 16 * 1024)
-            throw new InvalidDataException("Fixture WebSocket headers exceeded 16 KiB.");
-        var lines = Encoding.ASCII.GetString(headers.ToArray()).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        if (headers.Count == MaximumRequestHeadBytes)
+            throw new InvalidDataException("Fixture HTTP request head exceeded 16 KiB.");
+        return Encoding.ASCII.GetString(headers.ToArray()).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    /// <summary>
+    /// Serves the one plain-HTTP route the Companion window needs besides the WebSocket: the authenticated
+    /// scenario profile photo. Any other HTTP request is left for the upgrade check, which rejects and records it.
+    /// </summary>
+    private async Task<bool> TryServeAvatarAsync(NetworkStream stream, string[] head, CancellationToken ct)
+    {
+        if (!TryReadAvatarProfileId(head, out var profileId))
+            return false;
+
+        // Credentials are judged before the profile, so an unauthenticated caller learns nothing about which ids exist.
+        var (outcome, response) =
+            !HasAcceptedBearer(head) ? ("error:UNAUTHORIZED", AvatarResponse("401 Unauthorized", null))
+            : profileId != _scenario.AuthenticatedProfileId ? ("error:NOT_FOUND", AvatarResponse("404 Not Found", null))
+            : ("ok", AvatarResponse("200 OK", OwnerAvatarPng));
+        var index = Record(AvatarRequestMethod, null);
+        var recorded = "cancelled";
+        try
+        {
+            await stream.WriteAsync(response, ct);
+            recorded = outcome;
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
+        {
+            // A caller that abandons a superseded fetch is not fixture drift and must not read as a rejected upgrade.
+            recorded = "disconnected";
+        }
+        finally
+        {
+            Complete(index, recorded, unexpected: recorded.StartsWith("error:", StringComparison.Ordinal));
+        }
+        return true;
+    }
+
+    private static bool TryReadAvatarProfileId(string[] head, out string profileId)
+    {
+        profileId = "";
+        if (head.FirstOrDefault()?.Split(' ') is not ["GET", var target, "HTTP/1.1"])
+            return false;
+        // The query carries an opaque revision. It never selects the response and is never recorded.
+        var path = target.Split('?', 2)[0];
+        var idLength = path.Length - AvatarRoutePrefix.Length - AvatarRouteSuffix.Length;
+        if (idLength <= 0 || !path.StartsWith(AvatarRoutePrefix, StringComparison.Ordinal)
+            || !path.EndsWith(AvatarRouteSuffix, StringComparison.Ordinal))
+            return false;
+        var escapedId = path.Substring(AvatarRoutePrefix.Length, idLength);
+        if (escapedId.Contains('/'))
+            return false;
+        profileId = Uri.UnescapeDataString(escapedId);
+        return true;
+    }
+
+    private bool HasAcceptedBearer(string[] head)
+    {
+        const string scheme = "Bearer ";
+        var header = head.FirstOrDefault(line => line.StartsWith("Authorization:", StringComparison.OrdinalIgnoreCase))
+            ?.Split(':', 2)[1].Trim();
+        if (header is null || !header.StartsWith(scheme, StringComparison.OrdinalIgnoreCase))
+            return false;
+        var presented = SHA256.HashData(Encoding.UTF8.GetBytes(header[scheme.Length..].Trim()));
+        // One bearer is either the shared token or, once a device is paired, the accepted device token.
+        return CryptographicOperations.FixedTimeEquals(_tokenHash, presented)
+            || AcceptedDeviceToken is { } deviceToken && CryptographicOperations.FixedTimeEquals(
+                SHA256.HashData(Encoding.UTF8.GetBytes(deviceToken)), presented);
+    }
+
+    private static byte[] AvatarResponse(string status, byte[]? image)
+    {
+        var body = image ?? [];
+        var contentType = image is null ? "" : "Content-Type: image/png\r\n";
+        var head = Encoding.ASCII.GetBytes(
+            $"HTTP/1.1 {status}\r\n{contentType}Content-Length: {body.Length}\r\nConnection: close\r\n\r\n");
+        return [.. head, .. body];
+    }
+
+    private static async Task<WebSocket> UpgradeAsync(NetworkStream stream, string[] lines, CancellationToken ct)
+    {
         var key = lines.FirstOrDefault(line => line.StartsWith("Sec-WebSocket-Key:", StringComparison.OrdinalIgnoreCase))?.Split(':', 2)[1].Trim();
         if (lines.Length == 0 || !lines[0].StartsWith("GET / HTTP/1.1", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(key))
             throw new InvalidDataException("Expected a loopback WebSocket upgrade.");
