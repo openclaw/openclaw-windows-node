@@ -83,7 +83,7 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
 
     internal async Task<JsonElement> EvaluateAsync(string expression, CancellationToken cancellationToken)
     {
-        var result = await CallAsync("Runtime.evaluate", new { expression, returnByValue = true }, cancellationToken);
+        var result = await CallAsync("Runtime.evaluate", new { expression, returnByValue = true, awaitPromise = true }, cancellationToken);
         if (result.TryGetProperty("exceptionDetails", out _))
             throw new InvalidOperationException("Gateway browser state evaluation failed.");
         return result.GetProperty("result").GetProperty("value").Clone();
@@ -92,6 +92,8 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
     internal async Task CaptureAsync(string path)
     {
         using var timeout = new CancellationTokenSource(Timeout);
+        await EvaluateAsync("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))",
+            timeout.Token);
         var result = await CallAsync("Page.captureScreenshot", new { format = "png" }, timeout.Token);
         await File.WriteAllBytesAsync(path, Convert.FromBase64String(result.GetProperty("data").GetString()!), timeout.Token);
     }

@@ -90,7 +90,8 @@ public sealed class SetupAndConnectTestsSearchProof(E2ESetupFixture fixture)
                                 .filter(element => element.getClientRects().length > 0)
                                 .map(element => element.textContent.trim());
                               return { appLoaded: !!document.querySelector("openclaw-app"),
-                                hasHeading: headings.some(text => text.length > 0),
+                                hasHeading: headings.some(text => text.length > 0 && text !== "OpenClaw"),
+                                rootSettled: location.pathname !== "/",
                                 skills: headings.includes("Skills"),
                                 path: location.pathname, title: document.title };
                             })()
@@ -98,6 +99,7 @@ public sealed class SetupAndConnectTestsSearchProof(E2ESetupFixture fixture)
                         lastState = state;
                         if (browser.Authenticated && state.GetProperty("appLoaded").GetBoolean() &&
                             state.GetProperty("hasHeading").GetBoolean() &&
+                            (route != "/" || state.GetProperty("rootSettled").GetBoolean()) &&
                             (route == "/" || state.GetProperty("skills").GetBoolean()))
                         {
                             if (route != "/") Assert.Equal(route, state.GetProperty("path").GetString());
