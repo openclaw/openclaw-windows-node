@@ -86,11 +86,18 @@ public sealed class SetupAndConnectTestsSearchProof(E2ESetupFixture fixture)
                     {
                         var state = await browser.EvaluateAsync("""
                             (() => {
+                              const visible = element => {
+                                const bounds = element.getBoundingClientRect();
+                                return element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+                                  && bounds.width > 0 && bounds.height > 0
+                                  && bounds.bottom > 0 && bounds.top < innerHeight;
+                              };
                               const headings = [...document.querySelectorAll("h1,h2,[role=heading]")]
-                                .filter(element => element.getClientRects().length > 0)
+                                .filter(visible)
                                 .map(element => element.textContent.trim());
                               return { appLoaded: !!document.querySelector("openclaw-app"),
-                                hasHeading: headings.some(text => text.length > 0 && text !== "OpenClaw"),
+                                hasContent: headings.some(text => text.length > 0 && text !== "OpenClaw")
+                                  || [...document.querySelectorAll("input,textarea,[role=textbox]")].some(visible),
                                 rootSettled: location.pathname !== "/",
                                 skills: headings.includes("Skills"),
                                 path: location.pathname, title: document.title };
@@ -98,7 +105,7 @@ public sealed class SetupAndConnectTestsSearchProof(E2ESetupFixture fixture)
                             """, browserTimeout.Token);
                         lastState = state;
                         if (browser.Authenticated && state.GetProperty("appLoaded").GetBoolean() &&
-                            state.GetProperty("hasHeading").GetBoolean() &&
+                            state.GetProperty("hasContent").GetBoolean() &&
                             (route != "/" || state.GetProperty("rootSettled").GetBoolean()) &&
                             (route == "/" || state.GetProperty("skills").GetBoolean()))
                         {
