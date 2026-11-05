@@ -39,6 +39,8 @@ The long-description search journey checks that source status and More/Retry
 share the native results scroller, after the last result, with no fixed
 keyboard-help footer. It verifies the complete last description can be
 scrolled into view and expanded without a status/action region covering it.
+Keyboard expansion must focus and reveal the first newly added result without
+test-driven scrolling or a jump back to an old selected row.
 Native page-name proof searches the old Agent Events alias and Config,
 checks plain destination names, captures the actual symbol icons and navigates
 to the corresponding native pages without sending chat or config writes.

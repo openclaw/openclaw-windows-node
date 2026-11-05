@@ -45,6 +45,7 @@ public sealed partial class SearchHost : UserControl
     private bool _executed;
     private bool _composing;
     private bool _resetting;
+    private bool _revealingMore;
     private string? _renderedQuery;
     private IReadOnlyList<HubSearchItem> _displayedItems = [];
     private long _displayedGeneration = -1;
@@ -119,7 +120,7 @@ public sealed partial class SearchHost : UserControl
                 IsResultFocused(focused);
             var inputFocus = sameQuery && ReferenceEquals(focused, SearchBox);
             var scroll = FindScrollViewer(ResultsList);
-            var offset = sameQuery ? scroll?.VerticalOffset : null;
+            var offset = sameQuery && !_revealingMore ? scroll?.VerticalOffset : null;
             if (!sameQuery) selected = null;
             _renderedQuery = _controller.Query;
             var rows = items.Select(item => new SearchDisplayRow(item, _controller.Generation)).ToArray();
@@ -244,7 +245,30 @@ public sealed partial class SearchHost : UserControl
 
     private void OnMore(object sender, RoutedEventArgs e)
     {
-        if (_controller?.IsOwner(this) == true) _controller.ShowMore();
+        if (_controller?.IsOwner(this) != true) return;
+        var previous = _displayedItems.Select(item => item.Id).ToHashSet();
+        // More can disappear during the rebuild. Move focus before WinUI picks an old row.
+        SearchBox.Focus(FocusState.Programmatic);
+        _revealingMore = true;
+        try { _controller.ShowMore(); }
+        finally { _revealingMore = false; }
+        var added = ResultsList.Items.OfType<SearchDisplayRow>()
+            .FirstOrDefault(row => !previous.Contains(row.Item.Id));
+        if (added is null) return;
+        ResultsList.SelectedItem = added;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_controller?.IsOwner(this) != true || _displayedGeneration != added.Generation ||
+                !ReferenceEquals(ResultsList.SelectedItem, added)) return;
+            ResultsList.UpdateLayout();
+            ResultsList.ScrollIntoView(added, ScrollIntoViewAlignment.Leading);
+            ResultsList.UpdateLayout();
+            if (ResultsList.ContainerFromItem(added) is ListViewItem container)
+            {
+                container.Focus(FocusState.Keyboard);
+                container.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+            }
+        });
     }
     private void OnRetry(object sender, RoutedEventArgs e)
     {

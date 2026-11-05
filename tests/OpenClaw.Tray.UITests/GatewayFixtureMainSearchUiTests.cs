@@ -369,10 +369,28 @@ public sealed partial class GatewayFixtureUiTests
             more!.SetFocus();
             Send(run, window, "{ENTER}");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_5") is not null, "more results without closing search");
-            edit.SetFocus();
-            ScrollSearch(run);
-            await WaitUiAsync(run, () => IsFullyVisibleInScrollViewport(FindById(run, "SearchResult_5")),
-                "expanded last description");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_5") is { Current.HasKeyboardFocus: true },
+                "keyboard More transfers focus to its first newly revealed result");
+            try
+            {
+                await WaitUiAsync(run, () => IsFullyVisibleInScrollViewport(FindById(run, "SearchResult_5")),
+                    "expanded last description");
+            }
+            catch (TimeoutException)
+            {
+                var result = FindById(run, "SearchResult_5")!;
+                output.WriteLine($"Expanded row: bounds={result.Current.BoundingRectangle}, " +
+                    $"offscreen={result.Current.IsOffscreen}, focus={result.Current.HasKeyboardFocus}");
+                for (var parent = TreeWalker.ControlViewWalker.GetParent(result); parent is not null;
+                    parent = TreeWalker.ControlViewWalker.GetParent(parent))
+                {
+                    if (!parent.TryGetCurrentPattern(ScrollPattern.Pattern, out var currentPattern)) continue;
+                    var state = ((ScrollPattern)currentPattern).Current;
+                    output.WriteLine($"Scroll viewport: bounds={parent.Current.BoundingRectangle}, " +
+                        $"vertical={state.VerticalScrollPercent}, view={state.VerticalViewSize}");
+                }
+                throw;
+            }
             Assert.Contains("Final line remains readable.", FindById(run, "SearchResult_5")!.Current.Name);
             Assert.True(FindById(run, "SearchMore") is null or { Current.IsOffscreen: true });
             OwnedWindowCapture.Save(run, window, "search-expanded-last-description.png", list);
@@ -489,9 +507,19 @@ public sealed partial class GatewayFixtureUiTests
                 .Contains("searching", StringComparison.OrdinalIgnoreCase) != true &&
                 FindById(run, "SearchMore") is not null, "settled metadata");
             ScrollSearch(run);
+            var previousRows = FindById(run, "SearchResultsList")!.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().Select(item => item.Current.Name).ToHashSet();
             Invoke(FindById(run, "SearchMore")!);
+            await WaitUiAsync(run, () => FindInApp(run, new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem),
+                new PropertyCondition(AutomationElement.HasKeyboardFocusProperty, true))) is { } revealed &&
+                !previousRows.Contains(revealed.Current.Name), "More focus handoff before metadata navigation");
             ScrollSearch(run, 0);
             const string title = GatewayScenario.EmptyTitle;
+            await WaitUiAsync(run, () => FindInApp(run, new PropertyCondition(
+                AutomationElement.NameProperty, title + ". main. ")) is { Current.IsOffscreen: false },
+                "metadata target visible after scrolling back");
             var row = FindInApp(run, new AndCondition(
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem),
                 new PropertyCondition(AutomationElement.NameProperty, title + ". main. ")))!;
