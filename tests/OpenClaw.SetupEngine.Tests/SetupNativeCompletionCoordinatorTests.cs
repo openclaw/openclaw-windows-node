@@ -77,7 +77,6 @@ public sealed class SetupNativeCompletionCoordinatorTests
     [Theory]
     [InlineData(SetupNativeDestination.Chat)]
     [InlineData(SetupNativeDestination.Channels)]
-    [InlineData(SetupNativeDestination.Skills)]
     [InlineData(SetupNativeDestination.WhatsApp)]
     [InlineData(SetupNativeDestination.Telegram)]
     public async Task ShowingChooserDoesNothing_ExplicitChoiceVerifiesThenFinalizesAndPublishes(SetupNativeDestination destination)

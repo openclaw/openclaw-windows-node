@@ -22,6 +22,7 @@ public sealed class HubPageRegistryTests
 
     [Theory]
     [InlineData("local-ai", (int)HubPageKind.LocalAi)]
+    [InlineData("model", (int)HubPageKind.DefaultModel)]
     [InlineData("nodes", (int)HubPageKind.Instances)]
     [InlineData("capabilities", (int)HubPageKind.Permissions)]
     [InlineData("permissions", (int)HubPageKind.Permissions)]
@@ -31,7 +32,6 @@ public sealed class HubPageRegistryTests
     [InlineData("agent:main", (int)HubPageKind.Workspace)]
     [InlineData("agent:main:sessions", (int)HubPageKind.Sessions)]
     [InlineData("agent:main:agentevents", (int)HubPageKind.AgentEvents)]
-    [InlineData("agent:main:skills", (int)HubPageKind.Skills)]
     [InlineData("agent:main:cron", (int)HubPageKind.Cron)]
     [InlineData("agent:main:workspace", (int)HubPageKind.Workspace)]
     [InlineData("dashboards", (int)HubPageKind.Dashboards)]
@@ -42,10 +42,13 @@ public sealed class HubPageRegistryTests
     }
 
     [Theory]
+    [InlineData("bindings")]
     [InlineData("chat")]
     [InlineData("PERMISSIONS")]
     [InlineData("Agent:main")]
     [InlineData("agent:main:unknown")]
+    [InlineData("skills")]
+    [InlineData("agent:main:skills")]
     [InlineData("unknown")]
     [InlineData("Dashboards")]
     [InlineData("")]
@@ -60,11 +63,9 @@ public sealed class HubPageRegistryTests
     [InlineData("AGENT:MAIN")]
     [InlineData("chat")]
     [InlineData("SESSIONS")]
-    [InlineData("skills")]
     [InlineData("channels")]
     [InlineData("instances")]
     [InlineData("agentevents")]
-    [InlineData("bindings")]
     [InlineData("config")]
     [InlineData("usage")]
     [InlineData("cron")]
@@ -80,7 +81,11 @@ public sealed class HubPageRegistryTests
     [InlineData("connection")]
     [InlineData("permissions")]
     [InlineData("local-ai")]
+    [InlineData("model")]
     [InlineData("debug")]
+    [InlineData("skills")]
+    [InlineData("bindings")]
+    [InlineData("BINDINGS")]
     [InlineData(null)]
     public void GatewayClassification_RejectsNonGatewayTags(string? tag)
     {
@@ -107,19 +112,19 @@ public sealed class HubPageRegistryTests
         Assert.Equal(
             new string?[]
             {
-                "connection", "local-ai", "chat", "sessions", "dashboards", "agentevents", "skills",
+                "connection", "local-ai", "model", "chat", "sessions", "dashboards", "agentevents",
                 "agent:alpha:cron", "agent:alpha", "channels", "instances", "config",
-                "usage", "bindings", "permissions", "settings", "notifications", null
+                "usage", "permissions", "settings", "notifications", null
             },
             commands.Select(CommandValue).ToArray());
         Assert.Equal(
-            ["🔌", "AI", "💬", "🧠", "📊", "🧠", "🧠", "🧠", "🧠", "📡", "📡", "📡", "📡", "📡", "🛡️", "⚙️", "🔔", "🌐"],
+            ["🔌", "AI", "AI", "💬", "🧠", "📊", "🧠", "🧠", "🧠", "📡", "📡", "📡", "📡", "🛡️", "⚙️", "🔔", "🌐"],
             commands.Select(command => command.Icon).ToArray());
         Assert.Equal("Command_GoToConnection_Title", commands[0].Title);
         Assert.Equal("Command_GoToConnection_Subtitle", commands[0].Subtitle);
         Assert.Equal("Cron alpha", commands[7].Title);
-        Assert.Equal(HubCommandActionKind.OpenDashboard, commands[17].Action.Kind);
-        Assert.Null(commands[17].Action.Value);
+        Assert.Equal(HubCommandActionKind.OpenDashboard, commands[16].Action.Kind);
+        Assert.Null(commands[16].Action.Value);
         Assert.Single(commands, command => command.Action == HubCommandAction.Navigate("chat"));
     }
 
@@ -131,7 +136,7 @@ public sealed class HubPageRegistryTests
             toggles: new HubCommandToggleState(true, false, true, false, true),
             sessions: ["session/z", "session/a"]));
 
-        Assert.Equal("debug", CommandValue(commands[18]));
+        Assert.Equal("debug", CommandValue(commands[17]));
         Assert.Equal(
             [
                 HubSettingToggle.NodeMode,
@@ -140,10 +145,10 @@ public sealed class HubPageRegistryTests
                 HubSettingToggle.ScreenCapture,
                 HubSettingToggle.BrowserControl
             ],
-            commands.Skip(19).Take(5).Select(command => command.Action.Toggle).ToArray());
+            commands.Skip(18).Take(5).Select(command => command.Action.Toggle).ToArray());
         Assert.Equal(
             new string?[] { "Command_Subtitle_CurrentlyOn", "Command_Subtitle_CurrentlyOff", "Command_Subtitle_CurrentlyOn", "Command_Subtitle_CurrentlyOff", "Command_Subtitle_CurrentlyOn" },
-            commands.Skip(19).Take(5).Select(command => command.Subtitle).ToArray());
+            commands.Skip(18).Take(5).Select(command => command.Subtitle).ToArray());
         var sessionCommands = commands.TakeLast(4).ToArray();
         Assert.Equal(
             ["Go to session: session/z", "Command_OpenSessionDashboard_TitleFormat", "Go to session: session/a", "Command_OpenSessionDashboard_TitleFormat"],

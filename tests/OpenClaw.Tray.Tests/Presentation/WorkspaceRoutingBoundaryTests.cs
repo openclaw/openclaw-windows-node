@@ -77,9 +77,12 @@ public sealed class WorkspaceRoutingBoundaryTests
         // retirement_condition: replace with native window tests when these adapters can run in Tray.Tests.
         var root = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
         var manager = File.ReadAllText(Path.Combine(root, "Services", "WindowManager.cs"));
-        var hub = File.ReadAllText(Path.Combine(root, "Windows", "HubWindow.xaml.cs"));
+        var workspace = File.ReadAllText(Path.Combine(root, "Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("WorkspaceNavigation.Dispatch(navigateTo, destination =>", manager);
-        Assert.Contains("tag => ShowCompanion(tag, activate)", manager);
-        Assert.Contains("WorkspaceNavigation.Dispatch(tag, _ => CurrentApp.ShowHub(tag), NavigateCompanion)", hub);
+        Assert.Contains("tag => ShowWorkspace(WorkspaceDestination.Settings(\"settings\"), activate, preserveCurrent: false, settingsTag: tag)", manager);
+        Assert.DoesNotContain("ShowCompanion", manager);
+        Assert.Contains("WorkspaceNavigation.Dispatch(tag, _ => WorkspaceRouteRequested?.Invoke(tag), NavigateCompanion)",
+            File.ReadAllText(Path.Combine(root, "Controls", "SettingsShellView.xaml.cs")));
+        Assert.Contains("WorkspaceNavigation.Dispatch(", workspace);
     }
 }

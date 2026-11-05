@@ -14,6 +14,7 @@ namespace OpenClaw.GatewayFixtureHost;
 /// <summary>One real app, one fixture server and one disposable profile. Artifacts outlive the run.</summary>
 public sealed class GatewayFixtureRun : IAsyncDisposable
 {
+    private static readonly TimeSpan McpReadinessPollInterval = TimeSpan.FromMilliseconds(100);
     private readonly string _gatewayToken;
     private readonly string _appPath;
     private Process? _process;
@@ -25,6 +26,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
     private JsonElement? _lastStatus;
     private readonly GatewayScenario _scenario;
     private readonly string? _postSetupLaunch;
+    private readonly bool _postSetupRestart;
 
     public FixtureGatewayServer Gateway { get; }
     public GatewayFixtureProfile Profile { get; }
@@ -40,7 +42,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
     public int? AppExitCode => _process is { HasExited: true } ? _process.ExitCode : null;
 
     private GatewayFixtureRun(FixtureGatewayServer gateway, GatewayFixtureProfile profile, string token, string appPath,
-        string? artifactRoot, GatewayScenario scenario, string? postSetupLaunch)
+        string? artifactRoot, GatewayScenario scenario, string? postSetupLaunch, bool postSetupRestart)
     {
         Gateway = gateway;
         Profile = profile;
@@ -48,6 +50,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         _appPath = appPath;
         _scenario = scenario;
         _postSetupLaunch = postSetupLaunch;
+        _postSetupRestart = postSetupRestart;
         ArtifactsDirectory = Path.Combine(
             Path.GetFullPath(artifactRoot ?? Path.Combine(Path.GetTempPath(), "openclaw-gateway-fixture-artifacts")),
             profile.RunId);
@@ -64,7 +67,9 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         bool foreignBrowserControl = false,
         bool allowSessionMutations = false,
         GatewayScenario? scenario = null,
-        Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null)
+        Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null,
+        bool postSetupRestart = false,
+        Action? releasePendingResponses = null)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("The fixture app requires a Windows desktop.");
@@ -87,7 +92,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         try
         {
             var handoff = prepareSetupHandoff?.Invoke(profile);
-            run = new GatewayFixtureRun(gateway, profile, token, executable, artifactRoot, scenario, handoff)
+            run = new GatewayFixtureRun(gateway, profile, token, executable, artifactRoot, scenario, handoff, postSetupRestart)
             {
                 _control = control,
                 _foreignControl = foreign,
@@ -112,6 +117,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         }
         catch (Exception ex)
         {
+            releasePendingResponses?.Invoke();
             await HandleStartupFailureAsync(ex,
                 () => run.WriteReportAsync("startup-failed", ex),
                 () => run.DisposeAsync().AsTask());
@@ -138,7 +144,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         for (var attempt = 0; attempt < 3; attempt++)
         {
             McpPort = FindFreePort();
-            _process = Process.Start(Profile.CreateStartInfo(_appPath, McpPort, _postSetupLaunch))
+            _process = Process.Start(Profile.CreateStartInfo(_appPath, McpPort, _postSetupLaunch, _postSetupRestart))
                 ?? throw new InvalidOperationException("Failed to start the fixture app.");
             await WriteReportAsync("starting");
             try
@@ -189,7 +195,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
                 EnsureRunning();
                 if (File.Exists(tokenPath))
                 {
-                    _mcpToken = (await File.ReadAllTextAsync(tokenPath, deadline.Token)).Trim();
+                    _mcpToken = await ReadPublishedMcpTokenAsync(tokenPath, deadline.Token);
                     if (_mcpToken.Length != 0)
                     {
                         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _mcpToken);
@@ -226,12 +232,27 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
                         }
                     }
                 }
-                await Task.Delay(100, deadline.Token);
+                await Task.Delay(McpReadinessPollInterval, deadline.Token);
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException($"Fixture MCP did not become ready. Last error: {lastError?.Message}. Artifacts: {ArtifactsDirectory}");
+        }
+    }
+
+    internal static async Task<string> ReadPublishedMcpTokenAsync(string path, CancellationToken cancellationToken)
+    {
+        // A published token file can still be transiently locked. Retry only sharing/lock
+        // violations within the caller's deadline; do not hide other I/O failures.
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try { return (await File.ReadAllTextAsync(path, cancellationToken)).Trim(); }
+            catch (IOException ex) when ((ex.HResult & 0xffff) is 32 or 33)
+            {
+                await Task.Delay(McpReadinessPollInterval, cancellationToken);
+            }
         }
     }
 

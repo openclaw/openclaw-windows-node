@@ -10,7 +10,7 @@
             <StackPanel Padding="24" Spacing="12"
                     HorizontalAlignment="Stretch" MaxWidth="900">
 
-            <TextBlock x:Uid="SessionsPage_Sessions"
+            <TextBlock x:Uid="SessionsPage_Sessions" x:Name="SessionsHeading"
                            Text="Sessions"
                            AutomationProperties.AutomationId="SessionsPageMarker"
                            Style="{StaticResource TitleTextBlockStyle}"
@@ -108,6 +108,7 @@
                     </StackPanel>
 
                     <ListView x:Name="SessionListView"
+                              AutomationProperties.LabeledBy="{Binding ElementName=SessionsHeading}"
                               SelectionMode="None"
                               ShowsScrollingPlaceholders="False">
                         <ListView.ItemContainerStyle>

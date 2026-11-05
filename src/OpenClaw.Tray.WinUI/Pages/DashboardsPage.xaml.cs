@@ -6,10 +6,10 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Dashboards;
 using OpenClawTray.Chat;
+using OpenClawTray.Controls;
 using OpenClawTray.Dashboards;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
-using OpenClawTray.Windows;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Pages;
@@ -26,7 +26,7 @@ public sealed partial class DashboardsPage : Page
     private DashboardsPageState? _state;
     private ReactorHostControl? _host;
     private AppState? _appState;
-    private HubWindow? _hub;
+    private SettingsShellView? _hub;
 
     public DashboardsPage()
     {
@@ -34,7 +34,7 @@ public sealed partial class DashboardsPage : Page
         Unloaded += (_, _) => Detach();
     }
 
-    internal void Initialize(HubWindow hub, string? tag)
+    internal void Initialize(SettingsShellView hub, string? tag)
     {
         _state ??= new DashboardsPageState
         {

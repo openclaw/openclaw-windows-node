@@ -1,14 +1,25 @@
+// <summary>
+// Defines Local AI setup's contained filesystem layout and validates paths before setup creates,
+// extracts, or recursively removes files. Callers must use these policy methods instead of composing
+// managed paths directly, because reparse points and traversal are rejected at the ownership boundary.
+// Usage:
+//   if (!LocalAiPathPolicy.TryResolve(localDataDirectory, identity, out var paths, out var error))
+//       throw new InvalidDataException(error);
+//   // Use paths only with the matching policy validation methods for later file operations.
+// </summary>
+
 namespace OpenClaw.SetupEngine;
 
 /// <summary>
-/// Identifies one versioned native component without prescribing its vendor,
-/// download source, archive contents, or executable layout.
+/// Identifies the versioned component whose contained Local AI paths are resolved, without prescribing
+/// its vendor, download source, archive contents, or executable layout.
 /// </summary>
 internal sealed record LocalAiComponentIdentity(
     string Name,
     string Version,
     string RuntimeIdentifier);
 
+/// <summary>Contains validated filesystem locations owned by one Local AI setup transaction.</summary>
 internal sealed record LocalAiSetupPaths(
     string RootDirectory,
     string DownloadsDirectory,
@@ -28,6 +39,7 @@ internal static class LocalAiPathPolicy
     internal const string ArchiveCacheDirectoryName = "LocalAICache";
     private const StringComparison PathComparison = StringComparison.OrdinalIgnoreCase;
 
+    /// <summary>Resolves the contained setup layout for one component identity.</summary>
     public static bool TryResolve(
         string localDataDirectory,
         LocalAiComponentIdentity identity,
@@ -119,6 +131,7 @@ internal static class LocalAiPathPolicy
         return true;
     }
 
+    /// <summary>Resolves a validated path for a downloaded runtime archive.</summary>
     public static bool TryGetDownloadPath(
         LocalAiSetupPaths paths,
         string archiveFileName,
@@ -162,6 +175,7 @@ internal static class LocalAiPathPolicy
         return true;
     }
 
+    /// <summary>Resolves a digest-keyed, shared archive-cache path within Local AI ownership.</summary>
     public static bool TryGetArchiveCachePath(
         string localDataDirectory,
         string archiveFileName,
@@ -351,6 +365,7 @@ internal static class LocalAiPathPolicy
         return TryDeleteValidatedTree(localDataRoot, entryPath, out error);
     }
 
+    /// <summary>Resolves managed model and partial paths for immutable repository coordinates.</summary>
     public static bool TryGetModelPaths(
         LocalAiSetupPaths paths,
         string repositoryId,
@@ -365,11 +380,16 @@ internal static class LocalAiPathPolicy
         partialPath = "";
 
         string[] repositorySegments = repositoryId?.Split('/') ?? [];
+        // Custom GGUF references may name a file inside a repository subfolder. Keep those
+        // directories under the revision so the legacy copy matches the hub-cache layout;
+        // the receipt still records only the leaf filename.
+        string[] relativeSegments = fileName?.Split('/') ?? [];
         if (repositorySegments.Length != 2 ||
             repositorySegments.Any(segment => !IsSafeWindowsPathSegment(segment)) ||
             revision is null || revision.Length != 40 || !revision.All(IsLowerHex) ||
-            !IsSafeWindowsPathSegment(fileName) ||
-            !string.Equals(Path.GetExtension(fileName), ".gguf", StringComparison.OrdinalIgnoreCase))
+            relativeSegments.Length == 0 ||
+            relativeSegments.Any(segment => !IsSafeWindowsPathSegment(segment)) ||
+            !string.Equals(Path.GetExtension(relativeSegments[^1]), ".gguf", StringComparison.OrdinalIgnoreCase))
         {
             error = "Local AI model identity contains an invalid path segment.";
             return false;
@@ -382,8 +402,8 @@ internal static class LocalAiPathPolicy
                 repositorySegments[0],
                 repositorySegments[1],
                 revision));
-            modelPath = NormalizePath(Path.Combine(modelDirectory, fileName));
-            partialPath = NormalizePath(Path.Combine(modelDirectory, fileName + ".partial"));
+            modelPath = NormalizePath(Path.Combine([modelDirectory, ..relativeSegments]));
+            partialPath = modelPath + ".partial";
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
@@ -414,6 +434,7 @@ internal static class LocalAiPathPolicy
         return true;
     }
 
+    /// <summary>Resolves a contained staging directory for one setup run.</summary>
     public static bool TryGetStagingDirectory(
         LocalAiSetupPaths paths,
         string runId,
@@ -458,6 +479,7 @@ internal static class LocalAiPathPolicy
         return true;
     }
 
+    /// <summary>Validates a candidate as a recursively deletable path owned by Local AI setup.</summary>
     public static bool TryValidateManagedDeleteTarget(
         string localDataDirectory,
         string candidatePath,
@@ -501,11 +523,10 @@ internal static class LocalAiPathPolicy
         return true;
     }
 
-    /// <summary>
-    /// Deletes one app-owned Local AI tree without following filesystem links.
-    /// The entire tree is validated before the first delete so a reparse point
-    /// or inaccessible entry leaves the tree untouched.
-    /// </summary>
+/// <summary>
+/// Deletes one app-owned Local AI tree without following filesystem links. The entire tree is validated
+/// before the first delete so a reparse point or inaccessible entry leaves the tree untouched.
+/// </summary>
     public static bool TryDeleteManagedTree(
         string localDataDirectory,
         string candidatePath,
@@ -625,6 +646,7 @@ internal static class LocalAiPathPolicy
         }
     }
 
+    /// <summary>Resolves a safe extraction destination for one archive entry under staging.</summary>
     public static bool TryResolveArchiveEntryDestination(
         string stagingDirectory,
         string entryName,
