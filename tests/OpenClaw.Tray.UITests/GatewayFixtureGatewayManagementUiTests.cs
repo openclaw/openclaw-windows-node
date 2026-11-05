@@ -44,7 +44,7 @@ public sealed partial class GatewayFixtureUiTests
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text),
                 new PropertyCondition(AutomationElement.NameProperty, "Developer")));
             Assert.NotNull(developer);
-            await ScrollSettingsSectionIntoViewAsync(run, developer);
+            await ScrollSettingsSectionIntoViewAsync(run, heading, developer);
             await WaitUiAsync(run, () => !heading.Current.IsOffscreen && !setup.Current.IsOffscreen,
                 "Local Gateway heading and setup action visible");
             var asserted = new List<AutomationElement> { heading, setup, developer };
@@ -111,7 +111,8 @@ public sealed partial class GatewayFixtureUiTests
         });
     }
 
-    private static async Task ScrollSettingsSectionIntoViewAsync(GatewayFixtureRun run, AutomationElement sectionEnd)
+    private static async Task ScrollSettingsSectionIntoViewAsync(
+        GatewayFixtureRun run, AutomationElement sectionStart, AutomationElement sectionEnd)
     {
         for (var parent = TreeWalker.ControlViewWalker.GetParent(sectionEnd); parent is not null;
             parent = TreeWalker.ControlViewWalker.GetParent(parent))
@@ -128,8 +129,10 @@ public sealed partial class GatewayFixtureUiTests
             {
                 var viewport = scrollOwner.Current.BoundingRectangle;
                 var end = sectionEnd.Current.BoundingRectangle;
-                if (!sectionEnd.Current.IsOffscreen && end.Height > 0
-                    && end.Top >= viewport.Top && end.Bottom <= viewport.Bottom)
+                var headingHeight = sectionStart.Current.BoundingRectangle.Height;
+                // UIA clips text bounds: a one-pixel sliver is not a visible heading.
+                if (!sectionEnd.Current.IsOffscreen && headingHeight > 0 && end.Height >= headingHeight
+                    && end.Top >= viewport.Top && end.Bottom + headingHeight <= viewport.Bottom)
                     return true;
                 Assert.True(scroll.Current.VerticalScrollPercent < 100,
                     "Reached the end of Settings without revealing the complete Gateway section.");

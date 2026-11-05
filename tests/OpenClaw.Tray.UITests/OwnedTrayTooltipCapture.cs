@@ -37,12 +37,13 @@ internal static class OwnedTrayTooltipCapture
                 chevron = tray.FindFirst(TreeScope.Descendants, new AndCondition(
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
                     new OrCondition(
-                        new PropertyCondition(AutomationElement.NameProperty, "Show hidden icons"),
-                        new PropertyCondition(AutomationElement.NameProperty, "Notification Chevron"))));
+                        new PropertyCondition(AutomationElement.NameProperty, "Show hidden icons", PropertyConditionFlags.IgnoreCase),
+                        new PropertyCondition(AutomationElement.NameProperty, "Notification Chevron", PropertyConditionFlags.IgnoreCase))));
                 Assert.NotNull(chevron);
                 ((InvokePattern)chevron.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
                 await run.WaitForAsync(() => Task.FromResult(
                     (icon = FindIcon(run)) is { } found && IsIconVisible(found)), "owned icon in notification overflow");
+                WriteShellObservation(run, icon!.Value, "notification-area-open.json");
             }
 
             var ownedIcon = icon!.Value;
@@ -96,12 +97,18 @@ internal static class OwnedTrayTooltipCapture
         using var dpi = new PhysicalDpiScope();
         var element = AutomationElement.FromPoint(new System.Windows.Point(icon.Bounds.CenterX, icon.Bounds.CenterY));
         GetWindowThreadProcessId(FindWindow("Shell_TrayWnd", null), out var shellPid);
-        // The icon is already bound by HWND and ID. Shell accessibility providers
-        // need not expose its tooltip as the hit-tested element's name.
-        return !element.Current.IsOffscreen && shellPid != 0 && element.Current.ProcessId == shellPid;
+        // A hidden icon's reported rectangle can hit an unnamed Shell surface.
+        // Walk to its accessible button; Shell process ownership alone is insufficient.
+        while (element is not null && shellPid != 0 && element.Current.ProcessId == shellPid)
+        {
+            if (!element.Current.IsOffscreen && element.Current.Name.StartsWith("OpenClaw", StringComparison.Ordinal))
+                return true;
+            element = TreeWalker.ControlViewWalker.GetParent(element);
+        }
+        return false;
     }
 
-    private static void WriteShellObservation(GatewayFixtureRun run, Icon icon)
+    private static void WriteShellObservation(GatewayFixtureRun run, Icon icon, string fileName = "notification-area.json")
     {
         using var dpi = new PhysicalDpiScope();
         var taskbarHandle = FindWindow("Shell_TrayWnd", null);
@@ -115,7 +122,7 @@ internal static class OwnedTrayTooltipCapture
                 element.Current.Name, element.Current.AutomationId, element.Current.ProcessId,
                 element.Current.IsOffscreen
             }).ToArray();
-        File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "notification-area.json"),
+        File.WriteAllText(Path.Combine(run.ArtifactsDirectory, fileName),
             JsonSerializer.Serialize(new
             {
                 run.AppProcessId, iconWindow = $"0x{icon.Window:X}",
