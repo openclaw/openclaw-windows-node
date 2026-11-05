@@ -8236,6 +8236,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>L&apos;élément demandé n&apos;est plus disponible ici.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Certaines destinations du tableau de bord ne sont pas disponibles pour cette version de la passerelle.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0} : choisissez d'abord un assistant.</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>Supprimer l’élément</value>
+  </data>
   <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Utiliser la voix de la Gateway connectée</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>La lecture du chat et des réponses automatiques utilise la voix configurée sur la Gateway. Le texte est envoyé à la Gateway et à son fournisseur vocal. Les clés restent sur la Gateway. La synthèse locale du nœud et de MCP ne change pas.</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>Aucun repli local automatique. En cas d’indisponibilité, désactivez cette option pour utiliser le fournisseur local.</value></data>

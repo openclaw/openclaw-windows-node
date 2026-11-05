@@ -8236,6 +8236,9 @@
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>要求的項目已無法使用。</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>此閘道版本不支援部分控制面板頁面。</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：請先選擇助理。</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>移除項目</value>
+  </data>
   <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>使用已連線 Gateway 的語音</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>聊天朗讀和自動回覆使用 Gateway 設定的語音。文字會傳送至 Gateway 及其語音供應商。金鑰保留在 Gateway 上。本機節點和 MCP 語音不受影響。</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>不會自動改用本機。若無法使用，請關閉此選項以使用本機供應商。</value></data>

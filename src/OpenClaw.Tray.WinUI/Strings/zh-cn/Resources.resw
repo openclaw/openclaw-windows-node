@@ -8236,6 +8236,9 @@
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>请求的项目已不可用。</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>此网关版本不支持部分控制面板页面。</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：请先选择助手。</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>移除项目</value>
+  </data>
   <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>使用已连接 Gateway 的语音</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>聊天朗读和自动回复使用 Gateway 配置的语音。文本会发送到 Gateway 及其语音提供商。密钥保留在 Gateway 上。本地节点和 MCP 语音不受影响。</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>不会自动回退到本地。若不可用，请关闭此选项以使用本地提供商。</value></data>

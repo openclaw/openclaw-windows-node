@@ -8303,6 +8303,9 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>The requested item is no longer available here.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Some Dashboard destinations are unavailable for this Gateway version.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: choose an assistant first.</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>Remove item</value>
+  </data>
   <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Use connected Gateway voice</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>Chat Read Aloud and automatic replies use the Gateway's configured voice. Text is sent to the Gateway and its speech provider. Keys stay on the Gateway. Local node and MCP speech are unchanged.</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>No automatic local fallback. If unavailable, turn this option off to use your local provider.</value></data>

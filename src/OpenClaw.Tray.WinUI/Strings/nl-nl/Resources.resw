@@ -8237,6 +8237,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>Het gevraagde item is hier niet meer beschikbaar.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Sommige dashboardbestemmingen zijn niet beschikbaar voor deze gatewayversie.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: kies eerst een assistent.</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>Item verwijderen</value>
+  </data>
   <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Stem van verbonden Gateway gebruiken</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>Voorlezen en automatische antwoorden gebruiken de ingestelde Gateway-stem. Tekst wordt naar de Gateway en de spraakprovider gestuurd. Sleutels blijven op de Gateway. Lokale node- en MCP-spraak blijven ongewijzigd.</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>Geen automatische lokale terugval. Schakel deze optie uit om bij onbeschikbaarheid uw lokale provider te gebruiken.</value></data>
