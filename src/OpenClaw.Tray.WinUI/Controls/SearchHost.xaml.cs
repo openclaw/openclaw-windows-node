@@ -10,6 +10,7 @@ using Windows.System;
 using Windows.UI.Core;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml.Media;
+using System.Collections.ObjectModel;
 
 namespace OpenClawTray.Controls;
 
@@ -26,7 +27,7 @@ public sealed class SearchDisplayRow
 }
 
 [Bindable]
-public sealed class SearchDisplayGroup : List<SearchDisplayRow>
+public sealed class SearchDisplayGroup : ObservableCollection<SearchDisplayRow>
 {
     public string Title { get; }
     internal SearchDisplayGroup(string title) => Title = title;
@@ -48,6 +49,7 @@ public sealed partial class SearchHost : UserControl
     private bool _revealingMore;
     private string? _renderedQuery;
     private IReadOnlyList<HubSearchItem> _displayedItems = [];
+    private SearchDisplayGroup[] _displayedGroups = [];
     private long _displayedGeneration = -1;
 
     public SearchHost()
@@ -111,7 +113,19 @@ public sealed partial class SearchHost : UserControl
     {
         if (_controller?.IsOwner(this) != true) return;
         var items = _controller.Results.Select(match => match.Item).ToArray();
-        if (_displayedGeneration != _controller.Generation || !_displayedItems.SequenceEqual(items))
+        if (_revealingMore && _displayedGeneration == _controller.Generation)
+        {
+            // Keep the native grouped view and its scroll anchor while adding the new suffixes.
+            foreach (var group in _displayedGroups)
+                foreach (var item in items.Where(item => item.Group == group[0].Item.Group).Skip(group.Count))
+                    group.Add(new SearchDisplayRow(item, _controller.Generation));
+            _displayedItems = items;
+            ResultsList.UpdateLayout();
+            for (var index = 0; index < ResultsList.Items.Count; index++)
+                if (ResultsList.ContainerFromIndex(index) is ListViewItem container)
+                    AutomationProperties.SetAutomationId(container, $"SearchResult_{index}");
+        }
+        else if (_displayedGeneration != _controller.Generation || !_displayedItems.SequenceEqual(items))
         {
             var selected = (ResultsList.SelectedItem as SearchDisplayRow)?.Item.Id;
             var sameQuery = _renderedQuery == _controller.Query;
@@ -127,9 +141,10 @@ public sealed partial class SearchHost : UserControl
             var groups = rows.GroupBy(row => row.Item.Group).Select(group =>
             {
                 var display = new SearchDisplayGroup(L($"Search_Group_{group.Key}"));
-                display.AddRange(group);
+                foreach (var row in group) display.Add(row);
                 return display;
             }).ToArray();
+            _displayedGroups = groups;
             ResultsList.ItemsSource = new CollectionViewSource { IsSourceGrouped = true, Source = groups }.View;
             ResultsList.SelectedItem = selected is null ? rows.FirstOrDefault() : rows.FirstOrDefault(row => row.Item.Id == selected);
             _displayedItems = items;

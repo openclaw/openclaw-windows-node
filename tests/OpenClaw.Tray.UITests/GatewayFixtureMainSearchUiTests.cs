@@ -401,6 +401,45 @@ public sealed partial class GatewayFixtureUiTests
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task MainSearch_ExpandingMultipleGroupsKeepsEveryResultDistinctAndReachable()
+    {
+        await WithAppAsync(async run =>
+        {
+            var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            run.Gateway.OverrideSearchRead("skills.status", _ => new
+            {
+                skills = Enumerable.Range(1, 6).Select(number => new
+                {
+                    name = $"Fixture navigation field skill {number}", skillKey = $"expansion-{number}",
+                    description = "Synthetic skill", enabled = true
+                }).ToArray()
+            });
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
+            ((ValuePattern)SearchEdit(run, "WorkspaceSearchBox").GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture navigation field");
+            await WaitUiAsync(run, () => FindById(run, "SearchMore") is not null &&
+                FindById(run, "SearchStatus")?.Current.Name.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
+                "both groups settled");
+            ScrollSearch(run);
+            FindById(run, "SearchMore")!.SetFocus();
+            Send(run, window, "{ENTER}");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_5") is { Current.HasKeyboardFocus: true } row &&
+                row.Current.Name.StartsWith("Fixture navigation field 6.", StringComparison.Ordinal),
+                "first new result in the earlier group");
+            Assert.True(IsFullyVisibleInScrollViewport(FindById(run, "SearchResult_5")));
+            ScrollSearch(run);
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_13") is { Current.IsOffscreen: false } row &&
+                row.Current.Name.StartsWith("Fixture navigation field skill 6.", StringComparison.Ordinal),
+                "later group has its new result and shifted index");
+            Assert.True(IsFullyVisibleInScrollViewport(FindById(run, "SearchResult_13")));
+            Assert.StartsWith("Fixture navigation field skill 1.", FindById(run, "SearchResult_8")!.Current.Name, StringComparison.Ordinal);
+            Assert.True(FindById(run, "SearchMore") is null or { Current.IsOffscreen: true });
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method is "skills.update" or "chat.send");
+        }, scenario: GatewayScenario.CreateSearchNavigation());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task MainSearch_KeyboardMoreAndRetryOperateTheFocusedButtonWithoutNavigation()
     {
         var scenario = GatewayScenario.CreateSearchNavigation();
