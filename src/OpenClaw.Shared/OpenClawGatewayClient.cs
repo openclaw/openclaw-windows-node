@@ -452,7 +452,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _ephemeralOperatorCredential = ephemeralOperatorCredential;
         _useBoundedBootstrapScopes = useBoundedBootstrapScopes;
         _assistantMediaHttpClient = assistantMediaHandler is null
-            ? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+            ? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = !IsPersonalTailscaleAuthentication })
             : new HttpClient(assistantMediaHandler, disposeHandler: true);
         SetAssistantMediaAuthToken(IsPersonalTailscaleAuthentication ? null : assistantMediaAuthToken);
         _currentGatewayUrl = gatewayUrl;
@@ -3684,6 +3684,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                         && changeReason.ValueKind == JsonValueKind.String
                         && changeReason.GetString() == "profile-identity")
                     {
+                        InvalidatePersonalIdentity();
                         SelfProfileChanged?.Invoke(this, EventArgs.Empty);
                     }
                     if (sessionChange.TryGetProperty("catalogChanged", out var catalogChanged)

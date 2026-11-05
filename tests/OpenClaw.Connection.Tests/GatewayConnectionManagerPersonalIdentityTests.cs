@@ -34,16 +34,59 @@ public sealed class GatewayConnectionManagerPersonalIdentityTests
         Assert.Null(harness.Manager.CurrentPersonalOperatorLease);
     }
 
-    [Fact]
-    public async Task MissingCanonicalSelfProfileRejectsPersonalConnection()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("gateway-owner")]
+    public async Task MissingOrSharedOwnerSelfProfileRejectsPersonalConnection(string? profile)
     {
         await using var harness = new Harness();
         var peer = await harness.HelloAsync();
         var self = await peer.ReceiveAsync();
-        await peer.SelfAsync(self, null);
+        await peer.SelfAsync(self, profile);
         await harness.WaitAsync(RoleConnectionState.Error);
         Assert.Null(harness.Manager.CurrentPersonalOperatorLease);
         Assert.Null(harness.Manager.CurrentSnapshot.PersonalIdentityProfileId);
+    }
+
+    [Theory]
+    [InlineData("gateway-owner")]
+    [InlineData("different-person")]
+    public async Task ProfileInvalidationWithholdsOldLeaseAndRejectsChangedPerson(string profile)
+    {
+        await using var harness = new Harness();
+        var peer = await harness.HelloAsync();
+        await peer.SelfAsync(await peer.ReceiveAsync());
+        await harness.WaitAsync(RoleConnectionState.Connected);
+        await peer.ProfileChangedAsync();
+        var self = await peer.ReceiveAsync();
+        Assert.Equal("users.self", self.GetProperty("method").GetString());
+        Assert.Null(harness.Manager.CurrentPersonalOperatorLease);
+        await peer.SelfAsync(self, profile);
+        await harness.WaitAsync(RoleConnectionState.Error);
+        Assert.Null(harness.Manager.CurrentPersonalOperatorLease);
+        Assert.Null(harness.Manager.CurrentSnapshot.PersonalIdentityProfileId);
+    }
+
+    [Fact]
+    public async Task ProfileInvalidationReverifiesSamePersonBeforeReplacingLease()
+    {
+        await using var harness = new Harness();
+        var peer = await harness.HelloAsync();
+        await peer.SelfAsync(await peer.ReceiveAsync());
+        await harness.WaitAsync(RoleConnectionState.Connected);
+        var previous = harness.Manager.CurrentPersonalOperatorLease;
+        var renewed = new TaskCompletionSource<PersonalOperatorLease>(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Manager.StateChanged += (_, _) =>
+        {
+            if (harness.Manager.CurrentPersonalOperatorLease is { } lease && !ReferenceEquals(lease, previous))
+                renewed.TrySetResult(lease);
+        };
+        await peer.ProfileChangedAsync();
+        var self = await peer.ReceiveAsync();
+        Assert.Equal("users.self", self.GetProperty("method").GetString());
+        Assert.Null(harness.Manager.CurrentPersonalOperatorLease);
+        await peer.SelfAsync(self);
+        Assert.Equal("person-42", (await renewed.Task.WaitAsync(TimeSpan.FromSeconds(5))).IdentityProfileId);
     }
 
     [Fact]

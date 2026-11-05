@@ -26,10 +26,11 @@ public sealed class PersonalGatewayProtocolFixture : IAsyncDisposable
         _socket = AcceptAsync();
     }
 
-    public OpenClawGatewayClient CreateClient(string identityPath)
+    public OpenClawGatewayClient CreateClient(string identityPath, HttpMessageHandler? httpHandler = null)
     {
         var client = new OpenClawGatewayClient(Route, string.Empty,
-            identityPath: identityPath, operatorAuthentication: OperatorAuthenticationMode.PersonalTailscale);
+            identityPath: identityPath, operatorAuthentication: OperatorAuthenticationMode.PersonalTailscale,
+            assistantMediaHandler: httpHandler);
         typeof(WebSocketClientBase).GetField("_gatewayUrl", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(client, $"ws://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/");
         return client;
@@ -59,6 +60,11 @@ public sealed class PersonalGatewayProtocolFixture : IAsyncDisposable
     public async Task ChallengeAsync() => await SendAsync(new
     {
         type = "event", @event = "connect.challenge", payload = new { nonce = "fixture-challenge", ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }
+    });
+
+    public Task ProfileChangedAsync() => SendAsync(new
+    {
+        type = "event", @event = "sessions.changed", payload = new { reason = "profile-identity" }
     });
 
     public async Task<JsonElement> ReceiveAsync() =>

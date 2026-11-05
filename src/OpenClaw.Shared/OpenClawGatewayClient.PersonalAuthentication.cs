@@ -4,7 +4,7 @@ namespace OpenClaw.Shared;
 
 public partial class OpenClawGatewayClient
 {
-    private sealed record PersonalHandshake(long Epoch, string RecoveryScope, string? ProfileId = null);
+    private sealed record PersonalHandshake(long Epoch, string RecoveryScope, string? ProfileId = null, string? ExpectedProfileId = null);
     private readonly OperatorAuthenticationMode _operatorAuthentication;
     private PersonalHandshake? _personalHandshake;
 
@@ -37,7 +37,8 @@ public partial class OpenClawGatewayClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
         var handshake = Volatile.Read(ref _personalHandshake);
-        if (!IsPersonalTailscaleAuthentication || handshake is null ||
+        if (profileId == "gateway-owner" || !IsPersonalTailscaleAuthentication || handshake is null ||
+            handshake.ExpectedProfileId is { } expectedProfile && profileId != expectedProfile ||
             handshake.Epoch != expectedEpoch || PersonalHandshakeConnectionEpoch != expectedEpoch)
             throw new InvalidOperationException("The personal Gateway connection changed.");
         var verified = handshake with { ProfileId = profileId };
@@ -49,6 +50,36 @@ public partial class OpenClawGatewayClient
             throw new InvalidOperationException("The personal Gateway connection changed.");
         }
         RequestInitialState(expectedEpoch);
+    }
+
+    private void InvalidatePersonalIdentity()
+    {
+        var handshake = Volatile.Read(ref _personalHandshake);
+        if (!IsPersonalTailscaleAuthentication || handshake is not { ProfileId: not null }) return;
+        var pending = handshake with { ProfileId = null, ExpectedProfileId = handshake.ProfileId };
+        if (ReferenceEquals(Interlocked.CompareExchange(ref _personalHandshake, pending, handshake), handshake))
+            HandshakeSucceeded?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async Task<bool> VerifyPersonalMediaIdentityAsync(GatewayConnectionLease lease, CancellationToken cancellationToken)
+    {
+        if (!IsCurrentMediaLease(lease) || lease.PersonalAuthority is not PersonalHandshake personal) return false;
+        try
+        {
+            var self = await ReadPersonalIdentityAsync(lease.Generation).WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (!IsCurrentMediaLease(lease)) return false;
+            if (self.ValueKind == JsonValueKind.Object && self.TryGetProperty("profile", out var profile) &&
+                profile.ValueKind == JsonValueKind.Object && profile.TryGetProperty("id", out var id) &&
+                id.ValueKind == JsonValueKind.String && id.GetString() == personal.ProfileId)
+                return true;
+            InvalidatePersonalIdentity();
+            return false;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or OperationCanceledException or JsonException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return false;
+        }
     }
 
     private void RequestInitialState(long epoch)

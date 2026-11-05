@@ -2677,8 +2677,10 @@ public sealed partial class GatewayConnectionManager :
             }
             if (personal.Disposition == PersonalVerification.Rejected)
             {
-                _stateMachine.TryTransition(ConnectionTrigger.AuthenticationFailed,
+                _stateMachine.TryTransition(_stateMachine.Current.OperatorState == RoleConnectionState.Connected
+                        ? ConnectionTrigger.WebSocketError : ConnectionTrigger.AuthenticationFailed,
                     "Personal Tailscale identity could not be verified. Reconnect this Gateway.");
+                _stateMachine.Current = _stateMachine.Current with { PersonalIdentityProfileId = null };
                 CompleteOperatorTelemetryAttempt(gen, "failure", ConnectionErrorCategory.AuthFailure);
                 await DisposeActiveClientAsync().ConfigureAwait(false);
                 EmitStateChanged();

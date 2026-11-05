@@ -23,7 +23,7 @@ public static class GatewayPersonalAuthenticationPolicy
         }
 
         profileId = id.GetString() ?? string.Empty;
-        return !string.IsNullOrWhiteSpace(profileId) &&
+        return profileId != "gateway-owner" && !string.IsNullOrWhiteSpace(profileId) &&
             string.Equals(profileId, profileId.Trim(), StringComparison.Ordinal);
     }
 
