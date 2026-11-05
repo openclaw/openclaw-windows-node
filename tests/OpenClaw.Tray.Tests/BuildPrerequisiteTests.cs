@@ -51,14 +51,14 @@ public sealed class BuildPrerequisiteTests
                 RedirectStandardError = true,
                 CreateNoWindow = true,
             };
+            // PowerShell resets the inherited architecture at startup, so select the x64 fixture inside the child.
             foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                "-File", Path.Combine(repository, "build.ps1"), "-CheckOnly", "-NoTrustRepository" })
+                "-Command", "$env:PROCESSOR_ARCHITECTURE = 'AMD64'; & '.\\build.ps1' -CheckOnly -NoTrustRepository" })
                 start.ArgumentList.Add(argument);
             // A PowerShell 7 parent can otherwise supply modules that Windows
             // PowerShell 5.1 cannot load, before the runtime check is reached.
             start.Environment.Remove("PSModulePath");
             start.Environment["GIT_CONFIG_GLOBAL"] = gitConfig;
-            start.Environment["PROCESSOR_ARCHITECTURE"] = "AMD64";
             start.Environment["OpenClawVsInstallRoot"] = install;
             start.Environment["OpenClawVsWherePath"] = vswhere;
             foreach (var property in new[] { "OpenClawVCRedistVersion", "OpenClawVCRuntimeVersionIsSupported",
@@ -80,6 +80,7 @@ public sealed class BuildPrerequisiteTests
                 throw;
             }
             var output = await stdout + await stderr;
+            Assert.Contains("Architecture: AMD64", output);
             if (supported)
             {
                 Assert.True(output.Contains("Compatible app-local Visual C++ runtime detected", StringComparison.Ordinal), output);

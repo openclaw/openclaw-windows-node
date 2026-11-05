@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -24,11 +28,65 @@ public sealed class A2UISvgTests
     private readonly UIThreadFixture _ui;
     public A2UISvgTests(UIThreadFixture ui) => _ui = ui;
 
+    private const string SvgDecodeSlackVariable = "OPENCLAW_UI_SVG_DECODE_SLACK_SECONDS";
+    // Slack beyond MediaResolver.SvgRenderTimeout for ONE admitted decode (the pre-existing 2 s).
+    // Do not widen it to absorb a late return: PathologicalGeometry returns long after the cap
+    // fires because SvgImageSource.SetSourceAsync blocks the UI thread past SvgRenderTimeout (see
+    // docs/CI_FAILURES.md). Queue wait is excluded by AssertSingleDecodeBoundedAsync and covered
+    // separately by Load_QueuedBehindBusyDecodeSlots_CompletesOnceASlotFrees.
+    private static readonly TimeSpan SvgDecodeSlack =
+        int.TryParse(Environment.GetEnvironmentVariable(SvgDecodeSlackVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan SingleDecodeBound = MediaResolver.SvgRenderTimeout + SvgDecodeSlack;
+
     private const string MinSvg =
         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>" +
         "<rect width='24' height='24' fill='red'/></svg>";
 
-    private static MediaResolver NewResolver() => new(NullLogger.Instance);
+    private static MediaResolver NewResolver(IOpenClawLogger? logger = null) => new(logger ?? NullLogger.Instance);
+
+    private static SemaphoreSlim DecodeSlots()
+    {
+        var field = typeof(MediaResolver).GetField("s_svgDecodeSemaphore", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(field);
+        return Assert.IsType<SemaphoreSlim>(field.GetValue(null));
+    }
+
+    /// <summary>
+    /// Loads one SVG with every decode slot idle, so the elapsed time is a single admitted decode
+    /// with no queue wait. DOCTYPE strip removes all entity declarations before parsing, so
+    /// entity-expansion blowup never happens; the wall-clock cap (SvgRenderTimeout) is the backstop.
+    /// </summary>
+    private async Task AssertSingleDecodeBoundedAsync(string url, string label)
+    {
+        await _ui.RunOnUIAsync(async () =>
+        {
+            Assert.True(DecodeSlots().CurrentCount > 0,
+                "SVG decode slots are busy, so the single-decode bound would include queue wait");
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(url);
+            sw.Stop();
+            Assert.True(
+                sw.Elapsed < SingleDecodeBound,
+                $"{label} decode took {sw.Elapsed} (>{SingleDecodeBound}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+            _ = src;
+        });
+    }
+
+    /// <summary>Records warnings with their offset from construction, so a late cap can be told apart from a late return.</summary>
+    private sealed class RecordingLogger : IOpenClawLogger
+    {
+        private readonly Stopwatch _clock = Stopwatch.StartNew();
+        private readonly ConcurrentQueue<string> _warnings = new();
+        public IReadOnlyCollection<string> Warnings => _warnings;
+        public void Info(string message) { }
+        public void Debug(string message) { }
+        public void Warn(string message) => Record(message);
+        public void Error(string message, Exception? ex = null) => Record(message);
+        private void Record(string message) => _warnings.Enqueue($"+{_clock.ElapsedMilliseconds} ms {message}");
+    }
 
     private static string DataSvgUtf8(string svgXml) =>
         "data:image/svg+xml;utf8," + Uri.EscapeDataString(svgXml);
@@ -234,20 +292,7 @@ public sealed class A2UISvgTests
             "<!ENTITY lol4 \"&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;\">" +
             "]>" +
             "<svg xmlns='http://www.w3.org/2000/svg'><text>&lol4;</text></svg>";
-        await _ui.RunOnUIAsync(async () =>
-        {
-            var media = NewResolver();
-            var sw = Stopwatch.StartNew();
-            var src = await media.LoadImageAsync(DataSvgUtf8(svg));
-            sw.Stop();
-            // DOCTYPE strip removes all <!ENTITY> declarations before parsing begins, so
-            // the entity-expansion blowup never happens. The wall-clock cap (SvgRenderTimeout)
-            // is the backstop. Either way, decode must complete well under timeout.
-            Assert.True(
-                sw.Elapsed < MediaResolver.SvgRenderTimeout + TimeSpan.FromSeconds(2),
-                $"billion-laughs decode took {sw.Elapsed} (>{MediaResolver.SvgRenderTimeout})");
-            _ = src;
-        });
+        await AssertSingleDecodeBoundedAsync(DataSvgUtf8(svg), "billion-laughs");
     }
 
     [Fact]
@@ -267,17 +312,57 @@ public sealed class A2UISvgTests
         sb.Append("'/></svg>");
         var url = DataSvgBase64(sb.ToString());
 
-        await _ui.RunOnUIAsync(async () =>
+        // Decode (or timeout) must complete within the single-decode bound.
+        await AssertSingleDecodeBoundedAsync(url, "pathological-geometry");
+    }
+
+    [Fact]
+    public async Task Load_QueuedBehindBusyDecodeSlots_CompletesOnceASlotFrees()
+    {
+        // Two-stage case: queue wait (all slots busy for a known hold) then one trivial decode.
+        // The single-decode tests above must never absorb queue wait; this one covers it explicitly.
+        var slots = DecodeSlots();
+        var hold = TimeSpan.FromMilliseconds(500);
+        var held = 0;
+        void ReleaseHeld()
         {
-            var media = NewResolver();
-            var sw = Stopwatch.StartNew();
-            var src = await media.LoadImageAsync(url);
-            sw.Stop();
-            // Decode (or timeout) must complete within the configured wall-clock bound.
-            Assert.True(
-                sw.Elapsed < MediaResolver.SvgRenderTimeout + TimeSpan.FromSeconds(2),
-                $"pathological-geometry decode took {sw.Elapsed} (>{MediaResolver.SvgRenderTimeout})");
-            _ = src;
-        });
+            var count = Interlocked.Exchange(ref held, 0);
+            if (count > 0) slots.Release(count);
+        }
+
+        try
+        {
+            while (slots.Wait(0)) held++;
+            Assert.True(held > 0, "no free SVG decode slot to hold");
+
+            await _ui.RunOnUIAsync(async () =>
+            {
+                var logger = new RecordingLogger();
+                var media = NewResolver(logger);
+                long releasedAt = 0;
+                var sw = Stopwatch.StartNew();
+                var releaser = Task.Run(async () =>
+                {
+                    await Task.Delay(hold);
+                    Volatile.Write(ref releasedAt, Stopwatch.GetTimestamp());
+                    ReleaseHeld();
+                });
+
+                var src = await media.LoadImageAsync(DataSvgUtf8(MinSvg));
+                var completedAt = Stopwatch.GetTimestamp();
+                sw.Stop();
+                await releaser;
+
+                Assert.True(src is SvgImageSource, $"queued load did not decode; resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+                Assert.True(completedAt >= Volatile.Read(ref releasedAt),
+                    "load completed before any decode slot was released, so it was not queued");
+                Assert.True(sw.Elapsed < hold + SvgDecodeSlack,
+                    $"queue wait {hold} plus a trivial decode took {sw.Elapsed} (>{hold + SvgDecodeSlack})");
+            });
+        }
+        finally
+        {
+            ReleaseHeld();
+        }
     }
 }

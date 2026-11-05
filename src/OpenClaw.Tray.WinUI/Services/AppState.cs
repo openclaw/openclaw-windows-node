@@ -116,17 +116,14 @@ internal sealed class AppState : INotifyPropertyChanged
     private JsonElement? _agentsList;
     public JsonElement? AgentsList { get => _agentsList; set => SetField(ref _agentsList, value); }
 
+    private bool _agentsListUnsupported;
+    public bool AgentsListUnsupported { get => _agentsListUnsupported; set => SetField(ref _agentsListUnsupported, value); }
+
     private JsonElement? _config;
     public JsonElement? Config { get => _config; set => SetField(ref _config, value); }
 
     private JsonElement? _configSchema;
     public JsonElement? ConfigSchema { get => _configSchema; set => SetField(ref _configSchema, value); }
-
-    private JsonElement? _skillsData;
-    public JsonElement? SkillsData { get => _skillsData; set => SetField(ref _skillsData, value); }
-
-    private string? _skillsAgentId;
-    public string? SkillsAgentId { get => _skillsAgentId; set => SetField(ref _skillsAgentId, value); }
 
     private JsonElement? _agentFilesList;
     public JsonElement? AgentFilesList { get => _agentFilesList; set => SetField(ref _agentFilesList, value); }
@@ -273,10 +270,9 @@ internal sealed class AppState : INotifyPropertyChanged
         ModelsList = null;
         Presence = null;
         AgentsList = null;
+        AgentsListUnsupported = false;
         Config = null;
         ConfigSchema = null;
-        SkillsData = null;
-        SkillsAgentId = null;
         AgentFilesList = null;
         AgentFilesListAgentId = null;
         lock (_agentFilesCacheLock) _agentFilesCache.Clear();

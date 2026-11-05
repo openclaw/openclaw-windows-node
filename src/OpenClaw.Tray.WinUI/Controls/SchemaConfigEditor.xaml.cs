@@ -596,7 +596,9 @@ public sealed partial class SchemaConfigEditor : UserControl
             Width = 34,
             Padding = new Thickness(0)
         };
-        ToolTipService.SetToolTip(removeBtn, "Remove item");
+        var removeLabel = LocalizationHelper.GetString("SchemaConfigEditor_RemoveItem");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(removeBtn, removeLabel);
+        ToolTipService.SetToolTip(removeBtn, removeLabel);
         removeBtn.Click += (s, e) =>
         {
             if (row.Parent is Border border)

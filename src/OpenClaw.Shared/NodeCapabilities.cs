@@ -58,6 +58,10 @@ public class NodeInvokeResponse
     public object? Payload { get; set; }
     public string? Error { get; set; }
 
+    /// <summary>Optional protocol error code supplied by the capability that knows the failure outcome.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ErrorCode { get; set; }
+
     [JsonIgnore]
     public NodeToolDiagnostic? Diagnostic { get; set; }
 }

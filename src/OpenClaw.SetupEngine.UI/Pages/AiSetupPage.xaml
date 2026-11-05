@@ -15,10 +15,10 @@
             <Setter Property="BorderThickness" Value="0,0,0,1" />
         </Style>
         <DataTemplate x:Key="ChoiceTemplate">
-            <tk:SettingsCard x:Name="ChoiceActionCard" IsClickEnabled="True" Click="ChoiceAction_Click" Tag="{Binding}"
+            <controls:SetupActionCard x:Name="ChoiceActionCard" IsClickEnabled="True" InvokeRequested="ChoiceAction_Click" Tag="{Binding}"
                              Style="{StaticResource CompactChoice}"
                              AutomationProperties.Name="{Binding Label}">
-                <tk:SettingsCard.Header>
+                <controls:SetupActionCard.Header>
                     <Grid ColumnDefinitions="Auto,*">
                         <Viewbox Width="32" Height="32" Margin="0,0,12,0" VerticalAlignment="Center">
                             <controls:ProviderArtwork Descriptor="{Binding Artwork}" Session="{Binding ArtworkSession}" />
@@ -30,10 +30,10 @@
                                        Visibility="{Binding DetailVisibility}" />
                         </StackPanel>
                     </Grid>
-                </tk:SettingsCard.Header>
+                </controls:SetupActionCard.Header>
                 <TextBlock Text="{Binding ActionLabel}" Style="{StaticResource BodyTextBlockStyle}"
                            MaxWidth="112" TextWrapping="Wrap" />
-            </tk:SettingsCard>
+            </controls:SetupActionCard>
         </DataTemplate>
         <DataTemplate x:Key="ProviderPickerTemplate">
             <TextBlock Text="{Binding Label}" Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" />
@@ -182,17 +182,17 @@
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                             <StackPanel Spacing="0">
-                                <tk:SettingsCard x:Name="ApiKeysButton" IsClickEnabled="True" Click="ApiKeys_Click"
+                                <controls:SetupActionCard x:Name="ApiKeysButton" IsClickEnabled="True" InvokeRequested="ApiKeys_Click"
                                                  Style="{StaticResource CompactChoice}">
-                                    <tk:SettingsCard.Header>
+                                    <controls:SetupActionCard.Header>
                                         <TextBlock x:Name="ApiKeysTitle" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                                    </tk:SettingsCard.Header>
-                                    <tk:SettingsCard.Description>
+                                    </controls:SetupActionCard.Header>
+                                    <controls:SetupActionCard.Description>
                                         <TextBlock x:Name="ApiKeysDescription" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
-                                    </tk:SettingsCard.Description>
+                                    </controls:SetupActionCard.Description>
                                     <TextBlock x:Name="ApiKeysActionText" Style="{StaticResource BodyTextBlockStyle}"
                                                MaxWidth="112" TextWrapping="Wrap" />
-                                </tk:SettingsCard>
+                                </controls:SetupActionCard>
                                 <StackPanel x:Name="ApiKeyForm" Visibility="Collapsed" Spacing="12" Padding="16">
                                     <TextBlock x:Name="ApiKeyFormHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
                                     <Grid x:Name="ApiKeyFields" RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,*,Auto"
@@ -220,8 +220,8 @@
                                 <ItemsControl x:Name="RecommendedInstalls">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <tk:SettingsCard x:Name="RecommendedInstallCard" IsClickEnabled="True" Click="RecommendedInstall_Click" Tag="{Binding Website}">
-                                                <tk:SettingsCard.Header>
+                                            <controls:SetupActionCard x:Name="RecommendedInstallCard" IsClickEnabled="True" InvokeRequested="RecommendedInstall_Click" Tag="{Binding Website}">
+                                                <controls:SetupActionCard.Header>
                                                     <Grid ColumnDefinitions="Auto,*">
                                                         <Viewbox Width="32" Height="32" Margin="0,0,12,0">
                                                             <controls:ProviderArtwork Descriptor="{Binding Artwork}" Session="{Binding ArtworkSession}" />
@@ -231,8 +231,8 @@
                                                             <TextBlock Text="{Binding Detail}" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
                                                         </StackPanel>
                                                     </Grid>
-                                                </tk:SettingsCard.Header>
-                                            </tk:SettingsCard>
+                                                </controls:SetupActionCard.Header>
+                                            </controls:SetupActionCard>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
