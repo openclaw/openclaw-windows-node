@@ -8194,6 +8194,9 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在處理此問題。請重新整理以查看其狀態。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>請為每個問題選擇有效的答案。</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>移除項目</value>
+  </data>
   <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>使用已連線 Gateway 的語音</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>聊天朗讀和自動回覆使用 Gateway 設定的語音。文字會傳送至 Gateway 及其語音供應商。金鑰保留在 Gateway 上。本機節點和 MCP 語音不受影響。</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>不會自動改用本機。若無法使用，請關閉此選項以使用本機供應商。</value></data>

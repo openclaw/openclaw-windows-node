@@ -137,10 +137,17 @@ tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
+On an authorized, exclusive interactive desktop, add `-KeyboardProof` to run the
+separate foreground keyboard fixture lane as well. It enables native input only
+in that child test process and rejects failed, skipped, and zero-test runs. The
+default fixture lane excludes those keyboard-dependent cases; it does not claim
+their proof.
+
 The ordinary `windows-latest` CI UI job runs this script against its explicitly
 built Debug x64 app after installing the Windows App Runtime selected by
 `Directory.Build.props`. Its dedicated step enables the fixture opt-in only for
-the child test processes and selects `Category=GatewayFixture`, including the
+the child test processes and selects `Category=GatewayFixture` without keyboard-only
+cases, including the
 context-usage and chat-run correlation scenarios. The general UI test step
 excludes that category so each scenario runs once. TRX, synthetic request logs,
 run receipts and owned-window screenshots are uploaded in `test-results-ui`

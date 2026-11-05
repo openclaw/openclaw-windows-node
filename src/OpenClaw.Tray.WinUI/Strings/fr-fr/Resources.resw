@@ -8194,6 +8194,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Cette question est en cours de résolution. Actualisez pour vérifier son état.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choisissez une réponse valide pour chaque question.</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>Supprimer l’élément</value>
+  </data>
   <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Utiliser la voix de la Gateway connectée</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>La lecture du chat et des réponses automatiques utilise la voix configurée sur la Gateway. Le texte est envoyé à la Gateway et à son fournisseur vocal. Les clés restent sur la Gateway. La synthèse locale du nœud et de MCP ne change pas.</value></data>
   <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>Aucun repli local automatique. En cas d’indisponibilité, désactivez cette option pour utiliser le fournisseur local.</value></data>
