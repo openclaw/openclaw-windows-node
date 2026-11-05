@@ -87,16 +87,18 @@ public sealed class SetupAndConnectTestsSearchProof(E2ESetupFixture fixture)
                     {
                         var state = await browser.EvaluateAsync("""
                             (() => {
-                              const app = document.querySelector("openclaw-app");
-                              const gateway = app?.runtime?.context?.gateway?.snapshot;
-                              return { connected: gateway?.phase === "connected",
-                                appLoaded: !!app, runtimeLoaded: !!app?.runtime,
-                                skills: !!document.querySelector("openclaw-skills-page"),
+                              const headings = [...document.querySelectorAll("h1,h2,[role=heading]")]
+                                .filter(element => element.getClientRects().length > 0)
+                                .map(element => element.textContent.trim());
+                              return { appLoaded: !!document.querySelector("openclaw-app"),
+                                hasHeading: headings.some(text => text.length > 0),
+                                skills: headings.includes("Skills"),
                                 path: location.pathname, title: document.title };
                             })()
                             """, browserTimeout.Token);
                         lastState = state;
-                        if (state.GetProperty("connected").GetBoolean() &&
+                        if (browser.Authenticated && state.GetProperty("appLoaded").GetBoolean() &&
+                            state.GetProperty("hasHeading").GetBoolean() &&
                             (route == "/" || state.GetProperty("skills").GetBoolean()))
                         {
                             if (route != "/") Assert.Equal(route, state.GetProperty("path").GetString());
@@ -116,7 +118,8 @@ public sealed class SetupAndConnectTestsSearchProof(E2ESetupFixture fixture)
                 }
                 catch (OperationCanceledException ex) when (browserTimeout.IsCancellationRequested)
                 {
-                    Console.WriteLine($"[Search proof] browser route {route} timed out; state={lastState?.GetRawText() ?? "unavailable"}.");
+                    Console.WriteLine($"[Search proof] browser route {route} timed out; authenticated={browser.Authenticated}; " +
+                        $"state={lastState?.GetRawText() ?? "unavailable"}.");
                     try
                     {
                         await browser.CaptureAsync(Path.Combine(fixture.ArtifactDir, "search-dashboard-timeout.png"));

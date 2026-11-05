@@ -14,7 +14,10 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
     private readonly Process _process;
     private readonly Task<string> _errors;
     private readonly ClientWebSocket _socket = new();
+    private readonly HashSet<string> _gatewaySockets = new(StringComparer.Ordinal);
+    private Uri? _gatewayOrigin;
     private int _nextId;
+    internal bool Authenticated { get; private set; }
 
     private GatewaySearchBrowserProof(Process process)
     {
@@ -54,6 +57,7 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
             using var pages = JsonDocument.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/list", timeout.Token));
             var page = pages.RootElement.EnumerateArray().Single(row => row.GetProperty("type").GetString() == "page");
             await browser._socket.ConnectAsync(new Uri(page.GetProperty("webSocketDebuggerUrl").GetString()!), timeout.Token);
+            await browser.CallAsync("Network.enable", new { }, timeout.Token);
             return browser;
         }
         catch
@@ -65,6 +69,9 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
 
     internal async Task NavigateAsync(Uri uri)
     {
+        _gatewayOrigin = uri;
+        _gatewaySockets.Clear();
+        Authenticated = false;
         using var timeout = new CancellationTokenSource(Timeout);
         var result = await CallAsync("Page.navigate", new { url = uri.AbsoluteUri }, timeout.Token);
         if (result.TryGetProperty("errorText", out _))
@@ -103,11 +110,39 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
             using var response = JsonDocument.Parse(message.ToArray());
             message.SetLength(0);
             message.Position = 0;
-            if (!response.RootElement.TryGetProperty("id", out var responseId) || responseId.GetInt32() != id) continue;
+            if (!response.RootElement.TryGetProperty("id", out var responseId))
+            {
+                ObserveGatewayHandshake(response.RootElement);
+                continue;
+            }
+            if (responseId.GetInt32() != id) continue;
             if (response.RootElement.TryGetProperty("error", out _))
                 throw new InvalidOperationException($"Browser proof command failed: {method}.");
             return response.RootElement.GetProperty("result").Clone();
         }
+    }
+
+    private void ObserveGatewayHandshake(JsonElement notification)
+    {
+        if (!notification.TryGetProperty("method", out var method) ||
+            !notification.TryGetProperty("params", out var parameters) ||
+            !parameters.TryGetProperty("requestId", out var requestId)) return;
+        if (method.GetString() == "Network.webSocketCreated" &&
+            Uri.TryCreate(parameters.GetProperty("url").GetString(), UriKind.Absolute, out var url) &&
+            _gatewayOrigin is { } origin && url.Host == origin.Host && url.Port == origin.Port)
+            _gatewaySockets.Add(requestId.GetString()!);
+        if (method.GetString() != "Network.webSocketFrameReceived" ||
+            !_gatewaySockets.Contains(requestId.GetString()!)) return;
+        var frame = parameters.GetProperty("response");
+        if (frame.GetProperty("opcode").GetInt32() != 1) return;
+        using var message = JsonDocument.Parse(frame.GetProperty("payloadData").GetString()!);
+        var root = message.RootElement;
+        if (root.ValueKind == JsonValueKind.Object &&
+            root.TryGetProperty("type", out var type) && type.GetString() == "res" &&
+            root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True &&
+            root.TryGetProperty("payload", out var payload) && payload.ValueKind == JsonValueKind.Object &&
+            payload.TryGetProperty("type", out var payloadType) && payloadType.GetString() == "hello-ok")
+            Authenticated = true;
     }
 
     public async ValueTask DisposeAsync()
