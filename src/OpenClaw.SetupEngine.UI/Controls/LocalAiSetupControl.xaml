@@ -33,6 +33,7 @@
         <StackPanel x:Name="LocalAiOptionContent" Spacing="12">
             <tk:SettingsCard x:Name="LocalAiInstallReviewCard" x:Uid="Onboarding_V2_LocalAiCard"
                              AutomationProperties.AutomationId="LocalAiInstallReviewCard"
+                             Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" Padding="0,14"
                              Header="Local AI" Description="Optional managed llama-server for Windows. This is separate from Ollama sharing.">
                 <ToggleSwitch x:Name="LocalAiToggle" x:Uid="Onboarding_V2_LocalAiToggle"
                               AutomationProperties.AutomationId="LocalAiSetupToggle"

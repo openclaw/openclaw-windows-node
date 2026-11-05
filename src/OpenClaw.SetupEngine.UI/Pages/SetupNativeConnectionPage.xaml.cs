@@ -35,6 +35,7 @@ public sealed partial class SetupNativeConnectionPage : Page, IAsyncDisposable
         InitializeComponent();
         TitleText.Text = S("Title");
         DescriptionText.Text = S("Description");
+        SpeechText.Text = S("Speech");
         AddressCard.Header = S("Address");
         CodeCard.Header = S("Code");
         TokenCard.Header = S("Token");

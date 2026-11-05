@@ -201,18 +201,28 @@ public sealed class NativeCompletionPresentationTests
     }
 
     [Fact]
-    public void NativeConnectionProgress_HasItsOwnRowAboveWrappableActions()
+    public void NativeConnectionProgress_UsesHeroWithSeparateFixedWrappableActions()
     {
         var page = XDocument.Parse(Read(@"src\OpenClaw.SetupEngine.UI\Pages\SetupNativeConnectionPage.xaml"));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var progress = Assert.Single(page.Descendants(), item => (string?)item.Attribute(x + "Name") == "FlowProgress");
-        Assert.Equal("Auto,Auto", (string?)progress.Parent!.Attribute("RowDefinitions"));
-        foreach (var button in progress.Parent.Elements().Where(item => item.Name.LocalName == "Button"))
+        Assert.Equal("SetupStepIndicator", progress.Name.LocalName);
+        Assert.Contains(progress.Ancestors(), item => item.Name.LocalName == "SetupPageShell.Hero");
+        var title = Assert.Single(page.Descendants(), item => (string?)item.Attribute(x + "Name") == "TitleText");
+        Assert.Contains(title.Ancestors(), item => item.Name.LocalName == "SetupPageShell.Header");
+        Assert.Equal("40", (string?)title.Attribute("FontSize"));
+        Assert.Equal("Level1", (string?)title.Attribute("AutomationProperties.HeadingLevel"));
+        Assert.Equal("Wrap", (string?)title.Attribute("TextWrapping"));
+        var footer = Assert.Single(page.Descendants(), item => (string?)item.Attribute(x + "Name") == "NavigationFooter");
+        Assert.Equal("SetupPageShell.Footer", footer.Parent!.Name.LocalName);
+        Assert.Equal(4, footer.Elements().Count(item => item.Name.LocalName == "Button"));
+        foreach (var button in footer.Elements().Where(item => item.Name.LocalName == "Button"))
         {
-            Assert.Equal("1", (string?)button.Attribute("Grid.Row"));
             Assert.Equal("0", (string?)button.Attribute("MinWidth"));
+            Assert.Equal("40", (string?)button.Attribute("MinHeight"));
             Assert.Equal("{StaticResource WrappedFooterAction}", (string?)button.Attribute("ContentTemplate"));
         }
+        Assert.DoesNotContain(page.Descendants(), item => item.Name.LocalName == "ScrollViewer");
     }
 
     [Fact]

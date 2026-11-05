@@ -3,37 +3,94 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
       xmlns:tk="using:CommunityToolkit.WinUI.Controls">
-    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto">
-        <StackPanel Spacing="4" HorizontalAlignment="Stretch">
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious" HorizontalAlignment="Center" />
-            <TextBlock x:Uid="Onboarding_V2_AlternativesTitle" Text="Choose another setup route" Style="{StaticResource TitleTextBlockStyle}"
-                       TextWrapping="Wrap" TextAlignment="Center" />
-        </StackPanel>
-        <ScrollViewer Grid.Row="1" Margin="0,24,0,16" MaxWidth="600" HorizontalContentAlignment="Stretch">
-            <StackPanel Spacing="8">
-                <tk:SettingsCard x:Uid="Onboarding_V2_ExistingRoute" Header="Existing Gateway"
+    <Page.Resources>
+        <Style x:Key="RouteRowStyle" TargetType="tk:SettingsCard">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="0,16" />
+        </Style>
+    </Page.Resources>
+    <controls:SetupPageShell x:Name="AdvancedShell">
+        <controls:SetupPageShell.Hero>
+            <StackPanel HorizontalAlignment="Stretch" Spacing="16">
+                <Grid MaxWidth="280" HorizontalAlignment="Center" RowDefinitions="Auto,10">
+                    <Border Padding="16,12" CornerRadius="12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <TextBlock x:Uid="Onboarding_Advanced_Speech" Text="There's more than one way."
+                                   FontSize="16" TextWrapping="Wrap" TextAlignment="Center" />
+                    </Border>
+                    <Path Grid.Row="1" Data="M0,0 L10,10 L20,0" HorizontalAlignment="Center"
+                          Fill="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          Stroke="{ThemeResource CardStrokeColorDefaultBrush}"
+                          AutomationProperties.AccessibilityView="Raw" />
+                </Grid>
+                <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious" HorizontalAlignment="Center" />
+                <controls:SetupStepIndicator x:Name="FlowProgress" Margin="24,8,0,0" HorizontalAlignment="Stretch" />
+            </StackPanel>
+        </controls:SetupPageShell.Hero>
+        <controls:SetupPageShell.Header>
+            <StackPanel Spacing="12">
+                <TextBlock x:Name="AdvancedTitle" x:Uid="Onboarding_V2_AlternativesTitle" Text="Choose another setup route"
+                           FontFamily="Segoe UI Variable" FontSize="40" FontWeight="SemiBold"
+                           AutomationProperties.HeadingLevel="Level1" TextWrapping="Wrap" />
+                <TextBlock x:Uid="Onboarding_Advanced_Help" Text="Connect another way or continue without a Gateway."
+                           FontFamily="Segoe UI Variable" FontSize="18" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </controls:SetupPageShell.Header>
+        <controls:SetupPageShell.Body>
+            <StackPanel Spacing="0">
+                <tk:SettingsCard x:Name="ExistingRouteCard" x:Uid="Onboarding_V2_ExistingRoute" Header="Existing Gateway"
+                                 Style="{StaticResource RouteRowStyle}"
+                                 AutomationProperties.AutomationId="SetupExistingGatewayRoute"
                                  Description="Use a saved or existing connection. No WSL installation."
-                                 IsClickEnabled="True" Click="Existing_Click" />
-                <tk:SettingsCard x:Uid="Onboarding_V2_RemoteRoute" Header="Remote Gateway"
+                                 IsClickEnabled="True" Click="Existing_Click">
+                    <tk:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE71B;" FontSize="20" IsTextScaleFactorEnabled="False" />
+                    </tk:SettingsCard.HeaderIcon>
+                </tk:SettingsCard>
+                <tk:SettingsCard x:Name="RemoteRouteCard" x:Uid="Onboarding_V2_RemoteRoute" Header="Remote Gateway"
+                                 Style="{StaticResource RouteRowStyle}"
+                                 AutomationProperties.AutomationId="SetupRemoteGatewayRoute"
                                  Description="Use the native address, setup code or SSH connection editor."
-                                 IsClickEnabled="True" Click="Remote_Click" />
-                <tk:SettingsCard x:Uid="Onboarding_V2_McpRoute" Header="Local MCP only"
+                                 IsClickEnabled="True" Click="Remote_Click">
+                    <tk:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE774;" FontSize="20" IsTextScaleFactorEnabled="False" />
+                    </tk:SettingsCard.HeaderIcon>
+                </tk:SettingsCard>
+                <tk:SettingsCard x:Name="McpRouteCard" x:Uid="Onboarding_V2_McpRoute" Header="Local MCP only"
+                                 Style="{StaticResource RouteRowStyle}"
+                                 AutomationProperties.AutomationId="SetupMcpOnlyRoute"
                                  Description="Enable local MCP without a Gateway. Review PC capabilities next."
-                                 IsClickEnabled="True" Click="Mcp_Click" />
-                <tk:SettingsCard x:Uid="Onboarding_V2_DeferredRoute" Header="Set up a Gateway later"
+                                 IsClickEnabled="True" Click="Mcp_Click">
+                    <tk:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE8AD;" FontSize="20" IsTextScaleFactorEnabled="False" />
+                    </tk:SettingsCard.HeaderIcon>
+                </tk:SettingsCard>
+                <tk:SettingsCard x:Name="DeferredRouteCard" x:Uid="Onboarding_V2_DeferredRoute" Header="Set up a Gateway later"
+                                 Style="{StaticResource RouteRowStyle}"
+                                 AutomationProperties.AutomationId="SetupDeferredGatewayRoute"
                                  Description="Review your choices without installing WSL or changing saved Gateways."
-                                 IsClickEnabled="True" Click="Deferred_Click" />
-                <InfoBar x:Name="HostUnavailable" x:Uid="Onboarding_V2_HostUnavailable"
+                                 IsClickEnabled="True" Click="Deferred_Click">
+                    <tk:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE787;" FontSize="20" IsTextScaleFactorEnabled="False" />
+                    </tk:SettingsCard.HeaderIcon>
+                </tk:SettingsCard>
+                <InfoBar x:Name="HostUnavailable" x:Uid="Onboarding_V2_HostUnavailable" Margin="0,16,0,0"
                          IsOpen="False" IsClosable="False" Severity="Informational"
                          Title="Connection editor is unavailable in this setup host"
                          Message="Open setup from the Companion app to use its native connection editor." />
-                <HyperlinkButton x:Name="ClassicSettingsLink" x:Uid="Onboarding_V2_ClassicSettings"
+                <HyperlinkButton x:Name="ClassicSettingsLink" x:Uid="Onboarding_V2_ClassicSettings" Margin="0,12,0,0"
+                                 HorizontalAlignment="Left"
                                  Content="Open classic Connection settings" Click="ClassicSettings_Click" />
             </StackPanel>
-        </ScrollViewer>
-        <Grid Grid.Row="2">
-            <controls:SetupProgressIndicator x:Name="FlowProgress" HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <Button x:Uid="Onboarding_V2_Back" Content="Back" MinWidth="100" HorizontalAlignment="Left" Click="Back_Click" />
-        </Grid>
-    </Grid>
+        </controls:SetupPageShell.Body>
+        <controls:SetupPageShell.Footer>
+            <Button x:Name="BackButton" x:Uid="Onboarding_V2_Back" Content="Back" MinWidth="100" MinHeight="40"
+                    HorizontalAlignment="Right" Click="Back_Click" />
+        </controls:SetupPageShell.Footer>
+    </controls:SetupPageShell>
 </Page>

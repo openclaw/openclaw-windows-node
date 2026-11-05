@@ -4,42 +4,75 @@
       xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
       xmlns:tk="using:CommunityToolkit.WinUI.Controls">
     <Page.Resources>
+        <Style x:Key="ReadyChoice" TargetType="tk:SettingsCard">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="12,16" />
+            <Setter Property="MinHeight" Value="72" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
         <DataTemplate x:Key="WrappedAction">
             <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="160" Style="{StaticResource BodyTextBlockStyle}" />
         </DataTemplate>
     </Page.Resources>
-    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto">
-        <StackPanel Spacing="4">
+    <controls:SetupPageShell x:Name="ReadyShell">
+        <controls:SetupPageShell.Hero>
+            <StackPanel Spacing="16" HorizontalAlignment="Stretch">
+                <Grid MaxWidth="280" HorizontalAlignment="Center" RowDefinitions="Auto,10">
+                    <Border Padding="16,12" CornerRadius="12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <TextBlock x:Uid="Onboarding_Ready_Speech" Text="Ready when you are."
+                                   FontFamily="Segoe UI Variable" FontSize="18" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" TextAlignment="Center" />
+                    </Border>
+                    <Path Grid.Row="1" Data="M0,0 L10,10 L20,0" HorizontalAlignment="Center"
+                          Fill="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          Stroke="{ThemeResource CardStrokeColorDefaultBrush}"
+                          AutomationProperties.AccessibilityView="Raw" />
+                </Grid>
             <controls:OnboardingMascot x:Name="MascotHero" Mood="Thinking" HorizontalAlignment="Center" />
+                <controls:SetupStepIndicator x:Name="FlowProgress" Margin="24,8,0,0" HorizontalAlignment="Stretch" />
+            </StackPanel>
+        </controls:SetupPageShell.Hero>
+        <controls:SetupPageShell.Header>
+        <StackPanel Spacing="12">
             <TextBlock x:Name="Heading" Text="Finishing setup"
-                       Style="{StaticResource TitleTextBlockStyle}" TextAlignment="Center" TextWrapping="Wrap" />
+                       FontFamily="Segoe UI Variable" FontSize="40" FontWeight="SemiBold"
+                       AutomationProperties.HeadingLevel="Level1" TextAlignment="Left" TextWrapping="Wrap" />
             <TextBlock x:Name="Prompt"
-                       Style="{StaticResource BodyTextBlockStyle}" TextAlignment="Center" TextWrapping="Wrap" />
+                       FontFamily="Segoe UI Variable" FontSize="18" TextAlignment="Left" TextWrapping="Wrap"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <TextBlock x:Name="ModelSummary" Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" />
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextAlignment="Left" TextWrapping="Wrap" />
         </StackPanel>
-        <ScrollViewer Grid.Row="1" Margin="0,24,0,16" HorizontalContentAlignment="Stretch">
+        </controls:SetupPageShell.Header>
+        <controls:SetupPageShell.Body>
             <StackPanel Spacing="8">
-                <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error">
-                    <InfoBar.ActionButton>
-                        <Button x:Name="RecoveryButton" x:Uid="Onboarding_Ready_Return" Content="Back to AI setup"
-                                Click="Return_Click" ContentTemplate="{StaticResource WrappedAction}" />
-                    </InfoBar.ActionButton>
-                </InfoBar>
-                <StackPanel x:Name="Choices" Spacing="8" Visibility="Collapsed">
+                <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error" />
+                <StackPanel x:Name="Choices" Spacing="0" Visibility="Collapsed">
                     <controls:SetupActionCard x:Name="ChatChoice" x:Uid="Onboarding_Ready_Chat" Header="Talk to my agent"
                                      Description="Open Chat with your agent." Tag="Chat" IsClickEnabled="True" InvokeRequested="Choose_Click"
-                                     AutomationProperties.Name="Talk to my agent, recommended">
+                                     Style="{StaticResource ReadyChoice}" AutomationProperties.Name="Talk to my agent, recommended">
                         <controls:RecommendedBadge x:Name="RecommendedBadge" />
                     </controls:SetupActionCard>
-                    <controls:SetupActionCard x:Name="ChannelsChoice" x:Uid="Onboarding_Ready_Channels" Header="Connect channels"
+                    <controls:SetupActionCard x:Name="ChannelsChoice" x:Uid="Onboarding_Ready_Channels" Header="Connect channels" Style="{StaticResource ReadyChoice}"
                                      Description="WhatsApp, Telegram, and more. You choose when to sign in." Tag="Channels" IsClickEnabled="True" InvokeRequested="Choose_Click" />
                 </StackPanel>
-                <ProgressBar x:Name="BusyProgress" IsIndeterminate="True" Visibility="Collapsed" />
-                <TextBlock x:Name="StatusText" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
-                           AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
             </StackPanel>
-        </ScrollViewer>
-        <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center" />
-    </Grid>
+        </controls:SetupPageShell.Body>
+        <controls:SetupPageShell.Footer>
+            <Grid x:Name="ReadyFooter" RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="12" RowSpacing="8">
+                <ProgressBar x:Name="BusyProgress" Grid.ColumnSpan="2" IsIndeterminate="True" Visibility="Collapsed" />
+                <TextBlock x:Name="StatusText" Grid.Row="1" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
+                           AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" VerticalAlignment="Center" />
+                <Button x:Name="RecoveryButton" x:Uid="Onboarding_Ready_Return" Grid.Row="1" Grid.Column="1"
+                        Content="Back to AI setup" MinWidth="100" MinHeight="40" HorizontalAlignment="Right"
+                        Visibility="Collapsed"
+                        Click="Return_Click" ContentTemplate="{StaticResource WrappedAction}" />
+            </Grid>
+        </controls:SetupPageShell.Footer>
+    </controls:SetupPageShell>
 </Page>

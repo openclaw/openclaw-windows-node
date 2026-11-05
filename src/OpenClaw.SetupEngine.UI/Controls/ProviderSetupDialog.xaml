@@ -8,7 +8,7 @@
     Closing="Dialog_Closing">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Spacing="16">
-            <TextBlock x:Name="ProviderName" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap"
+            <TextBlock x:Name="ProviderName" FontFamily="Segoe UI Variable" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" />
             <TextBlock x:Name="DialogStatus" Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap"
                        AutomationProperties.LiveSetting="Polite" />
@@ -18,9 +18,9 @@
                 <Button x:Name="ExternalLink" Visibility="Collapsed" Click="ExternalLink_Click" />
                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                        CornerRadius="4" Padding="16" Visibility="{Binding Visibility, ElementName=DeviceCode}">
+                        CornerRadius="8" Padding="16" Visibility="{Binding Visibility, ElementName=DeviceCode}">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                    <TextBlock x:Name="DeviceCode" Style="{StaticResource SubtitleTextBlockStyle}" IsTextSelectionEnabled="True"
+                    <TextBlock x:Name="DeviceCode" FontFamily="Segoe UI Variable" FontSize="24" FontWeight="SemiBold" IsTextSelectionEnabled="True"
                                Visibility="Collapsed" TextWrapping="Wrap" />
                     <Button x:Name="CopyCodeButton" Grid.Column="1" Visibility="Collapsed" Click="CopyCode_Click" />
                 </Grid>
@@ -43,7 +43,12 @@
                 <CheckBox x:Name="ConfirmInput" Visibility="Collapsed" Checked="Input_Changed" Unchecked="Input_Changed" />
             </StackPanel>
             <ProgressBar x:Name="DialogProgress" IsIndeterminate="True" Visibility="Collapsed" />
-            <Button x:Name="CancelButton" Click="Cancel_Click" />
+            <Button x:Name="CancelButton" Click="Cancel_Click" MinWidth="100" MinHeight="40"
+                    HorizontalAlignment="Left">
+                <Button.ContentTemplate>
+                    <DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="200" /></DataTemplate>
+                </Button.ContentTemplate>
+            </Button>
             <Expander x:Name="NativeRecovery" x:Uid="Onboarding_Native_Recovery" Header="Gateway recovery"
                       Visibility="Collapsed" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                 <StackPanel Spacing="8">

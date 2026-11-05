@@ -4,6 +4,7 @@ using System.Text.Json;
 using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using OpenClaw.Connection;
@@ -51,9 +52,8 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Equal(Visibility.Collapsed, Find<Expander>(page, "NativeRecovery").Visibility);
             Assert.Empty(Find<TextBlock>(page, "NativeOutput").Text);
             Assert.Equal(Visibility.Collapsed, Find<Button>(page, "LegacyButton").Visibility);
-            var progress = Find<OpenClaw.SetupEngine.UI.Controls.SetupProgressIndicator>(page, "FlowProgress");
-            Assert.Equal(6, progress.Children.Count);
-            Assert.Equal(20, Assert.IsType<Border>(progress.Children[4]).Width);
+            var progress = Find<SetupStepIndicator>(page, "FlowProgress");
+            Assert.Equal("Step 3 of 4", AutomationProperties.GetName(progress));
             page.UpdateLayout();
             await ui.YieldToRenderAsync();
             await SaveViewportsAsync(window, page, $"native-shared-ai-{destination}-{theme}");
@@ -82,7 +82,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     Assert.Null(ready.FindName("SkipButton"));
                     Assert.Null(ready.FindName("FinishButton"));
                     Assert.False(Find<InfoBar>(ready, "ErrorBar").IsOpen);
-                    Assert.Same(Find<Button>(ready, "RecoveryButton"), Find<InfoBar>(ready, "ErrorBar").ActionButton);
+                    Assert.Equal(Visibility.Collapsed, Find<Button>(ready, "RecoveryButton").Visibility);
                     Assert.Empty(navigated);
                     Assert.Null(ready.FindName("NativeSummary"));
                     Assert.Null(ready.FindName("NativeGatewaySummary"));
@@ -205,14 +205,13 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
 
     private static void AssertNoCompletionFooterActions(AiReadyPage page)
     {
-        var root = Assert.IsType<Grid>(page.Content);
-        var progress = Find<SetupProgressIndicator>(page, "FlowProgress");
-        var footerContent = root.Children.OfType<FrameworkElement>()
-            .Where(element => Grid.GetRow(element) == Grid.GetRow(progress)).ToArray();
-        Assert.Empty(footerContent.OfType<Button>());
-        Assert.Empty(footerContent.SelectMany(element => TestSupport.FindDescendants<Button>(element)));
-        Assert.Empty(footerContent.OfType<SettingsCard>());
-        Assert.Empty(footerContent.SelectMany(element => TestSupport.FindDescendants<SettingsCard>(element)));
+        var shell = Assert.IsType<SetupPageShell>(page.Content);
+        Assert.IsType<SetupStepIndicator>(page.FindName("FlowProgress"));
+        var footer = Assert.IsType<Grid>(shell.Footer);
+        var recovery = Assert.Single(footer.Children.OfType<Button>());
+        Assert.Same(Find<Button>(page, "RecoveryButton"), recovery);
+        Assert.Equal(Visibility.Collapsed, recovery.Visibility);
+        Assert.Empty(TestSupport.FindDescendants<SettingsCard>(footer));
     }
 
     [Theory]
@@ -279,7 +278,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                 await ui.YieldToRenderAsync();
                 await OnboardingNativeProof.NextCompositionAsync();
                 page.UpdateLayout();
-                var scroll = Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
+                var scroll = Assert.IsType<SetupPageShell>(page.Content).Scroller;
                 OnboardingNativeProof.AssertFullyVisible(toggle, scroll);
                 toggle.IsOn = !selectedStartup;
                 toggle.IsOn = selectedStartup;
@@ -351,8 +350,12 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
                     var readyRoot = Assert.IsAssignableFrom<FrameworkElement>(readyWindow.Content);
                     Assert.Equal(2, Find<StackPanel>(ready, "Choices").Children.Count);
-                    OnboardingNativeProof.AssertFullyVisible(
-                        Find<OpenClaw.SetupEngine.UI.Controls.SetupProgressIndicator>(ready, "FlowProgress"), readyRoot);
+                    var timeline = Find<SetupStepIndicator>(ready, "FlowProgress");
+                    Assert.Equal("Step 4 of 4", AutomationProperties.GetName(timeline));
+                    timeline.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+                    await ui.YieldToRenderAsync();
+                    await OnboardingNativeProof.NextCompositionAsync();
+                    OnboardingNativeProof.AssertFullyVisible(timeline, Assert.IsType<SetupPageShell>(ready.Content).Scroller);
                     await SetupWindowMinimumSizeTests.SaveViewportsAsync(
                         readyWindow, ready, ui, output, $"setup-minimum-ready-{theme}");
                     Assert.Empty(navigated);
@@ -963,7 +966,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR"))) return;
         await SettleCaptureAsync(window);
         var root = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
-        var scroll = Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
+        var scroll = Assert.IsType<SetupPageShell>(page.Content).Scroller;
         var original = scroll.VerticalOffset;
         var offset = 0d;
         var index = 0;

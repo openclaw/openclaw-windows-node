@@ -16,7 +16,7 @@ namespace OpenClaw.Tray.UITests;
 
 /// <summary>Synthetic rendering only. Never activates a destination, connects a Gateway, or finalizes setup.</summary>
 [Collection(UICollection.Name)]
-public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHelper output)
+public sealed partial class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHelper output)
 {
     [Theory]
     [InlineData(SetupNativeCompletionPhase.PageDrain, "Closing the previous AI setup page timed out.")]
@@ -111,7 +111,7 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 ready.CommitPresentation();
                 var frame = Assert.IsType<Frame>(ready.Content);
                 var page = Assert.IsType<AiReadyPage>(frame.Content);
-                var readyRoot = Assert.IsType<Grid>(page.Content);
+                var readyRoot = Assert.IsType<SetupPageShell>(page.Content);
                 var progressRoot = Assert.IsType<SetupLoadingView>(progress.Content);
                 foreach (var theme in new[] { initialTheme, initialTheme == ElementTheme.Light ? ElementTheme.Dark : ElementTheme.Light })
                 {
@@ -201,7 +201,10 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 var frame = Assert.IsType<Frame>(window.Content);
                 using var navigation = OnboardingNativeProof.TrackNavigation(frame);
                 if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
-                    window.Activate();
+                {
+                    window.AppWindow.Move(new(-32000, -32000));
+                    window.AppWindow.Show(activateWindow: false);
+                }
                 else
                     OnboardingNativeProof.ActivateOwned(window);
                 // Synthetic verification exercises rendering, not a live Gateway or inference.
@@ -222,8 +225,8 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 await window.ShowReadyAsync(await VerifySyntheticAsync(proof, CancellationToken.None), CancellationToken.None);
                 page = Assert.IsType<AiReadyPage>(frame.Content);
                 choices = Assert.IsType<StackPanel>(page.FindName("Choices"));
-                var root = Assert.IsType<Grid>(page.Content);
-                await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
+                var root = Assert.IsType<SetupPageShell>(page.Content);
+                await OnboardingNativeProof.ApplyThemeSurfaceAsync(Assert.IsType<Grid>(root.Content), theme);
                 window.CommitPresentation();
                 Assert.Equal(Visibility.Visible, choices.Visibility);
                 Assert.Equal(2, choices.Children.Count);

@@ -3,23 +3,49 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
       xmlns:tk="using:CommunityToolkit.WinUI.Controls">
-    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto">
-        <StackPanel Spacing="4" HorizontalAlignment="Stretch">
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious" HorizontalAlignment="Center" />
-            <TextBlock x:Uid="Onboarding_V2_CapabilitiesTitle" Text="PC capabilities" Style="{StaticResource TitleTextBlockStyle}"
-                       TextAlignment="Center" TextWrapping="Wrap" />
+    <Page.Resources>
+        <Style x:Key="CapabilityRowStyle" TargetType="tk:SettingsCard">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="0,12" />
+        </Style>
+    </Page.Resources>
+    <controls:SetupPageShell x:Name="CapabilitiesShell">
+        <controls:SetupPageShell.Hero>
+            <StackPanel HorizontalAlignment="Stretch" Spacing="16">
+                <Grid MaxWidth="280" HorizontalAlignment="Center" RowDefinitions="Auto,10">
+                    <Border Padding="16,12" CornerRadius="12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <TextBlock x:Uid="Onboarding_Capabilities_Speech" Text="You choose what I can use."
+                                   FontSize="16" TextWrapping="Wrap" TextAlignment="Center" />
+                    </Border>
+                    <Path Grid.Row="1" Data="M0,0 L10,10 L20,0" HorizontalAlignment="Center"
+                          Fill="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          Stroke="{ThemeResource CardStrokeColorDefaultBrush}"
+                          AutomationProperties.AccessibilityView="Raw" />
+                </Grid>
+                <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious" HorizontalAlignment="Center" />
+                <controls:SetupStepIndicator x:Name="FlowProgress" Margin="24,8,0,0" HorizontalAlignment="Stretch" />
+            </StackPanel>
+        </controls:SetupPageShell.Hero>
+        <controls:SetupPageShell.Header>
+          <StackPanel Spacing="12">
+            <TextBlock x:Name="CapabilitiesTitle" x:Uid="Onboarding_V2_CapabilitiesTitle" Text="What can your assistant use?"
+                       FontFamily="Segoe UI Variable" FontSize="40" FontWeight="SemiBold"
+                       AutomationProperties.HeadingLevel="Level1" TextWrapping="Wrap" />
             <TextBlock x:Uid="Onboarding_V3_ProfileHelp" Text="Choose a preset. Open Fine-tune to inspect or change individual capabilities."
-                       TextAlignment="Center" TextWrapping="Wrap" Style="{StaticResource BodyTextBlockStyle}"
+                       FontFamily="Segoe UI Variable" FontSize="18" TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        </StackPanel>
-        <ScrollViewer Grid.Row="1" Margin="0,24,0,16" MaxWidth="600"
-                      HorizontalContentAlignment="Stretch" VerticalScrollBarVisibility="Auto">
+          </StackPanel>
+        </controls:SetupPageShell.Header>
+        <controls:SetupPageShell.Body>
             <StackPanel Spacing="12">
                 <InfoBar x:Name="TransportRequired" x:Uid="Onboarding_V3_TransportRequired" IsOpen="True"
                          IsClosable="False" Severity="Informational" Title="Capabilities are unavailable"
                          Message="Turn on Node mode or Local MCP Server to use these capabilities. Your choices are kept." />
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
                 <StackPanel x:Name="CapabilityControls" Spacing="0">
                     <ListView x:Name="ProfileSelector" x:Uid="Onboarding_V2_ProfileSelector"
                               AutomationProperties.Name="Capability profile"
@@ -30,19 +56,32 @@
                               SelectionChanged="Profile_Changed">
                         <ListViewItem x:Name="ReadOnlyChoice" x:Uid="Onboarding_V2_ProfileReadOnly"
                                       AutomationProperties.Name="Strict: Canvas and screen capture. Command execution is off."
-                                      HorizontalContentAlignment="Stretch" Padding="16,12">
-                            <StackPanel Spacing="4">
+                                      HorizontalContentAlignment="Stretch" Padding="16,12" CornerRadius="0">
+                          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                            <Border Width="40" Height="40" CornerRadius="6" VerticalAlignment="Center"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                                <FontIcon Glyph="&#xE70F;" FontSize="20" IsTextScaleFactorEnabled="False" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Spacing="4">
                                 <TextBlock x:Uid="Onboarding_V2_ProfileReadOnlyTitle" Text="Strict"
                                            TextWrapping="Wrap" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                 <TextBlock x:Uid="Onboarding_V2_ProfileReadOnlyDescription" Text="Canvas and screen capture. Command execution is off."
                                            TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
+                          </Grid>
                         </ListViewItem>
                         <ListViewItem x:Name="StandardChoice" x:Uid="Onboarding_V2_ProfileStandard"
                                       AutomationProperties.Name="Balanced (Recommended): commands, Canvas, screen capture and voice."
-                                      HorizontalContentAlignment="Stretch" Padding="16,12">
-                            <StackPanel Spacing="4">
+                                      HorizontalContentAlignment="Stretch" Padding="16,12" CornerRadius="0"
+                                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                            <Border Width="40" Height="40" CornerRadius="6" VerticalAlignment="Center"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}">
+                                <FontIcon Glyph="&#xE945;" FontSize="20" IsTextScaleFactorEnabled="False"
+                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Spacing="4">
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" HorizontalAlignment="Left">
                                     <TextBlock x:Uid="Onboarding_V2_ProfileStandardTitle" Text="Balanced"
                                                TextWrapping="Wrap" Style="{StaticResource BodyStrongTextBlockStyle}"
@@ -53,17 +92,25 @@
                                            TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
+                          </Grid>
                         </ListViewItem>
                         <ListViewItem x:Name="FullChoice" x:Uid="Onboarding_V2_ProfileFull"
                                       AutomationProperties.Name="Open: all eight capabilities, including Camera, Location and Browser control."
-                                      HorizontalContentAlignment="Stretch" Padding="16,12">
-                            <StackPanel Spacing="4">
+                                      HorizontalContentAlignment="Stretch" Padding="16,12" CornerRadius="0"
+                                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                            <Border Width="40" Height="40" CornerRadius="6" VerticalAlignment="Center"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                                <FontIcon Glyph="&#xE713;" FontSize="20" IsTextScaleFactorEnabled="False" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Spacing="4">
                                 <TextBlock x:Uid="Onboarding_V2_ProfileFullTitle" Text="Open"
                                            TextWrapping="Wrap" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                 <TextBlock x:Uid="Onboarding_V2_ProfileFullDescription" Text="All eight capabilities, including Camera, Location and Browser control."
                                            TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
+                          </Grid>
                         </ListViewItem>
                     </ListView>
                     <tk:SettingsExpander x:Name="FineTuneExpander" IsExpanded="False"
@@ -92,37 +139,41 @@
                         </tk:SettingsExpander.ItemsFooter>
                     </tk:SettingsExpander>
                 </StackPanel>
-                </Border>
                 <TextBlock x:Uid="Onboarding_V4_ConnectionOptions" Text="Connection options" Margin="0,12,0,0"
                            Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
                 <StackPanel Spacing="4">
-                <tk:SettingsCard x:Uid="Onboarding_V2_NodeMode" Header="Node mode" Description="Offer this PC's capabilities through a connected Gateway.">
+                <tk:SettingsCard x:Uid="Onboarding_V2_NodeMode" Style="{StaticResource CapabilityRowStyle}"
+                                 Header="Node mode" Description="Offer this PC's capabilities through a connected Gateway.">
                     <ToggleSwitch x:Name="NodeModeToggle" x:Uid="Onboarding_V2_NodeModeToggle" AutomationProperties.Name="Node mode"
                                   OnContent="" OffContent="" MinWidth="0" Toggled="Transport_Toggled" />
                 </tk:SettingsCard>
-                <tk:SettingsCard x:Uid="Onboarding_V2_Mcp" Header="Local MCP Server" Description="Use local MCP clients without requiring a Gateway.">
+                <tk:SettingsCard x:Uid="Onboarding_V2_Mcp" Style="{StaticResource CapabilityRowStyle}"
+                                 Header="Local MCP Server" Description="Use local MCP clients without requiring a Gateway.">
                     <ToggleSwitch x:Name="McpToggle" x:Uid="Onboarding_V2_McpToggle" AutomationProperties.Name="Local MCP Server"
                                   OnContent="" OffContent="" MinWidth="0" Toggled="Transport_Toggled" />
                 </tk:SettingsCard>
                 </StackPanel>
-                <tk:SettingsCard x:Uid="Onboarding_V2_Ollama" Header="Ollama sharing"
+                <tk:SettingsCard x:Uid="Onboarding_V2_Ollama" Style="{StaticResource CapabilityRowStyle}" Header="Ollama sharing"
                                  Description="Share an existing Windows Ollama service. This does not install Local AI or change your capability profile.">
                     <ToggleSwitch x:Name="OllamaToggle" x:Uid="Onboarding_V2_OllamaToggle"
                                   AutomationProperties.Name="Ollama sharing" OnContent="" OffContent="" MinWidth="0"
                                   Toggled="Ollama_Toggled" />
                 </tk:SettingsCard>
-                <tk:SettingsCard x:Name="StartupPreferenceRow" x:Uid="Onboarding_V2_StartupCard"
+                <tk:SettingsCard x:Name="StartupPreferenceRow" x:Uid="Onboarding_V2_StartupCard" Style="{StaticResource CapabilityRowStyle}"
                                  Header="Launch OpenClaw at sign-in" Visibility="Collapsed">
                     <ToggleSwitch x:Name="StartupPreferenceToggle" x:Uid="Onboarding_Flow_AutoStartToggle"
                                   AutomationProperties.Name="Launch OpenClaw at sign-in"
                                   OnContent="" OffContent="" MinWidth="0" Toggled="Startup_Toggled" />
                 </tk:SettingsCard>
             </StackPanel>
-        </ScrollViewer>
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="2" HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <Button x:Uid="Onboarding_V2_Back" Content="Back" MinWidth="100" Click="Back_Click" HorizontalAlignment="Left" />
-            <Button x:Name="ContinueButton" Grid.Column="1" x:Uid="Onboarding_V2_Next" Content="Next" MinWidth="100" Click="Next_Click" Style="{StaticResource AccentButtonStyle}" />
-        </Grid>
-    </Grid>
+        </controls:SetupPageShell.Body>
+        <controls:SetupPageShell.Footer>
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+            <Button x:Name="BackButton" Grid.Column="1" x:Uid="Onboarding_V2_Back" Content="Back"
+                    MinWidth="100" MinHeight="40" Click="Back_Click" HorizontalAlignment="Right" />
+            <Button x:Name="ContinueButton" Grid.Column="2" x:Uid="Onboarding_V2_Next" Content="Next"
+                    MinWidth="140" MinHeight="40" Click="Next_Click" Style="{StaticResource AccentButtonStyle}" />
+          </Grid>
+        </controls:SetupPageShell.Footer>
+    </controls:SetupPageShell>
 </Page>

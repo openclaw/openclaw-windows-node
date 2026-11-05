@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace OpenClaw.Tray.Tests;
@@ -86,12 +88,15 @@ public sealed class OnboardingCopyRefinementTests
     public void WelcomeAndGatewayCopyIsTruthfulLocalizedAndUsesRepositorySafetyUrl()
     {
         var strings = Strings("en-us");
-        Assert.Equal("OpenClaw is your AI assistant for getting things done on your PC.",
+        Assert.Equal("Meet your new sidekick.", strings["Onboarding_V2_WelcomeTitle.Text"]);
+        Assert.Equal("OpenClaw connects an AI assistant to the tools on your PC. You choose what it can do, and you can change that any time.",
             strings["Onboarding_Flow_WelcomeDescription.Text"]);
+        Assert.Equal("Get started", strings["Onboarding_Welcome_GetStarted.Content"]);
+        Assert.Equal("Hi. Let's get you set up.", strings["Onboarding_Welcome_Speech.Text"]);
         Assert.Equal("Before you get started", strings["Onboarding_V2_WelcomeTrust.Title"]);
-        Assert.Contains("change or delete files", strings["Onboarding_V2_WelcomeTrust.Message"]);
-        Assert.Contains("expose private information", strings["Onboarding_V2_WelcomeTrust.Message"]);
-        Assert.Contains("control and limit", strings["Onboarding_V2_WelcomeTrust.Message"]);
+        Assert.Equal("AI agents are powerful and giving them access to your PC carries risks. They can make mistakes, change or delete files, or expose private information.\n\nYou can control and limit OpenClaw’s access to your PC.",
+            strings["Onboarding_V2_WelcomeTrust.Message"]);
+        Assert.Equal("Learn more about risks and safety", strings["Onboarding_Copy_SafetyLink.Content"]);
         Assert.Equal("Install a local Gateway (WSL)", strings["Onboarding_Copy_GatewayLocalTitle.Text"]);
         Assert.Equal("Install a local Gateway (WSL), recommended",
             strings["Onboarding_Copy_GatewayLocalChoice.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name"]);
@@ -111,6 +116,68 @@ public sealed class OnboardingCopyRefinementTests
             Assert.Contains("WSL", localized["Onboarding_Copy_GatewayLocalDescription.Text"]);
             Assert.Contains("WSL", localized["Onboarding_Copy_GatewayLocalTitle.Text"]);
         }
+    }
+
+    [Fact]
+    public void WelcomeMilestonesUseApprovedRuntimeCopy()
+    {
+        var strings = Strings("en-us");
+        foreach (var (key, expected) in new[]
+        {
+            ("Onboarding_Milestone_Tools", "Choose your PC tools"),
+            ("Onboarding_Milestone_ToolsDescription", "Start with the access that suits you."),
+            ("Onboarding_Milestone_Setup", "Set up"),
+            ("Onboarding_Milestone_SetupDescription", "OpenClaw installs. You can keep using your PC."),
+            ("Onboarding_Milestone_Ai", "Connect your AI"),
+            ("Onboarding_Milestone_Chat", "Start chatting"),
+            ("Onboarding_Milestone_Current", "{0}, current step"),
+            ("Onboarding_Milestone_Complete", "{0}, completed"),
+            ("Onboarding_Milestone_Upcoming", "{0}, upcoming"),
+        })
+            Assert.Equal(expected, strings[key]);
+    }
+
+    [Theory]
+    [InlineData("en-us", "Step {0} of {1}")]
+    [InlineData("fr-fr", "Étape {0} sur {1}")]
+    [InlineData("nl-nl", "Stap {0} van {1}")]
+    [InlineData("pt-br", "Etapa {0} de {1}")]
+    [InlineData("zh-cn", "第 {0} 步，共 {1} 步")]
+    [InlineData("zh-tw", "第 {0} 步，共 {1} 步")]
+    public void WelcomeCopyIsLocalizedWithCanonicalStageAnnouncement(
+        string locale, string stageAnnouncement)
+    {
+        var strings = Strings(locale);
+        var english = Strings("en-us");
+        foreach (var key in new[]
+        {
+            "Onboarding_V2_WelcomeTitle.Text", "Onboarding_Flow_WelcomeDescription.Text",
+            "Onboarding_Welcome_GetStarted.Content", "Onboarding_Welcome_Speech.Text",
+            "Onboarding_Milestone_Tools", "Onboarding_Milestone_Setup",
+            "Onboarding_Milestone_ToolsDescription", "Onboarding_Milestone_SetupDescription",
+            "Onboarding_Milestone_Ai", "Onboarding_Milestone_Chat",
+            "Onboarding_Milestone_Current", "Onboarding_Milestone_Complete",
+            "Onboarding_Milestone_Upcoming",
+        })
+        {
+            Assert.False(string.IsNullOrWhiteSpace(strings[key]), $"{locale}: {key}");
+            if (locale != "en-us")
+                Assert.NotEqual(english[key], strings[key]);
+            Assert.Equal(
+                Regex.Matches(english[key], @"\{\d+\}").Select(match => match.Value),
+                Regex.Matches(strings[key], @"\{\d+\}").Select(match => match.Value));
+        }
+        foreach (var key in new[] { "Onboarding_Milestone_Current", "Onboarding_Milestone_Complete",
+                     "Onboarding_Milestone_Upcoming" })
+        {
+            var format = strings[key];
+            Assert.Single(Regex.Matches(format, @"\{0\}"));
+            var announcement = string.Format(CultureInfo.InvariantCulture, format, "Milestone");
+            Assert.Equal(format.Replace("{0}", "Milestone"), announcement);
+            Assert.DoesNotContain("{", announcement);
+            Assert.DoesNotContain("}", announcement);
+        }
+        Assert.Equal(stageAnnouncement, strings["Onboarding_Flow_Position"]);
     }
 
     [Fact]

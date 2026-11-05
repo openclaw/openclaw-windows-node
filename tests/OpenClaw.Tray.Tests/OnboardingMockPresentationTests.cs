@@ -11,16 +11,10 @@ public sealed class OnboardingMockPresentationTests
         Assert.Single(page.Descendants(), element => (string?)element.Attribute(X + "Name") == name);
 
     [Theory]
-    [InlineData("SecurityNoticePage")]
     [InlineData("WelcomePage")]
     [InlineData("CapabilitiesPage")]
-    [InlineData("GatewaySetupPage")]
-    [InlineData("GatewaySetupDetailPage")]
     [InlineData("AdvancedSetupPage")]
-    [InlineData("SetupNativeConnectionPage")]
-    [InlineData("WizardPage")]
-    [InlineData("AiSetupPage")]
-    public void NormalHeaders_KeepFullSizeArtworkAboveWrappedCenteredText(string name)
+    public void NormalHeaders_KeepFullSizeArtworkAndWrappedShellHeadings(string name)
     {
         var document = Page(name);
         var mascot = Named(document, "MascotHero");
@@ -31,12 +25,59 @@ public sealed class OnboardingMockPresentationTests
         Assert.Equal("StackPanel", header.Name.LocalName);
         Assert.Null(header.Attribute("Height"));
         Assert.Null(header.Attribute("MaxHeight"));
-        var title = Assert.Single(header.Elements(), element =>
-            (string?)element.Attribute("Style") == "{StaticResource TitleTextBlockStyle}");
-        Assert.Contains(mascot, header.Elements().TakeWhile(element => element != title));
-        Assert.Equal("Center", (string?)title.Attribute("TextAlignment"));
+        Assert.Equal("SetupPageShell.Hero", header.Parent!.Name.LocalName);
+        var title = Named(document, name switch
+        {
+            "WelcomePage" => "GatewayTitle",
+            "CapabilitiesPage" => "CapabilitiesTitle",
+            _ => "AdvancedTitle",
+        });
+        Assert.Equal("SetupPageShell.Header", title.Parent!.Parent!.Name.LocalName);
+        Assert.Equal("40", (string?)title.Attribute("FontSize"));
         Assert.Equal("Wrap", (string?)title.Attribute("TextWrapping"));
-        Assert.Null(title.Attribute("Height"));
+        Assert.Null(title.Attribute("TextAlignment"));
+    }
+
+    [Fact]
+    public void Welcome_AloneUsesShellSlotsWithoutMovingNavigationOwnership()
+    {
+        var welcome = Page("SecurityNoticePage");
+        var shell = Named(welcome, "WelcomeShell");
+        Assert.Equal("SetupPageShell", shell.Name.LocalName);
+        Assert.Equal(new[] { "SetupPageShell.Hero", "SetupPageShell.Header", "SetupPageShell.Body", "SetupPageShell.Footer" },
+            shell.Elements().Select(element => element.Name.LocalName));
+        var title = Named(welcome, "WelcomeTitle");
+        Assert.Equal("40", (string?)title.Attribute("FontSize"));
+        Assert.Equal("Level1", (string?)title.Attribute("AutomationProperties.HeadingLevel"));
+        Assert.Equal("Wrap", (string?)title.Attribute("TextWrapping"));
+        Assert.Equal("SetupStepIndicator", Named(welcome, "FlowProgress").Name.LocalName);
+        Assert.Equal("Continue_Click", (string?)Named(welcome, "ContinueButton").Attribute("Click"));
+        Assert.All(new[] { "PcFeature", "GatewayFeature", "ChatFeature" }, name =>
+        {
+            var row = Named(welcome, name);
+            Assert.Equal("StackPanel", row.Parent!.Name.LocalName);
+            Assert.Equal("Transparent", (string?)row.Attribute("Background"));
+            Assert.Equal("0", (string?)row.Attribute("CornerRadius"));
+        });
+    }
+
+    [Fact]
+    public void StepTimeline_IsAStandaloneOwnerAndDotsDoNotRenderIt()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var dots = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Controls", "SetupProgressIndicator.cs"));
+        Assert.DoesNotContain("RenderMilestones", dots);
+        Assert.DoesNotContain("SetupProgressPresentation", dots);
+        Assert.DoesNotContain("SetupStepIndicator", dots);
+        var host = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
+        Assert.Contains("page.FindName(\"FlowProgress\") is not ISetupProgressIndicator progress", host);
+        var component = XDocument.Load(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Controls", "SetupStepIndicator.xaml"));
+        Assert.Equal("UserControl", component.Root!.Name.LocalName);
+        Assert.Equal("False", (string?)component.Root.Attribute("IsTabStop"));
+        Assert.Equal("12", (string?)Named(component, "CurrentDot").Attribute("Width"));
+        Assert.Equal("10", (string?)Named(component, "UpcomingDot").Attribute("Width"));
+        Assert.Equal("{ThemeResource SystemFillColorSuccessBrush}",
+            (string?)Named(component, "CompletedDot").Element(component.Root.Name.Namespace + "Ellipse")!.Attribute("Fill"));
     }
 
     [Fact]
@@ -46,7 +87,10 @@ public sealed class OnboardingMockPresentationTests
         var selector = Named(page, "ProfileSelector");
         var fineTune = Named(page, "FineTuneExpander");
         Assert.Same(selector.Parent, fineTune.Parent);
-        Assert.Equal("Border", selector.Parent!.Parent!.Name.LocalName);
+        Assert.Equal("StackPanel", selector.Parent!.Parent!.Name.LocalName);
+        Assert.Contains(selector.Parent.Parent.Ancestors(), element => element.Name.LocalName == "SetupPageShell.Body");
+        Assert.All(selector.Elements().Where(row => row.Name.LocalName == "ListViewItem"),
+            row => Assert.Equal("0", (string?)row.Attribute("CornerRadius")));
         var order = page.Descendants().ToList();
         Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(X + "Name") == "WindowsAccess");
         Assert.True(order.IndexOf(selector) < order.IndexOf(Named(page, "NodeModeToggle")));

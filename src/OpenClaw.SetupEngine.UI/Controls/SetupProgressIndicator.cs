@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace OpenClaw.SetupEngine.UI.Controls;
 
-public sealed class SetupProgressIndicator : StackPanel
+public sealed class SetupProgressIndicator : StackPanel, ISetupProgressIndicator
 {
     private IReadOnlyList<OnboardingStage> _stages = [];
     private OnboardingStage _current;
@@ -51,4 +51,5 @@ public sealed class SetupProgressIndicator : StackPanel
             Children.Add(dot);
         }
     }
+
 }
