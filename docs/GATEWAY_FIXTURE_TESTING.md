@@ -631,7 +631,7 @@ contains `InteractiveChatShowsStreamedAnswerAndGatewayApproval`, which sends via
 local MCP, verifies the visible answer and approval buttons, clicks Allow, and
 captures the continuation when screenshots are enabled.
 
-The fixture suites supplement, not replace, the required build, Shared and
-Tray tests. Run those on every implementation change as documented in
-`AGENTS.md`. The real-app smoke is an explicit opt-in lane; its script is the
+The fixture suites are focused lanes; choose checks with the
+[validation policy](TEST_COVERAGE.md#validation-policy). The real-app smoke is
+an explicit opt-in lane; its script is the
 entry point for desktop CI workers and local release proof.

@@ -1,7 +1,8 @@
 # Documentation instructions
 
 These rules apply to repository documentation. The root [AGENTS.md](../AGENTS.md)
-still owns authorization, validation, runtime safety, and architecture policy.
+owns authorization, runtime safety, and architecture policy.
+[TEST_COVERAGE.md](TEST_COVERAGE.md#validation-policy) owns validation.
 For a documentation task, use the
 [technical-documentation skill](../.agents/skills/technical-documentation/SKILL.md).
 
@@ -34,13 +35,14 @@ contracts instead of duplicating them in each guide.
 ## Format and checks
 
 Use GitHub Markdown, relative links, descriptive headings, and language-tagged
-code fences. Windows commands use PowerShell. No em dashes in maintained prose.
-Architecture diagrams follow the existing
-[paired Excalidraw/SVG policy](../DEVELOPMENT.md#documentation-and-diagrams);
-do not introduce Mermaid or a separate publishing system.
+code fences. Windows commands use PowerShell. Architecture diagrams follow the
+[paired Excalidraw/SVG policy](../DEVELOPMENT.md#documentation-and-diagrams).
 
-Run `.\scripts\validate-docs.ps1` from the repository root. If skills are
-affected, also run `.\scripts\validate-agent-skills.ps1`. Check `git diff --check`.
-Executable and shipped command-reference changes also follow the
+For documentation-only changes, always run `.\scripts\validate-docs.ps1` from
+the repository root and `git diff --check`. Add
+`.\scripts\validate-agent-skills.ps1` if a skill changed, and
+`.\scripts\test-agent-skills-validator.ps1` only if the validator code or its
+fixtures changed. Do not run builds or test suites. Executable and shipped
+command-reference changes follow the
 [test selection rules](TEST_COVERAGE.md#formal-validation-paths).
-Source/link checks are not runtime or visual proof.
+Source and link checks are not runtime or visual proof.

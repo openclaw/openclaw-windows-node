@@ -266,8 +266,8 @@ records are retained under the supplied output directory. The
 `-NullSecurityNegativeControl` launcher option exists only for this regression.
 It must not be used for an ordinary private validation run.
 
-This lane does not replace the strict WSL Gateway/MXC formal proof or the required
-full build, Shared and private-desktop Tray closeout.
+This lane does not replace the strict WSL Gateway/MXC formal proof or the
+checks that cover the change.
 
 ## Explicit one-event attribution limitation
 

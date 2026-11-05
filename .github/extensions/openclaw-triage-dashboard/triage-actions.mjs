@@ -44,8 +44,10 @@ function stateReconciliationContract(repo, item) {
         "cross-session message when available, so a reused child replies to the session that routed this action " +
         "rather than an earlier creator. Otherwise return the " +
         "TRIAGE_STATE_DELTA block in the child session's final response so the coordinated parent receives it. " +
-        "The parent must apply validated changed values to the saved triage-state JSON and reopen the same " +
-        "dashboard instance ID. This callback updates canvas state only and does not authorize a GitHub mutation."
+        "The parent must apply validated changed values to the saved triage-state JSON and call " +
+        "invoke_canvas_action with actionName update_state on the existing dashboard instance ID, passing " +
+        "the full revised JSON object as input. Do not open a replacement panel. " +
+        "This callback updates canvas state only and does not authorize a GitHub mutation."
     );
 }
 
@@ -71,7 +73,7 @@ export function buildSubsessionRoutingPrompt(repo, item, actionPrompt) {
         )
         : (
             "Use the app session tools as follows:\n" +
-            `1. Call list_projects and resolve the project whose GitHub repository is exactly "${repo}". ` +
+            `1. Call list_repositories and resolve the project whose GitHub repository is exactly "${repo}". ` +
             "Use that project's ID for any create_session call.\n" +
             `2. Call list_sessions_and_chats and look for an existing child project session named ` +
             `"${sessionName}" in the current project and repository.\n` +
@@ -91,7 +93,7 @@ export function buildSubsessionRoutingPrompt(repo, item, actionPrompt) {
             routingSteps +
             `${reconciliationStep}. When the child returns a TRIAGE_STATE_DELTA, validate it against the refreshed ` +
             "evidence, update " +
-            "the saved triage-state JSON, and reopen the same dashboard instance ID. Do not interpret the callback " +
+            "the saved triage-state JSON, and invoke update_state on the existing dashboard instance ID. Do not interpret the callback " +
             "as authorization for a GitHub mutation.\n\n" +
             `Action for the child session:\n${actionPrompt}${stateReconciliationContract(repo, item)}`,
     };

@@ -25,8 +25,7 @@ The wrapper restores the newest general `e2e` snapshot, then adds only the nativ
 5. A dated power-off `pre-openclaw-windows-app-e2e-*` snapshot.
 
 When today's app snapshot exists, `prepare` restores and verifies it. This discards post-snapshot
-guest changes. Package installation reuses the OpenClaw controller's official WinGet manifest hash,
-Authenticode publisher, ACL-restricted staging, reboot handling, and bounded transport.
+guest changes. Package installation reuses the OpenClaw controller's verified staging.
 
 ## Restore snapshots
 
@@ -42,7 +41,7 @@ Authenticode publisher, ACL-restricted staging, reboot handling, and bounded tra
 Never restore while another developer or smoke lane owns the VM. Use an exact name or id for
 historical reproduction; aliases select the newest matching snapshot.
 
-## Run required validation
+## Run the full local lane
 
 ```bash
 ./scripts/parallels-windows-vm.sh run-tests
@@ -76,7 +75,6 @@ chat/canvas, or MXC evidence.
   general `e2e` snapshot.
 - Missing `app` snapshot: run `prepare`; an older general E2E snapshot does not contain the native
   app layer.
-- Locked build output: stop the companion/WinUI process, restore `app`, and rerun all required
-  suites.
+- Locked build output: stop the companion/WinUI process, restore `app`, and rerun the lane.
 - Missing sibling controller/API: use an OpenClaw revision containing
   `scripts/e2e/parallels-windows-prepare.sh`.

@@ -13,7 +13,7 @@ This means any local MCP client (Claude Desktop, Claude Code, Cursor, an MCP-awa
 MCP and Gateway node mode share capability dispatch rather than maintaining
 separate implementations. A new command still needs registration, curated MCP
 descriptions, the shipped `winnode` reference, tests, and applicable live proof.
-Follow the [new-command checklist](../AGENTS.md#ui-mcp-and-pr-proof).
+Follow the [new-command checklist](WINDOWS_NODE_TESTING.md#new-command-mcp-contract).
 
 ## Goals
 

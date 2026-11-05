@@ -1,6 +1,6 @@
 ---
 name: test-audit
-description: Write or review Windows regression tests for observable contracts, independent expectations, faithful fixtures, and distinct coverage without weakening native proof or architecture guards.
+description: Write or review a Windows regression test for a real, observable contract.
 ---
 
 # Windows test audit
@@ -25,13 +25,8 @@ Answer these questions:
    can cover?
 
 Prefer an existing table, fixture, or owner regression over another process
-boot. Avoid mocks supplying the behavior being asserted, production helpers
-computing their own expected values, and test-only exports without a genuine
-production boundary.
-
-Read [regression authoring](../../../docs/TEST_COVERAGE.md#writing-a-regression-test)
-and use the existing [fixture guide](../../../docs/GATEWAY_FIXTURE_TESTING.md)
-when the behavior crosses the application boundary.
+boot. Use the [fixture guide](../../../docs/GATEWAY_FIXTURE_TESTING.md) when the
+behavior crosses the application boundary.
 
 ## Choose the production owner
 
@@ -72,14 +67,10 @@ Reject or rewrite tests that rely on:
   prohibited pattern or independent shipped inventory.
 
 Negative controls must fail at the intended guard, not during fixture setup.
-Test names must describe the behavior actually exercised. If a production seam
-exists only for obsolete tests and has no production-boundary or architecture
-role, remove it with the tests when the task authorizes production changes;
-otherwise report it rather than expanding it. Do not reject a narrow adapter
-over process, WSL, OS, network, clock, or filesystem boundaries merely because
-tests supply its only alternate implementation. Existing test assembly
-visibility and ledger-recorded seams remain governed by their real contracts
-and retirement conditions.
+Test names must describe the behavior actually exercised. Remove a production
+seam that exists only for obsolete tests when the task authorizes production
+changes; otherwise report it. A narrow adapter over process, WSL, OS, network,
+clock, or filesystem boundaries is legitimate even if only tests replace it.
 
 ## Preserve valuable contracts
 
@@ -97,51 +88,32 @@ and retirement conditions.
   helpers. Fakes may provide external input or record calls, but must not
   implement the behavior under test.
 - Do not introduce arbitrary sleeps, blind polling, redundant process boots,
-  or parallel native input tests on a shared desktop. Reuse suite-level
-  fixtures when they preserve the same contract and isolation. Use a fresh
-  process when startup, process-global state, ownership/termination, or an
-  independent profile is the boundary under test.
-- Do not make a failure green through weaker assertions, hidden skips,
-  blind retries, broadened mocks, or an unrelated baseline update.
+  or parallel native input tests on a shared desktop. Use a fresh process only
+  when startup, process-global state, ownership/termination, or an independent
+  profile is the boundary under test.
 
 ## Audit workflow
 
 Audit coherent owner batches, not deletion counts. Before deleting or
-consolidating proof:
-
-1. Read the full test, production owner, callers, fixture and relevant history.
-2. Identify the observable contract and every distinct remaining proof layer.
-3. Confirm the candidate is duplicate, implementation-coupled, obsolete, or
-   unable to fail for the claimed regression.
-4. Preserve independent protocol, persistence, packaging, security,
-   architecture, rendering and native-runtime contracts.
-5. Remove obsolete test-only production seams in the same authorized change.
-
-Baseline failures may identify product bugs. Do not delete or weaken the test
-until the failure is classified.
+consolidating proof, read the full test, production owner, callers, fixture,
+and relevant history; then identify the observable contract and every distinct
+remaining proof layer. Delete only a test that is duplicate,
+implementation-coupled, obsolete, or unable to fail for the claimed regression.
+Baseline failures may identify product bugs: classify them before deleting or
+weakening the test.
 
 ## Cost and validation
 
 For a bug fix, demonstrate the intended pre-fix failure and post-fix pass, or
-report why baseline reproduction was unavailable. For a refactor, preserve
-the contract without pinning incidental implementation names.
+report why baseline reproduction was unavailable. For a refactor, preserve the
+contract without pinning incidental implementation names.
 
-Run focused owner tests, then the
-[required validation](../../../AGENTS.md#required-validation-after-every-change).
-Respect explicit skip policies: an allowed ordinary CI skip is not complete
-custom proof. A seconds-long test must protect a boundary that a cheaper layer
-cannot. Measure wall time when cost or performance is the claim, but do not
-import JavaScript timing budgets, worker counts, or release-only rules into
-native Windows suites.
+Run the owner tests, then one final check that covers the change, per the
+[validation policy](../../../docs/TEST_COVERAGE.md#validation-policy). Report
+the protected behavior, why the layer is necessary, exact commands, and
+execution counts. Do not claim tests ran from an exit code alone.
 
-Report protected behavior, why the owner/layer is necessary, fixture limits,
-exact commands, execution counts, measured cost when relevant, and remaining
-proof gaps. Do not claim tests ran from an exit code alone.
-
-## Source and maintenance
-
-Windows-owned adaptation of concepts from the MIT-licensed upstream
+Adapted from the upstream
 [test-audit workflow](https://github.com/openclaw/openclaw/blob/690c46084d507ce38502d401ef5d0d6a2fb9733a/.agents/skills/test-audit/SKILL.md)
-and [test-authoring guide](https://github.com/openclaw/openclaw/blob/690c46084d507ce38502d401ef5d0d6a2fb9733a/docs/help/testing/writing-tests.md).
-Windows retains its mandatory local closeout, native proof, and legitimate
-source guards. This file does not inherit upstream publication permissions.
+and [test-authoring guide](https://github.com/openclaw/openclaw/blob/690c46084d507ce38502d401ef5d0d6a2fb9733a/docs/help/testing/writing-tests.md)
+(MIT); upstream publication permissions do not apply.

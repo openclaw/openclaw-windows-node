@@ -121,3 +121,14 @@ Get-ChildItem $base -Directory | ForEach-Object {
 All locale counts should match. Missing or extra keys indicate an incomplete translation.
 
 Non-English resource values must also follow the all-or-none rule enforced by `LocalizationValidationTests`: each key is either translated in every non-English locale, intentionally invariant in every non-English locale, or explicitly deferred with rationale. Partial translation, where only some non-English locales differ from `en-us`, is treated as a regression.
+
+## Copy ownership and shared catalogs
+
+Keep client presentation and Gateway data ownership distinct. Before adding copy, find its existing owner and localization resources.
+
+- Windows labels, welcome guidance, starter prompts, and loading, error, and compatibility messages are client-owned. Put them in native `.resw` resources and update all supported languages together. Shared wording alone does not require a Gateway contract.
+- For cross-client copy that should track the installed Gateway, prefer an existing supported data contract. When a catalog is justified, generate it from the owner's translation sources at build time, package it with that owner, and serve validated, versioned data through the authenticated connection. Do not generate translations at launch or fetch repository sources at runtime.
+- Load shared catalogs asynchronously and cache them for the connection or package lifetime. Define locale fallback, unsupported-version behavior, and disconnect or update invalidation. Render strings as data, never as executable UI or code.
+- Add focused coverage for source-to-catalog consistency and consumer fallback when introducing a shared contract.
+
+Welcome copy is bundled with Companion and works independently of Gateway version. See [the native chat visual contract](CHAT_VISUAL_DESIGN.md#controls-and-states).

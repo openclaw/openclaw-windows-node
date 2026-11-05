@@ -1,40 +1,27 @@
 ---
 name: winnode
-description: Invoke and troubleshoot OpenClaw Windows-node commands through the local winnode CLI and MCP endpoint, including command argument schemas and A2UI JSONL calls.
+description: Call and troubleshoot OpenClaw Windows node commands through winnode or local MCP, with the command list, argument schemas, and A2UI JSONL.
 ---
-
-<!--
-  REGENERATE-ME-WHEN-CAPABILITIES-CHANGE
-
-  The list of supported commands below is checked at CI time against the live
-  capability surface (see SkillMdDriftTests). When a capability is added,
-  removed, or renamed in src/OpenClaw.Shared/Mcp/McpToolBridge.cs
-  (CommandDescriptions), update this document so the drift test stays green -
-  the test compares command identifiers, so prose can still be tweaked by hand.
--->
 
 # winnode skill reference
 
-`winnode.exe` invokes OpenClaw Windows-node commands on the local tray over a
+`winnode.exe` invokes OpenClaw Windows node commands on the local tray over a
 loopback MCP HTTP endpoint (default `http://127.0.0.1:8765/`). Enable
 **Local MCP Server** in Settings > Permissions > Integrations before calling.
-A connection refused on that port means the tray is not listening. Do not
-reinstall the CLI. Start the tray with `EnableMcpServer` true, then point
-`OPENCLAW_TRAY_DATA_DIR` at that tray's data directory so the CLI loads
-`mcp-token.txt`. `browser.proxy` stays off `tools/list` until the app has a
-gateway client, a shared token, and a verified browser endpoint. The call
-then returns `Unknown tool: browser.proxy`.
+Connection refused means no MCP server listens on that endpoint: the tray is
+not running, Local MCP Server is off, or the tray uses another port. Do not
+reinstall the CLI.
 
-This document is the agent-facing reference: every supported command, its
-argument shape, and the A2UI v0.8 JSONL grammar. It is shipped alongside
-`winnode.exe` so an agent can read it once and emit token-efficient calls.
+This reference lists every supported command, its argument shape, and the
+A2UI v0.8 JSONL grammar. It ships next to `winnode.exe`. The live
+`--list-tools` output is authoritative, because settings gate some commands.
 
 ---
 
 ## Invocation shape
 
 ```text
-winnode --command <name> [--params '<json-object>'] [--invoke-timeout <ms>] [--identity release|dev]
+winnode --command <name> [--params '<json-object>'] [--invoke-timeout <ms>] [--mcp-url <url>|--mcp-port <port>] [--identity release|dev]
 winnode --list-tools [--mcp-url <url>|--mcp-port <port>] [--identity release|dev]
 ```
 
@@ -67,8 +54,8 @@ winnode --list-tools [--mcp-url <url>|--mcp-port <port>] [--identity release|dev
 - `--identity release|dev` - selects which tray profile supplies the default
   on-disk MCP token. Defaults to `OPENCLAW_APP_IDENTITY`, then `release`.
   Use `--identity dev` for a side-by-side dev tray; its default token path is
-  `%APPDATA%\OpenClawTray-Dev\mcp-token.txt`. `OPENCLAW_TRAY_DATA_DIR` still
-  wins for isolated runs and points directly at the data folder.
+  `%APPDATA%\OpenClawTray-Dev\mcp-token.txt`. When `OPENCLAW_TRAY_DATA_DIR`
+  is set, the token is read from that folder instead.
 - `--verbose` - log endpoint + ignored flags to stderr. Without `--verbose`,
   HTTP error bodies are emitted only as the first line; with `--verbose`, the
   full body is shown (after sanitization + token-shape redaction).
@@ -91,6 +78,24 @@ the loopback-only threat model the tray's MCP server relies on.
 
 ## Commands
 
+| Namespace | Section |
+|---|---|
+| `system.*` | [System](#system-system) |
+| `canvas.*` | [Canvas](#canvas-canvas), with the [A2UI grammar](#a2ui-v08-grammar-for-canvasa2uipush) |
+| `screen.*` | [Screen](#screen-screen) |
+| `camera.*` | [Camera](#camera-camera) |
+| `stt.*` | [Speech-to-text](#speech-to-text-stt) |
+| `tts.*` | [Text-to-speech](#text-to-speech-tts) |
+| `ollama.*` | [Local model inference](#local-model-inference-ollama) |
+| `app.*` | [App control](#app-control-app) |
+| `app.connection.*` | [Connection diagnostics and setup](#app-connection-diagnostics-and-setup-appconnection) |
+| `app.chat.*` | [Native chat](#native-chat-appchat) |
+| `location.*` | [Location](#location-location) |
+| `device.*` | [Device](#device-device) |
+| `browser.*` | [Browser control proxy](#browser-control-proxy-browser) |
+
+## System (system.*)
+
 ### system.notify
 Show a Windows toast notification.
 ```
@@ -99,8 +104,10 @@ Show a Windows toast notification.
 Returns `{ "sent": true }`. All fields optional except `body` in practice.
 
 ### system.run
-Execute canonical argv. Subject to the local exec approval policy at
-`%APPDATA%\OpenClawTray\exec-approvals.json`.
+Execute canonical argv. Subject to the local exec approval policy in
+`exec-approvals.json` in the tray profile folder: `%APPDATA%\OpenClawTray`,
+`%APPDATA%\OpenClawTray-Dev` for Dev builds, or the isolated profile folder.
+`OPENCLAW_STATE_DIR` in the tray process moves it.
 
 Supported Windows uses `Microsoft.Mxc.Sdk` 1.0.0 containment. There is no Off
 setting. Positively unsupported Windows instead runs approved argv uncontained,
@@ -131,28 +138,12 @@ terminates the owned SDK process, including a late native launch.
 ```
 Shell behavior must be explicit in the argv, for example
 `{"command":["cmd.exe","/d","/s","/c","echo hello"],"rawCommand":"echo hello"}`.
-The gateway's `exec host=node` path performs this wrapping automatically.
-Non-empty custom `env` is rejected until environment values can be identity-bound
-and shown safely during approval.
+PowerShell callers must name `powershell.exe` or `pwsh.exe` and its `-Command`
+arguments the same way. A string-form `command` is rejected with
+`command-array-required`. The gateway's `exec host=node` path performs this
+wrapping automatically. Non-empty custom `env` is rejected until environment
+values can be identity-bound and shown safely during approval.
 
-#### Migration from the pre-V2 low-level contract
-
-The V2 node boundary intentionally rejects string-form `command` with
-`command-array-required`. Update raw MCP, `node.invoke`, plugin, and direct
-`winnode` callers to send the shell transport explicitly:
-
-```json
-// Before
-{"command":"echo hello","shell":"cmd"}
-
-// V2
-{"command":["cmd.exe","/d","/s","/c","echo hello"],"rawCommand":"echo hello"}
-```
-
-PowerShell callers must likewise name `powershell.exe` or `pwsh.exe` and its
-`-Command` arguments explicitly. Remove custom `env` from the request; V2 rejects
-non-empty environments rather than approving an executable under hidden process
-configuration.
 Exited commands return `{ stdout, stderr, exitCode, timedOut, success, durationMs }`.
 Retained output is bounded by UTF-8 bytes per stream, including any truncation
 marker, while discarded output continues to drain. Removing policy on exit
@@ -176,6 +167,8 @@ No params. Returns the active V2 snapshot:
 `security` is `deny|allowlist|full`; `ask` is `off|on-miss|always|deny`;
 `askFallback` is `deny|allowlist|full`. Socket credentials are never returned.
 Pass `hash` as `baseHash` when calling `system.execApprovals.set`.
+Not read-only: when the file is missing, the call creates the default file, and
+it can migrate a legacy approvals file.
 
 ### system.execApprovals.set
 Replace the full V2 file using compare-and-swap. `baseHash` is required and must
@@ -209,6 +202,8 @@ stale hashes are rejected. This command changes future `system.run` authorizatio
 decisions. The `winnode` path is local loopback MCP, so no gateway scope applies.
 Remote operators must use the gateway `exec.approvals.node.*` control-plane
 methods, which are separately gated by gateway admin scope.
+
+## Canvas (canvas.*)
 
 ### canvas.present
 Open the WebView2 canvas window.
@@ -272,6 +267,8 @@ equivalent to a screenshot of every open A2UI surface.
 ### canvas.caps
 No params. Returns renderer capabilities (renderer, snapshot, a2ui version).
 
+## Screen (screen.*)
+
 ### screen.snapshot
 ```
 {
@@ -294,6 +291,8 @@ visible notification before screen capture begins.
 }
 ```
 Returns `{ format, durationMs, base64 }`.
+
+## Camera (camera.*)
 
 ### camera.list
 No params. Returns `{ cameras: [{ deviceId, name, isDefault }] }`.
@@ -362,6 +361,8 @@ MiniMax (cloud). Provider + per-provider voice are configured in tray Settings.
 While Kokoro is the provider and TTS is enabled, the tray downloads the selected
 Kokoro voice pack in the background on unmetered connections; until it is ready,
 `tts.status` reports `voice-not-downloaded` and speech falls back to Windows.
+Requires `NodeTtsEnabled` in tray Settings. When it is off, `tts.*` is not
+listed.
 
 ### tts.speak
 Speak text aloud on the Windows node.
@@ -604,6 +605,10 @@ Reconnect only the Windows node role for the active gateway through
 `GatewayConnectionManager`. No params. Returns `{ reconnected, error? }`.
 Side effect: restarts node connection intent without changing the active gateway.
 
+## Native chat (app.chat.*)
+
+Local MCP-only tools that drive the same native chat provider as the Chat UI.
+
 ### app.chat.snapshot
 Read the current native chat snapshot for local automation and diagnostics.
 **READ-ALL:** returns recent chat text from the selected timeline and outgoing
@@ -715,18 +720,18 @@ Returns `{ result, files? }` - `files` is an array of `{ path, base64, mimeType 
 Requires the gateway URL to have an explicit port (e.g. `ws://localhost:8080`).
 The browser control host must be running locally on `127.0.0.1:<gatewayPort + 2>`.
 
-Listed only when `BrowserProxyActivation` is `RegistrationBlock.None`: the
-toggle is on, a gateway client is attached, the shared gateway token is set,
-and the browser endpoint is verified. MCP-only startup (`EnableMcpServer`
-true, `EnableNodeMode` false) does not attach a gateway client, so this
-command stays off `tools/list` and the call returns `Unknown tool: browser.proxy`.
+Listed only when the browser proxy setting is on, a gateway client is
+attached, the shared gateway token is set, and the browser endpoint is
+verified. MCP-only startup (`EnableMcpServer` true, `EnableNodeMode` false)
+does not attach a gateway client, so this command stays off `tools/list` and
+the call returns `Unknown tool: browser.proxy`.
 
 ---
 
 ## A2UI v0.8 grammar (for canvas.a2ui.push)
 
 The `jsonl` argument is a string of newline-separated JSON-RPC-like messages.
-Three message kinds are supported. **createSurface and v0.9 messages are
+Four message kinds are supported. **createSurface and v0.9 messages are
 rejected.**
 
 ### Message kinds
@@ -812,32 +817,25 @@ Pass this as the `jsonl` value (a single JSON string with `\n` between messages)
 
 ## Token-efficient call patterns
 
-1. **Skip `--node` / `--idempotency-key`** - they're ignored locally; including
-   them just costs tokens. `--idempotency-key` triggers a stderr warning.
-2. **Omit `--params` when the command takes no args** (`camera.list`,
+1. **Omit `--params` when the command takes no args** (`camera.list`,
    `canvas.hide`, `canvas.a2ui.reset`, `canvas.a2ui.dump`, `canvas.caps`,
    `system.execApprovals.get`).
-3. **Large A2UI payloads** - write the JSONL to a file under the system temp
+2. **Large A2UI payloads** - write the JSONL to a file under the system temp
    directory and pass `{"jsonlPath": "<path>"}`. The capability rejects paths
    outside `%TEMP%`. Or pass `--params @<path>` to load the entire JSON
    argument object from disk.
-4. **Big binary results (snapshots, captures)** - output is base64 in stdout.
+3. **Big binary results (snapshots, captures)** - output is base64 in stdout.
    Pipe to a file (`> capture.json`) instead of letting the agent read it
    inline.
-5. **Errors are exit-code-driven** - check `$LASTEXITCODE` (or `$?` in bash)
+4. **Errors are exit-code-driven** - check `$LASTEXITCODE` (or `$?` in bash)
    first, then read stderr only on non-zero. Exit 2 = your call is malformed.
-6. **Debug with `--verbose`, not by sharing transcripts** - without
-   `--verbose` the CLI shows only the first line of an HTTP error body and
-   redacts long base64url runs. With `--verbose` it shows the full sanitized
-   body. Treat any verbose output as containing potentially sensitive paths
-   or partial command output before pasting it elsewhere.
+5. **Debug with `--verbose`, not by sharing transcripts** - treat verbose
+   output as possibly containing sensitive paths or partial command output
+   before pasting it elsewhere.
 
 ## What's NOT exposed
-- Pairing / device approval (gateway concept; doesn't apply locally).
-- `chat.send`, `sessions.list`, `usage.list`, `node.list` - these belong to the
-  operator-side `OpenClaw.Cli.exe`, not `winnode.exe`.
-- Idempotency. The gateway de-dupes retries against `--idempotency-key`; local
-  MCP does not. Retrying a `system.run` / `system.notify` / `canvas.present`
-  call after a transient failure can double-execute the side effect.
+- Gateway operator RPCs such as `sessions.list`, `usage.list`, and
+  `node.list`. For local chat, use `app.chat.send`.
+- Idempotency. See `--idempotency-key` above.
 - Wildcards in `--command`. The MCP server has an explicit allowlist; unknown
   commands return `Unknown tool: <name>`.

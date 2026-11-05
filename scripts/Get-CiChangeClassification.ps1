@@ -130,7 +130,7 @@ function Complete-Impact([System.Collections.IDictionary]$Impact) {
         mandatoryLocal = [ordered]@{
             required = $Impact.classification -ne 'docs_only'
             commands = $localCommands
-            note = 'Code changes require full build, Shared, and Tray even when hosted lanes are narrower. First-run tests must restore/build; a no-report exit is not a pass. Add subsystem-specific validation separately.'
+            note = 'At code publication, run missing build, Shared, and Tray checks; reuse current-code results from the user or agent. Drafting and metadata-only PR edits do not trigger this lane. Tray tests require desktop authority; see docs/TEST_COVERAGE.md. First-run tests must restore/build; a no-report exit is not a pass. Add subsystem-specific validation separately.'
         }
         customProofCandidates = $candidates
         boundary = 'Read-only plan. Hosted lanes describe impact-selected CI Gate jobs; event/authorization-conditioned reservation and publication jobs remain governed by ci.yml. No tests, runtime launches, authentication, host leases, or CI dispatch. Candidate inventory is not exhaustive behavioral analysis or proof.'
@@ -139,7 +139,7 @@ function Complete-Impact([System.Collections.IDictionary]$Impact) {
         Write-Output "Classification: $($Impact.classification) ($decisionReason)"
         foreach ($entry in $selectedPaths) { Write-Output "  $($entry.path): $($entry.reason); lanes=$($entry.lanes -join ', ')" }
         Write-Output "Hosted lanes: $($plan.hostedLanes -join ', ')"
-        Write-Output "Mandatory local code-change closeout:"
+        Write-Output "Core lane at code publication (reuse current-code results; Tray needs desktop authority):"
         foreach ($command in $localCommands) { Write-Output "  $command" }
         if (-not $localCommands.Count) { Write-Output '  Documentation checks only; no runtime tests selected.' }
         foreach ($candidate in $candidates) {

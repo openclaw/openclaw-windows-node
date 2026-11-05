@@ -1,6 +1,6 @@
 ---
 name: retrigger-flaky-ci
-description: "Triage failed CI on a pull request or the active branch, decide whether the failures come from its changes, and rerun only failures that are unrelated. Use when asked to retrigger, rerun, or kick CI on a PR with failing checks."
+description: "Triage failed PR CI and rerun only failures unrelated to the PR's changes. Use when asked to retrigger, rerun, or kick CI."
 ---
 
 # Retrigger flaky CI
@@ -18,27 +18,27 @@ PR's changes, then either warn the user or rerun.
 Resolve the PR by number, or from the current branch when no number is given:
 
 ```powershell
-gh pr view <number> --json number,title,headRefName,headRefOid,files,statusCheckRollup,url
-gh pr view --json number,title,headRefName,headRefOid,files,statusCheckRollup,url
+gh pr view <number> --json number,title,baseRefName,headRefName,headRefOid,files,statusCheckRollup,url
+gh pr view --json number,title,baseRefName,headRefName,headRefOid,files,statusCheckRollup,url
 ```
 
-Record the PR head SHA and the changed file list. When the request refers to the
-active branch, also compare local work with the PR:
+Record the PR base, head SHA, and the changed file list. When the request refers
+to the active branch, also compare local work with the PR head:
 
 ```powershell
 git rev-parse HEAD
 git status -sb
-git fetch origin main --quiet
-git diff --stat origin/main...HEAD
 ```
+
+Use the PR file list from `gh` for the diff rather than fetching.
 
 If local `HEAD` differs from the PR head, or there are uncommitted changes, the
 CI run did not test them. Say so, and judge the failure against the PR head
 that CI actually ran.
 
-Pull request runs of `Build and Test` check out `refs/pull/<number>/merge`, so
-they include the current `main`. A failure can come from `main` rather than from
-the PR.
+Pull request runs of `Build and Test` test the merge commit created when the
+run started; a rerun reuses it. A failure can come from the base branch rather
+than from the PR.
 
 ## 2. Read the actual failures
 
@@ -72,9 +72,12 @@ Treat a failure as **related** if any of the following is true:
 - It is a deterministic assertion about behavior, copy, localization,
   architecture ledgers, docs, skills, proof pools, or CI classification that
   the PR touched.
-- It fails the same way on more than one attempt of the same head SHA.
-- It reproduces locally on the PR head with a focused run, for example
-  `dotnet test <project> --filter "FullyQualifiedName~<TestName>"`.
+- It fails the same way on more than one attempt of the same head SHA. That
+  shows the failure is deterministic; check `main` and the diff to decide
+  whether the PR or `main` owns it.
+- It reproduces locally on the PR head with a focused headless run, for example
+  `dotnet test <project> --filter "FullyQualifiedName~<TestName>"`. Ask first
+  before a repro that opens windows or starts WSL or a Gateway.
 
 Treat a failure as **unrelated** only with positive evidence, such as:
 
@@ -98,8 +101,13 @@ A timeout counts as flaky only when the waited-for behavior is outside the
 diff. A timeout in a path the PR changed is a related failure until it is
 reproduced or ruled out locally.
 
-If the evidence is mixed and a focused local run is possible, run it. If it
-remains ambiguous, do not rerun. Report the uncertainty and ask the user.
+If the evidence is mixed and a focused headless run is possible, run it; ask
+first if it would open windows or start WSL or a Gateway. If it remains ambiguous, do not rerun. Report the uncertainty and ask the user.
+
+Do not infer desktop safety from a test filter: `OpenClaw.Tray.Tests` has
+assembly-level window cleanup. Follow the
+[execution safety rules](../../../docs/TEST_COVERAGE.md#running-tests).
+Rerunning failed CI jobs alone does not trigger the code-publication gate.
 
 If the failure is unrelated but deterministic on `main` (it fails on every
 recent `main` run), a rerun will not help. Report it as a `main` breakage
@@ -132,7 +140,9 @@ missing permission or a fork run that needs approval, report the error as is.
 
 Do not rerun the same failure on the same head more than once. A second
 identical failure on the same SHA reclassifies it as related, or as a real
-`main` breakage to record in the [CI failure backlog](../../../docs/CI_FAILURES.md).
+`main` breakage. Propose an entry for the
+[CI failure backlog](../../../docs/CI_FAILURES.md); do not edit it without
+authority.
 
 ## Report
 

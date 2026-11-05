@@ -194,7 +194,8 @@ Focused coverage is in `GatewayQuestionsTests`, `GatewayChatStreamProjectionTest
 The mounted tests exercise actual Reactor/WinUI controls with synthetic events.
 They are not a claim of real provider or live Gateway question support.
 
-Required closeout:
+Core lane at code publication (reuse current-code evidence and follow the
+[desktop execution rules](TEST_COVERAGE.md#running-tests)):
 
 ```powershell
 $env:OPENCLAW_REPO_ROOT = (Get-Location).Path

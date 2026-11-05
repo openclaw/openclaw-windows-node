@@ -347,7 +347,7 @@ x-colophon:
     meta:
       version: 1
       updatedBy: xaml+manual
-      note: These tokens are the source of truth for DESIGN (brand, color, type, spacing, principles) and are framework-agnostic, and components.jsx shows design intent for the canvas preview, not shipping code. They were captured by manual inspection of the repo's WinUI 3 / XAML and C# surfaces (the CSS/JSX scanner finds no files in a XAML repo) and map to Windows Fluent system resources (SystemAccentColor, Mica, Segoe UI Variable). To ship, port the design into native code via the port targets in `authority`. Edit in the Design System canvas or directly.
+      note: These tokens are the source of truth for DESIGN (brand, color, type, spacing, principles) and are framework-agnostic, and components.jsonc shows design intent for the canvas preview, not shipping code. They were captured by manual inspection of the repo's WinUI 3 / XAML and C# surfaces (the CSS/JSX scanner finds no files in a XAML repo) and map to Windows Fluent system resources (SystemAccentColor, Mica, Segoe UI Variable). To ship, port the design into native code via the port targets in `authority`. Edit in the Design System canvas or directly.
     authority:
       designSource: self
       owner: OpenClaw Windows (openclaw/openclaw-windows-node)

@@ -49,9 +49,16 @@ failure artifact rather than presenting a partial report as global triage.
 ## Active ownership expiry
 
 `status: 🚢 actively landing` means a maintainer or delegated agent is actively
-moving an item through implementation, validation, or merge. The automation
-considers that ownership expired after **7 full days** with no trusted human
-activity after the label was applied.
+moving an item through implementation, conflict resolution, validation, or
+merge. The automation considers that ownership expired after **7 full days**
+with no trusted human activity after the label was applied.
+
+Agents change this label only with authority to update that issue or PR. Local
+implementation or a read-only review does not grant it. Apply the label only to
+work that is actively moving, not to queued, parked, or indefinitely blocked
+items. Remove it when work pauses, ownership returns to the author, or the item
+closes or merges. It may coexist with contributor-facing labels such as
+`status: 📣 needs proof`.
 
 An expired label is reported on every run. It is removable only when all of
 these safeguards pass:

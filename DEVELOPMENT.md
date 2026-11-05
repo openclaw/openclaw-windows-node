@@ -27,7 +27,9 @@ A comprehensive guide for building, running, and contributing to the OpenClaw Wi
 Start with `.\scripts\setup-dev.ps1 -CheckOnly` from the repository root.
 Installation through `.\scripts\setup-dev.ps1` uses winget and may add Git
 trust; run it only with permission to make those machine changes.
-`-RunValidation` also runs the required closeout after setup.
+`-RunValidation` also runs the core lane (build, Shared and Tray tests) after setup.
+Tray tests include automatic window cleanup; follow the
+[desktop execution rules](docs/TEST_COVERAGE.md#running-tests).
 
 For read-only developer, desktop-proof, and optional shared-review diagnostics:
 
@@ -879,18 +881,14 @@ accessibility metadata, and confirms rendered labels match the editable source.
 
 ## Testing
 
-Required agent validation lives in [AGENTS.md](AGENTS.md). For changes touching
-tray UX, Settings, onboarding, chat/canvas, Command Center, Windows node
-capabilities, local MCP, gateway pairing/connection, permissions, or
-diagnostics, use the repo-local skill
-`.agents/skills/openclaw-proof-validation/SKILL.md`: run the build/tests,
-validate local MCP with `winnode --list-tools` plus the changed command, run
-rubber-duck review for non-trivial changes, then launch the tray from this
-worktree and drive the changed UI with computer-use / desktop automation as one
-batched closeout pass before PR publication. Mid-development rubber-duck,
-computer-use, or MCP validation is also appropriate when explicitly requested or
-needed to unblock the work; agents should ask whether to run computer-use or
-provide manual UI proof steps, while still enforcing required automated tests.
+Agent validation policy lives in
+[TEST_COVERAGE.md](docs/TEST_COVERAGE.md#validation-policy) and review policy in
+[AGENT_WORKFLOWS.md](docs/AGENT_WORKFLOWS.md#when-review-is-required). For
+changes touching tray UX, Settings, onboarding, chat/canvas, Command Center,
+Windows node capabilities, local MCP, gateway pairing/connection, permissions,
+or diagnostics, use the repo-local skill
+`.agents/skills/openclaw-proof-validation/SKILL.md` to plan runtime proof.
+Ask before launching the app or driving desktop UI.
 
 PRs should include `## Required proof pools`, `## Validation`, and
 `## Real behavior proof` sections. Select stable pool IDs from
@@ -1047,10 +1045,146 @@ job. Core, Tray, UI/accessibility, setup/recovery E2E, and release-build lanes
 are selected conservatively; main/tag events include the broader architecture
 matrix. The always-running CI Gate checks required and skipped job results.
 
-Use the [lane inventory](docs/TEST_COVERAGE.md#ci-impact-fast-paths) and
+Use the [CI impact lanes](#ci-impact-lanes) and
 [workflow source](.github/workflows/ci.yml) for exact projects, prerequisites,
 architecture conditions, and artifact names. A local validation plan does not
 dispatch these jobs. Release/signing policy lives in [RELEASING.md](docs/RELEASING.md).
+
+### CI impact lanes
+
+The `change-classification` job emits explicit booleans for `core_tests`,
+`tray_tests`, `ui_tests`, `setup_e2e`, `revocation_e2e`, `network_e2e`,
+`x64_release`, `arm64_release`, and `full`. Jobs consume those outputs directly.
+The summary classification is `docs_only`, `fast_only`, `targeted`, or `full`;
+it is not the authority for individual job conditions.
+
+`fast_only` applies only to the exact repository-tooling paths
+`.github/scripts/repository-triage.cjs` and
+`.github/scripts/repository-triage.test.cjs`, optionally mixed with safe
+documentation. Their Node tests run in the always-on `fast-validation` job. All
+product and release lane outputs remain false. This is not an allowlist for
+other scripts, actions, workflows, extensions, or untested tools.
+
+Mixed tooling and product changes retain the union of product lanes, including
+the WinNode skill's core-test requirement. `fast-validation` and
+`proof-pool-contracts` must both succeed even for `fast_only`. Any changed proof
+boundary still runs its regression matrix.
+
+| Change surface | Core / CLI | Tray / setup / integration | UI / accessibility | Setup E2E | Recovery E2E | Release publish |
+|---|---:|---:|---:|---:|---:|---:|
+| Maintained docs or non-executable agent-skill content |  |  |  |  |  |  |
+| `OpenClaw.Cli`, `OpenClaw.WinNode.Cli` | Yes |  |  |  |  |  |
+| Tray WinUI, including pure service logic |  | Yes | Yes |  |  |  |
+| Chat, FunctionalUI, XAML, resources, pages, controls |  | Yes | Yes |  |  |  |
+| SetupEngine, onboarding, setup, pairing |  | Yes | When UI-bound | Yes |  |  |
+| Connection, gateway, node, MCP, WSL paths | As applicable | Yes | When UI-bound | Yes | Yes |  |
+| Broad Shared or protocol changes | Yes | Yes | Yes | Yes | Yes |  |
+| Test-only change | Corresponding lane | Corresponding lane | Corresponding lane | Corresponding shard | Corresponding shard |  |
+| Packaging, project/build files, installer, workflow or classifier contracts | Yes | Yes | Yes | Yes | Yes | x64 |
+| Push to `main` or a tag | Yes | Yes | Yes | Yes | Yes | x64 and ARM64 |
+
+Known mixed changes take the union of their lanes. Any unknown path, a mixed
+change containing an unrecognized path, invalid or unavailable revisions, an
+empty diff, workflow/build infrastructure, project/package metadata, installer
+input, or classifier/contract change selects `full` fail-closed. A full pull
+request runs all test and E2E lanes plus the x64 publish smoke. Pushes to `main`
+and tags also run ARM64 publish.
+
+Test projects run in three clean-runner lanes. Each restores and builds its own
+minimal project graph and publishes a separate TRX artifact:
+
+| Lane | Projects |
+|---|---|
+| `core-tests` | Shared, Connection, WinNode CLI |
+| `tray-tests` | Tray, SetupEngine, Tray Integration |
+| `ui-tests` | FunctionalUI, Tray UI, Axe.Windows accessibility |
+
+The core lane uses a dedicated runner-temp NuGet package directory and a key
+scoped to its complete transitive project graph plus the SDK, NuGet, and
+imported MSBuild manifests that affect restore. Other lanes keep the
+repository-wide NuGet cache. Only downloaded NuGet packages are cached. Tray
+settings remain isolated through `OPENCLAW_TRAY_DATA_DIR`, integration tests
+keep `OPENCLAW_RUN_INTEGRATION=1`, UI tests install WindowsAppRuntime, and
+every test project publishes TRX output.
+
+The Tray UI step uses a five-minute VSTest hang watchdog and a fifteen-minute
+outer step timeout. A hung test fails the step and leaves a test-sequence
+artifact. Memory dumps are disabled because they can contain credentials or
+user data. Other `Invoke-CiTest.ps1` callers keep their timeout behavior unless
+they opt in with `-HangTimeoutSeconds`.
+
+`fast-validation` runs for every invocation and owns repository hygiene,
+documentation, agent-skill, classifier, gate, workflow, and release-ordering
+contracts. The malformed proof-pool matrix runs in the independent
+`proof-pool-contracts` job.
+
+### E2E Gateway selection
+
+The setup/connect, revocation recovery, and network recovery E2E jobs each run
+once against npm Latest, matching normal WSL setup.
+`scripts\Resolve-CiGateway.ps1` resolves Latest once in change-classification
+and supplies the exact version to the candidate-version setup path, so setup and
+assertions use the same version even if the tag moves during a run. No npm
+resolution failure falls back to the Store or another channel. Each job's
+artifact includes `gateway-release.json` with the npm selector, exact version,
+integrity, and tarball URL. Every selected E2E job contributes to the CI Gate.
+
+These are real WSL Gateway-to-Windows-node lanes, not native MSIX runtime proof.
+There is no Packaged WSL lane and no native Latest/Packaged runtime matrix.
+`scripts\test-gateway-npm-release.ps1` covers channel selection, source/Store
+overrides, exact pins, archive integrity, and provenance without network access.
+`scripts\test-gateway-packaged-release.ps1` covers release/tag resolution,
+embedded payload identity, asset digest, extraction safety, and cache reuse.
+
+### Cross-repository candidate compatibility
+
+The reusable [`release-candidate-e2e.yml`](.github/workflows/release-candidate-e2e.yml)
+workflow tests one exact OpenClaw package against an independently identified
+Windows app. `windows_node_workflow_sha` pins both the workflow and the
+maintained setup/test harness. `windows_node_source_sha` identifies only the
+app under test: a verified published ZIP/MSIX in release mode, or a separately
+checked-out and built Tray in main mode. Fixing the harness does not rebuild
+historical releases.
+
+The fixture installs the candidate (including exact beta/alpha versions), waits
+for operator/node readiness, and runs
+`FullSetup_SafeNodeInvocation_RoutesThroughRealGateway` to invoke
+`system.which` through the real Gateway.
+
+Success requires an executed, passing test. Only an opted-in lane may accept
+`PROTOCOL_MISMATCH`: the initial fixture must observe the exact structured app
+error, write its receipt, and fail the selected test with the dedicated
+exception. Skipped tests, setup timeouts, unrelated failures, and run-level
+errors fail the lane.
+[`Resolve-ReleaseCandidateE2EOutcome.ps1`](scripts/Resolve-ReleaseCandidateE2EOutcome.ps1)
+owns result admission. Evidence names include the app source kind and release
+tag or source SHA.
+
+### Release metadata, MSIX, and CI Gate
+
+Release metadata is produced by the `metadata` job only when release publish
+validation is required. It preserves GitVersion `semVer`, `majorMinorPatch`,
+`isPrerelease`, `isStableCorrection`, and stable-correction tag validation. The
+x64 and ARM64 publish jobs depend only on classification and metadata, so they
+run in parallel with tests and E2E. Ordinary product pull requests produce no
+release artifact. Packaging/build/release-sensitive pull requests run only x64
+publish smoke; main and tags run x64 plus ARM64.
+
+MSIX packaging consumes the readonly preview or the single official
+tagged-release reservation before starting its x64/ARM64 matrix.
+`scripts\test-msix-versioning.ps1` covers allocation arithmetic, durable state,
+retry/idempotence, competing claims, provenance, preview isolation, and failure
+boundaries without modifying remote refs.
+`scripts\test-msix-preview-source-version.ps1` covers stable and numeric
+correction tags, the canonical upstream Latest API request, fail-closed release
+validation, and token-safe errors. `test-ci-workflow-contract.ps1` executes the
+preview/write context guards, including fork, PR, branch, tag, cancellation,
+and failure cases.
+
+The always-running **CI Gate** validates every classifier output against the
+corresponding job result. A required lane must succeed, an unrequired lane must
+be skipped, and classification, fast validation, proof-contract selection,
+missing outputs, cancellation, or unexpected results fail closed.
 
 ### Artifacts
 
@@ -1121,8 +1255,8 @@ Historical counts and estimates in docs do not establish current CI status.
    including cross-directory callers when the contract requires them.
 3. Add a faithful regression, make the scoped change, and update the directly
    related documentation. A read-only investigation does not authorize edits.
-4. Run focused validation and the
-   [required local closeout](AGENTS.md#required-validation-after-every-change).
+4. Run checks that cover the change, as described in the
+   [validation policy](docs/TEST_COVERAGE.md#validation-policy).
    Use the [validation plan](docs/TEST_COVERAGE.md#explain-the-validation-plan)
    to distinguish local checks, hosted CI, and custom proof.
 5. When publication is authorized, use the existing PR template, report exact

@@ -26,7 +26,7 @@ The guidance helps the first companion-app OpenClaw session route Windows deskto
 
 For changes touching tray UX, Settings, onboarding, chat/canvas, Command Center, Windows node capabilities, local MCP, gateway pairing/connection, permissions, or diagnostics, use `.agents/skills/openclaw-proof-validation/SKILL.md`.
 
-Short version: run required tests, collect a closeout proof pass with `.\run-app-local.ps1 -Isolated` when UI is involved, use computer-use or developer-provided screenshots/output for the active changed UI state, prove MCP with `winnode` or raw JSON-RPC, prove gateway paths when available, and include current-head concrete output under `## Real behavior proof`. Mid-development computer-use/MCP/rubber-duck validation is fine when explicitly requested or needed to unblock work.
+Short version: run the checks that cover the change ([validation policy](TEST_COVERAGE.md#validation-policy)). When UI proof is useful, ask first, then use an isolated app (`.\run-app-local.ps1 -Isolated`) or developer-provided screenshots of the changed state. Prove MCP with `winnode` or raw JSON-RPC, prove gateway paths when available, and put current-head output under `## Real Behavior Proof`.
 
 ### Reactor preview.16 compatibility proof
 
@@ -97,7 +97,9 @@ are resolved.
 
 ### New command MCP contract
 
-Every new Windows node call must be exposed through local MCP and `winnode`: register the capability, update `McpToolBridge.CommandDescriptions`, update `.agents/skills/winnode/SKILL.md`, add focused tests, and prove discovery/invocation with `winnode` or raw MCP JSON-RPC.
+Every new Windows node call must be exposed through local MCP and `winnode`: register the capability, update `McpToolBridge.CommandDescriptions`, update `.agents/skills/winnode/SKILL.md` (input and output shape, side effects, permissions, examples), add focused tests, and prove discovery/invocation with `winnode` or raw MCP JSON-RPC. When the command is Gateway-mediated and a Gateway is available, also prove the Gateway path.
+
+When `winnode`, MCP output, or command docs change, also run `dotnet test .\tests\OpenClaw.WinNode.Cli.Tests\OpenClaw.WinNode.Cli.Tests.csproj --no-restore`. It includes `SkillMdDriftTests`, which keeps the shipped skill aligned with the command descriptions.
 
 ### Permissions exec policy editor
 
