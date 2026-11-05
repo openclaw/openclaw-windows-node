@@ -190,6 +190,21 @@ required closeout lane for code changes.
 | Local AI model fixture | `dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj --filter "FullyQualifiedName~SparseFixtureFileTests\|FullyQualifiedName~LocalAiPortLifecycleTests"` | Test-only sparse files preserve the catalog-sized logical length and readable zeros without model downloads. Checks cover Windows sparse allocation, independent mutation, overwrite refusal, and cleanup. Windows requires a sparse-capable filesystem and fails explicitly if marking the fixture sparse fails; Unix uses the holes created by `SetLength`. Production receipt, size, and hash checks remain unchanged |
 | Legacy installer runtime ordering | `.\tests\PackagingTests\Test-InnoUninstallOrdering.ps1` | Deprecated. It targets the old `[UninstallRun]` layout, while current cleanup is owned by `[Code]`; do not use it as current installer runtime proof |
 
+The hosted setup/connect filter also includes
+`SetupAndConnectTestsSearchProof.ReleasedGateway_SearchDenialAndDashboardRoutes`.
+It reuses the run's disposable WSL Gateway, seeds one synthetic conversation
+without calling an AI provider, and exercises the production metadata,
+transcript and schema readers. A separately scoped operator connection must
+receive `FORBIDDEN` for transcript search. Preinstalled headless Edge uses a
+fresh fixture-owned profile to render authenticated Dashboard root and Skills
+routes and capture screenshots. Credentials are sent through local CDP, not
+browser command-line arguments; only the test's synthetic session is deleted.
+The existing fixture owns Gateway and profile teardown. This is a real released
+WSL Gateway/browser boundary, not native packaged-Gateway or Store upgrade proof.
+The run's `gateway-release.json`, result report and screenshots identify actual
+execution; compilation or a locally gated skip is not successful runtime proof.
+Local execution still requires the existing WSL E2E runtime authority.
+
 Capacity-dependent Windows validation is named in
 [`PROOF_POOLS.md`](./PROOF_POOLS.md). Pull requests declare the exact pool IDs
 they need. A declaration does not claim that the pool ran, and unavailable
