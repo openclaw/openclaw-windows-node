@@ -1283,7 +1283,7 @@ jobs:
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
       RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
-      OpenClawSignedCleanupHostPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', github.workspace) || '' }}
+      OpenClawSignedCleanupHostPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', runner.temp) || '' }}
       DEV_MSIX_REVISION: ${{ github.run_number }}
       MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo || needs.metadata.outputs.msixVersionInfo }}
       MSIX_SOURCE_VERSION: ${{ needs.reserve-msix-version.outputs.sourceVersion || needs.metadata.outputs.msixSourceVersion }}
@@ -1331,7 +1331,7 @@ jobs:
       uses: actions/download-artifact@v8
       with:
         name: openclaw-signed-cleanup-host
-        path: signed-cleanup-host
+        path: ${{ runner.temp }}\signed-cleanup-host
 
     - name: Build and validate unsigned Store MSIX
       shell: pwsh

@@ -158,6 +158,23 @@ public sealed class ReleaseSigningWorkflowTests
     }
 
     [Fact]
+    public void ReleaseWorkflow_KeepsMsixCleanupHostOutsideSourceCheckout()
+    {
+        var workflow = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
+        var jobStart = workflow.IndexOf("  build-msix:", StringComparison.Ordinal);
+        var nextJob = workflow.IndexOf("  build-msix-bundle:", jobStart, StringComparison.Ordinal);
+
+        Assert.True(jobStart >= 0, "Could not find the MSIX build job.");
+        Assert.True(nextJob > jobStart, "Could not find the job following MSIX builds.");
+
+        var msixJob = workflow[jobStart..nextJob];
+        Assert.Contains(
+            @"format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', runner.temp)",
+            msixJob);
+        Assert.Contains(@"path: ${{ runner.temp }}\signed-cleanup-host", msixJob);
+    }
+
+    [Fact]
     public void ReleaseWorkflow_PreparesSignedAssetsBeforeTheFullCiGate()
     {
         var workflow = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
