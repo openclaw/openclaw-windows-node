@@ -16,8 +16,10 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
     private readonly ClientWebSocket _socket = new();
     private readonly HashSet<string> _gatewaySockets = new(StringComparer.Ordinal);
     private Uri? _gatewayOrigin;
+    private string? _authenticatedSocket;
     private int _nextId;
-    internal bool Authenticated { get; private set; }
+    internal bool Authenticated => _authenticatedSocket is not null;
+    internal string? PairingRequestId { get; private set; }
 
     private GatewaySearchBrowserProof(Process process)
     {
@@ -71,7 +73,8 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
     {
         _gatewayOrigin = uri;
         _gatewaySockets.Clear();
-        Authenticated = false;
+        _authenticatedSocket = null;
+        PairingRequestId = null;
         using var timeout = new CancellationTokenSource(Timeout);
         var result = await CallAsync("Page.navigate", new { url = uri.AbsoluteUri }, timeout.Token);
         if (result.TryGetProperty("errorText", out _))
@@ -131,6 +134,12 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
             Uri.TryCreate(parameters.GetProperty("url").GetString(), UriKind.Absolute, out var url) &&
             _gatewayOrigin is { } origin && url.Host == origin.Host && url.Port == origin.Port)
             _gatewaySockets.Add(requestId.GetString()!);
+        if (method.GetString() == "Network.webSocketClosed")
+        {
+            _gatewaySockets.Remove(requestId.GetString()!);
+            if (_authenticatedSocket == requestId.GetString()) _authenticatedSocket = null;
+            return;
+        }
         if (method.GetString() != "Network.webSocketFrameReceived" ||
             !_gatewaySockets.Contains(requestId.GetString()!)) return;
         var frame = parameters.GetProperty("response");
@@ -142,7 +151,16 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
             root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True &&
             root.TryGetProperty("payload", out var payload) && payload.ValueKind == JsonValueKind.Object &&
             payload.TryGetProperty("type", out var payloadType) && payloadType.GetString() == "hello-ok")
-            Authenticated = true;
+        {
+            _authenticatedSocket = requestId.GetString();
+            PairingRequestId = null;
+        }
+        else if (root.ValueKind == JsonValueKind.Object &&
+            root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object &&
+            error.TryGetProperty("code", out var code) && code.GetString() == "NOT_PAIRED" &&
+            error.TryGetProperty("details", out var details) && details.ValueKind == JsonValueKind.Object &&
+            details.TryGetProperty("requestId", out var pairingId) && pairingId.ValueKind == JsonValueKind.String)
+            PairingRequestId = pairingId.GetString();
     }
 
     public async ValueTask DisposeAsync()

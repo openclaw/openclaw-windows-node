@@ -72,7 +72,6 @@ public sealed class SetupAndConnectTestsSearchProof(E2ESetupFixture fixture)
             Assert.Equal("FORBIDDEN", denial.Code);
             Console.WriteLine("[Search proof] metadata and transcript matched the exact synthetic session; restricted read returned FORBIDDEN.");
 
-            var pendingBefore = await PendingPairingIdsAsync(client);
             var approved = new HashSet<string>(StringComparer.Ordinal);
             await using var browser = await GatewaySearchBrowserProof.StartAsync(fixture.DataDir);
             var origin = new UriBuilder(gateway.GatewayUrl) { Scheme = "http" }.Uri;
@@ -105,13 +104,17 @@ public sealed class SetupAndConnectTestsSearchProof(E2ESetupFixture fixture)
                             Assert.False(string.IsNullOrWhiteSpace(state.GetProperty("title").GetString()));
                             break;
                         }
-                        var pending = (await PendingPairingIdsAsync(client))
-                            .Except(pendingBefore).Except(approved).ToArray();
-                        Assert.True(pending.Length <= 1, "Ambiguous new pairing requests during the owned browser proof.");
-                        if (pending.Length == 1)
+                        if (!browser.Authenticated && browser.PairingRequestId is { } requestId &&
+                            !approved.Contains(requestId) && (await PendingPairingIdsAsync(client)).Contains(requestId))
                         {
-                            await client.SendWizardRequestAsync("device.pair.approve", new { requestId = pending[0] });
-                            approved.Add(pending[0]);
+                            try { await client.SendWizardRequestAsync("device.pair.approve", new { requestId }); }
+                            catch (InvalidOperationException ex) when (ex.Message == "unknown requestId")
+                            {
+                                // The Gateway may finish loopback pairing between listing and approval.
+                                Assert.DoesNotContain(requestId, await PendingPairingIdsAsync(client));
+                                Console.WriteLine("[Search proof] browser pairing request already resolved; awaiting authenticated hello.");
+                            }
+                            approved.Add(requestId);
                         }
                         await Task.Delay(PollInterval, browserTimeout.Token);
                     }
