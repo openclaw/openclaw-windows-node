@@ -245,13 +245,19 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private static GatewayErrorKind ClassifyTransportObservation(Exception error)
     {
-        var fallback = GatewayErrorKind.Unknown;
+        // Typed causes take precedence over outer message heuristics: endpoint
+        // port numbers can contain digits that resemble HTTP status codes.
         for (Exception? current = error; current is not null; current = current.InnerException)
         {
             if (current is System.Security.Authentication.AuthenticationException)
                 return GatewayErrorKind.Tls;
             if (current is System.Net.Sockets.SocketException or TimeoutException)
                 return GatewayErrorKind.Network;
+        }
+
+        var fallback = GatewayErrorKind.Unknown;
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
             var kind = GatewayErrorClassifier.Classify(current.Message);
             if (kind != GatewayErrorKind.Unknown)
                 return kind;
