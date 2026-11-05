@@ -57,6 +57,11 @@ public sealed partial class SetupLogger : IDisposable
     public void Warn(string message, object? data = null) => Write(LogLevel.Warn, message, data);
     public void Error(string message, object? data = null) => Write(LogLevel.Error, message, data);
 
+    private sealed record HandshakeLogData(long ConnectionAttempt, GatewayHandshakeObservation Observation);
+
+    public void HandshakeObservation(long connectionAttempt, GatewayHandshakeObservation observation) =>
+        Info("native.gateway.handshake", new HandshakeLogData(connectionAttempt, observation));
+
     public void StepStarted(string stepId, string displayName)
         => Write(LogLevel.Info, $"step.started: {displayName}", new { step_id = stepId });
 
@@ -88,6 +93,26 @@ public sealed partial class SetupLogger : IDisposable
             timed_out = result.TimedOut
         });
     }
+
+    public void CommandExitObserved(int exitCode, TimeSpan elapsed)
+        => Write(LogLevel.Debug, "cmd.exit: direct child exit observed", new
+        {
+            exit_code = exitCode,
+            elapsed_ms = elapsed.TotalMilliseconds
+        });
+
+    public void CommandCancelled(
+        string phase, bool directChildExitObserved, bool stdoutEofObserved,
+        bool stderrEofObserved, bool timedOut, TimeSpan elapsed)
+        => Write(LogLevel.Warn, "cmd.cancelled: caller cancellation observed", new
+        {
+            phase,
+            direct_child_exit_observed = directChildExitObserved,
+            stdout_eof_observed = stdoutEofObserved,
+            stderr_eof_observed = stderrEofObserved,
+            timed_out = timedOut,
+            elapsed_ms = elapsed.TotalMilliseconds
+        });
 
     public void Decision(string description, string chosen)
         => Write(LogLevel.Info, $"decision: {description} → {chosen}");
@@ -197,6 +222,20 @@ public sealed partial class SetupLogger : IDisposable
     {
         if (data == null)
             return null;
+
+        // This private wrapper admits only numeric fields and enum names. Free-text
+        // redaction would corrupt names such as AuthorizationStarted or TokenDrift.
+        if (data is HandshakeLogData handshake)
+            return JsonSerializer.SerializeToNode(new
+            {
+                connection_attempt = handshake.ConnectionAttempt,
+                transport_generation = handshake.Observation.TransportGeneration,
+                phase = handshake.Observation.Phase.ToString(),
+                elapsed_ms = handshake.Observation.ElapsedMs,
+                phase_elapsed_ms = handshake.Observation.PhaseElapsedMs,
+                failure_kind = handshake.Observation.FailureKind?.ToString(),
+                retry_after_ms = handshake.Observation.RetryAfterMs
+            }, _jsonOptions);
 
         if (data is string value)
             return NormalizeLogString(Sanitize(value));

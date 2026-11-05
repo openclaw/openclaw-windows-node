@@ -16,6 +16,7 @@
     </Project>
     <Project Path="src/OpenClawTray.FunctionalUI/OpenClawTray.FunctionalUI.csproj" />
     <Project Path="src/OpenClaw.SetupEngine/OpenClaw.SetupEngine.csproj" />
+    <Project Path="src/OpenClaw.GatewayCleanupHost/OpenClaw.GatewayCleanupHost.csproj" />
     <Project Path="src/OpenClaw.SetupEngine.UI/OpenClaw.SetupEngine.UI.csproj">
       <Platform Solution="*|Any CPU" Project="x64" />
       <Platform Solution="*|x64" Project="x64" />

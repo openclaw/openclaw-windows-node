@@ -1,3 +1,13 @@
+// <summary>
+// Defines setup input, mutable pipeline context, and result contracts shared by CLI and UI setup hosts.
+// Setup steps exchange only transaction-scoped state through SetupContext; configuration is loaded before
+// execution and result helpers classify success, retryable failure, terminal failure, and restart needs.
+// Usage:
+//   var context = new SetupContext(config, logger, journal, commands, cancellationToken);
+//   StepResult result = await step.ExecuteAsync(context, cancellationToken);
+//   // The runner uses result.Outcome and context state to continue or roll back the transaction.
+// </summary>
+
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
@@ -12,6 +22,7 @@ namespace OpenClaw.SetupEngine;
 
 // ─── Configuration ───
 
+/// <summary>Contains the persisted and runtime-only inputs that configure one setup transaction.</summary>
 public sealed class SetupConfig
 {
     public string DistroName { get; set; } = "OpenClawGateway";
@@ -52,6 +63,7 @@ public sealed class SetupConfig
 
     public string EffectiveGatewayUrl => GatewayUrl ?? $"ws://127.0.0.1:{GatewayPort}";
 
+    /// <summary>Loads a setup configuration from JSON using the setup serialization contract.</summary>
     public static SetupConfig LoadFromFile(string path)
     {
         var json = File.ReadAllText(path);
@@ -59,6 +71,7 @@ public sealed class SetupConfig
             ?? throw new JsonException("Config file must contain a JSON object.");
     }
 
+    /// <summary>Attempts to load a setup configuration and returns a user-facing parse error on failure.</summary>
     public static bool TryLoadFromFile(
         string path,
         [NotNullWhen(true)] out SetupConfig? config,
@@ -83,6 +96,7 @@ public sealed class SetupConfig
         }
     }
 
+    /// <summary>Overlays supported setup environment variables onto a configuration.</summary>
     public static SetupConfig FromEnvironment(SetupConfig? baseConfig = null)
     {
         var config = baseConfig ?? new SetupConfig();
@@ -113,6 +127,7 @@ public sealed class SetupConfig
         return config;
     }
 
+    /// <summary>Applies interactive UI defaults to this configuration and returns it for chaining.</summary>
     public SetupConfig ApplyUiDefaults(bool rollbackOnFailure = true)
     {
         Headless = false;
@@ -143,6 +158,7 @@ public sealed class SetupConfig
 
 // Native local inference is disabled for programmatic and backward-compatible
 // configs. The bundled product config explicitly enables it for onboarding.
+/// <summary>Contains Local AI selection, timeout, and user-consent settings for setup.</summary>
 public sealed class LocalAiConfig
 {
     public bool Enabled { get; set; }
@@ -156,6 +172,12 @@ public sealed class LocalAiConfig
     /// </summary>
     [JsonIgnore]
     internal string? InstalledReceiptModelId { get; set; }
+    /// <summary>
+    /// Runtime-only recorded plan for a pinned recovery whose model the catalog cannot
+    /// re-derive (Bolt's fixed tiers, custom Hugging Face models).
+    /// </summary>
+    [JsonIgnore]
+    internal OpenClaw.Shared.Inference.Catalog.LocalInferencePlan? PinnedPlan { get; set; }
     /// <summary>Managed llama-server port. Zero selects a free loopback port during setup.</summary>
     public int Port { get; set; }
     public bool WslMirroredNetworkingConsent { get; set; }
@@ -170,6 +192,7 @@ public sealed class LocalAiConfig
     public int InferenceTimeoutSeconds { get; set; } = 600;
 }
 
+/// <summary>Contains WSL distribution settings used while provisioning the managed Gateway.</summary>
 public sealed class WslConfig
 {
     private static readonly System.Text.RegularExpressions.Regex s_linuxUserNamePattern =
@@ -192,6 +215,7 @@ public sealed class WslConfig
 
 // ─── Gateway Configuration ───
 
+/// <summary>Contains Gateway installation and runtime settings for setup.</summary>
 public sealed class GatewayConfig
 {
     public string Bind { get; set; } = "loopback";
@@ -216,6 +240,7 @@ public sealed class GatewayConfig
 
 // ─── Capabilities Configuration ───
 
+/// <summary>Contains capability selections used to configure the Windows node.</summary>
 public sealed class CapabilitiesConfig
 {
     public bool System { get; set; } = true;
@@ -259,6 +284,7 @@ public sealed class CapabilitiesConfig
 
 // ─── Tray Settings (written to settings.json) ───
 
+/// <summary>Contains tray settings patches written by setup after provisioning succeeds.</summary>
 public sealed class TraySettingsConfig
 {
     public OpenClaw.Shared.SystemRunAccessPreset? SystemRunPreset { get; set; }
@@ -426,6 +452,7 @@ public sealed class TraySettingsConfig
 
 // ─── Pairing Configuration ───
 
+/// <summary>Contains the timeout used while setup waits for pairing approval.</summary>
 public sealed class PairingConfig
 {
     public int TimeoutSeconds { get; set; } = 60;
@@ -433,6 +460,7 @@ public sealed class PairingConfig
 
 // ─── Windows Node Context Injection ───
 
+/// <summary>Contains settings for injecting managed Windows node context into the Gateway workspace.</summary>
 public sealed class WindowsNodeContextConfig
 {
     public bool Enabled { get; set; } = true;
@@ -442,6 +470,7 @@ public sealed class WindowsNodeContextConfig
 
 // ─── Tailscale Serve Configuration ───
 
+/// <summary>Chooses whether optional Tailscale setup uses interactive browser approval or an auth key.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<TailscaleAuthMode>))]
 public enum TailscaleAuthMode
 {
@@ -449,6 +478,7 @@ public enum TailscaleAuthMode
     AuthKey
 }
 
+/// <summary>Contains optional Tailscale authentication and Serve configuration for setup.</summary>
 public sealed class TailscaleConfig
 {
     public bool Enabled { get; set; }
@@ -487,18 +517,23 @@ public sealed class TailscaleConfig
     }
 }
 
+/// <summary>Describes an external authorization interaction requested by a setup step.</summary>
 public sealed record ExternalAuthorizationRequest(
     string Provider,
     Uri AuthorizationUri,
     string Message);
 
+/// <summary>Presents an external authorization request for an interactive setup host.</summary>
 public interface IExternalAuthorizationPresenter
 {
+    /// <summary>Presents the request and returns when the host has handed it to the user.</summary>
     Task PresentAsync(ExternalAuthorizationRequest request, CancellationToken cancellationToken);
 }
 
+/// <summary>Writes authorization instructions to the console for headless setup.</summary>
 public sealed class ConsoleExternalAuthorizationPresenter : IExternalAuthorizationPresenter
 {
+    /// <summary>Writes the authorization URL and message without performing browser automation.</summary>
     public Task PresentAsync(ExternalAuthorizationRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -512,6 +547,7 @@ public sealed class ConsoleExternalAuthorizationPresenter : IExternalAuthorizati
 
 // ─── Step Result ───
 
+/// <summary>Classifies whether a setup step succeeded, skipped, failed, or needs restart before retrying.</summary>
 public enum StepOutcome { Success, Skipped, Failed, FailedTerminal }
 
 /// <summary>
@@ -521,6 +557,7 @@ public enum StepOutcome { Success, Skipped, Failed, FailedTerminal }
 /// </summary>
 public sealed record LocalAiFailureDetail(IReadOnlyList<string> Diagnostics, string LogDirectory);
 
+/// <summary>Represents the outcome, diagnostic, and restart requirement of one setup step.</summary>
 public sealed record StepResult(
     StepOutcome Outcome,
     string? Message = null,
@@ -545,6 +582,7 @@ public sealed record StepResult(
 
 // ─── Setup Context ───
 
+/// <summary>Holds transaction-scoped state shared by ordered setup steps and their rollback paths.</summary>
 public sealed class SetupContext
 {
     public SetupConfig Config { get; }
@@ -633,6 +671,7 @@ public sealed class SetupContext
     // WSL PATH prefix using configured user
     public string WslPathPrefix => WslConstants.GetPathPrefix(Config.Wsl.User);
 
+    /// <summary>Creates setup context with its configuration, transaction services, and cancellation source.</summary>
     public SetupContext(
         SetupConfig config,
         SetupLogger logger,
@@ -657,10 +696,12 @@ public sealed class SetupContext
         GatewayUrl = config.EffectiveGatewayUrl;
     }
 
+    /// <summary>Resolves the app data directory used for Gateway registry and identity state.</summary>
     public static string ResolveDataDir()
         => Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")
             ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenClawTray");
 
+    /// <summary>Resolves the local app data directory used for Local AI installation state.</summary>
     public static string ResolveLocalDataDir()
     {
         if (Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR") is { Length: > 0 } localAppDataRoot)

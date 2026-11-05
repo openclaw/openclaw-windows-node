@@ -10,8 +10,8 @@ public enum GatewayEndpointProvenanceKind
     NoListener,
 
     /// <summary>
-    /// The endpoint belongs to the expected managed WSL gateway, either through a verified
-    /// OS-owned WSL relay or through direct guest ownership with no Windows listener.
+    /// The expected managed WSL gateway owns the guest port, with either a Windows listener named
+    /// wslrelay or no Windows listener for mirrored networking. The relay is not authenticated.
     /// </summary>
     ExpectedManagedGateway,
 

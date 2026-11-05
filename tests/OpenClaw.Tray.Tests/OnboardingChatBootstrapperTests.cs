@@ -554,7 +554,6 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public event EventHandler<JsonElement>? CronListUpdated;
         public event EventHandler<JsonElement>? CronStatusUpdated;
         public event EventHandler<JsonElement>? CronRunsUpdated;
-        public event EventHandler<JsonElement>? SkillsStatusUpdated;
         public event EventHandler<JsonElement>? ConfigUpdated;
         public event EventHandler<JsonElement>? ConfigSchemaUpdated;
         public event EventHandler<AgentEventInfo>? AgentEventReceived;
@@ -620,9 +619,6 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public Task<bool> AddCronJobAsync(object jobDefinition) => Task.FromResult(false);
         public Task<bool> UpdateCronJobAsync(string id, object patch) => Task.FromResult(false);
         public Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0) => Task.CompletedTask;
-        public Task RequestSkillsStatusAsync(string? agentId = null) => Task.CompletedTask;
-        public Task<bool> InstallSkillAsync(string skillId) => Task.FromResult(false);
-        public Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled) => Task.FromResult(false);
         public Task<bool> UpdateSkillAsync(string skillId) => Task.FromResult(false);
         public Task RequestConfigAsync() => Task.CompletedTask;
         public Task RequestConfigSchemaAsync() => Task.CompletedTask;

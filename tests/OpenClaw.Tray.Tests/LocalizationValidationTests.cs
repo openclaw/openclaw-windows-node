@@ -30,6 +30,12 @@ public class LocalizationValidationTests
         // Automations: the ID label and an IANA time zone example are identical in every locale.
         "Automations_Field_Id",
         "Automations_Placeholder_Timezone",
+        // Custom model provider API types are protocol product names, and the
+        // provider/model ID placeholders are literal identifier examples.
+        "DefaultModelPage_CustomApiAnthropic.Content",
+        "DefaultModelPage_CustomApiOpenAiResponses.Content",
+        "DefaultModelPage_CustomProviderId.PlaceholderText",
+        "DefaultModelPage_CustomProviderModels.PlaceholderText",
         // Updater dependency recovery is seeded in English across every locale.
         // Translate the explanation and manual-release action together after review.
         "Update_Message_Unavailable",
@@ -247,13 +253,12 @@ public class LocalizationValidationTests
         // seeded English-only across all 5 locales using the deferred-translation
         // pattern. Fetched at runtime via LocalizationHelper. Same precedent as
         // the PermissionsPage / InstancesPage / SessionsPage runtime keys above.
-        "BindingsPage_CouldNotLoadBindings",
         "ConfigPage_CheckingConfigPermissions",
         "ConfigPage_ConfigUnavailable",
         "ConfigPage_ConfigIsReadOnly",
         // ConnectionPage gateway terminal controls — surfaced after PR #597
         // landed in master. Seeded English-only across all 5 locales using the
-        // same deferred-translation pattern as the AgentEventsPage / SkillsPage
+        // same deferred-translation pattern as the AgentEventsPage
         // / CronPage entries above. The Description_Format key takes the WSL
         // distro name as {0} and is formatted in ConnectionPage.xaml.cs.
         "ConnectionPage_GatewayHostControlsDescription_Format",
@@ -275,8 +280,6 @@ public class LocalizationValidationTests
         "Command_GoToSessions_Subtitle",
         "Command_GoToAgentEvents_Title",
         "Command_GoToAgentEvents_Subtitle",
-        "Command_GoToSkills_Title",
-        "Command_GoToSkills_Subtitle",
         "Command_GoToCron_Title",
         "Command_GoToCron_Subtitle",
         "Command_GoToWorkspace_Title",
@@ -289,8 +292,6 @@ public class LocalizationValidationTests
         "Command_GoToConfig_Subtitle",
         "Command_GoToUsage_Title",
         "Command_GoToUsage_Subtitle",
-        "Command_GoToBindings_Title",
-        "Command_GoToBindings_Subtitle",
         "Command_GoToPermissions_Title",
         "Command_GoToPermissions_Subtitle",
         "Command_GoToSettings_Title",
@@ -1046,6 +1047,28 @@ public class LocalizationValidationTests
     }
 
     [Fact]
+    public void NoLocale_HasStrayTextOutsideResourceElements()
+    {
+        var offenders = new List<string>();
+        foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()).OrderBy(d => d, StringComparer.Ordinal))
+        {
+            var reswPath = Path.Combine(localeDir, "Resources.resw");
+            if (!File.Exists(reswPath)) continue;
+
+            var locale = Path.GetFileName(localeDir);
+            foreach (var text in XDocument.Load(reswPath).Root!.Nodes().OfType<XText>())
+            {
+                if (!string.IsNullOrWhiteSpace(text.Value))
+                    offenders.Add($"{locale}: '{text.Value.Trim()}'");
+            }
+        }
+
+        Assert.True(offenders.Count == 0,
+            "Resources.resw files contain text outside <data>/<resheader> elements (merge residue?): " +
+            string.Join("; ", offenders));
+    }
+
+    [Fact]
     public void NoLocale_HasWindows1252MojibakeValues()
     {
         var stringsDir = GetStringsDirectory();
@@ -1147,10 +1170,13 @@ public class LocalizationValidationTests
                 // These ordinary words are spelled identically in these languages.
                 string[] naturalLoanwordLocales = key switch
                 {
-                    "Onboarding_V2_LocalAiModel.Header" => ["nl-nl"],
+                    "Onboarding_V2_LocalAiModel.Header" or "HubWindow_NavigationViewItemHeader_Model.Content" or
+                        "LocalAiPage_ModelSelector.Header" => ["nl-nl"],
                     "Onboarding_V2_ProfileReadOnlyTitle.Text" or "SandboxPage_PresetStrict.Text" => ["fr-fr"],
                     "Onboarding_V2_ProfileFullTitle.Text" or "SandboxPage_PresetOpen.Text" => ["nl-nl"],
-                    "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications" => ["fr-fr"],
+                    "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications"
+                        or "HubWindow_NavigationViewItem_145.Content"
+                        or "WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
                     _ => [],
                 };

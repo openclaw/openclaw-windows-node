@@ -646,7 +646,6 @@ public sealed class SetupNativeHandoffTests
     [InlineData(SetupNativeDestination.WhatsApp, 1, "channels")]
     [InlineData(SetupNativeDestination.Telegram, 2, "channels")]
     [InlineData(SetupNativeDestination.Channels, 3, "channels")]
-    [InlineData(SetupNativeDestination.Skills, 4, "skills")]
     public void NativeRecordIsVersionedAndCannotBecomeALegacyBrowserReceipt(SetupNativeDestination destination, int persistedValue, string page)
     {
         using var temp = new TempDirectory();
@@ -678,6 +677,24 @@ public sealed class SetupNativeHandoffTests
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
     }
 
+    [Fact]
+    public void RetiredSkillsDestination_CannotBeIssuedOrAcquiredFromAnOldReceipt()
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var retired = Choice with { Target = Choice.Target with { Destination = (SetupNativeDestination)4 } };
+        Assert.False(retired.Target.Matches(retired.Verification));
+        Assert.Throws<SetupNativeOwnershipException>(() => store.Issue(retired));
+
+        var handle = store.Issue(Choice);
+        var path = Path.Combine(temp.Path, "setup-dashboard-handoff", "pending.json");
+        var pending = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        pending["NativeTarget"]!["Destination"] = 4;
+        File.WriteAllText(path, pending.ToJsonString());
+
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -701,10 +718,10 @@ public sealed class SetupNativeHandoffTests
     [InlineData("agent")]
     [InlineData("endpoint")]
     [InlineData("disconnected")]
-    public void SkillsBindingRejectsDrift(string changed)
+    public void ChannelsBindingRejectsDrift(string changed)
     {
         var request = new SetupNativeNavigationRequest(Choice with
-            { Target = new(SetupNativeDestination.Skills, "agent:primary:main") });
+            { Target = new(SetupNativeDestination.Channels, "agent:primary:main") });
         var gateway = Gateway with
         {
             Id = changed == "gateway" ? "other" : Gateway.Id,

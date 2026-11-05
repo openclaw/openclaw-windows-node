@@ -12,7 +12,7 @@
                        Style="{StaticResource BodyTextBlockStyle}" />
         </DataTemplate>
     </Page.Resources>
-    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto" RowSpacing="24">
+    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto,Auto" RowSpacing="24">
         <StackPanel Spacing="4" MaxWidth="600" HorizontalAlignment="Stretch">
             <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious" HorizontalAlignment="Center" />
             <TextBlock x:Name="TitleText" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap" TextAlignment="Center" />
@@ -60,11 +60,11 @@
                     </toolkit:SettingsExpander>
                   </StackPanel>
                 </ContentControl>
-                <InfoBar x:Name="ResultBar" IsOpen="False" IsClosable="False"
-                         AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
         </ScrollViewer>
-        <Grid x:Name="NavigationFooter" Grid.Row="2" RowDefinitions="Auto,Auto"
+        <InfoBar x:Name="ResultBar" Grid.Row="2" MaxWidth="560" HorizontalAlignment="Stretch"
+                 IsOpen="False" IsClosable="False" AutomationProperties.LiveSetting="Polite" />
+        <Grid x:Name="NavigationFooter" Grid.Row="3" RowDefinitions="Auto,Auto"
               ColumnDefinitions="*,*,*,*" ColumnSpacing="8" RowSpacing="12">
             <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="4" HorizontalAlignment="Center" />
             <Button x:Name="BackButton" Grid.Row="1" Click="Back_Click" MinWidth="0" HorizontalAlignment="Stretch"

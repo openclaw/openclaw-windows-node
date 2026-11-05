@@ -1,3 +1,11 @@
+// <summary>
+// Reconciles the saved Local AI installation receipt with the current catalog and files. It reuses
+// only verified assets, repairs eligible incomplete assets, and retains the original receipt for rollback.
+// Usage:
+//   var result = await reconciler.ReconcileAsync(dataDir, plan, gpuId, cancellationToken);
+//   // result.ResolvedInstall is null when no compatible managed installation can be reused.
+// </summary>
+
 using System.Collections.Immutable;
 using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared.Inference.Catalog;
@@ -16,13 +24,16 @@ internal sealed record LocalAiReconcileResult(
         new(false, null, null, null);
 }
 
+/// <summary>Verifies receipt-owned model files before reconciliation reuses them.</summary>
 internal interface ILocalAiModelFileVerifier
 {
+    /// <summary>Verifies the active cached model artifact named by an installation receipt.</summary>
     Task<bool> VerifyActiveAsync(
         LocalAiResolvedInstall install,
         PinnedArtifact artifact,
         CancellationToken cancellationToken);
 
+    /// <summary>Verifies the legacy compatibility copy required by older Local AI receipts.</summary>
     Task<bool> VerifyLegacyCompatibilityAsync(
         LocalAiResolvedInstall install,
         LocalAiPaths paths,
@@ -42,8 +53,10 @@ internal interface ILocalAiModelFileVerifier
         CancellationToken cancellationToken);
 }
 
+/// <summary>Verifies Local AI model receipt paths without mutating installation state.</summary>
 internal sealed class LocalAiModelFileVerifier : ILocalAiModelFileVerifier
 {
+    /// <summary>Verifies the active cached model artifact.</summary>
     public async Task<bool> VerifyActiveAsync(
         LocalAiResolvedInstall install,
         PinnedArtifact artifact,
@@ -70,6 +83,7 @@ internal sealed class LocalAiModelFileVerifier : ILocalAiModelFileVerifier
         return verified is not null;
     }
 
+    /// <summary>Verifies the receipt's legacy compatibility model copy.</summary>
     public Task<bool> VerifyLegacyCompatibilityAsync(
         LocalAiResolvedInstall install,
         LocalAiPaths paths,
@@ -90,6 +104,7 @@ internal sealed class LocalAiModelFileVerifier : ILocalAiModelFileVerifier
             cancellationToken);
     }
 
+    /// <summary>Verifies a cached additional recipe asset against its pinned receipt.</summary>
     public async Task<bool> VerifyAdditionalAssetAsync(
         LocalAiResolvedInstall install,
         string cachedAssetPath,
@@ -143,6 +158,7 @@ internal sealed class LocalAiInstallReconciler
         _vcRuntimeStager = vcRuntimeStager;
     }
 
+    /// <summary>Reconciles a selected plan with a receipt and returns verified reuse or repair state.</summary>
     public async Task<LocalAiReconcileResult> ReconcileAsync(
         string localDataDirectory,
         LocalInferencePlan plan,
@@ -304,8 +320,7 @@ internal sealed class LocalAiInstallReconciler
     /// <summary>Read-only inspection for onboarding; unlike reconciliation, never migrates or saves receipts.</summary>
     public async Task<bool> InspectAsync(LocalAiResolvedInstall install, CancellationToken ct)
     {
-        var model = LocalModelCatalog.FindInstalled(
-            install.Manifest.ModelCatalogId, install.Manifest.ModelAsset.SourceUrl);
+        var model = LocalAiInstalledModel.Resolve(install.Manifest);
         var installedRuntime = LlamaRuntimeCatalog.FindInstalled(install.Manifest.RuntimeId);
         if (model is null || installedRuntime is null)
             return false;

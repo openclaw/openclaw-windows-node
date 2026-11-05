@@ -102,7 +102,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             props.Session.ApplyInputs(inputs);
             _ = controller.ReconcileModelCatalogAsync(inputs);
             return static () => { };
-        }), props.InputSnapshot, inputs.CurrentThread, inputs.ModelCatalogRevision, inputs.ShowPlacementPickers, inputs.PlacementTargetIsEmpty);
+        }), props.InputSnapshot, inputs.CurrentThread, inputs.ModelCatalogRevision, inputs.ShowPlacementPickers, inputs.PlacementTargetIsEmpty, inputs.IsVisible);
 
         var text = vm.Draft;
         var isSending = vm.IsSending;
@@ -759,8 +759,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
                     scroll.HorizontalContentAlignment = HorizontalAlignment.Left;
                 }));
-        composerChildren.Add(input);
-        composerChildren.Add(toolbar);
+        // Status and attachment rows can be inserted before this stable editor/toolbar tail.
+        composerChildren.Add(input.WithKey("chat-composer-input"));
+        composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
 
         var writingSurface = Border(
             VStack(8, composerChildren.ToArray())
