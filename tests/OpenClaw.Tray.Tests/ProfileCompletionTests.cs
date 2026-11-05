@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Services;
@@ -717,10 +718,16 @@ public class ProfileCompletionTests
     {
         var source = WorkspaceWindowSource();
         Assert.Contains("ProfileAutoFillCoordinator _profileAutoFill = CurrentApp.ProfileAutoFill;", source);
-        Assert.Contains("_profileAutoFill.ObserveAsync", source);
         Assert.Contains("_profileAutoFill.ProfileChanged += OnProfileAutoFilled;", source);
-        Assert.Contains("_profileAutoFill.ProfileChanged -= OnProfileAutoFilled;", source);
-        Assert.Contains("if (!IsClosed && name is not null)", source);
+        Assert.Contains(
+            "if (!IsClosed && name is not null) AsyncEventHandlerGuard.Run(_profileAutoFill.ObserveAsync,",
+            Flatten(ExtractMethod(source, "private void UpdateOwnerIdentity()")));
+        Assert.Contains(
+            "if (!IsClosed) RefreshOwnerIdentity(invalidate: true);",
+            Flatten(ExtractMethod(source, "private void OnProfileAutoFilled(")));
+        Assert.Contains(
+            "_profileAutoFill.ProfileChanged -= OnProfileAutoFilled;",
+            ExtractMethod(source, "private void OnClosed("));
         Assert.DoesNotContain("_profileCompletionBusy", source);
         Assert.DoesNotContain("_profileAutoFillGatewayId", source);
         Assert.DoesNotContain("new ProfileCompletionService", source);
@@ -744,6 +751,23 @@ public class ProfileCompletionTests
     {
         var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? FindRoot();
         return File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
+    }
+
+    private static string Flatten(string text) => Regex.Replace(text, @"\s+", " ");
+
+    private static string ExtractMethod(string source, string signature)
+    {
+        var start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Expected to find '{signature}'.");
+        var depth = 0;
+        for (var index = source.IndexOf('{', start); index < source.Length; index++)
+        {
+            if (source[index] == '{')
+                depth++;
+            else if (source[index] == '}' && --depth == 0)
+                return source[start..(index + 1)];
+        }
+        throw new InvalidOperationException($"Unbalanced braces in '{signature}'.");
     }
 
     private static string FindRoot()
