@@ -23,14 +23,26 @@ public sealed partial class GatewayFixtureUiTests
                 "Settings page mounted");
             var window = Assert.Single(AppWindows(run), candidate => candidate.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsPageMarker")) is not null);
-            var setup = FindById(run, "LocalGatewaySetupCard")!;
-            ScrollSettingsSectionIntoView(setup);
-            await WaitUiAsync(run, () => !setup.Current.IsOffscreen, "Local Gateway setup card visible");
+            // WinUI Borders do not expose automation peers. Observe their real
+            // heading and action controls instead of the decorative containers.
+            var heading = window.FindFirst(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text),
+                new PropertyCondition(AutomationElement.NameProperty, "Local Gateway")));
+            Assert.NotNull(heading);
+            var setup = FindById(run, "OpenLocalGatewaySetupButton");
+            Assert.NotNull(setup);
+            ScrollSettingsSectionIntoView(heading);
+            await WaitUiAsync(run, () => !heading.Current.IsOffscreen && !setup.Current.IsOffscreen,
+                "Local Gateway heading and setup action visible");
 
-            var asserted = new List<AutomationElement> { setup };
+            var developer = window.FindFirst(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text),
+                new PropertyCondition(AutomationElement.NameProperty, "Developer")));
+            Assert.NotNull(developer);
+            var asserted = new List<AutomationElement> { heading, setup, developer };
             // Onboarding remains an active-WSL action. Coexistence exposes removal,
             // not onboarding of the currently selected native Gateway.
-            var onboard = FindById(run, "OpenClawOnboardCard");
+            var onboard = FindById(run, "OpenClawOnboardButton");
             if (activeWsl)
             {
                 Assert.NotNull(onboard);
@@ -43,17 +55,15 @@ public sealed partial class GatewayFixtureUiTests
             }
             if (hasWsl)
             {
-                var removal = FindById(run, "LocalGatewayExpander");
+                var removal = FindById(run, "RemoveLocalGatewayButton");
                 Assert.NotNull(removal);
                 Assert.False(removal.Current.IsOffscreen);
-                Assert.True(FindById(run, "RemoveLocalGatewayButton")!.Current.IsEnabled);
+                Assert.True(removal.Current.IsEnabled);
                 asserted.Add(removal);
             }
             else
             {
-                Assert.Null(FindById(run, "LocalGatewayExpander"));
                 Assert.Null(FindById(run, "RemoveLocalGatewayButton"));
-                asserted.Add(FindText(run, "Developer")!);
             }
 
             if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
