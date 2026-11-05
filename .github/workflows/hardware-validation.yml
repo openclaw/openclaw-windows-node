@@ -63,6 +63,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Command-normalization tests resolve bash from Git for Windows.
+          $gitBin = Join-Path (Split-Path (Split-Path (Get-Command git.exe).Source)) 'bin'
+          if (-not (Test-Path (Join-Path $gitBin 'bash.exe'))) { throw 'Git Bash is required by shared tests' }
+          $gitBin >> $env:GITHUB_PATH
           ./scripts/setup-dev.ps1 -CheckOnly -NoTrustRepository
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build repository
@@ -74,9 +78,10 @@ jobs:
           foreach ($suite in @('OpenClaw.Shared.Tests', 'OpenClaw.Tray.Tests')) {
             $project = "./tests/$suite/$suite.csproj"
             # Build first: --no-restore alone can silently no-op in a fresh checkout.
-            dotnet build $project -r "win-$env:EXPECTED_ARCHITECTURE"
+            # Helpers expect bin/Debug/<tfm>; retain native RID without an extra path segment.
+            dotnet build $project -r "win-$env:EXPECTED_ARCHITECTURE" -p:AppendRuntimeIdentifierToOutputPath=false
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            dotnet test $project -r "win-$env:EXPECTED_ARCHITECTURE" --no-restore --results-directory ./TestResults/Hardware --logger "trx;LogFileName=$suite.trx"
+            dotnet test $project -r "win-$env:EXPECTED_ARCHITECTURE" -p:AppendRuntimeIdentifierToOutputPath=false --no-restore --results-directory ./TestResults/Hardware --logger "trx;LogFileName=$suite.trx"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             [xml]$trx = Get-Content "./TestResults/Hardware/$suite.trx" -Raw
             $counts = $trx.TestRun.ResultSummary.Counters
