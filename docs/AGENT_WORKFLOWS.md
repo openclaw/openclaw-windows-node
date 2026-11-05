@@ -187,8 +187,11 @@ or executing destructive commands.
 | Custom proof has passing and skipped cases | Reject complete custom proof; keep the individual results and blocker explicit |
 | Reuse a screenshot from an older source/binary | Reject current-head proof unless its actual provenance still matches the asserted state |
 | Review one named PR | Stay on the named item and necessary dependencies; no full sweep, GitHub mutation, or publication |
+| Simplify my own completed Windows-node change before a PR | Use [PR simplification](../.agents/skills/pr-simplify/SKILL.md), preserve distinct WinUI, package, Gateway/WSL, command, installer and architecture contracts, then reprove the reduced diff |
 | Open a PR for my change, or write its description | Use [Windows PR preparation](../.agents/skills/windows-pr-prepare/SKILL.md), write the body locally, and publish only when explicitly authorized; a missing required source or rubber-duck review remains blocked |
+| Retrigger CI on my PR | Use [retrigger-flaky-ci](../.agents/skills/retrigger-flaky-ci/SKILL.md): read the failed logs first; warn without rerunning when a failure traces to the PR's changes; otherwise summarize and rerun only the failed jobs |
 | The host lacks native Windows proof prerequisites | Report the specific unproven capability; do not substitute mock success or acquire a host automatically |
+| Launch an isolated test build that needs one or more real native Gateways | Build Companion in its task-owned worktree; prepare unique named Gateway patches in a task-owned work root and explicitly select each patch with separate app data. Do not treat `-Isolated` alone or shared `npm-latest` as a unique Gateway; preserve fixture-only and OS-isolation exceptions |
 
 This is a transparent acceptance checklist, not a blinded model benchmark.
 The expected decisions are deliberately reviewable by contributors.
@@ -219,6 +222,7 @@ The repository owns this reusable checklist, not personal workflow history.
 
 - [Repository instructions](../AGENTS.md)
 - [Documentation workflow](../.agents/skills/technical-documentation/SKILL.md)
+- [Author-side PR simplification](../.agents/skills/pr-simplify/SKILL.md)
 - [Local PR preparation](../.agents/skills/windows-pr-prepare/SKILL.md)
 - [Test authoring](../.agents/skills/test-audit/SKILL.md)
 - [Real proof requirements](../.agents/skills/openclaw-proof-validation/SKILL.md)

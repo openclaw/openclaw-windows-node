@@ -68,6 +68,20 @@ public sealed class NativeGatewaySetupUxContractTests
     }
 
     [Fact]
+    public void GatewayPreparationNeverReopensSharedLoadingScreenFromAiPage()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.SetupEngine.UI", "Pages", "AiSetupPage.xaml.cs"));
+        Assert.DoesNotContain("SetupLoadingGroup.GatewayPreparation", source);
+        var navigation = source[source.IndexOf("protected override void OnNavigatedTo", StringComparison.Ordinal)..
+            source.IndexOf("protected override void OnNavigatedFrom", StringComparison.Ordinal)];
+        Assert.Contains("_args.Preparation?.Take()", navigation);
+        Assert.DoesNotContain(".Loading?.Begin(", navigation);
+        Assert.Contains("SetupActivitySteps.Visibility = Visible(_activities.Count > 0", source);
+        Assert.Contains("SetupLoadingGroup.LocalAi", source);
+    }
+
+    [Fact]
     public void ConsoleFailureRecovery_IsIndependentOfWizardErrorAndSurvivesNormalStepClears()
     {
         // Retire when the WinUI wizard exposes a mounted log-failure interaction fixture.
@@ -95,19 +109,36 @@ public sealed class NativeGatewaySetupUxContractTests
     [Fact]
     public void NativeAcquisition_ExplainsWinGetAndMicrosoftStoreInLocalizedResources()
     {
+        var expectedElapsedUnit = new Dictionary<string, string>
+        {
+            ["en-us"] = "{0} min",
+            ["fr-fr"] = "{0} min",
+            ["nl-nl"] = "{0} min",
+            ["pt-br"] = "{0} min",
+            ["zh-cn"] = "{0} 分钟",
+            ["zh-tw"] = "{0} 分鐘",
+        };
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var strings = Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Strings");
         foreach (var path in Directory.GetFiles(strings, "Resources.resw", SearchOption.AllDirectories))
         {
-            var resources = XDocument.Load(path).Descendants("data")
+            var document = XDocument.Load(path);
+            var resources = document.Descendants("data")
                 .ToDictionary(element => (string)element.Attribute("name")!,
                     element => element.Element("value")?.Value);
             Assert.Contains("WinGet", resources["Onboarding_Native_Acquisition.Text"]);
             Assert.Contains("Microsoft Store", resources["Onboarding_Native_Acquisition.Text"]);
             Assert.Contains("WinGet", resources["Onboarding_Native_InstallingPackage"]);
+            Assert.Contains("Microsoft Store", resources["Onboarding_Native_InstallingPackageWaiting"]);
+            var locale = Path.GetFileName(Path.GetDirectoryName(path))!;
+            if (!expectedElapsedUnit.TryGetValue(locale, out var expected))
+                Assert.Fail($"Add an elapsed-minute unit expectation for {locale}");
+            Assert.Contains(expected!, resources["Onboarding_Native_InstallingPackageWaiting"]);
             Assert.Contains("WinGet", resources["Onboarding_Native_VerifyingPackage"]);
             Assert.Contains("WinGet", resources["Onboarding_Native_Cancelled"]);
             Assert.False(resources.ContainsKey("Onboarding_Native_InstallerOpened"));
+            Assert.DoesNotContain(document.Root!.Nodes().OfType<XText>(),
+                node => !string.IsNullOrWhiteSpace(node.Value));
         }
     }
 
@@ -136,14 +167,6 @@ public sealed class NativeGatewaySetupUxContractTests
             "src", "OpenClaw.SetupEngine.UI", "Pages", "NativeGatewaySetupPage.xaml.cs"));
         Assert.Contains("window.NativeSetupDraft = await service.CreateDraftAsync(cancellationToken)", source);
         Assert.DoesNotContain("window.NativeSetupDraft ??=", source);
-        var catchStart = source.IndexOf("catch (Exception ex)", StringComparison.Ordinal);
-        var finallyStart = source.IndexOf("finally", catchStart, StringComparison.Ordinal);
-        var failure = source[catchStart..finallyStart];
-        Assert.Contains("or AggregateException", failure);
-        Assert.Contains("Trace.TraceError", failure);
-        Assert.Contains("Apply(SetupInstallationStatus.Failed)", failure);
-        Assert.Contains("SetupLogger.Sanitize(ex.Message)", failure);
-        Assert.Contains("RetryButton.Visibility = Visibility.Visible", failure);
     }
 
     [Fact]
@@ -177,13 +200,28 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.DoesNotContain("Architecture.Arm64", source);
         Assert.DoesNotContain("StorageFile", source);
         Assert.Contains("Onboarding_Native_InstallingPackage", source);
+        Assert.Contains("Onboarding_Native_InstallingPackageWaiting", source);
         Assert.Contains("Onboarding_Native_VerifyingPackage", source);
         Assert.DoesNotContain("Onboarding_Native_InstallerOpened", source);
-        Assert.Contains("NavigateToNativeAiSetup(session)", source);
+        Assert.Contains("NavigateToNativeAiSetup(session, prepared)", source);
+        Assert.True(source.IndexOf("GatewayAiPreparation.PrepareNativeAsync", StringComparison.Ordinal) <
+            source.IndexOf("NavigateToNativeAiSetup(session, prepared)", StringComparison.Ordinal));
         Assert.DoesNotContain("NavigateToNativeWizard", source);
-        Assert.Contains("progressDispatcher.TryEnqueue", source);
-        Assert.Contains("if (IsLoaded && !cancellationToken.IsCancellationRequested)", source);
+        Assert.Contains("void ReportProgress(string message)", source);
+        Assert.Contains("SetupLoadingView.DetailFor(step)", source);
+        Assert.Contains("GatewayAiPreparation.PrepareNativeAsync(session, cancellationToken, progress)", source);
+        Assert.DoesNotContain("BeginLoading(", source);
+        Assert.DoesNotContain("SetLoadingCancellation(", source);
+        Assert.Contains("IsLoaded && IsBusy && !cancellationToken.IsCancellationRequested", source);
+        Assert.Contains("_operationCts?.Token == cancellationToken", source);
+        Assert.Contains("if (DispatcherQueue.HasThreadAccess) Apply();", source);
+        Assert.Contains("DispatcherQueue.TryEnqueue(Apply)", source);
+        var stages = source[source.IndexOf("void ReportStage(", StringComparison.Ordinal)..
+            source.IndexOf("var progress =", StringComparison.Ordinal)];
+        Assert.Contains("NativeGatewaySetupStage.StartingGateway or NativeGatewaySetupStage.VerifyingEndpoint", stages);
+        Assert.Contains("SetCurrentStep(3)", stages);
         Assert.Contains("Unloaded += (_, _) => _operationCts?.Cancel()", source);
+        Assert.Contains("new NativeGatewaySetupHost(log, ReportProgress, ReportStage)", source);
         Assert.True(source.IndexOf("if (SetupPreview.IsActive)", StringComparison.Ordinal) <
                     source.IndexOf("_operation = RunOperationAsync", StringComparison.Ordinal));
         Assert.DoesNotContain("message => StatusText.Text = message", source);
@@ -367,7 +405,7 @@ public sealed class NativeGatewaySetupUxContractTests
             foreach (var suffix in new[]
                      {
                          "Lead",
-                         "ComingSoon",
+                         "Alternatives",
                          "InsiderProgram",
                          "Channels",
                          "WindowsVersion",
@@ -388,10 +426,34 @@ public sealed class NativeGatewaySetupUxContractTests
     }
 
     [Theory]
+    [InlineData("en-us", "isolation-session capability", "does not guarantee availability", "WSL", "existing gateway", "If you need to update Windows")]
+    [InlineData("fr-fr", "capacité de session isolée", "ne garantit pas sa disponibilité", "WSL", "Gateway existant", "Si vous devez mettre Windows à jour")]
+    [InlineData("nl-nl", "isolatiesessiefunctionaliteit", "garandeert niet dat deze beschikbaar is", "WSL", "bestaande Gateway", "Als u Windows moet bijwerken")]
+    [InlineData("pt-br", "capacidade de sessão isolada", "não garante sua disponibilidade", "WSL", "Gateway existente", "Se precisar atualizar o Windows")]
+    [InlineData("zh-cn", "隔离会话功能", "并不保证此功能可用", "WSL", "现有 Gateway", "如果需要更新 Windows")]
+    [InlineData("zh-tw", "隔離工作階段功能", "並不保證此功能可用", "WSL", "現有 Gateway", "如果需要更新 Windows")]
+    public void Welcome_NativeUnavailableGuidanceExplainsCapabilityAndAlternativesEvenOnNewerWindows(
+        string locale, string capability, string noGuarantee, string wsl, string existing, string conditionalUpdate)
+    {
+        var document = XDocument.Load(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI",
+            "Strings", locale, "Resources.resw"));
+        string guidance = document.Descendants("data")
+            .Single(element => (string?)element.Attribute("name") == "Onboarding_Native_SupportUnavailable")
+            .Element("value")!.Value;
+
+        Assert.Contains(capability, guidance);
+        Assert.Contains(noGuarantee, guidance);
+        Assert.Contains(wsl, guidance);
+        Assert.Contains(existing, guidance);
+        Assert.Contains(conditionalUpdate, guidance);
+    }
+
+    [Theory]
     [InlineData("en-us", "Advanced options", "clean reinstall", "vary by device", "reopen this page")]
-    [InlineData("fr-fr", "Options avancées", "réinstallation complète", "varier selon l'appareil", "rouvrez cette page")]
+    [InlineData("fr-fr", "Options avancées", "réinstallation complète", "varier selon l'appareil", "rouvrir cette page")]
     [InlineData("nl-nl", "Geavanceerde opties", "schone herinstallatie", "per apparaat verschillen", "Open deze pagina")]
-    [InlineData("pt-br", "Opções avançadas", "reinstalação limpa", "variar conforme o dispositivo", "reabra esta página")]
+    [InlineData("pt-br", "Opções avançadas", "reinstalação limpa", "variar conforme o dispositivo", "reabrir esta página")]
     [InlineData("zh-cn", "高级选项", "全新安装系统", "因设备而异", "重新打开此页面")]
     [InlineData("zh-tw", "進階選項", "全新安裝系統", "因裝置而異", "重新開啟此頁面")]
     public void Welcome_NativeUnavailableGuidanceIncludesEnrollmentTradeoffAndRecheck(
@@ -431,7 +493,7 @@ public sealed class NativeGatewaySetupUxContractTests
         var gatewaySession = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "SetupGatewaySession.cs"));
         Assert.Contains("if (record.NativePackageFamilyName is not null)", gatewaySession);
         var adapter = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "NativeGatewaySetupConnection.cs"));
-        Assert.Contains("await owner.PrepareConnectionAsync(ct)", adapter);
+        Assert.Contains("await owner.PrepareConnectionForAdmissionAsync(ct)", adapter);
         Assert.Contains("owner.AuthorizeAsync", adapter);
         Assert.Contains("NativeGatewaySetupSession.GetPairingGuidance(requestId)", adapter);
         Assert.Contains("await owner.ApproveWizardPairingAsync(error.RequestId, linked.Token)", adapter);
@@ -453,8 +515,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.DoesNotContain("client.DisconnectAsync()", nativeConnection);
         Assert.Contains("[\"devices\", \"list\", \"--json\"]", host);
         Assert.Contains("[\"devices\", \"approve\", requestId, \"--json\"]", host);
-        Assert.Contains("PairingCommandTimeout = TimeSpan.FromMinutes(2)", host);
-        Assert.Equal(2, host.Split("environment, PairingCommandTimeout,").Length - 1);
+        Assert.Equal(2, host.Split("environment, CliCommandTimeout, \"").Length - 1);
         Assert.Contains("WizardPayloadHelpers.GetNativeTerminalError(payload)", wizard);
         Assert.Contains("ShowError(SetupLogger.Sanitize(nativeError))", wizard);
         Assert.DoesNotContain("--url", host);
@@ -480,7 +541,9 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("WizardConsoleTail.CreateGatewayLogReader(", wizard);
         var focused = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "AiSetupPage.xaml.cs"));
         Assert.Contains("NativeSession is { IsIsolated: false }", focused);
-        Assert.Contains("WizardConsoleTail.CreateGatewayLogReader(transport.RequestAsync)", focused);
+        var preparation = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "NativeAiPreparation.cs"));
+        Assert.Contains("WizardConsoleTail.CreateGatewayLogReader(transport.RequestAsync)", preparation);
+        Assert.Contains("AttachIsolatedConsole(preparedConsole)", focused);
         Assert.Contains("Onboarding_Wizard_GatewayConsoleGap", focused);
         Assert.Contains("Onboarding_Wizard_GatewayConsoleUnavailable", focused);
         Assert.DoesNotContain("onboard", host);
@@ -490,19 +553,6 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("[\"config\", \"validate\", \"--json\"]", host);
         Assert.Contains("[\"gateway\", \"health\", \"--json\"]", host);
         Assert.False(File.Exists(Path.Combine(root, "src", "OpenClaw.SetupEngine", "NativeGatewayTerminalCommand.cs")));
-    }
-
-    [Fact]
-    public void LocalAiChangeModel_PreservesNativeGatewayAndExistingWslSetupRoute()
-    {
-        var root = TestRepositoryPaths.GetRepositoryRoot();
-        var manager = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "WindowManager.cs"));
-        var start = manager.IndexOf("public Task ShowLocalAiModelSetupAsync()", StringComparison.Ordinal);
-        var route = manager[start..manager.IndexOf("public async Task ShowLocalAiSetupAsync()", start, StringComparison.Ordinal)];
-        Assert.Contains("NativeGatewayPackageClient.IsolatedContract", route);
-        Assert.Contains("? ShowLocalAiSetupAsync() : ShowOnboardingAsync()", route);
-        var model = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Presentation", "LocalAiPageViewModel.cs"));
-        Assert.Contains("RunCommand(CanChangeModel, _appCommands.ShowLocalAiModelSetup)", model);
     }
 
     [Fact]
@@ -517,16 +567,16 @@ public sealed class NativeGatewaySetupUxContractTests
         var route = window[start..window.IndexOf("internal async Task CancelNativeAiSetupAsync", start, StringComparison.Ordinal)];
         Assert.Contains("typeof(AiSetupPage)", route);
         Assert.DoesNotContain("WizardPage", route);
-        Assert.Contains("NativeGatewaySetupConnection.ConnectAsync(native, ct)", ai);
+        Assert.Contains("NativeGatewaySetupConnection.ConnectAsync(native, ct, _loading)", ai);
         Assert.Contains("await native.RestartAsync(token)", ai);
-        Assert.Contains("native.VerifyAsync(proof, ct)", window);
+        Assert.Contains("native.VerifyAsync(proof, ct, _finishingLoading)", window);
         Assert.Contains("native.CompleteVerifiedAsync(proof, _config.Capabilities, ct,", window);
         Assert.Contains("ReconcileNativeAsync", window);
         Assert.Contains("await afterVerification(connection, linked.Token)", session);
         Assert.DoesNotContain("MarkWizardCompleted", ai);
         Assert.DoesNotContain("MarkWizardCompleted", window);
         Assert.Contains("ConnectForFinalizationAsync", session);
-        Assert.Contains("await VerifyConnectionAsync(connection, proof, linked.Token)", session);
+        Assert.Contains("await VerifyConnectionAsync(connection, proof, linked.Token, progress)", session);
         Assert.Contains("registry.Save(beforePublication)", session);
         foreach (var file in new[] { Path.Combine(ui, "Pages", "AiSetupPage.xaml"),
                      Path.Combine(ui, "Controls", "ProviderSetupDialog.xaml") })

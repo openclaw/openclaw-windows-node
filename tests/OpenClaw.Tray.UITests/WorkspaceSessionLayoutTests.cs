@@ -12,6 +12,56 @@ namespace OpenClaw.Tray.UITests;
 public sealed class WorkspaceSessionLayoutTests(UIThreadFixture ui)
 {
     [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    public async Task CustomizePencil_FitsInsideNativeButtonWithRoundingRoom(ElementTheme theme)
+    {
+        var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
+            ?? throw new InvalidOperationException("OPENCLAW_REPO_ROOT is required for production markup proof.");
+        var document = XDocument.Load(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var markup = new XElement(document.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Name") == "PagesCustomizeButton"));
+        markup.Attribute(x + "Uid")!.Remove();
+        markup.Elements().Single(element => element.Name.LocalName == "Button.Flyout").Remove();
+        markup.SetAttributeValue(XNamespace.Xmlns + "x", x.NamespaceName);
+
+        await ui.RunOnUIAsync(async () =>
+        {
+            var button = Assert.IsType<Button>(XamlReader.Load(markup.ToString()));
+            button.RequestedTheme = theme;
+            var viewport = Assert.IsType<Viewbox>(button.Content);
+            var icon = Assert.IsType<SymbolIcon>(viewport.Child);
+            var reference = new SymbolIcon { Symbol = Symbol.Edit };
+            ui.Container.Children.Add(button);
+            try
+            {
+                await ui.YieldToRenderAsync();
+                button.UpdateLayout();
+                reference.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                var size = reference.DesiredSize;
+                var roundingRoom = 2 / button.XamlRoot.RasterizationScale;
+                var contentWidth = button.ActualWidth - button.Padding.Left - button.Padding.Right
+                    - button.BorderThickness.Left - button.BorderThickness.Right;
+                Assert.InRange(viewport.ActualWidth, 11.9, 12.1);
+                Assert.InRange(viewport.ActualHeight, 11.9, 12.1);
+                Assert.True(contentWidth >= viewport.ActualWidth + roundingRoom,
+                    $"Icon viewport {viewport.ActualWidth} plus rounding room {roundingRoom} exceeds content width {contentWidth}; padding={button.Padding}.");
+                Assert.InRange(button.ActualWidth, 39, 41);
+                Assert.InRange(button.ActualHeight, 35, 37);
+                Assert.Equal(Symbol.Edit, icon.Symbol);
+                var bounds = icon.TransformToVisual(button).TransformBounds(new Rect(0, 0, size.Width, size.Height));
+                Assert.InRange(bounds.Width, 11.9, 12.1);
+                Assert.InRange(bounds.Height, 11.9, 12.1);
+                Assert.True(bounds.Left >= button.BorderThickness.Left && bounds.Top >= button.BorderThickness.Top);
+                Assert.True(bounds.Right <= button.ActualWidth - button.BorderThickness.Right &&
+                    bounds.Bottom <= button.ActualHeight - button.BorderThickness.Bottom);
+            }
+            finally { ui.Container.Children.Remove(button); }
+        });
+    }
+
+    [Theory]
     [InlineData("Windows\\WorkspaceWindow.xaml", "CollapsePaneButton")]
     [InlineData("Windows\\WorkspaceWindow.xaml", "ReopenPaneButton")]
     [InlineData("Controls\\SettingsShellView.xaml", "NavPaneToggleButton")]

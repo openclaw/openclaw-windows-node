@@ -1,3 +1,5 @@
+extern alias TrayRuntime;
+
 using System.Collections.Immutable;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
@@ -16,9 +18,13 @@ using OpenClaw.Shared;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation.Adapters;
+using OpenClawTray.Presentation;
+using OpenClawTray.Services;
+using OpenClaw.TestSupport;
 using Windows.Foundation;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClaw.Tray.UITests.TestSupport;
+using FluentIconCatalog = TrayRuntime::OpenClawTray.Helpers.FluentIconCatalog;
 
 namespace OpenClaw.Tray.UITests;
 
@@ -222,6 +228,114 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             Assert.Equal(key, session.ViewModel.Inputs?.CurrentThread.Id);
             await ui.RunOnUIAsync(() => Assert.NotNull(FindControl<TextBlock>(surface, "ChatWelcomeHint")));
         }, initialThreadId: initialSelection ? key : null);
+    }
+
+    [Theory]
+    [InlineData(320)]
+    [InlineData(480)]
+    [InlineData(800)]
+    public async Task SandboxFlyout_ReflectsSettingsWithoutChangingDraftAndOpensSettings(int width)
+    {
+        using var temp = new TempDirectory();
+        var settings = new SettingsManager(temp.Path) { NodeSystemRunEnabled = true };
+        var sandboxStatus = new SandboxStatusStore();
+        sandboxStatus.Publish(new(true, false, true, [], isolationTier: "base-container", supportsProtectedPathDenies: true));
+        var navigationCount = 0;
+        var saveCount = 0;
+        settings.Saved += (_, _) => saveCount++;
+        await WithChatAsync(width, async (surface, _, session, _) =>
+        {
+            TextBox? originalInput = null;
+            Windows.UI.Color onColor = default;
+            FrameworkElement? popupContent = null;
+            FrameworkElement? composerContent = null;
+            await ui.RunOnUIAsync(() =>
+            {
+                originalInput = FindControl<TextBox>(surface, "ChatComposerInput");
+                composerContent = Ancestors(originalInput).OfType<Border>()
+                    .First(border => border.CornerRadius.TopLeft == ChatVisuals.ComposerRadius);
+                var button = FindControl<Button>(surface, "ChatComposerSandbox");
+                Assert.Equal("Node Sandbox: Available", AutomationProperties.GetName(button));
+                var icon = Assert.Single(FindDescendants<TextBlock>(button));
+                Assert.Equal(FluentIconCatalog.Sandbox, icon.Text);
+                onColor = Assert.IsType<SolidColorBrush>(icon.Foreground).Color;
+                if (Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") is not "HighContrast")
+                {
+                    var resource = Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") == "Dark"
+                        ? "SystemAccentColorLight2"
+                        : "SystemAccentColorDark1";
+                    var expected = Assert.IsType<Windows.UI.Color>(Application.Current.Resources[resource]);
+                    Assert.Equal(expected, onColor);
+                }
+                AssertComposerBounds(surface);
+                Assert.True(Bounds(button, surface).Left >= Bounds(
+                    FindControl<Button>(surface, "ChatComposerReasoningPicker"), surface).Right);
+                Assert.True(Bounds(button, surface).Right <= Bounds(
+                    FindControl<Button>(surface, "ChatComposerVoice"), surface).Left);
+                button.Flyout.ShowAt(button);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var button = FindControl<Button>(surface, "ChatComposerSandbox");
+                var popup = Assert.IsAssignableFrom<FrameworkElement>(Assert.IsType<Flyout>(button.Flyout).Content);
+                Assert.Equal("Windows supports sandboxing. Each command is checked before it runs.",
+                    FindControl<TextBlock>(popup, "ChatSandboxDescription").Text);
+                Assert.InRange(popup.ActualWidth, 1, 280);
+                Assert.InRange(popup.ActualHeight, 1, 220);
+                Assert.Equal(0, saveCount);
+                Assert.Equal(Draft, session.ViewModel.Draft);
+                sandboxStatus.Publish(new(false, false, true, [], isWindowsUnsupported: true));
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var button = FindControl<Button>(surface, "ChatComposerSandbox");
+                var popup = Assert.IsAssignableFrom<FrameworkElement>(Assert.IsType<Flyout>(button.Flyout).Content);
+                Assert.Equal("Node Sandbox: Compatibility", AutomationProperties.GetName(button));
+                var offColor = Assert.IsType<SolidColorBrush>(
+                    Assert.Single(FindDescendants<TextBlock>(button)).Foreground).Color;
+                if (Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") != "HighContrast")
+                    Assert.NotEqual(onColor, offColor);
+                Assert.Equal("Compatibility", FindControl<TextBlock>(popup, "ChatSandboxStatus").Text);
+                Assert.Equal("This Windows version does not support sandboxing. Approved commands run without it.",
+                    FindControl<TextBlock>(popup, "ChatSandboxDescription").Text);
+                Assert.Same(originalInput, FindControl<TextBox>(surface, "ChatComposerInput"));
+                Assert.Equal(Draft, session.ViewModel.Draft);
+                popupContent = popup;
+            });
+            await CaptureAsync(composerContent!, $"Sandbox-off-composer-{width}");
+            await CaptureAsync(popupContent!, $"Sandbox-off-flyout-{width}");
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(popupContent!, "ChatSandboxOpenSettings")));
+            await SettleAsync();
+            Assert.Equal(1, navigationCount);
+            Assert.Equal(0, saveCount);
+
+            await ui.RunOnUIAsync(() =>
+            {
+                sandboxStatus.Publish(new(false, false, false, [], probeErrored: true));
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var button = FindControl<Button>(surface, "ChatComposerSandbox");
+                button.Flyout.ShowAt(button);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var popup = Assert.IsAssignableFrom<FrameworkElement>(
+                    Assert.IsType<Flyout>(FindControl<Button>(surface, "ChatComposerSandbox").Flyout).Content);
+                Assert.Equal("Sandboxing could not be verified. Commands are blocked.",
+                    FindControl<TextBlock>(popup, "ChatSandboxDescription").Text);
+                AssertComposerBounds(surface);
+                popupContent = popup;
+            });
+            await CaptureAsync(composerContent!, $"Sandbox-on-composer-{width}");
+            await CaptureAsync(popupContent!, $"Sandbox-on-flyout-{width}");
+            await ChangeFlyoutAsync(surface, "ChatComposerSandbox", open: false);
+        }, sandboxSettings: settings, onSandboxSettings: () => navigationCount++,
+            sandboxStatus: sandboxStatus);
     }
 
     [Fact]
@@ -691,14 +805,35 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 button => AutomationProperties.GetName(button) == "What can you do?"));
             await CaptureAsync(surface, "RecentChats-FirstRun");
 
+            Button? recentButton = null;
+            var recent = new ChatThread
+            {
+                Id = "recent", Title = "Previous conversation", TotalTokens = 1,
+                UpdatedAt = DateTimeOffset.UnixEpoch,
+            };
             await ui.RunOnUIAsync(() => provider.Publish(empty with
             {
-                Threads = [new ChatThread { Id = "recent", Title = "Previous conversation", TotalTokens = 1 }],
+                Threads = [recent],
             }));
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
-                Assert.NotNull(FindControl<Button>(host, "ChatRecent_recent"));
+                recentButton = FindControl<Button>(host, "ChatRecent_recent");
+                var help = AutomationProperties.GetHelpText(recentButton);
+                Assert.NotEmpty(help);
+                Assert.Equal($"{recent.Title}\n{help}", ToolTipService.GetToolTip(recentButton));
+            });
+            await ui.RunOnUIAsync(() => provider.Publish(empty with
+            {
+                Threads = [recent with { UpdatedAt = null }],
+            }));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var button = FindControl<Button>(host, "ChatRecent_recent");
+                Assert.Same(recentButton, button);
+                Assert.Empty(AutomationProperties.GetHelpText(button));
+                Assert.Equal(recent.Title, ToolTipService.GetToolTip(button));
                 Assert.Empty(FindControl<TextBlock>(host, "ChatRecentTime_recent").Text);
             });
             await ui.RunOnUIAsync(() => provider.Publish(empty));
@@ -707,8 +842,11 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 Assert.DoesNotContain(FindDescendants<Button>(host), button =>
                     AutomationProperties.GetAutomationId(button).StartsWith("ChatRecent_", StringComparison.Ordinal));
-                Invoke(Assert.Single(FindDescendants<Button>(host),
-                    button => AutomationProperties.GetName(button) == "What can you do?"));
+                var suggestion = Assert.Single(FindDescendants<Button>(host),
+                    button => AutomationProperties.GetName(button) == "What can you do?");
+                Assert.Empty(AutomationProperties.GetHelpText(suggestion));
+                Assert.Null(ToolTipService.GetToolTip(suggestion));
+                Invoke(suggestion);
             });
             await SettleAsync();
             Assert.Equal(("proof", "What can you do?"), Assert.Single(provider.SentMessages));
@@ -746,6 +884,81 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         });
     }
 
+    [Theory]
+    [InlineData(320)]
+    [InlineData(800)]
+    public async Task ActiveRun_AfterAssistantPreamble_KeepsClawAndElapsedTimeVisible(int width)
+    {
+        await WithChatAsync(width, async (surface, host, _, provider) =>
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                var scale = surface.XamlRoot.RasterizationScale;
+                _captureWindow!.AppWindow.Resize(new(
+                    (int)Math.Ceiling(surface.Width * scale) + 32,
+                    (int)Math.Ceiling(surface.Height * scale) + 80));
+            });
+            var snapshot = await provider.LoadAsync();
+            var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "Investigate", "progress",
+                DateTimeOffset.UtcNow.AddSeconds(-65));
+            state = ChatTimelineReducer.Apply(state, new ChatThinkingEvent("", "proof-run"));
+            state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("I will inspect the project."));
+            state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("proof-run", 120, 3));
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = state },
+            }));
+            await SettleAsync();
+            var before = await ui.RunOnUIAsync(() => Task.FromResult(
+                FindControl<TextBlock>(host, "ChatRunProgressText").Text));
+            await ui.RunOnUIAsync(() =>
+                Assert.Contains("Responding", AutomationProperties.GetName(FindControl<TextBlock>(host, "ChatRunProgressText"))));
+            Assert.Contains("1m", before);
+            Assert.Contains("120 output tokens", before);
+            await Task.Delay(1200);
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.NotEqual(before, FindControl<TextBlock>(host, "ChatRunProgressText").Text);
+                Assert.NotNull(FindControl<Grid>(host, "ChatRunProgressClaw"));
+                var text = FindControl<TextBlock>(host, "ChatRunProgressText");
+                var bounds = text.TransformToVisual(surface).TransformBounds(new(0, 0, text.ActualWidth, text.ActualHeight));
+                Assert.InRange(bounds.Right, 1, surface.ActualWidth);
+            });
+            await CaptureAsync(surface, $"Reactor-streaming-after-preamble-{width}");
+            state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent(), DateTimeOffset.UtcNow);
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = state },
+            }));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+                Assert.DoesNotContain(RealizedTimelineElements<FrameworkElement>(host), element =>
+                    AutomationProperties.GetAutomationId(element).StartsWith("ChatRunProgress", StringComparison.Ordinal)));
+            state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("proof-run", 125, 4));
+            Assert.Equal(125, state.RunUsage!.OutputTokens);
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = state },
+            }));
+            await Task.Delay(1200);
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+                Assert.DoesNotContain(RealizedTimelineElements<FrameworkElement>(host), element =>
+                    AutomationProperties.GetAutomationId(element).StartsWith("ChatRunProgress", StringComparison.Ordinal)));
+            await CaptureAsync(surface, $"Reactor-run-completed-{width}");
+
+            state = ChatTimelineReducer.AddLocalUser(state, "Continue", "next-turn", DateTimeOffset.UtcNow);
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = state },
+            }));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+                Assert.DoesNotContain("output tokens", FindControl<TextBlock>(host, "ChatRunProgressText").Text));
+        });
+    }
+
     [Fact]
     public async Task ComposerInput_FixtureObservationSurvivesNarrowLayoutChanges()
     {
@@ -774,6 +987,19 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                         item => Assert.Equal("proof", item.GetString()));
                 });
             }
+            var timelines = snapshot.Timelines.ToDictionary(entry => entry.Key, entry => entry.Value);
+            timelines["other"] = ChatTimelineState.Initial() with { HistoryLoaded = true };
+            var updated = snapshot with { Timelines = timelines };
+            await ui.RunOnUIAsync(() => provider.Publish(updated));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() => Assert.Equal(
+                GatewayFixtureRenderObservation.Create(updated, updated.DefaultThreadId, fixtureEnabled: true),
+                AutomationProperties.GetItemStatus(FindControl<TextBox>(surface, "ChatComposerInput"))));
+            environment.Set("OPENCLAW_GATEWAY_FIXTURE", null);
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() => Assert.Empty(
+                AutomationProperties.GetItemStatus(FindControl<TextBox>(surface, "ChatComposerInput"))));
         });
     }
 
@@ -956,6 +1182,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Equal("Failed", FindControl<TextBlock>(host, "ChatQueuedMessageStatus_pending-1").Text);
+                Assert.Equal("Failed", AutomationProperties.GetItemStatus(
+                    FindControl<StackPanel>(host, "ChatQueuedMessage_pending-1")));
                 Assert.Equal(1, FindControl<StackPanel>(host, "ChatQueuedMessageFooter_pending-1").Opacity);
                 Assert.Contains(FindDescendants<TextBlock>(host), text => text.Text == "Could not send.");
                 Invoke(FindControl<Button>(host, "ChatQueuedMessageRemoveFailed_pending-1"));
@@ -1029,8 +1257,11 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     private static IEnumerable<TextBlock> RealizedTimelineText(DependencyObject root) =>
-        FindDescendants<TextBlock>(Assert.Single(FindDescendants<ItemsView>(root)))
-            .Where(text => Ancestors(text).OfType<ItemContainer>().FirstOrDefault() is { } container
+        RealizedTimelineElements<TextBlock>(root);
+
+    private static IEnumerable<T> RealizedTimelineElements<T>(DependencyObject root) where T : DependencyObject =>
+        FindDescendants<T>(Assert.Single(FindDescendants<ItemsView>(root)))
+            .Where(element => Ancestors(element).OfType<ItemContainer>().FirstOrDefault() is { } container
                 && VisualTreeHelper.GetParent(container) is ItemsRepeater repeater
                 && repeater.GetElementIndex(container) >= 0);
 
@@ -1162,6 +1393,56 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 AssertCentered(surface, composer, Ancestors(paragraph).OfType<Border>().First());
                 Assert.Same(originalInput, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Contains("A second line.", originalInput.Text, StringComparison.Ordinal);
+            });
+        });
+    }
+
+    [Fact]
+    public async Task ComposerStatusRows_KeepNativeInputCaretAndToolbar()
+    {
+        await WithChatAsync(480, async (surface, _, session, _) =>
+        {
+            var input = await ui.RunOnUIAsync(() => Task.FromResult(
+                FindControl<TextBox>(surface, "ChatComposerInput")));
+            var picker = await ui.RunOnUIAsync(() => Task.FromResult(
+                FindControl<Button>(surface, "ChatComposerModelPicker")));
+            var attachment = new OpenClaw.Shared.ChatAttachment
+            {
+                FileName = "proof.txt", MimeType = "text/plain", Content = "cHJvb2Y=",
+            };
+            const string transcript = "Synthetic recording status.";
+            void AssertStableComposer()
+            {
+                Assert.Same(input, FindControl<TextBox>(surface, "ChatComposerInput"));
+                Assert.Same(picker, FindControl<Button>(surface, "ChatComposerModelPicker"));
+                Assert.Equal(Draft, input.Text);
+                Assert.Equal(Draft, session.ViewModel.Draft);
+                Assert.Equal((5, 7), (input.SelectionStart, input.SelectionLength));
+            }
+
+            await ui.RunOnUIAsync(() =>
+            {
+                input.Select(5, 7);
+                session.ViewModel.SetVoiceTranscript(transcript);
+                session.ViewModel.SetRecording(true);
+                session.ViewModel.AddAttachments([attachment]);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                AssertStableComposer();
+                Assert.Contains(FindDescendants<TextBlock>(surface), text => text.Text == transcript);
+                Assert.NotNull(FindControl<ScrollViewer>(surface, "ChatAttachmentRail"));
+                session.ViewModel.SetRecording(false);
+                session.ViewModel.RemoveAttachment(attachment);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                AssertStableComposer();
+                Assert.DoesNotContain(FindDescendants<TextBlock>(surface), text => text.Text == transcript);
+                Assert.DoesNotContain(FindDescendants<ScrollViewer>(surface),
+                    scroll => AutomationProperties.GetAutomationId(scroll) == "ChatAttachmentRail");
             });
         });
     }
@@ -1934,8 +2215,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(Math.Max(0, checkedIndex - 1), slider.Value);
                 Assert.Equal(checkedIndex == 0, HasCheck(FindControl<Button>(popup, "ChatReasoningDefault")));
                 Assert.Contains(FindDescendants<TextBlock>(popup), text => text.Text == label);
-                picker.Flyout.Hide();
             });
+            await ChangeFlyoutAsync(surface, "ChatComposerReasoningPicker", open: false);
             if (current == "xhigh")
                 await CaptureAsync(surface, "Reasoning-current-xhigh-480");
         }, thinkingLevel: current);
@@ -2012,7 +2293,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     provider.SelectedThinkingLevel);
                 Assert.Equal(scenario == "unknown-profile" ? 1 : 0, provider.ClearThinkingLevelCalls);
             }
-            await ui.RunOnUIAsync(() => FindControl<Button>(surface, "ChatComposerReasoningPicker").Flyout.Hide());
+            await ChangeFlyoutAsync(surface, "ChatComposerReasoningPicker", open: false);
             await SettleAsync();
             if (!captureMenu)
                 await CaptureAsync(surface, $"Reasoning-{scenario}-{(current is null ? "default" : "saved")}-480");
@@ -2278,6 +2559,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(0, provider.SetThinkingLevelCalls);
                 Assert.Equal(0, provider.ClearThinkingLevelCalls);
             });
+            await ChangeFlyoutAsync(surface, "ChatComposerReasoningPicker", open: false);
         }, "parity-inherited", thinkingLevel: current);
     }
 
@@ -2425,9 +2707,16 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         Action<string>? onSessionSelected = null,
         IChatPlacementGateway? placementGateway = null,
         string? initialThreadId = null,
-        bool initialThreadIsExplicitSelection = true)
+        bool initialThreadIsExplicitSelection = true,
+        SettingsManager? sandboxSettings = null,
+        Action? onSandboxSettings = null,
+        SandboxStatusStore? sandboxStatus = null)
     {
         await ui.ResetContainerAsync();
+        using var settingsDirectory = new TempDirectory();
+        using var settingsStore = new SettingsStore(
+            sandboxSettings ?? new SettingsManager(settingsDirectory.Path),
+            new WinUIDispatcher(ui.Dispatcher));
         ReactorHostControl? host = null;
         ChatComposerSession? session = null;
         Border? surface = null;
@@ -2443,10 +2732,12 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 themeScope = new ChatThemeProofScope(Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") ?? "Light");
                 Application.Current.UnhandledException += reportException;
-                session = new ChatComposerFactory(new WinUIDispatcher(ui.Dispatcher)).Create(
+                session = new ChatComposerFactory(new WinUIDispatcher(ui.Dispatcher), settingsStore,
+                    sandboxStatus ?? new SandboxStatusStore()).Create(
                     provider,
                     new ChatComposerHostActions(null, () => { }, (_, _) => Task.FromResult<string?>(null), _ => { },
-                        SessionSelected: (key, _) => onSessionSelected?.Invoke(key)),
+                        SessionSelected: (key, _) => onSessionSelected?.Invoke(key),
+                        SandboxSettingsNavigation: onSandboxSettings ?? (() => { })),
                     initialSpeakerMuted: false);
                 session.ViewModel.SetDraft(Draft);
                 if (scenario == "queue")
@@ -2485,11 +2776,16 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             });
             await SettleAsync();
             Assert.True(renderErrors.Errors.Count == 0, string.Join("\n", renderErrors.Errors));
+            Console.WriteLine("chat-proof: body start");
             await proof(surface!, host!, session!, provider);
             Assert.True(renderErrors.Errors.Count == 0, string.Join("\n", renderErrors.Errors));
         }
         finally
         {
+            Console.WriteLine("chat-proof: teardown begin");
+            await CloseOpenPopupsAsync(surface);
+            await SettleAsync();
+            Console.WriteLine("chat-proof: popups closed");
             await ui.RunOnUIAsync(() =>
             {
                 session?.Dispose();
@@ -2504,11 +2800,37 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Application.Current.UnhandledException -= reportException;
             });
             await provider.DisposeAsync();
+            Console.WriteLine("chat-proof: window closed");
         }
     }
 
     private Task ChangeModelFlyoutAsync(Border surface, bool open, Action? transition = null) =>
         ChangeFlyoutAsync(surface, "ChatComposerModelPicker", open, transition);
+
+    private const string FlyoutTransitionTimeoutVariable = "OPENCLAW_UI_FLYOUT_TIMEOUT_SECONDS";
+    private static readonly TimeSpan FlyoutTransitionTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(FlyoutTransitionTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(10);
+
+    private async Task CloseOpenPopupsAsync(Border? surface)
+    {
+        var closing = await ui.RunOnUIAsync(() =>
+        {
+            if (surface?.XamlRoot is null) return Task.FromResult(Array.Empty<Task>());
+            var pending = new List<Task>();
+            foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot))
+            {
+                var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                popup.Closed += (_, _) => closed.TrySetResult();
+                popup.IsOpen = false;
+                pending.Add(closed.Task);
+            }
+            return Task.FromResult(pending.ToArray());
+        });
+        try { await Task.WhenAll(closing).WaitAsync(FlyoutTransitionTimeout); }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+        catch (TimeoutException) { Console.Error.WriteLine("chat-proof: popup close timed out"); }
+    }
 
     private async Task ChangeFlyoutAsync(Border surface, string pickerId, bool open, Action? transition = null)
     {
@@ -2521,13 +2843,17 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 var button = FindControl<Button>(surface, pickerId);
                 flyout = Assert.IsType<Flyout>(button.Flyout);
+                // A choice may already have opened/closed the flyout; acting on a flyout
+                // that is already in the target state would wait for an event that never
+                // comes. Check BEFORE acting so a real transition still waits for its event.
+                if (flyout.IsOpen == open) { completed.TrySetResult(); return; }
                 if (open) flyout.Opened += Changed;
                 else flyout.Closed += Changed;
                 if (transition is not null) transition();
                 else if (open) flyout.ShowAt(button);
                 else flyout.Hide();
             });
-            await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await completed.Task.WaitAsync(FlyoutTransitionTimeout);
             if (open)
                 await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
                     () => flyout?.Content is FrameworkElement { IsLoaded: true },
@@ -2633,7 +2959,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         var controls = FindDescendants<Button>(surface)
             .Where(button => AutomationProperties.GetAutomationId(button).StartsWith("ChatComposer", StringComparison.Ordinal))
             .ToArray();
-        Assert.Equal(5, controls.Length);
+        Assert.Equal(6, controls.Length);
+        Assert.Contains(controls, button => AutomationProperties.GetAutomationId(button) == "ChatComposerSandbox");
         Assert.DoesNotContain(controls, button => AutomationProperties.GetAutomationId(button) == "ChatComposerMore");
         Assert.DoesNotContain(controls, button => AutomationProperties.GetAutomationId(button) == "ChatComposerSessionPicker");
         foreach (var control in controls)
@@ -2718,7 +3045,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     private static bool HasCheck(Button button) =>
         FindDescendants<TextBlock>(button).Any(text => text.Text == FluentIconCatalog.Check);
 
-    private static double Luminance(global::Windows.UI.Color color)
+    internal static double Luminance(global::Windows.UI.Color color)
     {
         static double Linear(byte channel)
         {

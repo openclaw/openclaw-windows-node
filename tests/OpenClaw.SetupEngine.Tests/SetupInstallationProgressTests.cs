@@ -18,8 +18,13 @@ public sealed class SetupInstallationProgressTests
         {
             progress.Apply(new(step.Id, step.DisplayName, null, null));
             Assert.Equal(step.DisplayName, progress.CurrentActivity);
+            var activePhase = SetupInstallationProgress.PhaseFor(step.Id, recovery);
+            Assert.Equal(step.DisplayName, progress.Phases.Single(phase => phase.Phase == activePhase).CurrentActivity);
+            Assert.All(progress.Phases.Where(phase => phase.Phase != activePhase),
+                phase => Assert.Null(phase.CurrentActivity));
             Assert.True(progress.IsRunning);
             progress.Apply(new(step.Id, step.DisplayName, StepOutcome.Success, TimeSpan.Zero));
+            Assert.All(progress.Phases, phase => Assert.Null(phase.CurrentActivity));
         }
         Assert.Equal(steps.Count, progress.CompletedSteps);
         Assert.Null(progress.CurrentActivity);
@@ -62,6 +67,7 @@ public sealed class SetupInstallationProgressTests
         progress.Apply(new(steps[2].Id, steps[2].DisplayName, null, null));
         Assert.Equal(SetupInstallationStatus.Failed, progress.Phases[0].Status);
         Assert.Equal(steps[1].DisplayName, progress.CurrentActivity);
+        Assert.Equal(steps[1].DisplayName, progress.Phases[0].CurrentActivity);
         Assert.False(progress.IsRunning);
         Assert.Equal(1, progress.CompletedSteps);
     }
@@ -87,6 +93,7 @@ public sealed class SetupInstallationProgressTests
         Assert.Equal(SetupInstallationStatus.Cancelled, progress.Phases[0].Status);
         Assert.False(progress.IsRunning);
         Assert.Equal(steps[1].DisplayName, progress.CurrentActivity);
+        Assert.Equal(steps[1].DisplayName, progress.Phases[0].CurrentActivity);
         Assert.Equal(1, progress.CompletedSteps);
         Assert.All(progress.Phases.Skip(1), phase => Assert.Equal(SetupInstallationStatus.Pending, phase.Status));
     }

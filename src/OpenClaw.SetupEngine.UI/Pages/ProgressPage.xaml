@@ -30,23 +30,37 @@
                     <StackPanel Spacing="0">
                         <tk:SettingsCard x:Name="PreparePhase" x:Uid="Onboarding_V4_PhasePrepare"
                                          Header="Prepare your PC" Background="Transparent" BorderThickness="0" CornerRadius="0">
+                            <tk:SettingsCard.Description>
+                                <TextBlock x:Name="PrepareActivity" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" Visibility="Collapsed"
+                                           AutomationProperties.LiveSetting="Polite" />
+                            </tk:SettingsCard.Description>
                             <controls:SetupPhaseStatus x:Name="PrepareStatus" />
                         </tk:SettingsCard>
                         <tk:SettingsCard x:Name="InstallPhase" x:Uid="Onboarding_V4_PhaseInstall"
                                          Header="Install the Gateway" Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0">
+                            <tk:SettingsCard.Description>
+                                <TextBlock x:Name="InstallActivity" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" Visibility="Collapsed"
+                                           AutomationProperties.LiveSetting="Polite" />
+                            </tk:SettingsCard.Description>
                             <controls:SetupPhaseStatus x:Name="InstallStatus" />
                         </tk:SettingsCard>
                         <tk:SettingsCard x:Name="ConnectPhase" x:Uid="Onboarding_V4_PhaseConnect"
                                          Header="Start and check connection" Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0">
+                            <tk:SettingsCard.Description>
+                                <TextBlock x:Name="ConnectActivity" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" Visibility="Collapsed"
+                                           AutomationProperties.LiveSetting="Polite" />
+                            </tk:SettingsCard.Description>
                             <controls:SetupPhaseStatus x:Name="ConnectStatus" />
                         </tk:SettingsCard>
                     </StackPanel>
                 </Border>
                 <StackPanel Spacing="8">
-                    <TextBlock x:Name="CurrentActivity" Style="{StaticResource BodyTextBlockStyle}"
-                               TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-                    <TextBlock x:Name="StepCount" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <TextBlock x:Name="DownloadActivity" Style="{StaticResource CaptionTextBlockStyle}"
                                TextWrapping="Wrap" Visibility="Collapsed" />
                     <ProgressBar x:Name="DownloadProgress" Minimum="0" Maximum="1" Visibility="Collapsed" />

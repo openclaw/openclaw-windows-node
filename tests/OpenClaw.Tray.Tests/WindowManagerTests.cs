@@ -230,6 +230,8 @@ public sealed class WindowManagerTests
         Assert.Contains("await existingSetupWindow.CleanupCompleted", manager);
         Assert.Contains("_callbacks.ApplyTheme(_keepAliveWindow)", manager);
         Assert.Contains("_callbacks.ApplyTheme(_setupWindow)", manager);
+        Assert.Contains("_callbacks.ApplyTheme(_readyWindow)", manager);
+        Assert.Contains("_callbacks.ApplyTheme(_restartProgressWindow)", manager);
         Assert.Contains("_workspaceWindow is { IsClosed: false }", manager);
         Assert.Contains("(ActiveHubWindow?.Content as FrameworkElement)?.XamlRoot", manager);
         Assert.Contains("ActiveHubWindow is { } window", manager);

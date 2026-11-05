@@ -45,10 +45,11 @@ public static class InstanceMerger
         var matchByPresenceIndex = new GatewayNodeInfo?[presenceList.Count];
         var strongMatchByPresenceIndex = new bool[presenceList.Count];
 
-        // Live beacons claim nodes before disconnect beacons so a stale row from a
-        // previous connection cannot take the node from the current one.
+        // Live beacons claim nodes before disconnect beacons. Within each group,
+        // node presence claims shared device identities before operator presence.
         var strongOrder = Enumerable.Range(0, presenceList.Count)
             .OrderBy(i => IsDisconnected(presenceList[i]) ? 1 : 0)
+            .ThenBy(i => IsNodePresence(presenceList[i]) ? 0 : 1)
             .ToList();
         foreach (var i in strongOrder)
         {
@@ -333,6 +334,9 @@ public static class InstanceMerger
 
     private static bool IsDisconnected(PresenceEntry p) =>
         string.Equals(Normalize(p.Reason), "disconnect", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsNodePresence(PresenceEntry p) =>
+        string.Equals(Normalize(p.Mode), "node", StringComparison.OrdinalIgnoreCase);
 
     private static PresenceStatus ClassifyPresence(
         PresenceEntry p,

@@ -87,6 +87,13 @@ public sealed partial class SessionsPage : Page
                     """);
                 _appState.AgentsList = agents.RootElement.Clone();
             }
+            else
+            {
+                using var agents = System.Text.Json.JsonDocument.Parse("""
+                    {"defaultId":"main","mainKey":"main","agents":[{"id":"main","name":"Main"}]}
+                    """);
+                _appState.AgentsList = agents.RootElement.Clone();
+            }
             // Use the same test-only snapshot for the companion and Workspace sidebar.
             _appState.Sessions =
             [

@@ -100,6 +100,23 @@ public class InstanceMergerTests
         Assert.Equal(PresenceStatus.Active, Assert.Single(result).Status);
     }
 
+    [Fact]
+    public void NodePresence_PrefersSharedDeviceIdOverEarlierOperatorPresence()
+    {
+        var operatorPresence = Presence(deviceId: "dev-1", host: "PC", mode: "ui");
+        var nodePresence = Presence(deviceId: "dev-1", host: "PC", mode: "node");
+        var n = Node("dev-1", isOnline: true);
+
+        var result = InstanceMerger.Merge(new[] { n }, new[] { operatorPresence, nodePresence }, Options());
+        var operatorRow = result.Single(row => row.Presence == operatorPresence);
+        var nodeRow = result.Single(row => row.Presence == nodePresence);
+
+        Assert.Null(operatorRow.Node);
+        Assert.False(operatorRow.CanManageNode);
+        Assert.Same(n, nodeRow.Node);
+        Assert.True(nodeRow.CanManageNode);
+    }
+
     // ── Match strategies ──────────────────────────────────────────────────
 
     [Fact]

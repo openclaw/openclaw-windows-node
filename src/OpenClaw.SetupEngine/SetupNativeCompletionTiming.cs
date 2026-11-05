@@ -3,14 +3,16 @@ using OpenClaw.Connection.NativeGateway;
 
 namespace OpenClaw.SetupEngine;
 
-public enum SetupNativeCompletionPhase { PageDrain, Connection, ModelRecovery, ModelVerification, Verification }
+public enum SetupNativeCompletionPhase { PageDrain, Connection, ModelRecovery, ModelVerification, Verification, Execution }
 
 public sealed class SetupNativeCompletionTimeoutException : TimeoutException
 {
     public SetupNativeCompletionPhase Phase { get; }
 
     internal SetupNativeCompletionTimeoutException(SetupNativeCompletionPhase phase, Exception innerException)
-        : base($"Native AI completion timed out while {Describe(phase)}. Retry when the Gateway is ready.", innerException)
+        : base(phase == SetupNativeCompletionPhase.Execution
+            ? "Native AI completion exceeded its execution deadline. Close setup and wait for admitted work to settle before starting again."
+            : $"Native AI completion timed out while {Describe(phase)}. Retry when the Gateway is ready.", innerException)
     {
         Phase = phase;
     }
@@ -30,7 +32,9 @@ public sealed class SetupNativeCompletionTimeoutException : TimeoutException
 public static class SetupNativeCompletionTiming
 {
     private static readonly TimeSpan MinimumConnection = TimeSpan.FromSeconds(210);
-    public static readonly TimeSpan ModelRecovery = TimeSpan.FromSeconds(210);
+    // WSL Local AI startup can withdraw and republish its route with two guarded
+    // 420-second Gateway restarts, plus 90 seconds for the router to become healthy.
+    public static readonly TimeSpan ModelRecovery = TimeSpan.FromSeconds(1020);
     public static readonly TimeSpan ModelVerification = TimeSpan.FromSeconds(150);
     public static readonly TimeSpan Navigation = TimeSpan.FromSeconds(30);
     // The published borrow includes the native start budget (OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT) plus handshake.

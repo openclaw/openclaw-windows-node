@@ -358,11 +358,12 @@
                                 Click="OnDiscardChanges"
                                 IsEnabled="False"/>
                         <Button x:Name="SaveButton"
+                                AutomationProperties.LabeledBy="{Binding ElementName=ConfigSaveLabel}"
                                 IsEnabled="False"
                                 Style="{ThemeResource AccentButtonStyle}" Click="OnSave">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE74E;" FontSize="13"/>
-                                <TextBlock x:Uid="SaveButtonText" Text="Save Changes"/>
+                                <TextBlock x:Uid="SaveButtonText" x:Name="ConfigSaveLabel" Text="Save Changes"/>
                             </StackPanel>
                         </Button>
                     </StackPanel>

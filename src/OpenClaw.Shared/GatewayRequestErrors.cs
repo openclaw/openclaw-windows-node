@@ -4,8 +4,8 @@ namespace OpenClaw.Shared;
 /// Bounded Gateway error codes attached to the <see cref="InvalidOperationException"/> that a failed
 /// request raises. The exception type and message stay unchanged for existing callers; identity and
 /// diagnostics read only codes from fixed protocol lists (anything else becomes UNKNOWN), never the
-/// message. Exceptions raised locally
-/// (connection closed, handshake pending) carry no codes, so origin is never inferred from text.
+/// message. Exceptions raised locally (connection closed, handshake pending) carry no codes, so origin
+/// is never inferred from text.
 /// </summary>
 public static class GatewayRequestErrors
 {

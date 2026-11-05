@@ -12,6 +12,7 @@ public class AgentCreationServiceTests
         public bool Connected = true;
         public IReadOnlyList<string> Scopes = ["operator.admin"];
         public List<(string Method, JsonElement Payload)> Requests = [];
+        public List<int> Timeouts = [];
         public Func<Task<JsonElement>> Response = () => Task.FromResult(
             JsonSerializer.SerializeToElement(new { ok = true, agentId = "research" }));
 
@@ -39,6 +40,7 @@ public class AgentCreationServiceTests
         private Task<JsonElement> Send(object?[] args)
         {
             Requests.Add(((string)args[0]!, JsonSerializer.SerializeToElement(args[1])));
+            Timeouts.Add((int)args[2]!);
             return Response();
         }
     }

@@ -720,7 +720,7 @@ public class ProfileCompletionTests
         Assert.Contains("_profileAutoFill.ObserveAsync", source);
         Assert.Contains("_profileAutoFill.ProfileChanged += OnProfileAutoFilled;", source);
         Assert.Contains("_profileAutoFill.ProfileChanged -= OnProfileAutoFilled;", source);
-        Assert.Contains("if (!IsClosed && _identity.HasProfile && !_identity.IsLoading)", source);
+        Assert.Contains("if (!IsClosed && name is not null)", source);
         Assert.DoesNotContain("_profileCompletionBusy", source);
         Assert.DoesNotContain("_profileAutoFillGatewayId", source);
         Assert.DoesNotContain("new ProfileCompletionService", source);
@@ -731,11 +731,9 @@ public class ProfileCompletionTests
     }
 
     [Fact]
-    public void Window_ProfileEditingUsesExistingGatewayPage_WithoutCompletionUi()
+    public void Window_DoesNotHostProfileCompletionUi()
     {
         var source = WorkspaceWindowSource();
-        Assert.Contains("_setUpProfileItem.Click += (_, _) => ((IAppCommands)CurrentApp).OpenDashboard(\"settings/profile\");", source);
-        Assert.Contains("menu.Items.Add(_setUpProfileItem);", source);
         Assert.DoesNotContain("ProfileCompletionDialog", source);
         Assert.DoesNotContain("CompleteProfileAsync", source);
         Assert.DoesNotContain("ProfileCompletionDeclineStore", source);

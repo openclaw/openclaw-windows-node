@@ -50,16 +50,16 @@ public sealed class PinnedPageRowsTests
     public void RemovingAPin_ReturnsOnlyThatRowAndKeepsTheRest()
     {
         var (rows, items, _) = Create();
-        Sync(rows, items, "channels", "usage", "skills");
+        Sync(rows, items, "channels", "usage", "cron");
         var channels = items[2];
         var usage = items[3];
-        var skills = items[4];
+        var cron = items[4];
 
-        var removed = Sync(rows, items, "channels", "skills");
+        var removed = Sync(rows, items, "channels", "cron");
 
         Assert.Same(usage, Assert.Single(removed));
         Assert.Same(channels, items[2]);
-        Assert.Same(skills, items[3]);
+        Assert.Same(cron, items[3]);
     }
 
     [Fact]

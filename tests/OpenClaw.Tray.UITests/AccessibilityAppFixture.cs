@@ -5,6 +5,9 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,6 +40,7 @@ public sealed class AccessibilityAppFixture : IDisposable
     private readonly string? _nativeChatProofVisualDirectory;
     private readonly string _navigationSignalPath;
     private readonly Process _process;
+    private readonly int _mcpPort = AllocateMcpPort();
 
     public IntPtr HubWindowHandle { get; private set; }
 
@@ -57,7 +61,9 @@ public sealed class AccessibilityAppFixture : IDisposable
         _chatFixture = chatFixture;
         _syntheticData = syntheticData;
         _agentIdentities = agentIdentities;
-        _executablePath = Path.Combine(AppContext.BaseDirectory, "OpenClaw.Tray.WinUI.exe");
+        _executablePath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP") is { Length: > 0 } appPath
+            ? OpenClaw.GatewayFixtureHost.GatewayFixtureProfile.ValidateApp(appPath)
+            : Path.Combine(AppContext.BaseDirectory, "OpenClaw.Tray.WinUI.exe");
         if (!File.Exists(_executablePath))
         {
             throw new FileNotFoundException(
@@ -414,8 +420,17 @@ public sealed class AccessibilityAppFixture : IDisposable
     /// set fixture-specific OPENCLAW_* variables after this call. Product code that reads the OS
     /// known folders directly is not redirected by environment variables.
     /// </summary>
-    internal static void ApplyProfileIsolation(IDictionary<string, string?> environment, string runDirectory)
+    internal static int AllocateMcpPort()
     {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        return ((IPEndPoint)listener.LocalEndpoint).Port;
+    }
+
+    internal static void ApplyProfileIsolation(IDictionary<string, string?> environment, string runDirectory, int mcpPort)
+    {
+        if (mcpPort is < 1 or > 65535 or 8765 or 18789)
+            throw new ArgumentOutOfRangeException(nameof(mcpPort), "A dedicated, non-default MCP port is required.");
         foreach (var key in environment.Keys.Where(k => k.StartsWith("OPENCLAW_", StringComparison.OrdinalIgnoreCase)).ToList())
             environment.Remove(key);
         var appDataRoot = Path.Combine(runDirectory, "roaming-root");
@@ -426,6 +441,7 @@ public sealed class AccessibilityAppFixture : IDisposable
         environment["OPENCLAW_TRAY_APPDATA_DIR"] = appDataRoot;
         environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"] = localAppDataRoot;
         environment["OPENCLAW_TRAY_LOCAL_DATA_DIR"] = Path.Combine(localAppDataRoot, "OpenClawTray");
+        environment["OPENCLAW_MCP_PORT"] = mcpPort.ToString(CultureInfo.InvariantCulture);
     }
 
     private Process StartProcess(string? deepLink)
@@ -433,11 +449,11 @@ public sealed class AccessibilityAppFixture : IDisposable
         var startInfo = new ProcessStartInfo(_executablePath)
         {
             UseShellExecute = false,
-            WorkingDirectory = AppContext.BaseDirectory,
+            WorkingDirectory = Path.GetDirectoryName(_executablePath)!,
         };
         if (deepLink is not null)
             startInfo.ArgumentList.Add(deepLink);
-        ApplyProfileIsolation(startInfo.Environment, _dataDirectory);
+        ApplyProfileIsolation(startInfo.Environment, _dataDirectory, _mcpPort);
         startInfo.Environment["OPENCLAW_SKIP_UPDATE_CHECK"] = "1";
         startInfo.Environment["OPENCLAW_FORCE_ONBOARDING"] = "0";
         startInfo.Environment["OPENCLAW_LANGUAGE"] = "en-US";

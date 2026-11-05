@@ -64,14 +64,16 @@ public sealed class PermissionSettingsWriterRoutingTests
     }
 
     [Fact]
-    public async Task Executor_Toggle_SurfacesRuntimeApplyFailure()
+    public void Executor_Toggle_ContainsRuntimeApplyFailure()
     {
         using var temp = new TempDir();
         var settings = new SettingsManager(temp.Path);
         using var store = new SettingsStore(settings, new RecordingUiDispatcher());
         var executor = new HubCommandExecutor(() => settings, () => store, _ => { });
-        await Assert.ThrowsAsync<InvalidOperationException>(() => { executor.Execute(
-            Toggle(HubSettingToggle.ScreenCapture), _ => { }, () => throw new InvalidOperationException("apply")); return Task.CompletedTask; });
+        var applied = 0;
+        executor.Execute(Toggle(HubSettingToggle.ScreenCapture), _ => { },
+            () => { applied++; throw new InvalidOperationException("apply"); });
+        Assert.Equal(1, applied);
     }
 
     [Fact]
@@ -110,12 +112,17 @@ public sealed class PermissionSettingsWriterRoutingTests
         Assert.Contains("WorkspaceSearchFlyout", xaml);
         Assert.DoesNotContain("Navigate(", open);
         Assert.Contains("_settings.OpenCommandCenter()", open);
-        Assert.Contains("WorkspaceSearchFlyout.ShowAt", open);
+        Assert.Contains("_workspaceSearchShow.ShowAt(anchor)", open);
+        Assert.Contains("new FlyoutShowRequest(WorkspaceSearchFlyout, OpenCommandCenter)", workspace);
+        Assert.Contains("Root.IsLoaded", open);
+        Assert.Contains("OpenModalDialog() is { } dialog", open);
+        Assert.Contains("_commandCenterPending", open);
+        Assert.Contains("dialog.Closed +=", open);
         Assert.Contains("HubCommandCatalog.Build(_state", workspace);
         Assert.Contains("_commandExecutor.Execute(command, OnSettingsWorkspaceRoute, () => SettingsSaved?.Invoke(this, EventArgs.Empty))", submitted);
         Assert.Contains("TitleSearchBox.PlaceholderText", workspace);
         Assert.Contains("VirtualKey.E", keyDown);
-        Assert.DoesNotContain("IsSettingsVisible && e.Key", keyDown);
+        Assert.Contains("(IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)", keyDown);
         Assert.DoesNotContain("Ctrl+F", workspace);
     }
 

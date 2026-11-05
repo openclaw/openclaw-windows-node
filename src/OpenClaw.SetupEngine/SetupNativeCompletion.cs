@@ -1,7 +1,7 @@
 namespace OpenClaw.SetupEngine;
 
 // Values are persisted in restart receipts. Keep legacy channel destinations stable.
-public enum SetupNativeDestination { Chat = 0, WhatsApp = 1, Telegram = 2, Channels = 3, Skills = 4 }
+public enum SetupNativeDestination { Chat = 0, WhatsApp = 1, Telegram = 2, Channels = 3 }
 
 /// <summary>A UI destination, not a model role or an authorization claim.</summary>
 public sealed record SetupNativeTarget(SetupNativeDestination Destination, string SessionKey)
@@ -25,7 +25,19 @@ public sealed record SetupNativeTarget(SetupNativeDestination Destination, strin
 }
 
 public sealed record SetupNativeCompletion(GatewayAiSetupCompletion Verification, SetupNativeTarget Target);
-public sealed record SetupVerifiedNativeRoute(GatewayAiSetupCompletion Verification, string SessionKey);
+public sealed record SetupVerifiedNativeRoute(GatewayAiSetupCompletion Verification, string SessionKey,
+    SetupNativeReadyBinding? ReadyBinding = null);
+
+/// <summary>Finalized setup awaiting normal-runtime verification. It authorizes no destination.</summary>
+public sealed record SetupNativePreparation(GatewayAiSetupCompletion Verification, string SessionKey)
+{
+    public bool IsValid => Matches(Verification, SessionKey);
+
+    public static bool Matches(GatewayAiSetupCompletion proof, string? sessionKey) =>
+        proof.VerifiedGeneration > 0 && proof.ModelTarget is null &&
+        SetupCompletionAuthority.IsValid(proof.IdentityBinding, proof.SessionKey, proof.AgentId) &&
+        sessionKey == proof.SessionKey;
+}
 
 public sealed class SetupNativeOwnershipException : InvalidOperationException
 {
@@ -53,7 +65,7 @@ public static class SetupNativeVerification
             proof.RequiresManagedLocalAi != expected.RequiresManagedLocalAi ||
             !SetupCompletionAuthority.IsValid(expected.IdentityBinding, expected.SessionKey, expected.AgentId) ||
             proof.IdentityBinding != expected.IdentityBinding || proof.SessionKey != expected.SessionKey ||
-            !new SetupNativeTarget(SetupNativeDestination.Chat, current.SessionKey).Matches(proof))
+            !SetupNativePreparation.Matches(proof, current.SessionKey))
             throw new SetupNativeOwnershipException();
     }
 

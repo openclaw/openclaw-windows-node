@@ -1,3 +1,12 @@
+// <summary>
+// Owns the immutable, pinned model recipes and launch profiles offered by Local AI. Fresh selection
+// uses current entries only, while receipt validation may resolve legacy pins without re-offering them.
+// Usage:
+//   LocalModelInfo? model = LocalModelCatalog.Find(modelId);
+//   var profiles = LocalModelCatalog.GetProfiles(model!);
+//   long bytes = LocalModelCatalog.TotalDownloadSizeBytes(model!);
+// </summary>
+
 using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 
@@ -48,7 +57,8 @@ public sealed record LocalModelRunRecipe
         int draftAttentionLayerCount = 1,
         int? promptCacheMiB = null,
         int? maximumContextCheckpoints = null,
-        int? draftGpuLayers = null)
+        int? draftGpuLayers = null,
+        PinnedArtifact? visionProjector = null)
     {
         if (speculativeDecoding == SpeculativeDecodingMode.DraftDFlash && draftWeights is null)
             throw new ArgumentException("Draft-flash decoding requires a pinned draft checkpoint.", nameof(draftWeights));
@@ -97,6 +107,7 @@ public sealed record LocalModelRunRecipe
         PromptCacheMiB = promptCacheMiB;
         MaximumContextCheckpoints = maximumContextCheckpoints;
         DraftGpuLayers = draftGpuLayers;
+        VisionProjector = visionProjector;
     }
 
     public int BatchTokens { get; }
@@ -120,6 +131,8 @@ public sealed record LocalModelRunRecipe
     public int? MaximumContextCheckpoints { get; }
     /// <summary>GPU layers for a separate DFlash drafter, or null for the runtime default.</summary>
     public int? DraftGpuLayers { get; }
+    /// <summary>The independently pinned multimodal projector (mmproj) that lets the model read images, or null for text-only recipes.</summary>
+    public PinnedArtifact? VisionProjector { get; }
 }
 
 /// <summary>A downloadable GGUF model and its deterministic llama-server recipe.</summary>
@@ -136,7 +149,8 @@ public sealed record LocalModelInfo(
     int RecommendationPriority = 0,
     string RuntimeFamily = "llama.cpp",
     long MinimumSystemMemoryBytes = 0,
-    long MinimumFreeDiskBytes = 0);
+    long MinimumFreeDiskBytes = 0,
+    LocalCustomModelRecipe? CustomRecipe = null);
 
 /// <summary>The capacity-sensitive settings selected for one model launch.</summary>
 public sealed record LocalInferenceRunProfile
@@ -174,11 +188,13 @@ public sealed record LocalInferenceRunProfile
     public long RuntimeWorkspaceBytes { get; }
 }
 
-/// <summary>Immutable Hugging Face model pins offered by the Windows local inference flow.</summary>
+/// <summary>
+/// Provides pinned Local AI models, profiles, and receipt-aware lookup helpers.
+/// </summary>
 public static partial class LocalModelCatalog
 {
     public const string Bonsai2ModelId = "bonsai-2-27b-ptq1-0";
-    public const string NemotronBoltModelId = "nemotron-3.5-bolt-74b-a9b-iq2-lilicorr";
+    public const string NemotronBoltModelId = "nemotron-3.5-bolt-74b-a9b-24gb";
     public const string Qwen38_27BModelId = "qwen3.8-27b-mtp-ud-q4-k-m";
     public const string Qwen35BModelId = "qwen3.6-35b-a3b-mtp-q4-k-m";
     public const string Qwen27BModelId = "qwen3.6-27b-mtp-q4-k-m";
@@ -463,20 +479,33 @@ public static partial class LocalModelCatalog
 
     public static IReadOnlyList<LocalModelInfo> ExplicitAlternatives => s_explicitAlternatives;
 
+    /// <summary>Returns the supported profiles for a catalog or receipt-backed custom model.</summary>
     public static IReadOnlyList<LocalInferenceRunProfile> GetProfiles(LocalModelInfo model)
     {
         ArgumentNullException.ThrowIfNull(model);
+        if (model.CustomRecipe is { } custom)
+            return LocalCustomModel.GetProfiles(custom);
         return s_profilesByModel.TryGetValue(model.Id, out ReadOnlyCollection<LocalInferenceRunProfile>? profiles)
             ? profiles
             : throw new ArgumentException("The model is not part of the local inference catalog.", nameof(model));
     }
 
+    /// <summary>
+    /// True when an installed receipt must be re-evaluated against its recorded plan
+    /// rather than re-selected from the catalog (Bolt's fixed tiers, custom models).
+    /// </summary>
+    public static bool RequiresRecordedProfile(string? id) =>
+        string.Equals(id, NemotronBoltModelId, StringComparison.OrdinalIgnoreCase) ||
+        LocalCustomModel.IsCustomId(id);
+
+    /// <summary>Finds a profile by its stable receipt identifier.</summary>
     public static LocalInferenceRunProfile? FindProfile(LocalModelInfo model, string? profileId) =>
         string.IsNullOrWhiteSpace(profileId)
             ? null
             : GetProfiles(model).SingleOrDefault(profile =>
                 string.Equals(profile.Id, profileId, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Finds a profile by its persisted capacity and cache-precision settings.</summary>
     public static LocalInferenceRunProfile? FindProfile(
         LocalModelInfo model,
         int contextTokens,
@@ -491,6 +520,7 @@ public static partial class LocalModelCatalog
             profile.DraftKeyCachePrecision == draftKeyCachePrecision &&
             profile.DraftValueCachePrecision == draftValueCachePrecision);
 
+    /// <summary>Converts a cache precision to the llama-server command-line value.</summary>
     public static string ToLlamaServerCacheType(KvCachePrecision precision) => precision switch
     {
         KvCachePrecision.F16 => "f16",
@@ -498,6 +528,7 @@ public static partial class LocalModelCatalog
         _ => throw new ArgumentOutOfRangeException(nameof(precision)),
     };
 
+    /// <summary>Converts a cache precision to its user-facing display value.</summary>
     public static string ToDisplayCacheType(KvCachePrecision precision) => precision switch
     {
         KvCachePrecision.F16 => "F16",
@@ -505,6 +536,7 @@ public static partial class LocalModelCatalog
         _ => throw new ArgumentOutOfRangeException(nameof(precision)),
     };
 
+    /// <summary>Finds a model currently offered for fresh Local AI selection.</summary>
     public static LocalModelInfo? Find(string? id) =>
         string.IsNullOrWhiteSpace(id)
             ? null
@@ -540,7 +572,7 @@ public static partial class LocalModelCatalog
 
     /// <summary>
     /// Everything setup downloads and llama-server loads for this recipe: the pinned
-    /// weights plus the DFlash draft checkpoint, if any. Use this for ranking, capacity
+    /// weights plus the DFlash draft checkpoint and vision projector, if any. Use this for ranking, capacity
     /// checks, and user-facing download-size disclosure -- the draft checkpoint is a
     /// separate pinned artifact, not part of the target model's own weights, but it is
     /// still bytes the user consents to, setup fetches, and the runtime loads.
@@ -548,20 +580,18 @@ public static partial class LocalModelCatalog
     public static long TotalDownloadSizeBytes(LocalModelInfo model)
     {
         ArgumentNullException.ThrowIfNull(model);
-        return model.Weights.SizeBytes + (model.Recipe.DraftWeights?.SizeBytes ?? 0);
+        return model.Weights.SizeBytes + AdditionalArtifacts(model).Sum(artifact => artifact.SizeBytes);
     }
 
     /// <summary>
     /// The recipe's additional pinned artifacts beyond its primary weights, in the
     /// fixed order every acquirer, manifest, and launch path must agree on. Today that
-    /// is the DFlash draft checkpoint, when the recipe pins one.
+    /// is the DFlash draft checkpoint, then the vision projector, each when the recipe pins one.
     /// </summary>
     public static ImmutableArray<PinnedArtifact> AdditionalArtifacts(LocalModelInfo model)
     {
         ArgumentNullException.ThrowIfNull(model);
-        return model.Recipe.DraftWeights is { } draftWeights
-            ? [draftWeights]
-            : ImmutableArray<PinnedArtifact>.Empty;
+        return [.. new[] { model.Recipe.DraftWeights, model.Recipe.VisionProjector }.OfType<PinnedArtifact>()];
     }
 
     private static LocalInferenceRunProfile[] CreateProfiles(LocalModelInfo model) =>
