@@ -4098,7 +4098,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         EnsureSshTunnelConfigured,
         () => TryResolveChatCredentials(out var url, out var token, out var source, out var bootstrap, setupCompletion)
             ? new InteractiveGatewayCredential(url, token, bootstrap, source) : null,
-        async url => await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url)),
+        new DashboardBrowser(
+            async url => await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url)), Logger.Info).OpenAsync,
         reportFailure,
         () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId));
 

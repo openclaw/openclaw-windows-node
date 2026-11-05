@@ -97,28 +97,9 @@ public sealed partial class GatewayFixtureUiTests
                         await sender.WaitForExitAsync();
                     }
                 }
-                await run.WaitForAsync(async () =>
-                {
-                    var receiptPath = Path.Combine(run.Profile.DataDirectory, "setup-dashboard-handoff", "pending.json");
-                    if (!File.Exists(receiptPath)) return target == SetupNativeDestination.Chat;
-                    if (target == SetupNativeDestination.Chat) return false;
-                    string text;
-                    try
-                    {
-                        // The app writes the receipt via a temp file plus File.Move(..., overwrite: true);
-                        // the read can lose that race even after File.Exists, so treat IO errors as not-yet.
-                        await using var stream = new FileStream(receiptPath, FileMode.Open, FileAccess.Read,
-                            FileShare.ReadWrite | FileShare.Delete);
-                        using var reader = new StreamReader(stream);
-                        text = await reader.ReadToEndAsync();
-                    }
-                    catch (IOException)
-                    {
-                        return false;
-                    }
-                    using var receipt = JsonDocument.Parse(text);
-                    return receipt.RootElement.GetProperty("State").GetString() == "retry";
-                }, description: "native request settled after rejecting the unavailable destination", timeout: HandoffSettleTimeout);
+                var receiptPath = Path.Combine(run.Profile.DataDirectory, "setup-dashboard-handoff", "pending.json");
+                await run.WaitForAsync(() => Task.FromResult(!File.Exists(receiptPath)),
+                    description: "native request consumed", timeout: HandoffSettleTimeout);
                 Assert.Contains(run.Gateway.Requests,
                     request => request.Method == "openclaw.setup.verify" && request.Outcome == "ok");
                 var registry = new GatewayRegistry(run.Profile.DataDirectory);

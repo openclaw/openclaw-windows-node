@@ -58,6 +58,22 @@ ordinary selected conversation. Existing warning recovery coverage checks the
 navigation path; the shutdown guard has a mounted WindowManager case. These
 are behavioral handoff checks, not source-text ordering assertions.
 
+Channels management lives in the Gateway Dashboard, and the native Channels
+page no longer exists. Four cases in `GatewayFixtureDashboardUiTests` keep its
+entry points honest through the real app: a legacy receipt whose destination is
+Channels, `app.navigate channels` and the owner menu's **Pair device** item.
+A valid receipt performs one `openclaw.setup.verify` and then one Dashboard
+launch for `/channels` on the fixture Gateway's port. A receipt whose persisted
+device identity is rotated while verification is held is rejected with the
+"Gateway or agent changed" dialog (no Retry), consumes the receipt and never
+launches. A simulated browser failure shows the matching Retry dialog, keeps a
+receipt for explicit retry, and Retry launches and consumes it. The launch
+evidence is the redacted line described in the isolation contract, because
+fixture mode does not start a browser or serve the Dashboard page.
+Replacement of the active Gateway and the final dispatch authorizer are covered
+at launcher level by `SetupDashboardDispatchRequiresTheOriginalGatewayAndIdentity`,
+not by a full-app case.
+
 Build the current app first, then pass its executable explicitly. An installed
 app is never discovered or selected implicitly.
 
@@ -444,6 +460,20 @@ guarded. A loopback URL alone is not enough to prevent the regular keepalive
 policy from considering the installed default WSL distro. Sensitive node
 capabilities, automatic repair, hotkeys, notifications and voice are disabled
 in the synthetic settings. Telemetry export remains unconfigured.
+
+Opening the Gateway Dashboard is also a host side effect. A launch that goes
+through App's `GatewayDashboardLauncher` (the Dashboard buttons and menu items,
+setup receipts and `app.navigate`) ends in `DashboardBrowser`. Outside fixture
+mode it hands the exact URL to Windows. In fixture mode it never reaches the
+user's default browser: it logs `Gateway fixture mode: suppressed Dashboard
+browser launch:` plus the redacted target (`http://<host>:PORT/channels`, never
+the credential fragment) and reports success. Creating
+`dashboard-browser-failure.once` in the run's profile directory arms one
+simulated browser failure: the next launch deletes the file, logs `simulated
+Dashboard browser failure` and returns the failure Windows would. An invalid
+fixture context fails closed instead of reaching the browser. Other places that
+call Windows directly, such as the Connection page's saved-gateway row action,
+are outside this guard and must not be invoked from a fixture test.
 
 The fake binds a numeric IPv4 loopback listener to an OS-assigned port. The
 launcher never takes over a standard Gateway/MCP port or terminates a process

@@ -564,6 +564,7 @@ public sealed class AppRefactorContractTests
         var launcher = source[source.IndexOf("private GatewayDashboardLauncher CreateDashboardLauncher", StringComparison.Ordinal)..];
         launcher = launcher[..launcher.IndexOf("// ── IAppCommands", StringComparison.Ordinal)];
         Assert.Contains("EnsureSshTunnelConfigured,", launcher);
+        Assert.Contains("new DashboardBrowser(", launcher);
         Assert.DoesNotContain("Process.Start", launcher);
         Assert.Contains("ShowDashboardLaunchFailureAsync", method);
         Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build", method);
