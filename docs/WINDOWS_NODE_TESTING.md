@@ -39,33 +39,67 @@ non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
 equivalent to visible native history proof. Streaming still needs separate
 coverage.
 
-Both Reactor packages use `0.1.0-preview.16`. Its ItemsView row eviction
-(introduced in preview.13) depends on
-[microsoft/microsoft-ui-xaml#11865](https://github.com/microsoft/microsoft-ui-xaml/issues/11865)
-for reliable Chat scrolling, and that fix has not been released and validated yet.
-Markdown list content wraps by default since preview.15
-([microsoft/microsoft-ui-reactor#1197](https://github.com/microsoft/microsoft-ui-reactor/pull/1197)),
-so Chat no longer overrides `MarkdownOptions.ListItem`.
+Both Reactor packages use `0.1.0-preview.16`, which includes the recycled-anchor
+workaround from
+[microsoft/microsoft-ui-reactor#1214](https://github.com/microsoft/microsoft-ui-reactor/pull/1214).
+This is a Reactor workaround for
+[microsoft/microsoft-ui-xaml#11865](https://github.com/microsoft/microsoft-ui-xaml/issues/11865),
+not evidence of a released native WinUI fix. Keep the existing row-targeted
+`StartBringItemIntoView` scrolling rather than the application-side extent-only
+workaround from #1407.
+
+Rechecked on 2026-10-22: `0.1.0-preview.16` remains the latest published version,
+including previews, in the authoritative NuGet feeds for
+[Microsoft.UI.Reactor](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor/index.json)
+and [Microsoft.UI.Reactor.Advanced](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor.advanced/index.json),
+and the [upstream releases](https://github.com/microsoft/microsoft-ui-reactor/releases).
+Keep both references aligned. The core package requires `System.Drawing.Common`
+`10.0.12` or newer; the tray's direct reference meets that floor.
+
+Preview.16 enforces pooled-control resets with `REACTOR_POOL_001`. Chat uses
+Reactor's declarative `HelpText`, `ToolTip` and `ItemStatus` modifiers instead of
+writing those properties inside `.Set` callbacks. Keep that analyzer enabled:
+Reactor owns applying and clearing this metadata when keyed controls update or
+are recycled. Mounted welcome, queued-message and fixture-observation tests in
+`ReactorChatLayoutProofTests` protect those transitions.
+
+`ReactorChatTimeline.BuildSafeMarkdown` uses Reactor's default Auto-marker/
+Star-content Grid list layout from
+[microsoft/microsoft-ui-reactor#1197](https://github.com/microsoft/microsoft-ui-reactor/pull/1197)
+instead of the preview.12 `MarkdownOptions.ListItem` override. That override
+assumed a horizontal StackElement and is incompatible with the upstream Grid.
+Sanitization, parser flags, inert links/images and custom block presentation
+remain application-owned.
 
 Run `ReactorMarkdownListProofTests` in `OpenClaw.Tray.UITests` on the host's
 native architecture. These mounted tests check ordered/unordered wrapping at
 240 DIPs, reflow at 600 DIPs, and nested/loose list content and formatting.
 Keep the existing table and disposal proof in the focused run.
 
-Before release, exercise repeated session switching while a bring-into-view
-request is pending, using 240 mixed-height messages. Verify that message 240 is
-actually visible, not just that the current scroll extent was reached. Verify
-streaming tail-follow and arrivals while scrolled up. Do not substitute
-extent-only scrolling: the alternative workaround stopped near message 233 in
-the reported scenario.
-
 The Systems page relies on two preview.13 fixes: reconciling a ContentDialog
 while it is open (microsoft/microsoft-ui-reactor#1073) and clearing pooled Border
 backgrounds so `Theme.Ref` fills survive reuse (microsoft/microsoft-ui-reactor#952).
 On the `systems-inventory` fixture, switch between machines and confirm that every
 statistics tile keeps its fill and every sparkline sample bar is visible.
+
+Before release, also exercise repeated session switching
+while a bring-into-view request is pending, using 240 mixed-height messages.
+`GatewayFixtureUiTests.RepeatedSessionSwitchingKeepsNativeTimelineResponsive`
+provides a separate, bounded 12-cycle A/B scrolling and session-switch smoke.
+It checks actual visible session-specific text, app responsiveness and absence
+of a crash log without depending on final-row placement. The existing strict
+message-240 test is unchanged: a passing responsiveness smoke does not excuse a
+failed tail assertion, guarantee an in-flight native bring request, or prove
+that the layout-cycle crash is fixed. The fixture uses a synthetic Gateway,
+not a real Gateway or a reporter's history.
+Verify that message 240 is actually visible, not just that the current scroll
+extent was reached. Verify streaming tail-follow and arrivals while scrolled
+up. Do not substitute extent-only scrolling: the alternative workaround
+stopped near message 233 in the reported scenario.
 [Tracking issue #1424](https://github.com/openclaw/openclaw-windows-node/issues/1424)
-owns the Chat validation gates.
+tracks the package upgrade and remaining runtime proof gates. The version bump
+alone does not establish that the crash, tail-follow, or reader-position reports
+are resolved.
 
 ### New command MCP contract
 
@@ -388,6 +422,41 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   ```powershell
   .\scripts\validate-mxc-e2e.ps1
   ```
+
+### `system.run` failure outcomes
+
+- An explicit pre-execution security, ask, allowlist, or user denial, including a
+  revoked approval, carries `error.code = "SYSTEM_RUN_DENIED"` in both Gateway
+  `node.invoke.result` and legacy invocation responses. The message is retained.
+  This lets the Gateway distinguish a definite denial from an unknown outcome.
+  Disabling Run system tools after command registration also returns this code
+  for `system.run` and `system.run.prepare`, before approval dispatch or execution.
+  Handler exceptions, failed or unavailable policy revalidation, command timeouts, and
+  failures after process launch do not acquire this code. The same distinction
+  applies at the SDK prelaunch boundary: confirmed approval or permission
+  revocation is a policy denial, while unavailable revalidation is an internal
+  failure. Both prevent launch.
+  A malformed, unreadable, unsupported or untrusted approval store is unavailable
+  policy, not proof that the owner revoked approval. Initial authorization,
+  post-prompt checks and execution-boundary revalidation retain that distinction
+  from the same policy read, fail closed and do not emit `SYSTEM_RUN_DENIED`.
+  With no legacy store pending migration, a missing current store still uses
+  the normal fresh-policy defaults.
+  Presenter exceptions, failed dispatcher enqueue, dialog errors and cancelled
+  prompts fail closed as `InternalError (prompt-failed)` without using
+  `askFallback` or claiming a user refusal. An expired unanswered prompt likewise
+  remains `InternalError (prompt-timeout)`, even if a late answer arrives.
+  Confirmed policy tightening while a
+  prompt is open retains the `ValidationFailed` result code, with typed
+  definite-denial provenance so the Gateway receives `SYSTEM_RUN_DENIED`.
+- A contained, non-timeout process exit `0xC0000142` (`STATUS_DLL_INIT_FAILED`)
+  includes a diagnostic explaining that Windows UI APIs (USER32) or another DLL
+  dependency can be involved. The original exit code, output, native error detail,
+  and containment remain unchanged. The current SDK policy already enables
+  contained Windows UI API compatibility; there is no user-controlled UI opt-in.
+  This is contextual troubleshooting guidance, not proof that every DLL
+  initialization failure has the same cause. The diagnostic does not alter
+  permissions, retry the command, or fall back to host execution.
 
 ### Full Gateway `system.run` MXC runtime proof
 - The focused E2E below provisions a fresh WSL Gateway, starts an isolated tray instance with fixed contained Windows UI API compatibility, sets local exec approval policy, invokes the real Gateway `node.invoke` path, and checks SDK admission/execution and protected writes. Native `MxcCommandRunnerIntegrationTests.NativeSdk_DefaultPolicyStartsPowerShellWithoutOptIn` additionally verifies PowerShell startup and output with default settings, without enabling an opt-in. **Provisioning is a runtime mutation and requires authorization.** If it is forbidden, record this gate as blocked rather than launching it or using `-AllowSkip` as validation.

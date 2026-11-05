@@ -128,10 +128,10 @@
                         Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                     <StackPanel Spacing="8">
-                        <TextBlock x:Name="ErrorText" TextWrapping="Wrap"
+                        <TextBlock x:Name="ErrorText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                    FontSize="13" FontFamily="Cascadia Code,Consolas,monospace"
                                    Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
-                        <TextBlock x:Name="ServerDiagnosticsText" TextWrapping="Wrap"
+                        <TextBlock x:Name="ServerDiagnosticsText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                    Visibility="Collapsed"
                                    FontSize="12" FontFamily="Cascadia Code,Consolas,monospace"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />

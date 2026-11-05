@@ -16,7 +16,7 @@ public sealed class WorkspaceChatRemovalContractTests
         @"src\OpenClaw.Tray.WinUI\Presentation\LocalAiPageViewModel.cs",
         @"src\OpenClaw.Tray.WinUI\Presentation\HubPageRegistry.cs",
         @"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs",
-        @"src\OpenClaw.Tray.WinUI\Windows\HubWindow.xaml.cs",
+        @"src\OpenClaw.Tray.WinUI\Controls\SettingsShellView.xaml.cs",
         @"src\OpenClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs",
         @"src\OpenClaw.Tray.WinUI\Chat\DebugChatSurfaceOverrides.cs",
         @"src\OpenClaw.Tray.WinUI\Chat\ReactorChatHostExtensions.cs",
@@ -71,9 +71,11 @@ public sealed class WorkspaceChatRemovalContractTests
         Assert.DoesNotMatch(@"\bvoid\s+ShowChat\s*\(", Read(@"src\OpenClaw.Tray.WinUI\Services\IWindowManager.cs"));
         Assert.DoesNotMatch(@"\bIAppCommands\.ShowChat\b", Read(@"src\OpenClaw.Tray.WinUI\App.xaml.cs"));
         Assert.DoesNotMatch(@"\b(?:HubChat|TrayChat)\b", Read(@"src\OpenClaw.Tray.WinUI\Chat\DebugChatSurfaceOverrides.cs"));
-        Assert.DoesNotMatch(@"\bpublic\s+(?:string\?|bool)\s+(?:PendingChatSessionKey|PendingAutoStartVoice)\s*\{",
-            Read(@"src\OpenClaw.Tray.WinUI\Windows\HubWindow.xaml.cs"));
-        Assert.DoesNotMatch(@"\bVoiceServiceInstance\b", Read(@"src\OpenClaw.Tray.WinUI\Windows\HubWindow.xaml.cs"));
+        var settingsView = Read(@"src\OpenClaw.Tray.WinUI\Controls\SettingsShellView.xaml.cs");
+        Assert.DoesNotMatch(@"\bpublic\s+(?:string\?|bool)\s+(?:PendingChatSessionKey|PendingAutoStartVoice)\s*\{", settingsView);
+        Assert.DoesNotMatch(@"\bVoiceServiceInstance\b", settingsView);
+        Assert.DoesNotMatch(@"new\s+ChatPage\b|typeof\(ChatPage\)|\bMountReactorChat\b", settingsView);
+        Assert.False(File.Exists(Path.Combine(Root, "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs")));
         Assert.DoesNotMatch(@"\bGetVoiceService\b", Read(@"src\OpenClaw.Tray.WinUI\Services\WindowManager.cs"));
         Assert.DoesNotMatch(@"\b_hub\b", Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs"));
         Assert.DoesNotMatch(@"\b(?:public|internal)\s+void\s+Initialize\s*\(\s*\)", Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs"));

@@ -96,7 +96,96 @@ cleanup; there is no fallback to manually deleting registry keys or directories.
 This option removes profile registrations and files, not unrecorded MXC backend
 sessions or local accounts, and does not replace supported native teardown.
 
-The apply run saves a target plan, transcript, native teardown output, and
+### One owned development patch and disposable Companion data
+
+Use `-IsolatedOnly` for a side-by-side development patch, never the default
+command above. This mode does not select ordinary Companion/MSIX/Inno installs,
+Store Gateway, startup entries, other patches, Windows profile registrations,
+WSL or external model caches. It keeps the registered layout and payloads.
+Do not combine it with `-All`, `-IncludeDev`, `-RemoveCachedModels`,
+`-RemoveWslGateway`, `-AdditionalProfilePath`, `-RemoveIsolatedProfilePath` or
+`-ReportDirectory`. `-ExcludeCachedModels` is accepted but redundant.
+
+Before preview, independently inventory the exact patch name, package full name,
+registered layout, task-owned Companion executable and disposable data directories.
+The caller must verify PID, executable, creation time and profile ownership, then
+obtain destructive consent and stop only its owned Companion instance separately.
+**This mode never stops processes.** It rejects the selected Companion executable,
+processes executing inside selected roots, candidate processes mentioning a selected
+profile and candidate processes with unknown executable ownership. Identifiable
+unrelated tray/model processes outside these roots may continue running.
+
+Executable identity cannot prove which directories an unrelated process has open,
+especially when it uses environment-based profile overrides. The caller must
+independently verify that no other process/session uses any disposable directory.
+Do not run concurrent setup, launch, package deployment or profile writers.
+The source-build mutex excludes cooperating native source builds/unregisters,
+not every possible external writer. Like ordinary cleanup, this is not a
+hostile-filesystem/race-proof sandbox.
+
+Run both commands from **Windows PowerShell 5.1 as the same affected user**.
+Arrays should be supplied by invoking the script inside PowerShell, not flattened
+into a `powershell.exe -File` argument string:
+
+```powershell
+$scope = @{
+    IsolatedOnly = $true
+    GatewayPatch = 'pr225-test'
+    GatewayPackageFullName = '<exact full name from current-user Get-AppxPackage>'
+    GatewayInstallLocation = 'C:\OpenClawDev\owned-packaging\artifacts\local-package\patches\pr225-test\x64\layout'
+    CompanionExecutablePath = 'C:\OwnedBuild\OpenClaw.Tray.WinUI.exe'
+    DisposableProfilePath = @('C:\DisposableTest\roaming', 'C:\DisposableTest\local')
+}
+.\clean-uninstall.ps1 @scope
+
+# Review every printed target and obtain consent before applying.
+# Copy the digest printed by this exact preview. Never reuse an older digest.
+.\clean-uninstall.ps1 @scope -ConfirmDestructive -ExpectedPreviewSha256 '<preview SHA-256>'
+```
+
+These example paths are placeholders, not inventories or deletion authority.
+Preview is read-only and prints one digest without writing a report or launching
+the patch CLI. Apply requires that digest and rechecks package identity,
+development mode, exact layout/manifest aliases, package-bound schema-2 session
+ownership and its encoded `iso:` application's identity. Missing session state
+is accepted only without surviving setup evidence. Unsupported session encodings
+fail closed; use the matching supported lifecycle, never edit records to bypass
+ownership checks.
+
+The digest binds the affected user, exact registration/layout/manifest, Companion
+binary, session record, WSL storage inventory and complete disposable-profile
+inventory (including file hashes). Hashing large in-profile models can take time.
+A changed preview requires a new inventory, review and consent. Apply invokes only
+the package-qualified `clawctl-<patch>.exe teardown --force --json`, checks exit
+code, structured teardown states and session-record absence, then rechecks scope
+before deleting the named disposable Companion directories. Their fingerprints,
+process use, WSL storage and path guards are rechecked before each deletion. The
+patch registration is removed only after every selected directory is absent.
+Windows owns packaged data removal.
+
+If teardown succeeds but profile deletion fails, the patch registration remains.
+Resolve the specific lock or ownership issue, preview the same explicit scope
+again, review the new digest and targets, then apply with that digest. The native
+teardown may report `not-configured` on retry because its session was already
+removed. A profile deleted before a later profile fails is accepted as absent
+when the same explicit path is previewed again. If package unregister fails
+after profile deletion, the registration remains and the same re-preview/retry
+procedure applies. Never assume success or fall back to ordinary cleanup.
+
+Ordinary release/dev profiles, installed package trees, source checkouts, protected
+roots, overlapping profiles, configured shared caches and reparse-point paths or
+descendants cannot be selected. If a protected root itself or one of its parent
+directories is a reparse point, isolated cleanup refuses to proceed rather than
+risk treating its target as disposable. Shared cached model weights outside
+disposable profiles remain untouched. **All in-profile data, including model files, identities,
+settings and conversations, is destroyed.** Back up anything needed separately.
+No credentials or diagnostics are copied to a report in this mode. Success means
+the exact registration and explicitly selected Companion directories are absent,
+not that every historical isolated Windows account/profile was reclaimed.
+The real native CLI owns session/account teardown; ambiguous leftovers require
+separate ownership inventory and consent, not a filesystem sweep.
+
+The ordinary (non-isolated) apply run saves a target plan, transcript, native teardown output, and
 hash-verified copies of existing `openclaw-diagnostics-*.zip` files found in
 selected profiles. **It does not create a recoverable state/model backup.**
 Copy anything you need to retain before confirming. Reports may contain sensitive

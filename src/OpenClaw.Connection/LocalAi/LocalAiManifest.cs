@@ -1,9 +1,8 @@
 // <summary>
-// Canonical, companion-owned layout and persistence for local inference artifacts:
-// LocalAiPaths defines contained directory layout with reparse-point/traversal-safe path
-// resolution, LocalAiInstallManifest records the acquired runtime/model receipt, and
-// LocalAiManifestStore persists it with same-directory atomic replacement. Also holds port
-// and gateway-model validation policies shared by setup and runtime launch.
+// Canonical, companion-owned layout and persistence for local inference artifacts. LocalAiPaths defines
+// contained directory layout with reparse-point and traversal-safe resolution. LocalAiInstallManifest
+// records catalog or custom-model receipts, and LocalAiManifestStore validates and atomically persists them.
+// It also owns shared port and Gateway-model validation policies used by setup and runtime launch.
 // Usage:
 //   var paths = new LocalAiPaths(localDataDirectory);
 //   paths.EnsureDirectories();
@@ -53,6 +52,7 @@ public sealed class LocalAiPaths
     public string StandardOutputLogPath { get; }
     public string StandardErrorLogPath { get; }
 
+    /// <summary>Creates the companion-owned Local AI directory layout when it does not already exist.</summary>
     public void EnsureDirectories()
     {
         Directory.CreateDirectory(RootDirectory);
@@ -135,6 +135,10 @@ public sealed record LocalAiAssetReceipt
     public required string Sha256 { get; init; }
 }
 
+/// <summary>
+/// Immutable receipt for a catalog or custom Local AI installation. The manifest pins every executable
+/// and model artifact needed to validate, launch, migrate, or replace the managed runtime.
+/// </summary>
 public sealed record LocalAiInstallManifest
 {
     /// <summary>
@@ -154,6 +158,11 @@ public sealed record LocalAiInstallManifest
     /// pin use this; every existing single-asset recipe keeps writing schema 4.
     /// </summary>
     public const int AdditionalAssetsSchemaVersion = 5;
+    /// <summary>
+    /// Schema-4 layout for a user-supplied Hugging Face model. The receipt carries
+    /// the full <see cref="CustomModel"/> recipe, because no catalog entry pins it.
+    /// </summary>
+    public const int CustomModelSchemaVersion = 6;
     public const string SupportedEngine = "llama-server";
 
     /// <summary>
@@ -163,7 +172,7 @@ public sealed record LocalAiInstallManifest
     /// persisted -- an older app build would reject it as an unknown field.
     /// </summary>
     [JsonIgnore]
-    public bool UsesHubCache => SchemaVersion is HubCacheReceiptSchemaVersion or AdditionalAssetsSchemaVersion;
+    public bool UsesHubCache => SchemaVersion is HubCacheReceiptSchemaVersion or AdditionalAssetsSchemaVersion or CustomModelSchemaVersion;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public string Engine { get; init; } = SupportedEngine;
@@ -195,6 +204,12 @@ public sealed record LocalAiInstallManifest
     public required string ModelId { get; init; }
     public required string ModelAlias { get; init; }
     public required LocalAiAssetReceipt ModelAsset { get; init; }
+    /// <summary>
+    /// Schema-6 pin and GGUF-derived geometry for a user-supplied Hugging Face model.
+    /// Absent on every catalog receipt so older schemas stay byte-identical.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public LocalCustomModelRecipe? CustomModel { get; init; }
     /// <summary>
     /// Schema-5 receipts for additional model assets verified in the hub
     /// cache alongside <see cref="ModelAsset"/> (the draft checkpoint), in
@@ -260,6 +275,7 @@ public sealed record LocalAiInstallManifest
     public DateTimeOffset InstalledAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 
+/// <summary>Pairs a validated manifest with resolved executable, model, and optional verified endpoint paths.</summary>
 public sealed record LocalAiResolvedInstall(
     LocalAiInstallManifest Manifest,
     string ExecutablePath,
@@ -273,6 +289,7 @@ public enum LocalAiModelMigrationPhase
     VerifyingCacheCopy,
 }
 
+/// <summary>Reports byte progress while migrating a legacy model into the Hugging Face cache.</summary>
 public sealed record LocalAiModelMigrationProgress(
     LocalAiModelMigrationPhase Phase,
     long CompletedBytes,
@@ -360,6 +377,7 @@ public sealed class LocalAiManifestStore
             beforeMigrationCommit ?? (static _ => Task.CompletedTask),
             beforeMigrationPromotion ?? (static (_, _) => Task.CompletedTask));
 
+    /// <summary>Loads, validates, and resolves the persisted installation receipt, or null when none exists.</summary>
     public async Task<LocalAiResolvedInstall?> LoadAsync(CancellationToken cancellationToken = default)
     {
         if (!File.Exists(_paths.ManifestPath))
@@ -370,9 +388,8 @@ public sealed class LocalAiManifestStore
     }
 
     /// <summary>
-    /// Copies a canonical schema-3 model into the standard Hugging Face cache and
-    /// records a schema-4 receipt whose verified cache snapshot becomes active.
-    /// Passive manifest loads never invoke this operation.
+    /// Copies a legacy receipt into the verified Hugging Face cache layout. It returns null when no receipt
+    /// exists and leaves an already migrated receipt unchanged.
     /// </summary>
     public async Task<LocalAiResolvedInstall?> MigrateLegacyModelToHubCacheAsync(
         IProgress<LocalAiModelMigrationProgress>? progress = null,
@@ -475,6 +492,7 @@ public sealed class LocalAiManifestStore
         }
     }
 
+    /// <summary>Validates and atomically persists an installation receipt under its exclusive write lock.</summary>
     public async Task SaveAsync(LocalAiInstallManifest manifest, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(manifest);
@@ -526,6 +544,7 @@ public sealed class LocalAiManifestStore
         }
     }
 
+    /// <summary>Deletes the persisted installation receipt under its exclusive write lock.</summary>
     public async Task DeleteAsync(CancellationToken cancellationToken = default)
     {
         await using FileStream writeLock = await AcquireManifestWriteLockAsync(cancellationToken)
@@ -563,13 +582,15 @@ public sealed class LocalAiManifestStore
     private static bool IsSharingViolation(IOException exception) =>
         (exception.HResult & 0xFFFF) is 32 or 33;
 
+    /// <summary>Validates and resolves all paths and invariants in a manifest receipt.</summary>
     public LocalAiResolvedInstall ResolveAndValidate(LocalAiInstallManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         if (manifest.SchemaVersion is not (
                 LocalAiInstallManifest.CurrentSchemaVersion or
                 LocalAiInstallManifest.HubCacheReceiptSchemaVersion or
-                LocalAiInstallManifest.AdditionalAssetsSchemaVersion))
+                LocalAiInstallManifest.AdditionalAssetsSchemaVersion or
+                LocalAiInstallManifest.CustomModelSchemaVersion))
         {
             throw new InvalidDataException($"Unsupported local AI manifest schema version {manifest.SchemaVersion}.");
         }
@@ -615,6 +636,7 @@ public sealed class LocalAiManifestStore
         }
         ValidateAssetReceipt(manifest.ModelAsset, nameof(manifest.ModelAsset));
         HuggingFaceModelProvenance provenance = ValidateHuggingFaceModelProvenance(manifest);
+        ValidateCustomModel(manifest);
 
         var executable = _paths.ResolveContainedPath(manifest.ExecutablePath, nameof(manifest.ExecutablePath));
         if (!string.Equals(Path.GetFileName(executable), "llama-server.exe", StringComparison.OrdinalIgnoreCase))
@@ -680,6 +702,31 @@ public sealed class LocalAiManifestStore
                 !char.IsAsciiLetterOrDigit(character) && character is not ('-' or '_' or '.')))
         {
             throw new InvalidDataException($"The local AI manifest {fieldName} is invalid.");
+        }
+    }
+
+    private static void ValidateCustomModel(LocalAiInstallManifest manifest)
+    {
+        const string invalid = "The custom Local AI model receipt is invalid.";
+        if (manifest.SchemaVersion != LocalAiInstallManifest.CustomModelSchemaVersion)
+        {
+            if (manifest.CustomModel is not null || LocalCustomModel.IsCustomId(manifest.ModelCatalogId))
+                throw new InvalidDataException(invalid);
+            return;
+        }
+
+        LocalCustomModelRecipe recipe = manifest.CustomModel ?? throw new InvalidDataException(invalid);
+        PinnedArtifact weights = LocalCustomModel.ToModelInfo(recipe).Weights;
+        string id = LocalCustomModel.CreateId(recipe);
+        if (!string.Equals(manifest.ModelCatalogId, id, StringComparison.Ordinal) ||
+            !string.Equals(manifest.ModelAlias, id, StringComparison.Ordinal) ||
+            !string.Equals(manifest.ModelId, $"{recipe.RepositoryId}@{recipe.RevisionSha}", StringComparison.Ordinal) ||
+            !string.Equals(manifest.ModelAsset.FileName, Path.GetFileName(weights.RelativePath), StringComparison.Ordinal) ||
+            manifest.ModelAsset.SizeBytes != weights.SizeBytes ||
+            !string.Equals(manifest.ModelAsset.Sha256, weights.Sha256.Value, StringComparison.Ordinal) ||
+            !string.Equals(manifest.ModelAsset.SourceUrl, weights.DownloadUri.AbsoluteUri, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(invalid);
         }
     }
 

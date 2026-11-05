@@ -106,6 +106,28 @@ shared thread-pool scheduling latency.
 
 ### Additional projects
 
+Gateway cleanup task registration, refresh, quoting and failure propagation run
+in the ordinary SetupEngine suite. The registration fixture replaces only the
+persistence boundary and cannot register a real scheduled task. The two desktop
+visibility tests use the existing integration opt-in because their positive
+control deliberately displays a classic console. Run them on an interactive
+Windows desktop without concurrent desktop automation:
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_RUN_INTEGRATION = '1'
+dotnet test .\tests\OpenClaw.SetupEngine.Tests\OpenClaw.SetupEngine.Tests.csproj --no-restore --filter 'FullyQualifiedName~GatewayCleanupTaskTests'
+```
+
+The visibility contract is no on-screen visible window or taskbar entry, not
+absence of an HWND. WinEvent observations and periodic window sampling cover
+startup through worker exit; native UI Automation checks the shell taskbar,
+including visible custom-shell surfaces when present. The visible-console positive control
+must be detected by both window observers and actual taskbar enumeration.
+Unavailable shell/provider access fails the selected proof instead of treating
+a window-style heuristic as taskbar evidence. Sampling gaps remain a limit of
+the measurement, not proof that an arbitrarily short transient is impossible.
+
 The chat composer's real keyboard regression is opt-in because it uses Windows
 `SendInput` on a visible, focused proof window. Run it only on an isolated
 interactive desktop with no concurrent computer-use or human input, Caps Lock

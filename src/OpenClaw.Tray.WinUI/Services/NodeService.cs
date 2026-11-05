@@ -96,6 +96,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private OllamaInferenceBackend? _ollamaBackend;
     private TextToSpeechService? _textToSpeechService;
     private VoiceService? _voiceService;
+    private readonly Func<IOpenClawLogger, SettingsManager, VoiceService>? _voiceServiceFactory;
     private readonly string _dataPath;
     // Identity store location for the role-aware DeviceIdentity. Defaults to
     // _dataPath when no separate path is supplied (preserves existing test
@@ -212,7 +213,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         Func<SshTunnelConfig?>? activeGatewayTunnelResolver = null,
         Func<string?>? activeGatewayUrlResolver = null,
         Func<Uri, CancellationToken, Task<bool>>? browserControlAuthorization = null,
-        ExecApprovalsStore? execApprovalsStore = null)
+        ExecApprovalsStore? execApprovalsStore = null,
+        Func<IOpenClawLogger, SettingsManager, VoiceService>? voiceServiceFactory = null)
     {
         _logger = logger;
         _dispatcherQueue = dispatcherQueue;
@@ -224,6 +226,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _activeGatewayUrlResolver = activeGatewayUrlResolver;
         _browserControlAuthorization = browserControlAuthorization;
         _execApprovalsStore = execApprovalsStore;
+        _voiceServiceFactory = voiceServiceFactory;
         _settings = settings;
         _enableMcpServer = enableMcpServer;
         _screenCaptureService = new ScreenCaptureService(logger);
@@ -390,7 +393,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // handlers return a clear error pointing the caller at the
             // Voice Settings page; there is no automatic fallback.
             var settings = _settings ?? throw new InvalidOperationException("Settings are required to register speech-to-text.");
-            _voiceService ??= new VoiceService(_logger, settings);
+            _voiceService ??= _voiceServiceFactory?.Invoke(_logger, settings)
+                ?? new VoiceService(_logger, settings);
             _sttCapability = new SttCapability(_logger);
             _sttCapability.TranscribeRequested += OnSttTranscribeAsync;
             _sttCapability.ListenRequested += OnSttListenAsync;

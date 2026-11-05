@@ -16,6 +16,48 @@ project or host resources; `projects.add` is rejected as a write.
 
 ## Build and explore
 
+### Assistant continuity capture
+
+The opt-in UI case
+`SelectedAssistantAndConversationSurviveTransientRosterLossButNotAuthoritativeRemoval`
+selects an assistant and conversation through normal UI Automation. It closes
+only fixture-owned connections, holds the next connection's `agents.list`
+responses, and then releases the unchanged roster. It then sends one message
+through the ordinary composer and requires the fixture Gateway to record a
+successful `chat.send` for the restored conversation. A second reconnect returns
+an authoritative roster without that assistant and requires a fresh selection.
+`FixtureGatewayServer.SetAgentsRoster`, `HoldAgentsList`, and `ReleaseAgentsList`
+control only this synthetic producer; authentication and the production client
+are unchanged. With `-Screenshots`, the case saves five owned-HWND PrintWindow
+PNGs and adjacent UIA assertion metadata in the fixture artifact directory.
+Without requested screenshots, the same UIA selection and protocol assertions
+still run, but no pixel proof is claimed. Requested capture remains strict:
+blank or unavailable native pixels fail instead of producing a fallback image.
+
+Use the opt-in UI runner described below with this exact method-name filter.
+These captures show actual Workspace controls with synthetic Gateway data, not
+installed-app or live-provider behavior.
+
+`UnsupportedAgentListing_PreservesLegacySessionsAndDefaultCreation` exercises
+a different compatibility path. After a fixture-owned reconnect, the actual
+client receives `unknown method: agents.list` while `sessions.list` still works.
+Workspace must show the legacy sessions and enable new-conversation creation
+with the Gateway's default target. The assistant selector remains unavailable,
+because no authoritative agent roster was delivered. A pending or failed listing
+is not treated as an explicitly unsupported method.
+
+The disconnected assistant menu still exposes its existing connection guidance.
+This does not authorize session creation or treat a pending connected roster as
+available.
+
+`VerifiedSetupBindingClearsBeforeNewConversationResponse` starts with a real
+production handoff receipt and a synthetic model-verification response. It
+holds the fixture's session-creation response and checks that the prior bound
+setup warning is already cleared, then releases creation and observes the
+ordinary selected conversation. Existing warning recovery coverage checks the
+navigation path; the shutdown guard has a mounted WindowManager case. These
+are behavioral handoff checks, not source-text ordering assertions.
+
 Build the current app first, then pass its executable explicitly. An installed
 app is never discovered or selected implicitly.
 
@@ -73,6 +115,11 @@ test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
 orders work; this is deliberately not sequential packet playback.
 
+MCP startup retries transient sharing and lock violations when reading the
+published token file, within the existing startup deadline. Missing-file,
+permission and other I/O failures are not hidden.
+The token value is never included in readiness diagnostics.
+
 ## Run the application smoke
 
 ```powershell
@@ -90,9 +137,67 @@ tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
+On an authorized, exclusive interactive desktop, add `-KeyboardProof` to run the
+separate foreground keyboard fixture lane as well. It enables native input only
+in that child test process and rejects failed, skipped, and zero-test runs. The
+default fixture lane excludes those keyboard-dependent cases; it does not claim
+their proof.
+
+The ordinary `windows-latest` CI UI job runs this script against its explicitly
+built Debug x64 app after installing the Windows App Runtime selected by
+`Directory.Build.props`. Its dedicated step enables the fixture opt-in only for
+the child test processes and selects `Category=GatewayFixture` without keyboard-only
+cases, including the
+context-usage and chat-run correlation scenarios. The general UI test step
+excludes that category so each scenario runs once. TRX, synthetic request logs,
+run receipts and owned-window screenshots are uploaded in `test-results-ui`
+under `GatewayFixture`, including on failure. Other keyboard/compositor proof
+opt-ins, production-shaped Release proof, real Gateway, WSL and MXC validation
+remain separate; this hosted smoke does not replace them.
+
+The disposable hosted runner configures a 1920x1080 desktop before UI tests and
+verifies a work area large enough for the 1300x950 wide-window proof. Its actual
+screen/work-area receipt is retained at `Desktop\geometry.json` in `test-results-ui`.
+The original two-width and visible-content assertions remain unchanged. The local
+fixture runner does not change your desktop resolution.
+
+Fixture scenarios still execute if an earlier test suite fails, provided the UI
+build, runtime installation and desktop preflight succeeded and the job was not
+cancelled. The earlier failure remains a job failure; it cannot hide the fixture
+result or prevent its screenshots from being collected.
+
+For failed fixture tests, browse screenshots without downloading a ZIP: open the workflow run's
+**Summary** and find **Mock Gateway screenshots** in the UI job summary.
+The index contains only failed tests and interrupted runs with a failure capture,
+grouped by test with failure captures first. Click a capture filename to open its PNG
+in the browser. GitHub sign-in is required. Each PNG also appears individually
+under **Artifacts**, with a test/capture name and unique fixture run ID.
+These previews use unarchived GitHub artifacts, retain the repository's normal
+artifact retention, and are published only when the fixture step fails.
+Successful tests do not create screenshot summary entries or individual PNG
+artifacts; their captures stay inside `test-results-ui\GatewayFixture`.
+The `test-results-ui` ZIP remains the complete diagnostic download, including
+TRX, request logs, run receipts and original screenshot paths. If no capture was
+produced, the summary says so; inspect the fixture step for a build/startup failure.
+
+The browse fixture also supplies placement discovery reads: empty projects and
+recents, each agent's synthetic workspace, and one available local Gateway
+environment. Composer-created empty conversations can load their location
+choices without an unsupported-RPC error. These are synthetic catalog reads,
+not host filesystem discovery, remote worker capacity or placement mutation
+proof. Unsupported methods and parameters still fail explicitly.
+
+Ordinary browse/setup/context scenarios answer `question.list` with an empty
+question collection, so the real client's question recovery can complete without
+an unsupported-RPC error. This does not enable question creation or mutation:
+interactive question lifecycles remain owned by the explicit interactive scenario.
+
 `GatewayFixtureStartupTests` exercise parent and foreign browser-control startup
 without launching the app. Cancellation and readiness failures must reap the
 owned child, remove its readiness file, and release both listener ports.
+They share the nonparallel `Gateway fixture environment` collection so another
+test cannot allocate a just-released ephemeral port before the cleanup rebind
+assertion. Occupancy, child-exit, readiness-file and rebind checks remain required.
 The Shared browser-proxy regression runs the production client and a default-handler
 control in separate test-host processes with explicit proxy settings. It does not
 change the test runner's environment or cached default proxy.
@@ -396,6 +501,24 @@ the unexpected-request assertions still surface them as smoke failures.
 Non-interactive scenario responder exceptions still propagate through server
 cleanup, preserving negative-test guards. Only interactive runtime faults are
 translated into `INTERNAL` responses and recorded as unexpected requests.
+
+The server also answers one plain HTTP request: the authenticated scenario
+profile's photo at `GET /api/users/<profile id>/avatar`, which the Workspace
+footer sends after `users.self` returns a profile. The browse scenario serves
+`fixture-owner`; owner-identity UI cases can select another synthetic profile
+with `CreateBrowseWithOwnerProfile`, and the HTTP route serves that scenario's
+authenticated profile ID. A request with the shared
+Gateway token (or the issued device token once the server accepts one) for the
+scenario profile receives a small solid-colour PNG. A missing or wrong
+credential receives 401 and an unknown profile receives 404. Each request is recorded as
+`http:users.avatar` with only its outcome, never the credential, the profile id
+or the query string. The 401 and 404 outcomes are unexpected requests, so a
+broken photo path fails the smoke instead of quietly falling back to initials.
+Any other request that is not a WebSocket upgrade is still rejected as an unexpected `<upgrade>`.
+`OwnerFooterUsesAuthenticatedProfileAndLiveConnectionStatus` waits for the served
+photo. With `-Screenshots` it also counts footer pixels in that photo's colour in
+the captured Workspace window, so the capture shows the image was decoded and
+painted, not only requested.
 
 Add new behavior at the server boundary. Do not introduce fixture providers,
 demo branches in pages, bypasses in the connection manager, or a second chat

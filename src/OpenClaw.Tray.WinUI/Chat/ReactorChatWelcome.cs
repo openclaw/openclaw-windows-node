@@ -113,9 +113,7 @@ internal static class ReactorChatWelcome
             })
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationId(id).AutomationName(text);
-        if (content is null)
-            return button;
-        return button
+        return content is null ? button : button
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .HelpText(lastUsed ?? "")
             .ToolTip(string.IsNullOrEmpty(lastUsed) ? text : $"{text}\n{lastUsed}");

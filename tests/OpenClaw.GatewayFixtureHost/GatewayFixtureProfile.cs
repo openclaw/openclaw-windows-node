@@ -89,7 +89,8 @@ public sealed class GatewayFixtureProfile : IDisposable
         }
     }
 
-    public ProcessStartInfo CreateStartInfo(string appPath, int mcpPort, string? postSetupLaunch = null)
+    public ProcessStartInfo CreateStartInfo(string appPath, int mcpPort, string? postSetupLaunch = null,
+        bool postSetupRestart = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (mcpPort is < 1 or > 65535 || mcpPort == GatewayEndpoint.Port || mcpPort is 8765 or 18789)
@@ -114,9 +115,13 @@ public sealed class GatewayFixtureProfile : IDisposable
         start.Environment["OPENCLAW_LANGUAGE"] = "en-US";
         if (postSetupLaunch is not null)
         {
+            if (postSetupRestart)
+                start.ArgumentList.Add("--post-setup-restart");
             start.ArgumentList.Add("--post-setup-launch");
             start.ArgumentList.Add(postSetupLaunch);
         }
+        else if (postSetupRestart)
+            throw new ArgumentException("A restart proof requires an explicit setup handoff.", nameof(postSetupLaunch));
         return start;
     }
 
