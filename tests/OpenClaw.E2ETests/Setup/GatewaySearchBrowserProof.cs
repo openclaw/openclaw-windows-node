@@ -17,6 +17,7 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
     private readonly HashSet<string> _gatewaySockets = new(StringComparer.Ordinal);
     private Uri? _gatewayOrigin;
     private string? _authenticatedSocket;
+    private string? _sessionId;
     private int _nextId;
     internal bool Authenticated => _authenticatedSocket is not null;
     internal string? PairingRequestId { get; private set; }
@@ -53,12 +54,16 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
                 if (browser._process.HasExited) throw new InvalidOperationException("The owned browser exited before CDP was ready.");
                 await Task.Delay(PollInterval, timeout.Token);
             }
-            var port = int.Parse((await File.ReadAllLinesAsync(portFile, timeout.Token))[0],
+            var endpoint = await File.ReadAllLinesAsync(portFile, timeout.Token);
+            if (endpoint.Length < 2 || !endpoint[1].StartsWith("/devtools/browser/", StringComparison.Ordinal))
+                throw new InvalidDataException("The owned browser did not publish a complete debugger endpoint.");
+            var port = int.Parse(endpoint[0],
                 System.Globalization.CultureInfo.InvariantCulture);
-            using var http = new HttpClient(new HttpClientHandler { UseProxy = false });
-            using var pages = JsonDocument.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/list", timeout.Token));
-            var page = pages.RootElement.EnumerateArray().Single(row => row.GetProperty("type").GetString() == "page");
-            await browser._socket.ConnectAsync(new Uri(page.GetProperty("webSocketDebuggerUrl").GetString()!), timeout.Token);
+            await browser._socket.ConnectAsync(new Uri($"ws://127.0.0.1:{port}{endpoint[1]}"), timeout.Token);
+            var page = await browser.CallAsync("Target.createTarget", new { url = "about:blank" }, timeout.Token);
+            var attached = await browser.CallAsync("Target.attachToTarget",
+                new { targetId = page.GetProperty("targetId").GetString(), flatten = true }, timeout.Token);
+            browser._sessionId = attached.GetProperty("sessionId").GetString();
             await browser.CallAsync("Network.enable", new { }, timeout.Token);
             return browser;
         }
@@ -101,7 +106,9 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
     private async Task<JsonElement> CallAsync(string method, object parameters, CancellationToken cancellationToken)
     {
         var id = ++_nextId;
-        await _socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { id, method, @params = parameters }),
+        var request = new Dictionary<string, object?> { ["id"] = id, ["method"] = method, ["params"] = parameters };
+        if (_sessionId is not null) request["sessionId"] = _sessionId;
+        await _socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(request),
             WebSocketMessageType.Text, true, cancellationToken);
         var buffer = new byte[16384];
         using var message = new MemoryStream();
