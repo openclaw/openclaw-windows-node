@@ -24,12 +24,17 @@ public sealed class GatewayFixtureProfile : IDisposable
     public Uri GatewayEndpoint { get; }
 
     public bool NodeBrowserProxyEnabled { get; }
+    public bool ConnectGateway { get; }
 
-    public GatewayFixtureProfile(Uri endpoint, string token, bool enableNodeBrowserProxy = false)
+    public GatewayFixtureProfile(Uri endpoint, string token, bool enableNodeBrowserProxy = false,
+        bool connectGateway = true)
     {
         ValidateEndpoint(endpoint);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        if (enableNodeBrowserProxy && !connectGateway)
+            throw new ArgumentException("Browser proxy proof requires a connected Gateway.", nameof(connectGateway));
         NodeBrowserProxyEnabled = enableNodeBrowserProxy;
+        ConnectGateway = connectGateway;
         GatewayEndpoint = endpoint;
         _directory = new TempDirectory("openclaw-gateway-fixture-");
         try
@@ -74,7 +79,7 @@ public sealed class GatewayFixtureProfile : IDisposable
                 Id = GatewayId,
                 Url = endpoint.AbsoluteUri,
                 FriendlyName = $"Fixture Gateway ({RunId[..8]})",
-                SharedGatewayToken = token,
+                SharedGatewayToken = connectGateway ? token : null,
                 // This is an unmanaged test server, not a provisioned WSL Gateway.
                 // Do not claim managed ownership or bypass its credential-provenance checks.
                 IsLocal = false
