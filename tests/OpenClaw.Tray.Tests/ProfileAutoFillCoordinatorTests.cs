@@ -1,3 +1,4 @@
+using System.Net.WebSockets;
 using System.Reflection;
 using System.Text.Json;
 using OpenClaw.Connection;
@@ -18,6 +19,21 @@ public class ProfileAutoFillCoordinatorTests
         public int Reads;
         public Func<int, Task<AccountIdentityResult>> Read = _ => Task.FromResult(Account);
         public Task<AccountIdentityResult> ReadAsync(CancellationToken cancellationToken) => Read(++Reads);
+    }
+
+    private sealed class ErrorLogger : IOpenClawLogger
+    {
+        public readonly TaskCompletionSource<Exception> ErrorReported = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly List<Exception> Errors = [];
+        public void Info(string message) { }
+        public void Debug(string message) { }
+        public void Warn(string message) { }
+        public void Error(string message, Exception? ex = null)
+        {
+            if (ex is null) return;
+            Errors.Add(ex);
+            ErrorReported.TrySetResult(ex);
+        }
     }
 
     public class ManagerProxy : DispatchProxy
@@ -44,6 +60,7 @@ public class ProfileAutoFillCoordinatorTests
         public readonly IOperatorGatewayClient A = DispatchProxy.Create<IOperatorGatewayClient, ProfileCompletionTests.Proxy>();
         public readonly IOperatorGatewayClient B = DispatchProxy.Create<IOperatorGatewayClient, ProfileCompletionTests.Proxy>();
         public readonly Provider Provider = new();
+        public readonly ErrorLogger Logger = new();
         public readonly List<ProfileAutoFillResult> Outcomes = [];
         public readonly GatewayRegistry Registry;
         public readonly ProfileAutoFillCoordinator Coordinator;
@@ -58,7 +75,7 @@ public class ProfileAutoFillCoordinatorTests
             Registry.AddOrUpdate(new GatewayRecord { Id = "A", Url = "ws://localhost:1", SetupManagedDistroName = "fake-a" });
             Registry.AddOrUpdate(new GatewayRecord { Id = "B", Url = "ws://localhost:2", NativePackageFamilyName = "fake-b" });
             Connect("A", A);
-            Coordinator = new(Capture, Provider, Outcomes.Add);
+            Coordinator = new(Capture, Provider, Outcomes.Add, Logger);
             Service = new(Capture, Provider);
         }
 
@@ -144,6 +161,104 @@ public class ProfileAutoFillCoordinatorTests
         Assert.Equal(1, newRefreshes);
         Assert.Equal(1, h.RpcA.Methods.Count(m => m == "users.setAvatar"));
         h.Coordinator.ProfileChanged -= newObserver;
+    }
+
+    [Theory]
+    [InlineData("pending")]
+    [InlineData("stale")]
+    [InlineData("none")]
+    public async Task RpcFault_PreservesException_AndDrainsOnlyCurrentPendingGateway(string observation)
+    {
+        using var h = new Harness();
+        var write = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.RpcA.OnWrite = _ => write.Task;
+        var run = h.Coordinator.ObserveAsync();
+        if (observation != "none")
+        {
+            h.Connect("B", h.B);
+            await h.Coordinator.ObserveAsync();
+            if (observation == "stale")
+                h.Registry.SetActive(null);
+        }
+
+        var error = new WebSocketException(WebSocketError.ConnectionClosedPrematurely);
+        write.SetException(error);
+        Assert.Same(error, await Assert.ThrowsAsync<WebSocketException>(() => run));
+
+        Assert.Equal(observation == "pending" ? 1 : 0, h.Outcomes.Count);
+        Assert.Equal(observation == "pending" ? 2 : 1, h.Provider.Reads);
+        Assert.Equal(observation == "pending" ? 2 : 0, h.RpcB.Payloads.Count);
+        var aCalls = h.RpcA.Methods.ToArray();
+        h.Connect("A", h.A);
+        await h.Coordinator.ObserveAsync();
+        Assert.Equal(aCalls, h.RpcA.Methods);
+        Assert.Empty(h.Logger.Errors);
+    }
+
+    [Fact]
+    public async Task FaultedPendingWrite_IsReportedSeparately_WithoutReplacingOriginalFaultOrRetrying()
+    {
+        using var h = new Harness();
+        var firstWrite = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pendingWrite = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.RpcA.OnWrite = _ => firstWrite.Task;
+        h.RpcB.OnWrite = _ => pendingWrite.Task;
+        var run = h.Coordinator.ObserveAsync();
+        h.Connect("B", h.B);
+        await h.Coordinator.ObserveAsync();
+        var firstError = new WebSocketException(WebSocketError.ConnectionClosedPrematurely);
+        firstWrite.SetException(firstError);
+        Assert.Same(firstError, await Assert.ThrowsAsync<WebSocketException>(() => run));
+        await h.Coordinator.ObserveAsync();
+        Assert.Equal(2, h.Provider.Reads);
+        Assert.Equal(1, h.RpcB.Methods.Count(m => m == "users.setDisplayName"));
+        Assert.Empty(h.Logger.Errors);
+
+        var pendingError = new WebSocketException(WebSocketError.NativeError);
+        pendingWrite.SetException(pendingError);
+        Assert.Same(pendingError, await h.Logger.ErrorReported.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Single(h.Logger.Errors);
+        var bCalls = h.RpcB.Methods.ToArray();
+        await h.Coordinator.ObserveAsync();
+        Assert.Equal(bCalls, h.RpcB.Methods);
+        h.Connect("A", h.A);
+        var aCalls = h.RpcA.Methods.ToArray();
+        await h.Coordinator.ObserveAsync();
+        Assert.Equal(aCalls, h.RpcA.Methods);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task CompletedWrite_RefreshesReplacementOnlyOnSameGateway_WithoutWriteRetry(
+        bool uncertain, bool sameGateway)
+    {
+        using var h = new Harness();
+        h.Provider.Read = _ => Task.FromResult(new AccountIdentityResult(
+            AccountFieldStatus.Available, "Ada", AccountFieldStatus.Empty, null));
+        var write = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.RpcA.OnWrite = _ => write.Task;
+        var refreshes = 0;
+        h.Coordinator.ProfileChanged += (_, _) =>
+        {
+            refreshes++;
+            _ = h.Coordinator.ObserveAsync();
+        };
+        var run = h.Coordinator.ObserveAsync();
+        h.Connect(sameGateway ? "A" : "B", h.B);
+        if (uncertain)
+            write.SetException(new TimeoutException());
+        else
+            write.SetResult(JsonSerializer.SerializeToElement(new { }));
+        await run;
+
+        Assert.Equal(sameGateway ? 1 : 0, refreshes);
+        Assert.Single(h.Outcomes);
+        Assert.Equal(uncertain ? ProfileStep.Uncertain : ProfileStep.Saved, h.Outcomes[0].Save!.Name);
+        Assert.Equal(1, h.Provider.Reads);
+        Assert.Empty(h.RpcB.Methods);
     }
 
     [Theory]

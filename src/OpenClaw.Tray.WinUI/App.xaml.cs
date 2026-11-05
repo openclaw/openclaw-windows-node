@@ -99,7 +99,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     internal ProfileAutoFillCoordinator ProfileAutoFill => _profileAutoFill ??= new(
         () => ProfileCompletionContext.Capture(_connectionManager, _gatewayRegistry),
         new WindowsAccountIdentityProvider(),
-        result => Logger.Info($"Owner profile auto-fill: {result.Offer}, name {result.Save?.Name}, photo {result.Save?.Photo}."));
+        result => Logger.Info($"Owner profile auto-fill: {result.Offer}, name {result.Save?.Name}, photo {result.Save?.Photo}."),
+        new AppLogger());
     internal GatewayDirectConnectService? GatewayDirectConnectService =>
         _gatewayDirectConnectService;
     internal ManagedLocalGatewayPortProvenanceService? ManagedLocalPortProvenance =>
