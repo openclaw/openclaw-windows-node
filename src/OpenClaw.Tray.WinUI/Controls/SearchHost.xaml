@@ -3,8 +3,19 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <StackPanel x:Name="Layout" Spacing="8" Width="500" PreviewKeyDown="OnKeyDown">
-        <TextBox x:Name="SearchBox" x:Uid="SearchInput" TextChanged="OnTextChanged"
-                 AutomationProperties.AcceleratorKey="Ctrl+E"/>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="SearchBox" x:Uid="SearchInput" TextChanged="OnTextChanged"
+                     AutomationProperties.AcceleratorKey="Ctrl+E"/>
+            <HyperlinkButton x:Name="MoreButton" x:Uid="SearchMore" Grid.Column="1" Margin="8,0,0,0"
+                             Visibility="Collapsed" Click="OnMore" AutomationProperties.AutomationId="SearchMore"/>
+            <HyperlinkButton x:Name="RetryButton" x:Uid="SearchRetry" Grid.Column="2" Margin="8,0,0,0"
+                             Visibility="Collapsed" Click="OnRetry" AutomationProperties.AutomationId="SearchRetry"/>
+        </Grid>
         <ListView x:Name="ResultsList" SelectionMode="Single" IsItemClickEnabled="True"
                   MaxHeight="420" ItemClick="OnItemClick"
                   ContainerContentChanging="OnContainerContentChanging"
@@ -41,16 +52,6 @@
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
-            <ListView.Footer>
-                <StackPanel Spacing="8" Margin="4,8,4,0">
-                    <TextBlock x:Name="StatusText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
-                               AutomationProperties.AutomationId="SearchStatus" AutomationProperties.LiveSetting="Polite"/>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <HyperlinkButton x:Name="MoreButton" x:Uid="SearchMore" Click="OnMore" AutomationProperties.AutomationId="SearchMore"/>
-                        <HyperlinkButton x:Name="RetryButton" x:Uid="SearchRetry" Click="OnRetry" AutomationProperties.AutomationId="SearchRetry"/>
-                    </StackPanel>
-                </StackPanel>
-            </ListView.Footer>
         </ListView>
     </StackPanel>
 </UserControl>

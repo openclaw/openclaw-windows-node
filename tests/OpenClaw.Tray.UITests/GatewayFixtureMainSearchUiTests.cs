@@ -210,7 +210,7 @@ public sealed partial class GatewayFixtureUiTests
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
-    public async Task MainSearch_OpenPopupEmptyResultsAndStatusPassAccessibility()
+    public async Task MainSearch_OpenPopupEmptyResultsAndAccessibleInputStatusPassAccessibility()
     {
         await WithAppAsync(async run =>
         {
@@ -225,13 +225,14 @@ public sealed partial class GatewayFixtureUiTests
             var input = (ValuePattern)SearchEdit(run, "WorkspaceSearchBox").GetCurrentPattern(ValuePattern.Pattern);
             input.SetValue("camera");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith("Camera.", StringComparison.Ordinal) == true &&
-                FindById(run, "SearchStatus")?.Current.Name.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
+                FindById(run, "WorkspaceSearchBox")?.Current.ItemStatus.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
                 "camera destination and settled source status");
             Scan("results");
             input.SetValue("zzqqxx-no-such-destination");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0") is null &&
-                FindById(run, "SearchStatus") is { Current.IsOffscreen: false } status &&
-                !status.Current.Name.Contains("searching", StringComparison.OrdinalIgnoreCase), "unmatched search status");
+                FindById(run, "WorkspaceSearchBox") is { Current.IsOffscreen: false } inputStatus &&
+                !string.IsNullOrEmpty(inputStatus.Current.ItemStatus) &&
+                !inputStatus.Current.ItemStatus.Contains("searching", StringComparison.OrdinalIgnoreCase), "unmatched accessible input status");
             Scan("status");
 
             void Scan(string state)
@@ -243,6 +244,7 @@ public sealed partial class GatewayFixtureUiTests
                 AxeHelper.AssertNoAccessibilityErrors(new(window.Current.NativeWindowHandle),
                     context: $"MainSearch-{state}", targetProcessId: run.AppProcessId);
                 Assert.NotNull(FindById(run, "WorkspaceSearchBox"));
+                Assert.Null(FindById(run, "SearchStatus"));
             }
         });
     }
@@ -307,7 +309,7 @@ public sealed partial class GatewayFixtureUiTests
                 ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue(query);
                 await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name
                     .StartsWith(title + ".", StringComparison.Ordinal) == true &&
-                    FindById(run, "SearchStatus")?.Current.Name.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
+                    FindById(run, inputId)?.Current.ItemStatus.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
                     "plain localized destination name and settled results");
                 var row = FindById(run, "SearchResult_0")!;
                 Assert.DoesNotContain("Go to", row.Current.Name, StringComparison.OrdinalIgnoreCase);
@@ -326,7 +328,7 @@ public sealed partial class GatewayFixtureUiTests
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task MainSearch_LongDescriptionsAndActionsShareOneScrollableSurfaceWithoutAFixedFooter()
+    public async Task MainSearch_LongDescriptionsRemainFullyVisibleWithoutFooterMessages()
     {
         await WithAppAsync(async run =>
         {
@@ -346,26 +348,27 @@ public sealed partial class GatewayFixtureUiTests
             var edit = SearchEdit(run, "WorkspaceSearchBox");
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Layout skill");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_4") is not null &&
-                FindById(run, "SearchStatus")?.Current.Name.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
+                FindById(run, "WorkspaceSearchBox")?.Current.ItemStatus.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
                 "long skill results and settled status");
             var list = FindById(run, "SearchResultsList")!;
-            var more = list.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, "SearchMore"));
+            var more = FindById(run, "SearchMore");
             Assert.NotNull(more);
+            Assert.Null(list.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SearchMore")));
+            Assert.Null(FindById(run, "SearchStatus"));
+            Assert.True(more!.Current.BoundingRectangle.Bottom <= list.Current.BoundingRectangle.Top,
+                "More results must be beside the search input, not after or over the result list.");
             Assert.Null(FindInApp(run, new PropertyCondition(AutomationElement.NameProperty,
                 "Enter: Open. Alt+Enter: Dashboard when available. Esc: Close.")));
             var scrolling = list.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern) ? list :
                 list.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true))!;
             var scroll = (ScrollPattern)(pattern ?? scrolling.GetCurrentPattern(ScrollPattern.Pattern));
             scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
-            await WaitUiAsync(run, () => IsFullyVisibleInScrollViewport(FindById(run, "SearchResult_4")) &&
-                IsFullyVisibleInScrollViewport(FindById(run, "SearchMore")), "last complete result and inline actions");
+            await WaitUiAsync(run, () => IsFullyVisibleInScrollViewport(FindById(run, "SearchResult_4")),
+                "last complete result without footer messages");
             var last = FindById(run, "SearchResult_4")!;
             Assert.Contains("Final line remains readable.", last.Current.Name);
-            var status = FindById(run, "SearchStatus")!;
-            Assert.True(status.Current.BoundingRectangle.Top >= last.Current.BoundingRectangle.Bottom - 1,
-                "Source status overlaps the final result.");
-            OwnedWindowCapture.Save(run, window, "search-inline-status-and-actions.png", list);
+            OwnedWindowCapture.Save(run, window, "search-no-footer.png", list);
             more!.SetFocus();
             Send(run, window, "{ENTER}");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_5") is not null, "more results without closing search");
@@ -418,7 +421,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
             ((ValuePattern)SearchEdit(run, "WorkspaceSearchBox").GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture navigation field");
             await WaitUiAsync(run, () => FindById(run, "SearchMore") is not null &&
-                FindById(run, "SearchStatus")?.Current.Name.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
+                FindById(run, "WorkspaceSearchBox")?.Current.ItemStatus.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
                 "both groups settled");
             ScrollSearch(run);
             FindById(run, "SearchMore")!.SetFocus();
@@ -453,6 +456,8 @@ public sealed partial class GatewayFixtureUiTests
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture navigation field");
             await WaitUiAsync(run, () => FindById(run, "SearchMore") is not null &&
                 FindById(run, "SearchRetry") is not null, "more and retry buttons");
+            Assert.True(edit.Current.BoundingRectangle.Width >= 120,
+                "The query input must remain usable while More and Retry are both visible.");
             ScrollSearch(run);
             var before = ResultCount();
             FindById(run, "SearchMore")!.SetFocus();
@@ -542,7 +547,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
             var edit = SearchEdit(run, "WorkspaceSearchBox");
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture");
-            await WaitUiAsync(run, () => FindById(run, "SearchStatus")?.Current.Name
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox")?.Current.ItemStatus
                 .Contains("searching", StringComparison.OrdinalIgnoreCase) != true &&
                 FindById(run, "SearchMore") is not null, "settled metadata");
             ScrollSearch(run);

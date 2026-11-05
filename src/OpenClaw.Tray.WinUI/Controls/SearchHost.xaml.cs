@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Documents;
@@ -165,17 +166,27 @@ public sealed partial class SearchHost : UserControl
         }
         var statuses = _controller.Statuses.Select(status =>
             LocalizationHelper.Format($"Search_Status_{status.State}", L($"Search_Group_{status.Group}")));
-        StatusText.Text = string.Join("\n", statuses);
+        var statusText = string.Join("\n", statuses);
         if (_controller.HasDashboardCompatibilityWarning)
-            StatusText.Text = string.Join("\n", new[] { StatusText.Text, L("Search_Compatibility") }
+            statusText = string.Join("\n", new[] { statusText, L("Search_Compatibility") }
                 .Where(text => text.Length > 0));
-        if (StatusText.Text.Length == 0 && items.Length == 0)
-            StatusText.Text = L("Search_Empty");
+        if (statusText.Length == 0 && items.Length == 0)
+            statusText = L("Search_Empty");
+        SetInputStatus(statusText);
         MoreButton.Visibility = _controller.HasMoreResults ? Visibility.Visible : Visibility.Collapsed;
         RetryButton.Visibility = _controller.Statuses.Any(status => status.State == "Failed") ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static string L(string key) => LocalizationHelper.GetString(key);
+
+    private void SetInputStatus(string status)
+    {
+        if (AutomationProperties.GetItemStatus(SearchBox) == status) return;
+        AutomationProperties.SetItemStatus(SearchBox, status);
+        if (status.Length > 0)
+            FrameworkElementAutomationPeer.FromElement(SearchBox)?.RaiseNotificationEvent(
+                AutomationNotificationKind.Other, AutomationNotificationProcessing.MostRecent, status, "NavigationSearch");
+    }
 
     private static ScrollViewer? FindScrollViewer(DependencyObject parent)
     {
@@ -248,7 +259,7 @@ public sealed partial class SearchHost : UserControl
             !_controller.CanActivate(row.Generation, row.Item)) return;
         if (dashboard && row.Item.DashboardPath is null)
         {
-            StatusText.Text = L("Search_NoCounterpart");
+            SetInputStatus(L("Search_NoCounterpart"));
             return;
         }
         var target = dashboard ? new HubSearchTarget(HubSearchTargetKind.Dashboard, row.Item.DashboardPath!) : row.Item.Target;

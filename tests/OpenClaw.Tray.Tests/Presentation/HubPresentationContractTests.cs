@@ -1,7 +1,28 @@
+using System.Xml.Linq;
+
 namespace OpenClaw.Tray.Tests.Presentation;
 
 public sealed class HubPresentationContractTests
 {
+    [Fact]
+    public void SearchPopup_HasNoFooterOrVisibleStatusBlock_AndKeepsActionsBesideInput()
+    {
+        var document = XDocument.Parse(ReadSource("Controls", "SearchHost.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var input = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "SearchBox");
+        var list = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "ResultsList");
+
+        Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName.EndsWith(".Footer", StringComparison.Ordinal));
+        Assert.DoesNotContain(document.Descendants(), element =>
+            (string?)element.Attribute("AutomationProperties.AutomationId") == "SearchStatus");
+        foreach (var name in new[] { "MoreButton", "RetryButton" })
+        {
+            var action = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
+            Assert.Same(input.Parent, action.Parent);
+            Assert.DoesNotContain(action, list.Descendants());
+        }
+    }
+
     [Fact]
     public void HubPageRegistry_OwnsMappingsCommandsAndGatewayClassification()
     {

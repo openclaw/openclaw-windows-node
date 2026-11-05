@@ -35,10 +35,11 @@ cover empty results, matching results and source-status states, including a
 horizontal-clipping assertion. This proves the application boundary, not a real
 Gateway's indexing or Dashboard route compatibility.
 
-The long-description search journey checks that source status and More/Retry
-share the native results scroller, after the last result, with no fixed
-keyboard-help footer. It verifies the complete last description can be
-scrolled into view and expanded without a status/action region covering it.
+The search popup has no footer or visible source-status/compatibility messages.
+More/Retry stay beside the search input; UI Automation ItemStatus on that input
+retains accessible source and empty-result feedback without a message block.
+The long-description journey verifies that the complete last description can
+be scrolled into view without a footer consuming space or covering it.
 Keyboard expansion must focus and reveal the first newly added result without
 test-driven scrolling or a jump back to an old selected row. Expansion appends
 to the existing observable groups rather than replacing the native grouped view.
