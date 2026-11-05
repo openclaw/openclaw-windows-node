@@ -158,16 +158,26 @@ inventory (including file hashes). Hashing large in-profile models can take time
 A changed preview requires a new inventory, review and consent. Apply invokes only
 the package-qualified `clawctl-<patch>.exe teardown --force --json`, checks exit
 code, structured teardown states and session-record absence, then rechecks scope
-before removing that one registration. Windows owns packaged data removal.
-It deletes only the named disposable Companion directories after unregister
-verification, rechecking their fingerprints and path guards before deletion.
-Failure can leave a partly torn-down patch; do not assume success or fall back to
-the ordinary cleanup command.
+before deleting the named disposable Companion directories. Their fingerprints,
+process use, WSL storage and path guards are rechecked before each deletion. The
+patch registration is removed only after every selected directory is absent.
+Windows owns packaged data removal.
+
+If teardown succeeds but profile deletion fails, the patch registration remains.
+Resolve the specific lock or ownership issue, preview the same explicit scope
+again, review the new digest and targets, then apply with that digest. The native
+teardown may report `not-configured` on retry because its session was already
+removed. A profile deleted before a later profile fails is accepted as absent
+when the same explicit path is previewed again. If package unregister fails
+after profile deletion, the registration remains and the same re-preview/retry
+procedure applies. Never assume success or fall back to ordinary cleanup.
 
 Ordinary release/dev profiles, installed package trees, source checkouts, protected
 roots, overlapping profiles, configured shared caches and reparse-point paths or
-descendants cannot be selected. Shared cached model weights outside disposable
-profiles remain untouched. **All in-profile data, including model files, identities,
+descendants cannot be selected. If a protected root itself or one of its parent
+directories is a reparse point, isolated cleanup refuses to proceed rather than
+risk treating its target as disposable. Shared cached model weights outside
+disposable profiles remain untouched. **All in-profile data, including model files, identities,
 settings and conversations, is destroyed.** Back up anything needed separately.
 No credentials or diagnostics are copied to a report in this mode. Success means
 the exact registration and explicitly selected Companion directories are absent,

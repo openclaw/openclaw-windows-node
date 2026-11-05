@@ -99,6 +99,28 @@ function Get-CleanFullPath([string]$Path) {
     return $full.TrimEnd('\')
 }
 
+function Get-CleanComparablePath([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
+    $comparable = $Path
+    if ($comparable.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase)) {
+        $comparable = '\\' + $comparable.Substring(8)
+    } elseif ($comparable.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) {
+        $comparable = $comparable.Substring(4)
+    }
+    $isDrivePath = $comparable.Length -ge 3 -and $comparable[1] -eq ':' -and $comparable[2] -eq '\'
+    $isUncPath = $comparable.StartsWith('\\') -and
+        @($comparable.Substring(2).Split('\') | Where-Object { $_ }).Count -ge 2
+    if (-not $isDrivePath -and -not $isUncPath) { return $null }
+    try {
+        $full = [IO.Path]::GetFullPath($comparable)
+        if ($isDrivePath -and $full -match '~[0-9]') { $full = Expand-CleanLongPath $full }
+        if ($full.Length -eq 3) { return $full }
+        return $full.TrimEnd('\')
+    } catch {
+        return $null
+    }
+}
+
 function Expand-CleanLongPath([string]$Path) {
     if (-not ('OpenClawCleanup.NativePaths' -as [type])) {
         Add-Type -TypeDefinition @'
@@ -663,13 +685,18 @@ function Assert-CleanIsolatedProcesses([string[]]$Profiles, [string]$Layout, [st
     foreach ($process in Get-CimInstance Win32_Process -ErrorAction Stop) {
         $path = [string](Get-CleanProperty $process 'ExecutablePath')
         if ($path) {
-            $path = Get-CleanFullPath $path
-            if ($path -eq $Companion) {
-                throw "Selected Companion executable is running (PID $($process.ProcessId)). Caller must stop only its verified owned instance first."
+            $comparable = Get-CleanComparablePath $path
+            if (-not $comparable -and $process.Name -match '^(OpenClaw\.Tray\.WinUI|llama-server|openclaw-wsl-keepalive)\.exe$') {
+                throw "Cannot determine candidate process ownership (PID $($process.ProcessId)). Isolated cleanup never stops processes."
             }
-            foreach ($root in @($Profiles) + @($Layout)) {
-                if (Test-CleanWithin $path $root) {
-                    throw "A process is running from a selected root (PID $($process.ProcessId)). Caller must stop only its verified owned instance first."
+            if ($comparable) {
+                if ($comparable -eq $Companion) {
+                    throw "Selected Companion executable is running (PID $($process.ProcessId)). Caller must stop only its verified owned instance first."
+                }
+                foreach ($root in @($Profiles) + @($Layout)) {
+                    if (Test-CleanWithin $comparable $root) {
+                        throw "A process is running from a selected root (PID $($process.ProcessId)). Caller must stop only its verified owned instance first."
+                    }
                 }
             }
         }
@@ -724,7 +751,9 @@ function Get-CleanIsolatedPlan([string]$Patch, [string]$FullName, [string]$Layou
     $protected += @(Get-AppxPackage -ErrorAction Stop | ForEach-Object { $_.InstallLocation } | Where-Object { $_ })
     $protected += @(Get-CleanWin32 $true | ForEach-Object { $_.Install })
     foreach ($root in $protected) {
-        if (Test-CleanWithin $companionFull (Get-CleanFullPath $root)) { throw 'Companion executable belongs to a preserved install/profile/cache, not an isolated build.' }
+        Assert-CleanNoReparsePath $root
+        $protectedFull = Get-CleanFullPath $root
+        if (Test-CleanWithin $companionFull $protectedFull) { throw 'Companion executable belongs to a preserved install/profile/cache, not an isolated build.' }
     }
     $protected += Split-Path -Parent $companionFull
     foreach ($profile in $selected) {
@@ -778,7 +807,7 @@ function Invoke-OpenClawIsolatedClean {
     if ($ExpectedSha256 -notmatch '^[0-9a-fA-F]{64}$' -or $ExpectedSha256 -ine $plan.Sha256) {
         throw 'Missing or stale isolated preview SHA-256. Nothing changed. Preview and review the exact scope again.'
     }
-    if (-not $PSCmdlet.ShouldProcess($plan.Package.PackageFullName, 'Tear down only the owned patch, unregister it and delete explicit disposable profiles')) { return }
+    if (-not $PSCmdlet.ShouldProcess($plan.Package.PackageFullName, 'Tear down the owned patch, delete explicit disposable profiles, then unregister it')) { return }
     $live = Get-CleanIsolatedPlan $Patch $FullName $Layout $Profiles $Companion
     if ($live.Sha256 -ne $plan.Sha256) { throw 'Isolated inventory changed before teardown. Nothing changed.' }
     $command = Invoke-CleanNativeCommand $plan.Alias 'teardown --force --json'
@@ -797,10 +826,6 @@ function Invoke-OpenClawIsolatedClean {
         (ConvertTo-Json $after.ProfileHashes -Compress) -ne (ConvertTo-Json $plan.ProfileHashes -Compress)) {
         throw 'Isolated ownership or profile inventory changed after teardown. Registration and Companion profiles preserved.'
     }
-    Remove-AppxPackage -Package $FullName -ErrorAction Stop
-    if (@(Get-AppxPackage -ErrorAction Stop | Where-Object { $_.Name -eq $plan.Package.Name }).Count) {
-        throw 'Patch registration remains. Companion profile deletion stopped.'
-    }
     foreach ($profile in $plan.Profiles) {
         Assert-CleanNotWithinSourceCheckout $profile
         Assert-CleanIsolatedProcesses $plan.Profiles $plan.Layout $plan.Companion
@@ -810,6 +835,10 @@ function Invoke-OpenClawIsolatedClean {
         }
         if (Test-Path -LiteralPath $profile) { Remove-Item -LiteralPath $profile -Recurse -Force -ErrorAction Stop }
         if (Test-Path -LiteralPath $profile) { throw "Disposable profile remains: $profile" }
+    }
+    Remove-AppxPackage -Package $FullName -ErrorAction Stop
+    if (@(Get-AppxPackage -ErrorAction Stop | Where-Object { $_.Name -eq $plan.Package.Name }).Count) {
+        throw 'Patch registration remains after disposable profile deletion.'
     }
     Write-Host 'SUCCESS: exact development registration and selected disposable Companion profiles absent. No app relaunched; payloads and external caches kept.'
 }

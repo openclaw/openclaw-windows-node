@@ -424,6 +424,7 @@ try {
             Events = [Collections.Generic.List[string]]::new()
             Json = '{"ok":true,"command":"teardown","gateway":{"state":"records-removed"},"session":{"state":"removed"}}'
             Exit = 0; DuringTeardown = $null; LeaveSession = $false
+            SelectedProfiles = @($profile); FailDeletePath = $null
         }
         $alias = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\$($package.PackageFamilyName)\clawctl-$patch.exe"
         $sessionPath = Join-Path $env:LOCALAPPDATA "Packages\$($package.PackageFamilyName)\LocalState\OpenClawGatewayMSIX\session.json"
@@ -446,6 +447,8 @@ try {
             $state.Packages = @($package, $normalPackage, $otherPatch)
             $state.Processes = @(); $state.Distros = @(); $state.Events.Clear()
             $state.Exit = 0; $state.DuringTeardown = $null; $state.LeaveSession = $false
+            $state.SelectedProfiles = @($profile)
+            $state.FailDeletePath = $null
             $state.Json = '{"ok":true,"command":"teardown","gateway":{"state":"records-removed"},"session":{"state":"removed"}}'
             New-Item -ItemType Directory -Path $profile -Force | Out-Null
             Set-Content -LiteralPath "$profile\disposable.txt" -Value 'disposable fixture'
@@ -456,6 +459,15 @@ try {
         function Get-CimInstance { param($ClassName) Assert-True ($ClassName -eq 'Win32_Process') 'Unexpected live inventory.'; $state.Processes }
         function Get-CleanDistroRecords { $state.Distros }
         function Stop-Process { throw 'Isolated mode must not stop any process.' }
+        function Remove-Item {
+            [CmdletBinding()]
+            param([string[]]$LiteralPath, [switch]$Recurse, [switch]$Force)
+            if ($state.FailDeletePath -and $LiteralPath.Count -eq 1 -and
+                $LiteralPath[0].Equals($state.FailDeletePath, [StringComparison]::OrdinalIgnoreCase)) {
+                throw 'TEST profile deletion blocked by fixture.'
+            }
+            Microsoft.PowerShell.Management\Remove-Item @PSBoundParameters
+        }
         function Invoke-CleanNativeCommand {
             param($FilePath, $Arguments)
             Assert-True ($FilePath -eq $alias -and $Arguments -eq 'teardown --force --json') 'Wrong patch CLI or command.'
@@ -469,14 +481,19 @@ try {
         function Remove-AppxPackage {
             param($Package)
             Assert-True ($Package -ceq $fullName) 'Removed unrelated package.'
-            Assert-True ($state.Events.Count -eq 1 -and $state.Events[0] -eq 'teardown') 'Unregistered before teardown.'
+            Assert-True ($state.Events.Count -ge 1 -and $state.Events[$state.Events.Count - 1] -eq 'teardown') 'Unregistered before teardown.'
+            Assert-True (@($state.SelectedProfiles | Where-Object { Test-Path -LiteralPath $_ }).Count -eq 0) 'Unregistered before disposable profiles were removed.'
             $state.Events.Add('unregister')
             $state.Packages = @($normalPackage, $otherPatch)
         }
-        function Get-IsolatedPlan { Get-CleanIsolatedPlan $patch $fullName $layout @($profile) $companion }
-        function Invoke-IsolatedApply([string]$Digest) {
+        function Get-IsolatedPlan([string[]]$Profiles = @($profile)) {
+            $state.SelectedProfiles = $Profiles
+            Get-CleanIsolatedPlan $patch $fullName $layout $Profiles $companion
+        }
+        function Invoke-IsolatedApply([string]$Digest, [string[]]$Profiles = @($profile)) {
+            $state.SelectedProfiles = $Profiles
             Invoke-OpenClawIsolatedClean -Apply $true -Patch $patch -FullName $fullName -Layout $layout `
-                -Profiles @($profile) -Companion $companion -ExpectedSha256 $Digest
+                -Profiles $Profiles -Companion $companion -ExpectedSha256 $Digest
         }
         Reset-IsolatedFixture
         Test-Case 'isolated preview and WhatIf leave packages, profiles, processes and reports untouched' {
@@ -492,6 +509,15 @@ try {
             $null = Get-IsolatedPlan
             $state.Processes = @()
         }
+        Test-Case 'isolated cleanup ignores unrelated processes with UNC or unusual executable paths' {
+            foreach ($path in @('\\server\share\team[1]\helper.exe', "$fixture\strange[1]\helper.exe")) {
+                $state.Processes = @([pscustomobject]@{
+                    Name = 'unrelated.exe'; ExecutablePath = $path; ProcessId = 125; CommandLine = 'unrelated process'
+                })
+                $null = Get-IsolatedPlan
+            }
+            $state.Processes = @()
+        }
         Test-Case 'selected running executables and profile users are rejected without stopping them' {
             foreach ($process in @(
                 [pscustomobject]@{ Name = 'OpenClaw.Tray.WinUI.exe'; ExecutablePath = $companion; ProcessId = 1; CommandLine = '' },
@@ -503,6 +529,22 @@ try {
             }
             $state.Processes = @()
             Assert-True ($state.Events.Count -eq 0) 'Process guard mutated runtime.'
+        }
+        Test-Case 'protected profile junctions cannot alias a disposable target' {
+            $protected = Join-Path $env:APPDATA 'OpenClawTray'
+            $backup = Join-Path $fixture 'ordinary-profile-backup'
+            Move-Item -LiteralPath $protected -Destination $backup
+            try {
+                $created = & $env:ComSpec /d /c "mklink /J `"$protected`" `"$profile`""
+                Assert-True ($LASTEXITCODE -eq 0 -and (Get-Item -LiteralPath $protected -Force).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) "Could not create fixture junction: $created"
+                Assert-Throws { Get-IsolatedPlan } 'reparse point'
+            } finally {
+                if (Test-Path -LiteralPath $protected) {
+                    & $env:ComSpec /d /c "rmdir `"$protected`"" | Out-Null
+                    if ($LASTEXITCODE -ne 0) { throw 'Could not remove the temporary protected-root junction.' }
+                }
+                Move-Item -LiteralPath $backup -Destination $protected
+            }
         }
         Test-Case 'isolated scope requires one exact development registration and registered layout' {
             foreach ($items in @(@(), @($normalPackage), @($package,$package))) {
@@ -617,6 +659,26 @@ try {
             $state.DuringTeardown = { Set-Content -LiteralPath "$profile\disposable.txt" -Value 'concurrent writer' }
             Assert-Throws { Invoke-IsolatedApply $digest } 'changed after teardown'
             Assert-True ($state.Events.Count -eq 1 -and $state.Packages.Count -eq 3 -and (Test-Path $profile)) 'Drift reached unregister.'
+            Reset-IsolatedFixture
+        }
+        Test-Case 'profile deletion failure leaves patch registered and can be retried after a fresh preview' {
+            Reset-IsolatedFixture
+            $secondProfile = Join-Path $fixture 'disposable-companion-second'
+            New-Item -ItemType Directory -Path $secondProfile -Force | Out-Null
+            $profiles = @($profile, $secondProfile)
+            $digest = (Get-IsolatedPlan $profiles).Sha256
+            $state.FailDeletePath = $secondProfile
+            Assert-Throws { Invoke-IsolatedApply $digest $profiles } 'TEST profile deletion blocked'
+            $state.FailDeletePath = $null
+            Assert-True ($state.Events.Count -eq 1 -and $state.Events[0] -eq 'teardown' -and
+                $state.Packages.Count -eq 3 -and -not (Test-Path -LiteralPath $profile) -and
+                (Test-Path -LiteralPath $secondProfile)) 'Failed profile deletion unregistered the package or changed the wrong profile set.'
+            $state.Json = '{"ok":true,"command":"teardown","gateway":{"state":"records-removed"},"session":{"state":"not-configured"}}'
+            $retryDigest = (Get-IsolatedPlan $profiles).Sha256
+            Invoke-IsolatedApply $retryDigest $profiles
+            Assert-True (($state.Events -join ',') -eq 'teardown,teardown,unregister' -and
+                $state.Packages.Count -eq 2 -and -not (Test-Path -LiteralPath $profile) -and
+                -not (Test-Path -LiteralPath $secondProfile)) 'Retry did not finish only the selected cleanup.'
             Reset-IsolatedFixture
         }
         Test-Case 'successful isolated apply preserves normal install, other patches, profiles and external models' {
