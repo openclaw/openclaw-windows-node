@@ -223,10 +223,10 @@ public partial class App
 
         app.SearchHandler = (query) =>
         {
-            var commands = ActiveHubWindow is OpenClawTray.Windows.HubWindow hubWindow
-                ? hubWindow.BuildCommandList()
-                : HubCommandCatalog.Build(_appState, _settings,
-                    (ActiveHubWindow as OpenClawTray.Windows.WorkspaceWindow)?.SelectedAgentId ?? "main");
+            var workspace = ActiveHubWindow as OpenClawTray.Windows.WorkspaceWindow;
+            var commands = workspace is { IsSettingsVisible: true, SettingsView: { } settingsView }
+                ? settingsView.BuildCommandList()
+                : HubCommandCatalog.Build(_appState, _settings, workspace?.SelectedAgentId ?? "main");
             var matches = commands
                 .Where(c => c.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                     || (c.Subtitle?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))

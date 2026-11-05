@@ -6,19 +6,18 @@ public sealed class AccessibilityThemeResourceSourceTests
     public void MainWindowShells_PreserveMicaAndHighContrastChatResources()
     {
         // Retirement: replace when production window shells can be mounted in native tests.
-        var hub = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml"));
+        var settings = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml"));
         var workspace = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml"));
         var resources = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Themes", "ChatResources.xaml"));
         System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        Assert.Single(hub.Descendants(), element => element.Name.LocalName == "MicaBackdrop");
+        // The one Mica backdrop and title bar belong to the Workspace window; the embedded Settings view owns neither.
         Assert.Single(workspace.Descendants(), element => element.Name.LocalName == "MicaBackdrop");
-        foreach (var shell in new[] { hub, workspace })
-        {
-            var title = shell.Descendants().Single(element =>
-                (string?)element.Attribute(x + "Name") == (shell == hub ? "AppTitleBar" : "WorkspaceTitleBar"));
-            Assert.Null(title.Attribute("Background"));
-        }
-        Assert.DoesNotContain(hub.Descendants(), element =>
+        Assert.DoesNotContain(settings.Descendants(), element => element.Name.LocalName == "MicaBackdrop");
+        Assert.DoesNotContain(settings.Descendants(), element => element.Name.LocalName == "TitleBar");
+        var title = workspace.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Name") == "WorkspaceTitleBar");
+        Assert.Null(title.Attribute("Background"));
+        Assert.DoesNotContain(settings.Descendants(), element =>
             (string?)element.Attribute("Background") == "{ThemeResource NavigationViewContentBackground}");
         foreach (var theme in resources.Descendants().Where(element =>
             element.Name.LocalName == "ResourceDictionary" && element.Attribute(x + "Key") is not null))
@@ -87,8 +86,8 @@ public sealed class AccessibilityThemeResourceSourceTests
     {
         var connection = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs");
         var connectionXaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml");
-        var hub = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
-        var hubXaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml");
+        var hub = ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
+        var hubXaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml");
         var timeline = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
         var resources = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml");
 

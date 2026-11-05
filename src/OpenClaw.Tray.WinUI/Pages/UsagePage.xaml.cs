@@ -337,17 +337,30 @@ public sealed partial class UsagePage : Page
         return n.ToString();
     }
 
+    private void UsageList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    {
+        var name = args.InRecycleQueue ? string.Empty : args.Item switch
+        {
+            ProviderRow provider => provider.AccessibleName,
+            DailyRow daily => daily.AccessibleName,
+            _ => string.Empty,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(args.ItemContainer, name);
+    }
+
     private class ProviderRow
     {
         public string Name { get; set; } = "";
         public string Plan { get; set; } = "";
         public string Usage { get; set; } = "";
         public string Status { get; set; } = "";
+        public string AccessibleName => string.Join(", ", new[] { Name, Plan, Usage, Status }.Where(value => !string.IsNullOrWhiteSpace(value)));
     }
 
     private class DailyRow
     {
         public string Date { get; set; } = "";
         public string Cost { get; set; } = "";
+        public string AccessibleName => string.Join(", ", new[] { Date, Cost }.Where(value => !string.IsNullOrWhiteSpace(value)));
     }
 }

@@ -12,7 +12,7 @@ public sealed class CiNugetCacheWorkflowTests
         Assert.Contains(@"OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming", job);
         Assert.Contains(@"OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Local", job);
         Assert.Contains("OPENCLAW_REPO_ROOT: ${{ github.workspace }}", job);
-        Assert.Contains("-Filter \"Category!=Accessibility&Category!=NativeOnboardingProof\"", job);
+        Assert.Contains("-Filter \"Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture\"", job);
         Assert.DoesNotContain("FullyQualifiedName!~Onboarding", job);
     }
 

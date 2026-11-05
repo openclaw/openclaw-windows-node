@@ -162,6 +162,7 @@ internal sealed class SettingsStore : ISettingsStore
         CameraRecordingConsentGiven = _settings.CameraRecordingConsentGiven,
         LocationConsentGiven = _settings.LocationConsentGiven,
         ShowChatToolCalls = _settings.ShowChatToolCalls,
+        PinnedPagesByGateway = _settings.PinnedPagesByGateway,
     };
 
     private void ThrowIfDisposed()
@@ -208,5 +209,6 @@ internal sealed class SettingsStore : ISettingsStore
         public bool LocationConsentGiven { set => _settings.LocationConsentGiven = value; }
         public bool VoiceTtsEnabled { set => _settings.VoiceTtsEnabled = value; }
         public bool ShowChatToolCalls { set => _settings.ShowChatToolCalls = value; }
+        public void SetPagePinned(string scopeKey, string tag, bool pinned) => _settings.TogglePinnedPage(scopeKey, tag, pinned);
     }
 }

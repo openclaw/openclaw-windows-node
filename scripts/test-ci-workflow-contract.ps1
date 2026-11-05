@@ -210,6 +210,8 @@ $codeQlPullRequestBranches = @(Get-InlineYamlList -Text $codeQlPullRequest -Name
 $codeQlPullRequestPaths = @(Get-YamlBlockList -Text $codeQlPullRequest -Name "paths")
 
 $expectedCodeQlPaths = @(
+    ".gitattributes",
+    "**/.gitattributes",
     ".github/codeql/**",
     ".github/workflows/**",
     "src/**",
@@ -223,8 +225,8 @@ $expectedCodeQlPaths = @(
     "package.json",
     "package-lock.json"
 )
-if (($codeQlPushBranches -join ",") -ne "main,master") {
-    throw "CodeQL branch pushes must be limited to main and master."
+if (($codeQlPushBranches -join ",") -ne "master") {
+    throw "CodeQL branch pushes must be limited to master; main uses scheduled scans."
 }
 if (($codeQlPushTags -join ",") -ne "**") {
     throw "CodeQL must preserve scanning for all tag pushes."
@@ -240,10 +242,14 @@ if (($codeQlPullRequestPaths -join "`n") -cne ($expectedCodeQlPaths -join "`n"))
 }
 $codeQlTriggerCases = @(
     @{ Name = "feature branch code push"; Event = "push"; Ref = "feature/example"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $false },
-    @{ Name = "main code push"; Event = "push"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
+    @{ Name = "main code push"; Event = "push"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $false },
     @{ Name = "master code push"; Event = "push"; Ref = "master"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
     @{ Name = "release tag push"; Event = "push"; Ref = "refs/tags/v2026.9.3"; Path = "docs/release.md"; Expected = $true },
     @{ Name = "relevant pull request"; Event = "pull_request"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
+    @{ Name = "root attributes pull request"; Event = "pull_request"; Ref = "main"; Path = ".gitattributes"; Expected = $true },
+    @{ Name = "nested attributes pull request"; Event = "pull_request"; Ref = "main"; Path = "src/.gitattributes"; Expected = $true },
+    @{ Name = "hidden attributes pull request"; Event = "pull_request"; Ref = "main"; Path = ".github/.gitattributes"; Expected = $true },
+    @{ Name = "master attributes push"; Event = "push"; Ref = "master"; Path = ".gitattributes"; Expected = $true },
     @{ Name = "docs-only pull request"; Event = "pull_request"; Ref = "main"; Path = "docs/example.md"; Expected = $false },
     @{ Name = "agent-skill-only pull request"; Event = "pull_request"; Ref = "main"; Path = ".agents/skills/example/SKILL.md"; Expected = $false },
     @{ Name = "scheduled scan"; Event = "schedule"; Ref = ""; Path = ""; Expected = $true },
@@ -261,16 +267,16 @@ foreach ($case in $codeQlTriggerCases) {
 foreach ($requiredToken in @(
         "workflow_dispatch:",
         "schedule:",
-        'cron: "29 6 * * 1"',
+        'cron: "29 */6 * * *"',
         "profile:",
         "default: all",
         "type: choice",
         'group: codeql-${{ github.workflow }}-',
+        "github.event_name == 'schedule' && 'schedule'",
         "cancel-in-progress: `${{ github.event_name == 'pull_request' }}",
         "actions: read",
         "contents: read",
         "security-events: write",
-        'if [ "${{ vars.OPENCLAW_CODEQL_ADVANCED_SETUP }}" = "true" ]; then',
         "inputs.profile == 'csharp'",
         "languages: csharp",
         "build-mode: manual",
@@ -286,26 +292,22 @@ foreach ($requiredToken in @(
         -Expected $requiredToken `
         -Message "CodeQL workflow is missing required contract '$requiredToken'."
 }
-Assert-NotContains `
-    -Text $codeQlWorkflow `
-    -Unexpected "inputs.advanced_setup" `
-    -Message "CodeQL advanced setup must not bypass the repository-variable gate."
+# Fork pull requests do not receive the repository variable used by the retired
+# setup-migration gate. Eligibility must depend only on draft/profile context.
+foreach ($retiredGate in @("advanced-setup", "OPENCLAW_CODEQL_ADVANCED_SETUP", "inputs.advanced_setup")) {
+    Assert-NotContains `
+        -Text $codeQlWorkflow `
+        -Unexpected $retiredGate `
+        -Message "CodeQL must not depend on the retired migration gate '$retiredGate'."
+}
 foreach ($jobName in @("csharp", "actions")) {
     $codeQlJob = Get-JobBlock -Name $jobName -Text $codeQlWorkflow
+    $expectedEligibility = "if: `${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == '$jobName') }}"
     Assert-Contains `
         -Text $codeQlJob `
-        -Expected "needs: advanced-setup" `
-        -Message "CodeQL job '$jobName' must depend on the advanced-setup gate."
-    Assert-Contains `
-        -Text $codeQlJob `
-        -Expected "needs.advanced-setup.outputs.enabled == 'true'" `
-        -Message "CodeQL job '$jobName' must remain disabled until the repository variable enables advanced setup."
+        -Expected $expectedEligibility `
+        -Message "CodeQL job '$jobName' must admit non-draft fork PRs without repository variables and preserve manual profiles."
 }
-$codeQlGateJob = Get-JobBlock -Name "advanced-setup" -Text $codeQlWorkflow
-Assert-Contains `
-    -Text $codeQlGateJob `
-    -Expected 'echo "enabled=false" >> "$GITHUB_OUTPUT"' `
-    -Message "CodeQL gate must explicitly disable advanced analysis when the repository variable is not true."
 
 Assert-Contains `
     -Text $workflow `
@@ -569,12 +571,89 @@ foreach ($token in @(
 }
 
 $trayUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
-Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof"' `
-    -Message "Tray UI tests must exclude accessibility and native-onboarding proof cases."
+Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"' `
+    -Message "Tray UI tests must exclude cases owned by the accessibility, native-onboarding and strict Gateway fixture lanes."
 Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
     -Message "Tray UI tests must collect the interrupted test sequence on a five-minute hang."
+
+$fixtureStep = Get-StepBlock -Text $uiJob -Name "Run mock Gateway application scenarios"
+foreach ($token in @(
+        'timeout-minutes: 30',
+        './scripts/test-gateway-fixture.ps1',
+        '-AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe',
+        '-ArtifactsDirectory .\TestResults\GatewayFixture',
+        '-Screenshots'
+    )) {
+    Assert-Contains -Text $fixtureStep -Expected $token -Message "Mock Gateway CI step is missing '$token'."
+}
+$accessibilityStep = Get-StepBlock -Text $uiJob -Name "Run Accessibility Tests (Axe.Windows)"
+Assert-Contains -Text $accessibilityStep `
+    -Expected "if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}" `
+    -Message "Accessibility scans must run after fixture failures when their build, runtime, and desktop prerequisites succeeded."
+foreach ($token in @('continue-on-error:', 'OPENCLAW_RUN_MXC_E2E', 'OPENCLAW_RUN_E2E')) {
+    Assert-NotContains -Text $fixtureStep -Unexpected $token -Message "Mock Gateway CI must run by default without real Gateway opt-ins: '$token'."
+}
+Assert-Contains -Text $uiJob -Expected 'runs-on: windows-latest' `
+    -Message "Mock Gateway application scenarios must use the ordinary Windows hosted runner."
+if ($uiJob.IndexOf('name: Install WindowsAppRuntime', [StringComparison]::Ordinal) -ge
+    $uiJob.IndexOf('name: Run mock Gateway application scenarios', [StringComparison]::Ordinal) -or
+    $uiJob.IndexOf('name: Run mock Gateway application scenarios', [StringComparison]::Ordinal) -ge
+    $uiJob.IndexOf('name: Verify DevBuild identity marker', [StringComparison]::Ordinal)) {
+    throw 'Mock Gateway scenarios must run after matching WindowsAppRuntime installation and before DevBuild changes the app identity.'
+}
+$runtimeStep = Get-StepBlock -Text $uiJob -Name 'Install WindowsAppRuntime'
+foreach ($token in @('Directory.Build.props', 'MicrosoftWindowsAppSDKVersion', '$channel/$version/windowsappruntimeinstall-x64.exe', '$LASTEXITCODE -ne 0')) {
+    Assert-Contains -Text $runtimeStep -Expected $token -Message "UI runtime installation must match the candidate SDK and fail closed: '$token'."
+}
+$desktopStep = Get-StepBlock -Text $uiJob -Name 'Configure UI desktop'
+Assert-Contains -Text $desktopStep -Expected './scripts/Set-CiDesktopResolution.ps1' `
+    -Message 'Hosted UI proof must configure and verify the desktop before launching tests.'
+Assert-NotContains -Text $desktopStep -Unexpected 'continue-on-error:' `
+    -Message 'Unsupported hosted desktop geometry must fail explicitly.'
+if ($uiJob.IndexOf('name: Configure UI desktop', [StringComparison]::Ordinal) -ge
+    $uiJob.IndexOf('name: Run Functional UI Tests', [StringComparison]::Ordinal)) {
+    throw 'Hosted desktop geometry must be configured before any UI tests run.'
+}
+Assert-Contains -Text $fixtureStep `
+    -Expected "if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}" `
+    -Message 'Fixture evidence must run after unrelated test failures, but require every launch prerequisite.'
+foreach ($entry in @(
+    @{ name = 'Build UI test projects'; id = 'ui-build' },
+    @{ name = 'Install WindowsAppRuntime'; id = 'ui-runtime' },
+    @{ name = 'Configure UI desktop'; id = 'ui-desktop' }
+)) {
+    Assert-Contains -Text (Get-StepBlock -Text $uiJob -Name $entry.name) -Expected "id: $($entry.id)" `
+        -Message "Fixture launch prerequisite must expose its real step outcome: '$($entry.id)'."
+}
+$screenshotPreparation = Get-StepBlock -Text $uiJob -Name 'Prepare mock Gateway screenshot publisher'
+foreach ($token in @('always()', "steps.gateway-fixture.outcome == 'failure'", 'npm ci', '--ignore-scripts')) {
+    Assert-Contains -Text $screenshotPreparation -Expected $token -Message "Screenshot uploader preparation must run after failed fixtures and use locked dependencies: '$token'."
+}
+Assert-NotContains -Text $screenshotPreparation -Unexpected "steps.gateway-fixture.outcome == 'success'" `
+    -Message 'Successful fixture runs must keep screenshots only in the complete diagnostic archive.'
+$screenshotPublication = Get-StepBlock -Text $uiJob -Name 'Publish browsable mock Gateway screenshots'
+foreach ($token in @('always()', "steps.screenshot-publisher.outcome == 'success'", 'actions/github-script@v9', 'await report.run({ core, context })')) {
+    Assert-Contains -Text $screenshotPublication -Expected $token -Message "Screenshot previews must publish after test failures through the Actions artifact runtime: '$token'."
+}
+Assert-NotContains -Text $screenshotPublication -Unexpected 'continue-on-error:' `
+    -Message 'Screenshot publication failures must remain visible failures.'
+$uiUpload = Get-StepBlock -Text $uiJob -Name 'Upload Test Results'
+foreach ($token in @('always()', 'test-results-ui', 'path: TestResults/')) {
+    Assert-Contains -Text $uiUpload -Expected $token -Message "The complete UI diagnostic archive must be retained: '$token'."
+}
+$fixtureRunner = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\test-gateway-fixture.ps1') -Raw
+foreach ($token in @(
+        "`$start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] = '1'",
+        "`$start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] = `$resolvedApp",
+        "'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui'",
+        "'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof",
+        "`$start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] = if (`$EnableKeyboardProof) { '1' } else { '0' }",
+        '[int]$counters.total -le 0 -or [int]$counters.passed -ne [int]$counters.total'
+    )) {
+    Assert-Contains -Text $fixtureRunner -Expected $token -Message "Fixture runner lost its explicit-app, category or all-pass contract: '$token'."
+}
 foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-dump-type"', '"none"')) {
     Assert-Contains -Text $runner -Expected $token `
         -Message "CI test runner is missing hang diagnostic argument '$token'."
@@ -752,10 +831,21 @@ $releaseBuilds = [ordered]@{
         Native = "Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime -SkipNativeLoadProbe"
     }
 }
+function Assert-JobDependencies {
+    param([string]$Name, [string[]]$Expected)
+    $job = Get-JobBlock $Name
+    $match = [regex]::Match($job, '(?m)^    needs:\s*\[([^\]]+)\]')
+    if (!$match.Success) { throw "Missing dependency list for $Name." }
+    $actual = @($match.Groups[1].Value.Split(',') | ForEach-Object { $_.Trim() })
+    if (Compare-Object $Expected $actual) {
+        throw "Unexpected dependencies for ${Name}: $($actual -join ', ')."
+    }
+}
+
 foreach ($build in $releaseBuilds.GetEnumerator()) {
     $job = Get-JobBlock $build.Key
+    Assert-JobDependencies -Name $build.Key -Expected @('change-classification', 'metadata', 'sign-cleanup-host')
     foreach ($token in @(
-            "needs: [change-classification, metadata]",
             "fetch-depth: 0",
             "needs.change-classification.outputs.$($build.Value.Output) == 'true'",
             "runs-on: $($build.Value.Runner)",
@@ -773,8 +863,8 @@ foreach ($build in $releaseBuilds.GetEnumerator()) {
 }
 
 $buildMsixJob = Get-JobBlock "build-msix"
+Assert-JobDependencies -Name 'build-msix' -Expected @('change-classification', 'metadata', 'reserve-msix-version', 'sign-cleanup-host')
 foreach ($token in @(
-        "needs: [change-classification, metadata, reserve-msix-version]",
         "needs.metadata.result == 'success'",
         "(needs.reserve-msix-version.result == 'success' || needs.reserve-msix-version.result == 'skipped')",
         "needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true'",
