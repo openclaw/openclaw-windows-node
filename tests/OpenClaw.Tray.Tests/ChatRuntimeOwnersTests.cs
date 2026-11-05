@@ -1026,6 +1026,58 @@ public sealed class ChatSendQueuePolicyTests
 
 public sealed class ChatEventMapperTests
 {
+    [Theory]
+    [InlineData("lifecycle", "phase")]
+    [InlineData("job", "state")]
+    public void Map_ErrorShowsGatewayExplanationInsteadOfGenericFallback(string stream, string stateField)
+    {
+        const string explanation = "Secret owner provider:nvidia-inference is configured but unavailable (secret reference was not found).";
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(
+            new Dictionary<string, string> { [stateField] = "error", ["error"] = explanation }));
+
+        var mapped = ChatEventMapper.Map(new AgentEventInfo
+        {
+            Stream = stream,
+            SessionKey = "main",
+            Data = document.RootElement.Clone(),
+        });
+
+        Assert.Equal(explanation, Assert.IsType<ChatErrorEvent>(mapped.Event).Text);
+    }
+
+    [Fact]
+    public void Map_LifecycleErrorKeepsGenericFallbackForNonStringExplanation()
+    {
+        using var document = JsonDocument.Parse("""{"phase":"error","error":{"message":"untrusted"}}""");
+
+        var mapped = ChatEventMapper.Map(new AgentEventInfo
+        {
+            Stream = "lifecycle",
+            SessionKey = "main",
+            Data = document.RootElement.Clone(),
+        });
+
+        Assert.Equal("Agent error", Assert.IsType<ChatErrorEvent>(mapped.Event).Text);
+    }
+
+    [Fact]
+    public void Map_LifecycleErrorRedactsCredentialInGatewayExplanation()
+    {
+        using var document = JsonDocument.Parse("""{"phase":"error","error":"api_key=shortsecret at https://gateway.example/path?token=querysecret"}""");
+
+        var mapped = ChatEventMapper.Map(new AgentEventInfo
+        {
+            Stream = "lifecycle",
+            SessionKey = "main",
+            Data = document.RootElement.Clone(),
+        });
+
+        var text = Assert.IsType<ChatErrorEvent>(mapped.Event).Text;
+        Assert.DoesNotContain("shortsecret", text);
+        Assert.DoesNotContain("querysecret", text);
+        Assert.Contains("[REDACTED]", text);
+    }
+
     [Fact]
     public void Map_ApprovalRequestPreservesIdentityAndActions()
     {
