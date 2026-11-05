@@ -61,7 +61,7 @@ After the manual rehearsal and release acceptance, set the **repository** Action
 variable `MSSTORE_ENABLED` to `true`. It must be repository-scoped because the
 source job checks it before entering the protected environment. Successful eligible
 release runs then trigger **Submit Microsoft Store** through `workflow_run`.
-PRs, ordinary main builds, failed runs, and prereleases do not submit. Ineligible
+PRs, ordinary main builds, failed runs, and unrelated prereleases do not submit. Ineligible
 automatic runs are skipped; selecting an ineligible run manually fails explicitly.
 
 Remove the variable or set it to `false` to pause future automatic submissions.
@@ -89,11 +89,52 @@ use the release process to produce and validate a new candidate.
 See Microsoft's [submission API](https://learn.microsoft.com/en-us/windows/uwp/monetize/manage-app-submissions)
 and [application identity resource](https://learn.microsoft.com/en-us/windows/uwp/monetize/get-app-data).
 
+## Development flight
+
+The same protected publisher sends published `vX.Y.Z-alpha.N` Companion releases
+to a **Development** package flight, never to the public production submission.
+Stable releases still use the production destination and its separate activation flag.
+
+1. In Partner Center, create a known-user group named **OpenClaw Development
+   Testers**. Add each tester's Microsoft account email address, which must be the
+   account they use in Microsoft Store.
+2. From the product overview, create a **Development** package flight and select
+   that group. Flights belong to a product: Companion and Gateway require their
+   own flight even when they share the tester group.
+3. Set `MSSTORE_DEVELOPMENT_FLIGHT_ID` in the existing `microsoft-store`
+   environment to the flight GUID. This is not the numeric submission ID in the
+   portal URL. Use the Store API's
+   [list flights](https://learn.microsoft.com/en-us/windows/uwp/monetize/get-flights-for-an-app)
+   response to verify the GUID, product and group.
+4. Finish the portal-created initial draft with a qualified Store bundle before
+   using automation, or explicitly discard that draft. The publisher refuses
+   to adopt or delete a pre-existing draft, including an empty initial one.
+5. After this workflow lands on main, manually dispatch **Submit Microsoft
+   Store**, specifying the eligible release `run_id` and `channel=development`.
+   Selecting a stable run for Development, or a preview run for production, fails.
+6. Verify certification, flight publication and a tester's actual Store
+   install/upgrade. Then set the **repository** variable
+   `MSSTORE_DEVELOPMENT_ENABLED=true`. Leave it unset or `false` until that proof.
+   Production's `MSSTORE_ENABLED` remains independent.
+
+Testers install/update the normal Store listing while signed into the enrolled
+Microsoft account; there is no separate public preview listing. Enrollment and
+certification can take time. Leaving a flight does not downgrade an installed
+newer package: wait for production to catch up or follow the documented
+data-preserving recovery guidance for the product.
+
+Both channels share the existing submission concurrency group and OIDC
+application. No new credential or broader GitHub environment access is needed.
+The evidence records `channel` and `flightId`. Flight submissions preserve the
+flight's publishing settings, replace only its packages, and do not edit the
+production listing or its draft. A first API-created flight submission preserves
+the new draft's defaults when no published flight baseline exists.
+
 ## Source binding
 
-The release pipeline records `store-release-source-<attempt>` only after stable
+The release pipeline records `store-release-source-<attempt>` only after eligible
 GitHub publication and bundle validation succeed. The submission workflow checks
-that witness against the source run, its current attempt, the published stable
+that witness against the source run, its current attempt, the published stable or alpha
 tag and commit, and the downloaded bundle hash. Promotion keeps its product source
 separate from the main pipeline commit. Releases created before this witness was
 introduced cannot be used as manual submission sources.
