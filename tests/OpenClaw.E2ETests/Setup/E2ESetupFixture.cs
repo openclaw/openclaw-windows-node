@@ -981,7 +981,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         }
     }
 
-    private static bool ShouldCopyArtifactFile(string file)
+    internal static bool ShouldCopyArtifactFile(string file)
     {
         var fileName = Path.GetFileName(file);
         if (fileName.Equals("gateways.json", StringComparison.OrdinalIgnoreCase) ||
@@ -992,7 +992,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         }
 
         return !file.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            .Any(segment => segment.Equals("gateways", StringComparison.OrdinalIgnoreCase));
+            .Any(segment => segment.Equals("gateways", StringComparison.OrdinalIgnoreCase) ||
+                segment.StartsWith("search-browser-", StringComparison.OrdinalIgnoreCase));
     }
 
     private const string TrayExecutableOverrideEnvironmentVariable = "OPENCLAW_E2E_TRAY_EXE";

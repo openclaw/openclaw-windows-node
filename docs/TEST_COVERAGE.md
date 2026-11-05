@@ -199,6 +199,8 @@ receive `FORBIDDEN` for transcript search. Preinstalled headless Edge uses a
 fresh fixture-owned profile to render authenticated Dashboard root and Skills
 routes and capture screenshots. Credentials are sent through local CDP, not
 browser command-line arguments; only the test's synthetic session is deleted.
+Browser profile storage is excluded from collected artifacts; only its
+screenshots and bounded proof outcomes are retained.
 The existing fixture owns Gateway and profile teardown. This is a real released
 WSL Gateway/browser boundary, not native packaged-Gateway or Store upgrade proof.
 The run's `gateway-release.json`, result report and screenshots identify actual
