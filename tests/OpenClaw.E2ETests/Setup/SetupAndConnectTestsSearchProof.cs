@@ -88,9 +88,13 @@ public sealed class SetupAndConnectTestsSearchProof(E2ESetupFixture fixture)
                             (() => {
                               const visible = element => {
                                 const bounds = element.getBoundingClientRect();
-                                return element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
-                                  && bounds.width > 0 && bounds.height > 0
-                                  && bounds.bottom > 0 && bounds.top < innerHeight;
+                                if (!element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+                                  || element.closest("[inert],[hidden],[aria-hidden=true]")) return false;
+                                const left = Math.max(0, bounds.left), right = Math.min(innerWidth, bounds.right);
+                                const top = Math.max(0, bounds.top), bottom = Math.min(innerHeight, bounds.bottom);
+                                if (right <= left || bottom <= top) return false;
+                                const hit = document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
+                                return hit === element || element.contains(hit);
                               };
                               const headings = [...document.querySelectorAll("h1,h2,[role=heading]")]
                                 .filter(visible)
