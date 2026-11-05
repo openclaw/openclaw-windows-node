@@ -634,7 +634,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             // one-way Close frame. The gate must hold from drop observation
             // onward. The reconnect socket is accepted without a challenge so
             // the disconnected window stays open until the test delivers it.
-            var socket2Accepted = server.WaitForNextSocketAsync(TransitionTimeout);
+            var socket2Accepted = server.WaitForNextSocketAsync();
             server.WithholdGreetingOnAccept();
             var disconnected = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             void OnDropStatus(object? _, ConnectionStatus status)
@@ -664,7 +664,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             // The client's real auto-reconnect path (receive-loop exit ->
             // ReconnectWithBackoffAsync, 1s+ backoff) must re-run the dance on
             // a fresh socket, and the gate reopens only after the fresh hello-ok.
-            await socket2Accepted;
+            await socket2Accepted.WaitAsync(TransitionTimeout);
             await server.SendTextToCurrentSocketAsync(LoopbackGatewayServer.ChallengeFrame);
             var connect2 = await server.WaitFrameAsync("connect", occurrence: 1, timeoutMs: 15_000);
             _output.WriteLine("[trace] socket #2 accepted; challenge delivered; connect captured: " + connect2);
@@ -1000,11 +1000,11 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
 
         /// <summary>Resolves when the next client WebSocket is accepted.
         /// Register before triggering the reconnect.</summary>
-        public Task WaitForNextSocketAsync(TimeSpan timeout)
+        public Task WaitForNextSocketAsync()
         {
             var awaiter = new TaskCompletionSource<WebSocket>(TaskCreationOptions.RunContinuationsAsynchronously);
             Volatile.Write(ref _socketAcceptedAwaiter, awaiter);
-            return awaiter.Task.WaitAsync(timeout);
+            return awaiter.Task;
         }
 
         /// <summary>Challenge frame sent on accept in the handshake; also sent

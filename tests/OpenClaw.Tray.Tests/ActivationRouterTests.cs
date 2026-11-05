@@ -623,7 +623,9 @@ public class ActivationRouterTests
         var forwarder = new ActivationRouter(Scheme, pipeName);
         var sink = new BlockingConfirmationSink();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await listener.StartForwardedActivationListenerAsync(sink, cts.Token);
+        // The listener gets a timer-free token so only StopAsync can cancel the pending confirmation;
+        // the test's own 10 s timer must not mask a shutdown bug.
+        await listener.StartForwardedActivationListenerAsync(sink, CancellationToken.None);
 
         Assert.True(await ForwardWithRetryAsync(
             forwarder,
