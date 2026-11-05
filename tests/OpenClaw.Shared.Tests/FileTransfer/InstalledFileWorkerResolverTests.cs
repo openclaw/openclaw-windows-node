@@ -1216,6 +1216,7 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
     [InlineData("directory-reparse")]
     [InlineData("ancestor-reparse")]
     [InlineData("hardlink")]
+    [InlineData("hardlink-extended")]
     public void InvalidInstalledSourceCannotMaterializeATrustedPayload(string mutation)
     {
         using (Resolver.Resolve()) { }
@@ -1243,6 +1244,10 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
             case "hardlink":
                 CreateHardLink(Path.Combine(_root, "alias.dll"), runtime);
                 break;
+            case "hardlink-extended":
+                CreateHardLink(@"\\?\" + SandboxPathRules.Normalize(Path.Combine(_root, "alias.dll")),
+                    @"\\?\" + SandboxPathRules.Normalize(runtime));
+                break;
         }
         var error = Assert.Throws<NotSupportedException>(() => Resolver.Resolve(destination));
         Assert.False(Directory.Exists(destination));
@@ -1252,7 +1257,7 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
             "digest" => "digest changed",
             "missing" or "additional" => "inventory changed",
             "directory" => "dependency directory",
-            "hardlink" => "file aliases",
+            "hardlink" or "hardlink-extended" => "file aliases",
             _ => "ordinary files and directories",
         }, error.Message);
         File.WriteAllText(runtime, "xyz");
@@ -1425,9 +1430,16 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CreateHardLinkW(string path, string existing, IntPtr security);
 
-    private static void CreateHardLink(string path, string existing) =>
-        Assert.True(CreateHardLinkW(@"\\?\" + path, @"\\?\" + existing, IntPtr.Zero),
+    private static void CreateHardLink(string path, string existing)
+    {
+        static string NativePath(string value) =>
+            value.StartsWith(@"\\?\", StringComparison.Ordinal) ? value :
+            value.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + value[2..] :
+            @"\\?\" + Path.GetFullPath(value);
+
+        Assert.True(CreateHardLinkW(NativePath(path), NativePath(existing), IntPtr.Zero),
             $"Hard link creation failed: {Marshal.GetLastWin32Error()}");
+    }
     [StructLayout(LayoutKind.Sequential)]
     private struct Identity
     {
