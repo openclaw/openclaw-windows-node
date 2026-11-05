@@ -1,4 +1,5 @@
 using OpenClaw.Connection;
+using OpenClaw.SetupEngine;
 using OpenClawTray.Helpers;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -14,7 +15,7 @@ internal sealed class GatewayDashboardLauncher(
     Action? reportOpened = null)
 {
     internal const string FailureNotificationId = "setup-dashboard-launch";
-    public async Task<bool> OpenAsync(string? path = null)
+    public async Task<bool> OpenAsync(string? path = null, Action? authorizeDispatch = null)
     {
         try
         {
@@ -24,8 +25,13 @@ internal sealed class GatewayDashboardLauncher(
                 ?? throw new InvalidOperationException("The Gateway credential is unavailable.");
             var url = GatewayDashboardUrlBuilder.Build(credential.GatewayUrl, path, credential.Token,
                 !credential.IsBootstrapToken && credential.Source == CredentialResolver.SourceSharedGatewayToken);
+            authorizeDispatch?.Invoke();
             if (!await launchBrowser(url))
                 throw new InvalidOperationException("Windows did not open the Dashboard.");
+        }
+        catch (SetupNativeOwnershipException)
+        {
+            throw;
         }
         catch (Exception ex) when (IsExpectedLaunchFailure(ex))
         {

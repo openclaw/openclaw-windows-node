@@ -569,7 +569,7 @@ public sealed partial class ConfigPage : Page
                     ShowStatus(
                         L("ConfigPage_StatusSaveFailedTitle"),
                         result.Error ?? L(result.TimedOut
-                            ? "ChannelsPage_BannerGatewayNoResponse"
+                            ? "ConfigPage_BannerGatewayNoResponse"
                             : "ConfigPage_StatusSaveRejectedMessage"),
                         InfoBarSeverity.Error);
                 }

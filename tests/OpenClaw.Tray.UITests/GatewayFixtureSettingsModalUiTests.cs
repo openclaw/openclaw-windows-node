@@ -12,7 +12,6 @@ public sealed partial class GatewayFixtureUiTests
 {
     [GatewayFixtureUiTheory]
     [InlineData(null, false)]
-    [InlineData(SetupNativeDestination.Channels, false)]
     [InlineData(SetupNativeDestination.Chat, false)]
     [InlineData(SetupNativeDestination.Chat, true)]
     [Trait("Category", "GatewayFixture")]
@@ -70,15 +69,9 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => FindById(run, "AgentCreationDialog") is not null, "chat-origin ContentDialog");
             }
             var dialogIdentity = FindButton(run, "Cancel")!.GetRuntimeId();
-            var route = destination switch
-            {
-                SetupNativeDestination.Channels => "channels",
-                SetupNativeDestination.Chat => "chat",
-                _ => "settings"
-            };
+            var route = destination == SetupNativeDestination.Chat ? "chat" : "settings";
             var marker = destination switch
             {
-                SetupNativeDestination.Channels => "ChannelsPageMarker",
                 SetupNativeDestination.Chat => "ChatComposerInput",
                 _ => "SettingsPageMarker"
             };
