@@ -580,6 +580,35 @@ public class ProfileCompletionTests
         Assert.DoesNotContain(proxy.Methods, m => m.StartsWith("users.set", StringComparison.Ordinal));
     }
 
+    [Theory]
+    // An existing install that was only updated (no setup this run) is offered too.
+    [InlineData("gw", null, false, false, false, true)]
+    [InlineData("gw", null, false, true, false, true)]
+    // The post-setup restart's handoff window does not block; an in-progress setup run defers.
+    [InlineData("gw", null, false, true, true, true)]
+    [InlineData("gw", null, false, false, true, false)]
+    // Once per Gateway and process, a remembered Skip, and no active Gateway all suppress it.
+    [InlineData("gw", "gw", false, false, false, false)]
+    [InlineData("gw", "other", false, false, false, true)]
+    [InlineData("gw", null, true, false, false, false)]
+    [InlineData(null, null, false, true, false, false)]
+    public void AutoOffer_CoversUpdatedInstalls_OncePerGateway_AndDefersDuringSetup(
+        string? gatewayId, string? offered, bool declined, bool postSetupRestart, bool setupOpen, bool expected) =>
+        Assert.Equal(expected, ProfileCompletionAutoOffer.ShouldOffer(gatewayId, offered, declined, postSetupRestart, setupOpen));
+
+    [Fact]
+    public void Window_AutomaticOfferIsNotLimitedToPostSetupRestart()
+    {
+        var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? FindRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
+        var start = source.IndexOf("private void MaybeOfferProfileCompletion()", StringComparison.Ordinal);
+        var body = source[start..source.IndexOf("private void RetryProfileCompletionAfter", start, StringComparison.Ordinal)];
+        Assert.Contains("ProfileCompletionAutoOffer.ShouldOffer(", body);
+        Assert.Contains("CurrentApp.GetOnboardingWindowHandle() != IntPtr.Zero", body);
+        Assert.DoesNotContain("!CurrentApp.IsPostSetupRestart", body);
+        Assert.True(body.IndexOf("ShouldOffer(", StringComparison.Ordinal) < body.IndexOf("_profileOfferedGatewayId = id", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Window_RechecksForOpenModalAfterPreparation_AndDoesNotConsumeAutomaticOffer()
     {

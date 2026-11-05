@@ -987,12 +987,14 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
     }
 
-    /// <summary>Optional, once per Gateway record and process, only right after setup; declining is remembered without any profile data.</summary>
+    /// <summary>Optional, once per Gateway record and process, on any start including after an update; declining is remembered without any profile data.</summary>
     private void MaybeOfferProfileCompletion()
     {
         var id = CurrentApp.Registry?.ActiveGatewayId;
-        if (id is null || !CurrentApp.IsPostSetupRestart || _showingProfileCompletion ||
-            _profileOfferedGatewayId == id || _profileDeclines.IsDeclined(id) || OpenModalDialog() is not null)
+        if (_showingProfileCompletion || OpenModalDialog() is not null ||
+            !ProfileCompletionAutoOffer.ShouldOffer(id, _profileOfferedGatewayId,
+                id is not null && _profileDeclines.IsDeclined(id),
+                CurrentApp.IsPostSetupRestart, CurrentApp.GetOnboardingWindowHandle() != IntPtr.Zero))
             return;
         _profileOfferedGatewayId = id;
         AsyncEventHandlerGuard.Run(() => CompleteProfileAsync(fallbackToDashboard: false), new AppLogger(), nameof(MaybeOfferProfileCompletion));

@@ -17,6 +17,22 @@ internal static class ProfileCompletionEligibility
          !string.IsNullOrWhiteSpace(record.NativePackageFamilyName));
 }
 
+/// <summary>
+/// When the workspace may offer completion without being asked. Any start qualifies, including the first start
+/// after an app update, so existing installs with a blank owner are offered too, once per Gateway and process,
+/// until the user saves or skips. A setup run that is still open defers the offer without consuming it; the
+/// post-setup restart is exempt because its setup window is only the handoff that finishes setup.
+/// </summary>
+internal static class ProfileCompletionAutoOffer
+{
+    public static bool ShouldOffer(
+        string? gatewayId, string? offeredGatewayId, bool declined, bool isPostSetupRestart, bool setupWindowOpen) =>
+        gatewayId is not null &&
+        !string.Equals(gatewayId, offeredGatewayId, StringComparison.Ordinal) &&
+        !declined &&
+        (isPostSetupRestart || !setupWindowOpen);
+}
+
 internal enum ProfileOffer
 {
     /// <summary>Not connected, read scope missing, or the profile could not be read.</summary>
