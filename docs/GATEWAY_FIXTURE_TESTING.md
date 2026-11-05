@@ -474,6 +474,24 @@ Non-interactive scenario responder exceptions still propagate through server
 cleanup, preserving negative-test guards. Only interactive runtime faults are
 translated into `INTERNAL` responses and recorded as unexpected requests.
 
+The server also answers one plain HTTP request: the authenticated scenario
+profile's photo at `GET /api/users/<profile id>/avatar`, which the Workspace
+footer sends after `users.self` returns a profile. The browse scenario serves
+`fixture-owner`; owner-identity UI cases can select another synthetic profile
+with `CreateBrowseWithOwnerProfile`, and the HTTP route serves that scenario's
+authenticated profile ID. A request with the shared
+Gateway token (or the issued device token once the server accepts one) for the
+scenario profile receives a small solid-colour PNG. A missing or wrong
+credential receives 401 and an unknown profile receives 404. Each request is recorded as
+`http:users.avatar` with only its outcome, never the credential, the profile id
+or the query string. The 401 and 404 outcomes are unexpected requests, so a
+broken photo path fails the smoke instead of quietly falling back to initials.
+Any other request that is not a WebSocket upgrade is still rejected as an unexpected `<upgrade>`.
+`OwnerFooterUsesAuthenticatedProfileAndLiveConnectionStatus` waits for the served
+photo. With `-Screenshots` it also counts footer pixels in that photo's colour in
+the captured Workspace window, so the capture shows the image was decoded and
+painted, not only requested.
+
 Add new behavior at the server boundary. Do not introduce fixture providers,
 demo branches in pages, bypasses in the connection manager, or a second chat
 renderer. Keep synthetic wire examples aligned with upstream Gateway wire
