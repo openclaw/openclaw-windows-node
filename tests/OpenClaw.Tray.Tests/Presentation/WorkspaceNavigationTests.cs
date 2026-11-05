@@ -754,7 +754,8 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("DeferWhileModalOpen(NavigateForward)", workspace);
         Assert.Contains("DeferWhileModalOpen(() => Navigate(destination, preserveConversation))", workspace);
         Assert.DoesNotContain(".Hide()", workspace[workspace.IndexOf("private bool DeferWhileModalOpen", StringComparison.Ordinal)..][..900]);
-        Assert.Contains("GatewayConnectionSnapshot? snapshot, ConnectionStatus status", view);
+        Assert.Contains("internal void UpdateConnectionStatus(GatewayConnectionSnapshot? snapshot, ConnectionStatus status)", workspace);
+        Assert.DoesNotContain("UpdateStatus(", view);
         Assert.DoesNotContain("if (snapshot is not null) _settings", workspace);
     }
 
@@ -912,8 +913,7 @@ public sealed class WorkspaceNavigationTests
         {
             ("AssistantSelector", "NavigationView.PaneHeader"),
             ("SessionsHeader", "NavigationView.MenuItems"),
-            ("OwnerButton", "NavigationView.PaneFooter"),
-            ("NotificationsButton", "NavigationView.PaneFooter")
+            ("ChatFooter", "NavigationView.PaneFooter")
         })
         {
             var control = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
@@ -1049,14 +1049,19 @@ public sealed class WorkspaceNavigationTests
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var assistant = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "AssistantSelector");
         Assert.Equal("4,8,4,8", (string?)assistant.Parent!.Attribute("Margin"));
-        var footer = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "ExpandedFooter");
+        var footerDocument = XDocument.Load(Source("Controls", "WorkspacePaneFooter.xaml"));
+        var footer = footerDocument.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "FooterGrid");
         Assert.Equal("4,8,4,8", (string?)footer.Attribute("Margin"));
         var header = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "SessionsHeader");
         Assert.Contains(header.Descendants(), element =>
             (string?)element.Attribute(x + "Key") == "NavigationViewItemInnerHeaderMargin" && element.Value == "16,0,4,0");
-        foreach (var name in new[] { "AssistantSelector", "NewSessionButton", "NotificationsButton" })
+        foreach (var (source, name) in new[]
         {
-            var control = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
+            (document, "AssistantSelector"), (document, "NewSessionButton"),
+            (footerDocument, "DashboardButton"), (footerDocument, "NotificationsButton")
+        })
+        {
+            var control = source.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
             Assert.Equal("{ThemeResource ControlCornerRadius}", (string?)control.Attribute("CornerRadius"));
             if (name != "AssistantSelector")
             {
@@ -1092,27 +1097,46 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
-    public void NativeFooter_NotificationsAreIndependentAndRightOfOwner()
+    public void NativeFooter_DashboardAndNotificationsAreIndependentAndRightOfOwner()
     {
-        var doc = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
+        var doc = XDocument.Load(Source("Controls", "WorkspacePaneFooter.xaml"));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var owner = doc.Descendants().Single(node => (string?)node.Attribute(x + "Name") == "OwnerButton");
+        var dashboard = doc.Descendants().Single(node => (string?)node.Attribute(x + "Name") == "DashboardButton");
         var bell = doc.Descendants().Single(node => (string?)node.Attribute(x + "Name") == "NotificationsButton");
         Assert.Same(owner.Parent, bell.Parent);
-        Assert.Equal("1", (string?)bell.Attribute("Grid.Column"));
+        Assert.Same(owner.Parent, dashboard.Parent);
+        Assert.Equal("1", (string?)dashboard.Attribute("Grid.Column"));
+        Assert.Equal("2", (string?)bell.Attribute("Grid.Column"));
+        Assert.Equal("OnDashboardClick", (string?)dashboard.Attribute("Click"));
+        Assert.Equal("WorkspaceShell_DashboardButton", (string?)dashboard.Attribute(x + "Uid"));
         Assert.Null(bell.Attribute("Click"));
         var flyout = Assert.Single(bell.Descendants(), element => element.Name.LocalName == "Flyout");
         Assert.Equal("OnNotificationsOpening", (string?)flyout.Attribute("Opening"));
         Assert.Equal("OnNotificationsClosed", (string?)flyout.Attribute("Closed"));
         Assert.Single(doc.Descendants(), node => (string?)node.Attribute(x + "Name") == "NotificationsButton");
         Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)owner.Attribute("Style"));
+        Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)dashboard.Attribute("Style"));
         Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)bell.Attribute("Style"));
         Assert.Single(owner.Descendants(), element => element.Name.LocalName == "PersonPicture");
-        var statusDot = Assert.Single(owner.Descendants(), element => element.Name.LocalName == "FontIcon");
-        Assert.Equal("OwnerStatusDot", (string?)statusDot.Attribute(x + "Name"));
-        Assert.DoesNotContain(doc.Descendants(), element => (string?)element.Attribute(x + "Key") == "WorkspaceSubtleButton");
+        // Monochrome Segoe Fluent glyphs in the default text color: ViewDashboard and Ringer.
+        var dashboardGlyph = Assert.Single(dashboard.Elements(), element => element.Name.LocalName == "FontIcon");
+        Assert.Equal("\uF246", (string?)dashboardGlyph.Attribute("Glyph"));
+        Assert.Null(dashboardGlyph.Attribute("Foreground"));
+        var bellGlyph = Assert.Single(bell.Descendants(), element => element.Name.LocalName == "FontIcon");
+        Assert.Equal("\uEA8F", (string?)bellGlyph.Attribute("Glyph"));
+        Assert.Null(bellGlyph.Attribute("Foreground"));
+        Assert.Single(bell.Descendants(), element => element.Name.LocalName == "InfoBadge");
+        Assert.DoesNotContain(doc.Descendants(), element => element.Name.LocalName is "ImageIcon" or "SvgImageSource");
+        Assert.Equal(new[] { "OwnerAvatarStatusDot", "OwnerStatusDot" },
+            owner.Descendants().Where(element => element.Name.LocalName == "FontIcon")
+                .Select(element => (string?)element.Attribute(x + "Name")));
+        var window = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
+        Assert.DoesNotContain(window.Descendants(), element => (string?)element.Attribute(x + "Key") == "WorkspaceSubtleButton");
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.Contains("OwnerButton.Flyout = menu", code);
+        Assert.Contains("footer.SetOwnerMenu(BuildOwnerMenu(footer))", code);
+        Assert.Contains("footer.DashboardRequested += (_, _) => OpenDashboard();", code);
+        Assert.Contains("((IAppCommands)CurrentApp).OpenDashboard(null)", code);
         Assert.Contains("OpenCompanion(CompanionPageId.Usage)", code);
         Assert.Contains("OpenCompanion(CompanionPageId.Channels)", code);
         Assert.Contains("OpenCompanion(CompanionPageId.About)", code);
@@ -1123,9 +1147,115 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
-    public void OwnerFooterStatusDot_PrecedesTextAndSharesLiveThemeResources()
+    public void DashboardShortcut_IsCtrlShiftD_InBothSections()
+    {
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var handler = code[code.IndexOf("private void OnKeyDown(", StringComparison.Ordinal)..];
+        Assert.Contains("if (ctrl && shift && !alt && e.Key == global::Windows.System.VirtualKey.D)", handler);
+        Assert.Contains("if (!e.KeyStatus.WasKeyDown) OpenDashboard();", handler);
+        Assert.True(handler.IndexOf("VirtualKey.D)", StringComparison.Ordinal) <
+            handler.IndexOf("OpenCommandCenter()", StringComparison.Ordinal),
+            "Ctrl+Shift+D must be handled before the Ctrl-only search aliases.");
+        var root = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml")).Root!;
+        Assert.Contains(root.Descendants(), element =>
+            (string?)element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "Root" &&
+            (string?)element.Attribute("PreviewKeyDown") == "OnKeyDown");
+    }
+
+    [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, false)]
+    public void TitleBarActions_ShowOnlyWhileNoPaneFooterIsVisible(bool settingsFooterVisible, bool chatPaneOpen, bool expected) =>
+        Assert.Equal(expected, WorkspaceFooterPlacement.ShowTitleBarActions(settingsFooterVisible, chatPaneOpen));
+
+    [Fact]
+    public void TitleBarActions_TreatEmbeddedPinnedPagesAsChatSidebarFooter()
+    {
+        var source = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var method = source[source.IndexOf("private void UpdateTitleBarActions()", StringComparison.Ordinal)..];
+        method = method[..method.IndexOf("WorkspaceFooterPlacement.ShowTitleBarActions", StringComparison.Ordinal)];
+        Assert.Contains("_settings is { ContentOnly: false }", method);
+        var apply = source[source.IndexOf("private void ApplySettingsPresentation(", StringComparison.Ordinal)..];
+        apply = apply[..apply.IndexOf("private void UpdateTitleBarActions()", StringComparison.Ordinal)];
+        Assert.Contains("UpdateTitleBarActions();", apply);
+    }
+
+    [Fact]
+    public void SearchFlyouts_DeferOnlyRealClosesAndReplayThroughTheOpenPath()
+    {
+        // State transitions are unit-tested in DeferredFlyoutShowStateTests; this guards the WinUI wiring.
+        var helper = File.ReadAllText(Source("Controls", "FlyoutShowRequest.cs"));
+        Assert.Contains("flyout.Closing += (_, args) => _state.Closing(args.Cancel);", helper);
+        Assert.Contains("if (!flyout.DispatcherQueue.TryEnqueue(Settle)) Settle();", helper);
+        Assert.Contains("if (_state.Settle()) _replay();", helper);
+        var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("new FlyoutShowRequest(WorkspaceSearchFlyout, OpenCommandCenter)", workspace);
+        Assert.Contains("view.CommandCenterRequested = OpenCommandCenter;", workspace);
+        var hide = workspace[workspace.IndexOf("private void HideFooterFlyouts()", StringComparison.Ordinal)..];
+        Assert.Contains("_workspaceSearchShow.Cancel();", hide[..hide.IndexOf("\n    }", StringComparison.Ordinal)]);
+        var settings = File.ReadAllText(Source("Controls", "SettingsShellView.xaml.cs"));
+        // Settings replays through the host so the window's modal-dialog deferral applies.
+        Assert.Contains("new FlyoutShowRequest(CommandSearchFlyout, () => (CommandCenterRequested ?? OpenCommandCenter)())", settings);
+        var transient = settings[settings.IndexOf("private void HideTransientSurfaces()", StringComparison.Ordinal)..];
+        transient = transient[..transient.IndexOf("\n    }", StringComparison.Ordinal)];
+        var cancel = transient.IndexOf("_commandSearchShow.Cancel();", StringComparison.Ordinal);
+        var hideSearch = transient.IndexOf("CommandSearchFlyout.Hide();", StringComparison.Ordinal);
+        Assert.True(cancel >= 0, "Leaving Settings must cancel a queued search reopen.");
+        Assert.True(hideSearch > cancel, "The queued reopen is cancelled before the flyout is hidden.");
+        Assert.Contains("if (_disposed || !IsLoaded) return;", settings);
+    }
+
+    [Fact]
+    public void TitleBar_StaysCompactAndRefreshesDragRegionsWhenActionsToggle()
     {
         var doc = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var titleBar = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "WorkspaceTitleBar");
+        var expanded = titleBar.Descendants().Single(element => (string?)element.Attribute(x + "Key") == "TitleBarExpandedHeight");
+        Assert.Equal("32", expanded.Value);
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var update = code[code.IndexOf("private void UpdateTitleBarActions()", StringComparison.Ordinal)..];
+        update = update[..update.IndexOf("\n    }", StringComparison.Ordinal)];
+        Assert.Contains("WorkspaceTitleBar.RecomputeDragRegions();", update);
+        Assert.Contains("TitleBarFooter.HideFlyouts();", update);
+        var footer = File.ReadAllText(Source("Controls", "WorkspacePaneFooter.xaml.cs"));
+        Assert.Contains("DashboardButton.Height = titleBar ? TitleBarButtonHeight : _paneButtonHeight;", footer);
+        var footerXaml = XDocument.Load(Source("Controls", "WorkspacePaneFooter.xaml"));
+        var grid = footerXaml.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "FooterGrid");
+        Assert.Null(grid.Attribute("RowSpacing"));
+        Assert.Null(grid.Attribute("ColumnSpacing"));
+    }
+
+    [Fact]
+    public void TitleBarActions_UseTheSharedFooterAndFollowPaneAndSection()
+    {
+        var doc = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var titleBarFooter = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "TitleBarFooter");
+        Assert.Equal("WorkspacePaneFooter", titleBarFooter.Name.LocalName);
+        Assert.Equal("TitleBar.RightHeader", titleBarFooter.Parent!.Name.LocalName);
+        Assert.Equal("Collapsed", (string?)titleBarFooter.Attribute("Visibility"));
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("TitleBarFooter.Layout = WorkspacePaneFooterLayout.TitleBar;", code);
+        var presentation = code[code.IndexOf("private void UpdatePanePresentation()", StringComparison.Ordinal)..];
+        Assert.Contains("UpdateTitleBarActions();", presentation[..presentation.IndexOf("private void UpdateTitleBarActions()", StringComparison.Ordinal)]);
+        foreach (var method in new[] { "private void RenderSettings()", "private void LeaveSettings()" })
+        {
+            var body = code[code.IndexOf(method, StringComparison.Ordinal)..];
+            body = body[..body.IndexOf("\n    }", StringComparison.Ordinal)];
+            Assert.Contains("UpdateTitleBarActions();", body);
+            Assert.Contains("HideFooterFlyouts();", body);
+        }
+        var settings = File.ReadAllText(Source("Controls", "SettingsShellView.xaml.cs"));
+        Assert.Contains("PaneFooterControl.Layout = NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail;", settings);
+    }
+
+    [Fact]
+    public void OwnerFooterStatusDot_PrecedesTextAndSharesLiveThemeResources()
+    {
+        var doc = XDocument.Load(Source("Controls", "WorkspacePaneFooter.xaml"));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var dot = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "OwnerStatusDot");
         var detail = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "OwnerDetail");
@@ -1137,9 +1267,13 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("False", (string?)dot.Attribute("IsHitTestVisible"));
         Assert.Equal("{StaticResource ConnectionBadgeNeutral}", (string?)dot.Attribute("Style"));
         Assert.Equal("CharacterEllipsis", (string?)detail.Attribute("TextTrimming"));
+        var footer = File.ReadAllText(Source("Controls", "WorkspacePaneFooter.xaml.cs"));
+        Assert.Contains("OwnerStatusDot.Style = style;", footer);
+        Assert.Contains("OwnerAvatarStatusDot.Style = style;", footer);
+        Assert.Contains("(Style)Resources[$\"ConnectionBadge{accent}\"]", footer);
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.Contains("OwnerStatusDot.Style = (Style)Root.Resources[$\"ConnectionBadge{accent}\"];", code);
-        Assert.Contains("_connectionStatusIcon.Style = (Style)Root.Resources[$\"ConnectionBadge{accent}\"];", code);
+        Assert.Contains("var badge = ChatFooter.BadgeStyle(accent);", code);
+        Assert.Contains("icon.Style = badge;", code);
         foreach (var accent in new[] { "Neutral", "Success", "Caution", "Critical" })
         {
             var style = doc.Descendants().Single(element => (string?)element.Attribute(x + "Key") == $"ConnectionBadge{accent}");
@@ -1361,7 +1495,7 @@ public sealed class WorkspaceNavigationTests
     [Fact]
     public void OwnerStatusAndAgentBadge_UseNativeControlsAndLiveSources()
     {
-        var document = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
+        var document = XDocument.Load(Source("Controls", "WorkspacePaneFooter.xaml"));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         foreach (var accent in new[] { "Neutral", "Success", "Caution", "Critical" })
         {

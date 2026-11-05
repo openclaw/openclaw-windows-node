@@ -30,8 +30,9 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly ChatPage _chat = new();
     private readonly GatewayStatusContent _gatewayStatusContent = new();
     private readonly Flyout _gatewayStatusFlyout = new() { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft };
-    private readonly MenuFlyoutItem _connectionStatusItem = new();
-    private readonly FontIcon _connectionStatusIcon = new();
+    private readonly FlyoutShowRequest _workspaceSearchShow;
+    // One account menu per footer that shows the account button; their status rows update together.
+    private readonly List<(MenuFlyoutItem Item, FontIcon Icon)> _connectionStatusItems = new();
     // Sidebar rows keyed by session key; SyncSessionItems keeps MenuItems in step with these.
     private readonly Dictionary<string, NavigationViewItem> _sessionItems = new(StringComparer.Ordinal);
     private bool _updating;
@@ -87,6 +88,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             ShowInfo,
             ReportError);
         _gatewayStatusFlyout.Content = _gatewayStatusContent;
+        _workspaceSearchShow = new FlyoutShowRequest(WorkspaceSearchFlyout, OpenCommandCenter);
         var searchLabel = LocalizationHelper.GetString("TitleSearchBox.PlaceholderText");
         AutomationProperties.SetName(WorkspaceSearchButton, searchLabel);
         ToolTipService.SetToolTip(WorkspaceSearchButton, searchLabel);
@@ -115,11 +117,11 @@ public sealed partial class WorkspaceWindow : WindowEx
         UpdatePanePresentation();
         HomeLabel.Text = Text("Home");
         AutomationProperties.SetName(HomeItem, Text("Home"));
-        UpdateOwnerIdentity();
-        BuildOwnerMenu();
+        TitleBarFooter.Layout = WorkspacePaneFooterLayout.TitleBar;
+        ConfigureFooter(ChatFooter);
+        ConfigureFooter(TitleBarFooter);
         _state.PropertyChanged += OnStateChanged;
         _notifications.Changed += OnNotificationsChanged;
-        UpdateNotificationsBadge();
         _chat.Loaded += (_, _) =>
         {
             if (Destination.Page == WorkspacePageId.Home) _chat.Initialize(this);
@@ -255,7 +257,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         var anchor = WorkspaceSearchButton.IsLoaded && NavView.IsPaneOpen
             ? (FrameworkElement)WorkspaceSearchButton
             : ReopenPaneButton;
-        WorkspaceSearchFlyout.ShowAt(anchor);
+        _workspaceSearchShow.ShowAt(anchor);
     }
 
     private ImmutableArray<HubCommand>? _workspaceCommands;
@@ -465,11 +467,10 @@ public sealed partial class WorkspaceWindow : WindowEx
         var view = _preparedSettings ?? new SettingsShellView();
         _preparedSettings = null;
         view.AppModel = _state;
-        view.ConnectAction = () => ((IAppCommands)CurrentApp).Reconnect();
-        view.ReconnectAction = () => ((IAppCommands)CurrentApp).Reconnect();
         view.NavigateRequested = tag => OpenSettings(tag);
         view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
         view.PruneRequested = PruneSettingsHistory;
+        view.CommandCenterRequested = OpenCommandCenter;
         view.SettingsSaved += OnSettingsViewSaved;
         view.BindAppNotifications(_notifications);
         if (CurrentApp.Settings is { } settings)
@@ -477,6 +478,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         view.BindToAppState();
         SettingsSection.Children.Insert(0, view);
         _settings = view;
+        ConfigureFooter(view.Footer);
         return view;
     }
 
@@ -495,6 +497,8 @@ public sealed partial class WorkspaceWindow : WindowEx
             NavigationSection.Visibility = Visibility.Collapsed;
             SettingsSection.Visibility = Visibility.Visible;
             SettingsHistoryBar.Visibility = Visibility.Visible;
+            HideFooterFlyouts();
+            UpdateTitleBarActions();
         }
         ApplySettingsPresentation(view);
         UpdateNavigationSelection();
@@ -529,6 +533,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         SettingsHistoryBar.Visibility = Visibility.Collapsed;
         EmbeddedOperationInfo.IsOpen = false;
         NavigationSection.Visibility = Visibility.Visible;
+        HideFooterFlyouts();
+        UpdateTitleBarActions();
         if (focus is not null)
             DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
@@ -991,18 +997,20 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     internal void UpdateConnectionStatus(GatewayConnectionSnapshot? snapshot, ConnectionStatus status)
     {
-        _settings?.UpdateStatus(snapshot, status);
         if (_identity.SetConnection(CurrentApp.GatewayClient, status))
             _ = _identity.RefreshAsync();
         var (labelKey, accent) = ConnectionStatusPresenter.Pill(snapshot?.OverallState, status);
         var label = LocalizationHelper.GetString(labelKey);
-        OwnerDetail.Text = label;
-        OwnerStatusDot.Style = (Style)Root.Resources[$"ConnectionBadge{accent}"];
-        AutomationProperties.SetHelpText(OwnerButton, label);
-        _connectionStatusItem.Text = label;
-        _connectionStatusIcon.Style = (Style)Root.Resources[$"ConnectionBadge{accent}"];
-        AutomationProperties.SetName(_connectionStatusItem,
-            $"{LocalizationHelper.GetString("ConnectionStatusWindow.Title")}: {label}");
+        foreach (var footer in Footers)
+            footer.ApplyConnection(label, accent);
+        var badge = ChatFooter.BadgeStyle(accent);
+        var name = $"{LocalizationHelper.GetString("ConnectionStatusWindow.Title")}: {label}";
+        foreach (var (item, icon) in _connectionStatusItems)
+        {
+            item.Text = label;
+            icon.Style = badge;
+            AutomationProperties.SetName(item, name);
+        }
     }
 
     private void RefreshOwnerIdentity(bool invalidate = false)
@@ -1012,22 +1020,26 @@ public sealed partial class WorkspaceWindow : WindowEx
     }
 
     private UserAvatarImage? _shownAvatar;
+    private Microsoft.UI.Xaml.Media.Imaging.BitmapImage? _ownerImage;
 
     private void UpdateOwnerIdentity()
     {
         var name = _identity.DisplayName;
         // macOS parity: the shared-credential owner is labelled as such; no known profile shows Owner.
-        OwnerName.Text = _identity.IsSharedOwner ? Text("SharedOwner.Text") : name ?? Text("Owner.Text");
-        OwnerPicture.DisplayName = name ?? "";
-        AutomationProperties.SetName(OwnerButton, OwnerName.Text);
+        var label = _identity.IsSharedOwner ? Text("SharedOwner.Text") : name ?? Text("Owner.Text");
         var avatar = _identity.Avatar;
-        if (ReferenceEquals(avatar, _shownAvatar)) return;
-        _shownAvatar = avatar;
-        if (avatar is null)
+        var avatarChanged = !ReferenceEquals(avatar, _shownAvatar);
+        if (avatarChanged)
         {
-            OwnerPicture.ProfilePicture = null;
-            return;
+            _shownAvatar = avatar;
+            _ownerImage = null;
         }
+        foreach (var footer in Footers)
+        {
+            footer.ApplyIdentity(label, name ?? "");
+            footer.ApplyAvatar(_ownerImage);
+        }
+        if (!avatarChanged || avatar is null) return;
         AsyncEventHandlerGuard.Run(() => ShowOwnerAvatarAsync(avatar), new AppLogger(), nameof(UpdateOwnerIdentity));
     }
 
@@ -1044,12 +1056,50 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
         catch (Exception ex) when (WorkspaceIdentitySource.IsAvatarDecodeFailure(ex))
         {
-            if (ReferenceEquals(avatar, _shownAvatar)) OwnerPicture.ProfilePicture = null;
             new AppLogger().Warn($"Owner avatar could not be decoded ({ex.GetType().Name}); initials shown.");
             return;
         }
         if (ReferenceEquals(avatar, _shownAvatar))
-            OwnerPicture.ProfilePicture = image;
+        {
+            _ownerImage = image;
+            foreach (var footer in Footers)
+                footer.ApplyAvatar(image);
+        }
+    }
+
+    /// <summary>Every live footer: Chat pane, Chat title bar and, once created, Settings pane.</summary>
+    private IEnumerable<WorkspacePaneFooter> Footers
+    {
+        get
+        {
+            yield return ChatFooter;
+            yield return TitleBarFooter;
+            if (_settings is { } settings)
+                yield return settings.Footer;
+        }
+    }
+
+    /// <summary>Wires one footer to the window-owned state and commands, then applies current state.</summary>
+    private void ConfigureFooter(WorkspacePaneFooter footer)
+    {
+        footer.BindNotifications(_notifications, () => Navigate(new(WorkspacePageId.Notifications)));
+        footer.DashboardRequested += (_, _) => OpenDashboard();
+        if (footer.Layout != WorkspacePaneFooterLayout.TitleBar)
+            footer.SetOwnerMenu(BuildOwnerMenu(footer));
+        UpdateOwnerIdentity();
+        UpdateConnectionStatus(CurrentApp.ConnectionManager?.CurrentSnapshot, _state.Status);
+        UpdateNotificationsBadge();
+    }
+
+    private static void OpenDashboard() => ((IAppCommands)CurrentApp).OpenDashboard(null);
+
+    /// <summary>Footer popups are anchored to one section; switching sections closes them.</summary>
+    private void HideFooterFlyouts()
+    {
+        _workspaceSearchShow.Cancel();
+        _gatewayStatusFlyout.Hide();
+        foreach (var footer in Footers)
+            footer.HideFlyouts();
     }
 
     private void OnAssistantChanged(object sender, SelectionChangedEventArgs e)
@@ -1105,15 +1155,6 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void OnNewConversation(object sender, RoutedEventArgs e) =>
         AsyncEventHandlerGuard.Run(NewSessionAsync, new AppLogger(), nameof(OnNewConversation));
-    private void OnNotificationsOpening(object sender, object e) =>
-        NotificationContent.Initialize(_notifications, () =>
-        {
-            NotificationsFlyout.Hide();
-            Navigate(new(WorkspacePageId.Notifications));
-        });
-
-    private void OnNotificationsClosed(object sender, object e) => NotificationContent.Unbind();
-
     private void OnNotificationsChanged(object? sender, AppNotificationChangedEventArgs e) =>
         DispatcherQueue.TryEnqueue(() =>
         {
@@ -1123,9 +1164,9 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void UpdateNotificationsBadge()
     {
         var count = _notifications.Snapshot.ActiveNotifications.Count;
-        NotificationsBadge.Value = count;
-        NotificationsBadge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        AutomationProperties.SetHelpText(NotificationsButton, LocalizationHelper.Format("NotificationsFlyout_ActiveCountFormat", count));
+        var helpText = LocalizationHelper.Format("NotificationsFlyout_ActiveCountFormat", count);
+        foreach (var footer in Footers)
+            footer.ApplyNotificationCount(count, helpText);
     }
     private void OnBack(object sender, RoutedEventArgs e) => NavigateBack();
     private void OnForward(object sender, RoutedEventArgs e) => NavigateForward();
@@ -1150,6 +1191,12 @@ public sealed partial class WorkspaceWindow : WindowEx
         CollapsePaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
         if (_settings is { } settings && IsSettingsVisible)
             ApplySettingsPresentation(settings);
+        if (!NavView.IsPaneOpen)
+        {
+            ChatFooter.HideFlyouts();
+            _gatewayStatusFlyout.Hide();
+        }
+        UpdateTitleBarActions();
     }
 
     // An embedded section sits to the right of the sidebar, which stays visible and usable. The
@@ -1158,6 +1205,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void ApplySettingsPresentation(SettingsShellView view)
     {
         var embedded = Destination.Embedded;
+        if (embedded && !view.ContentOnly)
+            view.Footer.HideFlyouts();
         view.ContentOnly = embedded;
         NavigationSection.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         ContentHost.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible;
@@ -1170,6 +1219,26 @@ public sealed partial class WorkspaceWindow : WindowEx
         EmbeddedOperationInfo.Severity = OperationInfo.Severity;
         EmbeddedOperationInfo.Message = OperationInfo.Message;
         EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen;
+        UpdateTitleBarActions();
+    }
+
+    private void UpdateTitleBarActions()
+    {
+        var settingsFooterVisible = SettingsSection.Visibility == Visibility.Visible
+            && _settings is { ContentOnly: false };
+        var visibility = WorkspaceFooterPlacement.ShowTitleBarActions(
+            settingsFooterVisible: settingsFooterVisible,
+            chatPaneOpen: NavView.IsPaneOpen) ? Visibility.Visible : Visibility.Collapsed;
+        if (TitleBarFooter.Visibility == visibility) return;
+        if (visibility == Visibility.Collapsed) TitleBarFooter.HideFlyouts();
+        TitleBarFooter.Visibility = visibility;
+        // TitleBar refreshes its pointer pass-through regions only on its own size or template
+        // changes, not when RightHeader content shows or hides. Recompute after the new layout so
+        // real clicks reach Dashboard and the bell instead of dragging the window.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (!IsClosed) WorkspaceTitleBar.RecomputeDragRegions();
+        });
     }
     private void OnPaneClosed(NavigationView sender, object args)
     {
@@ -1233,9 +1302,18 @@ public sealed partial class WorkspaceWindow : WindowEx
             .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
         var alt = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(global::Windows.System.VirtualKey.Menu)
             .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
+        var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(global::Windows.System.VirtualKey.Shift)
+            .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
+        // Ctrl+Shift+D opens the Gateway Dashboard from Chat and Settings, matching the footer tooltip.
+        // Auto-repeat while the keys are held must not open one browser tab per repeat.
+        if (ctrl && shift && !alt && e.Key == global::Windows.System.VirtualKey.D)
+        {
+            e.Handled = true;
+            if (!e.KeyStatus.WasKeyDown) OpenDashboard();
+        }
         // Ctrl+E is the search shortcut shown in the placeholder; Ctrl+K remains its alias.
         // Settings keeps its existing F alias; Chat leaves F to its own content.
-        if (ctrl && (e.Key == global::Windows.System.VirtualKey.K ||
+        else if (ctrl && (e.Key == global::Windows.System.VirtualKey.K ||
                      e.Key == global::Windows.System.VirtualKey.E ||
                      (IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)))
         {
@@ -1254,7 +1332,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
     }
 
-    private void BuildOwnerMenu()
+    private MenuFlyout BuildOwnerMenu(WorkspacePaneFooter footer)
     {
         var menu = new MenuFlyout();
         void Add(string label, Action action, string glyph)
@@ -1267,18 +1345,22 @@ public sealed partial class WorkspaceWindow : WindowEx
         Add("Usage", () => OpenCompanion(CompanionPageId.Usage), FluentIconCatalog.Money);
         Add("PairDevice", () => OpenCompanion(CompanionPageId.Channels), FluentIconCatalog.Devices);
         var showConnectionStatus = false;
-        _connectionStatusItem.Icon = _connectionStatusIcon;
-        AutomationProperties.SetAutomationId(_connectionStatusItem, "WorkspaceOwnerConnectionStatus");
-        _connectionStatusItem.Click += (_, _) => showConnectionStatus = true;
+        var connectionStatusIcon = new FontIcon();
+        var connectionStatusItem = new MenuFlyoutItem { Icon = connectionStatusIcon };
+        AutomationProperties.SetAutomationId(connectionStatusItem, "WorkspaceOwnerConnectionStatus");
+        connectionStatusItem.Click += (_, _) => showConnectionStatus = true;
+        _connectionStatusItems.Add((connectionStatusItem, connectionStatusIcon));
         menu.Opening += (_, _) => UpdateConnectionStatus(CurrentApp.ConnectionManager?.CurrentSnapshot, _state.Status);
-        UpdateConnectionStatus(CurrentApp.ConnectionManager?.CurrentSnapshot, _state.Status);
         menu.Closed += (_, _) =>
         {
             if (!showConnectionStatus || IsClosed) return;
             showConnectionStatus = false;
-            _gatewayStatusFlyout.ShowAt(OwnerButton);
+            _gatewayStatusFlyout.Placement = footer.Layout == WorkspacePaneFooterLayout.Rail
+                ? Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.RightEdgeAlignedBottom
+                : Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft;
+            _gatewayStatusFlyout.ShowAt(footer.OwnerAnchor);
         };
-        menu.Items.Add(_connectionStatusItem);
+        menu.Items.Add(connectionStatusItem);
         Add("GetApps", () => _ = OpenLinkAsync("https://docs.openclaw.ai/platforms"), FluentIconCatalog.OpenInBrowser);
         Add("ConnectionTimeline", OpenTimeline, FluentIconCatalog.AgentEvents);
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -1303,7 +1385,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         help.Items.Add(github);
         menu.Items.Add(help);
         Add("About", () => OpenCompanion(CompanionPageId.About), FluentIconCatalog.About);
-        OwnerButton.Flyout = menu;
+        return menu;
     }
 
     internal async Task OpenLinkAsync(string url)
@@ -1323,8 +1405,9 @@ public sealed partial class WorkspaceWindow : WindowEx
         _state.PropertyChanged -= OnStateChanged;
         UnwirePins();
         _notifications.Changed -= OnNotificationsChanged;
-        NotificationsFlyout.Hide();
-        NotificationContent.Unbind();
+        _workspaceSearchShow.Cancel();
+        foreach (var footer in Footers)
+            footer.Close();
         _gatewayStatusFlyout.Hide();
         ContentHost.Children.Clear();
         _preparedSettings?.Dispose();

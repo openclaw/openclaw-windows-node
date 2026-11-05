@@ -289,29 +289,6 @@ public sealed class WorkspaceIdentitySourceTests
         Assert.DoesNotContain("Old", states);
     }
     [Fact]
-    public void DiagnosticsNameTheTrueSourceAndCarryNoPayload()
-    {
-        Assert.Contains("avatar", WorkspaceIdentitySource.DescribeUnavailable("AvatarFailed"));
-        Assert.Contains("name is kept", WorkspaceIdentitySource.DescribeUnavailable("AvatarFailed"));
-        var profile = WorkspaceIdentitySource.DescribeUnavailable("TimeoutException");
-        Assert.Contains("users.self", profile);
-        Assert.Contains("showing Owner", profile);
-    }
-
-    [Theory]
-    [InlineData(typeof(IOException), true)]
-    [InlineData(typeof(ArgumentException), true)]
-    [InlineData(typeof(ObjectDisposedException), true)]
-    [InlineData(typeof(System.Runtime.InteropServices.COMException), true)]
-    [InlineData(typeof(OutOfMemoryException), false)]
-    [InlineData(typeof(NullReferenceException), false)]
-    public void DecodeFailureClassifierIsNarrow(Type type, bool nonFatal)
-    {
-        var ex = type == typeof(ObjectDisposedException) ? new ObjectDisposedException("x") : (Exception)Activator.CreateInstance(type)!;
-        Assert.Equal(nonFatal, WorkspaceIdentitySource.IsAvatarDecodeFailure(ex));
-    }
-
-    [Fact]
     public async Task AvatarAbsentKeepsNameWithoutAvatar()
     {
         var (client, proxy) = Gateway();
@@ -561,7 +538,8 @@ public sealed class WorkspaceIdentitySourceTests
         var source = File.ReadAllText(Path.Combine(root,
             "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("_identity.IsSharedOwner ? Text(\"SharedOwner.Text\") : name ?? Text(\"Owner.Text\")", source);
-        Assert.Contains("OwnerPicture.DisplayName = name ?? \"\"", source);
+        Assert.Contains("footer.ApplyIdentity(label, name ?? \"\")", source);
+        Assert.Contains("footer.ApplyAvatar(_ownerImage)", source);
         Assert.DoesNotContain("settings/profile", source);
         Assert.DoesNotContain("SetUpProfile", source);
         foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })

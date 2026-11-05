@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text.Json;
 using Xunit;
@@ -5946,6 +5948,84 @@ public class OpenClawGatewayClientTests
     }
 
     // --- HandleRequestError: pairing required ---
+
+    [Fact]
+    public void StartupUnavailable_UntrackedAndNonConnectResponsesCannotChangeStartupState()
+    {
+        using var identity = new TempDirectory("startup-response-");
+        var helper = new GatewayClientTestHelper(identityPath: identity.Path);
+        using var client = helper.Client;
+        var startups = new List<GatewayStartupUnavailable>();
+        client.StartupUnavailableReceived += (_, startup) => startups.Add(startup);
+        const string response = """
+            {"type":"res","id":"startup","ok":false,"error":{"code":"UNAVAILABLE","retryable":true,"details":{"reason":"startup-sidecars"}}}
+            """;
+
+        helper.ProcessRawMessage(response);
+        helper.TrackPendingRequest("startup", "health");
+        helper.ProcessRawMessage(response);
+        Assert.Empty(startups);
+        Assert.Null(client.StartupUnavailable);
+
+        helper.TrackPendingRequest("startup", "connect");
+        helper.ProcessRawMessage(response);
+        Assert.Single(startups);
+        Assert.Equal(500, client.StartupUnavailable?.RetryAfterMs);
+    }
+
+    [Theory]
+    [InlineData("AUTH_TOKEN_MISMATCH", GatewayErrorKind.Auth)]
+    [InlineData("AUTH_DEVICE_TOKEN_MISMATCH", GatewayErrorKind.DeviceTokenMismatch)]
+    [InlineData("PROTOCOL_MISMATCH", GatewayErrorKind.ProtocolMismatch)]
+    public void StartupReason_CannotOverrideStructuredTerminalFailure(string code, GatewayErrorKind expected)
+    {
+        using var identity = new TempDirectory("startup-terminal-");
+        var helper = new GatewayClientTestHelper(identityPath: identity.Path);
+        using var client = helper.Client;
+        var failures = helper.CaptureConnectionFailures();
+        helper.TrackPendingRequest("startup", "connect");
+        helper.ProcessRawMessage(JsonSerializer.Serialize(new
+        {
+            type = "res", id = "startup", ok = false,
+            error = new { code = "UNAVAILABLE", retryable = true, details = new { reason = "startup-sidecars", code } }
+        }));
+
+        Assert.Null(client.StartupUnavailable);
+        Assert.Contains(expected, failures);
+        Assert.False(helper.ShouldAutoReconnectForTest());
+    }
+
+    [Fact]
+    public async Task StartupUnavailable_FreshUpgradePending_DoesNotReportPreviousRejection()
+    {
+        using var identity = new TempDirectory("startup-upgrade-");
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: $"ws://127.0.0.1:{port}", identityPath: identity.Path);
+        using var client = helper.Client;
+        helper.TrackPendingRequest("startup", "connect");
+        helper.ProcessRawMessage("""
+            {"type":"res","id":"startup","ok":false,"error":{"code":"UNAVAILABLE","retryable":true,"details":{"reason":"startup-sidecars"}}}
+            """);
+        Assert.NotNull(client.StartupUnavailable);
+        helper.OnDisconnected();
+        Assert.NotNull(client.StartupUnavailable);
+
+        var connect = client.ConnectAsync();
+        try
+        {
+            using var peer = await listener.AcceptTcpClientAsync().WaitAsync(CloseHandshakeTimeout);
+            Assert.False(connect.IsCompleted);
+            Assert.Null(client.StartupUnavailable);
+        }
+        finally
+        {
+            client.Dispose();
+            await connect.WaitAsync(CloseHandshakeTimeout);
+        }
+    }
 
     [Fact]
     public void HandleRequestError_PairingRequired_SetsPairingBlockFlag()
