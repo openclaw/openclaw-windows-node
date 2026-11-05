@@ -742,6 +742,12 @@ jobs:
         -TrxFileName OpenClawTray.FunctionalUI.Tests.trx
         -Runtime win-x64
 
+    - name: Mark Tray UI crash metadata window
+      id: tray-ui-crash-window
+      shell: pwsh
+      run: |
+        "startedUtc=$((Get-Date).ToUniversalTime().ToString('o'))" >> $env:GITHUB_OUTPUT
+
     - name: Run Tray UI Tests
       timeout-minutes: 15
       run: >
@@ -752,6 +758,13 @@ jobs:
         -Runtime win-x64
         -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"
         -HangTimeoutSeconds 300
+
+    - name: Capture non-memory Tray UI crash metadata
+      if: always() && steps.tray-ui-crash-window.outcome == 'success'
+      shell: pwsh
+      env:
+        TRAY_UI_TEST_STARTED_UTC: ${{ steps.tray-ui-crash-window.outputs.startedUtc }}
+      run: ./scripts/Capture-CiTestHostCrashMetadata.ps1 -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC
 
     - name: Run mock Gateway application scenarios
       id: gateway-fixture
