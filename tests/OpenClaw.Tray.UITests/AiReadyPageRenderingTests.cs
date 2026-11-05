@@ -226,7 +226,7 @@ public sealed partial class AiReadyPageRenderingTests(UIThreadFixture ui, ITestO
                 page = Assert.IsType<AiReadyPage>(frame.Content);
                 choices = Assert.IsType<StackPanel>(page.FindName("Choices"));
                 var root = Assert.IsType<SetupPageShell>(page.Content);
-                await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
+                await OnboardingNativeProof.ApplyThemeSurfaceAsync(Assert.IsType<Grid>(root.Content), theme);
                 window.CommitPresentation();
                 Assert.Equal(Visibility.Visible, choices.Visibility);
                 Assert.Equal(2, choices.Children.Count);
