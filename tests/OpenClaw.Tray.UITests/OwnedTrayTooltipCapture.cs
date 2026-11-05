@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Windows.Automation;
 using OpenClaw.GatewayFixtureHost;
@@ -41,16 +42,33 @@ internal static class OwnedTrayTooltipCapture
                         new PropertyCondition(AutomationElement.NameProperty, "Notification Chevron", PropertyConditionFlags.IgnoreCase))));
                 Assert.NotNull(chevron);
                 ((InvokePattern)chevron.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
-                await run.WaitForAsync(() => Task.FromResult(
-                    (icon = FindIcon(run)) is { } found && IsIconVisible(found)), "owned icon in notification overflow");
+                WriteOverflowDiagnostics(run, "after-overflow-invoke");
+                try
+                {
+                    await run.WaitForAsync(() => Task.FromResult(
+                        (icon = FindIcon(run)) is { } found && IsIconVisible(found)), "owned icon in notification overflow");
+                }
+                catch (TimeoutException)
+                {
+                    WriteOverflowDiagnostics(run, "overflow-timeout");
+                    throw;
+                }
                 WriteShellObservation(run, icon!.Value, "notification-area-open.json");
             }
 
             var ownedIcon = icon!.Value;
             Assert.True(SetPhysicalCursorPos(ownedIcon.Bounds.CenterX, ownedIcon.Bounds.CenterY));
             AutomationElement? tooltip = null;
-            await run.WaitForAsync(() => Task.FromResult((tooltip = FindTooltip()) is not null),
-                "Shell tooltip for the hovered owned icon");
+            try
+            {
+                await run.WaitForAsync(() => Task.FromResult((tooltip = FindTooltip()) is not null),
+                    "Shell tooltip for the hovered owned icon");
+            }
+            catch (TimeoutException)
+            {
+                WriteOverflowDiagnostics(run, "tooltip-timeout");
+                throw;
+            }
             Assert.Contains($"; {topology};", tooltip!.Current.Name);
             GetWindowThreadProcessId(FindWindow("Shell_TrayWnd", null), out var shellPid);
             Assert.True(tooltip.Current.ProcessId == shellPid || tooltip.Current.ProcessId == run.AppProcessId,
@@ -132,6 +150,77 @@ internal static class OwnedTrayTooltipCapture
             }, new JsonSerializerOptions { WriteIndented = true }));
     }
 
+    private static void WriteOverflowDiagnostics(GatewayFixtureRun run, string phase)
+    {
+        // Diagnostic-only CI collection. Never capture a developer's Shell surface.
+        if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true")
+            return;
+        using var dpi = new PhysicalDpiScope();
+        GetWindowThreadProcessId(FindWindow("Shell_TrayWnd", null), out var shellPid);
+        var windows = new List<(IntPtr Handle, string ClassName, uint ProcessId)>();
+        EnumWindows((handle, _) =>
+        {
+            var className = new StringBuilder(256);
+            GetClassName(handle, className, className.Capacity);
+            var name = className.ToString();
+            if (name != "Shell_TrayWnd" && !name.Contains("Overflow", StringComparison.OrdinalIgnoreCase))
+                return true;
+            GetWindowThreadProcessId(handle, out var pid);
+            windows.Add((handle, name, pid));
+            return true;
+        }, IntPtr.Zero);
+        var observations = new List<object>();
+        foreach (var (handle, className, pid) in windows)
+        {
+            var hasBounds = GetWindowRect(handle, out var bounds);
+            var visible = IsWindowVisible(handle);
+            var elements = new List<object>();
+            string? uiaError = null;
+            string? imagePath = null;
+            bool? printWindowSucceeded = null;
+            if (pid == shellPid && visible)
+            {
+                try
+                {
+                    foreach (AutomationElement element in AutomationElement.FromHandle(handle)
+                        .FindAll(TreeScope.Subtree, Condition.TrueCondition).Cast<AutomationElement>().Take(200))
+                    {
+                        var current = element.Current;
+                        elements.Add(new { current.Name, current.AutomationId, current.ProcessId,
+                            current.IsOffscreen, type = current.ControlType.ProgrammaticName,
+                            bounds = current.BoundingRectangle.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+                    }
+                }
+                catch (ElementNotAvailableException ex) { uiaError = ex.Message; }
+                catch (COMException ex) { uiaError = ex.Message; }
+                if (hasBounds && bounds.Right > bounds.Left && bounds.Bottom > bounds.Top)
+                {
+                    using var bitmap = new Bitmap(bounds.Right - bounds.Left, bounds.Bottom - bounds.Top);
+                    using (var graphics = Graphics.FromImage(bitmap))
+                    {
+                        var dc = graphics.GetHdc();
+                        try { printWindowSucceeded = PrintWindow(handle, dc, 2); }
+                        finally { graphics.ReleaseHdc(dc); }
+                    }
+                    imagePath = $"{phase}-{handle:X}.png";
+                    bitmap.Save(Path.Combine(run.ArtifactsDirectory, imagePath), ImageFormat.Png);
+                }
+            }
+            observations.Add(new { hwnd = $"0x{handle:X}", className, pid, visible, hasBounds, bounds,
+                elements, uiaError, imagePath, printWindowSucceeded,
+                imageSha256 = imagePath is null ? null : Convert.ToHexString(
+                    SHA256.HashData(File.ReadAllBytes(Path.Combine(run.ArtifactsDirectory, imagePath)))) });
+        }
+        var icon = FindIcon(run);
+        File.WriteAllText(Path.Combine(run.ArtifactsDirectory, $"{phase}.json"),
+            JsonSerializer.Serialize(new
+            {
+                diagnosticOnly = true, phase, capturedAtUtc = DateTimeOffset.UtcNow, shellPid,
+                iconWindow = icon is { } found ? $"0x{found.Window:X}" : null,
+                iconBounds = icon?.Bounds, observations
+            }, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
     private static AutomationElement? FindTooltip() =>
         AutomationElement.RootElement.FindAll(TreeScope.Children,
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ToolTip))
@@ -200,6 +289,8 @@ internal static class OwnedTrayTooltipCapture
     private delegate bool EnumWindowCallback(IntPtr window, IntPtr state);
     [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowCallback callback, IntPtr state);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr window, StringBuilder name, int count);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindow(string className, string? name);
     [DllImport("shell32.dll")] private static extern int Shell_NotifyIconGetRect(ref IconIdentifier identifier, out NativeRect bounds);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out NativeRect bounds);
