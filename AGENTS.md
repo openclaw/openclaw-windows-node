@@ -102,7 +102,7 @@ The script sets `OPENCLAW_RUN_E2E` and `OPENCLAW_RUN_MXC_E2E` itself, then runs 
 - Document non-obvious ownership, invariants, and public usage. Avoid boilerplate comments that only repeat the code.
 - Avoid random literal hardcoded timeouts. Prefer using an explicit constant which can be overriden with an environment variable.
 - Use module level constants for repeated literal values. When they are used across modules, centralize the constant in a constants file.
-- When creating new modules, ada a file header comment explaining what the module does, and provide an intended usage example of the main public functions. Make sure to document the primary type or class in the file and the main public methods expected to be called from other modules.
+- When creating new modules, add a file header comment explaining what the module does, and provide an intended usage example of the main public functions. Make sure to document the primary type or class in the file and the main public methods expected to be called from other modules.
 
 ## UI, MCP, and PR Proof
 
