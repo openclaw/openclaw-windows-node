@@ -1823,10 +1823,24 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("x:Name=\"OpenClawOnboardCard\"", xaml);
         Assert.Contains("Visibility=\"Collapsed\"", xaml);
-        Assert.Contains("GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive())", code);
+        Assert.Contains("GatewayHostAccessClassifier.Classify(activeGateway)", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
         Assert.Contains("CurrentApp.Registry?.Load();", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = Visibility.Collapsed;", code);
+    }
+
+    [Fact]
+    public void Settings_LocalGatewayCardIgnoresNativeLoopbackUrl()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var code = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
+        var load = ExtractMethod(code, "LoadGatewaySection");
+
+        Assert.Contains("var activeGateway = CurrentApp.Registry?.GetActive();", load);
+        Assert.Contains("File.Exists(setupStatePath)", load);
+        Assert.Contains(
+            "(activeGateway?.NativePackageFamilyName is null &&\n                LocalGatewayUrlClassifier.IsLocalGatewayUrl(settings.GatewayUrl))",
+            load.Replace("\r\n", "\n"));
     }
 
     [Fact]

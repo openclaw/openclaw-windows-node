@@ -19,7 +19,7 @@ internal static class WslKeepAlivePolicy
 
         if (activeRecord is not null)
         {
-            if (activeRecord.SshTunnel is not null)
+            if (activeRecord.NativePackageFamilyName is not null || activeRecord.SshTunnel is not null)
                 return false;
 
             return activeRecord.IsLocal

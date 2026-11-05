@@ -350,10 +350,13 @@ public sealed partial class SettingsPage : Page
     private void LoadGatewaySection(SettingsManager settings)
     {
         var setupStatePath = Path.Combine(SetupExistingGatewayClassifier.ResolveLocalDataPath(), "setup-state.json");
-        var activeGatewayAccess = GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive());
+        var activeGateway = CurrentApp.Registry?.GetActive();
+        var activeGatewayAccess = GatewayHostAccessClassifier.Classify(activeGateway);
 
+        // A native Gateway also uses a loopback URL, so only WSL setup state proves a removable WSL install.
         _localGatewayInstalled = File.Exists(setupStatePath)
-            || LocalGatewayUrlClassifier.IsLocalGatewayUrl(settings.GatewayUrl);
+            || (activeGateway?.NativePackageFamilyName is null &&
+                LocalGatewayUrlClassifier.IsLocalGatewayUrl(settings.GatewayUrl));
 
         OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway
             ? Visibility.Visible : Visibility.Collapsed;

@@ -3513,6 +3513,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             AuthFailureMessage = _appState!.AuthFailureMessage,
             LastCheckTime = _appState!.LastCheckTime,
             Settings = _settings,
+            ActiveGateway = _gatewayRegistry?.GetActive(),
             IsMcpRunning = _nodeService?.IsMcpRunning == true,
             McpStartupError = _nodeService?.McpStartupError
         };
