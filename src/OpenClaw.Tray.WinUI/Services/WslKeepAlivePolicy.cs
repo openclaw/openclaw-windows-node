@@ -7,7 +7,6 @@ namespace OpenClawTray.Services;
 internal static class WslKeepAlivePolicy
 {
     private static string DefaultSetupManagedDistroName => AppIdentity.SetupDistroName;
-    private static string DefaultSetupManagedFriendlyName => $"Local ({AppIdentity.SetupDistroName})";
 
     public static bool CanManageGateway(GatewayRecord? activeRecord, bool isIsolated) =>
         !isIsolated || !string.IsNullOrWhiteSpace(activeRecord?.SetupManagedDistroName);
@@ -139,9 +138,7 @@ internal static class WslKeepAlivePolicy
     }
 
     public static bool IsSetupManagedLocalRecord(GatewayRecord record)
-        => GatewayRecordEditing.IsSetupManagedLocalRecord(record) ||
-           (record.SshTunnel is null &&
-            IsLegacyDefaultSetupManagedLocalRecord(record));
+        => GatewayRecordEditing.IsSetupManagedLocalRecord(record);
 
     public static bool IsSameSetupManagedGateway(
         GatewayRecord expected,
@@ -165,8 +162,4 @@ internal static class WslKeepAlivePolicy
     private static string? GetSetupManagedDistroName(GatewayRecord record)
         => GatewayRecordEditing.ResolveManagedDistroName(record);
 
-    private static bool IsLegacyDefaultSetupManagedLocalRecord(GatewayRecord record) =>
-        record.IsLocal
-        && LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url)
-        && string.Equals(record.FriendlyName, DefaultSetupManagedFriendlyName, StringComparison.Ordinal);
 }

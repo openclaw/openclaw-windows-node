@@ -1830,20 +1830,6 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void Settings_LocalGatewayCardIgnoresNativeLoopbackUrl()
-    {
-        var root = TestRepositoryPaths.GetRepositoryRoot();
-        var code = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
-        var load = ExtractMethod(code, "LoadGatewaySection");
-
-        Assert.Contains("var activeGateway = CurrentApp.Registry?.GetActive();", load);
-        Assert.Contains("File.Exists(setupStatePath)", load);
-        Assert.Contains(
-            "(activeGateway?.NativePackageFamilyName is null &&\n                LocalGatewayUrlClassifier.IsLocalGatewayUrl(settings.GatewayUrl))",
-            load.Replace("\r\n", "\n"));
-    }
-
-    [Fact]
     public void WorkspaceBackForward_PrunesUnavailableGatewaySettingsHistory()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

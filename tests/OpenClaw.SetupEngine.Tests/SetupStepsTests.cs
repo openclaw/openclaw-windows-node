@@ -1728,6 +1728,14 @@ public class SetupStepsTests : IDisposable
                 IsLocal = true,
                 SetupManagedDistroName = ctx.DistroName,
             },
+            new GatewayRecord
+            {
+                Id = "05-native-legacy-looking",
+                Url = gatewayUrl,
+                FriendlyName = $"Local ({ctx.DistroName})",
+                IsLocal = true,
+                NativePackageFamilyName = "OpenClaw.Gateway_test",
+            },
         };
         var staleRecords = new[]
         {

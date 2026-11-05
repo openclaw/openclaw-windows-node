@@ -389,4 +389,25 @@ public sealed class TrayTooltipBuilderTests : IDisposable
 
         Assert.Contains($"; {expectedLabel};", result);
     }
+
+    [Fact]
+    public void Build_ManagedWslTailscaleGateway_PreservesTailscaleTopologyLabel()
+    {
+        var snapshot = BaseConnected() with
+        {
+            Settings = new SettingsManager(_tempDir) { GatewayUrl = "wss://openclaw.tailnet.ts.net" },
+            ActiveGateway = new GatewayRecord
+            {
+                Id = "wsl-tailscale",
+                Url = "wss://openclaw.tailnet.ts.net",
+                IsLocal = true,
+                SetupManagedDistroName = "GatewayB",
+            },
+        };
+
+        var result = new TrayTooltipBuilder(snapshot).Build();
+
+        Assert.Contains("; Tailscale;", result);
+        Assert.DoesNotContain("; WSL;", result);
+    }
 }

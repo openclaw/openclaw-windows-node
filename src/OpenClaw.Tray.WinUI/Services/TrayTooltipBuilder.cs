@@ -58,7 +58,9 @@ internal sealed class TrayTooltipBuilder
 
     // WSL and native Gateways both use loopback URLs, so URL topology alone labels WSL as native.
     private string BuildTopologyLabel(GatewayTopologyInfo topology) =>
-        _snapshot.ActiveGateway is { } gateway && GatewayRecordEditing.IsSetupManagedLocalRecord(gateway)
+        topology.DetectedKind == GatewayKind.WindowsNative &&
+        _snapshot.ActiveGateway is { } gateway &&
+        GatewayRecordEditing.IsSetupManagedLocalRecord(gateway)
             ? "WSL"
             : topology.DisplayName;
 
