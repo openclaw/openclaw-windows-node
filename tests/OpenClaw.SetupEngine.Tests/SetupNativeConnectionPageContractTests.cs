@@ -18,7 +18,7 @@ public sealed class SetupNativeConnectionPageContractTests
             var key = "Onboarding_NativeConnection_" + suffix;
             var entry = Assert.Single(resources.Descendants("data"), item => (string?)item.Attribute("name") == key);
             Assert.False(string.IsNullOrWhiteSpace(entry.Element("value")?.Value));
-            Assert.Contains("\"" + key + "\"", ReadPage());
+            Assert.Contains("S(\"" + suffix + "\")", ReadPage());
         }
     }
 

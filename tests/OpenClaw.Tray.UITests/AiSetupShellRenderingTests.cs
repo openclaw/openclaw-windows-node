@@ -31,7 +31,7 @@ public sealed partial class OnboardingAiPageTests
             var more = Find<SettingsExpander>(page, "MoreExpander");
             more.IsExpanded = true;
             await TestSupport.WaitForSettingsExpanderSettledAsync(ui, more, true);
-            await InvokeCardAsync(Find<SettingsCard>(page, "ApiKeysButton"));
+            await InvokeCardAsync(Find<SetupActionCard>(page, "ApiKeysButton"));
             var picker = Find<ComboBox>(page, "ApiProviderPicker");
             picker.SelectedIndex = 0;
             var selection = picker.SelectedItem;

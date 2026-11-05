@@ -82,7 +82,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     Assert.Null(ready.FindName("SkipButton"));
                     Assert.Null(ready.FindName("FinishButton"));
                     Assert.False(Find<InfoBar>(ready, "ErrorBar").IsOpen);
-                    Assert.Same(Find<Button>(ready, "RecoveryButton"), Find<InfoBar>(ready, "ErrorBar").ActionButton);
+                    Assert.Equal(Visibility.Collapsed, Find<Button>(ready, "RecoveryButton").Visibility);
                     Assert.Empty(navigated);
                     Assert.Null(ready.FindName("NativeSummary"));
                     Assert.Null(ready.FindName("NativeGatewaySummary"));
@@ -205,14 +205,13 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
 
     private static void AssertNoCompletionFooterActions(AiReadyPage page)
     {
-        var root = Assert.IsType<Grid>(page.Content);
-        var progress = Find<SetupProgressIndicator>(page, "FlowProgress");
-        var footerContent = root.Children.OfType<FrameworkElement>()
-            .Where(element => Grid.GetRow(element) == Grid.GetRow(progress)).ToArray();
-        Assert.Empty(footerContent.OfType<Button>());
-        Assert.Empty(footerContent.SelectMany(element => TestSupport.FindDescendants<Button>(element)));
-        Assert.Empty(footerContent.OfType<SettingsCard>());
-        Assert.Empty(footerContent.SelectMany(element => TestSupport.FindDescendants<SettingsCard>(element)));
+        var shell = Assert.IsType<SetupPageShell>(page.Content);
+        Assert.IsType<SetupStepIndicator>(page.FindName("FlowProgress"));
+        var footer = Assert.IsType<Grid>(shell.Footer);
+        var recovery = Assert.Single(footer.Children.OfType<Button>());
+        Assert.Same(Find<Button>(page, "RecoveryButton"), recovery);
+        Assert.Equal(Visibility.Collapsed, recovery.Visibility);
+        Assert.Empty(TestSupport.FindDescendants<SettingsCard>(footer));
     }
 
     [Theory]

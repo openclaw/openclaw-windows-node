@@ -70,7 +70,7 @@
                            AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" VerticalAlignment="Center" />
                 <Button x:Name="RecoveryButton" x:Uid="Onboarding_Ready_Return" Grid.Row="1" Grid.Column="1"
                         Content="Back to AI setup" MinWidth="100" MinHeight="40" HorizontalAlignment="Right"
-                        Visibility="{x:Bind ErrorBar.IsOpen, Mode=OneWay}"
+                        Visibility="Collapsed"
                         Click="Return_Click" ContentTemplate="{StaticResource WrappedAction}" />
             </Grid>
         </controls:SetupPageShell.Footer>

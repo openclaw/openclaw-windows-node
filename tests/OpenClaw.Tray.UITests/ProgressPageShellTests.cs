@@ -15,7 +15,7 @@ namespace OpenClaw.Tray.UITests;
 public sealed class ProgressPageShellTests(UIThreadFixture ui)
 {
     [Fact]
-    public async Task InstallationEvents_RenderActualCountsAndFailureCancellationAndRetryStatus()
+    public async Task InstallationEvents_RenderPhaseActivityAndFailureCancellationAndRetryStatus()
     {
         await WithPreviewAsync("progress", async page =>
         {
@@ -25,7 +25,7 @@ public sealed class ProgressPageShellTests(UIThreadFixture ui)
             Render(page);
             Assert.Same(Find<TextBlock>(page, "DownloadActivity"),
                 AutomationProperties.GetLabeledBy(Find<ProgressBar>(page, "DownloadProgress")));
-            AssertCount(page, 0, steps.Count);
+            AssertProgress(0);
             Assert.Equal("Waiting", PhaseText(page, "PrepareStatus"));
             Assert.Equal("Waiting", PhaseText(page, "InstallStatus"));
             Assert.Equal("Waiting", PhaseText(page, "ConnectStatus"));
@@ -36,27 +36,36 @@ public sealed class ProgressPageShellTests(UIThreadFixture ui)
             Apply(null);
             await ui.YieldToRenderAsync();
             Assert.Equal("In progress", PhaseText(page, "PrepareStatus"));
-            Assert.Equal(step.DisplayName, Find<TextBlock>(page, "CurrentActivity").Text);
-            AssertCount(page, 0, steps.Count);
+            Assert.Equal(step.DisplayName, Find<TextBlock>(page, "PrepareActivity").Text);
+            Assert.Equal(Visibility.Visible, Find<TextBlock>(page, "PrepareActivity").Visibility);
+            AssertProgress(0);
             Apply(StepOutcome.FailedTerminal);
             await ui.YieldToRenderAsync();
             Assert.Equal("Needs attention", PhaseText(page, "PrepareStatus"));
-            AssertCount(page, 0, steps.Count);
+            AssertProgress(0);
             Apply(null);
             await ui.YieldToRenderAsync();
             Assert.Equal("In progress", PhaseText(page, "PrepareStatus"));
             progress.Cancel();
             Render(page);
             Assert.Equal("Cancelled", PhaseText(page, "PrepareStatus"));
-            AssertCount(page, 0, steps.Count);
+            AssertProgress(0);
             Apply(StepOutcome.Success);
             await ui.YieldToRenderAsync();
-            AssertCount(page, 1, steps.Count);
+            AssertProgress(1);
             Assert.Equal("Waiting", PhaseText(page, "InstallStatus"));
             Assert.Equal("Waiting", PhaseText(page, "ConnectStatus"));
             Assert.Null(Field("_pipeline").GetValue(page));
             Assert.Null(Field("_runCts").GetValue(page));
             Assert.Null(Field("_logger").GetValue(page));
+
+            void AssertProgress(int completed)
+            {
+                Assert.Equal(completed, progress.CompletedSteps);
+                Assert.Equal(steps.Count, progress.TotalSteps);
+                Assert.Null(page.FindName("StepCount"));
+                Assert.Null(page.FindName("OverallProgress"));
+            }
         });
     }
 
@@ -134,8 +143,7 @@ public sealed class ProgressPageShellTests(UIThreadFixture ui)
                 var logAction = Find<HyperlinkButton>(page, "OpenLogButton");
                 await BringAsync(logAction, page);
                 OnboardingNativeProof.AssertFullyVisible(logAction, shell.Scroller);
-                var overview = Find<ProgressBar>(page, "OverallProgress");
-                Assert.InRange(overview.Value, 0, 1);
+                Assert.Null(page.FindName("OverallProgress"));
             }
             page.Width = width == 1120 ? 720 : 1120;
             page.Height = height == 720 ? 560 : 720;
@@ -161,12 +169,6 @@ public sealed class ProgressPageShellTests(UIThreadFixture ui)
         page.UpdateLayout();
         await OnboardingNativeProof.NextCompositionAsync();
         page.UpdateLayout();
-    }
-
-    private static void AssertCount(ProgressPage page, int completed, int total)
-    {
-        Assert.Equal($"{completed} of {total} steps complete", Find<TextBlock>(page, "StepCount").Text);
-        Assert.Equal((double)completed / total, Find<ProgressBar>(page, "OverallProgress").Value, 8);
     }
 
     private static string PhaseText(ProgressPage page, string name) =>

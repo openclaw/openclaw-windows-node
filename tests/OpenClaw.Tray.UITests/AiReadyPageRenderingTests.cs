@@ -111,7 +111,7 @@ public sealed partial class AiReadyPageRenderingTests(UIThreadFixture ui, ITestO
                 ready.CommitPresentation();
                 var frame = Assert.IsType<Frame>(ready.Content);
                 var page = Assert.IsType<AiReadyPage>(frame.Content);
-                var readyRoot = Assert.IsType<Grid>(page.Content);
+                var readyRoot = Assert.IsType<SetupPageShell>(page.Content);
                 var progressRoot = Assert.IsType<SetupLoadingView>(progress.Content);
                 foreach (var theme in new[] { initialTheme, initialTheme == ElementTheme.Light ? ElementTheme.Dark : ElementTheme.Light })
                 {
@@ -225,7 +225,7 @@ public sealed partial class AiReadyPageRenderingTests(UIThreadFixture ui, ITestO
                 await window.ShowReadyAsync(await VerifySyntheticAsync(proof, CancellationToken.None), CancellationToken.None);
                 page = Assert.IsType<AiReadyPage>(frame.Content);
                 choices = Assert.IsType<StackPanel>(page.FindName("Choices"));
-                var root = Assert.IsType<Grid>(page.Content);
+                var root = Assert.IsType<SetupPageShell>(page.Content);
                 await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
                 window.CommitPresentation();
                 Assert.Equal(Visibility.Visible, choices.Visibility);

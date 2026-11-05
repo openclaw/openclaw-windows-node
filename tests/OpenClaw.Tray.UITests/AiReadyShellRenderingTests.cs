@@ -33,7 +33,8 @@ public sealed partial class AiReadyPageRenderingTests
                 await TestSupport.WaitForRenderedConditionAsync(() => page.IsLoaded, "ready shell mounted");
                 var shell = Assert.IsType<SetupPageShell>(page.FindName("ReadyShell"));
                 var choices = Assert.IsType<StackPanel>(page.FindName("Choices"));
-                var chat = Assert.IsType<SettingsCard>(page.FindName("ChatChoice"));
+                var chat = Assert.IsType<SetupActionCard>(page.FindName("ChatChoice"));
+                page.AdmitChoices();
                 var model = Assert.IsType<TextBlock>(page.FindName("ModelSummary"));
                 model.Text = "Synthetic verified model " + new string('m', 150);
                 var timeline = Assert.IsType<SetupStepIndicator>(page.FindName("FlowProgress"));
@@ -42,10 +43,10 @@ public sealed partial class AiReadyPageRenderingTests
                 var error = Assert.IsType<InfoBar>(page.FindName("ErrorBar"));
                 var recovery = Assert.IsType<Button>(page.FindName("RecoveryButton"));
                 Assert.Equal(Visibility.Collapsed, recovery.Visibility);
-                Assert.Equal(["Chat", "Channels", "Skills"],
+                Assert.Equal(["Chat", "Channels"],
                     choices.Children.Cast<FrameworkElement>().Select(choice => choice.Tag));
                 Assert.Equal(AutomationHeadingLevel.Level1, AutomationProperties.GetHeadingLevel(
-                    Assert.IsType<TextBlock>(page.FindName("HeadingText"))));
+                    Assert.IsType<TextBlock>(page.FindName("Heading"))));
                 Assert.True(chat.Focus(FocusState.Keyboard));
                 foreach (var size in new[] { (1120, 720), (960, 600), (959, 600), (960, 599), (720, 560), (1120, 720) })
                 {
@@ -62,9 +63,9 @@ public sealed partial class AiReadyPageRenderingTests
                         () => Math.Abs(shell.Scroller.VerticalOffset - shell.Scroller.ScrollableHeight) < 0.5,
                         "ready choice viewport");
                     OnboardingNativeProof.AssertFullyVisible(
-                        Assert.IsType<SettingsCard>(page.FindName("SkillsChoice")), shell.Scroller);
+                        Assert.IsType<SetupActionCard>(page.FindName("ChannelsChoice")), shell.Scroller);
                     error.Message = string.Join(" ", Enumerable.Repeat("Synthetic verification failed. Retry or return to AI setup.", 8));
-                    error.IsOpen = true;
+                    page.ShowInvalidated();
                     page.UpdateLayout();
                     await ui.YieldToRenderAsync();
                     Assert.Equal(Visibility.Visible, recovery.Visibility);
@@ -77,6 +78,8 @@ public sealed partial class AiReadyPageRenderingTests
                     busy.Invoke(page, [false]);
                     Assert.All(choices.Children, choice => Assert.True(Assert.IsAssignableFrom<Control>(choice).IsEnabled));
                     error.IsOpen = false;
+                    recovery.Visibility = Visibility.Collapsed;
+                    page.AdmitChoices();
                     chat.Focus(FocusState.Keyboard);
                 }
                 Assert.Null(page.FindName("FinishButton"));

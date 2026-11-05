@@ -33,9 +33,9 @@ public sealed partial class SetupNativeConnectionPage : Page, IAsyncDisposable
     public SetupNativeConnectionPage()
     {
         InitializeComponent();
-        TitleText.Text = SetupLocalization.GetString("Onboarding_NativeConnection_Title");
-        DescriptionText.Text = SetupLocalization.GetString("Onboarding_NativeConnection_Description");
-        SpeechText.Text = SetupLocalization.GetString("Onboarding_NativeConnection_Speech");
+        TitleText.Text = S("Title");
+        DescriptionText.Text = S("Description");
+        SpeechText.Text = S("Speech");
         AddressCard.Header = S("Address");
         CodeCard.Header = S("Code");
         TokenCard.Header = S("Token");
@@ -47,10 +47,10 @@ public sealed partial class SetupNativeConnectionPage : Page, IAsyncDisposable
         SshPortCard.Header = S("SshPort");
         RemotePortCard.Header = S("RemotePort");
         LocalPortCard.Header = S("LocalPort");
-        BackButton.Content = SetupLocalization.GetString("Onboarding_NativeConnection_Back");
+        BackButton.Content = S("Back");
         CheckButton.Content = S("Check");
         NextButton.Content = S("Next");
-        CancelButton.Content = SetupLocalization.GetString("Onboarding_NativeConnection_Cancel");
+        CancelButton.Content = S("Cancel");
         AutomationProperties.SetName(AddressInput, S("Address"));
         AutomationProperties.SetName(CodeInput, S("Code"));
         AutomationProperties.SetName(TokenInput, S("Token"));
@@ -143,7 +143,7 @@ public sealed partial class SetupNativeConnectionPage : Page, IAsyncDisposable
         using var operation = CancellationTokenSource.CreateLinkedTokenSource(args.LifetimeToken);
         _operation = operation;
         SetBusy(true);
-        Show(SetupLocalization.GetString("Onboarding_NativeConnection_Checking"), InfoBarSeverity.Informational);
+        Show(S("Checking"), InfoBarSeverity.Informational);
         try
         {
             var result = connect
@@ -179,7 +179,7 @@ public sealed partial class SetupNativeConnectionPage : Page, IAsyncDisposable
         catch (OperationCanceledException)
         {
             if (!_closed && generation == _generation)
-                Show(SetupLocalization.GetString("Onboarding_NativeConnection_Cancelled"), InfoBarSeverity.Informational);
+                Show(S("Cancelled"), InfoBarSeverity.Informational);
         }
         catch (Exception ex)
         {
