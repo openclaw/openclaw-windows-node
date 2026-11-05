@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Security.AccessControl;
+using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 using OpenClaw.Shared.FileTransfer;
 
@@ -100,7 +101,7 @@ public sealed partial class InstalledFileWorkerResolverTests
                 File.Move(runtime, Path.Combine(_root, "retained-runtime"));
                 File.Copy(marker, runtime);
                 break;
-            case "hardlink": Assert.True(CreateHardLinkW(Path.Combine(_root, "alias"), runtime, IntPtr.Zero)); break;
+            case "hardlink": CreateHardLink(Path.Combine(_root, "alias"), runtime); break;
             case "reparse":
                 File.Delete(runtime);
                 File.CreateSymbolicLink(runtime, marker);
@@ -151,6 +152,9 @@ public sealed partial class InstalledFileWorkerResolverTests
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         var privateAcl = new DirectoryInfo(ownedRoot).GetAccessControl(AccessControlSections.Access);
         privateAcl.SetAccessRuleProtection(true, false);
+        // Elevated Directory.CreateDirectory can select Administrators instead of the current user as owner.
+        using var identity = WindowsIdentity.GetCurrent();
+        privateAcl.SetOwner(identity.User!);
         new DirectoryInfo(Cache).SetAccessControl(privateAcl);
         Assert.Contains("root ownership changed", Assert.Throws<NotSupportedException>(() => VersionResolver(8).Resolve(Cache)).Message);
         Assert.Equal(8, Directory.GetDirectories(Cache).Length);

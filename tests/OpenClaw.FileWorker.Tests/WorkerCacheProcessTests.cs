@@ -18,8 +18,8 @@ public sealed class WorkerCacheProcessTests
     [Fact]
     public async Task RealAppHostMappedWithoutResolverPinsVetoesEvictionUntilWorkerExits()
     {
-        var root = Path.Combine(Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")!,
-            ".worker-cache-process-tests", Guid.NewGuid().ToString("N"));
+        // CreateProcess limits the apphost path independently of native filesystem long-path support.
+        var root = Path.Combine(Path.GetTempPath(), "openclaw-worker-cache-" + Guid.NewGuid().ToString("N"));
         var cache = Path.Combine(root, "cache");
         Directory.CreateDirectory(root);
         Process? worker = null;
@@ -54,7 +54,8 @@ public sealed class WorkerCacheProcessTests
             start.ArgumentList.Add("--stdio");
             worker = Process.Start(start)!;
             started = worker.StartTime;
-            File.WriteAllText(Path.Combine(Environment.GetEnvironmentVariable("RUNNER_TEMP")!, "worker-cache-process-" + worker.Id + ".json"),
+            var evidence = Environment.GetEnvironmentVariable("RUNNER_TEMP");
+            File.WriteAllText(Path.Combine(string.IsNullOrWhiteSpace(evidence) ? root : evidence, "worker-cache-process-" + worker.Id + ".json"),
                 JsonSerializer.Serialize(new { Pid = worker.Id, StartTime = started.ToUniversalTime(), Executable = image,
                     Arguments = new[] { "--stdio" }, WorkingDirectory = root, Ports = Array.Empty<int>(),
                     Data = start.Environment["OPENCLAW_TRAY_DATA_DIR"], AppData = start.Environment["OPENCLAW_TRAY_APPDATA_DIR"],
@@ -104,8 +105,6 @@ public sealed class WorkerCacheProcessTests
                 worker.Dispose();
             }
             Directory.Delete(root, true);
-            var parent = Path.GetDirectoryName(root)!;
-            if (!Directory.EnumerateFileSystemEntries(parent).Any()) Directory.Delete(parent);
         }
     }
 

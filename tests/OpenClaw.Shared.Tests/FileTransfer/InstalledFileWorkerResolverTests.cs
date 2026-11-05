@@ -359,7 +359,7 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
                     File.Move(image, Path.Combine(_root, "original-image"));
                     File.Copy(marker, image);
                     break;
-                case "hardlink": Assert.True(CreateHardLinkW(Path.Combine(_root, "image-alias"), image, IntPtr.Zero)); break;
+                case "hardlink": CreateHardLink(Path.Combine(_root, "image-alias"), image); break;
                 case "reparse":
                     File.Move(image, Path.Combine(_root, "original-image"));
                     File.CreateSymbolicLink(image, marker);
@@ -817,7 +817,7 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
             case "missing": File.Delete(runtime); break;
             case "additional": File.WriteAllText(Path.Combine(published, "extra.dll"), "preserve"); break;
             case "directory": Directory.CreateDirectory(Path.Combine(published, "unexpected")); break;
-            case "hardlink": Assert.True(CreateHardLinkW(Path.Combine(_root, "alias"), runtime, IntPtr.Zero)); break;
+            case "hardlink": CreateHardLink(Path.Combine(_root, "alias"), runtime); break;
             case "reparse":
                 File.Move(runtime, runtime + ".original");
                 File.CreateSymbolicLink(runtime, runtime + ".original");
@@ -1241,8 +1241,7 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
                 Directory.CreateSymbolicLink(_product, _product + ".original");
                 break;
             case "hardlink":
-                Assert.True(CreateHardLinkW(Path.Combine(_root, "alias.dll"), runtime, IntPtr.Zero),
-                    $"Hard link creation failed: {Marshal.GetLastWin32Error()}");
+                CreateHardLink(Path.Combine(_root, "alias.dll"), runtime);
                 break;
         }
         var error = Assert.Throws<NotSupportedException>(() => Resolver.Resolve(destination));
@@ -1425,6 +1424,10 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CreateHardLinkW(string path, string existing, IntPtr security);
+
+    private static void CreateHardLink(string path, string existing) =>
+        Assert.True(CreateHardLinkW(@"\\?\" + path, @"\\?\" + existing, IntPtr.Zero),
+            $"Hard link creation failed: {Marshal.GetLastWin32Error()}");
     [StructLayout(LayoutKind.Sequential)]
     private struct Identity
     {

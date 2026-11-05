@@ -480,6 +480,16 @@ slot are neither loaded nor silently adopted. Resolver tests retain full
 digest/inventory checks inside the selected slot. Installer-shaped protected
 LocalAppData sources exercise contained preparation into the executor-private
 persistent code cache without relaxing source denies or expanding data rights.
+Native metadata admission and hardlink fixtures use extended-length Windows
+paths, so long worktrees do not depend on the machine's `LongPathsEnabled`
+policy. The metadata regression also denies file-data reads to verify that
+long-path support preserves attributes-only admission.
+
+The resolver and MXC reparse tests create real symbolic links. Run these tests
+with symbolic-link privileges (Developer Mode or an elevated test process);
+without those privileges they fail during fixture creation. Do not replace
+their alias-rejection assertions with skips or change machine policy
+automatically.
 Source and cached-file pins, full digests/inventories, atomic publication,
 tamper/alias rejection, bounded inventory and failure/cancellation ownership
 are covered at the shared owner boundary. The legacy per-operation-copy
@@ -549,6 +559,10 @@ uses the framework-dependent apphost; current self-contained archive execution,
 installed activation and native MXC policy remain separate proof boundaries.
 The worker test project's aliased Shared reference exercises the real resolver
 without conflating its types with the worker's linked wire contracts.
+Its cache is isolated under the system temp directory rather than the worktree
+because apphost launch has a separate Windows process-path limit. Process
+evidence uses `RUNNER_TEMP` in CI and the owned fixture directory when that
+variable is absent locally.
 Concurrent file/system.run requests, private-data exclusion under broad write
 grants, caller override rejection and logical/physical private denies are
 covered separately from immutable sensitive-root protection.
