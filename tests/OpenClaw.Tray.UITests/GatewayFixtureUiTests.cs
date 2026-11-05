@@ -90,14 +90,31 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.False(FindById(run, "ConnectionPageMarker")!.Current.IsOffscreen);
             Assert.Null(FindById(run, "WorkspacePinnedPage:sessions"));
 
+            var homeGap = 0d;
+            var headerGap = 0d;
+            var otherTop = 0d;
+            var headerBottom = 0d;
+            await WaitUiAsync(run, () =>
+            {
+                // The unpinned row can occupy pane layout for a frame after the flyout closes.
+                if (FindById(run, "WorkspaceNavHome") is not { } homeRow ||
+                    FindById(run, "WorkspacePinnedPage:connection") is not { } pin ||
+                    FindText(run, "Sessions") is not { } header ||
+                    FindById(run, $"WorkspaceSession:{GatewayScenario.LongSessionKey}") is not { } otherRow)
+                    return false;
+                var homeBounds = homeRow.Current.BoundingRectangle;
+                var pinBounds = pin.Current.BoundingRectangle;
+                var headerBounds = header.Current.BoundingRectangle;
+                homeGap = (pinBounds.Top - homeBounds.Bottom) / scale;
+                headerGap = (headerBounds.Top - pinBounds.Bottom) / scale;
+                otherTop = otherRow.Current.BoundingRectangle.Top;
+                headerBottom = headerBounds.Bottom;
+                return homeGap is >= -1 and <= 8 && headerGap is >= 4 and <= 48 && otherTop >= headerBottom;
+            }, "settled pinned-row and Sessions header geometry after unpinning");
+            Assert.InRange(homeGap, -1, 8);
+            Assert.InRange(headerGap, 4, 48);
+            Assert.True(otherTop >= headerBottom);
             var home = FindById(run, "WorkspaceNavHome")!;
-            var homeBounds = home.Current.BoundingRectangle;
-            var pinBounds = FindById(run, "WorkspacePinnedPage:connection")!.Current.BoundingRectangle;
-            var sessionsHeader = FindText(run, "Sessions")!.Current.BoundingRectangle;
-            var other = FindById(run, $"WorkspaceSession:{GatewayScenario.LongSessionKey}")!.Current.BoundingRectangle;
-            Assert.InRange((pinBounds.Top - homeBounds.Bottom) / scale, -1, 8);
-            Assert.InRange((sessionsHeader.Top - pinBounds.Bottom) / scale, 4, 48);
-            Assert.True(other.Top >= sessionsHeader.Bottom);
             Assert.Null(FindText(run, "Pages"));
             Assert.Null(FindText(run, "Pin pages here with the customize button."));
             Invoke(home);

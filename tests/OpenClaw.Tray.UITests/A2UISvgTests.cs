@@ -30,10 +30,10 @@ public sealed class A2UISvgTests
 
     private const string SvgDecodeSlackVariable = "OPENCLAW_UI_SVG_DECODE_SLACK_SECONDS";
     // Slack beyond MediaResolver.SvgRenderTimeout for ONE admitted decode (the pre-existing 2 s).
-    // Do not widen it to absorb a late return: PathologicalGeometry returns long after the cap
-    // fires because SvgImageSource.SetSourceAsync blocks the UI thread past SvgRenderTimeout (see
-    // docs/CI_FAILURES.md). Queue wait is excluded by AssertSingleDecodeBoundedAsync and covered
-    // separately by Load_QueuedBehindBusyDecodeSlots_CompletesOnceASlotFrees.
+    // Do not widen it to absorb a late return. Pathological geometry is rejected before decode by
+    // SvgGeometryBudget because SvgImageSource.SetSourceAsync can block the UI
+    // thread past SvgRenderTimeout (see docs/CI_FAILURES.md). Queue wait is excluded by
+    // AssertSingleDecodeBoundedAsync and covered separately by Load_QueuedBehindBusyDecodeSlots_CompletesOnceASlotFrees.
     private static readonly TimeSpan SvgDecodeSlack =
         int.TryParse(Environment.GetEnvironmentVariable(SvgDecodeSlackVariable), out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(2);
@@ -296,7 +296,7 @@ public sealed class A2UISvgTests
     }
 
     [Fact]
-    public async Task PathologicalGeometry_BoundedByRenderTimeout()
+    public async Task PathologicalGeometry_RejectedBeforeDecode()
     {
         // Build an SVG with a very long path expression. Stay under the 2 MiB data-URL cap
         // by base64-encoding to avoid percent-escape bloat.
@@ -312,8 +312,20 @@ public sealed class A2UISvgTests
         sb.Append("'/></svg>");
         var url = DataSvgBase64(sb.ToString());
 
-        // Decode (or timeout) must complete within the single-decode bound.
-        await AssertSingleDecodeBoundedAsync(url, "pathological-geometry");
+        // Oversized geometry never reaches D2D, so the load fails fast instead of blocking the UI thread.
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(url);
+            sw.Stop();
+            Assert.Null(src);
+            Assert.Contains(logger.Warnings, warning => warning.Contains("SVG rejected before decode", StringComparison.Ordinal));
+            Assert.True(
+                sw.Elapsed < SvgDecodeSlack,
+                $"pathological-geometry rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
     }
 
     [Fact]

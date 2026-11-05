@@ -328,12 +328,20 @@ public sealed class MediaResolver : IDisposable
 
     /// <summary>
     /// Decode SVG bytes through D2D's static SVG 1.1 subset (no scripts, no SMIL, no &lt;foreignObject&gt;,
-    /// no external fetches — that's our trust model). Two pieces of defense-in-depth on top:
+    /// no external fetches — that's our trust model). Three pieces of defense-in-depth on top:
     ///   - DOCTYPE pre-strip in case D2D's XML parser would resolve external entities (XXE / billion-laughs).
+    ///   - Pre-decode geometry budget (<see cref="SvgGeometryBudget"/>) because D2D's parse
+    ///     of pathological geometry can block the UI thread past the wall-clock timeout.
     ///   - Wall-clock timeout because a 1 MiB SVG can hold pathologically expensive geometry.
     /// </summary>
     private async Task<ImageSource?> SvgFromBytesAsync(byte[] bytes, CancellationToken cancellationToken)
     {
+        if (SvgGeometryBudget.Exceeds(bytes))
+        {
+            _logger.Warn($"[A2UI] SVG rejected before decode: geometry attributes exceed {SvgGeometryBudget.MaxAttributeChars} characters");
+            return null;
+        }
+
         if (!await s_svgDecodeSemaphore.WaitAsync(SvgRenderTimeout, cancellationToken))
         {
             _logger.Warn("[A2UI] SVG decode queue saturated");
