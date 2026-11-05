@@ -95,6 +95,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     public IOperatorGatewayClient? GatewayClient => _connectionManager?.OperatorClient;
     public GatewayRegistry? Registry => _gatewayRegistry;
     public GatewayConnectionManager? ConnectionManager => _connectionManager;
+    private ProfileAutoFillCoordinator? _profileAutoFill;
+    internal ProfileAutoFillCoordinator ProfileAutoFill => _profileAutoFill ??= new(
+        () => ProfileCompletionContext.Capture(_connectionManager, _gatewayRegistry),
+        new WindowsAccountIdentityProvider(),
+        result => Logger.Info($"Owner profile auto-fill: {result.Offer}, name {result.Save?.Name}, photo {result.Save?.Photo}."));
     internal GatewayDirectConnectService? GatewayDirectConnectService =>
         _gatewayDirectConnectService;
     internal ManagedLocalGatewayPortProvenanceService? ManagedLocalPortProvenance =>

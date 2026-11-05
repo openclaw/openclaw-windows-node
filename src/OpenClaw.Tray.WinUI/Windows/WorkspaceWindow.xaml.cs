@@ -42,12 +42,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     // clicks coalesce onto the latest ChatPage.QueueSession value.
     private bool _chatApplyQueued;
     private bool _showingAgentCreation;
-    private readonly ProfileCompletionService _profileCompletion = new(
-        () => CurrentApp.GatewayClient, () => CurrentApp.Registry?.ActiveGatewayId,
-        () => ProfileCompletionEligibility.IsEligible(CurrentApp.Registry?.GetActive()),
-        new WindowsAccountIdentityProvider());
-    private bool _profileCompletionBusy;
-    private string? _profileAutoFillGatewayId;
+    private readonly ProfileAutoFillCoordinator _profileAutoFill = CurrentApp.ProfileAutoFill;
     private IOperatorGatewayClient? _refreshingClient;
     private readonly HubCommandExecutor _commandExecutor = new();
     private string? _agentId;
@@ -82,6 +77,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _openTimeline = openTimeline;
         _identity = new WorkspaceIdentitySource(UpdateOwnerIdentity,
             category => Logger.Warn(WorkspaceIdentitySource.DescribeUnavailable(category)));
+        _profileAutoFill.ProfileChanged += OnProfileAutoFilled;
         _sessionMenu = new WorkspaceSessionMenuController(
             () => IsClosed ? null : CurrentApp.GatewayClient,
             key => _state.Sessions.FirstOrDefault(s => s.Key == key),
@@ -909,8 +905,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         OwnerName.Text = name ?? Text(_identity.IsLoading ? "OwnerLoading.Text"
             : unnamed ? "OwnerUnnamed.Text" : "OwnerUnavailable.Text");
         _setUpProfileItem.Visibility = unnamed ? Visibility.Visible : Visibility.Collapsed;
-        var eligible = ProfileCompletionEligibility.IsEligible(CurrentApp.Registry?.GetActive());
-        if (eligible && _identity.HasProfile && !_identity.IsLoading) MaybeAutoFillProfile();
+        if (!IsClosed && _identity.HasProfile && !_identity.IsLoading)
+            AsyncEventHandlerGuard.Run(_profileAutoFill.ObserveAsync, new AppLogger(), nameof(UpdateOwnerIdentity));
         OwnerPicture.DisplayName = name ?? "";
         AutomationProperties.SetName(OwnerButton, OwnerName.Text);
         var avatar = _identity.Avatar;
@@ -983,36 +979,9 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
     }
 
-    /// <summary>
-    /// Fills blank owner fields from the Windows account without asking, as the macOS Gateway does from its host
-    /// account, on any start including after an update.
-    /// </summary>
-    private void MaybeAutoFillProfile()
+    private void OnProfileAutoFilled(object? sender, EventArgs e)
     {
-        var id = CurrentApp.Registry?.ActiveGatewayId;
-        if (_profileCompletionBusy ||
-            !ProfileAutoFillPolicy.ShouldAttempt(id, _profileAutoFillGatewayId))
-            return;
-        _profileAutoFillGatewayId = id;
-        AsyncEventHandlerGuard.Run(AutoFillProfileAsync, new AppLogger(), nameof(MaybeAutoFillProfile));
-    }
-
-    private async Task AutoFillProfileAsync()
-    {
-        _profileCompletionBusy = true;
-        ProfileAutoFillResult result;
-        try
-        {
-            result = await _profileCompletion.AutoFillAsync(CancellationToken.None);
-        }
-        finally
-        {
-            _profileCompletionBusy = false;
-        }
-        new AppLogger().Info($"Owner profile auto-fill: {result.Offer}, name {result.Save?.Name}, photo {result.Save?.Photo}.");
-        // Nothing was read or written for this context; a later identity update tries again.
-        if (result.RetryLater) _profileAutoFillGatewayId = null;
-        if (result.MayHaveChanged && !IsClosed)
+        if (!IsClosed)
             RefreshOwnerIdentity(invalidate: true);
     }
 
@@ -1223,6 +1192,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void OnClosed(object sender, WindowEventArgs args)
     {
         IsClosed = true;
+        _profileAutoFill.ProfileChanged -= OnProfileAutoFilled;
         _identity.SetConnection(null, ConnectionStatus.Disconnected);
         _state.PropertyChanged -= OnStateChanged;
         UnwirePins();

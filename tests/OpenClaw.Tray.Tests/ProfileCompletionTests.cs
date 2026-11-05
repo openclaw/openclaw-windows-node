@@ -62,7 +62,8 @@ public class ProfileCompletionTests
         var client = DispatchProxy.Create<IOperatorGatewayClient, Proxy>();
         var provider = new FakeProvider(account ?? Both);
         var service = new ProfileCompletionService(
-            () => clientOverride is null ? client : clientOverride() ?? client, gatewayId ?? (() => "g1"), eligible ?? (() => true), provider);
+            () => eligible?.Invoke() == false ? null : new ProfileCompletionContext(
+                gatewayId?.Invoke() ?? "g1", clientOverride?.Invoke() ?? client), provider);
         return (service, (Proxy)(object)client, provider, client);
     }
 
@@ -226,6 +227,27 @@ public class ProfileCompletionTests
         var result = await service.SaveAsync(prep, "Ada", null, CancellationToken.None);
         Assert.Equal(ProfileStep.ExistingValue, result.Name);
         Assert.DoesNotContain("users.setDisplayName", proxy.Methods);
+    }
+
+    [Fact]
+    public async Task AutoFill_EmailAddedDuringPreparation_PreservesIdentityAndFillsOnlyPhoto()
+    {
+        var (service, proxy, _, _) = Create();
+        var reads = 0;
+        proxy.OnSelfRead = () =>
+        {
+            if (++reads == 2)
+                proxy.SelfProfile = new
+                {
+                    profile = new { id = "gateway-owner", emails = new[] { "owner@example.test" }, hasAvatar = false },
+                };
+        };
+
+        var result = await service.AutoFillAsync(CancellationToken.None);
+
+        Assert.Equal(new ProfileSaveResult(ProfileStep.ExistingValue, ProfileStep.Saved), result.Save);
+        Assert.DoesNotContain("users.setDisplayName", proxy.Methods);
+        Assert.Equal(["users.setAvatar"], proxy.Payloads.Keys);
     }
 
     [Fact]
@@ -669,7 +691,7 @@ public class ProfileCompletionTests
     }
 
     [Fact]
-    public async Task AutoFill_UncertainWrite_IsNotRetriedInTheSameProcess_ButRefreshes()
+    public async Task AutoFill_UncertainWrite_DoesNotRequestRetry_ButRequestsRefresh()
     {
         var (service, proxy, _, _) = Create();
         proxy.OnWrite = _ => Task.FromException<JsonElement>(new TimeoutException());
@@ -690,27 +712,22 @@ public class ProfileCompletionTests
         Assert.Equal(0, provider.Reads);
     }
 
-    [Theory]
-    // Any start qualifies, including an updated install that never ran setup; once per Gateway and process.
-    [InlineData("gw", null, true)]
-    [InlineData("gw", "other", true)]
-    [InlineData("gw", "gw", false)]
-    [InlineData(null, null, false)]
-    public void AutoFillPolicy_SuppressesRepeatedAttempt(string? gatewayId, string? attempted, bool expected) =>
-        Assert.Equal(expected, ProfileAutoFillPolicy.ShouldAttempt(gatewayId, attempted));
-
     [Fact]
-    public void Window_AutomaticFillHasNoPrompt_AndRunsForNamedOwnersToo()
+    public void Window_ProfileAutoFillStateStaysInAppLifetimeOwner()
     {
         var source = WorkspaceWindowSource();
-        var start = source.IndexOf("private void MaybeAutoFillProfile()", StringComparison.Ordinal);
-        var body = source[start..source.IndexOf("private void OnNavigationChanged", start, StringComparison.Ordinal)];
-        Assert.Contains("ProfileAutoFillPolicy.ShouldAttempt(", body);
-        Assert.Contains("_profileCompletion.AutoFillAsync(", body);
-        Assert.DoesNotContain("ProfileCompletionDialog", body);
-        Assert.DoesNotContain("OpenModalDialog", body);
-        Assert.True(body.IndexOf("ShouldAttempt(", StringComparison.Ordinal) < body.IndexOf("_profileAutoFillGatewayId = id", StringComparison.Ordinal));
-        Assert.Contains("if (eligible && _identity.HasProfile && !_identity.IsLoading) MaybeAutoFillProfile();", source);
+        Assert.Contains("ProfileAutoFillCoordinator _profileAutoFill = CurrentApp.ProfileAutoFill;", source);
+        Assert.Contains("_profileAutoFill.ObserveAsync", source);
+        Assert.Contains("_profileAutoFill.ProfileChanged += OnProfileAutoFilled;", source);
+        Assert.Contains("_profileAutoFill.ProfileChanged -= OnProfileAutoFilled;", source);
+        Assert.Contains("if (!IsClosed && _identity.HasProfile && !_identity.IsLoading)", source);
+        Assert.DoesNotContain("_profileCompletionBusy", source);
+        Assert.DoesNotContain("_profileAutoFillGatewayId", source);
+        Assert.DoesNotContain("new ProfileCompletionService", source);
+        var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? FindRoot();
+        var app = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        Assert.Contains("ProfileAutoFill => _profileAutoFill ??= new(", app);
+        Assert.Contains("ProfileCompletionContext.Capture(_connectionManager, _gatewayRegistry)", app);
     }
 
     [Fact]

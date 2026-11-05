@@ -18,14 +18,31 @@ internal static class ProfileCompletionEligibility
 }
 
 /// <summary>
-/// When the workspace fills the owner profile without asking: on any start, including the first start after an
-/// app update, without a setup-specific flow.
+/// A connected operator and the matching selected, managed Gateway. Registry selection can change before the
+/// old operator is retired, so selection alone is not evidence of the RPC destination.
 /// </summary>
-internal static class ProfileAutoFillPolicy
+internal sealed record ProfileCompletionContext(string GatewayId, IOperatorGatewayClient Client)
 {
-    public static bool ShouldAttempt(string? gatewayId, string? attemptedGatewayId) =>
-        gatewayId is not null &&
-        !string.Equals(gatewayId, attemptedGatewayId, StringComparison.Ordinal);
+    public bool Matches(ProfileCompletionContext? other) =>
+        other is not null && ReferenceEquals(Client, other.Client) &&
+        string.Equals(GatewayId, other.GatewayId, StringComparison.Ordinal);
+
+    public static ProfileCompletionContext? Capture(IGatewayConnectionManager? manager, GatewayRegistry? registry)
+    {
+        var snapshot = manager?.CurrentSnapshot;
+        var client = manager?.OperatorClient;
+        var record = registry?.GetActive();
+        if (snapshot is not { OperatorState: RoleConnectionState.Connected, GatewayId: { } gatewayId } ||
+            client is not { IsConnectedToGateway: true } ||
+            !string.Equals(record?.Id, gatewayId, StringComparison.Ordinal) ||
+            !ProfileCompletionEligibility.IsEligible(record) ||
+            !string.Equals(registry?.ActiveGatewayId, gatewayId, StringComparison.Ordinal) ||
+            !ReferenceEquals(snapshot, manager?.CurrentSnapshot) ||
+            !ReferenceEquals(client, manager?.OperatorClient))
+            return null;
+
+        return new ProfileCompletionContext(gatewayId, client);
+    }
 }
 
 internal sealed record ProfileAutoFillResult(ProfileOffer Offer, ProfileSaveResult? Save)
@@ -93,9 +110,7 @@ internal sealed record ProfileSaveResult(ProfileStep Name, ProfileStep Photo)
 /// existing value is kept; this narrows but cannot eliminate a concurrent edit.
 /// </summary>
 internal sealed class ProfileCompletionService(
-    Func<IOperatorGatewayClient?> getClient,
-    Func<string?> getGatewayId,
-    Func<bool> isEligible,
+    Func<ProfileCompletionContext?> getContext,
     IWindowsAccountIdentityProvider provider)
 {
     internal const string OwnerProfileId = "gateway-owner";
@@ -125,8 +140,8 @@ internal sealed class ProfileCompletionService(
         client.GrantedOperatorScopes.Any(scope => scope is "operator.write" or "operator.admin");
 
     private bool IsSame(IOperatorGatewayClient client, string? gatewayId) =>
-        ReferenceEquals(client, getClient()) && client.IsConnectedToGateway &&
-        string.Equals(gatewayId, getGatewayId(), StringComparison.Ordinal) && isEligible();
+        getContext() is { } current && ReferenceEquals(client, current.Client) &&
+        client.IsConnectedToGateway && string.Equals(gatewayId, current.GatewayId, StringComparison.Ordinal);
 
     /// <summary>
     /// Mac parity. A macOS Gateway fills a blank owner name from its host account on every owner connection and
@@ -134,9 +149,10 @@ internal sealed class ProfileCompletionService(
     /// cannot read the Windows account, so the app fills missing fields instead. Unlike Mac's dynamic photo
     /// fallback, this persists the photo on the Gateway. Writes recheck fields but are not atomic compare-and-set.
     /// </summary>
-    public async Task<ProfileAutoFillResult> AutoFillAsync(CancellationToken cancellationToken)
+    public async Task<ProfileAutoFillResult> AutoFillAsync(
+        CancellationToken cancellationToken, ProfileCompletionContext? expectedContext = null)
     {
-        var preparation = await PrepareAsync(cancellationToken);
+        var preparation = await PrepareAsync(cancellationToken, expectedContext);
         if (preparation is not { Offer: ProfileOffer.Offer, Account: { } account })
             return new ProfileAutoFillResult(preparation.Offer, null);
 
@@ -150,12 +166,16 @@ internal sealed class ProfileCompletionService(
             await SaveAsync(preparation, name, photo, cancellationToken));
     }
 
-    internal async Task<ProfilePreparation> PrepareAsync(CancellationToken cancellationToken)
+    internal async Task<ProfilePreparation> PrepareAsync(
+        CancellationToken cancellationToken, ProfileCompletionContext? expectedContext = null)
     {
         var none = new ProfilePreparation(ProfileOffer.Unavailable, null, false, false, null);
-        var client = getClient();
-        var gatewayId = getGatewayId();
-        if (client is not { IsConnectedToGateway: true } || gatewayId is null || !isEligible())
+        var context = getContext();
+        if (context is null || (expectedContext is not null && !expectedContext.Matches(context)))
+            return none;
+        var client = context.Client;
+        var gatewayId = context.GatewayId;
+        if (!client.IsConnectedToGateway)
             return none;
 
         SelfState self;
@@ -223,7 +243,7 @@ internal sealed class ProfileCompletionService(
                 if (!ProfileNamePolicy.TryNormalize(confirmedName, out var name))
                     throw new ArgumentException("The display name is not valid.", nameof(confirmedName));
                 nameStep = await WriteFieldAsync(client, gatewayId, preparation.ProfileId,
-                    state => state.HasName, "users.setDisplayName",
+                    state => state.HasName || state.HasEmail, "users.setDisplayName",
                     new { profileId = preparation.ProfileId, displayName = name }, cancellationToken);
             }
 
