@@ -291,6 +291,11 @@ function Resolve-AppDataDir {
     function Test-SetupManagedLocalRecord {
         param([object]$Record)
 
+        # Native package ownership must never be inferred as legacy WSL ownership from a display name.
+        if ($null -ne (Get-JsonPropertyValue $Record 'nativePackageFamilyName')) {
+            return $false
+        }
+
         $isLocal = [bool](Get-JsonPropertyValue $Record 'isLocal')
         $sshTunnel = Get-JsonPropertyValue $Record 'sshTunnel'
         if (-not $isLocal -or $null -ne $sshTunnel) {

@@ -107,6 +107,14 @@ public sealed class UninstallGatewayCleanupHelperTests
             SshTunnel = new SshTunnelConfig("user", "host.example", 18789, 28789, IncludeBrowserProxyForward: true, SshPort: 2222),
             BrowserControlPort = 28791,
         };
+        var native = new GatewayRecord
+        {
+            Id = "native",
+            Url = "ws://127.0.0.1:18789",
+            FriendlyName = "Local (OpenClawGateway)",
+            IsLocal = true,
+            NativePackageFamilyName = "OpenClaw.Gateway_fixture",
+        };
         var saved = new GatewayRegistry(temp.Path);
         saved.AddOrUpdate(new GatewayRecord
         {
@@ -117,11 +125,14 @@ public sealed class UninstallGatewayCleanupHelperTests
         });
         saved.AddOrUpdate(remote);
         saved.AddOrUpdate(tunnel);
+        saved.AddOrUpdate(native);
         saved.SetActive("remote");
         saved.Save();
         Directory.CreateDirectory(saved.GetIdentityDirectory("managed"));
         Directory.CreateDirectory(saved.GetIdentityDirectory("remote"));
         Directory.CreateDirectory(saved.GetIdentityDirectory("tunnel"));
+        Directory.CreateDirectory(saved.GetIdentityDirectory("native"));
+        File.WriteAllText(Path.Combine(saved.GetIdentityDirectory("native"), "identity-fixture.txt"), "preserve");
 
         var stdout = await UninstallScriptHost.RunAsync(
             temp,
@@ -137,14 +148,15 @@ public sealed class UninstallGatewayCleanupHelperTests
             Write-Output "$($result.RemainingCount)|$($result.HasExternalGateways)|$($cleanupWarnings.Count)"
             """);
 
-        Assert.Equal(["2|True|0"], ReadLines(stdout));
+        Assert.Equal(["3|True|0"], ReadLines(stdout));
         var loaded = new GatewayRegistry(temp.Path);
         loaded.Load();
-        Assert.Equal([remote, tunnel], loaded.GetAll());
+        Assert.Equal([remote, tunnel, native], loaded.GetAll());
         Assert.Equal("remote", loaded.GetActive()?.Id);
         Assert.False(Directory.Exists(loaded.GetIdentityDirectory("managed")));
         Assert.True(Directory.Exists(loaded.GetIdentityDirectory("remote")));
         Assert.True(Directory.Exists(loaded.GetIdentityDirectory("tunnel")));
+        Assert.Equal("preserve", File.ReadAllText(Path.Combine(loaded.GetIdentityDirectory("native"), "identity-fixture.txt")));
     }
 
     [Theory]
