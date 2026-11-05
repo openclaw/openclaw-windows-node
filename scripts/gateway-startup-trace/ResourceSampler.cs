@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 
 namespace OpenClaw.Trace;
 
@@ -39,6 +40,7 @@ public sealed class ProcessSnapshot
 
 public static class ResourceSampler
 {
+    private const uint ProcessQueryLimitedInformation = 0x1000;
     public static string[] PayloadRoots { get; set; } = Array.Empty<string>();
     public static Dictionary<int, long> SelectedProcesses { get; } = new();
     [StructLayout(LayoutKind.Sequential)]
@@ -70,11 +72,19 @@ public static class ResourceSampler
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetProcessIoCounters(IntPtr process, out IoCounters counters);
+    private static extern bool GetProcessIoCounters(SafeProcessHandle process, out IoCounters counters);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, int id);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessTimes(SafeProcessHandle process, out long creation, out long exit,
+        out long kernel, out long user);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder name, ref int size);
+    private static extern bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, StringBuilder name, ref int size);
 
     public static ResourceSnapshot Capture()
     {
@@ -101,13 +111,19 @@ public static class ResourceSampler
             {
                 try
                 {
-                    var started = process.StartTime.ToUniversalTime().ToFileTimeUtc();
+                    if (PayloadRoots.Length == 0 && !SelectedProcesses.ContainsKey(process.Id)) continue;
+                    using var handle = OpenProcess(ProcessQueryLimitedInformation, false, process.Id);
+                    if (handle.IsInvalid || !GetProcessTimes(handle, out var started, out _, out var cpuKernel, out var cpuUser))
+                    {
+                        result.UnavailableProcesses++;
+                        continue;
+                    }
                     var selected = SelectedProcesses.TryGetValue(process.Id, out var expected) && expected == started;
                     if (!selected && PayloadRoots.Length > 0)
                     {
                         var name = new StringBuilder(32768);
                         var size = name.Capacity;
-                        if (QueryFullProcessImageName(process.Handle, 0, name, ref size))
+                        if (QueryFullProcessImageName(handle, 0, name, ref size))
                         {
                             var image = name.ToString();
                             foreach (var root in PayloadRoots)
@@ -120,13 +136,13 @@ public static class ResourceSampler
                     {
                         Id = process.Id,
                         StartedUtcTicks = started,
-                        CpuUserMs = process.UserProcessorTime.TotalMilliseconds,
-                        CpuKernelMs = process.PrivilegedProcessorTime.TotalMilliseconds,
+                        CpuUserMs = cpuUser / 10000.0,
+                        CpuKernelMs = cpuKernel / 10000.0,
                         WorkingSetBytes = process.WorkingSet64,
                         PeakWorkingSetBytes = process.PeakWorkingSet64,
                         PrivateBytes = process.PrivateMemorySize64
                     };
-                    if (GetProcessIoCounters(process.Handle, out var io))
+                    if (GetProcessIoCounters(handle, out var io))
                     {
                         item.ReadBytes = io.ReadBytes;
                         item.WriteBytes = io.WriteBytes;

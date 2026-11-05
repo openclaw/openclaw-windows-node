@@ -217,9 +217,15 @@ bytes at each observation. Process labels are anonymous and stable within that r
 outputs. Defender process indexes are a separate namespace.
 Each process has its own observation timestamp because process enumeration is not atomic.
 Its phase assignment and timeline offset use that timestamp, not enumeration start.
+If ETL lifetime boundaries are missing, attribution is bounded conservatively by native
+observations rather than extending a selected PID indefinitely. Gap metrics are `null`
+when a window has no complete sampling interval.
 
 The recorder enumerates processes to discover matching executable images. Unavailable/exited
-process observations are counted; denied I/O counters remain `null`. Short-lived processes
+process observations are counted; explicit-PID-only sampling skips unrelated processes
+before querying their properties. Image-root discovery can count inaccessible candidates
+whose paths could not be checked. Native queries use limited-information process handles;
+denied I/O counters remain `null`. Short-lived processes
 between samples can be missed completely. A guest PID is not assumed to be a host PID. If MXC
 guest activity is not visible/matchable, process coverage stays absent rather than claiming
 attribution. Use the private ETL for additional investigation.
@@ -282,6 +288,9 @@ Mark `send` as you send in the actual chat UI, `first-response` when the first r
 becomes visible, and `completed` when the reply ends. Use `failed` or `cancelled` instead
 of `completed` when applicable. Only those event names and timestamps are recorded.
 Duplicate, reordered, missing-send and conflicting terminal markers fail closed.
+Live polling defers markers newer than its snapshot cutoff until the next poll.
+Shutdown collects markers once more against the final recording boundary. A readiness-file
+cleanup failure is reported but cannot bypass the owned recorder stop request.
 To stop without a terminal observation, create `<run>\control\chat-stop`. Timeout or manual
 stop is incomplete and exits nonzero; failure/cancellation remain explicit chat outcomes.
 The recording limit must exceed the chat timeout by more than 60 seconds.

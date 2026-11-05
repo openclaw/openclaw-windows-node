@@ -65,7 +65,7 @@ public sealed class PayloadPaths
     }
 }
 
-public sealed record ProcessIdentity(int Id, long StartedUtcTicks, long ObservedTicks);
+public sealed record ProcessIdentity(int Id, long StartedUtcTicks, long ObservedTicks, long LastObservedTicks = 0);
 public sealed record Selection(string Label, int Pid, long Start, long End);
 public sealed class Lifetime(int pid, long start)
 {
@@ -84,8 +84,12 @@ public static class ProcessSelection
                 .Select(l => l.Start).DefaultIfEmpty(long.MaxValue).Min();
             var nextNativeStart = processes.Where(other => other.Id == p.Id && other.StartedUtcTicks > p.StartedUtcTicks)
                 .Select(other => other.StartedUtcTicks).DefaultIfEmpty(long.MaxValue).Min();
-            return new Selection($"P{index + 1}", p.Id, Math.Max(p.StartedUtcTicks, lifetime?.Start ?? long.MinValue),
-                Math.Min(lifetime?.End ?? long.MaxValue, Math.Min(nextStart, nextNativeStart)));
+            // Without a verified exit, only the native observation span is proven.
+            var observedEnd = Math.Max(p.ObservedTicks, p.LastObservedTicks);
+            var end = lifetime is not null && lifetime.End != long.MaxValue ? lifetime.End :
+                observedEnd == long.MaxValue ? long.MaxValue : observedEnd + 1;
+            return new Selection($"P{index + 1}", p.Id, Math.Max(p.StartedUtcTicks, lifetime?.Start ?? p.ObservedTicks),
+                Math.Min(end, Math.Min(nextStart, nextNativeStart)));
         }).ToArray();
 }
 

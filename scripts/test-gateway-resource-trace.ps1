@@ -55,6 +55,16 @@ Assert-Equal $all.processes[0].process $window.processes[0].process 'Process lab
 $missing = Get-ResourceWindowSummary -Samples @() -StartTicks $base -EndTicks ($base + 10000000L)
 Assert-Equal $missing.host_cpu_fraction $null 'Missing samples must not become zero CPU'
 Assert-Equal $missing.host_minimum_available_bytes $null 'Missing memory must remain unavailable'
+foreach ($unmeasured in @(
+    $missing
+    (Get-ResourceWindowSummary -Samples @($samples[1]) -StartTicks $base -EndTicks ($base + 20000000L))
+    (Get-ResourceWindowSummary -Samples @($samples[0], $samples[3]) -StartTicks ($base + 5000000L) -EndTicks ($base + 25000000L))
+)) {
+    Assert-Equal $unmeasured.sampled_intervals 0 'Fixture has no complete interval'
+    Assert-Equal $unmeasured.maximum_sample_gap_ms $null 'No interval cannot prove a zero sampling gap'
+    Assert-Equal $unmeasured.non_awake_gap_ms $null 'No interval cannot prove uninterrupted awake time'
+    Assert-Equal $unmeasured.clock_adjustment_magnitude_ms $null 'No interval cannot prove no clock adjustment'
+}
 $lateObservation = New-Sample 0
 $lateObservation.Processes[0].ObservedUtcTicks = $base + 90000000L
 $lateWindow = Get-ResourceWindowSummary -Samples @($lateObservation) -StartTicks $base -EndTicks ($base + 10000000L)
@@ -106,7 +116,19 @@ $withoutEvents = [OpenClaw.Trace.ProcessSelection]::Match(@(
     [OpenClaw.Trace.ProcessIdentity]::new(42, 100, 150)
     [OpenClaw.Trace.ProcessIdentity]::new(42, 300, 350)
 ), [Collections.Generic.List[OpenClaw.Trace.Lifetime]]::new())
-Assert-Equal $withoutEvents[0].End 300 'Native creation identities prevent overlap even if process events are absent'
+Assert-Equal $withoutEvents[0].End 151 'Missing lifetime events cannot extend selection beyond native observations'
+$unselectedReplacement = [OpenClaw.Trace.ProcessSelection]::Match(@(
+    [OpenClaw.Trace.ProcessIdentity]::new(42, 100, 150, 200)
+), [Collections.Generic.List[OpenClaw.Trace.Lifetime]]::new())
+Assert-Equal $unselectedReplacement[0].Start 150 'Missing lifetime start admits only the proven observation span'
+Assert-Equal $unselectedReplacement[0].End 201 'An unselected replacement at tick 400 cannot inherit the selected identity'
+$openLifetime = [Collections.Generic.List[OpenClaw.Trace.Lifetime]]::new()
+$openLifetime.Add([OpenClaw.Trace.Lifetime]::new(42, 100))
+$openSelection = [OpenClaw.Trace.ProcessSelection]::Match(@(
+    [OpenClaw.Trace.ProcessIdentity]::new(42, 100, 150, 200)
+), $openLifetime)
+Assert-Equal $openSelection[0].Start 100 'Verified ETL start retains pre-observation attribution'
+Assert-Equal $openSelection[0].End 201 'Missing stop events do not prove an indefinite lifetime'
 $ioWindow = [OpenClaw.Trace.WindowResult]::new([OpenClaw.Trace.Window]::new('test', 100, 200))
 Assert-Equal ($ioWindow.Contains(100)) $true 'Phase start is included'
 Assert-Equal ($ioWindow.Contains(200)) $false 'Phase end is excluded to avoid double counting'
@@ -149,6 +171,34 @@ Assert-Equal $ioWindow.PayloadFiles['dist\index.js'].OpenRequests 1 'Open reques
     Assert-Equal $state.status.instance_recording_after $false 'Final receipt reflects the checked named instance state'
 }
 
+# Exercise the controller shutdown boundary without elevation or a recorder.
+& {
+    $tokens = $null
+    $parseErrors = $null
+    $chatAst = [Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $PSScriptRoot 'Invoke-GatewayChatTrace.ps1'), [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors.Count) { throw 'Chat fixture could not parse the production script.' }
+    $finally = @($chatAst.EndBlock.Statements | Where-Object { $_ -is [Management.Automation.Language.TryStatementAst] })[-1].Finally
+    $body = $finally.Extent.Text.Substring(1, $finally.Extent.Text.Length - 2)
+    $events = [Collections.Generic.List[string]]::new()
+    $control = 'fixture-control'; $paths = @{ status = 'fixture-status' }
+    $instance = 'OpenClawStartup-0123456789abcdef0123456789abcdef'
+    $RecorderStopTimeoutSeconds = 1; $start = 100L; $end = 0L; $reason = 'timeout'
+    $markers = @(); $recorder = $null
+    function Test-Path { return $true }
+    function Remove-Item { $events.Add('remove'); throw 'fixture sharing violation' }
+    function Stop-GatewayTraceRecorder { $events.Add('stop'); return [pscustomobject]@{ outcome = 'saved' } }
+    function Get-ChatTraceMarkers {
+        $events.Add('final-markers')
+        return [pscustomobject]@{ name = 'send'; ticks = 150L }
+    }
+    . ([scriptblock]::Create($body))
+    Assert-Equal ($events -join ',') 'remove,stop,final-markers' 'Readiness deletion failure cannot bypass stop or final marker collection'
+    Assert-Equal $reason 'controller-error' 'Readiness cleanup errors stay explicit'
+    Assert-Equal $recorder.outcome 'saved' 'Owned recorder stop receipt survives readiness cleanup failure'
+    Assert-Equal $markers.Count 1 'Final marker collection includes observations after the last poll'
+}
+
 $temporary = Join-Path ([IO.Path]::GetTempPath()) "openclaw-resource-tests-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path (Join-Path $temporary 'control') -Force | Out-Null
 try {
@@ -157,6 +207,14 @@ try {
     & (Join-Path $PSScriptRoot 'Write-GatewayChatTraceMarker.ps1') -RunDirectory $temporary -Event send
     $readMarkers = @(Get-ChatTraceMarkers -ControlDirectory $control -StartTicks 0 -EndTicks ([DateTime]::UtcNow.ToFileTimeUtc()))
     Assert-Equal $readMarkers.Count 1 'Marker publisher creates a readable atomic observation'
+    $publishedTicks = $readMarkers[0].ticks
+    $pendingMarkers = @(Get-ChatTraceMarkers -ControlDirectory $control -StartTicks 0 -EndTicks ($publishedTicks - 1) -AllowPending)
+    Assert-Equal $pendingMarkers.Count 0 'A marker published after the polling cutoff is deferred, not rejected'
+    $nextPoll = @(Get-ChatTraceMarkers -ControlDirectory $control -StartTicks 0 -EndTicks $publishedTicks -AllowPending)
+    Assert-Equal $nextPoll.Count 1 'The next poll admits the deferred marker'
+    Assert-Rejected {
+        Get-ChatTraceMarkers -ControlDirectory $control -StartTicks 0 -EndTicks ($publishedTicks - 1)
+    } 'Closed recording boundaries remain strict'
     Assert-Rejected { & (Join-Path $PSScriptRoot 'Write-GatewayChatTraceMarker.ps1') -RunDirectory $temporary -Event send } 'Duplicate publication fails without overwriting'
     [IO.File]::WriteAllText((Join-Path $control 'recorder-stop'), 'stop')
     Assert-Rejected { & (Join-Path $PSScriptRoot 'Write-GatewayChatTraceMarker.ps1') -RunDirectory $temporary -Event completed } 'Stopped runs reject new markers'
@@ -183,6 +241,9 @@ try {
     } 'ETL read failure cannot produce a success-shaped resource report'
     $timelineJson = Get-Content -LiteralPath (Join-Path $temporary 'resource-timeline.json') -Raw
     $timeline = $timelineJson | ConvertFrom-Json
+    $analysisRequest = Get-Content -LiteralPath (Join-Path $temporary 'resource-analysis-request.json') -Raw | ConvertFrom-Json
+    Assert-Equal $analysisRequest.Processes[0].ObservedTicks $base 'ETL request retains first native observation'
+    Assert-Equal $analysisRequest.Processes[0].LastObservedTicks ($base + 20000000L) 'ETL request retains final observation, not an indefinite PID'
     Assert-Equal $timeline.samples.Count 4 'Sanitized timeline retains every supplied sample'
     Assert-Equal $timeline.samples[0].processes[0].working_set_bytes 1000 'Timeline memory values come from the observed sample'
     Assert-Equal ($timelineJson -match 'StartedUtcTicks|"Id"|CpuUserMs|CommandLine|C:\\\\') $false 'Timeline excludes native identities, absolute counters and paths'
@@ -201,6 +262,8 @@ try {
     $snapshot = [OpenClaw.Trace.ResourceSampler]::Capture()
     Assert-Equal $snapshot.Processes.Count 1 'Sampler only records configured process lifetimes'
     Assert-Equal $snapshot.Processes[0].Id $PID 'Sampler does not substitute another visible process'
+    Assert-Equal $snapshot.UnavailableProcesses 0 'Explicit-only sampling does not count unrelated inaccessible processes'
+    Assert-Equal ($null -ne $snapshot.Processes[0].ReadBytes) $true 'Logical I/O is readable through the limited-query handle'
     Assert-Equal ($snapshot.Processes[0].ObservedUtcTicks -ge $snapshot.Processes[0].StartedUtcTicks) $true 'A sampled process observation cannot predate its native creation'
     $json = $snapshot | ConvertTo-Json -Depth 5 -Compress
     Assert-Equal ($json -match 'CommandLine|FileName|ProcessName|C:\\\\Users') $false 'Sampler output contains no names, paths or command lines'

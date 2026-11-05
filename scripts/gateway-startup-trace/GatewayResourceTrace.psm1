@@ -141,9 +141,9 @@ function Get-ResourceWindowSummary {
     [ordered]@{
         elapsed_ms = ($EndTicks - $StartTicks) / 10000.0
         sampled_intervals = $intervals.Count
-        maximum_sample_gap_ms = $maximumGapMs
-        non_awake_gap_ms = [Math]::Round($suspendOrClockGapMs, 1)
-        clock_adjustment_magnitude_ms = [Math]::Round($clockAdjustmentMs, 1)
+        maximum_sample_gap_ms = if ($intervals.Count) { $maximumGapMs } else { $null }
+        non_awake_gap_ms = if ($intervals.Count) { [Math]::Round($suspendOrClockGapMs, 1) } else { $null }
+        clock_adjustment_magnitude_ms = if ($intervals.Count) { [Math]::Round($clockAdjustmentMs, 1) } else { $null }
         host_cpu_fraction = if ($hostCapacityMs -gt 0) { [Math]::Round($hostCpuMs / $hostCapacityMs, 4) } else { $null }
         host_minimum_available_bytes = $availableBytes
         processes = $processes
@@ -166,8 +166,13 @@ function Invoke-ResourceTraceAnalysis {
             if ($ProcessIds.Count -gt 0 -and $process.Id -notin $ProcessIds) { continue }
             $key = "$($process.Id):$($process.StartedUtcTicks)"
             if (-not $instances.ContainsKey($key)) {
-                $instances[$key] = [ordered]@{ Id = $process.Id; StartedUtcTicks = $process.StartedUtcTicks; ObservedTicks = $process.ObservedUtcTicks }
+                $instances[$key] = [ordered]@{
+                    Id = $process.Id; StartedUtcTicks = $process.StartedUtcTicks
+                    ObservedTicks = $process.ObservedUtcTicks; LastObservedTicks = $process.ObservedUtcTicks
+                }
             }
+            $instances[$key].ObservedTicks = [Math]::Min($instances[$key].ObservedTicks, $process.ObservedUtcTicks)
+            $instances[$key].LastObservedTicks = [Math]::Max($instances[$key].LastObservedTicks, $process.ObservedUtcTicks)
         }
     }
     $labels = @{}
@@ -259,12 +264,16 @@ function Get-ChatTimingSummary {
 }
 
 function Get-ChatTraceMarkers {
-    param([string]$ControlDirectory, [long]$StartTicks, [long]$EndTicks)
+    param([string]$ControlDirectory, [long]$StartTicks, [long]$EndTicks, [switch]$AllowPending)
     $markers = @(foreach ($name in @('send', 'first-response', 'completed', 'failed', 'cancelled')) {
         $path = Join-Path $ControlDirectory "chat-marker-$name.json"
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
         $value = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
-        if ($value.name -ne $name -or [long]$value.ticks -lt $StartTicks -or [long]$value.ticks -gt $EndTicks) {
+        if ($value.name -ne $name -or [long]$value.ticks -lt $StartTicks) {
+            throw 'Chat marker name or recording boundary is invalid.'
+        }
+        if ([long]$value.ticks -gt $EndTicks) {
+            if ($AllowPending) { continue }
             throw 'Chat marker name or recording boundary is invalid.'
         }
         [pscustomobject]@{ name = $name; ticks = [long]$value.ticks }

@@ -62,7 +62,7 @@ try {
     $deadline = [Diagnostics.Stopwatch]::StartNew()
     $reason = 'timeout'
     while ($deadline.Elapsed.TotalSeconds -lt $ChatTimeoutSeconds) {
-        $markers = @(Get-ChatTraceMarkers -ControlDirectory $control -StartTicks $start -EndTicks ([DateTime]::UtcNow.ToFileTimeUtc()))
+        $markers = @(Get-ChatTraceMarkers -ControlDirectory $control -StartTicks $start -EndTicks ([DateTime]::UtcNow.ToFileTimeUtc()) -AllowPending)
         if ($markers.Count -gt 0) {
             $timing = Get-ChatTimingSummary -Markers $markers
             if ($timing.outcome -ne 'incomplete') { $reason = $timing.outcome; break }
@@ -74,14 +74,27 @@ try {
     $reason = 'controller-error'
     Write-Warning $_.Exception.Message
 } finally {
-    $end = [DateTime]::UtcNow.ToFileTimeUtc()
-    $ready = Join-Path $control 'chat-ready'
-    if (Test-Path -LiteralPath $ready) { Remove-Item -LiteralPath $ready }
-    if ($paths) {
-        $recorder = Stop-GatewayTraceRecorder -InstanceName $instance -Paths $paths -StopTimeoutSeconds $RecorderStopTimeoutSeconds
-    } else {
-        [IO.File]::WriteAllText((Join-Path $control 'recorder-stop'), 'stop')
-        $recorder = Read-GatewayTraceRecorderStatus -InstanceName $instance -StatusPath (Join-Path $control 'recorder-status.json')
+    try {
+        $ready = Join-Path $control 'chat-ready'
+        if (Test-Path -LiteralPath $ready) { Remove-Item -LiteralPath $ready }
+    } catch {
+        $reason = 'controller-error'
+        Write-Warning "Could not remove chat readiness file: $($_.Exception.Message)"
+    } finally {
+        $end = [DateTime]::UtcNow.ToFileTimeUtc()
+        if ($paths) {
+            $recorder = Stop-GatewayTraceRecorder -InstanceName $instance -Paths $paths -StopTimeoutSeconds $RecorderStopTimeoutSeconds
+        } else {
+            [IO.File]::WriteAllText((Join-Path $control 'recorder-stop'), 'stop')
+            $recorder = Read-GatewayTraceRecorderStatus -InstanceName $instance -StatusPath (Join-Path $control 'recorder-status.json')
+        }
+    }
+    try {
+        $markers = @(Get-ChatTraceMarkers -ControlDirectory $control -StartTicks $start -EndTicks $end)
+        if ($markers.Count) { Get-ChatTimingSummary -Markers $markers | Out-Null }
+    } catch {
+        $reason = 'controller-error'
+        Write-Warning "Final chat markers are invalid: $($_.Exception.Message)"
     }
 }
 $result = [ordered]@{
