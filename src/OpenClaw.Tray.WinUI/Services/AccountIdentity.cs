@@ -18,7 +18,7 @@ internal enum AccountFieldStatus
     Failed,
 }
 
-/// <summary>A bounded, validated PNG or JPEG ready to upload. Held in memory only until Save, Skip, or dispose.</summary>
+/// <summary>A bounded, validated PNG or JPEG held in memory for the profile fill.</summary>
 internal sealed record AccountPhotoDraft(byte[] Bytes, string Mime);
 
 /// <summary>Per-field result so a refused photo never discards a valid name and the reverse.</summary>

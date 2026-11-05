@@ -74,7 +74,7 @@ public class ProfileCompletionTests
         var prep = await service.PrepareAsync(CancellationToken.None);
         id = "g2"; // both gateways expose a blank gateway-owner profile
         proxyA.Methods.Clear();
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Equal(new ProfileSaveResult(ProfileStep.ContextChanged, ProfileStep.ContextChanged), result);
         Assert.Empty(proxyA.Methods);
     }
@@ -88,7 +88,7 @@ public class ProfileCompletionTests
         replacement = DispatchProxy.Create<IOperatorGatewayClient, Proxy>();
         var other = (Proxy)(object)replacement;
         proxyA.Methods.Clear();
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Equal(ProfileStep.ContextChanged, result.Name);
         Assert.Empty(proxyA.Methods);
         Assert.Empty(other.Methods);
@@ -102,7 +102,7 @@ public class ProfileCompletionTests
         var prep = await service.PrepareAsync(CancellationToken.None);
         eligible = false; // remote or tunnel record now active
         proxy.Methods.Clear();
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Equal(ProfileStep.ContextChanged, result.Photo);
         Assert.Empty(proxy.Methods);
     }
@@ -115,7 +115,7 @@ public class ProfileCompletionTests
         var prep = await service.PrepareAsync(CancellationToken.None);
         proxy.Methods.Clear();
         proxy.OnWrite = method => { id = "g2"; return Task.FromResult(JsonSerializer.SerializeToElement(new { })); };
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Equal(ProfileStep.Saved, result.Name);
         Assert.Equal(ProfileStep.ContextChanged, result.Photo);
         Assert.DoesNotContain("users.setAvatar", proxy.Methods);
@@ -152,18 +152,16 @@ public class ProfileCompletionTests
     }
 
     [Theory]
-    [InlineData("named")]
-    [InlineData("email")]
-    [InlineData("avatar")]
+    [InlineData("complete")]
+    [InlineData("emailAndAvatar")]
     [InlineData("provider")]
-    public async Task Prepare_ExistingProfile_IsNotOfferedAndAccountIsNeverRead(string kind)
+    public async Task Prepare_NoMissingFieldsOrNotOwner_AccountIsNeverRead(string kind)
     {
         var (service, proxy, provider, _) = Create();
         proxy.SelfProfile = kind switch
         {
-            "named" => new { profile = new { id = "gateway-owner", displayName = "Barbara" } },
-            "email" => new { profile = new { id = "gateway-owner", emails = new[] { "a@example.com" } } },
-            "avatar" => new { profile = new { id = "gateway-owner", hasAvatar = true } },
+            "complete" => new { profile = new { id = "gateway-owner", displayName = "Barbara", hasAvatar = true } },
+            "emailAndAvatar" => new { profile = new { id = "gateway-owner", emails = new[] { "a@example.com" }, hasAvatar = true } },
             _ => new { profile = new { id = "github-123", displayName = (string?)null } },
         };
         var prep = await service.PrepareAsync(CancellationToken.None);
@@ -181,7 +179,7 @@ public class ProfileCompletionTests
     }
 
     [Fact]
-    public async Task Prepare_AccountDenied_StillOffersManualEntry()
+    public async Task Prepare_AccountDenied_ReturnsNoAccountValues()
     {
         var (service, _, _, _) = Create(AccountIdentityResult.Unavailable(AccountFieldStatus.Denied));
         var prep = await service.PrepareAsync(CancellationToken.None);
@@ -213,7 +211,7 @@ public class ProfileCompletionTests
         var (service, proxy, _, _) = Create();
         var prep = await service.PrepareAsync(CancellationToken.None);
         proxy.Methods.Clear();
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.Saved), result);
         Assert.Equal(["users.self", "users.setDisplayName", "users.self", "users.setAvatar"], proxy.Methods);
     }
@@ -225,7 +223,7 @@ public class ProfileCompletionTests
         var prep = await service.PrepareAsync(CancellationToken.None);
         proxy.SelfProfile = new { profile = new { id = "gateway-owner", displayName = "Someone" } };
         proxy.Methods.Clear();
-        var result = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", null, CancellationToken.None);
         Assert.Equal(ProfileStep.ExistingValue, result.Name);
         Assert.DoesNotContain("users.setDisplayName", proxy.Methods);
     }
@@ -237,7 +235,7 @@ public class ProfileCompletionTests
         var prep = await service.PrepareAsync(CancellationToken.None);
         proxy.Scopes = ["operator.read"];
         proxy.Methods.Clear();
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Equal(new ProfileSaveResult(ProfileStep.Denied, ProfileStep.Denied), result);
         Assert.Empty(proxy.Methods);
     }
@@ -250,19 +248,19 @@ public class ProfileCompletionTests
         proxy.OnWrite = method => method == "users.setAvatar"
             ? Task.FromException<JsonElement>(GatewayRequestErrors.Create("x", "FORBIDDEN", null))
             : Task.FromResult(JsonSerializer.SerializeToElement(new { }));
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Equal(ProfileStep.Saved, result.Name);
         Assert.Equal(ProfileStep.Denied, result.Photo);
         Assert.False(result.IsComplete);
     }
 
     [Fact]
-    public async Task Save_Retry_OnlyWritesMissingField()
+    public async Task Save_OnlyRequestedFieldIsWritten()
     {
         var (service, proxy, _, _) = Create();
         var prep = await service.PrepareAsync(CancellationToken.None);
         proxy.Methods.Clear();
-        var result = await service.SaveAsync(prep, "Ada", Photo, retryNameOnly: false, retryPhotoOnly: true, CancellationToken.None);
+        var result = await service.SaveAsync(prep, null, Photo, CancellationToken.None);
         Assert.Equal(ProfileStep.NotAttempted, result.Name);
         Assert.Equal(["users.self", "users.setAvatar"], proxy.Methods);
     }
@@ -275,7 +273,7 @@ public class ProfileCompletionTests
         var prep = await service.PrepareAsync(CancellationToken.None);
         proxy.Methods.Clear();
         proxy.OnSelfRead = () => id = "g2";
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Equal(ProfileStep.ContextChanged, result.Name);
         Assert.Equal(ProfileStep.ContextChanged, result.Photo);
         Assert.DoesNotContain(proxy.Methods, m => m.StartsWith("users.set", StringComparison.Ordinal));
@@ -288,8 +286,8 @@ public class ProfileCompletionTests
         var prep = await service.PrepareAsync(CancellationToken.None);
         var gate = new TaskCompletionSource<JsonElement>();
         proxy.OnWrite = _ => gate.Task;
-        var first = service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None));
+        var first = service.SaveAsync(prep, "Ada", null, CancellationToken.None);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.SaveAsync(prep, "Ada", null, CancellationToken.None));
         gate.SetResult(JsonSerializer.SerializeToElement(new { }));
         Assert.Equal(ProfileStep.Saved, (await first).Name);
     }
@@ -332,25 +330,6 @@ public class ProfileCompletionTests
         Assert.Equal(512 * 1024, AccountPhotoPolicy.MaxEncodedBytes);
         Assert.True(AccountPhotoPolicy.Base64Length(AccountPhotoPolicy.MaxEncodedBytes) <= AccountPhotoPolicy.MaxBase64Length);
         Assert.False(AccountPhotoPolicy.TryCreateDraft(new byte[AccountPhotoPolicy.MaxEncodedBytes + 1], out _));
-    }
-
-    [Fact]
-    public void DeclineStore_HoldsOnlyRecordIds_AndPrunesRemovedRecords()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"profile-decline-{Guid.NewGuid():N}.json");
-        try
-        {
-            var store = new ProfileCompletionDeclineStore(path);
-            store.Decline("g1", ["g1", "g2"]);
-            store.Decline("g2", ["g2"]);
-            Assert.False(store.IsDeclined("g1"));
-            Assert.True(store.IsDeclined("g2"));
-            Assert.DoesNotContain("Ada", File.ReadAllText(path));
-        }
-        finally
-        {
-            File.Delete(path);
-        }
     }
 
     [Fact]
@@ -402,7 +381,7 @@ public class ProfileCompletionTests
     {
         var (service, proxy, prep) = await Prepared();
         proxy.OnSelfRead = () => { if (proxy.Methods.Count(m => m == "users.self") == 2) throw loss; };
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.ConnectionLost), result);
         Assert.False(result.IsComplete);
         Assert.DoesNotContain("users.setAvatar", proxy.Methods);
@@ -414,7 +393,7 @@ public class ProfileCompletionTests
     {
         var (service, proxy, prep) = await Prepared();
         proxy.OnSelfRead = () => throw loss;
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Equal(new ProfileSaveResult(ProfileStep.ConnectionLost, ProfileStep.ConnectionLost), result);
         Assert.DoesNotContain(proxy.Methods, m => m.StartsWith("users.set", StringComparison.Ordinal));
     }
@@ -425,7 +404,7 @@ public class ProfileCompletionTests
     {
         var (service, proxy, prep) = await Prepared();
         proxy.OnWrite = _ => Task.FromException<JsonElement>(loss);
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Equal(ProfileStep.Uncertain, result.Name);
         Assert.False(result.IsComplete);
         Assert.DoesNotContain("users.setAvatar", proxy.Methods);
@@ -439,7 +418,7 @@ public class ProfileCompletionTests
         proxy.OnWrite = method => method == "users.setAvatar"
             ? Task.FromException<JsonElement>(loss)
             : Task.FromResult(JsonSerializer.SerializeToElement(new { }));
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.Uncertain), result);
         Assert.False(result.IsComplete);
     }
@@ -453,7 +432,7 @@ public class ProfileCompletionTests
         proxy.OnWrite = method => method == timedOut
             ? Task.FromException<JsonElement>(new TimeoutException("Timed out waiting for response"))
             : Task.FromResult(JsonSerializer.SerializeToElement(new { }));
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Contains(ProfileStep.Uncertain, new[] { result.Name, result.Photo });
         Assert.DoesNotContain(ProfileStep.Failed, new[] { result.Name, result.Photo });
         Assert.False(result.IsComplete);
@@ -465,25 +444,25 @@ public class ProfileCompletionTests
     {
         var (service, proxy, prep) = await Prepared();
         proxy.OnWrite = _ => Task.FromException<JsonElement>(new TimeoutException("late"));
-        Assert.Equal(ProfileStep.Uncertain, (await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None)).Name);
+        Assert.Equal(ProfileStep.Uncertain, (await service.SaveAsync(prep, "Ada", null, CancellationToken.None)).Name);
 
         proxy.OnWrite = null;
         proxy.SelfProfile = new { profile = new { id = "gateway-owner", displayName = "Ada" } };
         proxy.Methods.Clear();
-        var retry = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        var retry = await service.SaveAsync(prep, "Ada", null, CancellationToken.None);
         Assert.Equal(ProfileStep.ExistingValue, retry.Name);
         Assert.Equal(["users.self"], proxy.Methods);
     }
 
     [Fact]
-    public async Task Save_RetryAfterUncertain_IsFencedToConsentedContext()
+    public async Task Save_RetryAfterUncertain_IsFencedToPreparedContext()
     {
         var (service, proxy, prep) = await Prepared();
         proxy.OnWrite = _ => Task.FromException<JsonElement>(new TimeoutException("late"));
-        await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        await service.SaveAsync(prep, "Ada", null, CancellationToken.None);
         proxy.Connected = false;
         proxy.Methods.Clear();
-        var retry = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        var retry = await service.SaveAsync(prep, "Ada", null, CancellationToken.None);
         Assert.Equal(ProfileStep.ContextChanged, retry.Name);
         Assert.Empty(proxy.Methods);
     }
@@ -494,14 +473,14 @@ public class ProfileCompletionTests
         var (service, proxy, prep) = await Prepared();
         using var cts = new CancellationTokenSource();
         proxy.OnWrite = _ => { cts.Cancel(); return Task.FromResult(JsonSerializer.SerializeToElement(new { })); };
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, cts.Token);
+        var result = await service.SaveAsync(prep, "Ada", Photo, cts.Token);
         Assert.Equal(new ProfileSaveResult(ProfileStep.Saved, ProfileStep.Uncertain), result);
         Assert.False(result.IsComplete);
         Assert.DoesNotContain("users.setAvatar", proxy.Methods);
 
         using var early = new CancellationTokenSource();
         early.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.SaveAsync(prep, "Ada", Photo, false, false, early.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.SaveAsync(prep, "Ada", Photo, early.Token));
     }
     [Theory]
     [InlineData("users.setDisplayName")]
@@ -514,7 +493,7 @@ public class ProfileCompletionTests
         proxy.OnWrite = m => m == method
             ? Task.FromException<JsonElement>(new InvalidOperationException($"Gateway connection changed before {m} could be sent."))
             : Task.FromResult(JsonSerializer.SerializeToElement(new { }));
-        var result = await service.SaveAsync(prep, "Ada", Photo, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", Photo, CancellationToken.None);
         Assert.Contains(ProfileStep.Uncertain, new[] { result.Name, result.Photo });
         Assert.DoesNotContain(ProfileStep.Failed, new[] { result.Name, result.Photo });
         Assert.False(result.IsComplete);
@@ -526,7 +505,7 @@ public class ProfileCompletionTests
     {
         var (service, proxy, prep) = await Prepared();
         proxy.OnWrite = _ => Task.FromException<JsonElement>(GatewayRequestErrors.Create("nope", "INVALID_REQUEST", null));
-        var result = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", null, CancellationToken.None);
         Assert.Equal(ProfileStep.Failed, result.Name);
     }
 
@@ -535,7 +514,7 @@ public class ProfileCompletionTests
     {
         var (service, proxy, prep) = await Prepared();
         proxy.OnSelfRead = () => throw new InvalidOperationException("Gateway connection changed before users.self could be sent.");
-        var result = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", null, CancellationToken.None);
         Assert.Equal(ProfileStep.Failed, result.Name);
         Assert.DoesNotContain(proxy.Methods, m => m.StartsWith("users.set", StringComparison.Ordinal));
     }
@@ -551,13 +530,13 @@ public class ProfileCompletionTests
             proxy.SelfProfile = new { profile = new { id = "gateway-owner", displayName = "Ada", hasAvatar = false } };
             return Task.FromException<JsonElement>(GatewayRequestErrors.Create("post-write check failed", code, null));
         };
-        var first = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        var first = await service.SaveAsync(prep, "Ada", null, CancellationToken.None);
         Assert.Equal(ProfileStep.Uncertain, first.Name);
         Assert.False(first.IsComplete);
 
         proxy.OnWrite = null;
         proxy.Methods.Clear();
-        var retry = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        var retry = await service.SaveAsync(prep, "Ada", null, CancellationToken.None);
         Assert.Equal(ProfileStep.ExistingValue, retry.Name);
         Assert.Equal(["users.self"], proxy.Methods);
     }
@@ -567,9 +546,9 @@ public class ProfileCompletionTests
     {
         var (service, proxy, prep) = await Prepared();
         proxy.OnWrite = _ => Task.FromException<JsonElement>(GatewayRequestErrors.Create("x", "FORBIDDEN", null));
-        Assert.Equal(ProfileStep.Denied, (await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None)).Name);
+        Assert.Equal(ProfileStep.Denied, (await service.SaveAsync(prep, "Ada", null, CancellationToken.None)).Name);
         proxy.OnWrite = _ => Task.FromException<JsonElement>(GatewayRequestErrors.Create("x", "INVALID_REQUEST", null));
-        Assert.Equal(ProfileStep.Failed, (await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None)).Name);
+        Assert.Equal(ProfileStep.Failed, (await service.SaveAsync(prep, "Ada", null, CancellationToken.None)).Name);
     }
 
     [Fact]
@@ -577,7 +556,7 @@ public class ProfileCompletionTests
     {
         var (service, proxy, prep) = await Prepared();
         proxy.OnSelfRead = () => throw GatewayRequestErrors.Create("down", "UNAVAILABLE", null);
-        var result = await service.SaveAsync(prep, "Ada", null, false, false, CancellationToken.None);
+        var result = await service.SaveAsync(prep, "Ada", null, CancellationToken.None);
         Assert.Equal(ProfileStep.Failed, result.Name);
         Assert.DoesNotContain(proxy.Methods, m => m.StartsWith("users.set", StringComparison.Ordinal));
     }
@@ -713,21 +692,19 @@ public class ProfileCompletionTests
 
     [Theory]
     // Any start qualifies, including an updated install that never ran setup; once per Gateway and process.
-    [InlineData("gw", null, false, true)]
-    [InlineData("gw", "other", false, true)]
-    [InlineData("gw", "gw", false, false)]
-    // A Skip in the owner-menu dialog is remembered; no active Gateway means nothing to fill.
-    [InlineData("gw", null, true, false)]
-    [InlineData(null, null, false, false)]
-    public void AutoFillPolicy_OncePerGateway_HonorsSkip(string? gatewayId, string? attempted, bool declined, bool expected) =>
-        Assert.Equal(expected, ProfileAutoFillPolicy.ShouldAttempt(gatewayId, attempted, declined));
+    [InlineData("gw", null, true)]
+    [InlineData("gw", "other", true)]
+    [InlineData("gw", "gw", false)]
+    [InlineData(null, null, false)]
+    public void AutoFillPolicy_SuppressesRepeatedAttempt(string? gatewayId, string? attempted, bool expected) =>
+        Assert.Equal(expected, ProfileAutoFillPolicy.ShouldAttempt(gatewayId, attempted));
 
     [Fact]
     public void Window_AutomaticFillHasNoPrompt_AndRunsForNamedOwnersToo()
     {
         var source = WorkspaceWindowSource();
         var start = source.IndexOf("private void MaybeAutoFillProfile()", StringComparison.Ordinal);
-        var body = source[start..source.IndexOf("private void RetryProfileCompletionAfter", start, StringComparison.Ordinal)];
+        var body = source[start..source.IndexOf("private void OnNavigationChanged", start, StringComparison.Ordinal)];
         Assert.Contains("ProfileAutoFillPolicy.ShouldAttempt(", body);
         Assert.Contains("_profileCompletion.AutoFillAsync(", body);
         Assert.DoesNotContain("ProfileCompletionDialog", body);
@@ -737,15 +714,15 @@ public class ProfileCompletionTests
     }
 
     [Fact]
-    public void Window_ManualReviewRechecksForOpenModalAfterPreparation()
+    public void Window_ProfileEditingUsesExistingGatewayPage_WithoutCompletionUi()
     {
         var source = WorkspaceWindowSource();
-        var body = source[source.IndexOf("private async Task CompleteProfileAsync", StringComparison.Ordinal)..];
-        var prepare = body.IndexOf("PrepareAsync", StringComparison.Ordinal);
-        var recheck = body.IndexOf("OpenModalDialog() is { } blocker", StringComparison.Ordinal);
-        var show = body.IndexOf("dialog.ShowAsync()", StringComparison.Ordinal);
-        Assert.True(prepare >= 0 && prepare < recheck && recheck < show);
-        Assert.Contains("RetryProfileCompletionAfter(blocker);", body);
+        Assert.Contains("_setUpProfileItem.Click += (_, _) => ((IAppCommands)CurrentApp).OpenDashboard(\"settings/profile\");", source);
+        Assert.Contains("menu.Items.Add(_setUpProfileItem);", source);
+        Assert.DoesNotContain("ProfileCompletionDialog", source);
+        Assert.DoesNotContain("CompleteProfileAsync", source);
+        Assert.DoesNotContain("ProfileCompletionDeclineStore", source);
+        Assert.DoesNotContain("_completeProfileItem", source);
     }
 
     private static string WorkspaceWindowSource()

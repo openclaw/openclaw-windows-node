@@ -8033,26 +8033,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_OwnerUnavailable.Text" xml:space="preserve"><value>Profile unavailable</value></data>
   <data name="WorkspaceShell_OwnerUnnamed.Text" xml:space="preserve"><value>Profile not set up</value></data>
   <data name="WorkspaceShell_SetUpProfile" xml:space="preserve"><value>Set up profile in dashboard</value></data>
-  <data name="WorkspaceShell_CompleteProfile" xml:space="preserve"><value>Set up profile from this PC</value></data>
-  <data name="ProfileCompletion_Title" xml:space="preserve"><value>Your profile</value></data>
-  <data name="ProfileCompletion_Description" xml:space="preserve"><value>Use the name and photo from this Windows account for your profile on this Gateway. You can edit them first. They are shown to everyone who uses this Gateway. Nothing is sent until you choose Save.</value></data>
-  <data name="ProfileCompletion_Name" xml:space="preserve"><value>Display name</value></data>
-  <data name="ProfileCompletion_UsePhoto" xml:space="preserve"><value>Use my Windows account photo</value></data>
-  <data name="ProfileCompletion_PhotoPreview" xml:space="preserve"><value>Windows account photo preview</value></data>
-  <data name="ProfileCompletion_Save" xml:space="preserve"><value>Save</value></data>
-  <data name="ProfileCompletion_Skip" xml:space="preserve"><value>Skip</value></data>
-  <data name="ProfileCompletion_Saving" xml:space="preserve"><value>Saving your profile</value></data>
-  <data name="ProfileCompletion_AccountUnavailable" xml:space="preserve"><value>Windows did not provide a name or photo. You can type a name instead.</value></data>
-  <data name="ProfileCompletion_PhotoUnavailable" xml:space="preserve"><value>Windows did not provide a photo. You can still save a name.</value></data>
-  <data name="ProfileCompletion_NameUnavailable" xml:space="preserve"><value>Windows did not provide a name. Enter one to save.</value></data>
-  <data name="ProfileCompletion_PermissionRequired" xml:space="preserve"><value>This connection does not have permission to change the profile.</value></data>
-  <data name="ProfileCompletion_ContextChanged" xml:space="preserve"><value>The Gateway or profile changed. Close this and try again.</value></data>
-  <data name="ProfileCompletion_NameSavedPhotoFailed" xml:space="preserve"><value>The name was saved, but the photo was not. Choose Save to retry the photo.</value></data>
-  <data name="ProfileCompletion_PhotoSavedNameFailed" xml:space="preserve"><value>The photo was saved, but the name was not. Choose Save to retry the name.</value></data>
-  <data name="ProfileCompletion_Failed" xml:space="preserve"><value>The profile could not be saved. Try again.</value></data>
-  <data name="ProfileCompletion_ConnectionLost" xml:space="preserve"><value>The connection to the Gateway was lost before this change was sent. Reconnect, then try again.</value></data>
-  <data name="ProfileCompletion_ConnectionLostPartial" xml:space="preserve"><value>Part of your profile was saved, but the rest was not confirmed because the connection or reply was lost. Check your profile before trying again.</value></data>
-  <data name="ProfileCompletion_Uncertain" xml:space="preserve"><value>The Gateway did not confirm the change, so it may or may not have been saved. Check your profile before trying again.</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>

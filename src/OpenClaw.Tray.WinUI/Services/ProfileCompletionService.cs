@@ -5,7 +5,7 @@ using OpenClaw.Shared;
 namespace OpenClawTray.Services;
 
 /// <summary>
-/// Whether a Gateway record is a locally created, setup-managed Gateway whose blank owner profile may be offered
+/// Whether a Gateway record is a locally created, setup-managed Gateway whose blank owner profile may receive
 /// the current Windows account's name and photo. Evidence is the exact managed-record marker, never IsLocal,
 /// loopback, an SSH tunnel address, or the credential type.
 /// </summary>
@@ -19,21 +19,20 @@ internal static class ProfileCompletionEligibility
 
 /// <summary>
 /// When the workspace fills the owner profile without asking: on any start, including the first start after an
-/// app update, once per Gateway record and process. A Skip in the owner-menu dialog is remembered and suppresses it.
+/// app update, without a setup-specific flow.
 /// </summary>
 internal static class ProfileAutoFillPolicy
 {
-    public static bool ShouldAttempt(string? gatewayId, string? attemptedGatewayId, bool declined) =>
+    public static bool ShouldAttempt(string? gatewayId, string? attemptedGatewayId) =>
         gatewayId is not null &&
-        !string.Equals(gatewayId, attemptedGatewayId, StringComparison.Ordinal) &&
-        !declined;
+        !string.Equals(gatewayId, attemptedGatewayId, StringComparison.Ordinal);
 }
 
 internal sealed record ProfileAutoFillResult(ProfileOffer Offer, ProfileSaveResult? Save)
 {
     /// <summary>
     /// Nothing was read (not connected, read failed) or the context moved before a field was written, so a later
-    /// identity update may try again. Uncertain, denied, and failed writes are not retried in the same process.
+    /// identity update may try again. Uncertain, denied, and failed writes do not request an automatic retry.
     /// </summary>
     public bool RetryLater =>
         Offer == ProfileOffer.Unavailable ||
@@ -50,7 +49,7 @@ internal enum ProfileOffer
 {
     /// <summary>Not connected, read scope missing, or the profile could not be read.</summary>
     Unavailable,
-    /// <summary>The owner already has a name, email, or photo; nothing is suggested.</summary>
+    /// <summary>No missing field can be filled for this profile and connection.</summary>
     NotNeeded,
     Offer,
 }
@@ -75,7 +74,6 @@ internal enum ProfileStep
 internal sealed record ProfilePreparation(
     ProfileOffer Offer,
     string? ProfileId,
-    bool CanWrite,
     bool OfferName,
     bool OfferPhoto,
     AccountIdentityResult? Account,
@@ -90,8 +88,7 @@ internal sealed record ProfileSaveResult(ProfileStep Name, ProfileStep Photo)
 }
 
 /// <summary>
-/// Completion of a blank Gateway owner profile from the current Windows account, automatically (<see cref="AutoFillAsync"/>)
-/// or through the owner-menu dialog (<see cref="PrepareAsync"/> then <see cref="SaveAsync"/>).
+/// Automatically fills missing Gateway owner fields from the current Windows account.
 /// The Gateway has no conditional write, so each field is re-read immediately before it is written and an
 /// existing value is kept; this narrows but cannot eliminate a concurrent edit.
 /// </summary>
@@ -131,19 +128,15 @@ internal sealed class ProfileCompletionService(
         ReferenceEquals(client, getClient()) && client.IsConnectedToGateway &&
         string.Equals(gatewayId, getGatewayId(), StringComparison.Ordinal) && isEligible();
 
-    /// <summary>Reads the profile (a network read, no write) and then the Windows account, only when a suggestion is useful.</summary>
-    public Task<ProfilePreparation> PrepareAsync(CancellationToken cancellationToken) =>
-        PrepareCoreAsync(automatic: false, cancellationToken);
-
     /// <summary>
     /// Mac parity. A macOS Gateway fills a blank owner name from its host account on every owner connection and
     /// serves the host account photo while no avatar is uploaded, without asking. A WSL or native Windows Gateway
-    /// cannot read the Windows account, so the app supplies the same values: each blank field independently, never
-    /// replacing an existing value, and nothing when the account field is unavailable or the profile is not writable.
+    /// cannot read the Windows account, so the app fills missing fields instead. Unlike Mac's dynamic photo
+    /// fallback, this persists the photo on the Gateway. Writes recheck fields but are not atomic compare-and-set.
     /// </summary>
     public async Task<ProfileAutoFillResult> AutoFillAsync(CancellationToken cancellationToken)
     {
-        var preparation = await PrepareCoreAsync(automatic: true, cancellationToken);
+        var preparation = await PrepareAsync(cancellationToken);
         if (preparation is not { Offer: ProfileOffer.Offer, Account: { } account })
             return new ProfileAutoFillResult(preparation.Offer, null);
 
@@ -154,12 +147,12 @@ internal sealed class ProfileCompletionService(
             return new ProfileAutoFillResult(ProfileOffer.Offer, null);
 
         return new ProfileAutoFillResult(ProfileOffer.Offer,
-            await SaveAsync(preparation, name, photo, retryNameOnly: false, retryPhotoOnly: false, cancellationToken));
+            await SaveAsync(preparation, name, photo, cancellationToken));
     }
 
-    private async Task<ProfilePreparation> PrepareCoreAsync(bool automatic, CancellationToken cancellationToken)
+    internal async Task<ProfilePreparation> PrepareAsync(CancellationToken cancellationToken)
     {
-        var none = new ProfilePreparation(ProfileOffer.Unavailable, null, false, false, false, null);
+        var none = new ProfilePreparation(ProfileOffer.Unavailable, null, false, false, null);
         var client = getClient();
         var gatewayId = getGatewayId();
         if (client is not { IsConnectedToGateway: true } || gatewayId is null || !isEligible())
@@ -183,39 +176,36 @@ internal sealed class ProfileCompletionService(
         if (!IsSame(client, gatewayId))
             return none;
 
-        // Only the canonical owner is ever completed. The dialog is offered only when it is entirely blank; the
-        // automatic fill takes each blank field on its own, and reads nothing from Windows when it cannot write.
-        // A name or an email already identifies the owner, so neither is replaced by the Windows name.
+        // A name or an email already identifies the owner. Read nothing from Windows unless a field can be filled.
         var offerName = !self.HasName && !self.HasEmail;
         var offerPhoto = !self.HasAvatar;
         var canWrite = CanWrite(client);
-        var needed = self.Id == OwnerProfileId &&
-            (automatic ? canWrite && (offerName || offerPhoto) : offerName && offerPhoto);
+        var needed = self.Id == OwnerProfileId && canWrite && (offerName || offerPhoto);
         if (!needed)
-            return new ProfilePreparation(ProfileOffer.NotNeeded, self.Id, canWrite, false, false, null, gatewayId, client);
+            return new ProfilePreparation(ProfileOffer.NotNeeded, self.Id, false, false, null, gatewayId, client);
 
         var account = await provider.ReadAsync(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsSame(client, gatewayId))
             return none;
 
-        return new ProfilePreparation(ProfileOffer.Offer, self.Id, canWrite, offerName, offerPhoto, account, gatewayId, client);
+        return new ProfilePreparation(ProfileOffer.Offer, self.Id, offerName, offerPhoto, account, gatewayId, client);
     }
 
     /// <summary>
-    /// Writes the user-confirmed name and optionally the photo. Neither value is sent unless supplied.
+    /// Writes the selected account fields. Neither value is sent unless supplied.
     /// Each step reports its own outcome; a failed photo does not undo a saved name, and no rollback is attempted.
     /// </summary>
-    public async Task<ProfileSaveResult> SaveAsync(
+    internal async Task<ProfileSaveResult> SaveAsync(
         ProfilePreparation preparation, string? confirmedName, AccountPhotoDraft? photo,
-        bool retryNameOnly, bool retryPhotoOnly, CancellationToken cancellationToken)
+        CancellationToken cancellationToken)
     {
         if (_saving)
             throw new InvalidOperationException("A profile save is already in progress.");
         _saving = true;
         try
         {
-            // Consent is bound to the exact Gateway and client it was prepared against; never retarget it.
+            // Account data is bound to the exact Gateway and client it was prepared against; never retarget it.
             var client = preparation.Client;
             var gatewayId = preparation.GatewayId;
             if (client is null || gatewayId is null || preparation.ProfileId is null || !IsSame(client, gatewayId))
@@ -228,7 +218,7 @@ internal sealed class ProfileCompletionService(
             var nameStep = ProfileStep.NotAttempted;
             var photoStep = ProfileStep.NotAttempted;
 
-            if (confirmedName is not null && !retryPhotoOnly)
+            if (confirmedName is not null)
             {
                 if (!ProfileNamePolicy.TryNormalize(confirmedName, out var name))
                     throw new ArgumentException("The display name is not valid.", nameof(confirmedName));
@@ -237,7 +227,7 @@ internal sealed class ProfileCompletionService(
                     new { profileId = preparation.ProfileId, displayName = name }, cancellationToken);
             }
 
-            if (photo is not null && !retryNameOnly)
+            if (photo is not null)
             {
                 if (nameStep is ProfileStep.ContextChanged or ProfileStep.ConnectionLost)
                     photoStep = nameStep;
@@ -328,44 +318,6 @@ internal sealed class ProfileCompletionService(
             return GatewayRequestErrors.TryGetCodes(ex, out var code, out _) && code == "FORBIDDEN"
                 ? ProfileStep.Denied
                 : ProfileStep.Failed;
-        }
-    }
-}
-/// <summary>
-/// Remembers, per Gateway record id, that the user declined the optional profile offer. Holds no name, photo, or
-/// account data; entries for records that no longer exist are pruned lazily the next time a decline is recorded.
-/// </summary>
-internal sealed class ProfileCompletionDeclineStore(string filePath)
-{
-    private HashSet<string> Load()
-    {
-        try
-        {
-            return File.Exists(filePath)
-                ? JsonSerializer.Deserialize<HashSet<string>>(File.ReadAllText(filePath)) ?? []
-                : [];
-        }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
-        {
-            return [];
-        }
-    }
-
-    public bool IsDeclined(string gatewayId) => Load().Contains(gatewayId);
-
-    public void Decline(string gatewayId, IEnumerable<string> liveGatewayIds)
-    {
-        var live = liveGatewayIds.ToHashSet(StringComparer.Ordinal);
-        var next = Load();
-        next.RemoveWhere(id => !live.Contains(id));
-        next.Add(gatewayId);
-        try
-        {
-            File.WriteAllText(filePath, JsonSerializer.Serialize(next));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Best effort: a missing flag only means the optional offer may be shown again.
         }
     }
 }

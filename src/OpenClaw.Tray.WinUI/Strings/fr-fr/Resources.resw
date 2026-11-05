@@ -7965,26 +7965,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_OwnerUnavailable.Text" xml:space="preserve"><value>Profil indisponible</value></data>
   <data name="WorkspaceShell_OwnerUnnamed.Text" xml:space="preserve"><value>Profil non configuré</value></data>
   <data name="WorkspaceShell_SetUpProfile" xml:space="preserve"><value>Configurer le profil dans le tableau de bord</value></data>
-  <data name="WorkspaceShell_CompleteProfile" xml:space="preserve"><value>Configurer le profil depuis ce PC</value></data>
-  <data name="ProfileCompletion_Title" xml:space="preserve"><value>Votre profil</value></data>
-  <data name="ProfileCompletion_Description" xml:space="preserve"><value>Utilisez le nom et la photo de ce compte Windows pour votre profil sur cette Gateway. Vous pouvez les modifier d'abord. Ils sont visibles par tous ceux qui utilisent cette Gateway. Rien n'est envoyé tant que vous n'avez pas choisi Enregistrer.</value></data>
-  <data name="ProfileCompletion_Name" xml:space="preserve"><value>Nom d'affichage</value></data>
-  <data name="ProfileCompletion_UsePhoto" xml:space="preserve"><value>Utiliser la photo de mon compte Windows</value></data>
-  <data name="ProfileCompletion_PhotoPreview" xml:space="preserve"><value>Aperçu de la photo du compte Windows</value></data>
-  <data name="ProfileCompletion_Save" xml:space="preserve"><value>Enregistrer</value></data>
-  <data name="ProfileCompletion_Skip" xml:space="preserve"><value>Ignorer</value></data>
-  <data name="ProfileCompletion_Saving" xml:space="preserve"><value>Enregistrement du profil</value></data>
-  <data name="ProfileCompletion_AccountUnavailable" xml:space="preserve"><value>Windows n'a fourni ni nom ni photo. Vous pouvez saisir un nom.</value></data>
-  <data name="ProfileCompletion_PhotoUnavailable" xml:space="preserve"><value>Windows n'a pas fourni de photo. Vous pouvez quand même enregistrer un nom.</value></data>
-  <data name="ProfileCompletion_NameUnavailable" xml:space="preserve"><value>Windows n'a pas fourni de nom. Saisissez-en un pour enregistrer.</value></data>
-  <data name="ProfileCompletion_PermissionRequired" xml:space="preserve"><value>Cette connexion n'a pas l'autorisation de modifier le profil.</value></data>
-  <data name="ProfileCompletion_ContextChanged" xml:space="preserve"><value>La Gateway ou le profil a changé. Fermez cette fenêtre et réessayez.</value></data>
-  <data name="ProfileCompletion_NameSavedPhotoFailed" xml:space="preserve"><value>Le nom a été enregistré, mais pas la photo. Choisissez Enregistrer pour réessayer la photo.</value></data>
-  <data name="ProfileCompletion_PhotoSavedNameFailed" xml:space="preserve"><value>La photo a été enregistrée, mais pas le nom. Choisissez Enregistrer pour réessayer le nom.</value></data>
-  <data name="ProfileCompletion_Failed" xml:space="preserve"><value>Le profil n'a pas pu être enregistré. Réessayez.</value></data>
-  <data name="ProfileCompletion_ConnectionLost" xml:space="preserve"><value>La connexion à la passerelle a été perdue avant l'envoi de cette modification. Reconnectez-vous, puis réessayez.</value></data>
-  <data name="ProfileCompletion_ConnectionLostPartial" xml:space="preserve"><value>Une partie de votre profil a été enregistrée, mais le reste n'a pas été confirmé car la connexion ou la réponse a été perdue. Vérifiez votre profil avant de réessayer.</value></data>
-  <data name="ProfileCompletion_Uncertain" xml:space="preserve"><value>La passerelle n'a pas confirmé la modification ; elle a peut-être été enregistrée. Vérifiez votre profil avant de réessayer.</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>

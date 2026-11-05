@@ -7965,26 +7965,6 @@
   <data name="WorkspaceShell_OwnerUnavailable.Text" xml:space="preserve"><value>設定檔無法使用</value></data>
   <data name="WorkspaceShell_OwnerUnnamed.Text" xml:space="preserve"><value>尚未設定設定檔</value></data>
   <data name="WorkspaceShell_SetUpProfile" xml:space="preserve"><value>在儀表板中設定設定檔</value></data>
-  <data name="WorkspaceShell_CompleteProfile" xml:space="preserve"><value>使用這台電腦設定設定檔</value></data>
-  <data name="ProfileCompletion_Title" xml:space="preserve"><value>您的設定檔</value></data>
-  <data name="ProfileCompletion_Description" xml:space="preserve"><value>將此 Windows 帳戶的名稱和相片用作您在此 Gateway 上的設定檔。您可以先編輯。使用此 Gateway 的所有人都會看到它們。在您選擇「儲存」之前不會傳送任何內容。</value></data>
-  <data name="ProfileCompletion_Name" xml:space="preserve"><value>顯示名稱</value></data>
-  <data name="ProfileCompletion_UsePhoto" xml:space="preserve"><value>使用我的 Windows 帳戶相片</value></data>
-  <data name="ProfileCompletion_PhotoPreview" xml:space="preserve"><value>Windows 帳戶相片預覽</value></data>
-  <data name="ProfileCompletion_Save" xml:space="preserve"><value>儲存</value></data>
-  <data name="ProfileCompletion_Skip" xml:space="preserve"><value>略過</value></data>
-  <data name="ProfileCompletion_Saving" xml:space="preserve"><value>正在儲存設定檔</value></data>
-  <data name="ProfileCompletion_AccountUnavailable" xml:space="preserve"><value>Windows 未提供名稱或相片。您可以自行輸入名稱。</value></data>
-  <data name="ProfileCompletion_PhotoUnavailable" xml:space="preserve"><value>Windows 未提供相片。您仍可儲存名稱。</value></data>
-  <data name="ProfileCompletion_NameUnavailable" xml:space="preserve"><value>Windows 未提供名稱。請輸入名稱後儲存。</value></data>
-  <data name="ProfileCompletion_PermissionRequired" xml:space="preserve"><value>此連線沒有變更設定檔的權限。</value></data>
-  <data name="ProfileCompletion_ContextChanged" xml:space="preserve"><value>Gateway 或設定檔已變更。請關閉此視窗後重試。</value></data>
-  <data name="ProfileCompletion_NameSavedPhotoFailed" xml:space="preserve"><value>名稱已儲存，但相片未儲存。選擇「儲存」可重試相片。</value></data>
-  <data name="ProfileCompletion_PhotoSavedNameFailed" xml:space="preserve"><value>相片已儲存，但名稱未儲存。選擇「儲存」可重試名稱。</value></data>
-  <data name="ProfileCompletion_Failed" xml:space="preserve"><value>無法儲存設定檔。請重試。</value></data>
-  <data name="ProfileCompletion_ConnectionLost" xml:space="preserve"><value>在傳送此變更之前，與閘道的連線已中斷。請重新連線後再試一次。</value></data>
-  <data name="ProfileCompletion_ConnectionLostPartial" xml:space="preserve"><value>設定檔的一部分已儲存，但由於連線或回覆遺失，其餘部分未獲確認。請先檢查設定檔，再重試。</value></data>
-  <data name="ProfileCompletion_Uncertain" xml:space="preserve"><value>閘道未確認此變更，因此可能已儲存，也可能未儲存。請先檢查設定檔，再重試。</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
