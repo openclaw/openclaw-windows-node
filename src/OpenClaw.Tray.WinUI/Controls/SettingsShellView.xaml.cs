@@ -323,7 +323,8 @@ internal sealed partial class SettingsShellView : UserControl
     }
 
     /// <summary>
-    /// Apply persisted nav-pane state. Called from App.ShowHub() after creating the window.
+    /// Applies the pane state saved by the toggle. <c>WorkspaceWindow.EnsureSettings</c> calls this when it
+    /// creates the view, and <see cref="ContentOnly"/> calls it again when the section list returns.
     /// </summary>
     internal void ApplyNavPaneState(SettingsManager settings)
     {
@@ -351,6 +352,22 @@ internal sealed partial class SettingsShellView : UserControl
     private void OnNavPaneToggleButtonClick(object sender, RoutedEventArgs e)
     {
         NavView.IsPaneOpen = !NavView.IsPaneOpen;
+        PersistNavPaneState(NavView.IsPaneOpen);
+    }
+
+    /// <summary>
+    /// Saves the pane state the user chose with the toggle. Only the toggle records that choice: NavigationView
+    /// also opens and closes the pane itself, for example when a pinned page hides the section list or a
+    /// controller's View button opens it, and those changes are not saved.
+    /// </summary>
+    private static void PersistNavPaneState(bool isOpen)
+    {
+        var settings = CurrentApp.Settings;
+        if (settings is null || settings.HubNavPaneOpen == isOpen)
+            return;
+        settings.HubNavPaneOpen = isOpen;
+        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
+        try { settings.Save(); } catch { /* swallow — don't block UI */ }
     }
 
     private void UpdatePaneChrome()
@@ -373,8 +390,12 @@ internal sealed partial class SettingsShellView : UserControl
         get => !NavView.IsPaneVisible;
         set
         {
+            var wasContentOnly = ContentOnly;
             NavView.IsPaneVisible = !value;
             SettingsNavigationToolbar.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+            // Hiding the section list closes the pane and showing it reopens it, so restore the saved choice.
+            if (wasContentOnly && !value && CurrentApp.Settings is { } settings)
+                ApplyNavPaneState(settings);
         }
     }
 
@@ -788,25 +809,6 @@ internal sealed partial class SettingsShellView : UserControl
                     AccessibilityNavigationSignal.WritePageReady(pageName);
                 }
             });
-    }
-
-    /// <summary>
-    /// Persist the NavigationView's expanded/compact state on every toggle.
-    /// Both PaneOpening and PaneClosing route here; we read the current
-    /// state from the sender so we don't have to distinguish the two.
-    /// </summary>
-    private void OnNavPaneStateChanged(NavigationView sender, object args)
-    {
-        var settings = CurrentApp.Settings;
-        if (settings == null) return;
-        // PaneOpening fires BEFORE IsPaneOpen flips, PaneClosing fires
-        // BEFORE it flips the other way. Use the event identity to know
-        // the new state rather than reading IsPaneOpen.
-        var newState = args is NavigationViewPaneClosingEventArgs ? false : true;
-        if (settings.HubNavPaneOpen == newState) return;
-        settings.HubNavPaneOpen = newState;
-        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
-        try { settings.Save(); } catch { /* swallow — don't block UI */ }
     }
 
     private void InitializeCurrentPage()

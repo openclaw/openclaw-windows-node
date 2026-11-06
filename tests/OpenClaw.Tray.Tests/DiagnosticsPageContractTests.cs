@@ -668,10 +668,19 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("NavUsage.Visibility = gatewayToolVisibility;", hub);
         Assert.Contains("NavConfig.Visibility = gatewayToolVisibility;", hub);
         Assert.DoesNotContain("NavGatewayHeader.Visibility =", hub);
-        Assert.DoesNotContain("NavGatewaySeparator.Visibility =", hub);
-        foreach (var name in new[] { "NavGatewayHeader", "NavGatewaySeparator" })
-            Assert.Null(settings.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name)
-                .Attribute("Visibility"));
+        Assert.Null(settings.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "NavGatewayHeader")
+            .Attribute("Visibility"));
+    }
+
+    [Fact]
+    public void SettingsNavigation_SeparatesSectionsWithHeadersOnly()
+    {
+        var settings = System.Xml.Linq.XDocument.Parse(Read("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml"));
+        var menu = settings.Descendants().Single(element => element.Name.LocalName == "NavigationView.MenuItems");
+        Assert.DoesNotContain(settings.Descendants(), element => element.Name.LocalName == "NavigationViewItemSeparator");
+        Assert.Equal(new[] { "Gateway", "Agents and Tools", "This Computer", "System" },
+            menu.Elements().Where(element => element.Name.LocalName == "NavigationViewItemHeader")
+                .Select(element => (string?)element.Attribute("Content")));
     }
 
     [Fact]

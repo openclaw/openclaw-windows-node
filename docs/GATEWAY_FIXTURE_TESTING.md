@@ -220,6 +220,8 @@ cases use credential-free, MCP-only profiles: their package/distro markers are
 synthetic and never authorize a connection, native package, or WSL process.
 The real Settings page must show WSL removal only for the WSL cases. Onboarding
 remains visible only when WSL is active, not when the selected Gateway is native.
+The capture keeps the Local Gateway heading and final applicable action visible:
+setup when no managed WSL record exists, or removal when one does.
 With `-Screenshots`, the cases retain complete Settings captures and the actual
 Shell tooltip. The tooltip capture first resolves icon ID 1 against this app's
 owned native window, then hovers that icon; an app-name match alone is not proof

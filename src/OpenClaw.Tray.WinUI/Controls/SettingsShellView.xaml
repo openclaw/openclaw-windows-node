@@ -14,14 +14,12 @@
             <NavigationView x:Uid="HubWindow_MainNavigation" x:Name="NavView"
                             IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
                             IsPaneToggleButtonVisible="False" PaneDisplayMode="Left"
-                            PaneOpening="OnNavPaneStateChanged" PaneClosing="OnNavPaneStateChanged"
                             ItemInvoked="NavView_ItemInvoked"
                             SelectionChanged="NavView_SelectionChanged">
                 <NavigationView.Resources>
                     <Thickness x:Key="NavigationViewPaneContentGridMargin">0,56,0,0</Thickness>
                     <Thickness x:Key="NavigationViewBorderThickness">0</Thickness>
                     <x:Double x:Key="NavigationViewItemOnLeftIconBoxHeight">22</x:Double>
-                    <Thickness x:Key="NavigationViewItemSeparatorMargin">0,2,0,2</Thickness>
                     <SvgImageSource x:Key="Chat_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Chat.svg"/>
                     <SvgImageSource x:Key="Connection_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Connection.svg"/>
                     <SvgImageSource x:Key="Sessions_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Sessions.svg"/>
@@ -63,7 +61,6 @@
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_118" x:Name="NavConfig" Tag="config" Content="Config">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Config_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
-                    <NavigationViewItemSeparator x:Name="NavGatewaySeparator"/>
                     <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_Model" Content="Agents and Tools"/>
                     <NavigationViewItem x:Uid="AgentsNavItem" x:Name="AgentsNavItem" Content="Agents" SelectsOnInvoked="False" IsExpanded="True">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Agents_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
@@ -82,7 +79,6 @@
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_LocalAi" Tag="local-ai" Content="Local AI">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource LocalAi_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
-                    <NavigationViewItemSeparator x:Name="NavModelSeparator"/>
                     <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_129" Content="This Computer"/>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Voice" Tag="voice" Content="Voice &amp; Audio">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Voice_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
@@ -93,7 +89,6 @@
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Sandbox" Tag="sandbox" Content="Sandbox">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Sandbox_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
-                    <NavigationViewItemSeparator x:Name="NavSystemSeparator"/>
                     <NavigationViewItemHeader x:Uid="HubWindow_SystemHeader" Content="System"/>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_133" Tag="settings" Content="General"
                                         AutomationProperties.AutomationId="SettingsNavGeneral">
