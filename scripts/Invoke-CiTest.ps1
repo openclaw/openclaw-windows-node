@@ -70,7 +70,13 @@ if ($collectCoverage) {
 }
 
 if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+    $testExitCode = $LASTEXITCODE
+    try {
+        foreach ($name in @(Get-FailedTestNames -Path $invocation.report)) {
+            Write-Host "CI failed test: $name"
+        }
+    } catch { Write-Warning "CI failed-test names are unavailable." }
+    exit $testExitCode
 }
 $result = Read-TestResultContract -Path $invocation.report -StartedUtc $invocation.startedUtc -ExitCode 0 -AllowSkipped
 Write-Host ("CI test results: " + ($result | ConvertTo-Json -Compress))

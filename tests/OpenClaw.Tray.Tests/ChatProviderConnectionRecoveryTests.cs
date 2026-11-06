@@ -28,7 +28,7 @@ public sealed partial class ChatProviderConnectionSecurityTests
     {
         await using var h = await Harness.StartAsync();
         var retained = h.Lifetime.Provider!;
-        var original = Assert.Single(h.Client.GetSessionList().Where(row => row.Key == GatewayScenario.OtherSessionKey));
+        var original = Assert.Single(h.Client.GetSessionList(), row => row.Key == GatewayScenario.OtherSessionKey);
         Assert.False(string.IsNullOrEmpty(original.SessionId));
         h.Server.SetSessionListing(JsonSerializer.SerializeToElement(new
         {
@@ -37,7 +37,11 @@ public sealed partial class ChatProviderConnectionSecurityTests
                 [GatewayScenario.OtherSessionKey] = new { displayName = "Legacy key-only row" }
             }
         }));
-        await h.Client.RequestUserProfileAsync();
+        h.Lifetime.SetClient(null);
+        Assert.Same(retained, h.Lifetime.Provider);
+        var first = h.Server.Requests.Count;
+        h.Lifetime.SetClient(h.Client);
+        await h.WaitForAuthorityRequestAsync("sessions.list", first);
         await h.PumpUntilAsync(() => h.IsBound && h.Lifetime.Provider is not null && !ReferenceEquals(retained, h.Lifetime.Provider));
         Assert.NotSame(retained, h.Lifetime.Provider);
         Assert.Equal(ChatVerificationState.None, h.Lifetime.VerificationState);
