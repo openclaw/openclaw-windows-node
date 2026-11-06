@@ -12,6 +12,13 @@ public sealed partial class GatewayFixtureUiTests
     [Trait("Category", "Accessibility")]
     public async Task SettingsPages_GroupPreferencesInGeneral_AndKeepConnectionAboutAndConsentSeparate()
     {
+        Action? releaseHandshake = null;
+        void ReleaseHandshake()
+        {
+            var release = releaseHandshake;
+            releaseHandshake = null;
+            release?.Invoke();
+        }
         await WithAppAsync(async run =>
         {
             using var discovery = await run.Client.ListToolsAsync();
@@ -140,7 +147,33 @@ public sealed partial class GatewayFixtureUiTests
             }
             await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "settings-navigation-mcp.json"),
                 JsonSerializer.Serialize(new { connection = commands, about, preferences, rejected }));
-        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+
+            var connection = FindById(run, "SettingsNavConnection")!;
+            ((ScrollItemPattern)connection.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+            var channelsName = new PropertyCondition(AutomationElement.NameProperty, "Channels");
+            Assert.NotNull(FindInApp(run, channelsName));
+            run.Gateway.HoldConnectionHandshakes();
+            releaseHandshake = run.Gateway.ReleaseConnectionHandshakes;
+            await run.Gateway.CloseConnectionsAsync();
+            await run.WaitForAsync(async () =>
+                (await run.InvokeAsync("app.status")).GetProperty("operatorState").GetString() != "Connected",
+                "fixture operator disconnected");
+            await WaitUiAsync(run, () => FindInApp(run, channelsName) is null,
+                "Gateway-dependent entries hidden while disconnected");
+            Assert.True(connection.Current.IsEnabled);
+            ((ScrollItemPattern)connection.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+            var gatewayHeader = FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "Gateway"));
+            Assert.NotNull(gatewayHeader);
+            Assert.False(gatewayHeader.Current.IsOffscreen);
+            Invoke(connection);
+            await WaitUiAsync(run, () => FindById(run, "ConnectionPageMarker") is { Current.IsOffscreen: false },
+                "Connection remains reachable under Gateway while offline");
+            var connectionWindow = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "ConnectionPageMarker")) is not null);
+            OwnedWindowCapture.Save(run, connectionWindow, "connection-offline.png", connection);
+            ReleaseHandshake();
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline(),
+            releasePendingResponses: ReleaseHandshake);
     }
 
     private const int StableGeometryPolls = 5;

@@ -598,11 +598,11 @@ public sealed class DiagnosticsPageContractTests
             .TakeWhile(element => element.Name.LocalName is not ("NavigationViewItemHeader" or "NavigationViewItemSeparator"))
             .ToList();
         var systemTags = system.Select(element => (string?)element.Attribute("Tag")).ToArray();
-        Assert.Equal(new[] { "settings", "connection", "debug", "about" }, systemTags);
-        Assert.Equal("SettingsNavDiagnostics", (string?)system[2].Attribute("AutomationProperties.AutomationId"));
+        Assert.Equal(new[] { "settings", "debug", "about" }, systemTags);
+        Assert.Equal("SettingsNavDiagnostics", (string?)system[1].Attribute("AutomationProperties.AutomationId"));
         Assert.Equal("SettingsNavGeneral", (string?)system[0].Attribute("AutomationProperties.AutomationId"));
 
-        var connection = system[1];
+        var connection = menu.Elements().Single(element => (string?)element.Attribute("Tag") == "connection");
         Assert.Equal("SettingsNavConnection", (string?)connection.Attribute("AutomationProperties.AutomationId"));
         Assert.Null(connection.Attribute("Visibility"));
         Assert.Null(connection.Attribute("IsEnabled"));
@@ -619,7 +619,7 @@ public sealed class DiagnosticsPageContractTests
             ("about", "Info_Icon", "Info.svg"),
         })
         {
-            var item = system.Single(element => (string?)element.Attribute("Tag") == tag);
+            var item = menu.Elements().Single(element => (string?)element.Attribute("Tag") == tag);
             var icon = Assert.Single(item.Descendants(), element => element.Name.LocalName == "ImageIcon");
             Assert.Equal($"{{StaticResource {key}}}", (string?)icon.Attribute("Source"));
             Assert.Equal($"ms-appx:///Assets/SidebarIcons/{file}", iconSources[key]);
@@ -645,10 +645,10 @@ public sealed class DiagnosticsPageContractTests
             .TakeWhile(element => element.Name.LocalName is not ("NavigationViewItemHeader" or "NavigationViewItemSeparator"))
             .ToArray();
 
-        Assert.Equal(new[] { "channels", "instances", "cron", "usage", "config" },
+        Assert.Equal(new[] { "connection", "channels", "instances", "cron", "usage", "config" },
             gateway.Select(element => (string?)element.Attribute("Tag")).OfType<string>());
         var tools = menu.Elements()
-            .SkipWhile(element => (string?)element.Attribute("Content") != "Agents and tools")
+            .SkipWhile(element => (string?)element.Attribute("Content") != "Agents and Tools")
             .Skip(1)
             .TakeWhile(element => element.Name.LocalName is not ("NavigationViewItemHeader" or "NavigationViewItemSeparator"))
             .ToArray();
@@ -667,8 +667,11 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("NavSessions.Visibility = vis;", hub);
         Assert.Contains("NavUsage.Visibility = gatewayToolVisibility;", hub);
         Assert.Contains("NavConfig.Visibility = gatewayToolVisibility;", hub);
-        Assert.Contains("NavGatewayHeader.Visibility = gatewayToolVisibility;", hub);
-        Assert.Contains("NavGatewaySeparator.Visibility = gatewayToolVisibility;", hub);
+        Assert.DoesNotContain("NavGatewayHeader.Visibility =", hub);
+        Assert.DoesNotContain("NavGatewaySeparator.Visibility =", hub);
+        foreach (var name in new[] { "NavGatewayHeader", "NavGatewaySeparator" })
+            Assert.Null(settings.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name)
+                .Attribute("Visibility"));
     }
 
     [Fact]

@@ -48,6 +48,10 @@
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Chat_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_87" x:Name="NavGatewayHeader" Content="Gateway"/>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_88" Tag="connection" Content="Connection"
+                                        AutomationProperties.AutomationId="SettingsNavConnection">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Connection_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_109" x:Name="NavChannels" Tag="channels" Content="Channels">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Channels_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
@@ -64,7 +68,7 @@
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Config_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItemSeparator x:Name="NavGatewaySeparator"/>
-                    <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_Model" Content="Agents and tools"/>
+                    <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_Model" Content="Agents and Tools"/>
                     <NavigationViewItem x:Uid="AgentsNavItem" x:Name="AgentsNavItem" Content="Agents" SelectsOnInvoked="False" IsExpanded="True">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Agents_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                         <NavigationViewItem.MenuItems>
@@ -98,10 +102,6 @@
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_133" Tag="settings" Content="General"
                                         AutomationProperties.AutomationId="SettingsNavGeneral">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Settings_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-                    </NavigationViewItem>
-                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_88" Tag="connection" Content="Connection"
-                                        AutomationProperties.AutomationId="SettingsNavConnection">
-                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Connection_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_145" x:Name="NavDiagnostics" Tag="debug" Content="Diagnostics"
                                         AutomationProperties.AutomationId="SettingsNavDiagnostics">

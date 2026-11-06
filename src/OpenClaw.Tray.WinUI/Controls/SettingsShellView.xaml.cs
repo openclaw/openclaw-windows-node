@@ -643,8 +643,6 @@ internal sealed partial class SettingsShellView : UserControl
             AgentsNavItem.Visibility = gatewayToolVisibility;
             NavUsage.Visibility = gatewayToolVisibility;
             NavConfig.Visibility = gatewayToolVisibility;
-            NavGatewayHeader.Visibility = gatewayToolVisibility;
-            NavGatewaySeparator.Visibility = gatewayToolVisibility;
 
             if (!connected)
             {
