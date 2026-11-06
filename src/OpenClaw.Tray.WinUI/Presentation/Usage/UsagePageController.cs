@@ -107,6 +107,8 @@ internal sealed class UsagePageController : IDisposable
     private int _detailGeneration;
     private int _rechecks;
     private bool _disposed;
+    // The operator client whose reads produced the current figures, selection and plans.
+    private IOperatorGatewayClient? _stateClient;
 
     public UsagePageController(
         Func<IOperatorGatewayClient?> client, Func<DateOnly> today, Action<Action> post,
@@ -136,6 +138,7 @@ internal sealed class UsagePageController : IDisposable
     public void Activate()
     {
         var client = _client();
+        ForgetReplacedGateway(client);
         if (client is not { IsConnectedToGateway: true })
         {
             CancelAll();
@@ -149,15 +152,53 @@ internal sealed class UsagePageController : IDisposable
             Availability = s.Availability == UsageAvailability.Disconnected ? UsageAvailability.Connected : s.Availability,
             Filters = Rebased(s.Filters),
         });
-        Reload(resetRechecks: true);
+        Reload(client, resetRechecks: true);
         LoadProviders(client);
-        if (State.Detail is { } detail) LoadDetail(detail.Key, detail.AgentId);
+        if (State.Detail is { } detail) LoadDetail(client, detail.Key, detail.AgentId);
     }
 
     public void Refresh()
     {
         Update(s => s with { AutoRefreshPaused = false });
         Activate();
+    }
+
+    /// <summary>
+    /// A replacement operator client may belong to another Gateway (the connection window can switch while Usage is
+    /// open), so everything read from the previous client is dropped and its in-flight reads are fenced. Only
+    /// portable preferences survive: range, time zone, scope, search, sort and metric. Returns true when it reset.
+    /// The manager can replace its client between two reads, so each operation reads the client once, passes it
+    /// here, and starts its reads on that same client.
+    /// </summary>
+    private bool ForgetReplacedGateway(IOperatorGatewayClient? client)
+    {
+        if (client is null || ReferenceEquals(client, _stateClient)) return false;
+        var replaced = _stateClient is not null;
+        _stateClient = client;
+        if (!replaced) return false;
+        CancelAll();
+        _rechecks = 0;
+        _exportAlternative?.TrySetResult(false);
+        _exportAlternative = null;
+        var connected = client.IsConnectedToGateway;
+        Update(s => s with
+        {
+            Filters = s.Filters with { Offset = 0 },
+            FocusProvider = null,
+            Availability = connected ? UsageAvailability.Connected : UsageAvailability.Disconnected,
+            Phase = UsageLoadPhase.Idle,
+            Error = null,
+            Report = null,
+            Dashboard = null,
+            LoadedAt = null,
+            AutoRefreshing = false,
+            AutoRefreshPaused = false,
+            Providers = UsageRead<ProviderUsageSummary>.Idle,
+            Detail = null,
+            ExportCoverage = null,
+            ExportBlock = null,
+        });
+        return true;
     }
 
     // Cancelled loads never post a result, so any section still marked Loading falls back to its last value.
@@ -291,13 +332,16 @@ internal sealed class UsagePageController : IDisposable
     /// <summary>Opens a session's details, or closes them when the same session is selected again.</summary>
     public void SelectSession(string key, string? agentId)
     {
+        var client = _client();
+        // A row clicked before the replacement client's activation belongs to the previous Gateway.
+        if (ForgetReplacedGateway(client)) return;
         if (State.Availability == UsageAvailability.Unsupported) return;
         if (State.Detail?.Key == key)
         {
             CloseDetail();
             return;
         }
-        LoadDetail(key, agentId);
+        LoadDetail(client, key, agentId);
         Reproject();
     }
 
@@ -369,19 +413,20 @@ internal sealed class UsagePageController : IDisposable
         var previous = State.Filters;
         var filters = change(previous);
         if (filters == previous) return;
+        var client = _client();
         Update(s => s with { Filters = filters });
-        Reload(resetRechecks: true);
+        Reload(client, resetRechecks: true);
         // Details cover the selected range, time zone and scope; search, sort and paging do not change them.
         if (State.Detail is { } detail
             && (filters.Start != previous.Start || filters.End != previous.End
                 || filters.TimeZone != previous.TimeZone || filters.Scope != previous.Scope))
-            LoadDetail(detail.Key, detail.AgentId);
+            LoadDetail(client, detail.Key, detail.AgentId);
     }
 
-    private void Reload(bool resetRechecks)
+    private void Reload(IOperatorGatewayClient? client, bool resetRechecks)
     {
         if (_disposed) return;
-        var client = _client();
+        ForgetReplacedGateway(client);
         if (client is not { IsConnectedToGateway: true })
         {
             Update(s => s with { Availability = UsageAvailability.Disconnected });
@@ -508,7 +553,7 @@ internal sealed class UsagePageController : IDisposable
         }
         _post(() =>
         {
-            if (!_disposed && !token.IsCancellationRequested) Reload(resetRechecks: false);
+            if (!_disposed && !token.IsCancellationRequested) Reload(_client(), resetRechecks: false);
         });
     }
 
@@ -547,9 +592,8 @@ internal sealed class UsagePageController : IDisposable
         });
     }
 
-    private void LoadDetail(string key, string? agentId)
+    private void LoadDetail(IOperatorGatewayClient? client, string key, string? agentId)
     {
-        var client = _client();
         CancelDetail();
         var previous = State.Detail?.Key == key ? State.Detail.Row.Value : null;
         Update(s => s with

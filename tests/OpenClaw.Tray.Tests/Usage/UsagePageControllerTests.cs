@@ -17,6 +17,8 @@ public sealed class UsagePageControllerTests
         public readonly List<string> Calls = [];
         public Func<SessionsUsageQuery, Task<UsageReadResult<SessionsUsageReport>>> Usage =
             _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(Report("agent:main:a")));
+        public Func<Task<UsageReadResult<ProviderUsageSummary>>> Providers =
+            () => Task.FromResult(UsageReadResult<ProviderUsageSummary>.Ok(new ProviderUsageSummary(null, [], false)));
 
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
@@ -25,7 +27,7 @@ public sealed class UsagePageControllerTests
             {
                 "get_IsConnectedToGateway" => Connected,
                 "GetSessionsUsageAsync" => Query((SessionsUsageQuery)args![0]!),
-                "GetProviderUsageAsync" => Task.FromResult(UsageReadResult<ProviderUsageSummary>.Ok(new ProviderUsageSummary(null, [], false))),
+                "GetProviderUsageAsync" => Providers(),
                 _ => throw new NotSupportedException(method.Name),
             };
         }
@@ -458,5 +460,194 @@ public sealed class UsagePageControllerTests
 
         controller.Refresh();
         Assert.Equal(2, ProviderReads());
+    }
+
+    private static (UsagePageController Controller, UsageGateway A, UsageGateway B, Action SwitchToB, ManualDispatcher Dispatcher) CreateSwitchable()
+    {
+        var a = DispatchProxy.Create<IOperatorGatewayClient, UsageGateway>();
+        var b = DispatchProxy.Create<IOperatorGatewayClient, UsageGateway>();
+        var current = a;
+        var dispatcher = new ManualDispatcher();
+        var controller = new UsagePageController(() => current, () => Today, dispatcher.Post, utcToday: () => Today);
+        return (controller, (UsageGateway)a, (UsageGateway)b, () => current = b, dispatcher);
+    }
+
+    [Fact]
+    public async Task GatewaySwitch_DropsOldFiguresSelectionPlansAndExportOfferButKeepsPortablePreferences()
+    {
+        var (controller, a, b, switchToB, dispatcher) = CreateSwitchable();
+        using var lifetime = controller;
+        a.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(Report("agent:main:a") with { Overview = new UsageOverview() }));
+        var oldPlans = new ProviderUsageSummary(null,
+            [new ProviderUsageSnapshot { Provider = "openai", DisplayName = "OpenAI", Plan = "Old Gateway plan" }], false);
+        a.Providers = () => Task.FromResult(UsageReadResult<ProviderUsageSummary>.Ok(oldPlans));
+        controller.Activate();
+        controller.SetPreset(UsagePreset.Last30Days);
+        controller.SetTimeZone(UsageTimeZoneMode.Utc);
+        controller.SetScope(UsageScope.Family);
+        controller.SetQuery("agent:main");
+        controller.SetSort(UsageSort.Tokens);
+        controller.ToggleSortDirection();
+        controller.SetPage(50);
+        controller.SetMetric(UsageMetric.Tokens);
+        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Loaded, Providers.Phase: UsageLoadPhase.Loaded });
+        controller.SelectSession("agent:main:a", "main");
+        controller.InspectProvider("openai");
+        await dispatcher.PumpUntilAsync(() => controller.State.Detail is { Row.Phase: UsageLoadPhase.Loaded });
+        Assert.NotNull(controller.State.Report);
+        Assert.NotNull(controller.State.Dashboard);
+        Assert.NotNull(controller.State.LoadedAt);
+        Assert.Same(oldPlans, controller.State.Providers.Value);
+        await controller.ExportAsync(UsageExportFormat.DailyCsv);
+        dispatcher.Drain();
+        Assert.NotNull(controller.State.ExportCoverage);
+        var exportOffer = controller.OfferDailyExportAsync(controller.State.Filters);
+        Assert.NotNull(controller.State.ExportBlock);
+
+        var pending = new TaskCompletionSource<UsageReadResult<SessionsUsageReport>>();
+        b.Usage = _ => pending.Task;
+        switchToB();
+        controller.Activate();
+
+        // Nothing read from A is shown while B loads, and B is never asked for the session selected on A.
+        Assert.Null(controller.State.Report);
+        Assert.Null(controller.State.Dashboard);
+        Assert.Null(controller.State.Detail);
+        Assert.Null(controller.State.FocusProvider);
+        Assert.Null(controller.State.Providers.Value);
+        Assert.Null(controller.State.LoadedAt);
+        Assert.Null(controller.State.Error);
+        Assert.Null(controller.State.ExportCoverage);
+        Assert.Null(controller.State.ExportBlock);
+        Assert.True(exportOffer.IsCompletedSuccessfully);
+        Assert.False(await exportOffer);
+        Assert.Equal(UsageLoadPhase.Loading, controller.State.Phase);
+        var query = Assert.Single(b.Queries);
+        Assert.Null(query.Key);
+        Assert.Equal(("2026-09-27", "agent:main"), (query.StartDate, query.Query));
+        Assert.Equal((UsagePreset.Last30Days, "agent:main"), (controller.State.Filters.Preset, controller.State.Filters.Query));
+        Assert.Equal(0, controller.State.Filters.Offset);
+        Assert.Equal(0, query.Offset);
+        Assert.Equal(UsageTimeZoneMode.Utc, query.TimeZone);
+        Assert.Equal(UsageScope.Family, query.Scope);
+        Assert.Equal(UsageSort.Tokens, query.Sort);
+        Assert.False(query.SortDescending);
+        Assert.Equal(UsageMetric.Tokens, controller.State.Metric);
+    }
+
+    [Fact]
+    public async Task GatewaySwitch_IgnoresLateRepliesFromTheOldGatewayAndAFailedReadShowsNoOldFigures()
+    {
+        var (controller, a, b, switchToB, dispatcher) = CreateSwitchable();
+        using var lifetime = controller;
+        controller.Activate();
+        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Loaded, Providers.Phase: UsageLoadPhase.Loaded });
+
+        var lateOverview = new TaskCompletionSource<UsageReadResult<SessionsUsageReport>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var lateDetail = new TaskCompletionSource<UsageReadResult<SessionsUsageReport>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var lateProviders = new TaskCompletionSource<UsageReadResult<ProviderUsageSummary>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        a.Usage = query => query.Key is null ? lateOverview.Task : lateDetail.Task;
+        a.Providers = () => lateProviders.Task;
+        controller.Refresh();
+        controller.SelectSession("agent:main:a", "main");
+
+        b.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Failed("B read failed"));
+        var newPlans = new ProviderUsageSummary(null,
+            [new ProviderUsageSnapshot { Provider = "anthropic", DisplayName = "Claude", Plan = "New Gateway plan" }], false);
+        b.Providers = () => Task.FromResult(UsageReadResult<ProviderUsageSummary>.Ok(newPlans));
+        switchToB();
+        controller.Activate();
+        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Failed, Providers.Phase: UsageLoadPhase.Loaded });
+
+        var posted = dispatcher.Posted;
+        var lateSummary = new ProviderUsageSummary(null, [], false);
+        lateOverview.SetResult(UsageReadResult<SessionsUsageReport>.Ok(Report("agent:main:late")));
+        lateDetail.SetResult(UsageReadResult<SessionsUsageReport>.Ok(Report("agent:main:a")));
+        lateProviders.SetResult(UsageReadResult<ProviderUsageSummary>.Ok(lateSummary));
+        await dispatcher.PumpUntilAsync(() => dispatcher.Posted >= posted + 3);
+        dispatcher.Drain();
+
+        Assert.Null(controller.State.Report);
+        Assert.Null(controller.State.Dashboard);
+        Assert.Null(controller.State.Detail);
+        Assert.Same(newPlans, controller.State.Providers.Value);
+        Assert.True(controller.State.ShowLoadError);
+        Assert.Equal("B read failed", controller.State.Error);
+        Assert.DoesNotContain(b.Queries, query => query.Key is not null);
+    }
+
+    /// <summary>The connection manager replaces its client off the UI thread, so it can change between two reads.</summary>
+    private static (UsagePageController Controller, UsageGateway A, UsageGateway B, Action ReplaceAfterNextRead, ManualDispatcher Dispatcher) CreateReplacedMidOperation()
+    {
+        var a = DispatchProxy.Create<IOperatorGatewayClient, UsageGateway>();
+        var b = DispatchProxy.Create<IOperatorGatewayClient, UsageGateway>();
+        var current = a;
+        var replace = false;
+        var dispatcher = new ManualDispatcher();
+        var controller = new UsagePageController(() =>
+        {
+            var client = current;
+            if (replace) (replace, current) = (false, b);
+            return client;
+        }, () => Today, dispatcher.Post, utcToday: () => Today);
+        return (controller, (UsageGateway)a, (UsageGateway)b, () => replace = true, dispatcher);
+    }
+
+    [Fact]
+    public async Task GatewaySwitchDuringSelection_NeverSendsTheOldSessionKeyToTheNewGateway()
+    {
+        var (controller, a, b, replaceAfterNextRead, dispatcher) = CreateReplacedMidOperation();
+        using var lifetime = controller;
+        controller.Activate();
+        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Loaded, Providers.Phase: UsageLoadPhase.Loaded });
+
+        replaceAfterNextRead();
+        controller.SelectSession("agent:main:a", "main");
+
+        Assert.Empty(b.Calls);
+        Assert.Equal("agent:main:a", a.Queries[^1].Key);
+
+        // The queued replacement notification then drops the selection before B is read.
+        controller.Activate();
+        dispatcher.Drain();
+        Assert.Null(controller.State.Detail);
+        Assert.Null(Assert.Single(b.Queries).Key);
+    }
+
+    [Fact]
+    public async Task GatewaySwitchDuringActivation_KeepsEveryReadOnOneGatewayAndTheNextActivationFencesThem()
+    {
+        var (controller, a, b, replaceAfterNextRead, dispatcher) = CreateReplacedMidOperation();
+        using var lifetime = controller;
+        b.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(Report("agent:main:b")));
+        var oldPlans = new ProviderUsageSummary(null,
+            [new ProviderUsageSnapshot { Provider = "openai", DisplayName = "OpenAI", Plan = "Old Gateway plan" }], false);
+        controller.Activate();
+        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Loaded, Providers.Phase: UsageLoadPhase.Loaded });
+        controller.SelectSession("agent:main:a", "main");
+        await dispatcher.PumpUntilAsync(() => controller.State.Detail is { Row.Phase: UsageLoadPhase.Loaded });
+        var lateProviders = new TaskCompletionSource<UsageReadResult<ProviderUsageSummary>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        a.Providers = () => lateProviders.Task;
+        var readsBefore = a.Queries.Count;
+
+        replaceAfterNextRead();
+        controller.Activate();
+
+        // Overview, plans and the open detail all go to the client this activation fenced, never half to B.
+        Assert.Empty(b.Calls);
+        Assert.Equal(new string?[] { null, "agent:main:a" }, a.Queries.Skip(readsBefore).Select(query => query.Key));
+
+        controller.Activate();
+        var posted = dispatcher.Posted;
+        lateProviders.SetResult(UsageReadResult<ProviderUsageSummary>.Ok(oldPlans));
+        await dispatcher.PumpUntilAsync(() => dispatcher.Posted > posted
+            && controller.State is { Phase: UsageLoadPhase.Loaded, Providers.Phase: UsageLoadPhase.Loaded });
+        dispatcher.Drain();
+
+        Assert.Null(controller.State.Detail);
+        Assert.NotSame(oldPlans, controller.State.Providers.Value);
+        Assert.DoesNotContain(b.Queries, query => query.Key is not null);
+        Assert.Equal(["agent:main:b"], controller.State.Dashboard!.Sessions.Rows.Select(row => row.Key));
+        Assert.Single(b.Calls, call => call == "GetProviderUsageAsync");
     }
 }

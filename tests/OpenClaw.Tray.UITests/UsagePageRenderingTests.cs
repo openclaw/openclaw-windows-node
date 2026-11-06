@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Usage;
+using OpenClaw.TestSupport;
 using OpenClawTray.Helpers;
 using OpenClawTray.Pages.Usage;
 using OpenClawTray.Presentation;
@@ -402,16 +403,51 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         await WithUsagePageAsync(Report(serverOverview), new RecordingCommands(), async (host, gateway) =>
         {
             await WaitForAsync(host, "UsageDaily");
-            await ui.RunOnUIAsync(() => gateway.Controller.SetRange(new(2026, 10, 30), new(2026, 11, 5)));
+            var start = new DateOnly(2026, 10, 30);
+            var end = new DateOnly(2026, 11, 5);
+            await ui.RunOnUIAsync(() => gateway.Controller.SetRange(start, end));
             await WaitForAsync(host, "UsageCustomDates");
-            foreach (var width in new[] { 1400d, 1000, 760, 520, 1000 })
+            // Custom dates share the wide preset row. Below wide they follow the presets/options and,
+            // on overview Gateways, the search row. These are Custom counts, not the shorter preset layout.
+            foreach (var (width, contentWidth, columns, basicRows, overviewRows) in
+                new (double Width, double ContentWidth, int Columns, int BasicRows, int OverviewRows)[]
+                {
+                    (1400, 1200, 3, 1, 2),
+                    (1000, 936, 3, 1, 2),
+                    (760, 696, 2, 2, 3),
+                    (520, 480, 1, 3, 4),
+                    (1000, 936, 3, 1, 2),
+                })
             {
+                var filterRows = serverOverview ? overviewRows : basicRows;
+                var dateRow = width >= 1000 ? 0 : filterRows - 1;
+                var dateColumn = width >= 1000 ? 1 : 0;
+                string LayoutState() =>
+                    $"preset={gateway.Controller.State.Filters.Preset}; " +
+                    $"range={gateway.Controller.State.Filters.Start:yyyy-MM-dd}/{gateway.Controller.State.Filters.End:yyyy-MM-dd}; " +
+                    $"phase={gateway.Controller.State.Phase}; overview={gateway.Controller.State.Report?.Overview is not null}; " +
+                    $"expectedRows={filterRows}; expectedColumns={columns}; expectedDateRow={dateRow}; {FilterRowState(host)}";
                 await ui.RunOnUIAsync(() => host.Width = width);
-                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                    () => Math.Abs(host.ActualWidth - width) < 0.1, "Custom-range host resize"));
+                // The header tier is Reactor state that follows the host's SizeChanged, so the host width alone does not
+                // show that the filter row has re-rendered and been laid out for this width.
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                        gateway.Controller.State.Phase == UsageLoadPhase.Loaded &&
+                        gateway.Controller.State.Filters.Preset == UsagePreset.Custom &&
+                        gateway.Controller.State.Filters.Start == start && gateway.Controller.State.Filters.End == end &&
+                        (gateway.Controller.State.Report?.Overview is not null) == serverOverview &&
+                        HasLayoutWidth(host, width) &&
+                        Find<Grid>(host, "UsageFilterRow") is { } filterRow &&
+                        HasLayoutWidth(filterRow, contentWidth) &&
+                        filterRow.RowDefinitions.Count == filterRows && filterRow.ColumnDefinitions.Count == columns &&
+                        Find<Grid>(host, "UsageCustomDates") is { ActualHeight: > 0 } dates &&
+                        Microsoft.UI.Xaml.Controls.Grid.GetRow(dates) == dateRow &&
+                        Microsoft.UI.Xaml.Controls.Grid.GetColumn(dates) == dateColumn &&
+                        Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(dates) == (width >= 1000 ? 1 : columns),
+                    $"custom-range filter row at {width} DIP", LayoutState));
                 await ui.YieldToRenderAsync();
                 await ui.RunOnUIAsync(() =>
                 {
+                    var state = LayoutState();
                     var row = Get<Grid>(host, "UsageFilterRow");
                     var presets = Get<SelectorBar>(host, "UsagePresets");
                     var dates = Get<Grid>(host, "UsageCustomDates");
@@ -426,9 +462,9 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                     {
                         Assert.InRange(Math.Abs(dateBounds.Top + dateBounds.Height / 2 -
                             (presetBounds.Top + presetBounds.Height / 2)), 0, 1);
-                        Assert.True(dateBounds.Left >= presetBounds.Right);
+                        Assert.True(dateBounds.Left >= presetBounds.Right, $"Dates {dateBounds}, presets {presetBounds}. {state}");
                         Assert.InRange(dateBounds.Left - presetBounds.Right, 0, 13);
-                        Assert.True(dateBounds.Right <= optionsBounds.Left);
+                        Assert.True(dateBounds.Right <= optionsBounds.Left, $"Dates {dateBounds}, options {optionsBounds}. {state}");
                         var amount = Get<TextBlock>(host, "UsageSummaryCostValue");
                         var range = Get<TextBlock>(host, "UsageSummaryRange");
                         Assert.False(range.IsTextTrimmed);
@@ -438,14 +474,15 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                     }
                     else
                     {
-                        Assert.True(dateBounds.Top >= presetBounds.Bottom);
+                        Assert.True(dateBounds.Top >= presetBounds.Bottom, $"Dates {dateBounds}, presets {presetBounds}. {state}");
                     }
                     if (serverOverview)
                     {
                         var queryBounds = Bounds(Get<AutoSuggestBox>(host, "UsageQuery"));
-                        Assert.True(width >= 1000 ? queryBounds.Top >= dateBounds.Bottom : dateBounds.Top >= queryBounds.Bottom);
+                        Assert.True(width >= 1000 ? queryBounds.Top >= dateBounds.Bottom : dateBounds.Top >= queryBounds.Bottom,
+                            $"Dates {dateBounds}, query {queryBounds}. {state}");
                     }
-                    Assert.True(dateBounds.Left >= 0 && dateBounds.Right <= row.ActualWidth + 1);
+                    Assert.True(dateBounds.Left >= 0 && dateBounds.Right <= row.ActualWidth + 1, $"Dates {dateBounds}. {state}");
                 });
             }
         }, theme: ElementTheme.Light, pageWidth: 1400);
@@ -464,49 +501,23 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             if (transition)
             {
                 await WaitForAsync(host, "UsageDailyMetricRow");
-                var sizeEvents = 0;
-                var layoutEvents = 0;
-                double? oldWidth = null;
-                double? newWidth = null;
-                string? previous = null;
-                SizeChangedEventHandler resized = (_, args) =>
-                {
-                    sizeEvents++;
-                    oldWidth = args.PreviousSize.Width;
-                    newWidth = args.NewSize.Width;
-                };
-                EventHandler<object> laidOut = (_, _) => layoutEvents++;
-                string LayoutState() =>
-                    $"requested={host.Width:R}; actual={host.ActualWidth:R}; container={ui.Container.ActualWidth:R}; " +
-                    $"DPIscale={host.XamlRoot?.RasterizationScale:R}; windowPx={ui.TestWindow.AppWindow.Size.Width}; " +
-                    $"content={Find<FrameworkElement>(host, "UsageContentColumn")?.ActualWidth:R}; " +
-                    $"daily={Find<FrameworkElement>(host, "UsageDaily")?.ActualWidth:R}; " +
-                    $"projectedDaily={new UsagePageLayout(host.ActualWidth).DailyWidth:R}; compactThreshold={PageResponsiveLayout.MediumMin}; " +
-                    $"metricRowPresent={Find<Grid>(host, "UsageDailyMetricRow") is not null}; " +
-                    $"sizeEvents={sizeEvents}; lastOld={oldWidth:R}; lastNew={newWidth:R}; layoutEvents={layoutEvents}; " +
-                    $"renderError={Find<TextBlock>(host, "UsageRenderError")?.Text ?? "none"}";
+                double previousWidth = 0;
                 await ui.RunOnUIAsync(() =>
                 {
-                    previous = LayoutState();
-                    host.SizeChanged += resized;
-                    host.LayoutUpdated += laidOut;
+                    Assert.True(host.UseLayoutRounding);
+                    previousWidth = host.ActualWidth;
                     host.Width = width;
                 });
-                try
-                {
-                    await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                        Math.Abs(host.ActualWidth - width) < 0.1 && Find<Grid>(host, "UsageDailyMetricRow") is null,
-                        "non-compact daily header after resize", () => $"Before: {previous}. After: {LayoutState()}"));
-                }
-                finally
-                {
-                    await ui.RunOnUIAsync(() =>
-                    {
-                        output.WriteLine($"Resize before: {previous}. After: {LayoutState()}");
-                        host.SizeChanged -= resized;
-                        host.LayoutUpdated -= laidOut;
-                    });
-                }
+                // Layout settles on whole physical pixels: 937.14 DIP lays out as 937 DIP at 100% scale.
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                        HasLayoutWidth(host, width) && Find<Grid>(host, "UsageDailyMetricRow") is null,
+                    "non-compact daily header after resize", () =>
+                        $"previous={previousWidth:R}; requested={width:R}; configured={host.Width:R}; " +
+                        $"actual={host.ActualWidth:R}; scale={host.XamlRoot?.RasterizationScale:R}; " +
+                        $"layoutRounding={host.UseLayoutRounding}; " +
+                        $"daily={Find<FrameworkElement>(host, "UsageDaily")?.ActualWidth:R}; " +
+                        $"metricRowPresent={Find<Grid>(host, "UsageDailyMetricRow") is not null}; " +
+                        $"renderError={Find<TextBlock>(host, "UsageRenderError")?.Text ?? "none"}"));
             }
             await ui.YieldToRenderAsync();
             await ui.RunOnUIAsync(() =>
@@ -580,6 +591,26 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         }
         for (var index = 1; index < cards.Length; index++)
             Assert.InRange(Math.Abs(cards[index].Bounds.Top - cards[index - 1].Bounds.Bottom - 8), 0, 0.1);
+    }
+
+    // WinUI lays elements out on whole physical pixels, so compare widths at the raster scale instead of in DIPs.
+    private static bool HasLayoutWidth(FrameworkElement element, double width) =>
+        element.XamlRoot is { } root &&
+        NativeProofLayout.PhysicalPixels(element.ActualWidth, root.RasterizationScale) ==
+        NativeProofLayout.PhysicalPixels(width, root.RasterizationScale);
+
+    private static string FilterRowState(FrameworkElement host)
+    {
+        var row = Find<Grid>(host, "UsageFilterRow");
+        string Place(string id) => Find<FrameworkElement>(host, id) is { } element
+            ? $"{id} row={Microsoft.UI.Xaml.Controls.Grid.GetRow(element)} column={Microsoft.UI.Xaml.Controls.Grid.GetColumn(element)} " +
+                $"span={Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(element)} size={element.ActualWidth:R}x{element.ActualHeight:R}"
+            : $"{id} missing";
+        return $"requested={host.Width:R}; host={host.ActualWidth:R}; scale={host.XamlRoot?.RasterizationScale:R}; " +
+            $"filterRow={row?.ActualWidth:R} " +
+            $"rows={row?.RowDefinitions.Count} columns={row?.ColumnDefinitions.Count}; " +
+            string.Join("; ", new[] { "UsagePresets", "UsageCustomDates", "UsageFilterOptions", "UsageQuery" }.Select(Place)) +
+            $"; renderError={Find<TextBlock>(host, "UsageRenderError")?.Text ?? "none"}";
     }
 
     private static void AssertSeparatedChildren(Grid grid)
