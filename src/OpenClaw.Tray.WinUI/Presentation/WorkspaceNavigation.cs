@@ -16,8 +16,8 @@ internal enum WorkspacePageId
 
 internal enum CompanionPageId
 {
-    Connection, Sessions, Channels, Instances, Cron, AgentEvents, Agents,
-    Config, Usage, LocalAi, DefaultModel, Voice, Permissions, Sandbox, Debug, Settings, About
+    Connection, Sessions, Instances, Cron, AgentEvents, Agents, Config, Usage, LocalAi, DefaultModel,
+    Voice, Permissions, Sandbox, Debug, Settings, About
 }
 
 /// <summary>
@@ -71,8 +71,15 @@ internal static class WorkspaceNavigation
     public static void Dispatch(
         string? tag,
         Action<WorkspaceDestination> openWorkspace,
-        Action<string> openCompanion)
+        Action<string> openCompanion,
+        Action<string> openDashboard)
     {
+        if (tag is "channels" or "activity")
+        {
+            openDashboard("channels");
+            return;
+        }
+
         if (TryResolveWorkspace(tag, out var destination))
         {
             openWorkspace(destination);

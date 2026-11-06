@@ -479,7 +479,7 @@ public sealed class SetupNativeHandoffTests
     {
         using var temp = new TempDirectory();
         var store = new SetupDashboardHandoffStore(temp.Path);
-        var handle = store.Issue(Choice);
+        var handle = store.Issue(ChatChoice);
         var recovery = new NativeRestartRecoveryStore(temp.Path);
         recovery.Save(handle);
         using var cancellation = new CancellationTokenSource();
@@ -509,6 +509,33 @@ public sealed class SetupNativeHandoffTests
             (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey)),
             (_, _) => Task.CompletedTask, failures.Add);
         Assert.True(await retry.OpenAsync(store, handle, explicitRetry: true, restartRecovery: recovery));
+        Assert.Null(recovery.Read());
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+    }
+
+    [Fact]
+    public async Task LegacyDashboardDispatchAfterCancellationConsumesReceiptAndRecovery()
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var handle = store.Issue(Choice);
+        var recovery = new NativeRestartRecoveryStore(temp.Path);
+        recovery.Save(handle);
+        using var cancellation = new CancellationTokenSource();
+        var failures = new List<SetupNativeLaunchFailure>();
+        var opens = 0;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey)),
+            (_, _) =>
+            {
+                opens++;
+                cancellation.Cancel();
+                return Task.CompletedTask;
+            }, failures.Add);
+
+        Assert.True(await launcher.OpenAsync(store, handle, ct: cancellation.Token, restartRecovery: recovery));
+        Assert.Equal(1, opens);
+        Assert.Empty(failures);
         Assert.Null(recovery.Read());
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
     }
@@ -640,6 +667,7 @@ public sealed class SetupNativeHandoffTests
         Gateway.Id, GatewayDashboardBinding.Capture(Gateway), "provider/model", "primary", 4,
         IdentityBinding: new string('B', 64), SessionKey: "agent:primary:main");
     private static SetupNativeCompletion Choice => new(Proof, new(SetupNativeDestination.Telegram, "agent:primary:main"));
+    private static SetupNativeCompletion ChatChoice => Choice with { Target = Choice.Target with { Destination = SetupNativeDestination.Chat } };
 
     [Theory]
     [InlineData(SetupNativeDestination.Chat, 0, "chat")]
@@ -652,14 +680,23 @@ public sealed class SetupNativeHandoffTests
         var store = new SetupDashboardHandoffStore(temp.Path);
         var choice = Choice with { Target = Choice.Target with { Destination = destination } };
         Assert.Equal(persistedValue, (int)destination);
-        Assert.Equal(page, new SetupNativeNavigationRequest(choice).PageTag);
+        var dashboardPath = HubPageRegistry.GetNativeSetupDashboardPath(destination);
+        if (dashboardPath is not null)
+        {
+            Assert.Equal(page, dashboardPath);
+            Assert.Throws<ArgumentOutOfRangeException>(() => HubPageRegistry.GetNativeSetupPage(destination));
+        }
+        else
+        {
+            Assert.Equal(page, new SetupNativeNavigationRequest(choice).PageTag);
+        }
         var request = new SetupNativeNavigationRequest(choice);
         if (destination == SetupNativeDestination.Chat)
         {
             Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, choice.Target.SessionKey), request.WorkspaceDestination);
             request.RequireWorkspaceDestination(request.WorkspaceDestination!);
         }
-        else
+        else if (dashboardPath is null)
         {
             Assert.Null(request.WorkspaceDestination);
             Assert.Throws<SetupNativeOwnershipException>(() =>
@@ -966,20 +1003,6 @@ public sealed class SetupNativeHandoffTests
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
     }
 
-    [Fact]
-    public void FocusPolicyDoesNotTreatFallbackOrConfiguredOtherChannelsAsAuthoritativeAbsence()
-    {
-        Assert.Equal(SetupChannelAvailability.Unconfirmed,
-            SetupChannelFocusPolicy.GetAvailability(new(), "whatsapp"));
-        Assert.Equal(SetupChannelAvailability.Unconfirmed,
-            SetupChannelFocusPolicy.GetAvailability(new() { Channels = new Dictionary<string, System.Text.Json.JsonElement>
-                { ["telegram"] = default } }, "whatsapp"));
-        Assert.Equal(SetupChannelAvailability.NotOffered,
-            SetupChannelFocusPolicy.GetAvailability(new() { ChannelOrder = ["telegram"] }, "whatsapp"));
-        Assert.Equal(SetupChannelAvailability.Offered,
-            SetupChannelFocusPolicy.GetAvailability(new() { ChannelOrder = ["whatsapp"] }, "whatsapp"));
-    }
-
     private sealed class Clock : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = new(2026, 9, 24, 12, 0, 0, TimeSpan.Zero);
@@ -1128,7 +1151,7 @@ public sealed class SetupNativeHandoffTests
         using var temp = new TempDirectory();
         var clock = new ManualTimeProvider();
         var store = new SetupDashboardHandoffStore(temp.Path, clock);
-        var handle = store.Issue(Choice);
+        var handle = store.Issue(ChatChoice);
         var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         CancellationToken navigationToken = default;
         var launcher = new SetupNativeHandoffLauncher(() => Gateway,

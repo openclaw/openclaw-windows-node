@@ -15,6 +15,21 @@ public static class SetupExistingGatewayClassifier
 {
     private static string AppOwnedDistroName => AppIdentity.SetupDistroName;
 
+    /// <summary>
+    /// Determines whether Settings has WSL installation evidence. A native loopback
+    /// connection alone is not evidence, but must not hide a coexisting WSL install.
+    /// </summary>
+    public static bool HasWslInstallationForSettings(
+        bool hasSetupState,
+        IEnumerable<GatewayRecord>? records,
+        GatewayRecord? activeGateway,
+        string? legacyGatewayUrl) =>
+        hasSetupState
+        || WslKeepAlivePolicy.HasSetupManagedLocalGateway(records)
+        || (activeGateway?.NativePackageFamilyName is null
+            && legacyGatewayUrl is not null
+            && LocalGatewayUrlClassifier.IsLocalGatewayUrl(legacyGatewayUrl));
+
     public static SetupExistingGatewayKind ClassifyWithoutWslProbe(
         GatewayRegistry? registry,
         SettingsManager settings,
