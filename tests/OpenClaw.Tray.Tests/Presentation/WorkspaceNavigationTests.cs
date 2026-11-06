@@ -1253,6 +1253,13 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void RailOwner_UsesCompactPaddingAndRestoresExpandedPadding()
+    {
+        var footer = File.ReadAllText(Source("Controls", "WorkspacePaneFooter.xaml.cs"));
+        Assert.Contains("OwnerButton.Padding = rail ? new Thickness(4) : new Thickness(8);", footer);
+    }
+
+    [Fact]
     public void OwnerFooterStatusDot_PrecedesTextAndSharesLiveThemeResources()
     {
         var doc = XDocument.Load(Source("Controls", "WorkspacePaneFooter.xaml"));
