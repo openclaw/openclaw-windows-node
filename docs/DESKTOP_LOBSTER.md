@@ -79,7 +79,7 @@ budget and reduced-motion/hidden-control behavior are reused without a second
 animator or a raster conversion.
 
 `DesktopCompanionSurface` declares the mascot, speech bubble, literal notification
-text and actions in C# using the app's existing Microsoft.UI.Reactor preview.12.
+text and actions in C# using the app's existing Microsoft.UI.Reactor dependency.
 One `ReactorHostControl` reconciles updates from its presentation state.
 A Reactor `XamlHostElement` retains the exact setup control and animator across
 updates. Only notification arrivals restart its
@@ -122,7 +122,7 @@ independently of Companion. Those features are separate future scope.
 Run the required `build.ps1`, Shared.Tests and Tray.Tests closeout plus focused
 `DesktopCompanionWindowTests` in Tray.UITests on the host's native architecture,
 including Reactor reconciliation, retained mascot identity and close/unmount.
-Use `run-app-local.ps1 -Isolated -AllowNonMain` for the real app. Enable the
+Use `.\run-app-local.ps1 -Isolated` for the real app. Enable the
 desktop lobster, select **Preview notification** from its menu, and send a
 real `system.notify` through an isolated local MCP endpoint. Confirm happy
 arrival, readable text, dismiss/timeout, drag, hide/re-enable, and no foreground
