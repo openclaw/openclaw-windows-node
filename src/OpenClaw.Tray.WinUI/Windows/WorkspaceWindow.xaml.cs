@@ -1076,7 +1076,25 @@ public sealed partial class WorkspaceWindow : WindowEx
         UpdateNotificationsBadge();
     }
 
-    private static void OpenDashboard() => ((IAppCommands)CurrentApp).OpenDashboard(null);
+    private string? ResolveDashboardPath()
+    {
+        var destination = Destination;
+        var sessionKey = destination.Page == WorkspacePageId.Home
+            ? destination.SessionKey ?? _chat.CurrentSessionKey
+            : null;
+        bool? isMain = sessionKey is null
+            ? null
+            : _state.Sessions.FirstOrDefault(session => session.Key == sessionKey)?.IsMain;
+        if (sessionKey is not null && isMain is null &&
+            CurrentApp.GatewayClient?.MainSessionKey is { } mainSessionKey)
+            isMain = string.Equals(sessionKey, mainSessionKey, StringComparison.Ordinal);
+
+        return HubSearchCatalog.ContextualDashboardPath(
+            destination, sessionKey, isMain, _state.GatewaySelf?.ServerVersion);
+    }
+
+    private void OpenDashboard() =>
+        ((IAppCommands)CurrentApp).OpenDashboard(ResolveDashboardPath());
 
     /// <summary>Footer popups are anchored to one section; switching sections closes them.</summary>
     private void HideFooterFlyouts()
