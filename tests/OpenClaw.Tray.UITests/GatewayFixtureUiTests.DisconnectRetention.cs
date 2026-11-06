@@ -55,6 +55,7 @@ public sealed partial class GatewayFixtureUiTests
                 await WriteReaderBoundaryAsync(run, reader, "offline-anchor-failure", includeProviderSnapshot: true);
                 throw;
             }
+            await WriteReaderBoundaryAsync(run, reader, "offline-anchor-preserved");
             Assert.InRange(TimelineScroll(run).Current.VerticalScrollPercent, beforeScroll - 5, beforeScroll + 5);
             Assert.False(FindById(run, "ChatComposerPrimaryAction")?.Current.IsEnabled == true);
             var offline = await run.InvokeAsync("app.chat.snapshot", new { threadId = GatewayScenario.LongSessionKey });
@@ -76,6 +77,7 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
             Assert.True(SessionSelected(run, GatewayScenario.LongTitle));
             Assert.InRange(TimelineScroll(run).Current.VerticalScrollPercent, beforeScroll - 5, beforeScroll + 5);
+            await WriteReaderBoundaryAsync(run, reader, "fresh-history-reader-preserved");
             var renderedAfter = RenderedHistoryRevision(run, GatewayScenario.LongSessionKey);
             Assert.True(renderedAfter > renderedBefore);
             await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "disconnect-reader-anchor.json"),
@@ -88,6 +90,7 @@ public sealed partial class GatewayFixtureUiTests
             var sent = await run.Gateway.WaitForCompletedRequestAsync("chat.send", GatewayScenario.LongSessionKey);
             Assert.Equal("ok", sent.Outcome);
             await CaptureIfRequestedAsync(run, "explicit-disconnect-sent.png");
+            WriteReaderDiagnostic($"SYNTHETIC disconnect-reader-case passed; run={run.Profile.RunId}; historyReplies={CompletedReaderHistoryReplies(run)}; ordinarySendOutcome={sent.Outcome}");
         }, scenario: GatewayScenario.CreateBrowse(allowChatSend: true));
     }
 
@@ -162,7 +165,7 @@ public sealed partial class GatewayFixtureUiTests
                 && value.ValueKind == JsonValueKind.Number ? value.GetInt64() : null;
             var requestKey = positioned?.RootElement.GetProperty("requestKey").GetString();
             var completedKey = positioned?.RootElement.GetProperty("completedRequestKey").GetString();
-            output.WriteLine("SYNTHETIC disconnect-reader " + JsonSerializer.Serialize(new
+            WriteReaderDiagnostic("SYNTHETIC disconnect-reader " + JsonSerializer.Serialize(new
             {
                 stage, fixtureOrdinal, expectedY = anchor.TopOffset, expectedX = anchor.LeftOffset,
                 viewport = ReaderRectangle(viewport), anchorBounds = ReaderRectangle(bounds),
@@ -187,7 +190,7 @@ public sealed partial class GatewayFixtureUiTests
             // so it cannot refresh history and rescue the boundary under test.
             var snapshot = await run.InvokeAsync("app.chat.snapshot", new { threadId = GatewayScenario.LongSessionKey });
             var available = snapshot.TryGetProperty("composeTarget", out var target);
-            output.WriteLine("SYNTHETIC disconnect-reader-provider " + JsonSerializer.Serialize(new
+            WriteReaderDiagnostic("SYNTHETIC disconnect-reader-provider " + JsonSerializer.Serialize(new
             {
                 stage, snapshotAvailable = available,
                 connected = snapshot.TryGetProperty("connectionStatus", out var status)
@@ -201,8 +204,16 @@ public sealed partial class GatewayFixtureUiTests
         catch (Exception diagnosticError)
         {
             // No exception message: UIA/MCP errors can contain arbitrary content.
-            output.WriteLine($"SYNTHETIC disconnect-reader stage={stage}; diagnostic-unavailable={diagnosticError.GetType().Name}");
+            WriteReaderDiagnostic($"SYNTHETIC disconnect-reader stage={stage}; diagnostic-unavailable={diagnosticError.GetType().Name}");
         }
+    }
+
+    private void WriteReaderDiagnostic(string value)
+    {
+        output.WriteLine(value);
+        // xUnit includes ITestOutputHelper in failed results only. Keep this
+        // bounded synthetic sequence inspectable in CI for passing cases too.
+        Console.WriteLine(value);
     }
 
     private static double[]? ReaderRectangle(System.Windows.Rect? bounds) =>

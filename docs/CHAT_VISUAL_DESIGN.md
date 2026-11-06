@@ -105,7 +105,18 @@ pending navigation; follow state is then taken from the current position, so a
 click or key press at the tail keeps following new replies. The correction
 rechecks follow eligibility at dispatch so a newer UI Automation scroll-away also
 takes precedence. Session replacement, unload, and disposal fence late callbacks.
-Native bottom anchoring and the existing follow threshold are unchanged.
+Tail following retains stable native bottom anchoring and the existing follow
+threshold. A reader away from the tail uses stable native top anchoring, so
+composer or connection-status height changes do not shift the visible text
+relative to the top of the viewport. The anchor ratio changes only when the
+existing follow mode changes, not on every view/extent event; anchoring stays
+enabled in both modes. This does not issue a compensating scroll or bypass the
+validated discrete tail-request path. Reloading the same native view reattaches
+scroll observation without requesting the tail for an established reader. Tail
+followers and unfinished initial history positioning retain their layout gate.
+Unload retires pending callbacks and queues without discarding initial-position
+admission. Reload schedules that intent under the current version and identity;
+explicit user cancellation still clears it.
 
 Pending agent questions replace the writing surface visually, not structurally.
 The same mounted composer and unsent draft return when the question is collapsed

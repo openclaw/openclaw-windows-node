@@ -148,7 +148,7 @@ file sealed class InitialTailPositioner : IDisposable
         _tailIndex = tailIndex;
         _itemCount = itemCount;
         _displayedTailKey = displayedTailKey;
-        _following = navigate;
+        SetFollowing(navigate);
         _initialPending = false;
         _valid = TailNavigationPolicy.TryCapture(tailIndex, displayedTailKey, itemCount, out _);
         if (!_valid || !navigate)
@@ -181,6 +181,10 @@ file sealed class InitialTailPositioner : IDisposable
     private void OnLoaded(object sender, RoutedEventArgs args)
     {
         if (!_valid)
+            return;
+
+        AttachScrollView();
+        if (!TailNavigationPolicy.ShouldPositionOnLoad(_following, _initialPending))
             return;
 
         _initialPending = true;
@@ -293,7 +297,7 @@ file sealed class InitialTailPositioner : IDisposable
         _fixtureObservation?.Attach(_scrollView);
         if (_scrollView is not null)
         {
-            _scrollView.VerticalAnchorRatio = 1.0;
+            ApplyViewportAnchor();
             _scrollView.ViewChanged += OnViewChanged;
             _scrollView.StateChanged += OnScrollStateChanged;
             _scrollView.ExtentChanged += OnExtentChanged;
@@ -346,7 +350,7 @@ file sealed class InitialTailPositioner : IDisposable
         _initialPending = false;
         // Input without movement (copy, focus, wheel at the tail) keeps follow;
         // input that already left the tail stops it so the reader is not pulled back.
-        _following = _scrollView is { } scrollView && IsNearBottom(scrollView);
+        SetFollowing(_scrollView is { } scrollView && IsNearBottom(scrollView));
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         DetachLayout();
@@ -354,7 +358,22 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnViewChanged(WinUIScrollView sender, object args)
     {
-        _following = IsNearBottom(sender);
+        SetFollowing(IsNearBottom(sender));
+    }
+
+    private void SetFollowing(bool following)
+    {
+        if (_following == following)
+            return;
+
+        _following = following;
+        ApplyViewportAnchor();
+    }
+
+    private void ApplyViewportAnchor()
+    {
+        if (_scrollView is not null)
+            _scrollView.VerticalAnchorRatio = TailNavigationPolicy.ViewportAnchorRatio(_following);
     }
 
     private void QueueTailRequest(int version, TailNavigationRequest request)
@@ -377,7 +396,7 @@ file sealed class InitialTailPositioner : IDisposable
         }))
         {
             _tailNavigationQueue.SchedulingFailed();
-            _following = false;
+            SetFollowing(false);
         }
     }
 
@@ -395,7 +414,7 @@ file sealed class InitialTailPositioner : IDisposable
             return false;
         }
 
-        _following = true;
+        SetFollowing(true);
         itemsView.StartBringItemIntoView(request.Index, new BringIntoViewOptions
         {
             AnimationDesired = false,
@@ -410,7 +429,8 @@ file sealed class InitialTailPositioner : IDisposable
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
         _version++;
-        _initialPending = false;
+        // Keep admitted initial positioning for the next load, not its old work.
+        // User cancellation or completed initial dispatch clears the admission.
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         DetachLayout();
