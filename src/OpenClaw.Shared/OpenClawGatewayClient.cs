@@ -31,6 +31,8 @@ public sealed record SessionUsageSnapshot(SessionInfo[] Sessions, long? Timestam
 /// </summary>
 public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 {
+    private ConfigWriteAdmission _configWriteAdmission = new();
+    private const string ConfigWriteProfileChangedError = "Gateway profile changed before config.patch could be sent.";
     private const string OperatorRole = "operator";
     private static readonly Regex s_pairingRequestIdRegex = new("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", RegexOptions.Compiled);
     private static readonly string[] s_operatorScopes =
@@ -514,6 +516,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public virtual bool IsConnectedToGateway => TryGetReadyConnectionGeneration(out _);
     public long? SessionMutationConnectionEpoch =>
         TryGetReadyConnectionGeneration(out var generation) ? generation : null;
+    public ConfigWriteAdmission? ConfigWriteAdmission =>
+        TryGetReadyConnectionGeneration(out _) ? Volatile.Read(ref _configWriteAdmission) : null;
     private string[] _advertisedServerMethods = [];
     private string[] _advertisedServerCapabilities = [];
     private long _serverHandshakeGeneration;
@@ -1541,7 +1545,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private async Task<JsonElement> SendResponseRequestAsync(
         string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null,
-        CancellationToken requestCancellationToken = default, bool searchRead = false)
+        CancellationToken requestCancellationToken = default, bool searchRead = false,
+        ConfigWriteAdmission? configWriteAdmission = null)
     {
         using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken, requestCancellationToken);
         var requestToken = requestCancellation.Token;
@@ -1566,14 +1571,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         try
         {
-            var sent = await SendRawAsync(
-                    SerializeRequest(requestId, method, parameters),
-                    connectionGeneration,
-                    requestToken)
+            var frame = SerializeRequest(requestId, method, parameters);
+            var sending = configWriteAdmission == null
+                ? SendRawAsync(frame, connectionGeneration, requestToken)
+                : SendRawAsync(frame, connectionGeneration, requestToken, configWriteAdmission);
+            var sent = await sending
                 .WaitAsync(requestToken)
                 .ConfigureAwait(false);
             if (!sent)
-                throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");
+                throw new InvalidOperationException(configWriteAdmission is { IsCurrent: false }
+                    ? ConfigWriteProfileChangedError : $"Gateway connection changed before {method} could be sent.");
             return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), requestToken);
         }
         catch (TimeoutException ex)
@@ -1845,14 +1852,24 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             ? PatchConfigCoreAsync(fullConfig, baseHash, timeoutMs, connectionEpoch)
             : Task.FromException<ConfigPatchResult>(new InvalidOperationException(ConnectionChangedBeforeSendError));
 
+    public Task<ConfigPatchResult> PatchConfigOnConnectionAsync(
+        JsonElement fullConfig, string? baseHash, long connectionEpoch, ConfigWriteAdmission writeAdmission, int timeoutMs = 15000) =>
+        ReferenceEquals(Volatile.Read(ref _configWriteAdmission), writeAdmission) && writeAdmission.IsCurrent
+            ? SessionMutationConnectionEpoch == connectionEpoch
+                ? PatchConfigCoreAsync(fullConfig, baseHash, timeoutMs, connectionEpoch, writeAdmission)
+                : Task.FromException<ConfigPatchResult>(new InvalidOperationException(ConnectionChangedBeforeSendError))
+            : Task.FromException<ConfigPatchResult>(new InvalidOperationException(ConfigWriteProfileChangedError));
+
     private async Task<ConfigPatchResult> PatchConfigCoreAsync(
-        JsonElement fullConfig, string? baseHash, int timeoutMs, long? expectedConnectionEpoch)
+        JsonElement fullConfig, string? baseHash, int timeoutMs, long? expectedConnectionEpoch,
+        ConfigWriteAdmission? writeAdmission = null)
     {
         var raw = fullConfig.GetRawText();
         object payload = baseHash != null ? new { raw, baseHash } : (object)new { raw };
         try
         {
-            var response = await SendResponseRequestAsync("config.patch", payload, timeoutMs, expectedConnectionEpoch);
+            var response = await SendResponseRequestAsync("config.patch", payload, timeoutMs, expectedConnectionEpoch,
+                configWriteAdmission: writeAdmission);
             _logger.Info("config.patch succeeded");
             return new ConfigPatchResult
             {
@@ -3646,7 +3663,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                         && changeReason.ValueKind == JsonValueKind.String
                         && changeReason.GetString() == "profile-identity")
                     {
-                        SelfProfileChanged?.Invoke(this, EventArgs.Empty);
+                    Interlocked.Exchange(ref _configWriteAdmission, new ConfigWriteAdmission()).Invalidate();
+                    SelfProfileChanged?.Invoke(this, EventArgs.Empty);
                     }
                     if (sessionChange.TryGetProperty("catalogChanged", out var catalogChanged)
                         && catalogChanged.ValueKind == JsonValueKind.True)

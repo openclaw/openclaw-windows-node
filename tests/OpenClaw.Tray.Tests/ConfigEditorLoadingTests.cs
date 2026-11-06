@@ -125,7 +125,8 @@ public sealed class ConfigEditorLoadingTests
         Assert.Contains("!SnapshotMatchesCurrentConnection()", save, StringComparison.Ordinal);
         Assert.Contains("_pendingChanges.Count", save, StringComparison.Ordinal);
         Assert.Contains("_snapshotTicket?.Epoch is not long connectionEpoch", save, StringComparison.Ordinal);
-        Assert.Contains("client.PatchConfigOnConnectionAsync(updated, saveBase.BaseHash, connectionEpoch)",
+        Assert.Contains("_snapshotTicket?.WriteAdmission is not { IsCurrent: true } writeAdmission", save, StringComparison.Ordinal);
+        Assert.Contains("client.PatchConfigOnConnectionAsync(updated, saveBase.BaseHash, connectionEpoch, writeAdmission)",
             save, StringComparison.Ordinal);
         Assert.DoesNotContain("client.PatchConfigDetailedAsync(", save, StringComparison.Ordinal);
         Assert.True(save.IndexOf("!SnapshotMatchesCurrentConnection()", StringComparison.Ordinal) <

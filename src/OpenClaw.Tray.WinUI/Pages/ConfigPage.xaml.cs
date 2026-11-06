@@ -582,7 +582,8 @@ public sealed partial class ConfigPage : Page
     {
         if (_saving) return;
         if (_draftConnectionChanged || !SnapshotMatchesCurrentConnection() ||
-            _snapshotTicket?.Epoch is not long connectionEpoch)
+            _snapshotTicket?.Epoch is not long connectionEpoch ||
+            _snapshotTicket?.WriteAdmission is not { IsCurrent: true } writeAdmission)
         {
             InvalidateLoadedConnection();
             ShowDraftConnectionChanged();
@@ -654,7 +655,7 @@ public sealed partial class ConfigPage : Page
         {
             var updated = ConfigEditorModel.ApplyChanges(saveBase.Root, _pendingChanges);
             var saveIdentity = _snapshotTicket!.Value;
-            var result = await client.PatchConfigOnConnectionAsync(updated, saveBase.BaseHash, connectionEpoch);
+            var result = await client.PatchConfigOnConnectionAsync(updated, saveBase.BaseHash, connectionEpoch, writeAdmission);
             if (!saveIdentity.MatchesConnection(CurrentApp.GatewayClient, client.SessionMutationConnectionEpoch,
                     _appState?.SelfProfileRevision ?? 0))
             {
@@ -749,7 +750,7 @@ public sealed partial class ConfigPage : Page
         {
             // Reads belong to this page request, not unrelated AppState events.
             var ticket = new ConfigEditorLoadTicket(++_configLoadGeneration, client,
-                client.SessionMutationConnectionEpoch, _appState?.SelfProfileRevision ?? 0);
+                client.SessionMutationConnectionEpoch, _appState?.SelfProfileRevision ?? 0, client.ConfigWriteAdmission);
             _loading = true;
             _ = LoadConfigAsync(client, ticket);
         }

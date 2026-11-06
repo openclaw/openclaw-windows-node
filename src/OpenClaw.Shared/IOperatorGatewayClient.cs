@@ -72,6 +72,8 @@ public interface IOperatorGatewayClient
     bool IsAgentsListUnsupported => false;
     /// <summary>Authenticated transport epoch, used to bind a mutation across an asynchronous dialog.</summary>
     long? SessionMutationConnectionEpoch => null;
+    /// <summary>Capture with a configuration snapshot; invalidated directly by profile identity changes.</summary>
+    ConfigWriteAdmission? ConfigWriteAdmission => null;
 
     // ─── Connection events (from WebSocketClientBase) ───
     event EventHandler<ConnectionStatus>? StatusChanged;
@@ -157,6 +159,10 @@ public interface IOperatorGatewayClient
     /// </summary>
     Task<ConfigPatchResult> PatchConfigOnConnectionAsync(JsonElement fullConfig, string? baseHash, long connectionEpoch, int timeoutMs = 15000)
         => Task.FromException<ConfigPatchResult>(new NotSupportedException("Connection-bound config.patch is not supported by this gateway client."));
+    /// <summary>Requires the captured connection and profile at final configuration-send admission.</summary>
+    Task<ConfigPatchResult> PatchConfigOnConnectionAsync(JsonElement fullConfig, string? baseHash, long connectionEpoch,
+        ConfigWriteAdmission writeAdmission, int timeoutMs = 15000)
+        => Task.FromException<ConfigPatchResult>(new NotSupportedException("Profile-bound config.patch is not supported by this gateway client."));
     Task RequestAgentsListAsync();
     Task RequestAgentFilesListAsync(string agentId = "main");
     Task RequestAgentFileGetAsync(string agentId, string name);

@@ -3,14 +3,17 @@
 using System;
 using System.Text.Json;
 using System.Threading.Tasks;
+using OpenClaw.Shared;
 
 namespace OpenClawTray.Services;
 
 /// <summary>Captures load ownership; compare against live connection facts before using a retained draft.</summary>
-internal readonly record struct ConfigEditorLoadTicket(int Generation, object Client, long? Epoch, int ProfileRevision)
+internal readonly record struct ConfigEditorLoadTicket(int Generation, object Client, long? Epoch, int ProfileRevision,
+    ConfigWriteAdmission? WriteAdmission = null)
 {
     public bool MatchesConnection(object? client, long? epoch, int profileRevision) =>
-        ReferenceEquals(Client, client) && Epoch == epoch && ProfileRevision == profileRevision;
+        ReferenceEquals(Client, client) && Epoch == epoch && ProfileRevision == profileRevision &&
+        (WriteAdmission?.IsCurrent ?? true);
 
     public bool IsCurrent(bool observing, int generation, object? client, long? epoch, int profileRevision, bool ready) =>
         observing && ready && Generation == generation && MatchesConnection(client, epoch, profileRevision);
