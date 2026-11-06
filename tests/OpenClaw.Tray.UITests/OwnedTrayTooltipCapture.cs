@@ -113,15 +113,29 @@ internal static class OwnedTrayTooltipCapture
     private static bool IsIconVisible(Icon icon)
     {
         using var dpi = new PhysicalDpiScope();
-        var element = AutomationElement.FromPoint(new System.Windows.Point(icon.Bounds.CenterX, icon.Bounds.CenterY));
-        GetWindowThreadProcessId(FindWindow("Shell_TrayWnd", null), out var shellPid);
-        // A hidden icon's reported rectangle can hit an unnamed Shell surface.
-        // Walk to its accessible button; Shell process ownership alone is insufficient.
-        while (element is not null && shellPid != 0 && element.Current.ProcessId == shellPid)
+        var taskbar = FindWindow("Shell_TrayWnd", null);
+        GetWindowThreadProcessId(taskbar, out var shellPid);
+        Assert.NotEqual(0u, shellPid);
+        // The XAML overflow exposes the icon in its subtree even when point hit-testing misses it.
+        foreach (var window in new[] { taskbar, FindWindow("TopLevelWindowForOverflowXamlIsland", null) })
         {
-            if (!element.Current.IsOffscreen && element.Current.Name.StartsWith("OpenClaw", StringComparison.Ordinal))
-                return true;
-            element = TreeWalker.ControlViewWalker.GetParent(element);
+            if (window == IntPtr.Zero || !IsWindowVisible(window))
+                continue;
+            GetWindowThreadProcessId(window, out var windowPid);
+            if (windowPid != shellPid)
+                continue;
+            var buttons = AutomationElement.FromHandle(window).FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+            foreach (AutomationElement button in buttons)
+            {
+                var current = button.Current;
+                var bounds = current.BoundingRectangle;
+                if (current.ProcessId == shellPid && !current.IsOffscreen
+                    && current.Name.StartsWith("OpenClaw", StringComparison.Ordinal)
+                    && bounds.Left == icon.Bounds.Left && bounds.Top == icon.Bounds.Top
+                    && bounds.Right == icon.Bounds.Right && bounds.Bottom == icon.Bounds.Bottom)
+                    return true;
+            }
         }
         return false;
     }
