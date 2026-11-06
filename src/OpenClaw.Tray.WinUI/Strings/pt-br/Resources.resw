@@ -9958,4 +9958,10 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>sessões não roteadas exibidas</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>"{0}" arquivada ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Dispensar notificação</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Abrir detalhes ao lado da conversa</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>Detalhes da ferramenta</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Estes detalhes não estão mais disponíveis. Reconecte-se, se necessário, e reabra a ferramenta na conversa atual.</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionar painel de detalhes</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>Voltar à conversa</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Mostrar detalhes</value></data>
 </root>

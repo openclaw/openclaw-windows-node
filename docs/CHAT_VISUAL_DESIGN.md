@@ -208,8 +208,9 @@ Recovery stays within the 256KiB UTF-8 display budget and requests at most
 remains explicitly **limited**, never complete. Unsupported Gateway versions,
 missing or invisible results, oversized responses, mismatched identities and
 transport failures have separate visible outcomes. Retry is an explicit action.
-The panel can reuse `LoadToolOutputAsync` and `ChatToolOutputOperation`; it must
-not add another fetch or renderer. These rules follow the
+The panel reuses `LoadToolOutputAsync`, `ChatToolOutputOperation`, and the same
+detail renderer. Recovery uses the canonical saved result's call and message
+identity, not the invocation's display identity. These rules follow the
 [pinned message-read handler](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/src/gateway/server-methods/chat-message-get-handler.ts).
 
 Consecutive tool groups stay within the exact run identity and legacy turn.
@@ -341,6 +342,63 @@ retained matching run events replay through the live event path, and the
 buffered text becomes the streaming tail. Stop aborts that run. A live run,
 pending abort, reset or terminal outcome already known to this client wins, and
 the run's later live lifecycle end settles it.
+
+### Conversation details panel
+
+Expand a tool card and use its top-right panel-open icon to read its existing
+input/output presentation in a native, closable **Tool details** tab. The icon
+uses `FluentIconCatalog.OpenPane` (Segoe Fluent OpenPane, E8A0), with
+**Open details beside chat** as its localized tooltip and accessible name.
+The action is 28 pixels in the detail header, or 40 pixels for commands and
+touch-capable devices. Command actions appear on hover or keyboard focus and
+stay visible on touch-capable devices. Space is reserved so the action never
+covers tool text. Clicking the main tool row still expands inline; there is
+no additional labeled button beneath its output. This follows the
+[web tool-card action](https://github.com/openclaw/openclaw/blob/8a186ad7ad77966c864fa9eb47221a1499c1e716/ui/src/pages/chat/components/chat-tool-expanded.solid.tsx#L326-L393)
+and its [pointer/focus presentation](https://github.com/openclaw/openclaw/blob/8a186ad7ad77966c864fa9eb47221a1499c1e716/ui/src/styles/chat/tool-cards.css#L626-L725).
+Opening a
+different tool replaces that slot's content, not the conversation or composer.
+Reopening the same tool retains its mounted reader. This follows the
+[web sidebar slot reuse contract](https://github.com/openclaw/openclaw/blob/8298d434d93bfb4f97bf8f4ed2087b4eca18ac22/ui/src/pages/chat/sidebar-layout.ts#L248-L300),
+not the Dashboard's separate document tabs.
+
+The wide layout has a draggable, keyboard-resizable divider. Pointer handlers
+observe events handled by the native Button, and drag/key deltas begin at the
+displayed, viewport-clamped width. Arrow keys resize the focused divider; Home
+and End select the current viewport's width limits. In a narrow window,
+**Back to conversation** and **Show details** switch the visible surface without
+remounting the composer. Hiding the conversation cancels voice capture through
+the existing composer session; later visible projections cannot restart hidden
+capture or append its late result. Returning to chat never starts recording
+automatically. F6 moves between the conversation and panel; Escape
+closes the active panel when focus is inside it, or when it occupies the compact
+surface. Focus returns to a usable opening control, or a current conversation
+control if the opener was collapsed or virtualized away. The native tab close
+control also dismisses it. The panel has one full-height scroll area; the
+240-pixel section limit remains only in inline transcript details.
+
+Only current-history identities are retained. Conversation, provider, connection,
+timeline generation and history revision changes invalidate the old request.
+Disconnected, removed or mismatched content is unavailable rather than a cached
+payload. A stronger display name for the same scoped tool does not retire its
+view. Details establishes the authenticated profile through the existing
+`users.self` read and revalidates it on profile events, bound to the original
+connection epoch and signing device. A same-profile name/avatar edit restores
+availability without reconnecting. Pending or failed verification hides the
+content; actual profile replacement retires it until reconnect because main's
+transcript does not yet carry account provenance. Superseded reads cannot
+restore availability, and failures log only a bounded category.
+Each revalidation advances an opaque admission revision. The root checks that
+revision against the live profile snapshot before an open action, even before
+the next render. A verified same-account refresh can retain the open tab, but
+callbacks captured before the refresh are retired. A failed identity read stays
+unavailable until another profile or connection event retries it.
+
+This first panel supports only read-only tool details. It is not complete
+multi-content sidebar parity. Files requires the session-file RPCs, canonical
+source/account admission, draft retention and safe download owners. Canvas and
+MCP Apps require their reviewed authenticated content boundary, host lifetime and
+permission adapters. None is represented by a placeholder tab or a new RPC here.
 
 Initial transcript tail navigation retains its native layout gate. Entering a
 transcript control through keyboard focus cancels pending automatic

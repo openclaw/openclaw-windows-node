@@ -3040,7 +3040,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         Func<string, Task<ChatAgentIdentity?>>? identityLoader = null,
         IChatAgentRosterSource? agentRosterSource = null,
         string userDisplayName = "",
-        Action<MountedReactorChat>? onMounted = null)
+        Action<MountedReactorChat>? onMounted = null,
+        Func<CancellationToken, Action?, Task<string?>>? voiceRequest = null)
     {
         using var diagnosticScope = ui.Diagnostics.BeginChatScope();
         await ui.ResetContainerAsync();
@@ -3066,7 +3067,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 session = new ChatComposerFactory(new WinUIDispatcher(ui.Dispatcher), settingsStore,
                     sandboxStatus ?? new SandboxStatusStore()).Create(
                     renderProvider ?? provider,
-                    new ChatComposerHostActions(null, () => { }, (_, _) => Task.FromResult<string?>(null), _ => { },
+                    new ChatComposerHostActions(null, () => { }, voiceRequest ?? ((_, _) => Task.FromResult<string?>(null)), _ => { },
                         SessionSelected: (key, _) => onSessionSelected?.Invoke(key),
                         SandboxSettingsNavigation: onSandboxSettings ?? (() => { })),
                     initialSpeakerMuted: false);
