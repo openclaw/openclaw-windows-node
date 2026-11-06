@@ -66,8 +66,10 @@ public sealed partial class SchemaConfigEditor : UserControl
             Logger.Error($"[SchemaConfigEditor] Failed to render schema editor: {ex}");
         }
 
-        // If schema rendering produced nothing, fall back to rendering config as editable fields
-        if (FieldsPanel.Children.Count == 0 && config.ValueKind == JsonValueKind.Object)
+        // Opaque/unsupported schema fields must not become untyped editable values.
+        // Retain the legacy direct-config route only when no fields were supplied.
+        if (FieldsPanel.Children.Count == 0 && config.ValueKind == JsonValueKind.Object &&
+            !ConfigEditorModel.HasSchemaFields(schema))
         {
             RenderConfigDirectly("", config, FieldsPanel, 0);
         }
@@ -117,6 +119,10 @@ public sealed partial class SchemaConfigEditor : UserControl
     private void RenderSchemaNode(string path, JsonElement schema, JsonElement config,
         StackPanel parent, int depth)
     {
+        // A whole-object mask is an opaque stored value, not missing children.
+        if (!ConfigEditorModel.CanTraverseObjectConfig(config))
+            return;
+
         if (ExtractSchemaType(schema) == "object"
             && schema.TryGetProperty("properties", out var props))
         {
@@ -147,6 +153,10 @@ public sealed partial class SchemaConfigEditor : UserControl
     private void RenderObjectSection(string path, string name, JsonElement schema,
         JsonElement config, StackPanel parent, int depth)
     {
+        // A whole-object mask is an opaque stored value, not missing children.
+        if (!ConfigEditorModel.CanTraverseObjectConfig(config))
+            return;
+
         var title = GetLabel(path, name);
         var description = SafeGetString(schema, "description");
 

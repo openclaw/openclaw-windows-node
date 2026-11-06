@@ -1583,10 +1583,10 @@ Gebruik een van deze opties:
     <value>Ruwe JSON</value>
   </data>
   <data name="ConfigPage_TextBlock_95.Text" xml:space="preserve">
-    <value>Schema niet beschikbaar</value>
+    <value>Configuratie niet beschikbaar</value>
   </data>
   <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
-    <value>Het gatewayconfiguratieschema kan niet worden geladen. Gebruik het webdashboard om instellingen te bewerken.</value>
+    <value>Vernieuw om de gatewayconfiguratie en het schema opnieuw te laden. U kunt ook het gatewaypaneel openen.</value>
   </data>
   <data name="OpenDashboardButton.Content" xml:space="preserve">
     <value>Dashboard openen</value>
@@ -6286,13 +6286,13 @@ Controleer of de gateway actief is.</value>
     <value>Configuratie niet beschikbaar</value>
   </data>
   <data name="ConfigPage_RenderConfigUnavailableMessage" xml:space="preserve">
-    <value>De gatewayconfiguratie kon niet worden weergegeven. Vernieuw en probeer het opnieuw.</value>
+    <value>De gatewayconfiguratie kan niet worden geladen of weergegeven. Vernieuw en probeer het opnieuw.</value>
   </data>
   <data name="ConfigPage_RenderSchemaUnavailableTitle" xml:space="preserve">
     <value>Schema niet beschikbaar</value>
   </data>
   <data name="ConfigPage_RenderSchemaUnavailableMessage" xml:space="preserve">
-    <value>Het gatewayschema kon niet worden weergegeven. Ruwe JSON blijft beschikbaar als alleen-lezen voorbeeld.</value>
+    <value>Het gatewayschema kan niet worden geladen of weergegeven. Vernieuw en probeer het opnieuw.</value>
   </data>
   <data name="ConfigPage_StatusGatewayRestartingTitle" xml:space="preserve">
     <value>Gateway wordt opnieuw gestart</value>
@@ -8257,4 +8257,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Time-out voor Gateway-spraak. Synthese kan voltooid zijn. Controleer de Gateway voordat u opnieuw probeert. Er is niet automatisch opnieuw geprobeerd.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway-spraak mislukt. Controleer de steminstellingen en het providerquotum. Geen lokale terugval of automatische herhaling.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
+  <data name="ConfigPage_DraftConnectionChanged" xml:space="preserve">
+    <value>De verbinding of het profiel is gewijzigd. Uw concept blijft bewaard, maar kan hier niet worden toegepast. Verwerp het en laad daarna de huidige gatewayconfiguratie.</value>
+  </data>
 </root>

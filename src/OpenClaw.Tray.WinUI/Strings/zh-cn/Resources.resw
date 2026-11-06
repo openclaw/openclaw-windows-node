@@ -1582,10 +1582,10 @@
     <value>原始 JSON</value>
   </data>
   <data name="ConfigPage_TextBlock_95.Text" xml:space="preserve">
-    <value>架构不可用</value>
+    <value>配置不可用</value>
   </data>
   <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
-    <value>无法加载网关配置架构。请使用 Web 仪表板编辑设置。</value>
+    <value>请刷新以重新加载网关配置和架构。你也可以打开网关面板。</value>
   </data>
   <data name="OpenDashboardButton.Content" xml:space="preserve">
     <value>打开仪表板</value>
@@ -6285,13 +6285,13 @@
     <value>配置不可用</value>
   </data>
   <data name="ConfigPage_RenderConfigUnavailableMessage" xml:space="preserve">
-    <value>无法呈现网关配置。请刷新后重试。</value>
+    <value>无法加载或显示网关配置。请刷新后重试。</value>
   </data>
   <data name="ConfigPage_RenderSchemaUnavailableTitle" xml:space="preserve">
     <value>架构不可用</value>
   </data>
   <data name="ConfigPage_RenderSchemaUnavailableMessage" xml:space="preserve">
-    <value>无法呈现网关架构。原始 JSON 仍可作为只读预览使用。</value>
+    <value>无法加载或显示网关架构。请刷新后重试。</value>
   </data>
   <data name="ConfigPage_StatusGatewayRestartingTitle" xml:space="preserve">
     <value>网关正在重启</value>
@@ -8256,4 +8256,7 @@
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 语音已超时。合成可能已完成。再次尝试前请检查 Gateway；未进行自动重试。</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 语音失败。请检查其语音配置和提供商配额。未回退到本地或自动重试。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 无法播放语音音频。请检查输出设备。未进行自动重试。</value></data>
+  <data name="ConfigPage_DraftConnectionChanged" xml:space="preserve">
+    <value>连接或配置文件已更改。草稿已保留，但无法在此应用。请放弃草稿，然后加载当前网关配置。</value>
+  </data>
 </root>
