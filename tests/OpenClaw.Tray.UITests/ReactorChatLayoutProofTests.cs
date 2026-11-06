@@ -29,7 +29,7 @@ using FluentIconCatalog = TrayRuntime::OpenClawTray.Helpers.FluentIconCatalog;
 namespace OpenClaw.Tray.UITests;
 
 [Collection(UICollection.Name)]
-public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
+public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
 {
     private Window? _captureWindow;
     private const string Draft = "Turn this into a schedule for tomorrow.";
@@ -2710,7 +2710,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         bool initialThreadIsExplicitSelection = true,
         SettingsManager? sandboxSettings = null,
         Action? onSandboxSettings = null,
-        SandboxStatusStore? sandboxStatus = null)
+        SandboxStatusStore? sandboxStatus = null,
+        Func<CancellationToken, Action?, Task<string?>>? voiceRequest = null)
     {
         await ui.ResetContainerAsync();
         using var settingsDirectory = new TempDirectory();
@@ -2735,7 +2736,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 session = new ChatComposerFactory(new WinUIDispatcher(ui.Dispatcher), settingsStore,
                     sandboxStatus ?? new SandboxStatusStore()).Create(
                     provider,
-                    new ChatComposerHostActions(null, () => { }, (_, _) => Task.FromResult<string?>(null), _ => { },
+                    new ChatComposerHostActions(null, () => { }, voiceRequest ?? ((_, _) => Task.FromResult<string?>(null)), _ => { },
                         SessionSelected: (key, _) => onSessionSelected?.Invoke(key),
                         SandboxSettingsNavigation: onSandboxSettings ?? (() => { })),
                     initialSpeakerMuted: false);

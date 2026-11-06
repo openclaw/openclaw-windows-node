@@ -8308,4 +8308,10 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>O tempo da fala da Gateway esgotou. A síntese pode ter terminado. Verifique a Gateway antes de tentar de novo. Não houve nova tentativa automática.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>A fala da Gateway falhou. Verifique a configuração de voz e a cota do provedor. Não houve alternativa local nem nova tentativa automática.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>O Windows não conseguiu reproduzir o áudio. Verifique o dispositivo de saída. Não houve nova tentativa automática.</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Abrir detalhes ao lado da conversa</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>Detalhes da ferramenta</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Estes detalhes não estão mais disponíveis. Reconecte-se, se necessário, e reabra a ferramenta na conversa atual.</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionar painel de detalhes</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>Voltar à conversa</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Mostrar detalhes</value></data>
 </root>

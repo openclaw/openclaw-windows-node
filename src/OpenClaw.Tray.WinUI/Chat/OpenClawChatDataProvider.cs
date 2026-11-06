@@ -106,6 +106,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// <summary>Last-known chat state from a previous session, used for pre-connection UI.</summary>
     internal LastChatState? CachedLastChatState => _state.CachedLastChatState;
     internal long ModelCatalogRevision => Interlocked.Read(ref _modelCatalogRevision);
+    internal long ToolDetailsGeneration => _state.HistoryGeneration;
+    internal bool ToolDetailsAvailable => _bridge.ToolDetailsAvailable;
+    internal ChatToolDetailsProfileState ToolDetailsProfileState => _bridge.ToolDetailsProfileState;
+    internal event EventHandler? ToolDetailsInvalidated
+    {
+        add => _bridge.ToolDetailsInvalidated += value;
+        remove => _bridge.ToolDetailsInvalidated -= value;
+    }
 
     public event EventHandler<ChatDataChangedEventArgs>? Changed;
     public event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;
