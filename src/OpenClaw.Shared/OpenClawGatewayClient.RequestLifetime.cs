@@ -51,10 +51,11 @@ public partial class OpenClawGatewayClient
             var generation = GetReadyConnectionGeneration("sessions.list");
             var payload = await SendResponseRequestAsync("sessions.list", new { includeDerivedTitles = true }, timeoutMs, generation)
                 .ConfigureAwait(false);
-            if (!TryGetSessionsPayload(payload, out var rows) || rows.ValueKind != System.Text.Json.JsonValueKind.Array)
+            if (!TryGetSessionsPayload(payload, out var rows) ||
+                !SessionRosterCollection.TryGetAuthoritativeRowCount(payload, rows, out var rowCount))
                 throw new System.Text.Json.JsonException("Invalid authoritative sessions.list collection.");
             var snapshot = ParseDetachedSessionRows(payload).ToArray();
-            if (snapshot.Length != rows.GetArrayLength() || snapshot.Select(row => row.Key).Distinct(StringComparer.Ordinal).Count() != snapshot.Length)
+            if (snapshot.Length != rowCount || snapshot.Select(row => row.Key).Distinct(StringComparer.Ordinal).Count() != snapshot.Length)
                 throw new System.Text.Json.JsonException("Invalid authoritative sessions.list rows.");
             CancellationToken.ThrowIfCancellationRequested();
             // Keep the existing SDK cache/event owner in sync, but return the

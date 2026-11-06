@@ -7,7 +7,6 @@ public sealed partial class GatewayFixtureProtocolTests
 {
     [Theory]
     [InlineData("{}")]
-    [InlineData("{\"sessions\":{}}")]
     [InlineData("{\"sessions\":null}")]
     [InlineData("{\"sessions\":[17]}")]
     [InlineData("{\"sessions\":[{}]}")]
@@ -32,6 +31,9 @@ public sealed partial class GatewayFixtureProtocolTests
 
     [Theory]
     [InlineData("{\"sessions\":[]}", false)]
+    [InlineData("{\"sessions\":{}}", false)]
+    [InlineData("{\"sessions\":{\"agent:research:fixture-other\":{\"sessionId\":\"authority-session\",\"displayName\":\"Independent wire row\"}}}", true)]
+    [InlineData("{\"agent:research:fixture-other\":{\"sessionId\":\"authority-session\",\"displayName\":\"Independent wire row\"}}", true)]
     [InlineData("{\"sessions\":[{\"key\":\"agent:research:fixture-other\",\"sessionId\":\"authority-session\",\"displayName\":\"Independent wire row\"}]}", true)]
     public async Task AuthoritativeRosterAcceptsValidEmptyAndNonemptyCollections(string payload, bool hasRow)
     {

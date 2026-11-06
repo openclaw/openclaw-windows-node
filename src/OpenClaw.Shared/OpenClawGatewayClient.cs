@@ -4696,10 +4696,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         GatewaySelfUpdated?.Invoke(this, info);
     }
 
-    private static bool IsSessionMapKey(string key) =>
-        key is not ("recent" or "count" or "path" or "defaults" or "ts") &&
-        (key.Equals("global", StringComparison.OrdinalIgnoreCase) ||
-         key.Contains(':') || key.Contains("agent") || key.Contains("session"));
+    private static bool IsSessionMapKey(string key) => SessionRosterCollection.IsLegacySessionKey(key);
 
     private void ParseSessions(JsonElement sessions)
     {
@@ -4748,25 +4745,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 }
                 else if (sessions.ValueKind == JsonValueKind.Object)
                 {
-                    foreach (var prop in sessions.EnumerateObject())
+                    foreach (var prop in SessionRosterCollection.EnumerateLegacyRows(sessions))
                     {
                         var sessionKey = prop.Name;
-
-                        if (!IsSessionMapKey(sessionKey))
-                            continue;
-
                         var item = prop.Value;
-
-                        if (item.ValueKind == JsonValueKind.String)
-                        {
-                            var strVal = item.GetString() ?? "";
-                            if (strVal.StartsWith("/") || strVal.Contains("/."))
-                                continue;
-                        }
-                        else if (item.ValueKind == JsonValueKind.Number)
-                        {
-                            continue;
-                        }
 
                         // Update or create session
                         if (!_sessions.TryGetValue(sessionKey, out var session))

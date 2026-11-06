@@ -460,12 +460,13 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
             registry.SetActive(Record.Id);
             Lifetime.ConfigureRegistry(registry);
         }
-        public static async Task<Harness> StartAsync(bool legacy = false)
+        public static async Task<Harness> StartAsync(bool legacy = false, JsonElement? sessionListing = null, bool loadHistory = true)
         {
             var temp = new TempDirectory();
             var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
             var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(allowChatSend: true), token);
             if (legacy) server.RejectUserProfileAsUnsupported();
+            if (sessionListing.HasValue) server.SetSessionListing(sessionListing.Value);
             var h = new Harness(temp, server, token);
             try
             {
@@ -473,8 +474,11 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
                 await h.Client.ConnectAsync();
                 await h.PumpUntilAsync(() => h.IsBound);
                 await h.Lifetime.Provider!.LoadAsync();
-                await h.Lifetime.Provider.LoadHistoryAsync(GatewayScenario.OtherSessionKey);
-                h.Lifetime.Provider.RememberSelectedThread(GatewayScenario.OtherSessionKey);
+                if (loadHistory)
+                {
+                    await h.Lifetime.Provider.LoadHistoryAsync(GatewayScenario.OtherSessionKey);
+                    h.Lifetime.Provider.RememberSelectedThread(GatewayScenario.OtherSessionKey);
+                }
                 await h.PumpUntilAsync(() => h.Server.Requests.Any(r => r.Method == "agents.list" && r.Outcome == "ok"));
                 return h;
             }

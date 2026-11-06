@@ -9,6 +9,42 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed partial class ChatProviderConnectionSecurityTests
 {
+    [Theory]
+    [InlineData("{\"sessions\":{}}")]
+    [InlineData("{\"sessions\":{\"agent:research:fixture-other\":{\"displayName\":\"Legacy row\"}}}")]
+    [InlineData("{\"sessions\":{\"agent:research:fixture-other\":\"Legacy row\"}}")]
+    public async Task SupportedLegacySessionMapCanMountFreshChat(string payload)
+    {
+        await using var h = await Harness.StartAsync(
+            sessionListing: JsonSerializer.Deserialize<JsonElement>(payload), loadHistory: false);
+        Assert.True(h.IsBound);
+        Assert.NotNull(h.Lifetime.Provider);
+        Assert.Equal(ChatVerificationState.None, h.Lifetime.VerificationState);
+        Assert.DoesNotContain(h.Server.Requests, request => request.Method == "chat.send");
+    }
+
+    [Fact]
+    public async Task LegacyMapWithoutImmutableSessionIdMountsFreshInsteadOfReusingHistory()
+    {
+        await using var h = await Harness.StartAsync();
+        var retained = h.Lifetime.Provider!;
+        var original = Assert.Single(h.Client.GetSessionList().Where(row => row.Key == GatewayScenario.OtherSessionKey));
+        Assert.False(string.IsNullOrEmpty(original.SessionId));
+        h.Server.SetSessionListing(JsonSerializer.SerializeToElement(new
+        {
+            sessions = new Dictionary<string, object>
+            {
+                [GatewayScenario.OtherSessionKey] = new { displayName = "Legacy key-only row" }
+            }
+        }));
+        await h.Client.RequestUserProfileAsync();
+        await h.PumpUntilAsync(() => h.IsBound && h.Lifetime.Provider is not null && !ReferenceEquals(retained, h.Lifetime.Provider));
+        Assert.NotSame(retained, h.Lifetime.Provider);
+        Assert.Equal(ChatVerificationState.None, h.Lifetime.VerificationState);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => retained.LoadAsync());
+        Assert.DoesNotContain(h.Server.Requests, request => request.Method == "chat.send");
+    }
+
     [Fact]
     public async Task VerificationRosterTimeoutCannotBeDivertedToAnIndependentBootstrapRead()
     {
