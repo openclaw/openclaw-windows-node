@@ -378,7 +378,7 @@ public class McpToolBridge
         ["app.menu"] =
             "Get tray menu state (status including overallState/nodeState/nodeError, session count, node count). Returns array of menu items.",
         ["app.search"] =
-            "Search the command palette and return matching commands. Args: query (string, required). Returns array of { Title, Subtitle, Icon }.",
+            "Search locally available navigation destinations without opening them or making Gateway requests. Args: query (string, required). Returns up to 10 { Title, Subtitle, Icon, Group, OpensDashboard, HasDashboardCounterpart }. Message snippets are excluded; settings results navigate rather than toggle.",
         ["app.dashboard.url"] =
             "Build the same gateway dashboard URL the tray opens. Args: path (string, optional). Returns { url, credentialSource, usesSharedGatewayToken, hasTokenQuery }.",
         ["app.chat.snapshot"] =

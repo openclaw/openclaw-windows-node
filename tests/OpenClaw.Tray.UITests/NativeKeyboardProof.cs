@@ -15,9 +15,13 @@ public sealed class NativeKeyboardTheoryAttribute : TheoryAttribute
 
 internal static class NativeKeyboardProof
 {
+    private static bool IsEnabled =>
+        Environment.GetEnvironmentVariable("OPENCLAW_RUN_KEYBOARD_PROOF") == "1" ||
+        Environment.GetEnvironmentVariable("OPENCLAW_RUN_GATEWAY_FIXTURE_UI") == "1";
+
     public static async Task ActivateAsync(nint window)
     {
-        if (Environment.GetEnvironmentVariable("OPENCLAW_RUN_KEYBOARD_PROOF") != "1" || window == 0)
+        if (!IsEnabled || window == 0)
             throw new InvalidOperationException("An explicitly enabled proof window is required.");
         for (var attempt = 0; attempt < 20; attempt++)
         {
@@ -33,9 +37,34 @@ internal static class NativeKeyboardProof
             $"Foreground is 0x{foreground:X}, PID {process}.");
     }
 
-    public static void Press(nint window, VirtualKey key, bool shift = false, bool control = false)
+    public static void Press(nint window, VirtualKey key, bool shift = false, bool control = false, bool alt = false)
     {
-        if (Environment.GetEnvironmentVariable("OPENCLAW_RUN_KEYBOARD_PROOF") != "1")
+        RequireInputWindow(window);
+        List<Input> sequence = [];
+        if (control) sequence.Add(Keyboard(VirtualKey.Control));
+        if (shift) sequence.Add(Keyboard(VirtualKey.Shift));
+        if (alt) sequence.Add(Keyboard(VirtualKey.Menu));
+        sequence.Add(Keyboard(key));
+        sequence.Add(Keyboard(key, up: true));
+        if (alt) sequence.Add(Keyboard(VirtualKey.Menu, up: true));
+        if (shift) sequence.Add(Keyboard(VirtualKey.Shift, up: true));
+        if (control) sequence.Add(Keyboard(VirtualKey.Control, up: true));
+        Inject(sequence.ToArray());
+    }
+
+    public static void TypeText(nint window, string text)
+    {
+        RequireInputWindow(window);
+        Inject(text.SelectMany(character => new[]
+        {
+            new Input { Type = 1, Data = new InputUnion { Keyboard = new KeyboardInput { ScanCode = character, Flags = 4 } } },
+            new Input { Type = 1, Data = new InputUnion { Keyboard = new KeyboardInput { ScanCode = character, Flags = 6 } } }
+        }).ToArray());
+    }
+
+    private static void RequireInputWindow(nint window)
+    {
+        if (!IsEnabled)
             throw new InvalidOperationException("Native keyboard proof was not explicitly enabled.");
         var foreground = GetForegroundWindow();
         if (window == 0 || foreground != window)
@@ -53,23 +82,17 @@ internal static class NativeKeyboardProof
         if ((GetKeyState((int)VirtualKey.CapitalLock) & 1) != 0)
             throw new InvalidOperationException("Turn off Caps Lock before running keyboard proof.");
 
-        List<Input> sequence = [];
-        if (control) sequence.Add(Keyboard(VirtualKey.Control));
-        if (shift) sequence.Add(Keyboard(VirtualKey.Shift));
-        sequence.Add(Keyboard(key));
-        sequence.Add(Keyboard(key, up: true));
-        if (shift) sequence.Add(Keyboard(VirtualKey.Shift, up: true));
-        if (control) sequence.Add(Keyboard(VirtualKey.Control, up: true));
-        var keys = sequence.ToArray();
+    }
+
+    private static void Inject(Input[] keys)
+    {
+        if (keys.Length == 0) return;
         var inserted = SendInput((uint)keys.Length, keys, Marshal.SizeOf<Input>());
         if (inserted != keys.Length)
         {
             var error = Marshal.GetLastWin32Error();
             // A partial injection must not leave the test's modifiers held down.
-            List<Input> releases = [Keyboard(key, up: true)];
-            if (shift) releases.Add(Keyboard(VirtualKey.Shift, up: true));
-            if (control) releases.Add(Keyboard(VirtualKey.Control, up: true));
-            var release = releases.ToArray();
+            var release = keys.Where(input => (input.Data.Keyboard.Flags & 2) != 0).ToArray();
             var released = SendInput((uint)release.Length, release, Marshal.SizeOf<Input>());
             throw new Win32Exception(error,
                 $"Keyboard proof injected {inserted}/{keys.Length} events; cleanup injected {released}/{release.Length} releases.");

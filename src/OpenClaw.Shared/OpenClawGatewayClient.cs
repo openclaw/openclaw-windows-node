@@ -1533,13 +1533,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000) =>
         SendResponseRequestAsync(method, parameters, timeoutMs);
 
+    private const string SearchRequestIdPrefix = "search:";
+
     public Task<JsonElement> SendWizardRequestOnConnectionAsync(
         string method, object? parameters, long connectionEpoch, int timeoutMs = 30000) =>
         SendResponseRequestAsync(method, parameters, timeoutMs, connectionEpoch);
 
     private async Task<JsonElement> SendResponseRequestAsync(
         string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null,
-        CancellationToken requestCancellationToken = default)
+        CancellationToken requestCancellationToken = default, bool searchRead = false)
     {
         using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken, requestCancellationToken);
         var requestToken = requestCancellation.Token;
@@ -1559,7 +1561,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             throw new InvalidOperationException($"{HandshakePendingError}; refusing to send '{method}'");
 
         _logger.Info($"[GatewayClient] Sending frame: {method}");
-        var requestId = Guid.NewGuid().ToString();
+        var requestId = (searchRead ? SearchRequestIdPrefix : "") + Guid.NewGuid().ToString();
         var pending = _pendingRequests.RegisterWizard(requestId, method);
 
         try
@@ -1568,6 +1570,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     SerializeRequest(requestId, method, parameters),
                     connectionGeneration,
                     requestToken)
+                .WaitAsync(requestToken)
                 .ConfigureAwait(false);
             if (!sent)
                 throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");
@@ -2653,6 +2656,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         _pendingRequests.TryTake(requestId, out var pending);
         var requestMethod = pending?.Method;
+        // A cancelled detached search must not fall through to legacy payload-based roster updates.
+        if (pending is null && requestId?.StartsWith(SearchRequestIdPrefix, StringComparison.Ordinal) == true)
+            return;
 
         switch (pending?.Category)
         {
@@ -2682,10 +2688,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     wizardCompletion.TryFault(requestMethod == "tts.speak"
                         ? new GatewaySpeechException(ClassifySpeechRejection(message))
                         : QuestionRequestError(pending.Method, root)
-                            ?? GatewayRequestErrors.Create(
+                            ?? (requestId?.StartsWith(SearchRequestIdPrefix, StringComparison.Ordinal) == true ? new GatewayRequestException(message,
+                                root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
+                                    ? GetString(error, "code") : null) : GatewayRequestErrors.Create(
                                 message,
                                 TryGetErrorTopLevelCode(root),
-                                TryGetErrorDetailCode(root)));
+                                TryGetErrorDetailCode(root))));
                 }
                 else if (root.TryGetProperty("payload", out var wizPayload))
                 {
