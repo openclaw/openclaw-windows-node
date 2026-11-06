@@ -178,16 +178,18 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
             await CaptureIfRequestedAsync(run, "pins-offline-retained-disabled.png");
 
+            // Any Gateway-dependent catalog page that is not pinned above proves the offline picker.
+            const string offlinePinTag = "usage";
             Invoke(FindById(run, "WorkspacePagesCustomize")!);
-            await WaitUiAsync(run, () => FindById(run, "WorkspacePagesToggle:channels") is not null, "offline picker");
+            await WaitUiAsync(run, () => FindById(run, $"WorkspacePagesToggle:{offlinePinTag}") is not null, "offline picker");
             foreach (var tag in identities.Keys)
             {
                 var toggle = FindById(run, $"WorkspacePagesToggle:{tag}")!;
                 Assert.True(toggle.Current.IsEnabled);
                 Assert.Equal(ToggleState.On, ((TogglePattern)toggle.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
             }
-            Invoke(FindById(run, "WorkspacePagesToggle:channels")!);
-            await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:channels") is { Current.IsEnabled: false },
+            Invoke(FindById(run, $"WorkspacePagesToggle:{offlinePinTag}")!);
+            await WaitUiAsync(run, () => FindById(run, $"WorkspacePinnedPage:{offlinePinTag}") is { Current.IsEnabled: false },
                 "offline picker can add an unavailable page");
             Assert.Equal(composerIdentity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
             ReleaseHandshake();
@@ -199,7 +201,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 Assert.Equal(identity, retained.GetRuntimeId());
                 Assert.True(retained.Current.IsEnabled);
             }
-            Assert.True(FindById(run, "WorkspacePinnedPage:channels")!.Current.IsEnabled);
+            Assert.True(FindById(run, $"WorkspacePinnedPage:{offlinePinTag}")!.Current.IsEnabled);
             Invoke(FindById(run, "WorkspacePinnedPage:sessions")!);
             await WaitUiAsync(run, () => FindById(run, "SessionsPageMarker")?.Current.IsOffscreen == false, "restored pin remains usable");
             await CaptureIfRequestedAsync(run, "pins-reconnected-enabled.png");
@@ -1338,13 +1340,14 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         return element!;
     }
 
-    private static async Task WaitUiAsync(GatewayFixtureRun run, Func<bool> condition, string description)
+    private static async Task WaitUiAsync(GatewayFixtureRun run, Func<bool> condition, string description,
+        TimeSpan? timeout = null)
     {
         await run.WaitForAsync(() =>
         {
             try { return Task.FromResult(condition()); }
             catch (ElementNotAvailableException) { return Task.FromResult(false); }
-        }, description);
+        }, description, timeout);
     }
 
     private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name)

@@ -23,34 +23,6 @@ public class MenuDisplayHelperTests
         Assert.Equal("⚪", icon);
     }
 
-    // ── GetChannelStatusIcon ─────────────────────────────────────────────────
-
-    [Theory]
-    [InlineData("active", "🟢")]
-    [InlineData("ACTIVE", "🟢")]
-    public void GetChannelStatusIcon_HealthyStatus_ReturnsGreen(string status, string expected)
-    {
-        Assert.Equal(expected, MenuDisplayHelper.GetChannelStatusIcon(status));
-    }
-
-    [Fact]
-    public void GetChannelStatusIcon_NullStatus_ReturnsNeutral()
-    {
-        Assert.Equal("⚪", MenuDisplayHelper.GetChannelStatusIcon(null));
-    }
-
-    [Fact]
-    public void GetChannelStatusIcon_EmptyStatus_ReturnsNeutral()
-    {
-        Assert.Equal("⚪", MenuDisplayHelper.GetChannelStatusIcon(""));
-    }
-
-    [Fact]
-    public void GetChannelStatusIcon_UnknownStatus_ReturnsRed()
-    {
-        Assert.Equal("🔴", MenuDisplayHelper.GetChannelStatusIcon("unknown-bad-status"));
-    }
-
     // ── TruncateText ─────────────────────────────────────────────────────────
 
     [Fact]
