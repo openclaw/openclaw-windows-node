@@ -1,3 +1,5 @@
+using OpenClaw.TestSupport;
+
 namespace OpenClaw.Shared.Tests;
 
 public sealed class StartupTaskInspectionTests
@@ -81,7 +83,9 @@ public sealed class StartupTaskInspectionTests
             return;
 
         var taskName = "OpenClaw-roundtrip-test-" + Guid.NewGuid().ToString("N");
-        var executable = Path.Combine(Path.GetTempPath(), "OpenClaw-roundtrip-test.exe");
+        // Each run owns its executable, so a concurrent run cannot delete it before RegisterForSetup checks it.
+        using var directory = new TempDirectory("openclaw-roundtrip-");
+        var executable = directory.Combine("OpenClaw-roundtrip-test.exe");
         File.WriteAllBytes(executable, []);
         try
         {
@@ -97,7 +101,6 @@ public sealed class StartupTaskInspectionTests
         finally
         {
             WindowsStartupTaskRegistration.Unregister(taskName);
-            File.Delete(executable);
         }
     }
 }
