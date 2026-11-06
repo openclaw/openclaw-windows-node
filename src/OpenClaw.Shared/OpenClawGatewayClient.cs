@@ -245,13 +245,34 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private static GatewayErrorKind ClassifyTransportObservation(Exception error)
     {
-        var fallback = GatewayErrorKind.Unknown;
+        GatewayErrorKind? httpStatusKind = null;
+        var hasNetworkCause = false;
         for (Exception? current = error; current is not null; current = current.InnerException)
         {
             if (current is System.Security.Authentication.AuthenticationException)
                 return GatewayErrorKind.Tls;
+            if (current is System.Net.Http.HttpRequestException
+                { HttpRequestError: System.Net.Http.HttpRequestError.SecureConnectionError })
+            {
+                return GatewayErrorKind.Tls;
+            }
+            if (httpStatusKind is null &&
+                current is System.Net.Http.HttpRequestException { StatusCode: { } statusCode })
+            {
+                httpStatusKind = ClassifyHttpStatus(statusCode);
+            }
             if (current is System.Net.Sockets.SocketException or TimeoutException)
-                return GatewayErrorKind.Network;
+                hasNetworkCause = true;
+        }
+
+        if (httpStatusKind is { } statusKind)
+            return statusKind;
+        if (hasNetworkCause)
+            return GatewayErrorKind.Network;
+
+        var fallback = GatewayErrorKind.Unknown;
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
             var kind = GatewayErrorClassifier.Classify(current.Message);
             if (kind != GatewayErrorKind.Unknown)
                 return kind;
@@ -260,6 +281,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         return fallback;
     }
+
+    private static GatewayErrorKind? ClassifyHttpStatus(System.Net.HttpStatusCode statusCode) =>
+        (int)statusCode switch
+        {
+            401 or 403 => GatewayErrorKind.Auth,
+            429 => GatewayErrorKind.RateLimited,
+            >= 500 and <= 599 => GatewayErrorKind.Server,
+            _ => null
+        };
 
     private void ObserveHandshake(long generation, GatewayHandshakePhase phase,
         GatewayErrorKind? failureKind = null, int? retryAfterMs = null)
@@ -516,7 +546,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     protected override void OnConnectionException(Exception exception)
     {
         Volatile.Write(ref _startupRejection, null);
-        RaiseConnectionFailure(GatewayErrorClassifier.Classify(exception.ToString()));
+        RaiseConnectionFailure(ClassifyTransportObservation(exception));
     }
 
     protected override void OnReconnectAuthorizationDenied(
