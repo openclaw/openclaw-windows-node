@@ -1142,7 +1142,6 @@ jobs:
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
       RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
-      OpenClawSignedCleanupHostPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', runner.temp) || '' }}
 
     steps:
     - uses: actions/checkout@v7
@@ -1175,6 +1174,12 @@ jobs:
       with:
         name: openclaw-signed-cleanup-host
         path: ${{ runner.temp }}\signed-cleanup-host
+
+    - name: Bind signed cleanup host path
+      if: needs.sign-cleanup-host.result == 'success'
+      shell: pwsh
+      run: |
+        "OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-x64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
@@ -1211,7 +1216,6 @@ jobs:
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
       RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
-      OpenClawSignedCleanupHostPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', runner.temp) || '' }}
 
     steps:
     - uses: actions/checkout@v7
@@ -1244,6 +1248,12 @@ jobs:
       with:
         name: openclaw-signed-cleanup-host
         path: ${{ runner.temp }}\signed-cleanup-host
+
+    - name: Bind signed cleanup host path
+      if: needs.sign-cleanup-host.result == 'success'
+      shell: pwsh
+      run: |
+        "OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-arm64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
@@ -1283,8 +1293,6 @@ jobs:
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
       RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
-      # Keep downloaded build inputs out of the clean-source provenance check.
-      OpenClawSignedCleanupHostPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', runner.temp) || '' }}
       DEV_MSIX_REVISION: ${{ github.run_number }}
       MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo || needs.metadata.outputs.msixVersionInfo }}
       MSIX_SOURCE_VERSION: ${{ needs.reserve-msix-version.outputs.sourceVersion || needs.metadata.outputs.msixSourceVersion }}
@@ -1333,6 +1341,13 @@ jobs:
       with:
         name: openclaw-signed-cleanup-host
         path: ${{ runner.temp }}\signed-cleanup-host
+
+    # Resolve runner-owned paths at step runtime, outside the source checkout.
+    - name: Bind signed cleanup host path
+      if: needs.sign-cleanup-host.result == 'success'
+      shell: pwsh
+      run: |
+        "OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV
 
     - name: Build and validate unsigned Store MSIX
       shell: pwsh
