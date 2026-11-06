@@ -444,7 +444,9 @@ The native control owns keyboard activation, focus, and accessible expansion sta
 This is an allowlisted Markdown extension, not general HTML rendering. Only
 `<details>`, `<details open>`, `<summary>`, and their matching closing wrappers
 are recognized, with wrapper lines indented by at most three spaces. Disclosures
-inside Markdown code, quotes, lists, or table cells are not activated. Unsupported
+inside Markdown code, quotes, lists, or table cells are not activated. As in GitHub
+Markdown, a closing wrapper on its own line ends a preceding table and closes the
+disclosure instead of becoming a table row. Unsupported
 attributes, empty summaries, and incomplete streaming wrappers remain literal
 text. A summary not closed before a blank line or another disclosure wrapper also
 stays literal and cannot borrow a later section's terminator. Summary text is inert:
