@@ -493,6 +493,12 @@ The fake binds a numeric IPv4 loopback listener to an OS-assigned port. The
 launcher never takes over a standard Gateway/MCP port or terminates a process
 by name. MCP bind collisions have a bounded retry limited to the owned child.
 Cleanup refuses reparse points and only removes the run's owned data.
+After the owned app exits, profile removal waits up to 10 seconds for Windows
+sharing or lock violations to clear. Set
+`OPENCLAW_GATEWAY_FIXTURE_CLEANUP_TIMEOUT_SECONDS` to a positive finite number
+to override that cleanup deadline. A persistent lock remains an explicit
+timeout with the original I/O error; other cleanup errors propagate immediately.
+This does not retry the test or relax its assertions.
 
 This remains a desktop application, not a general OS sandbox. Only the
 documented browse/preferences and inert interactive-chat workflows are supported on a developer machine.
