@@ -8,7 +8,7 @@ public sealed partial class GatewayFixtureUiTests
 {
     private const string MainSearchDraft = "Keep this draft through main search";
     private const string OrderingProbe = "Z";
-    private static readonly TimeSpan MainSearchForegroundTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan FixtureForegroundTimeout = TimeSpan.FromSeconds(5);
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
@@ -781,7 +781,7 @@ public sealed partial class GatewayFixtureUiTests
     // process (a flyout popup is a separate window of the same process) and no modifier key is held.
     private static void Send(GatewayFixtureRun run, AutomationElement window, string keys)
     {
-        var deadline = DateTime.UtcNow + MainSearchForegroundTimeout;
+        var deadline = DateTime.UtcNow + FixtureForegroundTimeout;
         while (!ForegroundBelongsTo(run.AppProcessId))
         {
             if (DateTime.UtcNow > deadline)

@@ -574,6 +574,77 @@ Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
     -Message "Tray UI tests must collect the interrupted test sequence on a five-minute hang."
+$trayUiCrashWindow = Get-StepBlock -Text $uiJob -Name "Mark Tray UI crash metadata window"
+Assert-Contains -Text $trayUiCrashWindow -Expected "GITHUB_OUTPUT" `
+    -Message "Tray UI crash metadata must be bounded by an explicit start time."
+$trayUiCrashMetadata = Get-StepBlock -Text $uiJob -Name "Capture non-memory Tray UI crash metadata"
+foreach ($token in @(
+        "if: always()",
+        "steps.tray-ui-crash-window.outcome == 'success'",
+        "./scripts/Capture-CiTestHostCrashMetadata.ps1",
+        "TRAY_UI_TEST_STARTED_UTC"
+    )) {
+    Assert-Contains -Text $trayUiCrashMetadata -Expected $token `
+        -Message "Tray UI crash metadata capture is missing '$token'."
+}
+if ($uiJob.IndexOf('name: Mark Tray UI crash metadata window', [StringComparison]::Ordinal) -ge
+    $uiJob.IndexOf('name: Run Tray UI Tests', [StringComparison]::Ordinal) -or
+    $uiJob.IndexOf('name: Run Tray UI Tests', [StringComparison]::Ordinal) -ge
+    $uiJob.IndexOf('name: Capture non-memory Tray UI crash metadata', [StringComparison]::Ordinal)) {
+    throw 'Tray UI crash metadata must bracket only the Tray UI test run.'
+}
+$crashMetadataScript = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\Capture-CiTestHostCrashMetadata.ps1') -Raw
+foreach ($token in @(
+        'LogName = "Application"',
+        'Id = 1000',
+        'ExceptionCode',
+        'FaultingOffset',
+        'ModuleName',
+        'Get-WinEvent'
+    )) {
+    Assert-Contains -Text $crashMetadataScript -Expected $token `
+        -Message "Non-memory Tray UI crash metadata must include '$token'."
+}
+foreach ($token in @('LocalDumps', 'MiniDumpWriteDump', 'Get-WinEvent -LogName "Security"')) {
+    Assert-NotContains -Text $crashMetadataScript -Unexpected $token `
+        -Message "Tray UI crash metadata must not collect memory dumps or unrelated event logs: '$token'."
+}
+. (Join-Path $repoRootPath 'scripts\Capture-CiTestHostCrashMetadata.ps1')
+$syntheticCrashEvent = @'
+<Event><EventData>
+  <Data Name="AppName">testhost.exe</Data>
+  <Data Name="AppPath">C:\runner\temp\testhost.exe</Data>
+  <Data Name="ModuleName">C:\Windows\System32\KERNELBASE.dll</Data>
+  <Data Name="ExceptionCode">0xc0000005</Data>
+  <Data Name="FaultingOffset">0x0000000000001234</Data>
+  <Data Name="Message">must-not-be-emitted</Data>
+</EventData></Event>
+'@
+$syntheticMetadata = ConvertTo-CiTestHostCrashMetadata `
+    -EventXml $syntheticCrashEvent `
+    -EventId 1000 `
+    -TimeCreated ([DateTimeOffset]::UtcNow)
+if ($syntheticMetadata.application -ne 'testhost.exe' -or
+    $syntheticMetadata.faultingModule -ne 'KERNELBASE.dll' -or
+    $syntheticMetadata.exceptionCode -ne '0xc0000005' -or
+    $syntheticMetadata.faultingOffset -ne '0x0000000000001234' -or
+    $syntheticMetadata.PSObject.Properties.Name -contains 'Message' -or
+    $syntheticMetadata.PSObject.Properties.Name -contains 'path') {
+    throw 'Tray UI crash metadata must retain only the whitelisted process-failure fields.'
+}
+$syntheticNonTestEvent = @'
+<Event><EventData>
+  <Data Name="AppName">notepad.exe</Data>
+  <Data Name="ModuleName">C:\Windows\System32\KERNELBASE.dll</Data>
+  <Data Name="ExceptionCode">0xc0000005</Data>
+</EventData></Event>
+'@
+if ($null -ne (ConvertTo-CiTestHostCrashMetadata `
+            -EventXml $syntheticNonTestEvent `
+            -EventId 1000 `
+            -TimeCreated ([DateTimeOffset]::UtcNow))) {
+    throw 'Tray UI crash metadata must exclude unrelated application failures.'
+}
 
 $fixtureStep = Get-StepBlock -Text $uiJob -Name "Run mock Gateway application scenarios"
 foreach ($token in @(
