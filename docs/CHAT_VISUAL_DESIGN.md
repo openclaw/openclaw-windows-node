@@ -159,7 +159,9 @@ This is an allowlisted Markdown extension, not general HTML rendering. Only
 are recognized, with wrapper lines indented by at most three spaces. Disclosures
 inside Markdown code, quotes, lists, or table cells are not activated. Unsupported
 attributes, empty summaries, and incomplete streaming wrappers remain literal
-text. Summary text is inert; its HTML attributes and markup are never executed.
+text. A summary not closed before a blank line or another disclosure wrapper also
+stays literal and cannot borrow a later section's terminator. Summary text is inert;
+its HTML attributes and markup are never executed.
 Body links and images retain the existing inert sanitization. Text selection
 still belongs to each native Markdown text control, not to the whole message.
 

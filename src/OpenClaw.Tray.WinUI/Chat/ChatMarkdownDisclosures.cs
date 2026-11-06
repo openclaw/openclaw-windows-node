@@ -292,7 +292,9 @@ internal static class ChatMarkdownDisclosures
         var searchLength = Math.Min(text.Length - summaryStart, MaxSummaryLength + "</summary>".Length);
         summarySearchChars += searchLength;
         var close = text.IndexOf("</summary>", summaryStart, searchLength, StringComparison.OrdinalIgnoreCase);
-        if (close < 0)
+        // An incomplete summary stays literal instead of borrowing the terminator of a
+        // later paragraph or disclosure.
+        if (close < 0 || CrossesStructuralBoundary(text.AsSpan(summaryStart, close - summaryStart)))
             return false;
 
         after = close + "</summary>".Length;
@@ -306,6 +308,30 @@ internal static class ChatMarkdownDisclosures
             return false;
         bodyStart = newline < 0 ? text.Length : newline + 1;
         return true;
+    }
+
+    // A summary ends within its own block: a blank line or another disclosure wrapper
+    // before the terminator means the summary was never closed.
+    private static bool CrossesStructuralBoundary(ReadOnlySpan<char> summary)
+    {
+        if (summary.Contains("<details", StringComparison.OrdinalIgnoreCase) ||
+            summary.Contains("</details", StringComparison.OrdinalIgnoreCase) ||
+            summary.Contains("<summary", StringComparison.OrdinalIgnoreCase))
+            return true;
+        // Only an interior line can be blank; the first and last segments share their
+        // lines with the summary wrappers.
+        var newline = summary.IndexOf('\n');
+        while (newline >= 0)
+        {
+            var rest = summary[(newline + 1)..];
+            newline = rest.IndexOf('\n');
+            if (newline < 0)
+                return false;
+            if (rest[..newline].IsWhiteSpace())
+                return true;
+            summary = rest;
+        }
+        return false;
     }
 
     private sealed record Token(
