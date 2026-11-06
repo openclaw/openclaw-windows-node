@@ -681,6 +681,61 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Theory]
+    [InlineData("main", "Fixture Main")]
+    [InlineData("research", "Fixture Research")]
+    public async Task RealClient_AgentIdentityServesEachRosterAgent(string agentId, string name)
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateBrowse();
+        Assert.Contains("agent.identity.get", scenario.ReadMethods);
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+
+        var identity = await connected.Client.SendWizardRequestAsync("agent.identity.get", new { agentId });
+
+        Assert.Equal(agentId, identity.GetProperty("agentId").GetString());
+        Assert.Equal(name, identity.GetProperty("name").GetString());
+        Assert.Contains(server.Requests, request => request.Method == "agent.identity.get" && request.Outcome == "ok");
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task RealClient_AgentIdentityServesAnAgentCreatedByTheScenario()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateBrowse(allowAgentCreation: true), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+
+        var created = await client.SendWizardRequestAsync(
+            "agents.create", new { name = "Fixture Created Agent", workspace = "/fixture/created" });
+        var agentId = created.GetProperty("agentId").GetString();
+        var identity = await client.SendWizardRequestAsync("agent.identity.get", new { agentId });
+
+        Assert.Equal(agentId, identity.GetProperty("agentId").GetString());
+        Assert.Equal("Fixture Created Agent", identity.GetProperty("name").GetString());
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task RealClient_AgentIdentityForAnUnknownAgentIsAProtocolErrorNotAnUnexpectedRequest()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            connected.Client.SendWizardRequestAsync("agent.identity.get", new { agentId = "not-a-roster-agent" }));
+
+        Assert.Contains("Unknown agent id", error.Message);
+        Assert.Contains(
+            server.Requests,
+            request => request.Method == "agent.identity.get" && request.Outcome == "error:INVALID_REQUEST");
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task RealClient_ScopedConfiguredCatalogRetainsCurrentModelOutsideManualPolicy(bool publishedModelCatalog)
@@ -724,6 +779,8 @@ public sealed partial class GatewayFixtureProtocolTests
     [InlineData("question.list", """{"sessionKey":"agent:main:main"}""", "Unsupported fixture request parameter")]
     [InlineData("projects.list", """{"unexpected":true}""", "Unsupported fixture request parameter")]
     [InlineData("environments.list", """{"unexpected":true}""", "Unsupported fixture request parameter")]
+    [InlineData("agent.identity.get", """{"agentId":"main","typo":true}""", "Unsupported fixture request parameter")]
+    [InlineData("agent.identity.get", "{}", "Missing agentId")]
     [InlineData("channels.status", """{"probe":"yes"}""", "must be a boolean")]
     [InlineData("channels.status", """{"timeoutMs":-1}""", "positive integer")]
     [InlineData("channels.status", """{"unexpected":true}""", "Unsupported fixture request parameter")]
