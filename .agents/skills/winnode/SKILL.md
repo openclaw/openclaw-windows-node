@@ -488,11 +488,13 @@ Get tray menu state (status, session count, node count). No params.
 Returns array of menu items; the status item includes `status`, `overallState`, `nodeState`, and `nodeError`.
 
 ### app.search
-Search the command palette and return matching commands.
+Search locally available navigation destinations without opening them or making
+Gateway requests. Settings results identify their destination rather than toggle
+anything. Message snippets are excluded.
 ```
 {"query": "string"}          // required
 ```
-Returns array of `{ Title, Subtitle, Icon }`.
+Returns up to 10 `{ Title, Subtitle, Icon, Group, OpensDashboard, HasDashboardCounterpart }`.
 
 ### app.dashboard.url
 Build the same gateway dashboard URL the tray opens.

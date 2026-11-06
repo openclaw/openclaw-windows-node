@@ -59,10 +59,20 @@
   "scopePrefixes": ["sessions.", "agents.files.", "commands."],
   "methods": [
     {
+      "method": "sessions.search",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["query", "limit", "scope"],
+      "responseEnvelope": ["results"],
+      "responseEnvelopeSource": "Task<GatewaySearchResult> SearchSessionsAsync(",
+      "responseFields": ["sessionKey", "sessionId", "messageId", "role", "timestamp", "snippet", "score"],
+      "notes": "Verified against v2026.10.9 (8b18b5578f66eab1501cba4cef2310d88bfb9a41), packages/gateway-protocol/src/schema/sessions-search.ts. Scope cannot be combined with top-level agentId/sessionKeys. Optional response sessions, indexing, truncated and archivedTranscriptsExcluded."
+    },
+    {
       "method": "sessions.list",
       "kind": "request",
       "windowsUsage": "used",
-      "requestFields": ["agentId", "archived", "includeDerivedTitles"],
+      "requestFields": ["agentId", "archived", "includeDerivedTitles", "search", "limit", "includeGlobal", "includeUnknown", "configuredAgentsOnly", "excludeSubagents", "excludeCron", "excludeSystem", "excludeDock"],
       "responseEnvelope": ["sessions"],
       "responseEnvelopeSource": "TryGetSessionsPayload(JsonElement payload",
       "responseFields": [

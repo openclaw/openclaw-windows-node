@@ -8195,6 +8195,48 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Cette question est en cours de résolution. Actualisez pour vérifier son état.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choisissez une réponse valide pour chaque question.</value></data>
+  <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>Rechercher dans OpenClaw</value></data>
+  <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>Rechercher dans OpenClaw</value></data>
+  <data name="Search_Results" xml:space="preserve"><value>Résultats de recherche</value></data>
+  <data name="Search_Empty" xml:space="preserve"><value>Aucun résultat correspondant.</value></data>
+  <data name="Search_Dashboard" xml:space="preserve"><value>Tableau de bord</value></data>
+  <data name="Search_NoCounterpart" xml:space="preserve"><value>Ce résultat n&apos;a pas d&apos;équivalent dans le tableau de bord.</value></data>
+  <data name="SearchMore.Content" xml:space="preserve"><value>Afficher plus</value></data>
+  <data name="SearchRetry.Content" xml:space="preserve"><value>Réessayer</value></data>
+  <data name="Search_Group_Chats" xml:space="preserve"><value>Conversations</value></data>
+  <data name="Search_Group_Messages" xml:space="preserve"><value>Dans les messages</value></data>
+  <data name="Search_Group_Settings" xml:space="preserve"><value>Paramètres</value></data>
+  <data name="Search_Group_Automations" xml:space="preserve"><value>Automatisations</value></data>
+  <data name="Search_Group_Skills" xml:space="preserve"><value>Compétences</value></data>
+  <data name="Search_Group_Agents" xml:space="preserve"><value>Agents</value></data>
+  <data name="Search_Group_Models" xml:space="preserve"><value>Modèles</value></data>
+  <data name="Search_Group_Dashboard" xml:space="preserve"><value>Tableau de bord</value></data>
+  <data name="Search_Status_Loading" xml:space="preserve"><value>{0} : recherche…</value></data>
+  <data name="Search_Status_Offline" xml:space="preserve"><value>{0} : connectez-vous à la passerelle pour rechercher.</value></data>
+  <data name="Search_Status_Denied" xml:space="preserve"><value>{0} : une autorisation de lecture est nécessaire.</value></data>
+  <data name="Search_Status_TooLong" xml:space="preserve"><value>{0} : utilisez au maximum 4096 caractères.</value></data>
+  <data name="Search_Status_Unavailable" xml:space="preserve"><value>{0} : indisponible sur cette passerelle.</value></data>
+  <data name="Search_Status_Partial" xml:space="preserve"><value>{0} : les résultats peuvent être incomplets. Précisez votre recherche.</value></data>
+  <data name="Search_Status_Failed" xml:space="preserve"><value>{0} : échec de la recherche. Les autres résultats restent disponibles.</value></data>
+  <data name="Search_Dashboard_Approvals" xml:space="preserve"><value>Approbations</value></data>
+  <data name="Search_Dashboard_Secrets" xml:space="preserve"><value>Secrets</value></data>
+  <data name="Search_Dashboard_Models" xml:space="preserve"><value>Fournisseurs de modèles</value></data>
+  <data name="Search_Dashboard_Automation" xml:space="preserve"><value>Réveil et signal périodique</value></data>
+  <data name="Search_Dashboard_Mcp" xml:space="preserve"><value>Serveurs MCP de la passerelle</value></data>
+  <data name="Search_Dashboard_Memory" xml:space="preserve"><value>Mémoire</value></data>
+  <data name="Search_Dashboard_Security" xml:space="preserve"><value>Sécurité de la passerelle</value></data>
+  <data name="Search_Dashboard_Logs" xml:space="preserve"><value>Journaux de la passerelle</value></data>
+  <data name="Search_Dashboard_Systems" xml:space="preserve"><value>Systèmes</value></data>
+  <data name="Search_Dashboard_Dashboards" xml:space="preserve"><value>Tableaux de bord</value></data>
+  <data name="Search_Dashboard_Plugins" xml:space="preserve"><value>Extensions</value></data>
+  <data name="Search_Dashboard_Apps" xml:space="preserve"><value>Applications</value></data>
+  <data name="Search_Dashboard_Meetings" xml:space="preserve"><value>Réunions</value></data>
+  <data name="Search_Dashboard_Activity" xml:space="preserve"><value>Activité de la passerelle</value></data>
+  <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portails</value></data>
+  <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Arbres de travail</value></data>
+  <data name="Search_TargetUnavailable" xml:space="preserve"><value>L&apos;élément demandé n&apos;est plus disponible ici.</value></data>
+  <data name="Search_Compatibility" xml:space="preserve"><value>Certaines destinations du tableau de bord ne sont pas disponibles pour cette version de la passerelle.</value></data>
+  <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0} : choisissez d'abord un assistant.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Supprimer l’élément</value>
   </data>

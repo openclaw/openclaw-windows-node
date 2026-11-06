@@ -1029,6 +1029,28 @@ The Colophon catalog now uses the actual geometry, semantic alpha brushes and Fl
 
 ## Workspace shell
 
+### Navigation search popup
+
+Workspace and Settings retain their existing 40px search icon buttons. There is
+no permanent search input in the pane or title bar. Click, Ctrl+E or Ctrl+K opens
+the shared native search popup; Settings also retains Ctrl+F.
+
+`Controls/SearchHost.xaml` uses native TextBox and grouped ListView controls.
+The search content width is 500 logical pixels before native flyout padding,
+clamped to the client width; the list is capped at 420 logical pixels before
+client-height clamping. The shared presenter style removes the stock flyout's
+narrower width cap so the content is not horizontally clipped. Content uses the existing 8px spacing and 40px minimum
+row height. Theme resources own secondary text, focus, selection and flyout
+surfaces. Matches use semibold text. Browser results carry a localized Dashboard
+label and external indicator. Page results reuse native destination names
+without command prefixes, and their icons come from `FluentIconCatalog`, not
+emoji rendered in a symbol font. Result descriptions wrap inside the native list
+scroller. Conditional More and Retry actions sit beside the search input. Source
+status is exposed nonvisually through the input's UI Automation ItemStatus and
+text-bearing notifications; there is no visible status or keyboard-help/footer
+region covering result text. These are implementation dimensions, not a claim
+of current-head visible or accessibility proof.
+
 The landing window is the native Home and Sessions workspace (`Windows/WorkspaceWindow.xaml`, shipped in #1541). The reference is reconciled against production commit `dc9f6345821075362580bd598cc32e4f2aa6a18a` and the supplied 125%-scale screenshot. It shows that screenshot's expanded, no-agent/no-session state, Owner / Error footer and one notification, not invented connected conversations. It is a Mica window with a 32px title bar, a 256px left `NavigationView` pane, and a content host that mounts the Reactor chat when connected. Settings remains an independent native companion window.
 
 - **Pane and toolbar.** The `NavigationViewExpandedPaneBackground` reveals Mica; there is no extra pane border or general 8px inset. PaneHeader margin is 4,8,4,8. The 40x40 pane button sits at x=4, y=8 below the title bar. Back/Forward align to the right of the same 40px toolbar with an 8px gap and the default SubtleButton padding, yielding 40px widths. Their disabled state represents empty navigation history. The selector sits 8px below the toolbar, with 4,8,28,8 padding and a trailing 12px U+E70D glyph. It shows No agents loaded until production has a roster; selected agents use `AgentIdentityBadge`.

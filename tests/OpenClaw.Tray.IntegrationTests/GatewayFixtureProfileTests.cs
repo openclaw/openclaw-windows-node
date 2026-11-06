@@ -120,6 +120,67 @@ public sealed class GatewayFixtureProfileTests
     }
 
     [Fact]
+    public async Task CleanupWaitsForTransientLogSharingLock()
+    {
+        var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        var root = profile.RunDirectory;
+        using var environment = new EnvironmentScope("OPENCLAW_GATEWAY_FIXTURE_CLEANUP_TIMEOUT_SECONDS", "5");
+        using var log = new FileStream(Path.Combine(profile.DataDirectory, "openclaw-tray.log"),
+            FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanup = Task.Run(() =>
+        {
+            started.SetResult();
+            profile.Dispose();
+        });
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.ThrowsAsync<TimeoutException>(() => cleanup.WaitAsync(TimeSpan.FromMilliseconds(100)));
+            Assert.True(Directory.Exists(root));
+            log.Dispose();
+            await cleanup.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(Directory.Exists(root));
+        }
+        finally
+        {
+            log.Dispose();
+            try { await cleanup; }
+            finally
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CleanupSharingLockDeadlineIsVisibleAndCleanupCanResumeAfterRelease()
+    {
+        var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        var root = profile.RunDirectory;
+        using var environment = new EnvironmentScope("OPENCLAW_GATEWAY_FIXTURE_CLEANUP_TIMEOUT_SECONDS", "0.1");
+        using var log = new FileStream(Path.Combine(profile.DataDirectory, "openclaw-tray.log"),
+            FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
+        try
+        {
+            var error = Assert.Throws<TimeoutException>(profile.Dispose);
+            Assert.IsType<IOException>(error.InnerException);
+            Assert.Contains(root, error.Message, StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(profile.DataDirectory, "openclaw-tray.log")));
+            log.Dispose();
+            profile.Dispose();
+            Assert.False(Directory.Exists(root));
+        }
+        finally
+        {
+            log.Dispose();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ChildEnvironmentClearsInheritedOverridesWithoutChangingParent()
     {
         using var app = CreateFakeSupportedApp();
