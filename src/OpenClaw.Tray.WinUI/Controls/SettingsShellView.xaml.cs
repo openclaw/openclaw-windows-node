@@ -467,6 +467,8 @@ internal sealed partial class SettingsShellView : UserControl
         _commandSearchShow.ShowAt(SearchAnchor);
     }
 
+    internal bool DeferCommandSearchUntilClosed() => _commandSearchShow.DeferUntilClosed();
+
     /// <summary>
     /// Waits until the requested native setup page is the one shown and ready. Fails if the view
     /// moved to another section or request, so a stale wait can never report success.
@@ -915,10 +917,13 @@ internal sealed partial class SettingsShellView : UserControl
         if (page is null || target.Focus is null) return;
         var client = CurrentApp.GatewayClient;
         var epoch = client?.ServerHandshakeGeneration;
+        var searchGeneration = SearchController?.Generation;
         void Reveal()
         {
             if (!_active || !ReferenceEquals(ContentFrame.Content, page) ||
                 !ReferenceEquals(client, CurrentApp.GatewayClient) || epoch != client?.ServerHandshakeGeneration) return;
+            if (SearchController is { } search && search.IsOwner(SettingsSearchHost) &&
+                search.Generation != searchGeneration) return;
             switch (page)
             {
                 case PermissionsPage permissions: permissions.RevealSearchSetting(target.Focus); break;

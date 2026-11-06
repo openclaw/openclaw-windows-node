@@ -113,6 +113,8 @@ public sealed class PermissionSettingsWriterRoutingTests
         Assert.DoesNotContain("Navigate(", open);
         Assert.Contains("_settings.OpenCommandCenter()", open);
         Assert.Contains("_workspaceSearchShow.ShowAt(anchor)", open);
+        Assert.Contains("_workspaceSearchShow.DeferUntilClosed()", open);
+        Assert.Contains("_settings?.DeferCommandSearchUntilClosed()", open);
         Assert.Contains("new FlyoutShowRequest(WorkspaceSearchFlyout, OpenCommandCenter)", workspace);
         Assert.Contains("Root.IsLoaded", open);
         Assert.Contains("OpenModalDialog() is { } dialog", open);
@@ -126,6 +128,10 @@ public sealed class PermissionSettingsWriterRoutingTests
         Assert.Contains("VirtualKey.E", keyDown);
         Assert.Contains("(IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)", keyDown);
         Assert.DoesNotContain("Ctrl+F", workspace);
+        var settings = ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
+        var reveal = ExtractMethodBodyBySignature(settings, "internal void RevealSearchTarget(");
+        Assert.Contains("search.IsOwner(SettingsSearchHost)", reveal);
+        Assert.Contains("search.Generation != searchGeneration", reveal);
     }
 
     [Fact]

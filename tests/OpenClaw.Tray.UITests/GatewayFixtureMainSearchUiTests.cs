@@ -286,6 +286,28 @@ public sealed partial class GatewayFixtureUiTests
             var after = await run.InvokeAsync("app.settings.get", new { name = "NodeCameraEnabled" });
             Assert.Equal(before.GetRawText(), after.GetRawText());
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "chat.send");
+            await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is { Current.IsOffscreen: false },
+                "different Settings page before searching for Camera");
+            Assert.Null(FindInApp(run, new AndCondition(
+                new PropertyCondition(AutomationElement.NameProperty, "Camera"),
+                new PropertyCondition(AutomationElement.HasKeyboardFocusProperty, true))));
+            SetForeground(window);
+            Send(run, window, "^k");
+            await WaitUiAsync(run, () => FindById(run, "SettingsSearchBox") is not null, "Settings search");
+            edit = SearchEdit(run, "SettingsSearchBox");
+            ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("camera");
+            await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name
+                .StartsWith("Camera.", StringComparison.Ordinal) == true, "Settings camera result");
+            edit.SetFocus();
+            Send(run, window, "{ENTER}");
+            await WaitUiAsync(run, () => FindById(run, "SettingsSearchBox") is null &&
+                FindInApp(run, new AndCondition(
+                    new PropertyCondition(AutomationElement.NameProperty, "Camera"),
+                    new PropertyCondition(AutomationElement.HasKeyboardFocusProperty, true))) is not null,
+                "ordinary Settings search still reveals its target while its original flyout closes");
+            Assert.Equal(before.GetRawText(),
+                (await run.InvokeAsync("app.settings.get", new { name = "NodeCameraEnabled" })).GetRawText());
         });
     }
 

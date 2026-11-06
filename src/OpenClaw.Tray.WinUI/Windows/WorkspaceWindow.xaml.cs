@@ -237,6 +237,8 @@ public sealed partial class WorkspaceWindow : WindowEx
             }));
             return;
         }
+        if (_workspaceSearchShow.DeferUntilClosed() || _settings?.DeferCommandSearchUntilClosed() == true)
+            return;
         if (IsSettingsVisible && !Destination.Embedded)
         {
             if (_settings is { IsLoaded: true }) _settings.OpenCommandCenter();

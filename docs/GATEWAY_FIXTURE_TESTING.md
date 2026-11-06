@@ -20,7 +20,12 @@ The main-search UI regressions exercise icon/shortcut opening and immediate
 reopening, shared Settings search, draft-preserving dismissal, read-only setting
 navigation and native conversation navigation from a message hit. Keyboard
 regressions also exercise Enter on Show more/Retry, immediate cross-shell
-reopening, absent Config sections and Dashboard-only skill results. Focused
+reopening, absent Config sections and Dashboard-only skill results.
+Cross-surface search waits for the previous flyout's existing close owner to
+settle before opening the visible surface. A delayed destination reveal cannot
+take focus from a newer search generation; an ordinary Settings search still
+reveals its target while its original flyout closes. The immediate Enter/Ctrl+K
+journey has no added delay or retry. Focused
 cases cover a failed Config reveal followed by manual navigation to a section
 with the same field name, and session title/recency changes while result or
 input focus is active, including user-controlled result scroll. The
