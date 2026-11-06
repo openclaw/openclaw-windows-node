@@ -148,26 +148,6 @@ public class ChannelHealth
             { "stopped", "idle", "paused", "configured", "pending", "connecting", "reconnecting" }
             .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
-    // Maps each status string (case-insensitive) to its tray label; never mutated after startup.
-    private static readonly FrozenDictionary<string, string> s_statusLabels =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["ok"]            = "[ON]",
-            ["connected"]     = "[ON]",
-            ["running"]       = "[ON]",
-            ["active"]        = "[ON]",
-            ["linked"]        = "[LINKED]",
-            ["ready"]         = "[READY]",
-            ["connecting"]    = "[...]",
-            ["reconnecting"]  = "[...]",
-            ["error"]         = "[ERR]",
-            ["disconnected"]  = "[ERR]",
-            ["stale"]         = "[STALE]",
-            ["configured"]    = "[OFF]",
-            ["stopped"]       = "[OFF]",
-            ["not configured"] = "[N/A]",
-        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
-
     /// <summary>
     /// Returns true if the given status string represents a healthy/running channel.
     /// Use this instead of inline status checks to keep the healthy-status set consistent.
@@ -180,21 +160,6 @@ public class ChannelHealth
     /// </summary>
     public static bool IsIntermediateStatus(string? status) =>
         status is not null && s_intermediateStatuses.Contains(status);
-
-    public string DisplayText
-    {
-        get
-        {
-            // FrozenDictionary lookup avoids allocating a lowercased copy of Status.
-            var label = s_statusLabels.GetValueOrDefault(Status, "[OFF]");
-            var detail = IsLinked && AuthAge != null ? $"linked · {AuthAge}" : Status;
-            if (Error != null) detail += $" ({Error})";
-            return $"{label} {Capitalize(Name)}: {detail}";
-        }
-    }
-
-    private static string Capitalize(string s) =>
-        string.IsNullOrEmpty(s) ? s : char.ToUpper(s[0]) + s[1..];
 }
 
 public static class ChannelHealthParser

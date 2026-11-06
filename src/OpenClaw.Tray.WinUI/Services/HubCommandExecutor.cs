@@ -50,6 +50,14 @@ internal sealed partial class HubCommandExecutor
         }
     }
 
+    internal void Execute(HubSearchTarget target, Action<HubSearchTarget> navigate)
+    {
+        if (target.Kind == HubSearchTargetKind.Dashboard)
+            _openDashboard(target.Value);
+        else
+            navigate(target);
+    }
+
     private bool ToggleSetting(HubSettingToggle toggle)
     {
         var settings = _settings();

@@ -125,7 +125,18 @@ public sealed partial class SettingsPage : Page
         bool canDownloadSetup = false, string? address = null)
     {
         var message = LocalizationHelper.GetString(messageKey);
-        StoreMigrationStatus.Message = address is null ? message : string.Format(CultureInfo.CurrentCulture, message, address);
+        var presented = StoreMigrationLinkFailure.Present(message, address);
+        StoreMigrationStatus.Message = presented.Instruction;
+        if (presented.SelectableAddress is null)
+        {
+            StoreMigrationSetupAddress.Text = "";
+            StoreMigrationSetupAddress.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            StoreMigrationSetupAddress.Text = presented.SelectableAddress;
+            StoreMigrationSetupAddress.Visibility = Visibility.Visible;
+        }
         StoreMigrationDownloadSetup.Visibility = canDownloadSetup ? Visibility.Visible : Visibility.Collapsed;
         StoreMigrationStatus.Severity = severity;
         // Re-open a bar the user never dismissed so a second result is announced
@@ -339,10 +350,10 @@ public sealed partial class SettingsPage : Page
     private void LoadGatewaySection(SettingsManager settings)
     {
         var setupStatePath = Path.Combine(SetupExistingGatewayClassifier.ResolveLocalDataPath(), "setup-state.json");
-        var activeGatewayAccess = GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive());
-
-        _localGatewayInstalled = File.Exists(setupStatePath)
-            || LocalGatewayUrlClassifier.IsLocalGatewayUrl(settings.GatewayUrl);
+        var activeGateway = CurrentApp.Registry?.GetActive();
+        var activeGatewayAccess = GatewayHostAccessClassifier.Classify(activeGateway);
+        _localGatewayInstalled = SetupExistingGatewayClassifier.HasWslInstallationForSettings(
+            File.Exists(setupStatePath), CurrentApp.Registry?.GetAll(), activeGateway, settings.GatewayUrl);
 
         OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway
             ? Visibility.Visible : Visibility.Collapsed;

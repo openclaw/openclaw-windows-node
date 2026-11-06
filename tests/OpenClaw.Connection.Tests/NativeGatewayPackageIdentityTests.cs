@@ -1,3 +1,6 @@
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text;
 using OpenClaw.Connection.NativeGateway;
 
 namespace OpenClaw.Connection.Tests;
@@ -22,7 +25,25 @@ public sealed class NativeGatewayPackageIdentityTests
 
     private const string Patched = "OpenClawFoundation.OpenClawGateway-source";
     private const string PatchedFamily = Patched + "_rfcbke2p71se2";
-    private const string StoreFamily = NativeGatewayPackageIdentity.StoreName + "_rfcbke2p71se2";
+    private const string StoreFamily = NativeGatewayPackageIdentity.StoreFamilyName;
+
+    // Staged-package registration targets this literal; it must stay the Windows publisher ID of StorePublisher.
+    [Fact]
+    public void StoreFamilyName_SuffixIsWindowsPublisherIdOfStorePublisher()
+    {
+        const string alphabet = "0123456789abcdefghjkmnpqrstvwxyz";
+        var hash = SHA256.HashData(Encoding.Unicode.GetBytes(NativeGatewayPackageIdentity.StorePublisher));
+        var bits = BinaryPrimitives.ReadUInt64BigEndian(hash);
+        var id = new StringBuilder();
+        // The first 64 hash bits plus one zero pad bit, read as 13 five-bit groups from the most significant end.
+        for (var group = 0; group < 13; group++)
+        {
+            var shift = 59 - 5 * group;
+            var value = shift >= 0 ? (bits >> shift) & 0x1F : (bits << -shift) & 0x1F;
+            id.Append(alphabet[(int)value]);
+        }
+        Assert.Equal(NativeGatewayPackageIdentity.StoreFamilyName, NativeGatewayPackageIdentity.StoreName + "_" + id);
+    }
 
     // Together these rows fail if the new-setup and saved-profile predicates are swapped, or if the
     // exact-family check is dropped from saved profiles or applied to new setup.

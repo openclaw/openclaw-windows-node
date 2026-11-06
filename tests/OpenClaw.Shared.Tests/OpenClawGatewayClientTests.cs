@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text.Json;
 using Xunit;
@@ -15,59 +17,6 @@ public class OpenClawGatewayClientTests
     private static readonly TimeSpan CloseHandshakeTimeout = TimeSpan.FromSeconds(3);
     // Session-event regressions explicitly unset the refresh-window override.
     private static readonly TimeSpan SessionRefreshQuietInterval = TimeSpan.FromMilliseconds(600);
-
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public async Task WebLoginFailure_OmitsEchoedPairingImageFromResultAndLogs(bool wait, bool wrapped)
-    {
-        var image = wrapped
-            ? "data:image/png;base64,\r\n c3ludGhldGlj cGFpcmluZ3BheWxvYWQ="
-            : "data:image/png;base64,c3ludGhldGljcGFpcmluZ3BheWxvYWQ=";
-        using var server = new LoopbackWebSocketServer();
-        using var identity = new TempDirectory("web-login-error-");
-        await server.StartAsync();
-        var logger = new TestLogger();
-        var helper = new GatewayClientTestHelper(
-            gatewayUrl: server.WebSocketUrl, identityPath: identity.Path, logger: logger);
-        using var client = helper.Client;
-        await client.ConnectAsync();
-        helper.MarkHandshakeReady();
-        var operation = wait
-            ? CheckWaitAsync()
-            : CheckStartAsync();
-        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5));
-        using var frame = JsonDocument.Parse(request);
-        Assert.Equal(wait ? "web.login.wait" : "web.login.start", frame.RootElement.GetProperty("method").GetString());
-        if (wait)
-            Assert.True(frame.RootElement.GetProperty("params").GetProperty("currentQrDataUrl").GetString() == image,
-                "The Gateway request must retain the synthetic pairing image.");
-        await server.SendTextAsync(JsonSerializer.Serialize(new
-        {
-            type = "res", id = ReadRequestId(request), ok = false,
-            error = new { message = wait ? image + " synthetic login failure" : "synthetic login failure " + image },
-        }));
-        await operation.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Contains(logger.Logs, line => line.Contains(wait
-            ? "<omitted> synthetic login failure" : "synthetic login failure <omitted>", StringComparison.Ordinal));
-        Assert.False(logger.Logs.Any(line => line.Contains("c3ludGhldGlj", StringComparison.Ordinal)),
-            "Logs must omit the echoed synthetic pairing payload.");
-
-        async Task CheckWaitAsync()
-        {
-            var result = Assert.IsType<WebLoginWaitResult>(await client.WebLoginWaitAsync(image));
-            Assert.Equal("<omitted> synthetic login failure", result.Error);
-            Assert.Equal(result.Error, result.RawResponse);
-        }
-
-        async Task CheckStartAsync()
-        {
-            var result = Assert.IsType<WebLoginStartResult>(await client.WebLoginStartAsync());
-            Assert.Equal("synthetic login failure <omitted>", result.Error);
-            Assert.Equal(result.Error, result.RawResponse);
-        }
-    }
 
     [Fact]
     public void LateWebLoginError_OmitsPairingImageFromUntrackedResponseLog()
@@ -787,14 +736,6 @@ public class OpenClawGatewayClientTests
         public long? GetChallengeTimestampMs() =>
             GetPrivateField<long?>("_challengeTimestampMs");
 
-        public string? GetLastSkillsStatusAgentId()
-        {
-            var field = typeof(OpenClawGatewayClient).GetField(
-                "_lastSkillsStatusAgentId",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            return field!.GetValue(_client) as string;
-        }
-
         public List<string> CaptureAuthenticationFailedEvents()
         {
             var events = new List<string>();
@@ -1047,8 +988,11 @@ public class OpenClawGatewayClientTests
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
-    [Fact]
-    public async Task ConfirmedMutation_RefusesCapturedEpochAfterConnectionChanged()
+    [Theory]
+    [InlineData("delete")]
+    [InlineData("wizard")]
+    [InlineData("config.patch")]
+    public async Task ConfirmedMutation_RefusesCapturedEpochAfterConnectionChanged(string request)
     {
         using var server = new LoopbackWebSocketServer();
         using var identity = new TempDirectory("session-mutation-");
@@ -1057,9 +1001,15 @@ public class OpenClawGatewayClientTests
         using var client = helper.Client;
         await client.ConnectAsync();
         helper.MarkHandshakeReady();
-        var epoch = client.SessionMutationConnectionEpoch!.Value;
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            client.DeleteSessionConfirmedAsync("agent:test:session", epoch - 1));
+        var stale = client.SessionMutationConnectionEpoch!.Value - 1;
+        using var emptyConfig = JsonDocument.Parse("{}");
+        Task send = request switch
+        {
+            "delete" => client.DeleteSessionConfirmedAsync("agent:test:session", stale),
+            "wizard" => client.SendWizardRequestOnConnectionAsync("config.get", new { }, stale),
+            _ => client.PatchConfigOnConnectionAsync(emptyConfig.RootElement, "h1", stale),
+        };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => send);
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
@@ -1098,6 +1048,55 @@ public class OpenClawGatewayClientTests
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SearchSessions_CallerCancellationCleansItsRequestWithoutClosingTheConnection(bool messages)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("search-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        using var cancellation = new CancellationTokenSource();
+        var search = client.SearchSessionsAsync("private-query", messages, cancellation.Token);
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        using (var json = JsonDocument.Parse(request))
+        {
+            Assert.Equal(messages ? "sessions.search" : "sessions.list", json.RootElement.GetProperty("method").GetString());
+            var parameters = json.RootElement.GetProperty("params");
+            Assert.Equal("private-query", parameters.GetProperty(messages ? "query" : "search").GetString());
+            if (messages)
+            {
+                Assert.Equal(25, parameters.GetProperty("limit").GetInt32());
+                Assert.False(parameters.GetProperty("scope").GetProperty("includeGlobal").GetBoolean());
+                Assert.False(parameters.TryGetProperty("sessionKeys", out _));
+                Assert.False(parameters.TryGetProperty("agentId", out _));
+            }
+        }
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => search);
+        Assert.Equal(0, helper.GetPendingRequestCount());
+        var rosterUpdates = 0;
+        client.SessionsUpdated += (_, _) => Interlocked.Increment(ref rosterUpdates);
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res", id = ReadRequestId(request), ok = true,
+            payload = new { sessions = new[] { new { key = "agent:main:stale-search", label = "Stale result" } } }
+        }));
+        var probe = client.SendWizardRequestAsync("health");
+        var next = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res", id = ReadRequestId(next), ok = true, payload = new { ok = true }
+        }));
+        Assert.True((await probe).GetProperty("ok").GetBoolean());
+        Assert.Equal(0, rosterUpdates);
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
     [Fact]
     public async Task SendWizardRequestAsync_GatewayError_PropagatesUnchangedAndCleansTracking()
     {
@@ -1130,6 +1129,48 @@ public class OpenClawGatewayClientTests
         Assert.Equal("wizard rejected", exception.Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
+
+    [Theory]
+    [InlineData("FORBIDDEN", null, "FORBIDDEN", null)]
+    [InlineData("UNAVAILABLE", "AUTHENTICATED_PROFILE_UNAVAILABLE", "UNAVAILABLE", "AUTHENTICATED_PROFILE_UNAVAILABLE")]
+    [InlineData("FORBIDDEN", "MISSING_SCOPE", "FORBIDDEN", "MISSING_SCOPE")]
+    [InlineData("please leak this message", "lower case", null, null)]
+    public async Task SendWizardRequestAsync_GatewayError_ExposesOnlyAllowlistedCodes(
+        string code, string? detail, string? expectedCode, string? expectedDetail)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("wizard-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var responseTask = client.SendWizardRequestAsync("users.self", timeoutMs: 10_000);
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await server.SendTextAsync(
+            JsonSerializer.Serialize(new
+            {
+                type = "res",
+                id = ReadRequestId(request),
+                ok = false,
+                error = new { code, message = "secret text", details = detail is null ? null : new { code = detail } }
+            }));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+
+        Assert.True(GatewayRequestErrors.TryGetCodes(exception, out var actualCode, out var actualDetail));
+        Assert.Equal(expectedCode ?? "UNKNOWN", actualCode);
+        Assert.Equal(expectedDetail, actualDetail);
+        Assert.DoesNotContain("secret", actualCode + actualDetail);
+    }
+
+    [Fact]
+    public void LocalRefusalCarriesNoGatewayCodes() =>
+        Assert.False(GatewayRequestErrors.TryGetCodes(new InvalidOperationException("hello-ok pending"), out _, out _));
 
     [Fact]
     public async Task PatchConfigDetailedAsync_RejectedSave_DoesNotDiscloseTransformedOrPartialEchoes()
@@ -1697,20 +1738,6 @@ public class OpenClawGatewayClientTests
         var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: false, identityPath: tmpDir);
 
         Assert.False(helper.Client.UseV2Signature);
-    }
-
-    [Fact]
-    public async Task RequestSkillsStatusAsync_RemembersRequestedAgentScope()
-    {
-        var helper = new GatewayClientTestHelper();
-
-        await helper.Client.RequestSkillsStatusAsync("agent-alpha");
-
-        Assert.Equal("agent-alpha", helper.GetLastSkillsStatusAgentId());
-
-        await helper.Client.RequestSkillsStatusAsync();
-
-        Assert.Null(helper.GetLastSkillsStatusAgentId());
     }
 
     [Fact]
@@ -5917,6 +5944,84 @@ public class OpenClawGatewayClientTests
     }
 
     // --- HandleRequestError: pairing required ---
+
+    [Fact]
+    public void StartupUnavailable_UntrackedAndNonConnectResponsesCannotChangeStartupState()
+    {
+        using var identity = new TempDirectory("startup-response-");
+        var helper = new GatewayClientTestHelper(identityPath: identity.Path);
+        using var client = helper.Client;
+        var startups = new List<GatewayStartupUnavailable>();
+        client.StartupUnavailableReceived += (_, startup) => startups.Add(startup);
+        const string response = """
+            {"type":"res","id":"startup","ok":false,"error":{"code":"UNAVAILABLE","retryable":true,"details":{"reason":"startup-sidecars"}}}
+            """;
+
+        helper.ProcessRawMessage(response);
+        helper.TrackPendingRequest("startup", "health");
+        helper.ProcessRawMessage(response);
+        Assert.Empty(startups);
+        Assert.Null(client.StartupUnavailable);
+
+        helper.TrackPendingRequest("startup", "connect");
+        helper.ProcessRawMessage(response);
+        Assert.Single(startups);
+        Assert.Equal(500, client.StartupUnavailable?.RetryAfterMs);
+    }
+
+    [Theory]
+    [InlineData("AUTH_TOKEN_MISMATCH", GatewayErrorKind.Auth)]
+    [InlineData("AUTH_DEVICE_TOKEN_MISMATCH", GatewayErrorKind.DeviceTokenMismatch)]
+    [InlineData("PROTOCOL_MISMATCH", GatewayErrorKind.ProtocolMismatch)]
+    public void StartupReason_CannotOverrideStructuredTerminalFailure(string code, GatewayErrorKind expected)
+    {
+        using var identity = new TempDirectory("startup-terminal-");
+        var helper = new GatewayClientTestHelper(identityPath: identity.Path);
+        using var client = helper.Client;
+        var failures = helper.CaptureConnectionFailures();
+        helper.TrackPendingRequest("startup", "connect");
+        helper.ProcessRawMessage(JsonSerializer.Serialize(new
+        {
+            type = "res", id = "startup", ok = false,
+            error = new { code = "UNAVAILABLE", retryable = true, details = new { reason = "startup-sidecars", code } }
+        }));
+
+        Assert.Null(client.StartupUnavailable);
+        Assert.Contains(expected, failures);
+        Assert.False(helper.ShouldAutoReconnectForTest());
+    }
+
+    [Fact]
+    public async Task StartupUnavailable_FreshUpgradePending_DoesNotReportPreviousRejection()
+    {
+        using var identity = new TempDirectory("startup-upgrade-");
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: $"ws://127.0.0.1:{port}", identityPath: identity.Path);
+        using var client = helper.Client;
+        helper.TrackPendingRequest("startup", "connect");
+        helper.ProcessRawMessage("""
+            {"type":"res","id":"startup","ok":false,"error":{"code":"UNAVAILABLE","retryable":true,"details":{"reason":"startup-sidecars"}}}
+            """);
+        Assert.NotNull(client.StartupUnavailable);
+        helper.OnDisconnected();
+        Assert.NotNull(client.StartupUnavailable);
+
+        var connect = client.ConnectAsync();
+        try
+        {
+            using var peer = await listener.AcceptTcpClientAsync().WaitAsync(CloseHandshakeTimeout);
+            Assert.False(connect.IsCompleted);
+            Assert.Null(client.StartupUnavailable);
+        }
+        finally
+        {
+            client.Dispose();
+            await connect.WaitAsync(CloseHandshakeTimeout);
+        }
+    }
 
     [Fact]
     public void HandleRequestError_PairingRequired_SetsPairingBlockFlag()

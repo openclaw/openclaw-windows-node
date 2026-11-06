@@ -35,12 +35,77 @@ public sealed partial class CronPage : Page
     private CancellationTokenSource? _infoDismissCts = null; // auto-dismiss timer for InfoBar
     private readonly AsyncListLoadingState _cronLoading = new();
     private bool _submittingJob;
+    private string? _searchJobId;
+    private CancellationTokenSource? _searchJobLifetime;
+
+    internal void RevealSearchJob(string id)
+    {
+        _searchJobId = id;
+        RevealLoadedSearchJob();
+        if (_searchJobId is not null)
+        {
+            _searchJobLifetime?.Cancel();
+            _searchJobLifetime?.Dispose();
+            _searchJobLifetime = new();
+            _ = LoadSearchJobAsync(id, _searchJobLifetime.Token);
+        }
+    }
+
+    private async Task LoadSearchJobAsync(string id, CancellationToken ct)
+    {
+        var client = CurrentApp.GatewayClient;
+        var epoch = client?.ServerHandshakeGeneration;
+        if (client is null || _editingJobId is not null) { ShowSearchFailure(); return; }
+        try
+        {
+            var data = await client.ReadSearchCatalogAsync("cron.list",
+                new { includeDisabled = true, sortBy = "name", sortDir = "asc" }, ct);
+            if (ct.IsCancellationRequested || !IsLoaded || _searchJobId != id ||
+                !ReferenceEquals(client, CurrentApp.GatewayClient) || epoch != client.ServerHandshakeGeneration) return;
+            if (_editingJobId is not null) { ShowSearchFailure(); return; }
+            if (!data.TryGetProperty("jobs", out var jobs) ||
+                !jobs.EnumerateArray().Any(job => job.TryGetProperty("id", out var key) && key.GetString() == id))
+            {
+                ShowSearchFailure();
+                return;
+            }
+            UpdateFromGateway(data);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or
+            NotSupportedException or InvalidDataException or JsonException or OperationCanceledException)
+        {
+            if (!ct.IsCancellationRequested && IsLoaded)
+            {
+                Logger.Warn("[Search] automation-destination-unavailable");
+                ShowSearchFailure();
+            }
+        }
+    }
+
+    private void ShowSearchFailure()
+    {
+        ShowCronAppNotification(LocalizationHelper.GetString("Search_Results"),
+            LocalizationHelper.GetString("Search_TargetUnavailable"), AppNotificationSeverity.Warning, "search-job-unavailable");
+    }
+
+    private void RevealLoadedSearchJob()
+    {
+        if (_searchJobId is not { } id) return;
+        var card = JobsListPanel.Children.OfType<FrameworkElement>().FirstOrDefault(item => item.Tag as string == id);
+        if (card is null) return;
+        card.StartBringIntoView();
+        _searchJobId = null;
+    }
 
     public CronPage()
     {
         InitializeComponent();
         Unloaded += (_, _) =>
         {
+            _searchJobLifetime?.Cancel();
+            _searchJobLifetime?.Dispose();
+            _searchJobLifetime = null;
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
             CancelAllRunRefreshLoops();
         };
@@ -1358,6 +1423,7 @@ public sealed partial class CronPage : Page
         JobsListPanel.Children.Clear();
         foreach (var vm in _jobs)
             JobsListPanel.Children.Add(BuildJobCard(vm));
+        RevealLoadedSearchJob();
     }
 
     private Border BuildJobCard(CronJobViewModel vm)

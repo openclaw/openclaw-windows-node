@@ -38,56 +38,23 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         Assert.Equal(0, platform.ExpectedDistroChecks);
     }
 
-    [Fact]
-    public void EvaluateWslRelayBinary_NonCanonicalPathSkipsSignatureVerification()
-    {
-        var signatureChecked = false;
-
-        var result = WindowsManagedLocalGatewayPortPlatform.EvaluateWslRelayBinary(
-            @"C:\Temp\WSL\wslrelay.exe",
-            _ =>
-            {
-                signatureChecked = true;
-                return AuthenticodeTrustResult.Trusted();
-            });
-
-        Assert.False(result.IsTrusted);
-        Assert.Contains("path is not canonical", result.Detail);
-        Assert.False(signatureChecked);
-    }
-
-    [Fact]
-    public void VerifyMicrosoftSignedFile_AcceptsWindowsWslBinary()
-    {
-        var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-        var wslPath = Path.Combine(windowsDir, "System32", "wsl.exe");
-
-        var result = WindowsAuthenticodeVerifier.VerifyMicrosoftSignedFile(wslPath);
-
-        Assert.True(result.IsTrusted, result.Detail);
-    }
-
-    [Fact]
-    public void VerifyMicrosoftSignedFile_RejectsUnsignedAssembly()
-    {
-        var result = WindowsAuthenticodeVerifier.VerifyMicrosoftSignedFile(
-            typeof(ManagedLocalGatewayPortProvenanceServiceTests).Assembly.Location);
-
-        Assert.False(result.IsTrusted);
-        Assert.Contains("Authenticode verification failed", result.Detail);
-    }
-
     [Theory]
-    [InlineData("CN=Microsoft Windows, O=Microsoft Corporation, C=US", true)]
-    [InlineData("CN=Microsoft Corporation Test Certificate, O=Example Corp, C=US", false)]
-    [InlineData("CN=Other Publisher, O=Microsoft Corporation Services, C=US", false)]
-    public void HasMicrosoftPublisherIdentity_RequiresExactOrganization(
-        string subject,
-        bool expected)
+    [InlineData(@"WSL\wslrelay.exe", true)]
+    [InlineData(@"WindowsApps\MicrosoftCorporationII.WindowsSubsystemForLinux_2.6.3.0_arm64__8wekyb3d8bbwe\wslrelay.exe", true)]
+    [InlineData(@"WindowsApps\Contoso.App_1.0.0.0_x64__abcdefghijklm\wslrelay.exe", false)]
+    [InlineData(@"WindowsApps\MicrosoftCorporationII.WindowsSubsystemForLinux_2.6.3.0_x64__abcdefghijklm\wslrelay.exe", false)]
+    [InlineData(@"WindowsApps\MicrosoftCorporationII.WindowsSubsystemForLinux_2.6.3.0_x64__8wekyb3d8bbwe\nested\wslrelay.exe", false)]
+    public void InspectWslRelayBinary_TrustsOnlyWslInstallLocations(string relativePath, bool expected)
     {
-        Assert.Equal(
-            expected,
-            WindowsAuthenticodeVerifier.HasMicrosoftPublisherIdentity(subject));
+        var path = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            relativePath);
+
+        var result = new WindowsManagedLocalGatewayPortPlatform().InspectWslRelayBinary(path);
+
+        Assert.Equal(expected, result.IsTrusted);
+        if (!expected)
+            Assert.Contains(path, result.Detail);
     }
 
     [Fact]
@@ -203,9 +170,9 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
     }
 
     [Fact]
-    public void Inspect_SpoofedWslRelayPath_IsUnknown()
+    public void Inspect_RelayOutsideInstallLocationsWithoutDistroProof_IsUnknown()
     {
-        var platform = new FakePlatform { TrustedWslRelay = false };
+        var platform = new FakePlatform { TrustedWslRelay = false, ExpectedDistroListening = false };
         platform.Listeners.Add(new WindowsTcpListenerInfo(
             IPAddress.Loopback,
             18789,
@@ -217,36 +184,57 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         var result = service.Inspect(ManagedRecord());
 
         Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
-        Assert.Contains("Authenticode verification failed", result.Detail);
+        Assert.Contains("outside the trusted WSL install locations", result.Detail);
+    }
+
+    [Fact]
+    public void Inspect_RelayOutsideInstallLocationsWithDistroProof_IsExpectedWithWarning()
+    {
+        var platform = new FakePlatform { TrustedWslRelay = false };
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            18789,
+            101,
+            "wslrelay",
+            @"D:\Tools\WSL\wslrelay.exe"));
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+
+        var result = service.Inspect(ManagedRecord());
+
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, result.Kind);
+        Assert.Contains("outside the trusted WSL install locations", result.Detail);
+        Assert.Contains("confirms it owns port 18789", result.Detail);
+        Assert.Equal(1, platform.ExpectedDistroChecks);
     }
 
     [Fact]
     public void Inspect_DualStackUntrustedRelay_DeduplicatesFailureDetail()
     {
-        var platform = new FakePlatform { TrustedWslRelay = false };
+        var platform = new FakePlatform { TrustedWslRelay = false, ExpectedDistroListening = false };
         var start = new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc);
         platform.Listeners.Add(new WindowsTcpListenerInfo(
             IPAddress.Loopback,
             18789,
             101,
             "wslrelay",
-            @"C:\Program Files\WSL\wslrelay.exe",
+            @"D:\Tools\WSL\wslrelay.exe",
             start));
         platform.Listeners.Add(new WindowsTcpListenerInfo(
             IPAddress.IPv6Loopback,
             18789,
             101,
             "wslrelay",
-            @"C:\Program Files\WSL\wslrelay.exe",
+            @"D:\Tools\WSL\wslrelay.exe",
             start));
         var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
 
         var result = service.Inspect(ManagedRecord());
 
         Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+        Assert.Contains("outside the trusted WSL install locations", result.Detail);
         Assert.Equal(
-            result.Detail!.IndexOf("Authenticode verification failed", StringComparison.Ordinal),
-            result.Detail.LastIndexOf("Authenticode verification failed", StringComparison.Ordinal));
+            result.Detail!.IndexOf("outside the trusted WSL install locations", StringComparison.Ordinal),
+            result.Detail.LastIndexOf("outside the trusted WSL install locations", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -338,6 +326,109 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
             start.AddSeconds(1));
 
         Assert.False(service.IsStrongCredentialAllowed(record, credential));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InteractiveCredentialGate_RelayWithoutStartTime_FailsClosed(bool bootstrap)
+    {
+        var platform = new FakePlatform();
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback, 18789, 102, "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe"));
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+        var record = ManagedRecord();
+        var credential = new GatewayCredential(
+            "test-token", bootstrap,
+            bootstrap ? CredentialResolver.SourceBootstrapToken : CredentialResolver.SourceSharedGatewayToken);
+
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, service.Inspect(record).Kind);
+        Assert.False(service.IsStrongCredentialAllowed(record, credential));
+    }
+
+    [Fact]
+    public void InteractiveCredentialGate_SecondRelayWithoutStartTime_FailsClosed()
+    {
+        var platform = new FakePlatform();
+        var start = new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc);
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback, 18789, 102, "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe", start));
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.IPv6Loopback, 18789, 102, "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe"));
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+        var record = ManagedRecord();
+        var credential = new GatewayCredential(
+            "test-token", false, CredentialResolver.SourceSharedGatewayToken);
+
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, service.Inspect(record).Kind);
+        Assert.False(service.IsStrongCredentialAllowed(record, credential));
+    }
+
+    [Theory]
+    [InlineData(103, 0, false)]
+    [InlineData(102, 1, false)]
+    [InlineData(102, 0, true)]
+    public void InteractiveCredentialGate_DifferentRelayIdentities_FailsClosed(
+        int secondProcessId, int secondStartOffsetSeconds, bool differentPath)
+    {
+        var platform = new FakePlatform();
+        var start = new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc);
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback, 18789, 102, "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe", start));
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.IPv6Loopback, 18789, secondProcessId, "wslrelay",
+            differentPath ? @"D:\Tools\WSL\wslrelay.exe" : @"C:\Program Files\WSL\wslrelay.exe",
+            start.AddSeconds(secondStartOffsetSeconds)));
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+        var record = ManagedRecord();
+        var credential = new GatewayCredential(
+            "test-token", false, CredentialResolver.SourceSharedGatewayToken);
+
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, service.Inspect(record).Kind);
+        Assert.False(service.IsStrongCredentialAllowed(record, credential));
+    }
+
+    [Fact]
+    public void InteractiveCredentialGate_MatchingDualStackRelayIdentity_AllowsStrongCredential()
+    {
+        var platform = new FakePlatform();
+        var start = new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc);
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback, 18789, 102, "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe", start));
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.IPv6Loopback, 18789, 102, "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe", start));
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+        var credential = new GatewayCredential(
+            "test-token", false, CredentialResolver.SourceSharedGatewayToken);
+
+        Assert.True(service.IsStrongCredentialAllowed(ManagedRecord(), credential));
+    }
+
+    [Fact]
+    public void InteractiveCredentialGate_RelayOutsideInstallLocationsWithDistroProof_AllowsStrongCredential()
+    {
+        var platform = new FakePlatform { TrustedWslRelay = false };
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback, 18789, 102, "wslrelay",
+            @"D:\Tools\WSL\wslrelay.exe", new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc)));
+        var logger = new WarningLogger();
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, logger);
+        var credential = new GatewayCredential(
+            "test-token", false, CredentialResolver.SourceSharedGatewayToken);
+
+        Assert.True(service.IsStrongCredentialAllowed(ManagedRecord(), credential));
+        Assert.True(service.IsStrongCredentialAllowed(ManagedRecord(), credential));
+        var warning = Assert.Single(logger.Warnings);
+        Assert.Contains(@"D:\Tools\WSL\wslrelay.exe", warning);
+        Assert.Contains("outside the trusted WSL install locations", warning);
+        Assert.Contains("Continuing because distro 'OpenClawGateway' confirms it owns port 18789.",
+            warning);
     }
 
     [Fact]
@@ -569,6 +660,15 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
             service.Inspect(ManagedRecord()).Kind);
     }
 
+    private sealed class WarningLogger : IOpenClawLogger
+    {
+        public List<string> Warnings { get; } = [];
+        public void Info(string message) { }
+        public void Debug(string message) { }
+        public void Warn(string message) => Warnings.Add(message);
+        public void Error(string message, Exception? ex = null) { }
+    }
+
     private sealed class FakePlatform : IManagedLocalGatewayPortPlatform
     {
         public List<WindowsTcpListenerInfo> Listeners { get; } = [];
@@ -654,7 +754,8 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
             return TrustedWslRelay
                 ? WslRelayTrustResult.Trusted()
                 : WslRelayTrustResult.Rejected(
-                    "WSL relay Authenticode verification failed.");
+                    $"WSL relay at '{processPath}' is outside the trusted WSL install locations " +
+                    @"(Program Files\WSL, System32, or the Microsoft WSL package).");
         }
 
         public bool IsExpectedWslGatewayListening(string distroName, int port)

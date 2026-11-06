@@ -1,8 +1,7 @@
 <Page x:Class="OpenClaw.SetupEngine.UI.Pages.AiReadyPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-      xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
-      xmlns:tk="using:CommunityToolkit.WinUI.Controls">
+      xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls">
     <Page.Resources>
         <DataTemplate x:Key="WrappedAction">
             <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="160" Style="{StaticResource BodyTextBlockStyle}" />
@@ -13,8 +12,6 @@
             <controls:OnboardingMascot x:Name="MascotHero" Mood="Thinking" HorizontalAlignment="Center" />
             <TextBlock x:Name="Heading" Text="Finishing setup"
                        Style="{StaticResource TitleTextBlockStyle}" TextAlignment="Center" TextWrapping="Wrap" />
-            <TextBlock x:Name="Prompt"
-                       Style="{StaticResource BodyTextBlockStyle}" TextAlignment="Center" TextWrapping="Wrap" />
             <TextBlock x:Name="ModelSummary" Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" />
         </StackPanel>
@@ -26,16 +23,11 @@
                                 Click="Return_Click" ContentTemplate="{StaticResource WrappedAction}" />
                     </InfoBar.ActionButton>
                 </InfoBar>
-                <StackPanel x:Name="Choices" Spacing="8" Visibility="Collapsed">
-                    <controls:SetupActionCard x:Name="ChatChoice" x:Uid="Onboarding_Ready_Chat" Header="Talk to my agent"
-                                     Description="Open Chat with your agent." Tag="Chat" IsClickEnabled="True" InvokeRequested="Choose_Click"
-                                     AutomationProperties.Name="Talk to my agent, recommended">
-                        <controls:RecommendedBadge x:Name="RecommendedBadge" />
-                    </controls:SetupActionCard>
-                    <controls:SetupActionCard x:Name="ChannelsChoice" x:Uid="Onboarding_Ready_Channels" Header="Connect channels"
-                                     Description="WhatsApp, Telegram, and more. You choose when to sign in." Tag="Channels" IsClickEnabled="True" InvokeRequested="Choose_Click" />
-                    <controls:SetupActionCard x:Name="SkillsChoice" x:Uid="Onboarding_Ready_Skills" Header="Explore skills"
-                                     Description="Browse skills for your agent. Nothing is installed automatically." Tag="Skills" IsClickEnabled="True" InvokeRequested="Choose_Click" />
+                <StackPanel x:Name="ChatActionPanel" Spacing="8" Visibility="Collapsed">
+                    <controls:SetupActionCard x:Name="ChatAction" x:Uid="Onboarding_Ready_Chat"
+                                              AutomationProperties.Name="Talk to my agent" Header="Talk to my agent"
+                                              Description="Open Chat with your agent." IsClickEnabled="True"
+                                              InvokeRequested="OpenChat_Click" />
                 </StackPanel>
                 <ProgressBar x:Name="BusyProgress" IsIndeterminate="True" Visibility="Collapsed" />
                 <TextBlock x:Name="StatusText" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"

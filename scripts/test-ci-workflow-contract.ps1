@@ -210,6 +210,8 @@ $codeQlPullRequestBranches = @(Get-InlineYamlList -Text $codeQlPullRequest -Name
 $codeQlPullRequestPaths = @(Get-YamlBlockList -Text $codeQlPullRequest -Name "paths")
 
 $expectedCodeQlPaths = @(
+    ".gitattributes",
+    "**/.gitattributes",
     ".github/codeql/**",
     ".github/workflows/**",
     "src/**",
@@ -223,8 +225,8 @@ $expectedCodeQlPaths = @(
     "package.json",
     "package-lock.json"
 )
-if (($codeQlPushBranches -join ",") -ne "main,master") {
-    throw "CodeQL branch pushes must be limited to main and master."
+if (($codeQlPushBranches -join ",") -ne "master") {
+    throw "CodeQL branch pushes must be limited to master; main uses scheduled scans."
 }
 if (($codeQlPushTags -join ",") -ne "**") {
     throw "CodeQL must preserve scanning for all tag pushes."
@@ -240,10 +242,14 @@ if (($codeQlPullRequestPaths -join "`n") -cne ($expectedCodeQlPaths -join "`n"))
 }
 $codeQlTriggerCases = @(
     @{ Name = "feature branch code push"; Event = "push"; Ref = "feature/example"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $false },
-    @{ Name = "main code push"; Event = "push"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
+    @{ Name = "main code push"; Event = "push"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $false },
     @{ Name = "master code push"; Event = "push"; Ref = "master"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
     @{ Name = "release tag push"; Event = "push"; Ref = "refs/tags/v2026.9.3"; Path = "docs/release.md"; Expected = $true },
     @{ Name = "relevant pull request"; Event = "pull_request"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
+    @{ Name = "root attributes pull request"; Event = "pull_request"; Ref = "main"; Path = ".gitattributes"; Expected = $true },
+    @{ Name = "nested attributes pull request"; Event = "pull_request"; Ref = "main"; Path = "src/.gitattributes"; Expected = $true },
+    @{ Name = "hidden attributes pull request"; Event = "pull_request"; Ref = "main"; Path = ".github/.gitattributes"; Expected = $true },
+    @{ Name = "master attributes push"; Event = "push"; Ref = "master"; Path = ".gitattributes"; Expected = $true },
     @{ Name = "docs-only pull request"; Event = "pull_request"; Ref = "main"; Path = "docs/example.md"; Expected = $false },
     @{ Name = "agent-skill-only pull request"; Event = "pull_request"; Ref = "main"; Path = ".agents/skills/example/SKILL.md"; Expected = $false },
     @{ Name = "scheduled scan"; Event = "schedule"; Ref = ""; Path = ""; Expected = $true },
@@ -261,16 +267,16 @@ foreach ($case in $codeQlTriggerCases) {
 foreach ($requiredToken in @(
         "workflow_dispatch:",
         "schedule:",
-        'cron: "29 6 * * 1"',
+        'cron: "29 */6 * * *"',
         "profile:",
         "default: all",
         "type: choice",
         'group: codeql-${{ github.workflow }}-',
+        "github.event_name == 'schedule' && 'schedule'",
         "cancel-in-progress: `${{ github.event_name == 'pull_request' }}",
         "actions: read",
         "contents: read",
         "security-events: write",
-        'if [ "${{ vars.OPENCLAW_CODEQL_ADVANCED_SETUP }}" = "true" ]; then',
         "inputs.profile == 'csharp'",
         "languages: csharp",
         "build-mode: manual",
@@ -286,26 +292,22 @@ foreach ($requiredToken in @(
         -Expected $requiredToken `
         -Message "CodeQL workflow is missing required contract '$requiredToken'."
 }
-Assert-NotContains `
-    -Text $codeQlWorkflow `
-    -Unexpected "inputs.advanced_setup" `
-    -Message "CodeQL advanced setup must not bypass the repository-variable gate."
+# Fork pull requests do not receive the repository variable used by the retired
+# setup-migration gate. Eligibility must depend only on draft/profile context.
+foreach ($retiredGate in @("advanced-setup", "OPENCLAW_CODEQL_ADVANCED_SETUP", "inputs.advanced_setup")) {
+    Assert-NotContains `
+        -Text $codeQlWorkflow `
+        -Unexpected $retiredGate `
+        -Message "CodeQL must not depend on the retired migration gate '$retiredGate'."
+}
 foreach ($jobName in @("csharp", "actions")) {
     $codeQlJob = Get-JobBlock -Name $jobName -Text $codeQlWorkflow
+    $expectedEligibility = "if: `${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == '$jobName') }}"
     Assert-Contains `
         -Text $codeQlJob `
-        -Expected "needs: advanced-setup" `
-        -Message "CodeQL job '$jobName' must depend on the advanced-setup gate."
-    Assert-Contains `
-        -Text $codeQlJob `
-        -Expected "needs.advanced-setup.outputs.enabled == 'true'" `
-        -Message "CodeQL job '$jobName' must remain disabled until the repository variable enables advanced setup."
+        -Expected $expectedEligibility `
+        -Message "CodeQL job '$jobName' must admit non-draft fork PRs without repository variables and preserve manual profiles."
 }
-$codeQlGateJob = Get-JobBlock -Name "advanced-setup" -Text $codeQlWorkflow
-Assert-Contains `
-    -Text $codeQlGateJob `
-    -Expected 'echo "enabled=false" >> "$GITHUB_OUTPUT"' `
-    -Message "CodeQL gate must explicitly disable advanced analysis when the repository variable is not true."
 
 Assert-Contains `
     -Text $workflow `
@@ -639,10 +641,20 @@ foreach ($token in @('always()', 'test-results-ui', 'path: TestResults/')) {
     Assert-Contains -Text $uiUpload -Expected $token -Message "The complete UI diagnostic archive must be retained: '$token'."
 }
 $fixtureRunner = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\test-gateway-fixture.ps1') -Raw
+$releasedProfileStep = Get-StepBlock -Text $uiJob -Name 'Run latest stable profile compatibility'
+foreach ($token in @('releases/latest', 'Get-FileHash', 'SHA256', '$asset.digest.Substring(7)',
+        'stable-release.json', '-StableAppPath $apps[0].FullName', '-ArtifactsDirectory $artifacts')) {
+    Assert-Contains -Text $releasedProfileStep -Expected $token `
+        -Message "Released-profile proof must use a verified portable baseline and retain provenance: '$token'."
+}
+Assert-Contains -Text $fixtureRunner -Expected "'FullyQualifiedName~GatewayFixtureUpgradeTests' 'fixture-released-profile'" `
+    -Message 'Released-profile proof must select and admit the actual compatibility scenario.'
 foreach ($token in @(
         "`$start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] = '1'",
         "`$start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] = `$resolvedApp",
-        "'Category=GatewayFixture' 'fixture-ui'",
+        "'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui'",
+        "'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof",
+        "`$start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] = if (`$EnableKeyboardProof) { '1' } else { '0' }",
         '[int]$counters.total -le 0 -or [int]$counters.passed -ne [int]$counters.total'
     )) {
     Assert-Contains -Text $fixtureRunner -Expected $token -Message "Fixture runner lost its explicit-app, category or all-pass contract: '$token'."
@@ -853,6 +865,26 @@ foreach ($build in $releaseBuilds.GetEnumerator()) {
         -Text $job `
         -Unexpected "core-tests" `
         -Message "Release builds must start in parallel with tests and E2E."
+}
+
+foreach ($jobName in @('build-x64', 'build-arm64', 'build-msix')) {
+    $job = Get-JobBlock $jobName
+    $jobEnvironment = [regex]::Match($job, '(?ms)^    env:\r?\n.*?(?=^    \S|\z)')
+    if (-not $jobEnvironment.Success) {
+        throw "Release build '$jobName' is missing its job environment."
+    }
+    Assert-NotContains -Text $jobEnvironment.Value -Unexpected 'runner.' `
+        -Message "Release build '$jobName' must not use the unavailable runner context in job-level env."
+    $download = Get-StepBlock -Text $job -Name 'Download signed cleanup host'
+    Assert-Contains -Text $download `
+        -Expected 'path: ${{ runner.temp }}\signed-cleanup-host' `
+        -Message "Release build '$jobName' must download the signed helper outside the checkout to preserve clean-source provenance."
+    $binding = Get-StepBlock -Text $job -Name 'Bind signed cleanup host path'
+    Assert-Contains -Text $binding -Expected "if: needs.sign-cleanup-host.result == 'success'" `
+        -Message "Release build '$jobName' must bind its helper only after successful signing."
+    Assert-Contains -Text $binding `
+        -Expected '"OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV' `
+        -Message "Release build '$jobName' must export the runner-temporary helper path for subsequent build steps."
 }
 
 $buildMsixJob = Get-JobBlock "build-msix"

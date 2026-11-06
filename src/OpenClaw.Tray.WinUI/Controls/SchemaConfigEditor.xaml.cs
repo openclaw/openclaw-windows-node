@@ -29,6 +29,7 @@ public sealed partial class SchemaConfigEditor : UserControl
     private bool _loading;
     private readonly Dictionary<string, object?> _changes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _validationErrors = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, FrameworkElement> _fields = new(StringComparer.Ordinal);
     private static readonly TimeSpan PatternValidationTimeout = TimeSpan.FromMilliseconds(200);
 
     private static readonly Regex CamelCaseSplitPattern = new(
@@ -53,6 +54,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         _config = config;
         _changes.Clear();
         _validationErrors.Clear();
+        _fields.Clear();
         FieldsPanel.Children.Clear();
 
         try
@@ -74,6 +76,16 @@ public sealed partial class SchemaConfigEditor : UserControl
 
     public Dictionary<string, object?> GetChanges() => new(_changes);
     public Dictionary<string, string> GetValidationErrors() => new(_validationErrors);
+
+    internal bool RevealField(string path)
+    {
+        if (!_fields.TryGetValue(path, out var field)) return false;
+        for (DependencyObject? parent = field; parent is not null; parent = VisualTreeHelper.GetParent(parent))
+            if (parent is Expander expander) expander.IsExpanded = true;
+        (VisualTreeHelper.GetParent(field) as FrameworkElement ?? field).StartBringIntoView();
+        if (field is Control control && control.IsEnabled) control.Focus(FocusState.Programmatic);
+        return true;
+    }
 
     /// <summary>
     /// JSON Schema's "type" keyword may be either a string ("object") or an
@@ -245,6 +257,11 @@ public sealed partial class SchemaConfigEditor : UserControl
         if (readOnly && control is Control readOnlyControl)
             readOnlyControl.IsEnabled = false;
 
+        if (control is FrameworkElement field)
+        {
+            _fields[path] = field;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(field, $"ConfigField:{path}");
+        }
         fieldPanel.Children.Add(control);
         if (!string.IsNullOrEmpty(description))
         {
@@ -596,7 +613,9 @@ public sealed partial class SchemaConfigEditor : UserControl
             Width = 34,
             Padding = new Thickness(0)
         };
-        ToolTipService.SetToolTip(removeBtn, "Remove item");
+        var removeLabel = LocalizationHelper.GetString("SchemaConfigEditor_RemoveItem");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(removeBtn, removeLabel);
+        ToolTipService.SetToolTip(removeBtn, removeLabel);
         removeBtn.Click += (s, e) =>
         {
             if (row.Parent is Border border)

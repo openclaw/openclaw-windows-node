@@ -120,7 +120,7 @@ package-contract and profile preparation. `NativeGatewaySetupSession` owns
 staged-record runtime authorization, legacy-only reload suspension/restoration, retry/cancel,
 authenticated health/config gates, and final registry publication.
 Both installations use the shared focused `AiSetupPage` and verified
-three-destination `AiReadyPage`. `WizardPage` remains an explicit compatibility
+Chat-only `AiReadyPage`. `WizardPage` remains an explicit compatibility
 fallback when focused setup methods are unavailable. Its native requests retain
 the owned `NativeGatewaySetupConnection` authorization and upstream
 `installDaemon: false` contract.
@@ -146,6 +146,10 @@ package; an existing development package is reused without Store migration. Inst
 `OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT`. Cancellation stops the WinGet request, but Windows deployment may
 continue. Repair errors and timeouts stay visible, with explicit retry rather
 than repeated installer launches; retries recheck registration before installing.
+When WinGet succeeds but the package is still not registered for the current user,
+`NativeGatewayStagedPackageRegistrar` registers the already staged Store family once
+(`Add-AppxPackage -RegisterByFamilyName` equivalent, no elevation); a "not staged" result keeps the
+bounded wait, and any other registration error fails immediately with recovery guidance.
 Native setup shares the `SetupAccessDraft` capability profiles with WSL but
 skips WSL/Local AI/Tailscale installation review and probes. The native
 progress page uses `SetupPhaseStatus` rows and automatically enters **Connect
@@ -207,8 +211,10 @@ selection, activation and recovery; the native AI page renders that state.
 `AiSetupPresentationModel` owns presentation-only grouping. A single
 page-owned `ProviderSetupDialog` owns prompt controls and secret clearing,
 without another client, persistence store or top-level setup page.
-`SetupWindow` remains the completion host. Verified AI opens the native chooser;
-an explicit choice restarts into Chat, Channels or Skills with a bound receipt.
+`SetupWindow` remains the completion host. Verified AI opens a native
+Chat-only completion page. Already-issued WhatsApp, Telegram, and Channels
+receipts continue to open the Gateway web dashboard's `channels` path with a
+bound receipt; retired Skills receipts are rejected.
 The experimental browser-completion path is removed. See the completion handoff
 in `ONBOARDING_WIZARD.md`.
 Headless setup keeps `SetupStepFactory.BuildDefaultSteps()` and the
@@ -413,6 +419,13 @@ Environment-only knobs without a config-file equivalent:
   command timeout). Default 1800 (30 minutes); a positive integer between 1 and 2147483
   overrides it, and any other value is ignored with a warning and keeps the default.
   An explicit `timeout` argument wins over this variable.
+
+- `OPENCLAW_SETUP_NATIVE_CLI_TIMEOUT`: bound, in seconds, for each packaged
+  `openclaw` CLI call during native Gateway setup (`config validate`, `config set`
+  for node capabilities, `gateway health`, `devices list`, `devices approve`;
+  `NativeGatewayCliTimeout`). Each call includes packaged Node/CLI startup.
+  Default 240 (4 minutes); a positive integer between 1 and 2147483 overrides it,
+  and any other value is ignored with a warning and keeps the default.
 
 ---
 
@@ -656,7 +669,24 @@ Shared state bag passed to all steps. Contains:
 
 A single concrete runner executes Windows processes and WSL scripts (`wsl.exe -d <distro> -- bash -lc ...`) with timeouts, bounded output collection, and environment injection.
 
-Every command is logged with exe, sanitized args, timeout, exit code, sanitized stdout/stderr, and elapsed time.
+Commands start with `cmd.start` (exe, sanitized args and timeout). Non-timeout
+direct-child exit is observed separately as `cmd.exit`, before waiting for
+stdout/stderr EOF. Normal and runner-timeout results retain `cmd.done` (exit
+code, sanitized stdout/stderr and elapsed time).
+
+Caller cancellation instead emits `cmd.cancelled` and rethrows the original
+cancellation exception. Its state-only fields identify the interrupted phase
+(`execution` or `output-drain`), whether direct-child exit and each output EOF
+have been observed at that instant, elapsed time, and whether the runner's own
+timeout had already occurred. Cancellation during execution retains the
+existing best-effort kill; cancellation during post-exit drain does not add
+cleanup or waiting. These observations are not an atomic snapshot, do not
+confirm process-tree cleanup or guest process exit, and do not identify why a
+validator stalled. The new records contain no executable paths, arguments,
+configuration, identities, or raw/partial output. A caller-linked deadline is
+caller cancellation here, not a runner timeout.
+The `timed_out` field retains the existing catch-time classification; simultaneous
+caller cancellation and runner timeout cannot establish which happened first.
 
 ### TransactionJournal
 

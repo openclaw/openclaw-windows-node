@@ -1,6 +1,17 @@
+// <summary>
+// Native Settings surface hosted by WorkspaceWindow. It owns the Settings navigation rail, page frame, status
+// presentation and command-search flyout, while HubPageRegistry supplies navigation policy and the host owns history.
+// Activating or deactivating this view starts or releases page scopes. It never mounts the Chat page.
+// Usage:
+//   var view = new SettingsShellView { AppModel = appState };
+//   view.BindToAppState();
+//   view.ShowSection("settings");
+//   view.Deactivate();
+// </summary>
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
@@ -18,10 +29,7 @@ using System.Linq;
 namespace OpenClawTray.Controls;
 
 /// <summary>
-/// The native Settings surface hosted inside <c>WorkspaceWindow</c>. It owns the section rail,
-/// the content frame, the connection status pill and the Settings search flyout. It never mounts
-/// ChatPage and never owns history: the host's <see cref="WorkspaceNavigationHistory"/> is the
-/// only Back/Forward stack, and the frame keeps no stack of its own.
+/// Hosts Settings-specific WinUI controls and applies routes selected by the Workspace host.
 /// </summary>
 internal sealed partial class SettingsShellView : UserControl
 {
@@ -42,7 +50,8 @@ internal sealed partial class SettingsShellView : UserControl
     private AppNotificationSnapshot? _lastAppNotificationSnapshot;
     private AppNotificationInfoBarPresentation _currentAppNotificationPresentation =
         AppNotificationInfoBarPresentation.Hidden;
-    private readonly HubCommandExecutor _commandExecutor = new();
+    internal HubSearchController? SearchController { get; set; }
+    internal Action<HubSearchTarget>? SearchNavigation { get; set; }
     private bool _suppressAppNotificationClosed;
     private bool _disposed;
     private bool _active;
@@ -59,17 +68,24 @@ internal sealed partial class SettingsShellView : UserControl
     /// </summary>
     internal Action<Func<string, bool>, string?>? PruneRequested { get; set; }
 
-    public Action? ConnectAction { get; set; }
-    public Action? ReconnectAction { get; set; }
+    /// <summary>
+    /// The host's search entry point. A deferred search reopen replays through it so the window's
+    /// visibility and modal-dialog rules apply; without a host the view opens its own search.
+    /// </summary>
+    internal Action? CommandCenterRequested { get; set; }
+
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _gatewayNavHideTimer;
 
     public event EventHandler? SettingsSaved;
 
+    /// <summary>Notifies host subscribers that a Settings action completed a save.</summary>
     public void RaiseSettingsSaved() => SettingsSaved?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>Initializes the Settings controls and their view-owned visual state.</summary>
     public SettingsShellView()
     {
         InitializeComponent();
+        CommandSearchFlyout.FlyoutPresenterStyle = SearchHost.CreatePresenterStyle();
         ContentFrame.IsNavigationStackEnabled = false;
         var searchLabel = LocalizationHelper.GetString("TitleSearchBox.PlaceholderText");
         AutomationProperties.SetName(SettingsSearchButton, searchLabel);
@@ -79,12 +95,18 @@ internal sealed partial class SettingsShellView : UserControl
         RefreshDiagnosticsNavVisibility();
         ApplyHighContrastFallbackIfNeeded();
         RootGrid.SizeChanged += OnRootGridSizeChanged;
-        ToolTipService.SetToolTip(StatusPillButton, LocalizationHelper.GetString("HubWindow_StatusPill_Tooltip"));
+        _commandSearchShow = new FlyoutShowRequest(CommandSearchFlyout, () => (CommandCenterRequested ?? OpenCommandCenter)());
     }
+
+    private readonly FlyoutShowRequest _commandSearchShow;
+
+    /// <summary>The shared account, Dashboard and bell footer; <c>WorkspaceWindow</c> applies its state.</summary>
+    internal WorkspacePaneFooter Footer => PaneFooterControl;
 
     /// <summary>The element that opens the command search flyout for the current pane state.</summary>
     private FrameworkElement SearchAnchor => NavView.IsPaneOpen ? SettingsSearchButton : NavPaneToggleButton;
 
+    /// <summary>Shows or removes the diagnostics rail item and prunes its unavailable history entries.</summary>
     public void RefreshDiagnosticsNavVisibility()
     {
         var isVisible = DiagnosticsGate.IsVisible;
@@ -105,7 +127,6 @@ internal sealed partial class SettingsShellView : UserControl
         {
             AppModel.PropertyChanged -= OnAppModelChanged;
             AppModel.PropertyChanged += OnAppModelChanged;
-            UpdateStatus(AppModel.Status);
             ScheduleGatewayNavVisibilityForStatus(AppModel.Status, debounceDisconnected: false);
 
             // Apply agents list that may have arrived before this view was created.
@@ -218,13 +239,6 @@ internal sealed partial class SettingsShellView : UserControl
         _ => InfoBarSeverity.Informational
     };
 
-    private void OnStatusFlyoutOpening(object sender, object e)
-    {
-        StatusContent.Initialize(
-            () => StatusFlyout.Hide(),
-            () => NavigateTo("connection"),
-            () => (ReconnectAction ?? ConnectAction)?.Invoke());
-    }
 
     private void OnAppNotificationInfoBarClosed(InfoBar sender, InfoBarClosedEventArgs args)
     {
@@ -281,9 +295,7 @@ internal sealed partial class SettingsShellView : UserControl
                     DispatcherQueue?.TryEnqueue(() =>
                     {
                         if (_disposed) return;
-                        _cachedCommands = null;
-                        var status = AppModel!.Status;
-                        UpdateStatus(status);
+                        SearchController?.Refresh();
                         // Defer nav visibility to avoid stowed exceptions during NavigationView layout
                         DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
                         {
@@ -292,13 +304,7 @@ internal sealed partial class SettingsShellView : UserControl
                         });
                 });
                 break;
-            case nameof(AppState.GatewaySelf):
-                DispatcherQueue?.TryEnqueue(() =>
-                {
-                    if (_disposed) return;
-                    UpdateStatus(AppModel!.Status);
-                });
-                break;
+
             case nameof(AppState.AgentsList):
                 DispatcherQueue?.TryEnqueue(() =>
                 {
@@ -350,15 +356,28 @@ internal sealed partial class SettingsShellView : UserControl
     private void UpdatePaneChrome()
     {
         SettingsNavigationActions.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
-        StatusPillText.Visibility = SettingsNavigationActions.Visibility;
-        StatusPillChevron.Visibility = SettingsNavigationActions.Visibility;
-        StatusPillContent.ColumnSpacing = NavView.IsPaneOpen ? 8 : 0;
-        StatusPillButton.Width = NavView.IsPaneOpen ? double.NaN : 40;
-        StatusPillButton.HorizontalContentAlignment = NavView.IsPaneOpen ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
+        // Footer popups are anchored to buttons that move when the rail opens or closes.
+        if (PaneFooterControl.Layout != (NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail))
+            PaneFooterControl.HideFlyouts();
+        PaneFooterControl.Layout = NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail;
     }
 
     // Back/Forward live in the window-level pair driven only by WorkspaceNavigationHistory.
     // This view keeps no navigation stack of its own.
+    /// <summary>
+    /// Shows only the section content, hiding this view's own section list. Used when a pinned page
+    /// opens beside the Workspace sidebar.
+    /// </summary>
+    internal bool ContentOnly
+    {
+        get => !NavView.IsPaneVisible;
+        set
+        {
+            NavView.IsPaneVisible = !value;
+            SettingsNavigationToolbar.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
     /// <summary>Returns the currently displayed page in the content frame.</summary>
     public object? CurrentPage => ContentFrame?.Content;
 
@@ -376,17 +395,14 @@ internal sealed partial class SettingsShellView : UserControl
     // suppress the resulting SelectionChanged from re-entering NavigateInternal.
     private bool _syncingNavSelection;
 
-    // The one-shot native setup request this view is currently honoring. Waits compare against it
-    // so history replay or a later navigation can never satisfy an older request.
-    private SetupNativeNavigationRequest? _activeNativeRequest;
-
     /// <summary>
     /// Requests a section. Rail clicks, in-page links and search all flow through here; the host
     /// decides whether it becomes a history entry. Workspace routes leave Settings.
     /// </summary>
     public void NavigateTo(string tag)
     {
-        WorkspaceNavigation.Dispatch(tag, _ => WorkspaceRouteRequested?.Invoke(tag), NavigateCompanion);
+        WorkspaceNavigation.Dispatch(tag, _ => WorkspaceRouteRequested?.Invoke(tag), NavigateCompanion,
+            _ => WorkspaceRouteRequested?.Invoke(tag));
     }
 
     private void NavigateCompanion(string tag) =>
@@ -396,12 +412,12 @@ internal sealed partial class SettingsShellView : UserControl
     /// Renders <paramref name="tag"/> without touching history. Also re-activates the view after
     /// <see cref="Deactivate"/>, so re-entry never depends on <c>Frame.Navigated</c> alone.
     /// </summary>
-    internal void ShowSection(string tag, SetupNativeNavigationRequest? nativeRequest = null)
+    internal void ShowSection(string tag)
     {
         if (_disposed) return;
         _active = true;
         var showAbout = tag == "about";
-        NavigateInternal(showAbout ? "settings" : tag, nativeRequest);
+        NavigateInternal(showAbout ? "settings" : tag);
         if (ContentFrame.Content is SettingsPage settingsPage)
         {
             if (showAbout) settingsPage.ShowAbout();
@@ -417,7 +433,6 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (!_active && ContentFrame.Content is null) return;
         _active = false;
-        _activeNativeRequest = null;
         HideTransientSurfaces();
         _currentNavTag = null;
         // Clearing Content does not raise OnNavigatedFrom, so pages with cleanup are stopped here.
@@ -438,47 +453,20 @@ internal sealed partial class SettingsShellView : UserControl
     /// </summary>
     private void HideTransientSurfaces()
     {
-        StatusFlyout.Hide();
+        _commandSearchShow.Cancel();
         CommandSearchFlyout.Hide();
     }
 
     internal void OpenCommandCenter()
     {
-        CommandSearchFlyout.ShowAt(SearchAnchor);
+        if (_disposed || !IsLoaded) return;
+        _commandSearchShow.ShowAt(SearchAnchor);
     }
 
-    /// <summary>
-    /// Waits until the requested native setup page is the one shown and ready. Fails if the view
-    /// moved to another section or request, so a stale wait can never report success.
-    /// </summary>
-    internal async Task WaitForNativeSetupAsync(SetupNativeNavigationRequest request, CancellationToken ct)
-    {
-        void EnsureCurrent()
-        {
-            if (!ReferenceEquals(_activeNativeRequest, request) || _currentNavTag != request.PageTag)
-                throw new InvalidOperationException("The selected setup destination changed.");
-        }
+    internal bool DeferCommandSearchUntilClosed() => _commandSearchShow.DeferUntilClosed();
 
-        EnsureCurrent();
-        await WaitForCurrentContentReadyAsync().WaitAsync(ct);
-        EnsureCurrent();
-        while (ContentFrame.Content is not FrameworkElement { IsLoaded: true })
-        {
-            await Task.Delay(50, ct);
-            EnsureCurrent();
-        }
-        if (ContentFrame.Content is ChannelsPage channels && request.PageTag == "channels")
-            await channels.WaitForNativeSetupAsync(request, ct);
-        else if (ContentFrame.Content is SkillsPage skills && request.PageTag == "skills")
-            await skills.WaitForNativeSetupAsync(request, ct);
-        else
-            throw new InvalidOperationException("The selected setup destination changed.");
-        EnsureCurrent();
-    }
-
-    private void NavigateInternal(string tag, SetupNativeNavigationRequest? nativeRequest = null)
+    private void NavigateInternal(string tag)
     {
-        _activeNativeRequest = nativeRequest;
         if (tag == "debug" && !DiagnosticsGate.IsVisible)
             tag = "settings";
 
@@ -488,7 +476,7 @@ internal sealed partial class SettingsShellView : UserControl
         // Identity dedupe: navigation identity = (PageType, normalized tag).
         // Page-type-only dedupe would collapse distinct logical destinations
         // that share a Page (e.g. agent switching on WorkspacePage).
-        if (nativeRequest is null && ContentFrame.Content is not null &&
+        if (ContentFrame.Content is not null &&
             ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
             _contentReady = CreateCompletedContentReady();
@@ -503,7 +491,7 @@ internal sealed partial class SettingsShellView : UserControl
         // can recover the canonical destination.
         var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _contentReady = ready;
-        if (!ContentFrame.Navigate(pageType, (object?)nativeRequest ?? tag))
+        if (!ContentFrame.Navigate(pageType, tag))
             CompleteContentReady(ready, pageName: null);
     }
 
@@ -534,6 +522,7 @@ internal sealed partial class SettingsShellView : UserControl
         }
     }
 
+    /// <summary>Waits briefly for the current Settings page to report that its initial content is ready.</summary>
     public async Task WaitForCurrentContentReadyAsync()
     {
         var ready = _contentReady;
@@ -566,29 +555,6 @@ internal sealed partial class SettingsShellView : UserControl
         return null;
     }
 
-    private void UpdateStatus(ConnectionStatus status)
-    {
-        var snapshot = CurrentApp.ConnectionManager?.CurrentSnapshot;
-        var (text, accent) = ComputePillState(status, snapshot);
-        StatusPillText.Text = text;
-        StatusPillDot.Fill = Controls.GatewayStatusContent.AccentBrush(accent);
-        AutomationProperties.SetHelpText(StatusPillButton, text);
-    }
-
-    internal void UpdateStatus(GatewayConnectionSnapshot? snapshot, ConnectionStatus status)
-    {
-        var (text, accent) = ComputePillState(status, snapshot);
-        StatusPillText.Text = text;
-        StatusPillDot.Fill = Controls.GatewayStatusContent.AccentBrush(accent);
-        AutomationProperties.SetHelpText(StatusPillButton, text);
-    }
-
-    private static (string Text, ConnectionStatusAccent Accent) ComputePillState(
-        ConnectionStatus status, GatewayConnectionSnapshot? snapshot)
-    {
-        var (labelKey, accent) = ConnectionStatusPresenter.Pill(snapshot?.OverallState, status);
-        return (LocalizationHelper.GetString(labelKey), accent);
-    }
 
     private void ScheduleGatewayNavVisibilityForStatus(ConnectionStatus status, bool debounceDisconnected)
     {
@@ -644,8 +610,6 @@ internal sealed partial class SettingsShellView : UserControl
                 HubPageRegistry.ShouldKeepCurrentPageVisibleDuringDisconnect(currentTag);
 
             NavSessions.Visibility = vis;
-            NavSkills.Visibility = vis;
-            NavChannels.Visibility = vis;
             NavInstances.Visibility = vis;
             NavCron.Visibility = vis;
             NavAdvanced.Visibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
@@ -748,7 +712,7 @@ internal sealed partial class SettingsShellView : UserControl
         if (nativeRequest is not null)
         {
             _currentAgentId = nativeRequest.Completion.Verification.AgentId!;
-            _cachedCommands = null;
+            SearchController?.Refresh();
         }
 
         // Keep _currentAgentId aligned with the page that's now visible.
@@ -758,7 +722,7 @@ internal sealed partial class SettingsShellView : UserControl
             if (newAgent != _currentAgentId)
             {
                 _currentAgentId = newAgent;
-                _cachedCommands = null;
+                SearchController?.Refresh();
             }
         }
 
@@ -855,10 +819,8 @@ internal sealed partial class SettingsShellView : UserControl
         {
             case SessionsPage sessions: sessions.Initialize(); break;
             case ConnectionPage connection: connection.Initialize(); break;
-            case ChannelsPage channels: channels.Initialize(); break;
             case UsagePage usage: usage.Initialize(); break;
             case CronPage cron: cron.Initialize(); break;
-            case SkillsPage skills: skills.Initialize(); break;
             case ConfigPage config:
                 try { config.Initialize(); }
                 catch (Exception ex)
@@ -893,7 +855,6 @@ internal sealed partial class SettingsShellView : UserControl
                 workspace.AgentId = _currentAgentId;
                 workspace.Initialize();
                 break;
-            case BindingsPage bindings: bindings.Initialize(); break;
             case SettingsPage settings: settings.Initialize(); break;
             case NotificationsPage notifications: notifications.Initialize(_appNotificationService); break;
             case DebugPage debug: debug.Initialize(); break;
@@ -907,74 +868,42 @@ internal sealed partial class SettingsShellView : UserControl
         _ = filter;
     }
 
-    // Command search retains its catalog in the sidebar flyout. Keyboard shortcuts belong to the
-    // host window (Ctrl+K opens this flyout; Alt+Left/Right drive its single history).
-
-    private ImmutableArray<HubCommand>? _cachedCommands;
-
     private void OnCommandSearchOpening(object sender, object e)
     {
-        _cachedCommands = BuildCommandList();
-        TitleSearchBox.Text = string.Empty;
-        TitleSearchBox.ItemsSource = HubPageRegistry.SearchCommands(_cachedCommands.Value, string.Empty);
+        if (SearchController is { } controller && SearchNavigation is { } navigate)
+            SettingsSearchHost.Begin(controller, navigate, () => CommandSearchFlyout.Hide(), "SettingsSearchBox");
     }
 
-    private void OnCommandSearchOpened(object sender, object e)
-    {
-        TitleSearchBox.Focus(FocusState.Programmatic);
-        TitleSearchBox.IsSuggestionListOpen = true;
-    }
+    private void OnCommandSearchClosed(object sender, object e) => SettingsSearchHost.End();
+    private void OnCommandSearchOpened(object sender, object e) => SettingsSearchHost.FocusInput();
 
-    private void OnCommandSearchKeyDown(object sender, KeyRoutedEventArgs e)
+    internal void RevealSearchTarget(HubSearchTarget target)
     {
-        if (e.Key != global::Windows.System.VirtualKey.Escape) return;
-        e.Handled = true;
-        TitleSearchBox.IsSuggestionListOpen = false;
-        CommandSearchFlyout.Hide();
-    }
-
-    private void OnSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
-    {
-        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
-        _cachedCommands ??= BuildCommandList();
-        sender.ItemsSource = HubPageRegistry.SearchCommands(_cachedCommands.Value, sender.Text);
-    }
-
-    private void OnSearchSuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
-    {
-        if (args.SelectedItem is HubCommand cmd)
-            sender.Text = cmd.Title;
-    }
-
-    private void OnSearchQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
-    {
-        if (args.ChosenSuggestion is HubCommand cmd)
+        var page = ContentFrame.Content as FrameworkElement;
+        if (page is null || target.Focus is null) return;
+        var client = CurrentApp.GatewayClient;
+        var epoch = client?.ServerHandshakeGeneration;
+        var searchGeneration = SearchController?.Generation;
+        void Reveal()
         {
-            CommandSearchFlyout.Hide();
-            sender.Text = "";
-            sender.ItemsSource = null;
-            _cachedCommands = null;
-            ExecuteCommand(cmd);
+            if (!_active || !ReferenceEquals(ContentFrame.Content, page) ||
+                !ReferenceEquals(client, CurrentApp.GatewayClient) || epoch != client?.ServerHandshakeGeneration) return;
+            if (SearchController is { } search && search.IsOwner(SettingsSearchHost) &&
+                search.Generation != searchGeneration) return;
+            switch (page)
+            {
+                case PermissionsPage permissions: permissions.RevealSearchSetting(target.Focus); break;
+                case ConfigPage config: config.RevealSearchPath(target.Focus); break;
+                case CronPage cron: cron.RevealSearchJob(target.Focus); break;
+            }
         }
-        else if (HubPageRegistry.SearchCommands(_cachedCommands ?? BuildCommandList(), args.QueryText)
-            .FirstOrDefault() is { } first)
+        if (page.IsLoaded) Reveal();
+        else
         {
-            // Enter pressed without selecting — execute first match
-            CommandSearchFlyout.Hide();
-            sender.Text = "";
-            sender.ItemsSource = null;
-            _cachedCommands = null;
-            ExecuteCommand(first);
+            void Loaded(object sender, RoutedEventArgs e) { page.Loaded -= Loaded; Reveal(); }
+            page.Loaded += Loaded;
         }
     }
-
-    internal ImmutableArray<HubCommand> BuildCommandList()
-    {
-        return HubCommandCatalog.Build(AppModel, CurrentApp.Settings, _currentAgentId);
-    }
-
-    private void ExecuteCommand(HubCommand command) =>
-        _commandExecutor.Execute(command, NavigateTo, RaiseSettingsSaved);
 
     #region High Contrast icon fallback
 
@@ -986,14 +915,12 @@ internal sealed partial class SettingsShellView : UserControl
         { "chat",        "\uE8BD" },
         { "connection",  "\uE839" },
         { "sessions",    "\uE8F2" },
-        { "skills",      "\uE945" },
-        { "channels",    "\uEC05" },
         { "instances",   "\uE977" },
         { "agentevents", "\uE943" },
-        { "bindings",    "\uE8AD" },
         { "config",      "\uE90F" },
         { "usage",       "\uE9D9" },
         { "cron",        "\uE787" },
+        { "model",       "\uE8F1" },
         { "voice",       "\uE720" },
         { "settings",    "\uE713" },
         { "permissions", "\uEA18" },

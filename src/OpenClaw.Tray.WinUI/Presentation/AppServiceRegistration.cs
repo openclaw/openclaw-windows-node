@@ -1,3 +1,12 @@
+// <summary>
+// Registers WinUI-independent presentation services and their intended lifetimes. App-owned
+// instances stay outside container ownership; navigation-scoped view models are transient.
+// Usage:
+//   var services = new ServiceCollection();
+//   services.AddOpenClawTrayCore(context);
+//   using var provider = services.BuildServiceProvider();
+// </summary>
+
 using OpenClaw.Shared.ExecApprovals;
 using OpenClaw.Shared.Inference;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +35,7 @@ namespace OpenClawTray.Presentation;
 /// </remarks>
 internal static class AppServiceRegistration
 {
+    /// <summary>Registers core presentation services using the App-owned instances in <paramref name="context"/>.</summary>
     public static IServiceCollection AddOpenClawTrayCore(this IServiceCollection services, AppServiceContext context)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -39,6 +49,12 @@ internal static class AppServiceRegistration
         services.AddSingleton(context.PermissionsRuntimeHost);
         if (context.LocalAiRuntime is not null)
             services.AddSingleton(context.LocalAiRuntime);
+        if (context.LocalAiModelSwitcher is not null)
+            services.AddSingleton(context.LocalAiModelSwitcher);
+        if (context.DefaultModelGateway is not null)
+            services.AddSingleton(context.DefaultModelGateway);
+        if (context.ModelProviderGateway is not null)
+            services.AddSingleton(context.ModelProviderGateway);
         // Settings facade over the App-owned SettingsManager. Container-owned so it can dispose
         // its Saved-event subscription during shutdown.
         services.AddSingleton<ISettingsStore, SettingsStore>();
@@ -55,8 +71,11 @@ internal static class AppServiceRegistration
         // Transient page view models resolved per navigation scope.
         services.AddTransient<SettingsPageViewModel>();
         services.AddTransient<PermissionsPageViewModel>();
-        if (context.LocalAiRuntime is not null)
+        if (context.LocalAiRuntime is not null && context.LocalAiModelSwitcher is not null)
             services.AddTransient<LocalAiPageViewModel>();
+        if (context.LocalAiRuntime is not null && context.DefaultModelGateway is not null &&
+            context.ModelProviderGateway is not null)
+            services.AddTransient<DefaultModelPageViewModel>();
 
         return services;
     }
