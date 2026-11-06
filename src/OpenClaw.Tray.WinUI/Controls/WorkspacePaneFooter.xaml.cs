@@ -166,6 +166,8 @@ public sealed partial class WorkspacePaneFooter : UserControl
 
         OwnerButton.Visibility = titleBar ? Visibility.Collapsed : Visibility.Visible;
         OwnerButton.Width = rail ? 40 : double.NaN;
+        // Leave room for the 24 DIP avatar, status dot and button borders in the 40 DIP rail.
+        OwnerButton.Padding = rail ? new Thickness(4) : new Thickness(8);
         OwnerButton.HorizontalContentAlignment = rail ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
         OwnerText.Visibility = rail ? Visibility.Collapsed : Visibility.Visible;
         OwnerContent.ColumnSpacing = rail ? 0 : 12;
