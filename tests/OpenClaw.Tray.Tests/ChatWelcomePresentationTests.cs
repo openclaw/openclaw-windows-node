@@ -40,6 +40,25 @@ public sealed class ChatWelcomePresentationTests
     }
 
     [Fact]
+    public void AgentIdentity_CurrentRosterPresentationWinsOverRetainedCatalog()
+    {
+        var catalog = new ChatPlacementCatalog(1, "main", [], new("default", ""), [],
+            "Research assistant", "\U0001F52C", "https://example.com/stale.png");
+        var current = new ChatAgentPresentation(
+            "main", "Assistant", "https://example.com/current.png", "\U0001F916", Revision: 2);
+
+        var agent = ChatWelcomePresentation.AgentIdentity(catalog, "main", currentRoster: current);
+        var other = ChatWelcomePresentation.AgentIdentity(catalog, "other", currentRoster: current);
+
+        Assert.Equal("Assistant", agent.Name);
+        Assert.Equal("\U0001F916", agent.Emoji);
+        Assert.Equal("https://example.com/current.png", agent.AvatarUrl);
+        Assert.Equal("other", other.Name);
+        Assert.Null(other.Emoji);
+        Assert.Null(other.AvatarUrl);
+    }
+
+    [Fact]
     public void AgentIdentity_UsesGatewayDefaultNameAndLeavesDefaultAvatarToGeneratedFace()
     {
         // Unconfigured main: agents.list has no name; agent.identity.get returns the built-in default.

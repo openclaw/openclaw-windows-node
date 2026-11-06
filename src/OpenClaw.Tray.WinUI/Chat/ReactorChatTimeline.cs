@@ -37,7 +37,8 @@ public sealed record ReactorChatTimelineProps(
     Func<string, bool>? TryCopyText = null,
     string? AssistantAgentId = null,
     OpenClaw.Shared.ChatPlacementCatalog? AssistantCatalog = null,
-    IChatAgentAvatarImageSource? AssistantAvatarImageSource = null);
+    IChatAgentAvatarImageSource? AssistantAvatarImageSource = null,
+    ChatAgentPresentation? AssistantRosterAgent = null);
 
 /// <summary>
 /// Reactor-owned production timeline. Reactor's keyed ItemsView handles row
@@ -582,7 +583,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
         // Same identity rules as the welcome header and sidebar: image, text avatar, then generated face.
         var agent = ChatWelcomePresentation.AgentIdentity(
-            row.Props.AssistantCatalog, row.Props.AssistantAgentId, row.Props.AssistantIdentity);
+            row.Props.AssistantCatalog, row.Props.AssistantAgentId,
+            row.Props.AssistantIdentity, row.Props.AssistantRosterAgent);
         return NativeChatWelcomeAvatarElement.NativeChatWelcomeAvatar()
             .Set(avatar => avatar.Update(agent, 36, row.Props.AssistantAvatarImageSource))
             .Size(36, 36)

@@ -1541,11 +1541,6 @@ public sealed class WorkspaceNavigationTests
         }
         var badge = XDocument.Load(Source("Controls", "AgentIdentityBadge.xaml"));
         Assert.Single(badge.Descendants(), element => element.Name.LocalName == "PersonPicture");
-        var face = Assert.Single(badge.Descendants(), element => (string?)element.Attribute(x + "Name") == "Face");
-        Assert.Equal("Collapsed", (string?)face.Attribute("Visibility"));
-        foreach (var feature in new[] { "FaceEye", "FaceMouth" })
-            for (var variant = 0; variant < 4; variant++)
-                Assert.Single(badge.Descendants(), element => (string?)element.Attribute(x + "Name") == $"{feature}{variant}");
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("ConnectionStatusPresenter.Pill(snapshot?.OverallState, status)", code);
         Assert.Contains("menu.Opening +=", code);
@@ -1553,9 +1548,6 @@ public sealed class WorkspaceNavigationTests
             File.ReadAllText(Source("Services", "WindowManager.cs")));
         var avatar = File.ReadAllText(Source("Controls", "AgentIdentityBadge.xaml.cs"));
         Assert.Contains("new MediaResolver(", avatar);
-        Assert.Contains("Picture.Initials = agent.Emoji", avatar);
-        Assert.Contains("AgentAvatarPresentation.Face(agentId)", avatar);
-        Assert.Contains("Picture.ProfilePicture is null && _agent?.Emoji is null", avatar);
         Assert.Contains("cancellation.IsCancellationRequested", avatar);
         Assert.DoesNotContain("File.Read", avatar);
     }

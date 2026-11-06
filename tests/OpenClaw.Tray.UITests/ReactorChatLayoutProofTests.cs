@@ -257,33 +257,54 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     [Fact]
     public async Task Timeline_UsesAndRefreshesTheCurrentRosterIdentity()
     {
-        var roster = new MutableAgentRoster(new("main", "Roster assistant", Emoji: "✨"));
-        await WithChatAsync(1024, async (surface, _, _, provider) =>
+        var roster = new MutableAgentRoster(new("main", "Research assistant", Emoji: "🔬"));
+        await WithChatAsync(1024, async (surface, _, session, provider) =>
         {
+            await Task.Delay(900);
             await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => session.Placement?.State.Catalog is
+                    { AgentName: "Research assistant", AgentEmoji: "🔬" },
+                "loaded placement catalog"));
             await ui.RunOnUIAsync(() =>
             {
-                var avatar = FindControl<NativeChatWelcomeAvatar>(surface, "ChatAssistantAvatar");
-                Assert.Equal("Roster assistant", AutomationProperties.GetName(avatar));
-                Assert.Contains(FindDescendants<TextBlock>(surface), text => text.Text == "Roster assistant");
-                Assert.Contains(FindDescendants<FrameworkElement>(surface), element =>
-                    AutomationProperties.GetName(element).StartsWith("Roster assistant:", StringComparison.Ordinal));
+                Assert.Equal("Research assistant",
+                    FindControl<TextBlock>(surface, "ChatWelcomeAgent").Text);
             });
             Assert.Empty(provider.AgentIdentityRequests);
 
-            roster.Publish(new("main", "Updated roster assistant", Emoji: "🤖", Revision: 1));
+            roster.Publish(new("main", "Assistant", Emoji: "🤖", Revision: 1));
+            await SettleAsync();
+
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("Assistant", FindControl<TextBlock>(surface, "ChatWelcomeAgent").Text);
+            });
+            await CaptureAsync(surface, "RosterIdentityRefreshedWelcome");
+
+            var snapshot = await provider.LoadAsync();
+            var transcript = ChatTimelineState.Initial() with
+            {
+                Entries = ImmutableList.Create(
+                    new ChatTimelineItem("assistant", ChatTimelineItemKind.Assistant, "Hello")),
+                HistoryLoaded = true,
+            };
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = transcript },
+            }));
             await SettleAsync();
 
             await ui.RunOnUIAsync(() =>
             {
                 var avatar = FindControl<NativeChatWelcomeAvatar>(surface, "ChatAssistantAvatar");
-                Assert.Equal("Updated roster assistant", AutomationProperties.GetName(avatar));
-                Assert.Contains(FindDescendants<TextBlock>(surface), text => text.Text == "Updated roster assistant");
-                Assert.Contains(FindDescendants<FrameworkElement>(surface), element =>
-                    AutomationProperties.GetName(element).StartsWith("Updated roster assistant:", StringComparison.Ordinal));
+                Assert.Equal("Assistant", AutomationProperties.GetName(avatar));
+                var picture = Assert.Single(FindDescendants<PersonPicture>(avatar));
+                Assert.Equal("🤖", picture.Initials);
             });
-        }, identityLoader: agentId =>
-            Task.FromResult<ChatAgentIdentity?>(new(agentId, "Hydrated identity")),
+            await CaptureAsync(surface, "RosterIdentityRefreshedTranscript");
+        }, "empty", placementGateway: new PlacementProofGateway("🔬", agentName: "Research assistant"),
+            identityLoader: agentId => Task.FromResult<ChatAgentIdentity?>(new(agentId, "Hydrated identity")),
             agentRosterSource: roster);
     }
 

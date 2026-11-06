@@ -22,9 +22,16 @@ internal static class ChatWelcomePresentation
     }
 
     internal static WorkspaceAgent AgentIdentity(ChatPlacementCatalog? catalog, string? agentId,
-        ChatAgentIdentity? hydrated = null)
+        ChatAgentIdentity? hydrated = null, ChatAgentPresentation? currentRoster = null)
     {
         var id = agentId ?? "main";
+        if (currentRoster is { } current &&
+            string.Equals(current.AgentId, id, StringComparison.Ordinal))
+        {
+            return AgentAvatarPresentation.Compose(
+                id, null, current.Name, null, current.Emoji, null, current.AvatarUrl, null);
+        }
+
         var roster = catalog?.AgentId == id ? catalog : null;
         return AgentAvatarPresentation.Compose(id, null, roster?.AgentName, null, roster?.AgentEmoji,
             roster?.AgentAvatar, roster?.AgentAvatarUrl, hydrated);

@@ -405,7 +405,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             AssistantIdentity: assistantIdentity,
             AssistantAgentId: assistantAgentId,
             AssistantCatalog: props.ComposerSession.Placement?.State.Catalog,
-            AssistantAvatarImageSource: avatarCache));
+            AssistantAvatarImageSource: avatarCache,
+            AssistantRosterAgent: selectedRosterAgent));
 
         var pendingQuestion = effectiveThread is null ? null : questionSnapshot?.Prompts.FirstOrDefault(prompt =>
             prompt.Request.Status == "pending"
@@ -438,7 +439,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 PlacementTargetIsEmpty = isEmptyConversation,
                 PlacementHistoryReady = placementHistoryReady,
                 PlacementTargetIsNew = isComposeOnly,
-                AgentIdentity = assistantIdentity
+                AgentIdentity = assistantIdentity,
+                AgentRosterPresentation = selectedRosterAgent
             };
             composerElement = Component<ReactorChatComposer, ReactorChatComposerViewProps>(new(
                 props.ComposerSession,
