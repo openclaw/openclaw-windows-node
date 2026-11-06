@@ -44,6 +44,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     // clicks coalesce onto the latest ChatPage.QueueSession value.
     private bool _chatApplyQueued;
     private bool _showingAgentCreation;
+    private readonly ProfileAutoFillCoordinator _profileAutoFill = CurrentApp.ProfileAutoFill;
     private IOperatorGatewayClient? _refreshingClient;
     private readonly HubCommandExecutor _commandExecutor = new();
     private readonly HubSearchController _search;
@@ -81,6 +82,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _openTimeline = openTimeline;
         _identity = new WorkspaceIdentitySource(UpdateOwnerIdentity,
             category => Logger.Warn(WorkspaceIdentitySource.DescribeUnavailable(category)));
+        _profileAutoFill.ProfileChanged += OnProfileAutoFilled;
         _sessionMenu = new WorkspaceSessionMenuController(
             () => IsClosed ? null : CurrentApp.GatewayClient,
             key => _state.Sessions.FirstOrDefault(s => s.Key == key),
@@ -977,8 +979,11 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void UpdateOwnerIdentity()
     {
         var name = _identity.DisplayName;
-        // macOS parity: the shared-credential owner is labelled as such; no known profile shows Owner.
-        var label = _identity.IsSharedOwner ? Text("SharedOwner.Text") : name ?? Text("Owner.Text");
+        // Web UI parity: the shared-credential owner keeps its marker beside any saved name; no known profile shows Owner.
+        var label = _identity.FooterLabel(Text("Owner.Text"), Text("SharedOwner.Text"),
+            ownerName => LocalizationHelper.Format("WorkspaceShell_SharedOwnerNamedFormat", ownerName));
+        if (!IsClosed && name is not null)
+            AsyncEventHandlerGuard.Run(_profileAutoFill.ObserveAsync, new AppLogger(), nameof(UpdateOwnerIdentity));
         var avatar = _identity.Avatar;
         var avatarChanged = !ReferenceEquals(avatar, _shownAvatar);
         if (avatarChanged)
@@ -1090,6 +1095,12 @@ public sealed partial class WorkspaceWindow : WindowEx
             _showingAgentCreation = false;
             if (!IsClosed) NewAgentOption.IsEnabled = true;
         }
+    }
+
+    private void OnProfileAutoFilled(object? sender, EventArgs e)
+    {
+        if (!IsClosed)
+            RefreshOwnerIdentity(invalidate: true);
     }
 
     private void OnNavigationChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs e)
@@ -1355,6 +1366,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         IsClosed = true;
         WorkspaceSearchFlyout.Hide();
         _search.Dispose();
+        _profileAutoFill.ProfileChanged -= OnProfileAutoFilled;
         _identity.SetConnection(null, ConnectionStatus.Disconnected);
         _state.PropertyChanged -= OnStateChanged;
         UnwirePins();
