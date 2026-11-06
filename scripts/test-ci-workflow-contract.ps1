@@ -859,6 +859,17 @@ foreach ($build in $releaseBuilds.GetEnumerator()) {
         -Message "Release builds must start in parallel with tests and E2E."
 }
 
+foreach ($jobName in @('build-x64', 'build-arm64', 'build-msix')) {
+    $job = Get-JobBlock $jobName
+    Assert-Contains -Text $job `
+        -Expected "format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', runner.temp)" `
+        -Message "Release build '$jobName' must consume the signed helper outside the checkout."
+    $download = Get-StepBlock -Text $job -Name 'Download signed cleanup host'
+    Assert-Contains -Text $download `
+        -Expected 'path: ${{ runner.temp }}\signed-cleanup-host' `
+        -Message "Release build '$jobName' must download the signed helper outside the checkout to preserve clean-source provenance."
+}
+
 $buildMsixJob = Get-JobBlock "build-msix"
 Assert-JobDependencies -Name 'build-msix' -Expected @('change-classification', 'metadata', 'reserve-msix-version', 'sign-cleanup-host')
 foreach ($token in @(
