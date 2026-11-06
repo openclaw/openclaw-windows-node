@@ -140,28 +140,9 @@
                 <FontIcon Glyph="&#xE721;" FontSize="16"/>
                 <Button.Flyout>
                     <Flyout x:Name="CommandSearchFlyout" Placement="BottomEdgeAlignedLeft"
-                            Opening="OnCommandSearchOpening" Opened="OnCommandSearchOpened">
-                        <AutoSuggestBox x:Uid="TitleSearchBox" x:Name="TitleSearchBox"
-                                        AutomationProperties.AutomationId="SettingsSearchBox"
-                                        PlaceholderText="Search… (Ctrl+E)" QueryIcon="Find"
-                                        TextMemberPath="Title" Width="420"
-                                        PreviewKeyDown="OnCommandSearchKeyDown"
-                                        TextChanged="OnSearchTextChanged"
-                                        SuggestionChosen="OnSearchSuggestionChosen"
-                                        QuerySubmitted="OnSearchQuerySubmitted">
-                            <AutoSuggestBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" Spacing="8" Padding="4">
-                                        <TextBlock Text="{Binding Icon}" FontSize="14" VerticalAlignment="Center"/>
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding Title}" Style="{StaticResource BodyTextBlockStyle}"/>
-                                            <TextBlock Text="{Binding Subtitle}" Style="{StaticResource CaptionTextBlockStyle}"
-                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </AutoSuggestBox.ItemTemplate>
-                        </AutoSuggestBox>
+                            Opening="OnCommandSearchOpening" Opened="OnCommandSearchOpened"
+                            Closed="OnCommandSearchClosed">
+                        <controls:SearchHost x:Name="SettingsSearchHost"/>
                     </Flyout>
                 </Button.Flyout>
             </Button>

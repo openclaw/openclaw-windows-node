@@ -8,6 +8,7 @@
 
 using System.Collections.Immutable;
 using System.Globalization;
+using OpenClawTray.Helpers;
 #if !OPENCLAW_TRAY_TESTS
 using OpenClawTray.Pages;
 #endif
@@ -96,6 +97,31 @@ internal sealed record HubCommandContext(
 /// <summary>Centralizes Hub routes, command construction, page resolution, and command search.</summary>
 internal static class HubPageRegistry
 {
+    internal static (string TitleKey, string Icon) SearchPresentation(string tag) => tag switch
+    {
+        "chat" => ("HubWindow_NavigationViewItem_82.Content", FluentIconCatalog.Chat),
+        "dashboard" => ("Search_Dashboard", FluentIconCatalog.Dashboard),
+        "channels" => ("Search_Dashboard_Channels", FluentIconCatalog.Channels),
+        _ => ResolvePage(tag) switch
+        {
+            HubPageKind.Connection => ("HubWindow_NavigationViewItem_88.Content", FluentIconCatalog.Plug),
+            HubPageKind.LocalAi => ("HubWindow_NavigationViewItem_LocalAi.Content", FluentIconCatalog.Inference),
+            HubPageKind.Sessions => ("HubWindow_NavigationViewItem_91.Content", FluentIconCatalog.Sessions),
+            HubPageKind.AgentEvents => ("HubWindow_NavigationViewItem_94.Content", FluentIconCatalog.AgentEvents),
+            HubPageKind.DefaultModel => ("HubWindow_NavigationViewItem_DefaultModel.Content", FluentIconCatalog.Settings),
+            HubPageKind.Cron => ("HubWindow_NavigationViewItem_124.Content", FluentIconCatalog.Cron),
+            HubPageKind.Workspace => ("WorkspacePage_TextBlock_22.Text", FluentIconCatalog.Workspace),
+            HubPageKind.Instances => ("HubWindow_NavigationViewItem_112.Content", FluentIconCatalog.Devices),
+            HubPageKind.Config => ("HubWindow_NavigationViewItem_118.Content", FluentIconCatalog.Settings),
+            HubPageKind.Usage => ("HubWindow_NavigationViewItem_121.Content", FluentIconCatalog.Money),
+            HubPageKind.Permissions => ("HubWindow_NavigationViewItem_136.Content", FluentIconCatalog.Permissions),
+            HubPageKind.Settings => ("HubWindow_NavigationViewItem_133.Content", FluentIconCatalog.Settings),
+            HubPageKind.Notifications => ("Onboarding_Perm_Notifications", FluentIconCatalog.Notifications),
+            HubPageKind.Debug => ("HubWindow_NavigationViewItem_145.Content", FluentIconCatalog.Bug),
+            _ => throw new ArgumentException("No search presentation is registered for this destination.", nameof(tag))
+        }
+    };
+
     internal static string GetNativeSetupPage(OpenClaw.SetupEngine.SetupNativeDestination destination) => destination switch
     {
         OpenClaw.SetupEngine.SetupNativeDestination.Chat => "chat",
@@ -313,20 +339,6 @@ internal static class HubPageRegistry
         }
 
         return commands.ToImmutable();
-    }
-
-    /// <summary>Returns commands matching the user query by title, subtitle, or route metadata.</summary>
-    public static ImmutableArray<HubCommand> SearchCommands(
-        IEnumerable<HubCommand> commands,
-        string? query)
-    {
-        var trimmed = query?.Trim() ?? string.Empty;
-        var filtered = string.IsNullOrEmpty(trimmed)
-            ? commands.Take(8)
-            : commands.Where(command =>
-                command.Title.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
-                (command.Subtitle?.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ?? false)).Take(10);
-        return filtered.ToImmutableArray();
     }
 
     private static void AddNavigation(

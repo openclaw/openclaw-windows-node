@@ -7844,6 +7844,49 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在处理此问题。请刷新以查看其状态。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>请为每个问题选择有效的答案。</value></data>
+  <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>搜索 OpenClaw</value></data>
+  <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>搜索 OpenClaw</value></data>
+  <data name="Search_Results" xml:space="preserve"><value>搜索结果</value></data>
+  <data name="Search_Empty" xml:space="preserve"><value>没有匹配的结果。</value></data>
+  <data name="Search_Dashboard" xml:space="preserve"><value>控制面板</value></data>
+  <data name="Search_Dashboard_Channels" xml:space="preserve"><value>频道</value></data>
+  <data name="Search_NoCounterpart" xml:space="preserve"><value>此结果没有对应的控制面板页面。</value></data>
+  <data name="SearchMore.Content" xml:space="preserve"><value>显示更多</value></data>
+  <data name="SearchRetry.Content" xml:space="preserve"><value>重试</value></data>
+  <data name="Search_Group_Chats" xml:space="preserve"><value>聊天</value></data>
+  <data name="Search_Group_Messages" xml:space="preserve"><value>消息内容</value></data>
+  <data name="Search_Group_Settings" xml:space="preserve"><value>设置</value></data>
+  <data name="Search_Group_Automations" xml:space="preserve"><value>自动化</value></data>
+  <data name="Search_Group_Skills" xml:space="preserve"><value>技能</value></data>
+  <data name="Search_Group_Agents" xml:space="preserve"><value>智能体</value></data>
+  <data name="Search_Group_Models" xml:space="preserve"><value>模型</value></data>
+  <data name="Search_Group_Dashboard" xml:space="preserve"><value>控制面板</value></data>
+  <data name="Search_Status_Loading" xml:space="preserve"><value>{0}：正在搜索…</value></data>
+  <data name="Search_Status_Offline" xml:space="preserve"><value>{0}：连接到网关以进行搜索。</value></data>
+  <data name="Search_Status_Denied" xml:space="preserve"><value>{0}：需要读取权限。</value></data>
+  <data name="Search_Status_TooLong" xml:space="preserve"><value>{0}：最多可使用 4096 个字符。</value></data>
+  <data name="Search_Status_Unavailable" xml:space="preserve"><value>{0}：此网关不支持。</value></data>
+  <data name="Search_Status_Partial" xml:space="preserve"><value>{0}：结果可能不完整。请缩小搜索范围。</value></data>
+  <data name="Search_Status_Failed" xml:space="preserve"><value>{0}：搜索失败。其他结果仍然可用。</value></data>
+  <data name="Search_Dashboard_Approvals" xml:space="preserve"><value>审批</value></data>
+  <data name="Search_Dashboard_Secrets" xml:space="preserve"><value>机密</value></data>
+  <data name="Search_Dashboard_Models" xml:space="preserve"><value>模型提供商</value></data>
+  <data name="Search_Dashboard_Automation" xml:space="preserve"><value>唤醒与心跳</value></data>
+  <data name="Search_Dashboard_Mcp" xml:space="preserve"><value>网关 MCP 服务器</value></data>
+  <data name="Search_Dashboard_Memory" xml:space="preserve"><value>记忆</value></data>
+  <data name="Search_Dashboard_Security" xml:space="preserve"><value>网关安全</value></data>
+  <data name="Search_Dashboard_Logs" xml:space="preserve"><value>网关日志</value></data>
+  <data name="Search_Dashboard_Systems" xml:space="preserve"><value>系统</value></data>
+  <data name="Search_Dashboard_Dashboards" xml:space="preserve"><value>控制面板集合</value></data>
+  <data name="Search_Dashboard_Plugins" xml:space="preserve"><value>插件</value></data>
+  <data name="Search_Dashboard_Apps" xml:space="preserve"><value>应用</value></data>
+  <data name="Search_Dashboard_Meetings" xml:space="preserve"><value>会议</value></data>
+  <data name="Search_Dashboard_Activity" xml:space="preserve"><value>网关活动</value></data>
+  <data name="Search_Dashboard_Portals" xml:space="preserve"><value>门户</value></data>
+  <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>工作树</value></data>
+  <data name="Search_TargetUnavailable" xml:space="preserve"><value>请求的项目已不可用。</value></data>
+  <data name="Search_Compatibility" xml:space="preserve"><value>此网关版本不支持部分控制面板页面。</value></data>
+  <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：请先选择助手。</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>移除项目</value>
   </data>

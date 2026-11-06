@@ -245,13 +245,34 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private static GatewayErrorKind ClassifyTransportObservation(Exception error)
     {
-        var fallback = GatewayErrorKind.Unknown;
+        GatewayErrorKind? httpStatusKind = null;
+        var hasNetworkCause = false;
         for (Exception? current = error; current is not null; current = current.InnerException)
         {
             if (current is System.Security.Authentication.AuthenticationException)
                 return GatewayErrorKind.Tls;
+            if (current is System.Net.Http.HttpRequestException
+                { HttpRequestError: System.Net.Http.HttpRequestError.SecureConnectionError })
+            {
+                return GatewayErrorKind.Tls;
+            }
+            if (httpStatusKind is null &&
+                current is System.Net.Http.HttpRequestException { StatusCode: { } statusCode })
+            {
+                httpStatusKind = ClassifyHttpStatus(statusCode);
+            }
             if (current is System.Net.Sockets.SocketException or TimeoutException)
-                return GatewayErrorKind.Network;
+                hasNetworkCause = true;
+        }
+
+        if (httpStatusKind is { } statusKind)
+            return statusKind;
+        if (hasNetworkCause)
+            return GatewayErrorKind.Network;
+
+        var fallback = GatewayErrorKind.Unknown;
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
             var kind = GatewayErrorClassifier.Classify(current.Message);
             if (kind != GatewayErrorKind.Unknown)
                 return kind;
@@ -260,6 +281,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         return fallback;
     }
+
+    private static GatewayErrorKind? ClassifyHttpStatus(System.Net.HttpStatusCode statusCode) =>
+        (int)statusCode switch
+        {
+            401 or 403 => GatewayErrorKind.Auth,
+            429 => GatewayErrorKind.RateLimited,
+            >= 500 and <= 599 => GatewayErrorKind.Server,
+            _ => null
+        };
 
     private void ObserveHandshake(long generation, GatewayHandshakePhase phase,
         GatewayErrorKind? failureKind = null, int? retryAfterMs = null)
@@ -516,7 +546,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     protected override void OnConnectionException(Exception exception)
     {
         Volatile.Write(ref _startupRejection, null);
-        RaiseConnectionFailure(GatewayErrorClassifier.Classify(exception.ToString()));
+        RaiseConnectionFailure(ClassifyTransportObservation(exception));
     }
 
     protected override void OnReconnectAuthorizationDenied(
@@ -1503,13 +1533,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000) =>
         SendResponseRequestAsync(method, parameters, timeoutMs);
 
+    private const string SearchRequestIdPrefix = "search:";
+
     public Task<JsonElement> SendWizardRequestOnConnectionAsync(
         string method, object? parameters, long connectionEpoch, int timeoutMs = 30000) =>
         SendResponseRequestAsync(method, parameters, timeoutMs, connectionEpoch);
 
     private async Task<JsonElement> SendResponseRequestAsync(
         string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null,
-        CancellationToken requestCancellationToken = default)
+        CancellationToken requestCancellationToken = default, bool searchRead = false)
     {
         using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken, requestCancellationToken);
         var requestToken = requestCancellation.Token;
@@ -1529,7 +1561,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             throw new InvalidOperationException($"{HandshakePendingError}; refusing to send '{method}'");
 
         _logger.Info($"[GatewayClient] Sending frame: {method}");
-        var requestId = Guid.NewGuid().ToString();
+        var requestId = (searchRead ? SearchRequestIdPrefix : "") + Guid.NewGuid().ToString();
         var pending = _pendingRequests.RegisterWizard(requestId, method);
 
         try
@@ -1538,6 +1570,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     SerializeRequest(requestId, method, parameters),
                     connectionGeneration,
                     requestToken)
+                .WaitAsync(requestToken)
                 .ConfigureAwait(false);
             if (!sent)
                 throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");
@@ -2422,6 +2455,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         _pendingRequests.TryTake(requestId, out var pending);
         var requestMethod = pending?.Method;
+        // A cancelled detached search must not fall through to legacy payload-based roster updates.
+        if (pending is null && requestId?.StartsWith(SearchRequestIdPrefix, StringComparison.Ordinal) == true)
+            return;
 
         switch (pending?.Category)
         {
@@ -2451,10 +2487,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     wizardCompletion.TryFault(requestMethod == "tts.speak"
                         ? new GatewaySpeechException(ClassifySpeechRejection(message))
                         : QuestionRequestError(pending.Method, root)
-                            ?? GatewayRequestErrors.Create(
+                            ?? (requestId?.StartsWith(SearchRequestIdPrefix, StringComparison.Ordinal) == true ? new GatewayRequestException(message,
+                                root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
+                                    ? GetString(error, "code") : null) : GatewayRequestErrors.Create(
                                 message,
                                 TryGetErrorTopLevelCode(root),
-                                TryGetErrorDetailCode(root)));
+                                TryGetErrorDetailCode(root))));
                 }
                 else if (root.TryGetProperty("payload", out var wizPayload))
                 {

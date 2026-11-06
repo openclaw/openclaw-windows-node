@@ -156,6 +156,62 @@ public sealed partial class GatewayFixtureUiTests
         });
     }
 
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task ChannelsSearch_OpensDashboardFromWorkspaceAndSettings()
+    {
+        await WithAppAsync(async run =>
+        {
+            await OpenWorkspaceAsync(run);
+            using var tools = await run.Client.ListToolsAsync();
+            Assert.Contains(tools.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray(),
+                tool => tool.GetProperty("name").GetString() == "app.search");
+            var matches = await run.InvokeAsync("app.search", new { query = "Go to Channels" });
+            var match = Assert.Single(matches.EnumerateArray(),
+                item => item.GetProperty("Title").GetString() == "Channels");
+            Assert.Equal("Dashboard", match.GetProperty("Group").GetString());
+            Assert.True(match.GetProperty("OpensDashboard").GetBoolean());
+            Assert.True(match.GetProperty("HasDashboardCounterpart").GetBoolean());
+            await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "channels-search-mcp.json"), matches.GetRawText());
+
+            var window = FindHub(run);
+            await SearchAndOpenAsync("WorkspaceSearch", "WorkspaceSearchBox", "Channels", "{ENTER}", 1);
+            Assert.NotNull(FindById(run, "ChatComposerInput"));
+
+            await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is { Current.IsOffscreen: false }
+                && FindById(run, "SettingsSearch") is { Current.IsOffscreen: false }, "Settings search ready");
+            await SearchAndOpenAsync("SettingsSearch", "SettingsSearchBox", "Go to Channels", "%{ENTER}", 2);
+            Assert.NotNull(FindById(run, "SettingsPageMarker"));
+            AssertDashboardLaunches(run, DashboardOutcome.Opened, DashboardOutcome.Opened);
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "channels.status");
+
+            async Task SearchAndOpenAsync(string buttonId, string inputId, string query, string keys, int launches)
+            {
+                SetForeground(window);
+                Invoke(FindById(run, buttonId)!);
+                await WaitUiAsync(run, () => FindById(run, inputId) is not null, $"{inputId} opened");
+                var input = SearchEdit(run, inputId);
+                ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue(query);
+                await WaitUiAsync(run, () => FindById(run, "SearchResult_0") is { Current.IsOffscreen: false } result
+                    && result.Current.Name.StartsWith("Channels.", StringComparison.Ordinal)
+                    && result.Current.Name.Contains("Dashboard", StringComparison.Ordinal),
+                    $"Channels Dashboard result for {inputId}");
+                await WaitUiAsync(run, () => input.Current.HasKeyboardFocus ||
+                    input.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.HasKeyboardFocusProperty, true)) is not null,
+                    $"{inputId} focused");
+                OwnedWindowCapture.Save(run, window, $"{inputId}-channels-dashboard.png", FindById(run, "SearchResult_0")!);
+                Assert.True(ForegroundBelongsTo(run.AppProcessId),
+                    "The fixture lost foreground before search activation; no keys were sent.");
+                Assert.NotNull(FindById(run, inputId));
+                Send(run, window, keys);
+                await WaitForDashboardLaunchesAsync(run, launches, $"{inputId} opening Dashboard Channels");
+                await WaitUiAsync(run, () => FindById(run, inputId) is null, $"{inputId} closed");
+            }
+        }, scenario: GatewayScenario.CreateSearchNavigation());
+    }
+
     private static GatewayScenario VerifyingScenario(Action? onVerify = null) =>
         GatewayScenario.CreateNativeSetup((method, _) =>
         {

@@ -15,6 +15,28 @@ public sealed partial class GatewayFixtureProtocolTests
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
 
     [Fact]
+    public async Task SearchNavigationScenario_AcceptsScopedSkillsReadsWithoutAdvertisingRetiredChannelsStatus()
+    {
+        var scenario = GatewayScenario.CreateSearchNavigation();
+        Assert.Contains("skills.status", scenario.ReadMethods);
+        Assert.DoesNotContain("channels.status", scenario.ReadMethods);
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var deadline = new CancellationTokenSource(Deadline);
+
+        var result = await connected.Client.ReadSearchCatalogAsync(
+            "skills.status", new { agentId = "main" }, deadline.Token);
+
+        Assert.Empty(result.GetProperty("skills").EnumerateArray());
+        Assert.Contains(server.Requests, request => request.Method == "skills.status" && request.Outcome == "ok");
+        var error = await Assert.ThrowsAsync<GatewayRequestException>(() =>
+            connected.Client.ReadSearchCatalogAsync("skills.status", new { agentId = "unknown" }, deadline.Token));
+        Assert.Equal("INVALID_PARAMS", error.Code);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
     public async Task BrowseQuestionDiscovery_ReturnsNoQuestionsWithoutEnablingInteractiveMutations()
     {
         var token = CreateToken();

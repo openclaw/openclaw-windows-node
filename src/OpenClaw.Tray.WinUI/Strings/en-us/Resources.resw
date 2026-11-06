@@ -7911,6 +7911,49 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>This question is being resolved. Refresh to check its status.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choose a valid answer for each question.</value></data>
+  <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>Search OpenClaw</value></data>
+  <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>Search OpenClaw</value></data>
+  <data name="Search_Results" xml:space="preserve"><value>Search results</value></data>
+  <data name="Search_Empty" xml:space="preserve"><value>No matching results.</value></data>
+  <data name="Search_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="Search_Dashboard_Channels" xml:space="preserve"><value>Channels</value></data>
+  <data name="Search_NoCounterpart" xml:space="preserve"><value>This result has no Dashboard counterpart.</value></data>
+  <data name="SearchMore.Content" xml:space="preserve"><value>Show more</value></data>
+  <data name="SearchRetry.Content" xml:space="preserve"><value>Retry</value></data>
+  <data name="Search_Group_Chats" xml:space="preserve"><value>Chats</value></data>
+  <data name="Search_Group_Messages" xml:space="preserve"><value>In messages</value></data>
+  <data name="Search_Group_Settings" xml:space="preserve"><value>Settings</value></data>
+  <data name="Search_Group_Automations" xml:space="preserve"><value>Automations</value></data>
+  <data name="Search_Group_Skills" xml:space="preserve"><value>Skills</value></data>
+  <data name="Search_Group_Agents" xml:space="preserve"><value>Agents</value></data>
+  <data name="Search_Group_Models" xml:space="preserve"><value>Models</value></data>
+  <data name="Search_Group_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="Search_Status_Loading" xml:space="preserve"><value>{0}: searching…</value></data>
+  <data name="Search_Status_Offline" xml:space="preserve"><value>{0}: connect to the Gateway to search.</value></data>
+  <data name="Search_Status_Denied" xml:space="preserve"><value>{0}: read permission is required.</value></data>
+  <data name="Search_Status_TooLong" xml:space="preserve"><value>{0}: use at most 4096 characters.</value></data>
+  <data name="Search_Status_Unavailable" xml:space="preserve"><value>{0}: unavailable on this Gateway.</value></data>
+  <data name="Search_Status_Partial" xml:space="preserve"><value>{0}: results may be incomplete. Refine your search.</value></data>
+  <data name="Search_Status_Failed" xml:space="preserve"><value>{0}: search failed. Other results are still available.</value></data>
+  <data name="Search_Dashboard_Approvals" xml:space="preserve"><value>Approvals</value></data>
+  <data name="Search_Dashboard_Secrets" xml:space="preserve"><value>Secrets</value></data>
+  <data name="Search_Dashboard_Models" xml:space="preserve"><value>Model providers</value></data>
+  <data name="Search_Dashboard_Automation" xml:space="preserve"><value>Wake and heartbeat</value></data>
+  <data name="Search_Dashboard_Mcp" xml:space="preserve"><value>Gateway MCP servers</value></data>
+  <data name="Search_Dashboard_Memory" xml:space="preserve"><value>Memory</value></data>
+  <data name="Search_Dashboard_Security" xml:space="preserve"><value>Gateway security</value></data>
+  <data name="Search_Dashboard_Logs" xml:space="preserve"><value>Gateway logs</value></data>
+  <data name="Search_Dashboard_Systems" xml:space="preserve"><value>Systems</value></data>
+  <data name="Search_Dashboard_Dashboards" xml:space="preserve"><value>Dashboards</value></data>
+  <data name="Search_Dashboard_Plugins" xml:space="preserve"><value>Plugins</value></data>
+  <data name="Search_Dashboard_Apps" xml:space="preserve"><value>Apps</value></data>
+  <data name="Search_Dashboard_Meetings" xml:space="preserve"><value>Meetings</value></data>
+  <data name="Search_Dashboard_Activity" xml:space="preserve"><value>Gateway activity</value></data>
+  <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portals</value></data>
+  <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Worktrees</value></data>
+  <data name="Search_TargetUnavailable" xml:space="preserve"><value>The requested item is no longer available here.</value></data>
+  <data name="Search_Compatibility" xml:space="preserve"><value>Some Dashboard destinations are unavailable for this Gateway version.</value></data>
+  <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: choose an assistant first.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Remove item</value>
   </data>
