@@ -1,0 +1,21 @@
+{
+  "gateways": [
+    {
+      "id": "stable-synthetic-profile",
+      "url": "wss://stable-fixture.example.invalid/",
+      "friendlyName": "Synthetic stable upgrade fixture",
+      "sharedGatewayToken": "fixture-stable-shared-token",
+      "bootstrapToken": null,
+      "lastConnected": null,
+      "isLocal": false,
+      "requiresV2Signature": false,
+      "setupManagedDistroName": null,
+      "nativePackageFamilyName": null,
+      "nativeRuntimeContract": null,
+      "sshTunnel": null,
+      "browserControlPort": null,
+      "identityDirName": "stable-synthetic-profile"
+    }
+  ],
+  "activeId": "stable-synthetic-profile"
+}

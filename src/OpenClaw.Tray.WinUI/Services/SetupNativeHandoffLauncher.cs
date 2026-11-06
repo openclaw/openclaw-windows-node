@@ -1,6 +1,7 @@
 using OpenClaw.Connection;
 using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
+using OpenClawTray.Presentation;
 
 namespace OpenClawTray.Services;
 
@@ -42,7 +43,7 @@ internal sealed class SetupHandoffPresentationOwnership
     }
 }
 
-/// <summary>Consumes only a leased native receipt after fresh proof and the bound native page has mounted.</summary>
+/// <summary>Consumes a leased native receipt after fresh proof and the bound native page has mounted, or after a legacy Dashboard receipt's browser dispatch.</summary>
 internal sealed class SetupNativeHandoffLauncher(
     Func<GatewayRecord?> getActive,
     Func<GatewayAiSetupCompletion, CancellationToken, Task<SetupVerifiedNativeRoute>> verify,
@@ -114,11 +115,15 @@ internal sealed class SetupNativeHandoffLauncher(
                             Task.FromException(new InvalidOperationException("The setup Ready host is unavailable.")));
                     else
                         await open(new(current.Verification, lease.NativeTarget!), navigation.Token);
-                    navigation.Token.ThrowIfCancellationRequested();
-                    timeout.Token.ThrowIfCancellationRequested();
-                    RequireCurrent();
-                    timeout.Token.ThrowIfCancellationRequested();
-                    current.ReadyBinding?.RequireCurrent();
+                    // A launched browser cannot be withdrawn, so a legacy Dashboard receipt is consumed once dispatched.
+                    if (lease.IsPreparation || HubPageRegistry.GetNativeSetupDashboardPath(lease.NativeTarget!.Destination) is null)
+                    {
+                        navigation.Token.ThrowIfCancellationRequested();
+                        timeout.Token.ThrowIfCancellationRequested();
+                        RequireCurrent();
+                        timeout.Token.ThrowIfCancellationRequested();
+                        current.ReadyBinding?.RequireCurrent();
+                    }
                     lease.Consume();
                     ClearRestartRecovery();
                     if (lease.IsPreparation) readyConsumed?.Invoke();

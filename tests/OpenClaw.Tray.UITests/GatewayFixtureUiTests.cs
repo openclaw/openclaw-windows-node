@@ -178,16 +178,18 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
             await CaptureIfRequestedAsync(run, "pins-offline-retained-disabled.png");
 
+            // Any Gateway-dependent catalog page that is not pinned above proves the offline picker.
+            const string offlinePinTag = "usage";
             Invoke(FindById(run, "WorkspacePagesCustomize")!);
-            await WaitUiAsync(run, () => FindById(run, "WorkspacePagesToggle:channels") is not null, "offline picker");
+            await WaitUiAsync(run, () => FindById(run, $"WorkspacePagesToggle:{offlinePinTag}") is not null, "offline picker");
             foreach (var tag in identities.Keys)
             {
                 var toggle = FindById(run, $"WorkspacePagesToggle:{tag}")!;
                 Assert.True(toggle.Current.IsEnabled);
                 Assert.Equal(ToggleState.On, ((TogglePattern)toggle.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
             }
-            Invoke(FindById(run, "WorkspacePagesToggle:channels")!);
-            await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:channels") is { Current.IsEnabled: false },
+            Invoke(FindById(run, $"WorkspacePagesToggle:{offlinePinTag}")!);
+            await WaitUiAsync(run, () => FindById(run, $"WorkspacePinnedPage:{offlinePinTag}") is { Current.IsEnabled: false },
                 "offline picker can add an unavailable page");
             Assert.Equal(composerIdentity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
             ReleaseHandshake();
@@ -199,7 +201,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 Assert.Equal(identity, retained.GetRuntimeId());
                 Assert.True(retained.Current.IsEnabled);
             }
-            Assert.True(FindById(run, "WorkspacePinnedPage:channels")!.Current.IsEnabled);
+            Assert.True(FindById(run, $"WorkspacePinnedPage:{offlinePinTag}")!.Current.IsEnabled);
             Invoke(FindById(run, "WorkspacePinnedPage:sessions")!);
             await WaitUiAsync(run, () => FindById(run, "SessionsPageMarker")?.Current.IsOffscreen == false, "restored pin remains usable");
             await CaptureIfRequestedAsync(run, "pins-reconnected-enabled.png");
@@ -1138,7 +1140,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false,
         bool requireAgentSelection = false, bool allowSessionMutations = false, GatewayScenario? scenario = null,
         Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null, bool postSetupRestart = false,
-        Action? releasePendingResponses = null)
+        Action? releasePendingResponses = null, Action<GatewayFixtureProfile>? configureProfile = null,
+        bool connectGateway = true)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
@@ -1147,7 +1150,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             allowAgentCreation: allowAgentCreation, requireAgentSelection: requireAgentSelection,
             allowSessionMutations: allowSessionMutations,
             scenario: scenario, prepareSetupHandoff: prepareSetupHandoff, postSetupRestart: postSetupRestart,
-            releasePendingResponses: releasePendingResponses);
+            releasePendingResponses: releasePendingResponses, configureProfile: configureProfile,
+            connectGateway: connectGateway);
         try
         {
             output.WriteLine($"Fixture run {run.Profile.RunId}, PID {run.AppProcessId}, artifacts: {run.ArtifactsDirectory}");
@@ -1219,13 +1223,17 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         return item is not null && ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected;
     }
 
-    private static bool RenderConsumedHistory(GatewayFixtureRun run, string key)
+    private static bool RenderConsumedHistory(GatewayFixtureRun run, string key, long? afterRevision = null)
     {
         var composer = FindById(run, "ChatComposerInput");
         if (composer is null || string.IsNullOrEmpty(composer.Current.ItemStatus)) return false;
         using var rendered = JsonDocument.Parse(composer.Current.ItemStatus);
-        return rendered.RootElement.GetProperty("loadedThreadIds").EnumerateArray()
+        var loaded = rendered.RootElement.GetProperty("loadedThreadIds").EnumerateArray()
             .Any(thread => thread.GetString() == key);
+        return loaded && (afterRevision is null ||
+            rendered.RootElement.GetProperty("selectedThreadId").GetString() == key &&
+            rendered.RootElement.GetProperty("historyRevisions").TryGetProperty(key, out var revision) &&
+            revision.ValueKind == JsonValueKind.Number && revision.GetInt64() > afterRevision.Value);
     }
 
     private static void Invoke(AutomationElement element)
@@ -1338,21 +1346,22 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         return element!;
     }
 
-    private static async Task WaitUiAsync(GatewayFixtureRun run, Func<bool> condition, string description)
+    private static async Task WaitUiAsync(GatewayFixtureRun run, Func<bool> condition, string description,
+        TimeSpan? timeout = null)
     {
         await run.WaitForAsync(() =>
         {
             try { return Task.FromResult(condition()); }
             catch (ElementNotAvailableException) { return Task.FromResult(false); }
-        }, description);
+        }, description, timeout);
     }
 
-    private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name)
+    private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name, params AutomationElement[] assertedElements)
     {
         if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") != "1")
             return Task.CompletedTask;
         OwnedWindowCapture.Save(run, AppWindows(run).OrderByDescending(window =>
-            window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name);
+            window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name, assertedElements);
         return Task.CompletedTask;
     }
 

@@ -9,7 +9,7 @@ internal static class HubSearchCatalog
     internal static readonly (string Tag, string Path)[] Counterparts =
     [
         ("connection", "/settings/connection"), ("sessions", "/sessions"), ("skills", "/skills"),
-        ("channels", "/settings/channels"), ("instances", "/settings/devices"),
+        ("instances", "/settings/devices"),
         ("cron", "/automations"), ("config", "/settings/general"), ("usage", "/usage")
     ];
 
@@ -80,6 +80,12 @@ internal static class HubSearchCatalog
                 if (!connected && HubPageRegistry.IsGatewayPageTag(tag)) continue;
                 if (tag.StartsWith("agent:", StringComparison.Ordinal) && HubPageRegistry.ParseAgentId(tag).Length == 0) continue;
                 var presentation = HubPageRegistry.SearchPresentation(tag);
+                if (tag == "channels")
+                {
+                    yield return new($"dashboard:{tag}", HubSearchGroup.Dashboard, localize(presentation.TitleKey), command.Subtitle,
+                        presentation.Icon, new(HubSearchTargetKind.Dashboard, tag), $"{tag} {command.Title}", tag);
+                    continue;
+                }
                 yield return new($"page:{tag}", HubSearchGroup.Settings, localize(presentation.TitleKey), command.Subtitle,
                     presentation.Icon, new(HubSearchTargetKind.Page, tag), $"{tag} {command.Title}",
                     Counterpart(tag, dashboardSupported));

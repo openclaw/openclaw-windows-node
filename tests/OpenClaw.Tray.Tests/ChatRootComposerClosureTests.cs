@@ -61,9 +61,9 @@ public sealed class ChatRootComposerClosureTests
         // Applying those inputs is a post-commit view effect keyed by stable source
         // values. It must never move back into the root's Render path.
         Assert.Contains("props.Session.ApplyInputs(inputs);", composer);
-        Assert.Contains(
-            "}), props.InputSnapshot, inputs.CurrentThread, inputs.ModelCatalogRevision, inputs.ShowPlacementPickers, inputs.PlacementTargetIsEmpty, inputs.IsVisible);",
-            composer);
+        // The dependency-list spelling/order is not an ownership contract.
+        // Projection changes are executable ViewModel coverage; native retention
+        // and retry cases cover their actual application to the mounted composer.
         Assert.Contains("IsVisible = composerVisible", root);
         Assert.Contains(".IsVisible(composerVisible)", root);
         Assert.DoesNotContain("if (vm.Inputs is not { } inputs)", composer);

@@ -3,6 +3,7 @@ using OpenClaw.Connection;
 using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClaw.TestSupport;
+using OpenClawTray.Chat;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 
@@ -15,6 +16,38 @@ public sealed class SetupNativeChatPresentationTests
         new(SetupCompletionIntent.CustodianOnboarding, Gateway.Id, GatewayDashboardBinding.Capture(Gateway),
             "provider/model", "verified", 1, IdentityBinding: new string('A', 64), SessionKey: "agent:verified:main"),
         new(SetupNativeDestination.Chat, "agent:verified:main")));
+
+    private sealed class BoundProvider : IChatConnectionBoundProvider
+    {
+        internal IOperatorGatewayClient? Client;
+        public bool IsBoundTo(IOperatorGatewayClient client) => ReferenceEquals(Client, client);
+    }
+
+    [Fact]
+    public void RetainedProviderCannotConfirmReplacementUntilItsExactClientIsVerified()
+    {
+        var h = new Harness();
+        var provider = new BoundProvider { Client = h.Manager.Client };
+        h.Provider = provider;
+        h.Activate();
+        h.Drain();
+        Assert.True(h.Presentation.IsReady);
+        var replacement = DispatchProxy.Create<IOperatorGatewayClient, ClientProxy>();
+        h.Manager.Client = replacement;
+        h.Manager.RaiseClientChanged(replacement);
+        h.Drain();
+        Assert.False(h.Presentation.IsReady);
+        Assert.False(h.Observer.IsProviderCurrent(replacement, provider));
+        Assert.Equal(0, h.Disposals);
+        provider.Client = replacement;
+        h.Activate();
+        h.Drain();
+        Assert.True(h.Presentation.IsReady);
+        Assert.True(h.Observer.IsProviderCurrent(replacement, provider));
+        Assert.Equal(1, h.Mounts);
+        provider.Client = null;
+        Assert.False(h.Observer.IsProviderCurrent(replacement, provider));
+    }
 
     [Fact]
     public void SameClientRecoveryRetainsHostAndHealthyRefreshDoesNotReseed()
@@ -479,6 +512,60 @@ public sealed class SetupNativeChatPresentationTests
         state.Evaluate(() => identity.Request.GetConnectedClient(identity.Registry, h.Connection),
             _ => true, _ => throw new Xunit.Sdk.XunitException("Must not mount"), () => { }, () => { });
         Assert.Equal(SetupNativeChatWarning.AuthorityUnconfirmed, state.Warning);
+    }
+
+    [Theory]
+    [InlineData("valid")]
+    [InlineData("gateway")]
+    [InlineData("identity")]
+    public async Task SetupDashboardDispatchRequiresTheOriginalGatewayAndIdentity(string mutation)
+    {
+        using var identity = new IdentityFixture();
+        using var temp = new TempDirectory();
+        var h = identity.Harness;
+        var completion = identity.Request.Completion with
+        {
+            Target = new(SetupNativeDestination.Channels, "agent:verified:main")
+        };
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var handle = store.Issue(completion);
+        var browserLaunches = 0;
+        SetupNativeLaunchFailure? failure = null;
+        var launcher = new SetupNativeHandoffLauncher(() => identity.Registry.GetActive(),
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(
+                completion.Verification, completion.Target.SessionKey)),
+            async (selected, _) =>
+            {
+                var dashboard = new GatewayDashboardLauncher(() => true,
+                    () =>
+                    {
+                        if (mutation == "gateway")
+                            identity.Registry.AddOrUpdate(Gateway with { Url = "wss://replaced.test/" });
+                        if (mutation == "identity")
+                        {
+                            File.Delete(identity.IdentityFile);
+                            new DeviceIdentity(Path.GetDirectoryName(identity.IdentityFile)!).Initialize();
+                        }
+                        return new InteractiveGatewayCredential(
+                            Gateway.Url, "synthetic shared", false, CredentialResolver.SourceSharedGatewayToken);
+                    },
+                    _ =>
+                    {
+                        browserLaunches++;
+                        return Task.FromResult(true);
+                    }, () => { });
+                var request = new SetupNativeNavigationRequest(selected);
+                if (!await dashboard.OpenAsync("channels", () =>
+                    request.GetConnectedClient(identity.Registry, h.Connection)))
+                    throw new InvalidOperationException("The bound dashboard was not dispatched.");
+            }, value => failure = value);
+
+        var opened = await launcher.OpenAsync(store, handle);
+
+        Assert.Equal(mutation == "valid", opened);
+        Assert.Equal(mutation == "valid" ? 1 : 0, browserLaunches);
+        Assert.Equal(mutation == "valid" ? null : SetupNativeLaunchFailure.Changed, failure);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
     }
 
     [Fact]

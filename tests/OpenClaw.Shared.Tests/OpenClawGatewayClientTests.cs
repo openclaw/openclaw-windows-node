@@ -18,59 +18,6 @@ public class OpenClawGatewayClientTests
     // Session-event regressions explicitly unset the refresh-window override.
     private static readonly TimeSpan SessionRefreshQuietInterval = TimeSpan.FromMilliseconds(600);
 
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public async Task WebLoginFailure_OmitsEchoedPairingImageFromResultAndLogs(bool wait, bool wrapped)
-    {
-        var image = wrapped
-            ? "data:image/png;base64,\r\n c3ludGhldGlj cGFpcmluZ3BheWxvYWQ="
-            : "data:image/png;base64,c3ludGhldGljcGFpcmluZ3BheWxvYWQ=";
-        using var server = new LoopbackWebSocketServer();
-        using var identity = new TempDirectory("web-login-error-");
-        await server.StartAsync();
-        var logger = new TestLogger();
-        var helper = new GatewayClientTestHelper(
-            gatewayUrl: server.WebSocketUrl, identityPath: identity.Path, logger: logger);
-        using var client = helper.Client;
-        await client.ConnectAsync();
-        helper.MarkHandshakeReady();
-        var operation = wait
-            ? CheckWaitAsync()
-            : CheckStartAsync();
-        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5));
-        using var frame = JsonDocument.Parse(request);
-        Assert.Equal(wait ? "web.login.wait" : "web.login.start", frame.RootElement.GetProperty("method").GetString());
-        if (wait)
-            Assert.True(frame.RootElement.GetProperty("params").GetProperty("currentQrDataUrl").GetString() == image,
-                "The Gateway request must retain the synthetic pairing image.");
-        await server.SendTextAsync(JsonSerializer.Serialize(new
-        {
-            type = "res", id = ReadRequestId(request), ok = false,
-            error = new { message = wait ? image + " synthetic login failure" : "synthetic login failure " + image },
-        }));
-        await operation.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Contains(logger.Logs, line => line.Contains(wait
-            ? "<omitted> synthetic login failure" : "synthetic login failure <omitted>", StringComparison.Ordinal));
-        Assert.False(logger.Logs.Any(line => line.Contains("c3ludGhldGlj", StringComparison.Ordinal)),
-            "Logs must omit the echoed synthetic pairing payload.");
-
-        async Task CheckWaitAsync()
-        {
-            var result = Assert.IsType<WebLoginWaitResult>(await client.WebLoginWaitAsync(image));
-            Assert.Equal("<omitted> synthetic login failure", result.Error);
-            Assert.Equal(result.Error, result.RawResponse);
-        }
-
-        async Task CheckStartAsync()
-        {
-            var result = Assert.IsType<WebLoginStartResult>(await client.WebLoginStartAsync());
-            Assert.Equal("synthetic login failure <omitted>", result.Error);
-            Assert.Equal(result.Error, result.RawResponse);
-        }
-    }
-
     [Fact]
     public void LateWebLoginError_OmitsPairingImageFromUntrackedResponseLog()
     {

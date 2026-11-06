@@ -1561,7 +1561,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             throw new InvalidOperationException($"{HandshakePendingError}; refusing to send '{method}'");
 
         _logger.Info($"[GatewayClient] Sending frame: {method}");
-        var requestId = (searchRead ? SearchRequestIdPrefix : "") + Guid.NewGuid().ToString();
+        var requestId = searchRead
+            ? SearchRequestIdPrefix + Guid.NewGuid()
+            : CreateResponseRequestId();
         var pending = _pendingRequests.RegisterWizard(requestId, method);
 
         try
@@ -2160,119 +2162,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     }
 
     /// <summary>
-    /// Start a channel. Sends <c>channels.start { channel }</c> — the gateway's
-    /// canonical wire method per <c>src/gateway/server-methods-list.ts:21</c>.
-    /// (Note: previously this sent <c>channel.start</c> singular which the gateway
-    /// rejects as an unknown method; that was a latent bug.) Returns true when
-    /// the gateway acknowledges the start, false on any failure. For the rich
-    /// error payload — including "unknown channel" which means the channel
-    /// plugin isn't installed on the gateway host — use
-    /// <see cref="StartChannelDetailedAsync"/>.
-    /// </summary>
-    public async Task<bool> StartChannelAsync(string channelName)
-    {
-        var result = await StartChannelDetailedAsync(channelName);
-        return result != null && result.Ok && result.Started;
-    }
-
-    /// <summary>
-    /// Start a channel via <c>channels.start</c> and return the full gateway
-    /// response (including error message + raw JSON). The page uses this to
-    /// distinguish "channel started" from "plugin not loaded on gateway" so
-    /// the user gets accurate guidance instead of a generic failure.
-    /// </summary>
-    public async Task<ChannelStartResult?> StartChannelDetailedAsync(string channelName, int timeoutMs = 12000)
-    {
-        if (!IsConnected) return null;
-        try
-        {
-            var response = await SendWizardRequestAsync(
-                "channels.start",
-                new { channel = channelName },
-                timeoutMs);
-            var raw = response.GetRawText();
-            string? acctId = null;
-            string? channel = null;
-            bool started = false;
-            if (response.ValueKind == System.Text.Json.JsonValueKind.Object)
-            {
-                if (response.TryGetProperty("channel", out var ch) && ch.ValueKind == System.Text.Json.JsonValueKind.String)
-                    channel = ch.GetString();
-                if (response.TryGetProperty("accountId", out var aid) && aid.ValueKind == System.Text.Json.JsonValueKind.String)
-                    acctId = aid.GetString();
-                if (response.TryGetProperty("started", out var st) && st.ValueKind == System.Text.Json.JsonValueKind.True)
-                    started = true;
-            }
-            _logger.Info($"channels.start {channelName} → started={started}");
-            return new ChannelStartResult
-            {
-                Channel = channel ?? channelName,
-                AccountId = acctId,
-                Started = started,
-                Ok = true,
-                RawResponse = raw,
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.Warn($"channels.start {channelName} failed: {ex.Message}");
-            return new ChannelStartResult
-            {
-                Channel = channelName,
-                Started = false,
-                Ok = false,
-                Error = ex.Message,
-                RawResponse = ex.ToString(),
-            };
-        }
-    }
-
-    /// <summary>Stop a channel. Sends <c>channels.stop { channel }</c>.</summary>
-    public async Task<bool> StopChannelAsync(string channelName)
-    {
-        if (!IsConnected) return false;
-        try
-        {
-            await SendWizardRequestAsync("channels.stop", new { channel = channelName }, 12000);
-            _logger.Info($"channels.stop {channelName} succeeded");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.Warn($"channels.stop {channelName} failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Fetch the rich channels.status snapshot — the canonical channel-status API
-    /// used by macOS and the web UI. Returns null on failure.
-    /// The <paramref name="timeoutMs"/> is propagated to the gateway so slow
-    /// environments can extend the probe budget without recompiling.
-    /// </summary>
-    public async Task<ChannelsStatusSnapshot?> GetChannelsStatusAsync(bool probe = false, int timeoutMs = 12000)
-    {
-        if (!IsConnected) return null;
-        try
-        {
-            // Pass the caller's timeoutMs through to the gateway. We give the
-            // request envelope a slightly larger overall budget than the probe
-            // budget so a slow but successful probe still returns in time.
-            var probeTimeoutMs = Math.Max(1000, timeoutMs - 2000);
-            var response = await SendWizardRequestAsync(
-                "channels.status",
-                new { probe, timeoutMs = probeTimeoutMs },
-                timeoutMs);
-            return ChannelsStatusParser.Parse(response);
-        }
-        catch (Exception ex)
-        {
-            _logger.Warn($"channels.status request failed: {ex.Message}");
-            return null;
-        }
-    }
-
-    /// <summary>
     /// Fetches the installed Gateway's effective update channel. RPC failures
     /// propagate so the companion updater can preserve its fail-open behavior.
     /// </summary>
@@ -2283,94 +2172,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         var response = await SendWizardRequestAsync("update.status", new { }, timeoutMs);
         return GatewayUpdateStatusParser.Parse(response);
-    }
-
-    /// <summary>Log out / unlink a channel. Sends <c>channels.logout { channel }</c>.</summary>
-    public async Task<bool> LogoutChannelAsync(string channelName, int timeoutMs = 12000)
-    {
-        if (!IsConnected) return false;
-        try
-        {
-            await SendWizardRequestAsync("channels.logout", new { channel = channelName }, timeoutMs);
-            _logger.Info($"channels.logout {channelName} succeeded");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.Warn($"channels.logout {channelName} failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    /// <summary>Begin a web/QR linking flow for the current default linking channel.</summary>
-    public async Task<WebLoginStartResult?> WebLoginStartAsync(bool force = false, int timeoutMs = 30000)
-    {
-        if (!IsConnected) return null;
-        try
-        {
-            var response = await SendWizardRequestAsync(
-                "web.login.start",
-                new { force, timeoutMs },
-                timeoutMs + 5000);
-            return new WebLoginStartResult
-            {
-                Message = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null,
-                QrDataUrl = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("qrDataUrl", out var q) && q.ValueKind == JsonValueKind.String ? q.GetString() : null,
-                Connected = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("connected", out var c) && c.ValueKind == JsonValueKind.True,
-                RawResponse = response.ValueKind != JsonValueKind.Undefined ? response.GetRawText() : null,
-            };
-        }
-        catch (Exception ex)
-        {
-            var error = ChannelLinkDiagnosticText.Redact(ex.Message);
-            _logger.Warn($"web.login.start failed: {error}");
-            // Return a populated result with the error so the UI can surface
-            // it in the diagnostic disclosure. Returning null would lose the
-            // gateway's actual reason for failing.
-            //
-            // Use ex.Message (the clean, gateway-relayed reason — e.g.
-            // "web login provider is not available") rather than ex.ToString():
-            // the latter leaks our own .NET stack trace with internal CI build
-            // paths into user-facing UI (issue #957). The message is the signal
-            // the page pattern-matches on and shows to the user.
-            return new WebLoginStartResult
-            {
-                Error = error,
-                RawResponse = error,
-            };
-        }
-    }
-
-    /// <summary>Long-poll for QR linking completion.</summary>
-    public async Task<WebLoginWaitResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000)
-    {
-        if (!IsConnected) return null;
-        try
-        {
-            var response = await SendWizardRequestAsync(
-                "web.login.wait",
-                new { currentQrDataUrl, timeoutMs },
-                timeoutMs + 5000);
-            return new WebLoginWaitResult
-            {
-                Message = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null,
-                QrDataUrl = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("qrDataUrl", out var q) && q.ValueKind == JsonValueKind.String ? q.GetString() : null,
-                Connected = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("connected", out var c) && c.ValueKind == JsonValueKind.True,
-                RawResponse = response.ValueKind != JsonValueKind.Undefined ? response.GetRawText() : null,
-            };
-        }
-        catch (Exception ex)
-        {
-            var error = ChannelLinkDiagnosticText.Redact(ex.Message, currentQrDataUrl);
-            _logger.Warn($"web.login.wait failed: {error}");
-            // ex.Message, not ex.ToString(): keep the clean gateway reason and
-            // avoid leaking an internal .NET stack trace into the UI (issue #957).
-            return new WebLoginWaitResult
-            {
-                Error = error,
-                RawResponse = error,
-            };
-        }
     }
 
     private async Task<bool> SendConnectMessageAsync(
@@ -2655,6 +2456,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         _pendingRequests.TryTake(requestId, out var pending);
+        // A retired authority-scoped RPC must not fall through to the generic
+        // payload parser and publish its old profile roster into the new one.
+        if (pending is null && IsAuthorityRequestId(requestId)) return;
         var requestMethod = pending?.Method;
         // A cancelled detached search must not fall through to legacy payload-based roster updates.
         if (pending is null && requestId?.StartsWith(SearchRequestIdPrefix, StringComparison.Ordinal) == true)

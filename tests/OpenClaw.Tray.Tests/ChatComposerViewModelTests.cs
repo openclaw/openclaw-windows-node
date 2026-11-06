@@ -273,6 +273,8 @@ public sealed class ChatComposerViewModelTests
         var changes = new[]
         {
             baseline with { ConnectionState = "disconnected", Revision = 2 },
+            baseline with { VerificationState = ChatVerificationState.Verifying, Revision = 2 },
+            baseline with { VerificationState = ChatVerificationState.Failed, Revision = 2 },
             baseline with { TurnActive = true, Revision = 2 },
             baseline with { CurrentThread = MakeThread("other"), Revision = 2 },
             baseline with { AvailableModels = new[] { "model" }, Revision = 2 },

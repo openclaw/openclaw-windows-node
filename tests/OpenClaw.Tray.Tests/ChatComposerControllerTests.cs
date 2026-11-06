@@ -63,6 +63,26 @@ public sealed class ChatComposerControllerTests
     }
 
     [Fact]
+    public void VerificationRetryRequiresVisibleFailedCurrentComposerAndPreservesDraft()
+    {
+        var (vm, controller, port, _) = MakeController();
+        vm.SetDraft("Unsent recovery draft");
+        Assert.False(controller.RetryConnectionVerification());
+        vm.ApplyInputs(MakeInputs(revision: 2, connectionState: "disconnected") with { VerificationState = ChatVerificationState.Failed });
+        Assert.True(controller.RetryConnectionVerification());
+        Assert.Equal("Unsent recovery draft", vm.Draft);
+        controller.SetComposerVisible(false);
+        Assert.False(controller.RetryConnectionVerification());
+        controller.SetComposerVisible(true);
+        vm.ApplyInputs(MakeInputs(revision: 3, connectionState: "disconnected") with { VerificationState = ChatVerificationState.Verifying });
+        Assert.False(controller.RetryConnectionVerification());
+        vm.ApplyInputs(MakeInputs(revision: 4, connectionState: "disconnected") with { VerificationState = ChatVerificationState.Failed });
+        controller.Dispose();
+        Assert.False(controller.RetryConnectionVerification());
+        Assert.Equal(1, port.RetryVerificationCalls);
+    }
+
+    [Fact]
     public async Task SendAsync_EmptySubmitIsBlocked()
     {
         var (_, controller, port, _) = MakeController();

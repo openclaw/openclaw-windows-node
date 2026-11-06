@@ -3,6 +3,12 @@ using OpenClawTray.Services;
 
 namespace OpenClawTray.Chat;
 
+/// <summary>Executes RPCs with cancellation reaching their final transport effect.</summary>
+internal interface IChatGatewayRequestScope
+{
+    Task<T> RunWithRequestCancellationAsync<T>(CancellationToken cancellationToken, Func<Task<T>> operation);
+}
+
 /// <summary>
 /// Subset of <see cref="OpenClawGatewayClient"/> needed by
 /// <see cref="OpenClawChatDataProvider"/>. Exposed as an interface so the
@@ -124,7 +130,7 @@ public interface IChatGatewayBridge : IDisposable
 /// <summary>
 /// Production bridge wrapping a real <see cref="OpenClawGatewayClient"/>.
 /// </summary>
-public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionGateway
+public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionGateway, IChatGatewayRequestScope
 {
     private readonly OpenClawGatewayClient _client;
     private readonly EventHandler<ConnectionStatus> _statusChangedHandler;
@@ -230,6 +236,11 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         try { _ = _client.RequestModelsListAsync(); } catch (Exception ex) { Logger.Warn($"[ChatBridge] proactive models.list failed: {ex.Message}"); }
         try { _ = _client.RequestSessionsAsync(); } catch (Exception ex) { Logger.Warn($"[ChatBridge] proactive sessions.list failed: {ex.Message}"); }
     }
+
+    public Task<T> RunWithRequestCancellationAsync<T>(CancellationToken cancellationToken, Func<Task<T>> operation) =>
+        _client.RunWithRequestCancellationAsync(cancellationToken, operation);
+
+    internal bool IsBoundTo(IOperatorGatewayClient client) => !_disposed && ReferenceEquals(_client, client);
 
     public bool IsConnected => _client.IsConnectedToGateway;
     public IChatPlacementGateway PlacementGateway { get; }

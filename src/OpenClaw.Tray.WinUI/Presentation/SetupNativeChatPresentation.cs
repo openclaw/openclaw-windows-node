@@ -1,6 +1,7 @@
 using OpenClaw.Connection;
 using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
+using OpenClawTray.Chat;
 
 namespace OpenClawTray.Presentation;
 
@@ -143,7 +144,8 @@ internal sealed class SetupNativeChatRefresh(
         lock (_gate)
             return provider is not null && _current is { ProviderConfirmed: true } current &&
                 ReferenceEquals(current.ProviderClient, client) &&
-                ReferenceEquals(current.Provider, provider);
+                ReferenceEquals(current.Provider, provider) &&
+                (provider is not IChatConnectionBoundProvider bound || bound.IsBoundTo(client));
     }
 
     public void Request(string source)
@@ -183,11 +185,18 @@ internal sealed class SetupNativeChatRefresh(
                     return;
                 }
                 var provider = getProvider();
-                if (provider is not null && _providerObservation is { } previous &&
-                    !ReferenceEquals(previous.Client, client) && ReferenceEquals(previous.Provider, provider))
+                if (provider is IChatConnectionBoundProvider bound
+                        ? client is null || !bound.IsBoundTo(client)
+                        : provider is not null && _providerObservation is { } previous &&
+                          !ReferenceEquals(previous.Client, client) && ReferenceEquals(previous.Provider, provider))
                 {
+                    var changedBinding = subscription.ProviderConfirmed ||
+                        !ReferenceEquals(subscription.ProviderClient, client);
+                    subscription.ProviderClient = client;
+                    subscription.Provider = provider;
                     subscription.ProviderConfirmed = false;
                     diagnostic("provider notification pending");
+                    if (changedBinding) Queue(subscription, "provider pending");
                     return;
                 }
                 subscription.ProviderClient = client;

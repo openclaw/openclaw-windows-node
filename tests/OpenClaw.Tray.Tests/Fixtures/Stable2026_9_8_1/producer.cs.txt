@@ -1,0 +1,22 @@
+using OpenClaw.Connection;
+using OpenClaw.Shared;
+var output = Path.GetFullPath(args[0]);
+Directory.CreateDirectory(output);
+var registry = new GatewayRegistry(output, logger: new SilentLogger());
+const string id = "stable-synthetic-profile";
+registry.AddOrUpdate(new GatewayRecord { Id = id, Url = "wss://stable-fixture.example.invalid/", FriendlyName = "Synthetic stable upgrade fixture", SharedGatewayToken = "fixture-stable-shared-token" });
+registry.SetActive(id);
+registry.Save();
+var identity = new DeviceIdentity(registry.GetIdentityDirectory(id), new SilentLogger());
+identity.Initialize();
+identity.StoreDeviceTokenForRole("operator", "fixture-stable-operator-token", ["operator.read", "operator.write"]);
+identity.StoreDeviceTokenForRole("node", "fixture-stable-node-token", ["node"]);
+Console.WriteLine("Stable writer completed for synthetic profile. DeviceId=" + identity.DeviceId);
+Console.WriteLine("Producer Shared assembly=" + typeof(DeviceIdentity).Assembly.FullName);
+sealed class SilentLogger : IOpenClawLogger
+{
+    public void Debug(string message) { }
+    public void Info(string message) { }
+    public void Warn(string message) { }
+    public void Error(string message, Exception? exception = null) { }
+}

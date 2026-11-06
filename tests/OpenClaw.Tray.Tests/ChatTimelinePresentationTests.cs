@@ -74,7 +74,9 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("annotatedScrollBarRef,", timeline);
         Assert.Contains("rows.Count - 1", timeline);
         Assert.Contains("rows.Count,", timeline);
-        Assert.Contains("initialTailRequestKey", timeline);
+        // Concrete caller guard: the mounted renderer uses the executable identity
+        // projection above, not an independently interpolated navigation key.
+        Assert.Contains("TailNavigationIdentity.Create(", timeline);
         Assert.Contains("var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null", timeline);
         Assert.DoesNotContain("ItemsRepeater(", timeline);
         Assert.DoesNotContain("ScrollView(", timeline);
@@ -95,8 +97,44 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain(".Current", binding);
     }
 
+    [Theory]
+    [InlineData("same", 7, 10, 5, false, false)]
+    [InlineData("same", 7, 11, 5, true, false)]
+    [InlineData("other", 7, 10, 5, true, true)]
+    [InlineData("same", 8, 10, 5, true, true)]
+    [InlineData("same", 7, 10, 6, true, true)]
+    public void HistoryAndNavigationIdentityProtectReaderIntent(string session, long generation,
+        long historyRevision, long scrollToken, bool schedulesPositioning, bool navigatesReader)
+    {
+        var before = TailNavigationIdentity.Create("same", 7, 10, 5);
+        var after = TailNavigationIdentity.Create(session, generation, historyRevision, scrollToken);
+        Assert.Equal(schedulesPositioning, before.RequestKey != after.RequestKey);
+        Assert.Equal(navigatesReader, before.ExplicitRequestKey != after.ExplicitRequestKey);
+        Assert.Equal(navigatesReader, TailNavigationPolicy.ShouldNavigate(
+            explicitNavigation: before.ExplicitRequestKey != after.ExplicitRequestKey,
+            following: false, initialPending: false, hadValidTail: true));
+    }
+
     [Fact]
-    public void ReactorTimeline_UsesStableBottomAnchoringAndDiscreteTailRequests()
+    public void TailNavigationPolicy_HistoryRefreshPreservesAnEstablishedReader()
+    {
+        Assert.False(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: false, initialPending: false, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: true, initialPending: false, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: true, following: false, initialPending: false, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: false, initialPending: true, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: false, initialPending: false, hadValidTail: false));
+    }
+
+    [Theory]
+    [InlineData(false, 0.0)]
+    [InlineData(true, 1.0)]
+    public void ViewportAnchoringTracksReaderIntent(bool following, double expectedRatio)
+    {
+        Assert.Equal(expectedRatio, TailNavigationPolicy.ViewportAnchorRatio(following));
+    }
+
+    [Fact]
+    public void ReactorTimeline_UsesStableNativeAnchoringAndDiscreteTailRequests()
     {
         var binding = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -111,12 +149,16 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("itemsView.StartBringItemIntoView(", binding);
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
         Assert.Contains("!string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal)", binding);
-        Assert.Contains("_following = IsNearBottom(sender)", binding);
-        Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", binding);
+        Assert.Contains("SetFollowing(IsNearBottom(sender))", binding);
+        Assert.Contains("_scrollView.VerticalAnchorRatio = TailNavigationPolicy.ViewportAnchorRatio(_following)", binding);
+        Assert.Contains("if (_following == following)", binding);
         Assert.Contains("_scrollView.VerticalAnchorRatio = double.NaN", binding);
         Assert.Contains("_tailNavigationQueue.Enqueue(version, request)", binding);
         Assert.Contains("_tailNavigationQueue.TryDequeue(_version, out var queuedRequest)", binding);
         Assert.Contains("_valid = TailNavigationPolicy.TryCapture", binding);
+        Assert.Contains("TailNavigationPolicy.ShouldNavigate(explicitNavigation, _following, _initialPending, _valid)", binding);
+        Assert.Contains("oldElement.ExplicitTailRequestKey", binding);
+        Assert.Contains("newElement.ExplicitTailRequestKey", binding);
         Assert.Contains("_itemCount = itemCount", binding);
         Assert.Contains("TailNavigationPolicy.CanExecute(", binding);
         Assert.Contains("itemsView.Unloaded += OnUnloaded", binding);
@@ -134,8 +176,8 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("ApplyBottomAnchoring", binding);
 
         var viewChangedStart = binding.IndexOf("private void OnViewChanged", StringComparison.Ordinal);
-        var tailRequestStart = binding.IndexOf("private void QueueTailRequest", viewChangedStart, StringComparison.Ordinal);
-        var viewChanged = binding[viewChangedStart..tailRequestStart];
+        var followTransitionStart = binding.IndexOf("private void SetFollowing", viewChangedStart, StringComparison.Ordinal);
+        var viewChanged = binding[viewChangedStart..followTransitionStart];
         Assert.DoesNotContain("VerticalAnchorRatio", viewChanged);
         Assert.DoesNotContain("StartBringItemIntoView", viewChanged);
 
@@ -746,6 +788,78 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("itemsView.RemoveHandler(UIElement.PointerWheelChangedEvent", binding);
     }
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    public void TailNavigationPolicy_ReloadPositionsOnlyFollowingOrUnfinishedInitialHistory(
+        bool following, bool initialPending, bool expected)
+    {
+        Assert.Equal(expected, TailNavigationPolicy.ShouldPositionOnLoad(following, initialPending));
+    }
+
+    [Fact]
+    public void ReactorTimeline_ReloadPreservesReaderIntentAndReattachesNativeAnchoring()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        var start = binding.IndexOf("private void OnLoaded", StringComparison.Ordinal);
+        var end = binding.IndexOf("private void AwaitLayout", start, StringComparison.Ordinal);
+        var loaded = binding[start..end];
+        var navigation = loaded.IndexOf("_initialPending = true", StringComparison.Ordinal);
+
+        Assert.True(navigation > 0);
+        // A reloaded reader still needs native scroll observation, but not a new
+        // bring-to-tail request. An unfinished initial request must still land.
+        Assert.Matches(@"AttachScrollView\(\);\s*if \(!TailNavigationPolicy.ShouldPositionOnLoad\(_following, _initialPending\)\)\s*return;",
+            loaded[..navigation]);
+        Assert.Contains("AwaitLayout()", loaded[navigation..]);
+    }
+
+    [Fact]
+    public void ReactorTimeline_InitialAdmissionSurvivesUnloadButNotUserCancellation()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        string Section(string start, string end)
+        {
+            var first = binding.IndexOf(start, StringComparison.Ordinal);
+            Assert.True(first >= 0);
+            var last = binding.IndexOf(end, first, StringComparison.Ordinal);
+            Assert.True(last > first);
+            return binding[first..last];
+        }
+
+        var request = Section("public void Request(", "public void UpdateTail(");
+        var changed = Section("private void OnViewChanged", "private void SetFollowing");
+        var unloaded = Section("private void OnUnloaded", "private void DetachLayout");
+        var loaded = Section("private void OnLoaded", "private void AwaitLayout");
+        var canceled = Section("private void CancelPendingNavigation", "private void OnViewChanged");
+        var dispatched = Section("private void DispatchTailRequest", "private void AttachScrollView");
+
+        Assert.Contains("_initialPending = true;", request);
+        Assert.Contains("SetFollowing(IsNearBottom(sender))", changed);
+        Assert.DoesNotContain("_initialPending = false", changed);
+        // Request -> non-tail native view change -> unload -> reload must keep
+        // admission, not the old dispatcher/layout work that unload invalidates.
+        Assert.DoesNotContain("_initialPending = false", unloaded);
+        Assert.Contains("_version++;", unloaded);
+        Assert.Contains("_tailNavigationQueue.Clear();", unloaded);
+        Assert.Contains("DetachLayout();", unloaded);
+        Assert.Contains("DetachScrollView();", unloaded);
+        Assert.Contains("ShouldPositionOnLoad(_following, _initialPending)", loaded);
+        Assert.Contains("_initialPending = false;", canceled);
+        Assert.Contains("_version++;", canceled);
+        Assert.Contains("initialRequest.Version != _version", dispatched);
+        Assert.Contains("ConfirmInitialLanding(initialRequest.Version, request)", dispatched);
+        var completed = Section("private void CompleteInitialLanding", "private void AttachScrollView");
+        Assert.Contains("_confirmation.Invalidate();", completed);
+        Assert.Contains("_initialPending = false;", completed);
+    }
+
     [Fact]
     public void ReactorTimeline_ReflowDispatchRechecksFollowEligibility()
     {
@@ -764,8 +878,8 @@ public sealed class ChatTimelinePresentationTests
         var cancelStart = binding.IndexOf("private void CancelPendingNavigation", StringComparison.Ordinal);
         var cancelEnd = binding.IndexOf("private void OnViewChanged", cancelStart, StringComparison.Ordinal);
         var cancel = binding[cancelStart..cancelEnd];
-        Assert.Contains("_following = _scrollView is { } scrollView && IsNearBottom(scrollView);", cancel);
-        Assert.DoesNotContain("_following = false;", cancel);
+        Assert.Contains("SetFollowing(_scrollView is { } scrollView && IsNearBottom(scrollView))", cancel);
+        Assert.DoesNotContain("SetFollowing(false)", cancel);
     }
 
     [Fact]
