@@ -84,7 +84,38 @@ public sealed class SetupAndConnectTestsBrowserStartup
         }
         finally
         {
+            CleanupDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public void ProfileCleanupDoesNotFailWhenAnOwnedFileIsStillLocked()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"openclaw-edge-proof-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var file = Path.Combine(directory, "locked");
+        try
+        {
+            using (var locked = new FileStream(file, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+            {
+                CleanupDirectory(directory);
+                Assert.True(File.Exists(file));
+            }
+        }
+        finally
+        {
             Directory.Delete(directory, recursive: true);
+        }
+        Assert.False(Directory.Exists(directory));
+    }
+
+    private static void CleanupDirectory(string directory)
+    {
+        try { Directory.Delete(directory, recursive: true); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A terminating Edge child can briefly retain profile file handles.
+            Console.WriteLine($"[Search proof] temporary browser cleanup incomplete: {ex.GetType().Name}.");
         }
     }
 
