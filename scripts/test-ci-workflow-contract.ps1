@@ -641,6 +641,14 @@ foreach ($token in @('always()', 'test-results-ui', 'path: TestResults/')) {
     Assert-Contains -Text $uiUpload -Expected $token -Message "The complete UI diagnostic archive must be retained: '$token'."
 }
 $fixtureRunner = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\test-gateway-fixture.ps1') -Raw
+$releasedProfileStep = Get-StepBlock -Text $uiJob -Name 'Run latest stable profile compatibility'
+foreach ($token in @('releases/latest', 'Get-FileHash', 'SHA256', '$asset.digest.Substring(7)',
+        'stable-release.json', '-StableAppPath $apps[0].FullName', '-ArtifactsDirectory $artifacts')) {
+    Assert-Contains -Text $releasedProfileStep -Expected $token `
+        -Message "Released-profile proof must use a verified portable baseline and retain provenance: '$token'."
+}
+Assert-Contains -Text $fixtureRunner -Expected "'FullyQualifiedName~GatewayFixtureUpgradeTests' 'fixture-released-profile'" `
+    -Message 'Released-profile proof must select and admit the actual compatibility scenario.'
 foreach ($token in @(
         "`$start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] = '1'",
         "`$start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] = `$resolvedApp",

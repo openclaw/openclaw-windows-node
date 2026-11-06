@@ -114,11 +114,9 @@ public sealed partial class SettingsPage : Page
     {
         var setupStatePath = Path.Combine(SetupExistingGatewayClassifier.ResolveLocalDataPath(), "setup-state.json");
         var activeGateway = CurrentApp.Registry?.GetActive();
-        var gatewayRecords = CurrentApp.Registry?.GetAll();
         var activeGatewayAccess = GatewayHostAccessClassifier.Classify(activeGateway);
-
         _localGatewayInstalled = SetupExistingGatewayClassifier.HasWslInstallationForSettings(
-            File.Exists(setupStatePath), gatewayRecords, activeGateway, settings.GatewayUrl);
+            File.Exists(setupStatePath), CurrentApp.Registry?.GetAll(), activeGateway, settings.GatewayUrl);
 
         OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway
             ? Visibility.Visible : Visibility.Collapsed;
