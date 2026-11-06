@@ -36,18 +36,27 @@ internal static class TrayTestProfileIsolation
 
     internal static void SetMissingOverrides(string root)
     {
-        var hasLegacyLocalOverride = !string.IsNullOrEmpty(
-            Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR"));
-        foreach (var name in OverrideNames)
-        {
-            // Setup treats LOCALAPPDATA as a root before considering the legacy direct directory.
-            // Do not shadow a caller-selected legacy directory with a generated modern root.
-            if (name == "OPENCLAW_TRAY_LOCALAPPDATA_DIR" && hasLegacyLocalOverride)
-                continue;
+        SetIfMissing("OPENCLAW_TRAY_DATA_DIR", Path.Combine(root, "OPENCLAW_TRAY_DATA_DIR"));
+        SetIfMissing("OPENCLAW_TRAY_APPDATA_DIR", Path.Combine(root, "OPENCLAW_TRAY_APPDATA_DIR"));
 
-            if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(name)))
-                Environment.SetEnvironmentVariable(name, Path.Combine(root, name));
-        }
+        // Setup prefers the modern LOCALAPPDATA root, but registry migration prefers the legacy
+        // direct directory and then looks only there. A caller-selected legacy directory therefore
+        // must not be shadowed by a generated root, and a generated legacy directory must be the
+        // root with the data folder appended, as GatewayFixtureIsolation requires.
+        if (IsSet("OPENCLAW_TRAY_LOCAL_DATA_DIR") && !IsSet("OPENCLAW_TRAY_LOCALAPPDATA_DIR"))
+            return;
+
+        SetIfMissing("OPENCLAW_TRAY_LOCALAPPDATA_DIR", Path.Combine(root, "OPENCLAW_TRAY_LOCALAPPDATA_DIR"));
+        SetIfMissing("OPENCLAW_TRAY_LOCAL_DATA_DIR", Path.Combine(
+            Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR")!, AppIdentity.DataDirectoryName));
+    }
+
+    private static bool IsSet(string name) => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(name));
+
+    private static void SetIfMissing(string name, string value)
+    {
+        if (!IsSet(name))
+            Environment.SetEnvironmentVariable(name, value);
     }
 }
 
@@ -74,10 +83,11 @@ public sealed class TrayTestProfileIsolationTests
 
         TrayTestProfileIsolation.SetMissingOverrides(root);
 
-        foreach (var name in TrayTestProfileIsolation.OverrideNames)
-            Assert.Equal(Path.Combine(root, name), Environment.GetEnvironmentVariable(name));
-        Assert.Equal(Path.Combine(root, "OPENCLAW_TRAY_LOCALAPPDATA_DIR", AppIdentity.DataDirectoryName),
-            AppIdentity.ResolveSetupLocalDataDirectory());
+        var setupDirectory = Path.Combine(root, "OPENCLAW_TRAY_LOCALAPPDATA_DIR", AppIdentity.DataDirectoryName);
+        Assert.Equal(Path.Combine(root, "OPENCLAW_TRAY_DATA_DIR"), Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR"));
+        Assert.Equal(Path.Combine(root, "OPENCLAW_TRAY_APPDATA_DIR"), Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR"));
+        Assert.Equal(setupDirectory, Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR"));
+        Assert.Equal(setupDirectory, AppIdentity.ResolveSetupLocalDataDirectory());
     }
 
     [Theory]
@@ -102,6 +112,44 @@ public sealed class TrayTestProfileIsolationTests
             Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR"));
         Assert.Equal(modernOverrideIsSet ? Path.Combine(modernRoot, AppIdentity.DataDirectoryName) : legacyDirectory,
             AppIdentity.ResolveSetupLocalDataDirectory());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SetupStateWrittenAtTheEffectiveSetupPathIsFoundByRegistryMigration(bool callerSetModernRootOnly)
+    {
+        using var environment = new EnvironmentScope();
+        foreach (var name in TrayTestProfileIsolation.OverrideNames)
+            environment.Set(name, null);
+        var root = Path.Combine(Path.GetTempPath(), "OpenClawTrayTests-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            if (callerSetModernRootOnly)
+                environment.Set("OPENCLAW_TRAY_LOCALAPPDATA_DIR", Path.Combine(root, "caller-local-root"));
+
+            TrayTestProfileIsolation.SetMissingOverrides(root);
+
+            // Setup writes its state where AppIdentity resolves it; registry migration must read the same file.
+            var setupDirectory = AppIdentity.ResolveSetupLocalDataDirectory();
+            Directory.CreateDirectory(setupDirectory);
+            File.WriteAllText(
+                Path.Combine(setupDirectory, "setup-state.json"),
+                """{"DistroName":"OpenClawGateway","GatewayUrl":"ws://127.0.0.1:18789"}""");
+            var settingsDirectory = Path.Combine(root, "settings");
+            Directory.CreateDirectory(settingsDirectory);
+            var registry = new OpenClaw.Connection.GatewayRegistry(settingsDirectory);
+
+            Assert.True(registry.MigrateFromSettings(
+                "ws://localhost:18789", "shared-token", null, false, null, null, 0, 0, settingsDirectory));
+            Assert.Equal("OpenClawGateway", registry.GetActive()!.SetupManagedDistroName);
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); }
+            // slopwatch-ignore: SW003 Temp cleanup is best-effort and must not hide the test outcome.
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
     }
 
     [Fact]
