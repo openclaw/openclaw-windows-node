@@ -387,6 +387,8 @@ jobs:
         working-directory: app-under-test
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:GITHUB_WORKSPACE/scripts/Initialize-ReactorPackages.ps1" -DestinationDirectory (Join-Path (Get-Location) 'artifacts/reactor-packages')
           dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64 --no-restore

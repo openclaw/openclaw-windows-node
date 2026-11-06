@@ -78,7 +78,10 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/Initialize-ReactorPackages.ps1
+          dotnet restore
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4

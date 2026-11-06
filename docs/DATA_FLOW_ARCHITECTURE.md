@@ -125,7 +125,7 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
 | ConnectionPage | Status, NodePairList, DevicePairList, Channels, UsageCost, Sessions, GatewaySelf |
 | SessionsPage | Sessions, ModelsList |
 | ChannelsPage | Channels |
-| UsagePage | Usage, UsageCost, UsageStatus |
+| UsagePage | Nothing in AppModel. `UsagePageController` reads `sessions.usage` and `usage.status` through `IOperatorGatewayClient` |
 | InstancesPage | Nodes, Presence |
 | ConfigPage | Config, ConfigSchema |
 | CronPage | CronList, CronStatus, CronRuns |

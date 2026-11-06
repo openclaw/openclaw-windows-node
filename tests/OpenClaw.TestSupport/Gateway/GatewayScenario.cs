@@ -66,7 +66,7 @@ public sealed partial class GatewayScenario
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : UsageAnalytics.RichProviders ? UsageAnalyticsFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -81,7 +81,7 @@ public sealed partial class GatewayScenario
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
         bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
-        bool accessibilityBaseline = false)
+        UsageAnalyticsFixture? usageAnalytics = null, bool accessibilityBaseline = false)
     {
         _accessibilityBaseline = accessibilityBaseline;
         _sessions = sessions;
@@ -103,6 +103,8 @@ public sealed partial class GatewayScenario
         _allowChatSend = allowChatSend;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         _contextUsage = contextUsage;
+        // sessions.usage is served by every scenario but never advertised, matching upstream.
+        UsageAnalytics = usageAnalytics ?? new UsageAnalyticsFixture();
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
@@ -125,9 +127,21 @@ public sealed partial class GatewayScenario
     {
         BrowseName => CreateBrowse(),
         InteractiveName => CreateInteractive(),
+        UsageAnalyticsFixture.Name => CreateUsageAnalytics(),
         "accessibility-baseline" => CreateAccessibilityBaseline(),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
+
+    /// <summary>Synthetic usage analytics with provider plans. <see cref="UsageAnalytics"/> switches modes.</summary>
+    public static GatewayScenario CreateUsageAnalytics(UsageAnalyticsMode mode = UsageAnalyticsMode.Populated)
+    {
+        var browse = CreateBrowse();
+        var usage = new UsageAnalyticsFixture(richProviders: true) { Mode = mode };
+        return new(browse._sessions, browse._reads, usageAnalytics: usage);
+    }
+
+    /// <summary>Usage analytics replies for this scenario.</summary>
+    public UsageAnalyticsFixture UsageAnalytics { get; }
 
     public static GatewayScenario CreateInteractive()
     {
@@ -466,6 +480,15 @@ public sealed partial class GatewayScenario
         }
         if (IsWrite(method))
             throw new FixtureRequestException("FIXTURE_READ_ONLY", "Fixture Gateway is read-only. This operation is not executed.");
+        if (_accessibilityBaseline && method == "sessions.usage")
+            return AccessibilitySessionsUsage(parameters);
+        if (UsageAnalyticsFixture.Handles(method))
+            return UsageAnalytics.Respond(method, parameters);
+        if (method == "usage.status" && UsageAnalytics.RichProviders)
+        {
+            ValidateProperties(parameters);
+            return UsageAnalyticsFixture.ProviderUsage();
+        }
         return method switch
         {
             "sessions.list" => ListSessions(parameters),

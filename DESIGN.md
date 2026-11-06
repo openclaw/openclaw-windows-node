@@ -68,6 +68,13 @@ colors:
   chatReadAloudText: rgba(0,0,0,0.43372549)
   chatUser: rgba(0,103,192,0.08)
   chatUserText: "#000000e4"
+  usageChartCacheRead: "#99ebff"
+  usagePalette1: "#005fb8"
+  usagePalette2: "#038387"
+  usagePalette3: "#8764b8"
+  usagePalette4: "#ca5010"
+  usagePalette5: "#c239b3"
+  usagePalette6: "#107c10"
   chatActionDisabled: "#00000037"
   chatActionDisabledText: "#ffffff"
   chatActionHover: "#0067c0e6"
@@ -724,6 +731,43 @@ x-colophon:
       chatUserText:
         resource: ChatUserTextBrush
         themes: { dark: "#ffffff", highContrast: "#000000" }
+      usageChartCacheRead:
+        resource: UsageChartCacheReadBrush
+        themes: { dark: "#005fb8", highContrast: "#3ff23f" }
+        usage: Cache-read segment of the Usage token breakdown. SystemAccentColorLight2 in light and SystemAccentColorDark1 in dark, the accent shade opposite AccentFillColorDefault so adjacent segments stay distinct; SystemColorGrayTextColor in high contrast. Other segments bind accent, success and caution fills. The daily chart also has an expandable text table.
+      usagePalette1:
+        resource: UsagePalette1Brush
+        themes: { dark: "#99ebff", highContrast: "#1aebff" }
+        usage: Usage page categorical slot 1 and data/selection accent. Follows the user's accent (SystemAccentColorDark1 light, Light2 dark); SystemColorHighlightColor keeps charts and selection marks visible in high contrast, where native button accent fills can match the plot background. Each palette slot has a matching UsagePaletteNTintBrush at 16% for badges, avatars and statistics; high-contrast tints use SystemColorWindowColor.
+      usageChartBar:
+        resource: UsageChartBarBrush
+        usage: Daily chart bars fade vertically from SystemAccentColorDark1 to Light1 in light theme, and Light2 to SystemAccentColor in dark theme. The mock's depth is expressed through native Windows accent shades, not fixed blue values. High contrast uses a solid SystemColorHighlightColor fill; the current-day opacity and dashed outline remain unchanged.
+      usageMastGradient:
+        resource: UsageMastGradientBrush
+        usage: Static accent-tinted mast backplate across the full page viewport, including the centered content's side margins. It stays anchored at the viewport top behind ordinary scrolling content, without intercepting input or making the header sticky. SystemAccentColor fades to transparent at 10% brush opacity over the top 320 logical pixels. High contrast uses a solid SystemColorWindowColor backplate. The rest of the page retains native Fluent card and window surfaces.
+      usageCountPill:
+        resource: UsageCountPillBrush
+        usage: Neutral section count pill. TextFillColorPrimary at 16% brush opacity with primary text. High contrast uses SystemColorButtonFaceColor. Attention counts use the existing critical tint and critical foreground instead.
+      usagePalette2:
+        resource: UsagePalette2Brush
+        themes: { dark: "#4fc3c7", highContrast: "#8080ff" }
+        usage: Usage categorical teal. Agents, models and providers keep one slot page-wide (stable name hash). High contrast uses SystemColorHotlightColor.
+      usagePalette3:
+        resource: UsagePalette3Brush
+        themes: { dark: "#b4a0ff", highContrast: "#ffffff" }
+        usage: Usage categorical purple. High contrast uses SystemColorWindowTextColor.
+      usagePalette4:
+        resource: UsagePalette4Brush
+        themes: { dark: "#f7894a", highContrast: "#1aebff" }
+        usage: Usage categorical orange. High contrast uses SystemColorHighlightColor.
+      usagePalette5:
+        resource: UsagePalette5Brush
+        themes: { dark: "#ee7ae3", highContrast: "#8080ff" }
+        usage: Usage categorical magenta. High contrast uses SystemColorHotlightColor.
+      usagePalette6:
+        resource: UsagePalette6Brush
+        themes: { dark: "#6ccb5f", highContrast: "#ffffff" }
+        usage: Usage categorical green, also the cost color. Color never carries meaning alone; labels and values sit beside every swatch. High contrast uses SystemColorWindowTextColor.
       chatActionDisabled:
         resource: AccentButtonBackgroundDisabled
         themes: { dark: "#ffffff28", highContrast: "#000000" }

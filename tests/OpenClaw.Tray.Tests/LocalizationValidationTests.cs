@@ -27,6 +27,11 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
+        // Usage page symbols: the lower-bound sign, the unavailable-value placeholder and
+        // the UTC abbreviation read the same in every supported language.
+        "Usage_AtLeastFormat",
+        "Usage_EmptyValue",
+        "Usage_TimeZone_Utc",
         // Custom model provider API types are protocol product names, and the
         // provider/model ID placeholders are literal identifier examples.
         "DefaultModelPage_CustomApiAnthropic.Content",
@@ -1140,6 +1145,11 @@ public class LocalizationValidationTests
                         or "HubWindow_NavigationViewItem_145.Content"
                         or "WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
+                    // Usage page cognates: the natural term in these languages.
+                    "Usage_Metric_Tokens" => ["nl-nl", "pt-br"],
+                    "Usage_Overview_Messages" or "Usage_Overview_Sessions" or "Usage_Sessions_Title" or "Usage_Options" => ["fr-fr"],
+                    "Usage_Facet_agent" or "Usage_Contributors_Agent" => ["fr-fr", "nl-nl"],
+                    "Usage_Facet_model" => ["nl-nl"],
                     _ => [],
                 };
                 if (naturalLoanwordLocales.Length > 0 &&
