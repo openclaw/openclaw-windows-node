@@ -113,6 +113,38 @@ public sealed class HubSearchCatalogTests
     }
 
     [Fact]
+    public void ContextualDashboardPath_UsesCurrentChatSessionWhenHomeHistoryHasNoSession()
+    {
+        Assert.Equal("/chat/work/~key/12345678", HubSearchCatalog.ContextualDashboardPath(
+            new(WorkspacePageId.Home), "agent:work:12345678", isMain: false, "2026.10.9"));
+    }
+
+    [Fact]
+    public void ContextualDashboardPath_PrefersVisibleSettingsOverRetainedChat()
+    {
+        Assert.Equal("/usage", HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings("usage"), "agent:work:12345678", isMain: false, "2026.10.9"));
+    }
+
+    [Fact]
+    public void ContextualDashboardPath_UsesExplicitSessionAndFallsBackWithoutVerifiedCounterpart()
+    {
+        Assert.Equal("/chat/work/~key/main", HubSearchCatalog.ContextualDashboardPath(
+            new(WorkspacePageId.Home, "agent:work:main"), "agent:main:main",
+            isMain: false, "2026.10.9"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings("local-ai"), null, null, "2026.10.9"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings("agent:research"), null, null, "2026.10.9"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings("config"), null, null, "2026.11.1"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            new(WorkspacePageId.Home), null, null, "2026.10.9"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            new(WorkspacePageId.Notifications), "agent:work:12345678", isMain: false, "2026.10.9"));
+    }
+
+    [Fact]
     public void ConfigurationSearchExcludesSensitiveSubtreesAndNeverIndexesValues()
     {
         using var json = JsonDocument.Parse("""
