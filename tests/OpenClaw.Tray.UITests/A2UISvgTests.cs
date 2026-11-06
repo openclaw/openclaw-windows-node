@@ -349,8 +349,11 @@ public sealed class A2UISvgTests
     [Fact]
     public async Task OversizedGeometryAfterDoctype_StillRejectedBeforeDecode()
     {
+        // '<' + '?' makes the unprefixed scan treat the DTD tail as an unclosed processing
+        // instruction and skip to end of input, so it misses the oversized path. The shipped policy
+        // strips the declaration first and counts it.
         var svg =
-            "<!DOCTYPE svg [<!-- > -->]>" +
+            "<!DOCTYPE svg [<!-- > <? -->]>" +
             "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>" +
             $"<path d='{new string('1', SvgGeometryBudget.MaxAttributeChars + 1)}'/></svg>";
         await _ui.RunOnUIAsync(async () =>
@@ -362,6 +365,29 @@ public sealed class A2UISvgTests
             sw.Stop();
             Assert.Null(src);
             Assert.Contains(logger.Warnings, warning => warning.Contains("geometry attributes exceed", StringComparison.Ordinal));
+            Assert.True(sw.Elapsed < SvgDecodeSlack,
+                $"rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
+    }
+
+    [Fact]
+    public async Task DoctypeSurvivingTheStrip_IsRejectedBeforeDecode()
+    {
+        // The decoy declaration inside the comment is the first textual match, so the strip removes
+        // it and leaves the real one; the scan would then skip that DTD only to its first '>'.
+        // The policy fails closed instead of decoding bytes it never accounted for.
+        var svg =
+            "<!-- <!DOCTYPE x> --><!DOCTYPE svg [<!-- > <![CDATA[ -->]>" +
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect width='10' height='10'/></svg>";
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(DataSvgBase64(svg));
+            sw.Stop();
+            Assert.Null(src);
+            Assert.Contains(logger.Warnings, warning => warning.Contains("DOCTYPE could not be stripped", StringComparison.Ordinal));
             Assert.True(sw.Elapsed < SvgDecodeSlack,
                 $"rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
         });
