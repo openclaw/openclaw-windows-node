@@ -7,22 +7,19 @@ namespace OpenClaw.Tray.UITests;
 /// <summary>Loads actual production resource markup without changing Windows theme settings.</summary>
 internal sealed class ChatThemeProofScope : IDisposable
 {
-    private readonly ResourceDictionary _previous = Application.Current.Resources;
+    private readonly ResourceDictionary _previous;
     internal ElementTheme ElementTheme { get; }
 
     internal ChatThemeProofScope(string theme)
     {
+        if (Application.Current is TestApp { UsesProductionResources: true })
+            throw new InvalidOperationException(
+                "Per-case resource replacement requires the Standard test resource profile, not Production.");
+
+        _previous = Application.Current.Resources;
         ElementTheme = theme == "Dark" ? ElementTheme.Dark : ElementTheme.Light;
-        var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
-            ?? throw new InvalidOperationException("OPENCLAW_REPO_ROOT is required for production resource proof.");
-        var appDirectory = Path.Combine(root, "src", "OpenClaw.Tray.WinUI");
-        var app = XElement.Load(Path.Combine(appDirectory, "App.xaml"));
-        var resources = new XElement(app.Elements().Single().Elements().Single());
-        foreach (var dictionary in resources.Descendants().Where(element => element.Attribute("Source") is not null).ToArray())
-        {
-            var path = Path.Combine(appDirectory, ((string)dictionary.Attribute("Source")!).Replace('/', Path.DirectorySeparatorChar));
-            dictionary.ReplaceWith(XElement.Load(path));
-        }
+        var resources = TestAppResourceLoader.LoadProductionMarkup(
+            Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT"));
         if (theme == "HighContrast")
         {
             XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";

@@ -39,7 +39,17 @@ non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
 equivalent to visible native history proof. Streaming still needs separate
 coverage.
 
-Both Reactor packages use `0.1.0-preview.16`, which includes the recycled-anchor
+Both Reactor packages use `0.1.0-preview.17`, published as
+[GitHub release assets](https://github.com/microsoft/microsoft-ui-reactor/releases/tag/v0.1.0-preview.17).
+Normal builds and CI bootstrap the digest-pinned official GitHub release assets
+into an ignored repository-local feed. Before a direct restore on a fresh
+checkout, run `.\scripts\Initialize-ReactorPackages.ps1`. The script rejects
+corrupt cached/downloaded packages; it does not fall back to a source build or
+modify machine-wide NuGet settings. Keep both references aligned. The core
+package requires `System.Drawing.Common` `10.0.14` or newer; the tray's direct
+reference meets that floor.
+
+Reactor preview.16 and later include the recycled-anchor
 workaround from
 [microsoft/microsoft-ui-reactor#1214](https://github.com/microsoft/microsoft-ui-reactor/pull/1214).
 This is a Reactor workaround for
@@ -47,14 +57,6 @@ This is a Reactor workaround for
 not evidence of a released native WinUI fix. Keep the existing row-targeted
 `StartBringItemIntoView` scrolling rather than the application-side extent-only
 workaround from #1407.
-
-Rechecked on 2026-10-22: `0.1.0-preview.16` remains the latest published version,
-including previews, in the authoritative NuGet feeds for
-[Microsoft.UI.Reactor](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor/index.json)
-and [Microsoft.UI.Reactor.Advanced](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor.advanced/index.json),
-and the [upstream releases](https://github.com/microsoft/microsoft-ui-reactor/releases).
-Keep both references aligned. The core package requires `System.Drawing.Common`
-`10.0.12` or newer; the tray's direct reference meets that floor.
 
 Preview.16 enforces pooled-control resets with `REACTOR_POOL_001`. Chat uses
 Reactor's declarative `HelpText`, `ToolTip` and `ItemStatus` modifiers instead of

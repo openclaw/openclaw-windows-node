@@ -12,8 +12,22 @@ public sealed class CiNugetCacheWorkflowTests
         Assert.Contains(@"OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming", job);
         Assert.Contains(@"OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Local", job);
         Assert.Contains("OPENCLAW_REPO_ROOT: ${{ github.workspace }}", job);
-        Assert.Contains("-Filter \"Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture\"", job);
+        Assert.Contains("-Filter \"Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources\"", job);
         Assert.DoesNotContain("FullyQualifiedName!~Onboarding", job);
+    }
+
+    [Fact]
+    public void UiLane_RunsSteadyResourceAutomationsProofUnderTheProductionProfile()
+    {
+        var job = ExtractJob(ReadWorkflow(), "ui-tests", "build-msix");
+        var standard = ExtractStep(job, "Run Tray UI Tests", "Run steady-resource Automations UI tests");
+        Assert.Contains("OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard", standard);
+
+        var steady = ExtractStep(job, "Run steady-resource Automations UI tests", "Run Accessibility Tests (Axe.Windows)");
+        Assert.Contains("OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production", steady);
+        Assert.Contains("OPENCLAW_UI_TEST_APP_THEME: Light", steady);
+        Assert.Contains("-Filter \"Category=ProductionResources\"", steady);
+        Assert.Contains("AutomationsSteadyResources.trx", steady);
     }
 
     private static readonly string[] CoreEntryProjects =

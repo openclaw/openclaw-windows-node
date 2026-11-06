@@ -8,6 +8,7 @@ using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -16,8 +17,8 @@ using static Microsoft.UI.Reactor.Factories;
 namespace OpenClawTray.Pages;
 
 /// <summary>
-/// WinUI host for the native Automations surface. Owns the agent-scoped
-/// <see cref="AutomationsStore"/>, gateway event wiring and modal confirmation;
+/// WinUI host for the native Automations surface. Owns the <see cref="AutomationsStore"/>
+/// (initially filtered to the route agent), gateway event wiring and app handoffs;
 /// all presentation lives in the Reactor tree under <c>Automations\</c>.
 /// </summary>
 public sealed partial class CronPage : Page
@@ -30,7 +31,7 @@ public sealed partial class CronPage : Page
     private IOperatorGatewayClient? _subscribedClient;
     private string? _storeAgentId;
 
-    /// <summary>Agent from the <c>agent:{id}:cron</c> route; set by the hub before <see cref="Initialize"/>.</summary>
+    /// <summary>Agent from the <c>agent:{id}:cron</c> route; set by the Settings shell before <see cref="Initialize"/>.</summary>
     public string AgentId { get; set; } = "main";
 
     public CronPage()
@@ -68,14 +69,21 @@ public sealed partial class CronPage : Page
                 if (dispatcher.HasThreadAccess) action();
                 else dispatcher.TryEnqueue(() => action());
             });
-        _store.NoticeRaised += OnNoticeRaised;
 
         var host = new AutomationsHost(
             _store,
             new AutomationsText(LocalizationHelper.GetString),
             () => CurrentApp.GatewayClient,
             () => ((IAppCommands)CurrentApp).Navigate("connection"),
-            OpenChat);
+            OpenChat,
+            // The shared Dashboard launcher owns tunnel, credential export and visible failure handling.
+            jobId => ((IAppCommands)CurrentApp).OpenDashboard(CronProtocol.WebPath(jobId)),
+            text => ClipboardHelper.TryCopyText(text),
+            () => CurrentApp.AppState?.GetAgentIds() ?? new List<string>())
+        {
+            GatewayDisplayName = ConnectedGatewayDisplayName,
+            ActualTheme = () => ActualTheme,
+        };
         _host?.Dispose();
         _host = new ReactorHostControl();
         _host.Mount(_ => Component<AutomationsRoot, AutomationsRootProps>(new AutomationsRootProps(host)));
@@ -105,27 +113,6 @@ public sealed partial class CronPage : Page
     private void OnCronEvent(object? sender, JsonElement payload) =>
         DispatcherQueue?.TryEnqueue(() => _store?.OnGatewayCronEvent());
 
-    /// <summary>Completed one-shot jobs and failed runs are mirrored to the app notification center.</summary>
-    private void OnNoticeRaised(object? sender, AutomationsNotice notice)
-    {
-        if (notice.Kind is not (AutomationsNoticeKind.JobCompleted or AutomationsNoticeKind.RunFailed or AutomationsNoticeKind.RunNotStarted))
-            return;
-        if (notice.Kind == AutomationsNoticeKind.RunNotStarted && !notice.IsError)
-            return;
-        var text = new AutomationsText(LocalizationHelper.GetString);
-        var (title, message) = text.Notice(notice);
-        AppNotificationPublisher.Show(
-            CurrentApp.AppNotifications,
-            title,
-            message,
-            "cron",
-            "jobs",
-            notice.Kind == AutomationsNoticeKind.JobCompleted ? AppNotificationSeverity.Success : AppNotificationSeverity.Error,
-            $"cron:{notice.Kind}:{notice.JobName}",
-            "cron",
-            LocalizationHelper.GetString("AppNotification_ActionOpenCron"));
-    }
-
     private static void OpenChat(string sessionKey)
     {
         if (string.IsNullOrWhiteSpace(sessionKey))
@@ -134,11 +121,19 @@ public sealed partial class CronPage : Page
         ((IAppCommands)CurrentApp).Navigate("chat");
     }
 
+    private static string? ConnectedGatewayDisplayName()
+    {
+        var snapshot = CurrentApp.ConnectionManager?.CurrentSnapshot;
+        if (!string.IsNullOrWhiteSpace(snapshot?.GatewayName))
+            return snapshot.GatewayName;
+        return Uri.TryCreate(snapshot?.GatewayUrl, UriKind.Absolute, out var endpoint)
+            ? $"{endpoint.Scheme}://{endpoint.Authority}" : null;
+    }
+
     private void DisposeStore()
     {
         if (_store is null)
             return;
-        _store.NoticeRaised -= OnNoticeRaised;
         _store.Dispose();
         _store = null;
     }

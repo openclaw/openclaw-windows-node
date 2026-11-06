@@ -128,7 +128,7 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
 | UsagePage | Usage, UsageCost, UsageStatus |
 | InstancesPage | Nodes, Presence |
 | ConfigPage | Config, ConfigSchema |
-| CronPage | Status (connection only); data is request/response through `AutomationsStore`, scoped to the route agent |
+| CronPage | Status (connection only); data is request/response through `AutomationsStore`, filtered to the route agent until the user picks another agent or All agents |
 | WorkspacePage | AgentFilesList, AgentFileContent |
 | AgentEventsPage | AgentEventAdded (separate event) |
 | AboutPage | GatewaySelf |

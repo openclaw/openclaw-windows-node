@@ -6,10 +6,10 @@ public enum CronEnabledFilter { All, Enabled, Disabled }
 
 public enum CronSortBy { NextRunAtMs, UpdatedAtMs, Name }
 
-/// <summary>One page of the agent-scoped automation inventory (<c>cron.list</c>).</summary>
+/// <summary>One page of the automation inventory (<c>cron.list</c>).</summary>
 public sealed record CronListQuery
 {
-    /// <summary>Owning agent. Pages opened from an agent route must always set it.</summary>
+    /// <summary>Owning agent; null lists every agent the operator can read.</summary>
     public string? AgentId { get; init; }
     public string Query { get; init; } = "";
     public CronEnabledFilter Enabled { get; init; } = CronEnabledFilter.All;
@@ -52,7 +52,7 @@ public sealed record CronListQuery
 public sealed record CronRunsQuery
 {
     public string? JobId { get; init; }
-    /// <summary>Applied only to all-jobs history; an exact job owns its own history.</summary>
+    /// <summary>Applied only to all-jobs history (null for every agent); an exact job owns its own history.</summary>
     public string? AgentId { get; init; }
     public string? RunId { get; init; }
     public IReadOnlyList<string> Statuses { get; init; } = Array.Empty<string>();
@@ -67,7 +67,7 @@ public sealed record CronRunsQuery
 
     public JsonObject ToParameters()
     {
-        var p = new JsonObject { ["view"] = "summary", ["scope"] = IsJobScope ? "job" : "all" };
+        var p = new JsonObject { ["scope"] = IsJobScope ? "job" : "all" };
         if (IsJobScope) p["id"] = JobId;
         else if (!string.IsNullOrWhiteSpace(AgentId)) p["agentId"] = AgentId.Trim();
         if (!string.IsNullOrWhiteSpace(RunId)) p["runId"] = RunId;

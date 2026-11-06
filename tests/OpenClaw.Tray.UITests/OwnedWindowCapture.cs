@@ -11,14 +11,68 @@ namespace OpenClaw.Tray.UITests;
 /// <summary>Captures only an owned external app HWND, including its complete native bounds.</summary>
 internal static class OwnedWindowCapture
 {
-    internal static void Save(GatewayFixtureRun run, AutomationElement window, string name,
-        params AutomationElement[] assertedElements)
+    internal static T WithPhysicalCoordinates<T>(Func<T> read)
     {
-        run.EnsureRunning();
+        var previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        try { return read(); }
+        finally { SetThreadDpiAwarenessContext(previous); }
+    }
+
+    internal static global::System.Windows.Rect ReadOwnedBounds(GatewayFixtureRun run, AutomationElement window)
+    {
         var handle = new IntPtr(window.Current.NativeWindowHandle);
         Assert.Equal(run.AppProcessId, window.Current.ProcessId);
         GetWindowThreadProcessId(handle, out var processId);
         Assert.Equal((uint)run.AppProcessId, processId);
+        Assert.True(GetWindowRect(handle, out var rect));
+        return new global::System.Windows.Rect(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
+    }
+
+    internal static double OwnedDpiScale(GatewayFixtureRun run, AutomationElement window)
+    {
+        var handle = new IntPtr(window.Current.NativeWindowHandle);
+        GetWindowThreadProcessId(handle, out var owner);
+        Assert.Equal((uint)run.AppProcessId, owner);
+        var dpi = GetDpiForWindow(handle);
+        Assert.True(dpi > 0);
+        return dpi / 96d;
+    }
+
+    internal static void ResizeOwnedPixels(GatewayFixtureRun run, AutomationElement window, int width, int height)
+    {
+        var handle = new IntPtr(window.Current.NativeWindowHandle);
+        GetWindowThreadProcessId(handle, out var owner);
+        Assert.Equal((uint)run.AppProcessId, owner);
+        Assert.True(SetWindowPos(handle, IntPtr.Zero, 0, 0, width, height, 0x0006),
+            $"SetWindowPos failed for owned HWND 0x{handle:X}.");
+    }
+
+    internal static int CorrectedWindowWidthPixels(int currentPixels, double desiredHostDip, double measuredHostDip, double scale) =>
+        Math.Max((int)Math.Ceiling(1000 * scale),
+            (int)Math.Round(currentPixels + (desiredHostDip - measuredHostDip) * scale, MidpointRounding.AwayFromZero));
+
+    internal static void Save(GatewayFixtureRun run, AutomationElement window, string name,
+        params AutomationElement[] assertedElements)
+    {
+        run.EnsureRunning();
+        SaveCore(run.AppProcessId, run.Profile.RunId, run.ArtifactsDirectory, window, name, assertedElements);
+    }
+
+    internal static void SaveCurrentProcessWindow(IntPtr handle, string runId, string artifactsDirectory, string name)
+    {
+        GetWindowThreadProcessId(handle, out var owner);
+        Assert.Equal((uint)Environment.ProcessId, owner);
+        Assert.Equal(handle, GetForegroundWindow());
+        SaveCore(Environment.ProcessId, runId, artifactsDirectory, AutomationElement.FromHandle(handle), name, []);
+    }
+
+    private static void SaveCore(int appProcessId, string runId, string artifactsDirectory, AutomationElement window,
+        string name, AutomationElement[] assertedElements)
+    {
+        var handle = new IntPtr(window.Current.NativeWindowHandle);
+        Assert.Equal(appProcessId, window.Current.ProcessId);
+        GetWindowThreadProcessId(handle, out var processId);
+        Assert.Equal((uint)appProcessId, processId);
         Assert.True(IsWindowVisible(handle) && !IsIconic(handle), "Owned window must be visible and not minimized.");
         var previousDpi = SetThreadDpiAwarenessContext(new IntPtr(-4));
         try
@@ -28,7 +82,7 @@ internal static class OwnedWindowCapture
             Assert.True(bounds.Width >= 400 && bounds.Height >= 300);
             var assertions = assertedElements.Select(element =>
             {
-                Assert.Equal(run.AppProcessId, element.Current.ProcessId);
+                Assert.Equal(appProcessId, element.Current.ProcessId);
                 Assert.False(element.Current.IsOffscreen);
                 var area = element.Current.BoundingRectangle;
                 Assert.True(area.Width > 0 && area.Height > 0);
@@ -53,11 +107,11 @@ internal static class OwnedWindowCapture
                 for (var x = 20; x < image.Width - 20; x += Math.Max(1, image.Width / 100))
                     colors.Add(image.GetPixel(x, y).ToArgb());
             Assert.True(colors.Count >= 16, $"Rejected blank native content ({colors.Count} sampled colors).");
-            var path = Path.Combine(run.ArtifactsDirectory, name);
+            var path = Path.Combine(artifactsDirectory, name);
             image.Save(path, ImageFormat.Png);
             File.WriteAllText(Path.ChangeExtension(path, ".json"), JsonSerializer.Serialize(new
             {
-                run.Profile.RunId, run.AppProcessId, hwnd = $"0x{handle:X}",
+                RunId = runId, AppProcessId = appProcessId, hwnd = $"0x{handle:X}",
                 capturedAtUtc = DateTimeOffset.UtcNow, bounds, sampledContentColors = colors.Count,
                 sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))),
                 assertions, method = "PrintWindow(PW_RENDERFULLCONTENT); owned HWND only; synthetic Gateway"
@@ -69,6 +123,10 @@ internal static class OwnedWindowCapture
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(
+        IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out NativeRect rect);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);

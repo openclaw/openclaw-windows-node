@@ -28,9 +28,11 @@ public sealed record CronSchedule(
 
     public bool IsMcpEvent => Kind == CronScheduleKind.Event && EventSource == CronProtocol.McpEventsSource;
 
-    /// <summary>Process-backed and plugin-managed schedules cannot be edited natively.</summary>
-    public bool IsReadOnly => Kind is CronScheduleKind.OnExit or CronScheduleKind.Stream or CronScheduleKind.Unknown
-        || (Kind == CronScheduleKind.Event && !IsMcpEvent);
+    /// <summary>
+    /// The native editor authors only one-time, interval and calendar schedules. Event, process
+    /// and unknown schedules stay readable here, are preserved on save and are changed on the web.
+    /// </summary>
+    public bool IsWebManaged => Kind is not (CronScheduleKind.At or CronScheduleKind.Every or CronScheduleKind.Cron);
 }
 
 public sealed record CronPayload(
@@ -80,7 +82,8 @@ public sealed record CronActiveHours(string Start, string End, string? Timezone)
 
 public sealed record CronTrigger(string Script, bool Once);
 
-public sealed record CronAutoDisabled(string Reason, long AtMs, int ConsecutiveErrors)
+/// <summary>Values the Gateway omitted stay null rather than being filled with defaults.</summary>
+public sealed record CronAutoDisabled(string? Reason, long? AtMs, int? ConsecutiveErrors)
 {
     public bool IsScheduleErrors => Reason == "schedule-errors";
 }
@@ -117,7 +120,10 @@ public sealed record CronJob
     public required string Name { get; init; }
     public string? DisplayName { get; init; }
     public string? Description { get; init; }
+    /// <summary>Explicit owner as stored; null means the Gateway default agent. Written back on save.</summary>
     public string? AgentId { get; init; }
+    /// <summary>Owner the Gateway resolved for display (<c>effectiveAgentId</c> on list rows).</summary>
+    public string? EffectiveAgentId { get; init; }
     public string? SessionKey { get; init; }
     public bool Enabled { get; init; }
     public bool? DeleteAfterRun { get; init; }
@@ -128,8 +134,9 @@ public sealed record CronJob
     public CronActiveHours? ActiveHours { get; init; }
     public bool? IdleOnly { get; init; }
     public CronTrigger? Trigger { get; init; }
-    public string SessionTarget { get; init; } = "isolated";
-    public string WakeMode { get; init; } = "now";
+    /// <summary>As sent by the Gateway; null when omitted. The editor derives a default but writes it back only when changed.</summary>
+    public string? SessionTarget { get; init; }
+    public string? WakeMode { get; init; }
     public required CronPayload Payload { get; init; }
     public CronDelivery? Delivery { get; init; }
     /// <summary>Null inherits the global setting; <see cref="CronFailureAlert.Disabled"/> means explicitly off.</summary>
@@ -139,6 +146,8 @@ public sealed record CronJob
     public CronDeliveryPreview? DeliveryPreview { get; init; }
 
     public string Title => string.IsNullOrWhiteSpace(DisplayName) ? Name : DisplayName!;
+    /// <summary>Agent that runs this job: explicit owner, else the Gateway-resolved default.</summary>
+    public string? Owner => string.IsNullOrWhiteSpace(AgentId) ? EffectiveAgentId : AgentId;
     public bool IsRunning => State.RunningAtMs is > 0;
     public bool IsAutoDisabled => State.AutoDisabled is not null;
     public bool HasTrigger => Trigger is not null;
@@ -152,7 +161,7 @@ public sealed record CronJob
 
 public sealed record CronListPage(
     IReadOnlyList<CronJob> Jobs,
-    int Total,
+    int? Total,
     int Offset,
     int Limit,
     bool HasMore,
@@ -162,7 +171,7 @@ public sealed record CronSchedulerStatus(bool? Enabled, long? NextWakeAtMs, int?
 
 public sealed record CronRunEntry
 {
-    public long Ts { get; init; }
+    public long? Ts { get; init; }
     public required string JobId { get; init; }
     public string? JobName { get; init; }
     public string? Status { get; init; }
@@ -187,48 +196,17 @@ public sealed record CronRunEntry
     public bool? TriggerFired { get; init; }
     public JsonElement Raw { get; init; }
 
-    public long EffectiveRunAtMs => RunAtMs ?? Ts;
-    public bool CanOpenTranscript => !string.IsNullOrWhiteSpace(RunId) || RunAtMs is not null;
+    public long? EffectiveRunAtMs => RunAtMs ?? Ts;
     public string Key => !string.IsNullOrWhiteSpace(RunId) ? RunId! : $"{JobId}:{EffectiveRunAtMs}";
 }
 
 public sealed record CronRunsPage(
     IReadOnlyList<CronRunEntry> Entries,
-    int Total,
+    int? Total,
     int Offset,
     int Limit,
     bool HasMore,
     int? NextOffset);
-
-public sealed record CronTranscriptMessage(string Role, string Text, long? TimestampMs, string? ToolName = null);
-
-public sealed record CronHistoryPage(IReadOnlyList<CronTranscriptMessage> Messages, string? NextCursor);
-
-public sealed record CronScratchSnapshot(
-    bool Exists,
-    string Content,
-    long Revision,
-    long? UpdatedAtMs,
-    long CurrentRevision,
-    long MaxBytes);
-
-public sealed record CronScratchSetResult(bool Ok, bool Conflict, CronScratchSnapshot? Snapshot, long CurrentRevision);
-
-public sealed record McpEventDefinition(string Name, string? Description, string? InputSchemaJson);
-
-public sealed record McpEventsPage(string ServerName, IReadOnlyList<McpEventDefinition> Events, string? NextCursor);
-
-public sealed record ConversationTarget(
-    string ConversationRef,
-    string Channel,
-    string AccountId,
-    string Kind,
-    string Target,
-    string? Label,
-    long LastSeenAt)
-{
-    public string DisplayLabel => string.IsNullOrWhiteSpace(Label) ? Target : $"{Label} ({Target})";
-}
 
 public static class CronProtocol
 {
@@ -240,8 +218,15 @@ public static class CronProtocol
     /// <summary>Gateway detail code when a job id no longer exists.</summary>
     public const string JobNotFoundCode = "CRON_JOB_NOT_FOUND";
     public const int DefaultPageSize = 50;
-    public const int TranscriptPageSize = 100;
-    public const int ConversationSuggestionLimit = 100;
     public const long TriggerMinIntervalMs = 30_000;
     public const long DefaultTopOfHourStaggerMs = 5 * 60 * 1000;
+
+    /// <summary>
+    /// Gateway web dashboard route for Automations, relative to the dashboard base.
+    /// <c>/cron</c> is the documented, long-lived alias of <c>/automations</c>, and
+    /// <c>?job=</c> opens one exact job. Gateways without job links open the list.
+    /// The web page has no agent-filter route, so agent context is not encoded.
+    /// </summary>
+    public static string WebPath(string? jobId) =>
+        string.IsNullOrWhiteSpace(jobId) ? "cron" : "cron?job=" + Uri.EscapeDataString(jobId);
 }

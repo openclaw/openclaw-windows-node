@@ -33,22 +33,32 @@ public sealed record AutomationsNotice(AutomationsNoticeKind Kind, string JobNam
 
 public sealed record AutomationsSnapshot
 {
+    /// <summary>Agent of the route that opened the page; owns new automations when no single agent is filtered.</summary>
     public string AgentId { get; init; } = "main";
+    /// <summary>Agent whose automations are listed, or null for every agent on the Gateway.</summary>
+    public string? AgentFilter { get; init; } = "main";
     public bool Connected { get; init; }
     public bool CanManage { get; init; }
     public AutomationsView View { get; init; } = AutomationsView.Jobs;
 
     public CronListQuery ListQuery { get; init; } = new();
     public IReadOnlyList<CronJob> Jobs { get; init; } = Array.Empty<CronJob>();
-    public int Total { get; init; }
+    public int? Total { get; init; }
     public bool HasMore { get; init; }
     public bool ListLoading { get; init; }
     public bool ListLoadingMore { get; init; }
     public bool ListLoaded { get; init; }
     public string? ListError { get; init; }
     public bool ReadDenied { get; init; }
+    /// <summary>Complete current-agent inventory, independent of browse filters and pagination.</summary>
+    public IReadOnlyList<CronJob> OverviewJobs { get; init; } = Array.Empty<CronJob>();
+    public bool OverviewLoaded { get; init; }
+    public string? OverviewError { get; init; }
+    public long? LastSeenAtMs { get; init; }
 
     public CronSchedulerStatus? Status { get; init; }
+    /// <summary>Local stats refresh failure, not a Gateway scheduler health field.</summary>
+    public string? StatusError { get; init; }
     public int? ScopedTotal { get; init; }
     public int? FailingCount { get; init; }
     public long? ScopedNextWakeAtMs { get; init; }
@@ -67,15 +77,31 @@ public sealed record AutomationsSnapshot
     public bool RunsLoadingMore { get; init; }
     public bool RunsLoaded { get; init; }
     public bool RunsHasMore { get; init; }
-    public int RunsTotal { get; init; }
+    public int? RunsTotal { get; init; }
     public string? RunsError { get; init; }
 
     public AutomationsNotice? Notice { get; init; }
 
+    public bool IsAllAgents => AgentFilter is null;
+    /// <summary>Scoped inventory size from the Gateway, independent of browse filters; null until known.</summary>
+    public int? InventoryTotal => OverviewLoaded ? OverviewJobs.Count : ScopedTotal;
+    /// <summary>On/off split comes only from the complete overview; null rather than a partial-page guess.</summary>
+    public int? ActiveCount => OverviewLoaded ? OverviewJobs.Count(j => j.Enabled && !j.IsAutoDisabled) : null;
+    public int? PausedCount => OverviewLoaded ? OverviewJobs.Count(j => !j.Enabled || j.IsAutoDisabled) : null;
+    /// <summary>Owner for a new automation: the filtered agent, else the route agent.</summary>
+    public string DefaultAgentId => AgentFilter ?? AgentId;
+    /// <summary>Agent narrowing preserves the ordinary empty state rather than a no-matches result.</summary>
     public bool IsFiltered => ListQuery.Query.Trim().Length > 0 || ListQuery.Enabled != CronEnabledFilter.All || ListQuery.HasAdvancedFilters;
-    /// <summary>Starter automations are offered only on a loaded, empty, unfiltered list the user may change.</summary>
-    public bool ShowSuggestions => CanManage && Connected && ListLoaded && ListError is null && Jobs.Count == 0 && !IsFiltered;
     public bool IsRunning(string jobId) => RunningJobIds.Contains(jobId);
+
+    /// <summary>Agents to offer in the filter: the route agent first, then known and listed owners.</summary>
+    public IReadOnlyList<string> FilterAgents(IEnumerable<string> known) =>
+        new[] { AgentId }
+            .Concat(known.Concat(Jobs.Concat(OverviewJobs).Select(j => j.Owner).OfType<string>()).Append(AgentFilter ?? "")
+                .Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim())
+                .Order(StringComparer.OrdinalIgnoreCase))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
     public bool IsBusy(string jobId) => BusyJobIds.Contains(jobId);
 }
 
@@ -90,8 +116,8 @@ public abstract record AutomationsSaveResult
 }
 
 /// <summary>
-/// Owns the agent-scoped automation inventory, scheduler stats, selection, run
-/// history, run-now latching and mutations. UI-agnostic: every state change is
+/// Owns the automation inventory (one agent or every agent), scoped stats, selection,
+/// run history, run-now latching and mutations. UI-agnostic: every state change is
 /// published through <see cref="Changed"/> on the <c>post</c> dispatcher.
 /// </summary>
 public sealed class AutomationsStore : IDisposable
@@ -100,6 +126,7 @@ public sealed class AutomationsStore : IDisposable
     public const int RunPollAttempts = 30;
     public static readonly TimeSpan RunSafetyTimeout = TimeSpan.FromSeconds(90);
     private const int RunPollLimit = 20;
+    private const string IncompletePageMessage = "The Gateway returned an incomplete automation page.";
 
     private readonly Func<IOperatorGatewayClient?> _client;
     private readonly Action<Action> _post;
@@ -111,9 +138,12 @@ public sealed class AutomationsStore : IDisposable
     private AutomationsSnapshot _state;
     private long _listGeneration;
     private long _runsGeneration;
+    private long _statsGeneration;
     private long _selectionGeneration;
+    private long _overviewGeneration;
     private long _noticeId;
     private bool _listReloadPending;
+    private CronListQuery? _loadedListQuery;
     private bool _disposed;
 
     public AutomationsStore(
@@ -125,11 +155,13 @@ public sealed class AutomationsStore : IDisposable
         _client = client;
         _post = post;
         _delay = delay ?? Task.Delay;
+        var agent = NormalizeAgent(agentId);
         _state = new AutomationsSnapshot
         {
-            AgentId = NormalizeAgent(agentId),
-            ListQuery = new CronListQuery { AgentId = NormalizeAgent(agentId) },
-            RunsQuery = new CronRunsQuery { AgentId = NormalizeAgent(agentId) },
+            AgentId = agent,
+            AgentFilter = agent,
+            ListQuery = new CronListQuery { AgentId = agent },
+            RunsQuery = new CronRunsQuery { AgentId = agent },
         };
     }
 
@@ -170,6 +202,9 @@ public sealed class AutomationsStore : IDisposable
         Set(s => s with { Connected = connected, CanManage = canManage });
         if (!connected)
         {
+            ++_overviewGeneration;
+            ++_statsGeneration;
+            ++_listGeneration;
             CancelAllRunWatchers();
             _runBaseline.Clear();
             Set(s => s with
@@ -206,8 +241,63 @@ public sealed class AutomationsStore : IDisposable
 
     public void SetQuery(CronListQuery query)
     {
-        Set(s => s with { ListQuery = query with { AgentId = s.AgentId, Offset = 0 } });
+        Set(s => s with { ListQuery = query with { AgentId = s.AgentFilter, Offset = 0 } });
         _ = LoadListAsync();
+    }
+
+    /// <summary>
+    /// Lists one agent's automations, or every agent's when <paramref name="agentId"/> is null.
+    /// Retires a selection outside the new scope without cancelling locally requested runs.
+    /// </summary>
+    public void SetAgentFilter(string? agentId)
+    {
+        var agent = string.IsNullOrWhiteSpace(agentId) ? null : agentId.Trim();
+        if (agent == _state.AgentFilter) return;
+        var selected = _state.SelectedJob ?? _state.Jobs.FirstOrDefault(job => job.Id == _state.SelectedJobId);
+        var retireSelection = _state.SelectedJobId is not null && agent is not null
+            && !string.Equals(selected?.Owner, agent, StringComparison.Ordinal);
+        if (retireSelection)
+        {
+            ++_selectionGeneration;
+            ++_runsGeneration;
+        }
+        // Rows from another agent must never be shown or acted on under this filter:
+        // retire any in-flight page and start the new inventory from empty.
+        ++_listGeneration;
+        _listReloadPending = false;
+        Set(s =>
+        {
+            var next = s with
+            {
+                AgentFilter = agent,
+                ListQuery = s.ListQuery with { AgentId = agent, Offset = 0 },
+                Jobs = Array.Empty<CronJob>(),
+                Total = null,
+                HasMore = false,
+                ListLoaded = false,
+                ListLoading = false,
+                ListLoadingMore = false,
+                ListError = null,
+                ScopedTotal = null,
+                FailingCount = null,
+                ScopedNextWakeAtMs = null,
+                OverviewJobs = Array.Empty<CronJob>(),
+                OverviewLoaded = false,
+                OverviewError = null,
+                LastSeenAtMs = null,
+            };
+            return !retireSelection ? next : next with
+            {
+                SelectedJobId = null, SelectedJob = null, SelectedError = null,
+                RunsQuery = new CronRunsQuery { AgentId = agent },
+                Runs = Array.Empty<CronRunEntry>(), RunsLoaded = false, RunsLoading = false,
+                RunsLoadingMore = false, RunsHasMore = false, RunsTotal = null, RunsError = null,
+            };
+        });
+        _ = LoadListAsync();
+        _ = LoadStatsAsync();
+        if (_state.View == AutomationsView.RunHistory)
+            ShowRuns(new CronRunsQuery());
     }
 
     public void SetView(AutomationsView view)
@@ -215,7 +305,7 @@ public sealed class AutomationsStore : IDisposable
         if (_state.View == view) return;
         Set(s => s with { View = view });
         if (view == AutomationsView.RunHistory)
-            ShowRuns(new CronRunsQuery { AgentId = _state.AgentId });
+            ShowRuns(new CronRunsQuery());
     }
 
     public async Task LoadListAsync(bool append = false)
@@ -234,11 +324,22 @@ public sealed class AutomationsStore : IDisposable
         Set(s => append ? s with { ListLoadingMore = true } : s with { ListLoading = true, ListError = null });
         try
         {
-            var page = await client.ListCronJobsAsync(query).ConfigureAwait(false);
+            var loaded = new List<CronJob>();
+            var goal = !append && _loadedListQuery == query
+                ? Math.Max(query.Limit, _state.Jobs.Count) : query.Limit;
+            CronListPage page;
+            do
+            {
+                page = await client.ListCronJobsAsync(query with { Offset = query.Offset + loaded.Count }).ConfigureAwait(false);
+                if (generation != _listGeneration || !_state.Connected || _disposed) return;
+                loaded.AddRange(page.Jobs);
+                if (page.HasMore && page.Jobs.Count == 0) throw new InvalidOperationException(IncompletePageMessage);
+            } while (!append && page.HasMore && loaded.Count < goal);
+            var refreshed = page with { Jobs = loaded, Offset = query.Offset };
             Post(() =>
             {
                 if (generation != _listGeneration) return;
-                ApplyListPage(page, append);
+                ApplyListPage(refreshed, append, query);
             });
         }
         catch (Exception ex)
@@ -271,8 +372,9 @@ public sealed class AutomationsStore : IDisposable
         }
     }
 
-    private void ApplyListPage(CronListPage page, bool append)
+    private void ApplyListPage(CronListPage page, bool append, CronListQuery? loadedQuery = null)
     {
+        _loadedListQuery = (loadedQuery ?? _state.ListQuery) with { Offset = 0 };
         var previous = _state.Jobs;
         // A page with a repeated id would break keyed rows; keep the first.
         var fresh = page.Jobs.DistinctBy(j => j.Id, StringComparer.Ordinal);
@@ -383,7 +485,9 @@ public sealed class AutomationsStore : IDisposable
     {
         var client = _client();
         if (client is null || !_state.Connected) return;
-        var agent = _state.AgentId;
+        _ = LoadOverviewAsync();
+        var agent = _state.AgentFilter;
+        var generation = ++_statsGeneration;
         try
         {
             var statusTask = client.GetCronStatusAsync();
@@ -393,20 +497,123 @@ public sealed class AutomationsStore : IDisposable
             await Task.WhenAll(statusTask, allTask, nextTask, failingTask).ConfigureAwait(false);
             Post(() =>
             {
+                if (generation != _statsGeneration) return;
                 Set(s => s with
                 {
                     Status = statusTask.Result,
+                    StatusError = null,
                     ScopedTotal = allTask.Result.Total,
                     ScopedNextWakeAtMs = nextTask.Result.Jobs.FirstOrDefault()?.State.NextRunAtMs,
                     FailingCount = failingTask.Result.Total,
                 });
             });
         }
-        catch (Exception)
+
+        catch (Exception ex)
         {
-            Post(() => Set(s => s with { ScopedTotal = null, ScopedNextWakeAtMs = null, FailingCount = null }));
+            Post(() =>
+            {
+                if (generation != _statsGeneration) return;
+                Set(s => s with { Status = null, StatusError = ex.Message, ScopedTotal = null, ScopedNextWakeAtMs = null, FailingCount = null });
+            });
         }
     }
+
+    private async Task LoadOverviewAsync()
+        {
+            var client = _client();
+            if (client is null || !_state.Connected) return;
+            var generation = ++_overviewGeneration;
+            var agent = _state.AgentFilter;
+            try
+            {
+                var jobs = new List<CronJob>();
+                // Active jobs are paged in next-run order, not inferred from the first browse
+                // page. Also read disabled jobs so attention and status counts cover this scope.
+                foreach (var enabled in new[] { CronEnabledFilter.Enabled, CronEnabledFilter.Disabled })
+                {
+                    var offset = 0;
+                    while (true)
+                    {
+                        var page = await client.ListCronJobsAsync(new CronListQuery
+                        {
+                            AgentId = agent, Enabled = enabled, SortBy = CronSortBy.NextRunAtMs,
+                            Limit = 200, Offset = offset,
+                        }).ConfigureAwait(false);
+                        if (generation != _overviewGeneration || !_state.Connected || _disposed) return;
+                        jobs.AddRange(page.Jobs);
+                        if (!page.HasMore) break;
+                        if (page.Jobs.Count == 0) throw new InvalidOperationException(IncompletePageMessage);
+                        offset += page.Jobs.Count;
+                    }
+                }
+                Post(() =>
+                {
+                    if (generation != _overviewGeneration) return;
+                    Set(s => s with
+                    {
+                        OverviewJobs = jobs.DistinctBy(j => j.Id).ToArray(),
+                        OverviewLoaded = true, OverviewError = null,
+                        LastSeenAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    });
+                });
+            }
+            catch (Exception ex)
+            {
+                Post(() =>
+                {
+                    if (generation != _overviewGeneration) return;
+                    var denied = CronGatewayRequests.IsForbidden(ex);
+                    Set(s => s with
+                    {
+                        OverviewError = ex.Message,
+                        OverviewJobs = denied ? Array.Empty<CronJob>() : s.OverviewJobs,
+                        OverviewLoaded = denied ? false : s.OverviewLoaded,
+                    });
+                });
+            }
+        }
+
+        /// <summary>Agenda links reveal the real inventory row, even beyond its first page.</summary>
+    public async Task RevealAsync(string jobId)
+        {
+            var client = _client();
+            if (client is null || !_state.Connected) return;
+            var generation = ++_listGeneration;
+            _listReloadPending = false;
+            var query = new CronListQuery { AgentId = _state.AgentFilter };
+            Set(s => s with
+            {
+                ListQuery = query, ListLoading = true, ListLoadingMore = false,
+            });
+            try
+            {
+                var jobs = new List<CronJob>();
+                CronListPage page;
+                do
+                {
+                    page = await client.ListCronJobsAsync(query with { Offset = jobs.Count }).ConfigureAwait(false);
+                    if (generation != _listGeneration || !_state.Connected || _disposed) return;
+                    jobs.AddRange(page.Jobs);
+                    if (page.HasMore && page.Jobs.Count == 0) throw new InvalidOperationException(IncompletePageMessage);
+                } while (page.HasMore && jobs.All(j => j.Id != jobId));
+                Post(() =>
+                {
+                    if (generation != _listGeneration) return;
+                    ApplyListPage(page with { Jobs = jobs }, false, query);
+                    Set(s => s with { ListLoading = false });
+                    Select(jobId);
+                });
+            }
+            catch (Exception ex)
+            {
+                Post(() =>
+                {
+                    if (generation != _listGeneration) return;
+                    Set(s => s with { ListLoading = false, ListError = ex.Message });
+                });
+            }
+        }
 
     // ─── Selection ───
 
@@ -417,7 +624,7 @@ public sealed class AutomationsStore : IDisposable
         Set(s => s with { SelectedJobId = jobId, SelectedJob = row, SelectedError = null, View = AutomationsView.Jobs });
         if (jobId is null) return;
         _ = LoadSelectedAsync(jobId);
-        ShowRuns(new CronRunsQuery { JobId = jobId, AgentId = _state.AgentId });
+        ShowRuns(new CronRunsQuery { JobId = jobId });
     }
 
     public async Task LoadSelectedAsync(string jobId, bool quiet = false)
@@ -431,6 +638,8 @@ public sealed class AutomationsStore : IDisposable
             Post(() =>
             {
                 if (generation != _selectionGeneration || _state.SelectedJobId != jobId) return;
+                var listed = _state.Jobs.FirstOrDefault(row => row.Id == jobId) ?? _state.SelectedJob;
+                job = job with { EffectiveAgentId = job.EffectiveAgentId ?? listed?.EffectiveAgentId };
                 // The exact definition settles a run nobody here is watching.
                 var running = job.IsRunning ? _state.RunningJobIds.Add(jobId)
                     : IsTrackedRun(jobId) ? _state.RunningJobIds : _state.RunningJobIds.Remove(jobId);
@@ -456,7 +665,7 @@ public sealed class AutomationsStore : IDisposable
     {
         Set(s => s with
         {
-            RunsQuery = query with { AgentId = s.AgentId, Offset = 0 },
+            RunsQuery = query with { AgentId = s.AgentFilter, Offset = 0 },
             Runs = Array.Empty<CronRunEntry>(),
             RunsLoaded = false,
             RunsHasMore = false,
@@ -469,7 +678,7 @@ public sealed class AutomationsStore : IDisposable
     {
         Set(s => s with
         {
-            RunsQuery = query with { AgentId = s.AgentId, JobId = s.RunsQuery.JobId, Offset = 0 },
+            RunsQuery = query with { AgentId = s.AgentFilter, JobId = s.RunsQuery.JobId, Offset = 0 },
             Runs = Array.Empty<CronRunEntry>(),
             RunsHasMore = false,
         });
@@ -743,7 +952,7 @@ public sealed class AutomationsStore : IDisposable
             Set(s => s with
             {
                 Jobs = s.Jobs.Where(j => j.Id != jobId).ToList(),
-                Total = Math.Max(0, s.Total - 1),
+                Total = s.Total is { } total ? Math.Max(0, total - 1) : null,
                 SelectedJobId = s.SelectedJobId == jobId ? null : s.SelectedJobId,
                 SelectedJob = s.SelectedJobId == jobId ? null : s.SelectedJob,
             });
@@ -806,8 +1015,8 @@ public sealed class AutomationsStore : IDisposable
             }
             else
             {
-                if (!definition.ContainsKey("agentId") && !normalized.ClearAgent)
-                    definition["agentId"] = _state.AgentId;
+                if (!definition.ContainsKey("agentId"))
+                    definition["agentId"] = _state.DefaultAgentId;
                 saved = await client.AddCronJobDetailedAsync(definition).ConfigureAwait(false);
             }
             Post(() =>

@@ -239,7 +239,7 @@ public interface IOperatorGatewayClient
     // ─── Automations (cron) ───
     // Response-aware cron APIs shared by every implementer through SendWizardRequestAsync.
     // Gateway rejections throw InvalidOperationException carrying GatewayRequestErrors codes.
-    /// <summary>Agent-scoped job page (<c>cron.list</c>).</summary>
+    /// <summary>Job page (<c>cron.list</c>); an omitted agent lists every agent.</summary>
     Task<Cron.CronListPage> ListCronJobsAsync(Cron.CronListQuery query, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
         => Cron.CronGatewayRequests.ListAsync(this, query, timeoutMs);
     /// <summary>Scheduler status (<c>cron.status</c>).</summary>
@@ -254,28 +254,12 @@ public interface IOperatorGatewayClient
     /// <summary>Patch a job (<c>cron.update</c>) guarded by its <c>configRevision</c>.</summary>
     Task<Cron.CronJob> UpdateCronJobDetailedAsync(string id, string? expectedConfigRevision, System.Text.Json.Nodes.JsonObject patch, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
         => Cron.CronGatewayRequests.UpdateAsync(this, id, expectedConfigRevision, patch, timeoutMs);
-    /// <summary>Remove a job (<c>cron.remove</c>).</summary>
+    /// <summary>Remove a job (<c>cron.remove</c>); a loaded revision is confirmed with <c>cron.get</c> first.</summary>
     Task RemoveCronJobDetailedAsync(string id, string? expectedConfigRevision = null, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
         => Cron.CronGatewayRequests.RemoveAsync(this, id, expectedConfigRevision, timeoutMs);
     /// <summary>Run history page (<c>cron.runs</c>).</summary>
     Task<Cron.CronRunsPage> ListCronRunsAsync(Cron.CronRunsQuery query, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
         => Cron.CronGatewayRequests.RunsAsync(this, query, timeoutMs);
-    /// <summary>Transcript for one recorded run (<c>cron.history</c>).</summary>
-    Task<Cron.CronHistoryPage> GetCronRunTranscriptAsync(Cron.CronRunEntry run, string? cursor = null, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
-        => Cron.CronGatewayRequests.HistoryAsync(this, run, cursor, timeoutMs);
-    /// <summary>Per-job scratch (<c>cron.scratch.get</c>).</summary>
-    Task<Cron.CronScratchSnapshot> GetCronScratchAsync(string id, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
-        => Cron.CronGatewayRequests.GetScratchAsync(this, id, timeoutMs);
-    /// <summary>Save or remove per-job scratch (<c>cron.scratch.set</c>).</summary>
-    Task<Cron.CronScratchSetResult> SetCronScratchAsync(string id, string? content, long expectedRevision, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
-        => Cron.CronGatewayRequests.SetScratchAsync(this, id, content, expectedRevision, timeoutMs);
-    /// <summary>Webhook-deliverable events advertised by an MCP server (<c>mcp.events.list</c>).</summary>
-    Task<IReadOnlyList<Cron.McpEventDefinition>> ListMcpEventsAsync(string? agentId, string serverName, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
-        => Cron.CronGatewayRequests.ListMcpEventsAsync(this, agentId, serverName, timeoutMs);
-    /// <summary>Known delivery conversations for an agent (<c>conversations.list</c>).</summary>
-    Task<IReadOnlyList<Cron.ConversationTarget>> ListConversationsAsync(string agentId, string? channel = null, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
-        => Cron.CronGatewayRequests.ListConversationsAsync(this, agentId, channel, timeoutMs);
-
     /// <summary>Fetches the authenticated user's avatar from the Gateway route. Older clients report Unsupported.</summary>
     Task<UserAvatarResult> ResolveUserAvatarAsync(string profileId, string? revision, CancellationToken cancellationToken = default)
         => Task.FromResult(UserAvatarResult.Of(UserAvatarStatus.Unsupported));

@@ -15,9 +15,6 @@ public enum CronFormField
     CronExpr,
     CronTz,
     StaggerAmount,
-    EventServer,
-    EventName,
-    EventArguments,
     PayloadText,
     TimeoutSeconds,
     DeliveryMode,
@@ -41,9 +38,6 @@ public enum CronFormError
     TimezoneInvalid,
     StaggerAmountInvalid,
     EventAgentTurnRequired,
-    EventServerRequired,
-    EventNameRequired,
-    EventArgumentsInvalid,
     TriggerScriptPayloadUnsupported,
     TriggerScheduleUnsupported,
     TriggerScriptRequired,
@@ -63,6 +57,8 @@ public enum CronFormError
 /// Editable automation definition. Every field is plain text or a flag so the native
 /// editor can bind it directly; <see cref="BuildDefinition"/> converts it to the
 /// Gateway's add/update shape, including explicit nulls that clear saved values.
+/// The native editor shows only everyday fields; the rest are loaded from the saved job
+/// and written back unchanged so a basic edit never resets web-managed settings.
 /// </summary>
 public sealed record CronJobForm
 {
@@ -70,7 +66,6 @@ public sealed record CronJobForm
     public string Description { get; init; } = "";
     public string AgentId { get; init; } = "";
     public string SessionKey { get; init; } = "";
-    public bool ClearAgent { get; init; }
     public bool Enabled { get; init; } = true;
     public bool DeleteAfterRun { get; init; }
 
@@ -83,10 +78,6 @@ public sealed record CronJobForm
     public bool ScheduleExact { get; init; }
     public string StaggerAmount { get; init; } = "";
     public CronDurationUnit StaggerUnit { get; init; } = CronDurationUnit.Seconds;
-    public string EventSource { get; init; } = CronProtocol.McpEventsSource;
-    public string EventServer { get; init; } = "";
-    public string EventName { get; init; } = "";
-    public string EventArguments { get; init; } = "{}";
 
     public bool ActiveHoursEnabled { get; init; }
     public string ActiveHoursStart { get; init; } = "09:00";
@@ -113,8 +104,16 @@ public sealed record CronJobForm
 
     /// <summary>"none", "announce", "webhook", or empty when a legacy job has no canonical mode.</summary>
     public string DeliveryMode { get; init; } = "none";
+    /// <summary>
+    /// An edited job's legacy or omitted delivery is left untouched (not rewritten through
+    /// defaults) until the user explicitly picks a mode. A copy keeps an omitted delivery
+    /// omitted, so the Gateway applies the same default plan; a copied legacy mode must be chosen.
+    /// </summary>
+    public bool KeepSavedDelivery { get; init; }
     public string DeliveryChannel { get; init; } = CronProtocol.ChannelLast;
     public string DeliveryTo { get; init; } = "";
+    /// <summary>An unchanged legacy HTTP webhook may survive unrelated edits, but not a copy.</summary>
+    public string? SavedWebhookTo { get; init; }
     public string DeliveryAccountId { get; init; } = "";
     public bool DeliveryBestEffort { get; init; }
     public string? DeliveryThreadId { get; init; }
@@ -135,22 +134,10 @@ public sealed record CronJobForm
 
     public static CronJobForm CreateDefault(string? agentId) => new() { AgentId = agentId ?? "" };
 
-    /// <summary>Starter automations reuse the editor; nothing is saved until the user submits.</summary>
-    public static CronJobForm FromSuggestion(CronSuggestion suggestion, string name, string prompt, string? agentId) =>
-        CreateDefault(agentId) with
-        {
-            Name = name,
-            PayloadText = prompt,
-            PayloadKind = CronPayloadKind.AgentTurn,
-            SessionTarget = "isolated",
-            WakeMode = "now",
-            DeleteAfterRun = false,
-            Enabled = true,
-            ScheduleKind = suggestion.ScheduleKind,
-            CronExpr = suggestion.CronExpr ?? "0 7 * * *",
-            EveryAmount = suggestion.EveryAmount ?? "30",
-            EveryUnit = suggestion.EveryUnit ?? CronDurationUnit.Minutes,
-        };
+    private const string DefaultWakeMode = "now";
+
+    /// <summary>The Gateway's target for a job saved without one: timeline messages use main, other payloads run isolated.</summary>
+    private static string DefaultSessionTarget(CronPayloadKind kind) => kind == CronPayloadKind.SystemEvent ? "main" : "isolated";
 
     public static CronJobForm FromJob(CronJob job)
     {
@@ -174,12 +161,13 @@ public sealed record CronJobForm
             IdleOnly = job.IdleOnly == true,
             PayloadSkipIfScratchEmpty = agentTurn?.SkipIfScratchEmpty == true,
             DeliveryTarget = delivery is { Mode: not "webhook" } ? delivery.Target ?? "" : "",
+            SavedWebhookTo = delivery is { Mode: "webhook" } ? delivery.To : null,
             DeliveryDirectPolicy = delivery is { Mode: not "webhook" } ? delivery.DirectPolicy ?? "" : "",
             TriggerEnabled = job.Trigger is not null,
             TriggerScript = job.Trigger?.Script ?? "",
             TriggerOnce = job.Trigger?.Once == true,
-            SessionTarget = job.SessionTarget,
-            WakeMode = job.WakeMode,
+            SessionTarget = job.SessionTarget ?? DefaultSessionTarget(payload.Kind),
+            WakeMode = job.WakeMode ?? DefaultWakeMode,
             PayloadKind = payload.Kind,
             PayloadLocked = payload.IsReadOnly,
             PayloadText = payload.Text,
@@ -188,7 +176,8 @@ public sealed record CronJobForm
             PayloadLightContext = agentTurn?.LightContext == true,
             PayloadIncludeReasoning = agentTurn?.IncludeReasoning == true,
             TimeoutSeconds = agentTurn?.TimeoutSeconds is { } timeout ? timeout.ToString(CultureInfo.InvariantCulture) : "",
-            DeliveryMode = delivery is null ? "none" : IsCanonicalDeliveryMode(delivery.Mode) ? delivery.Mode : "",
+            DeliveryMode = delivery is null ? "" : IsCanonicalDeliveryMode(delivery.Mode) ? delivery.Mode : "",
+            KeepSavedDelivery = delivery is null || !IsCanonicalDeliveryMode(delivery.Mode),
             DeliveryChannel = delivery?.Channel ?? CronProtocol.ChannelLast,
             DeliveryTo = delivery?.To ?? "",
             DeliveryAccountId = delivery?.AccountId ?? "",
@@ -210,15 +199,6 @@ public sealed record CronJobForm
         var schedule = job.Schedule;
         switch (schedule.Kind)
         {
-            case CronScheduleKind.Event:
-                form = form with
-                {
-                    EventSource = schedule.EventSource ?? CronProtocol.McpEventsSource,
-                    EventServer = schedule.EventServer ?? "",
-                    EventName = schedule.EventName ?? "",
-                    EventArguments = schedule.EventArgumentsJson ?? "{}",
-                };
-                break;
             case CronScheduleKind.At:
                 form = form with { ScheduleAt = TryParseAt(schedule.At) };
                 break;
@@ -248,7 +228,7 @@ public sealed record CronJobForm
     /// </summary>
     public static CronJobForm FromClone(CronJob job, string copyName)
     {
-        var form = FromJob(job) with { Name = copyName };
+        var form = FromJob(job) with { Name = copyName, KeepSavedDelivery = job.Delivery is null, SavedWebhookTo = null };
         return form.PayloadLocked
             ? (form with { PayloadLocked = false, PayloadKind = CronPayloadKind.AgentTurn, PayloadText = "" }).Normalize()
             : form;
@@ -283,7 +263,7 @@ public sealed record CronJobForm
     /// </summary>
     public CronJobForm WithStaleThreadCleared(CronJobForm next)
     {
-        static string Agent(CronJobForm f) => f.ClearAgent ? "" : f.AgentId.Trim();
+        static string Agent(CronJobForm f) => f.AgentId.Trim();
         var routeChanged = next.DeliveryMode != DeliveryMode
             || next.DeliveryTarget != DeliveryTarget
             || next.DeliveryChannel.Trim() != DeliveryChannel.Trim()
@@ -293,7 +273,7 @@ public sealed record CronJobForm
         return routeChanged && next.DeliveryThreadId == DeliveryThreadId ? next with { DeliveryThreadId = null } : next;
     }
 
-    /// <summary>Applies the schedule-kind defaults the Gateway expects when switching kinds.</summary>
+    /// <summary>Applies the defaults the Gateway expects when switching between natively edited kinds.</summary>
     public CronJobForm WithScheduleKind(CronScheduleKind kind)
     {
         if (kind == ScheduleKind)
@@ -303,14 +283,6 @@ public sealed record CronJobForm
             form = form with { DeleteAfterRun = true, ScheduleAt = ScheduleAt ?? NextWholeHour(DateTimeOffset.Now) };
         else if (ScheduleKind == CronScheduleKind.At)
             form = form with { DeleteAfterRun = false };
-        if (kind == CronScheduleKind.Event)
-            form = form with
-            {
-                TriggerEnabled = false,
-                DeleteAfterRun = false,
-                PayloadKind = form.PayloadLocked ? form.PayloadKind : CronPayloadKind.AgentTurn,
-                SessionTarget = form.SessionTarget == "main" ? "isolated" : form.SessionTarget,
-            };
         return form;
     }
 
@@ -325,13 +297,7 @@ public sealed record CronJobForm
         if (ScheduleKind == CronScheduleKind.Event && PayloadKind != CronPayloadKind.AgentTurn)
             errors[CronFormField.PayloadText] = CronFormError.EventAgentTurnRequired;
 
-        if (ScheduleKind == CronScheduleKind.Event && EventSource == CronProtocol.McpEventsSource)
-        {
-            if (string.IsNullOrWhiteSpace(EventServer)) errors[CronFormField.EventServer] = CronFormError.EventServerRequired;
-            if (string.IsNullOrWhiteSpace(EventName)) errors[CronFormField.EventName] = CronFormError.EventNameRequired;
-            if (TryParseEventArguments(EventArguments) is null) errors[CronFormField.EventArguments] = CronFormError.EventArgumentsInvalid;
-        }
-        else if (ScheduleKind == CronScheduleKind.At)
+        if (ScheduleKind == CronScheduleKind.At)
         {
             if (ScheduleAt is null) errors[CronFormField.ScheduleAt] = CronFormError.ScheduleAtInvalid;
         }
@@ -369,7 +335,7 @@ public sealed record CronJobForm
                 || !double.IsFinite(timeout) || timeout < 0))
             errors[CronFormField.TimeoutSeconds] = CronFormError.TimeoutInvalid;
 
-        if (string.IsNullOrEmpty(DeliveryMode))
+        if (string.IsNullOrEmpty(DeliveryMode) && !KeepSavedDelivery)
             errors[CronFormField.DeliveryMode] = CronFormError.DeliveryModeRequired;
 
         if (ActiveHoursEnabled)
@@ -379,7 +345,8 @@ public sealed record CronJobForm
             if (!IsValidTimezone(ActiveHoursTimezone, allowAliases: true)) errors[CronFormField.ActiveHoursTimezone] = CronFormError.ActiveHoursTimezoneInvalid;
         }
 
-        if (DeliveryMode == "webhook" && ValidateWebhookUrl(DeliveryTo) is { } webhookError)
+        if (DeliveryMode == "webhook" && ValidateWebhookUrl(DeliveryTo,
+            requireHttps: !string.Equals(SavedWebhookTo, DeliveryTo, StringComparison.Ordinal)) is { } webhookError)
             errors[CronFormField.DeliveryTo] = webhookError;
 
         if (FailureAlertMode == CronFailureAlertMode.Custom)
@@ -394,12 +361,14 @@ public sealed record CronJobForm
         return errors;
     }
 
-    public static CronFormError? ValidateWebhookUrl(string? value)
+    public static CronFormError? ValidateWebhookUrl(string? value, bool requireHttps = false)
     {
         var target = (value ?? "").Trim();
         if (target.Length == 0)
             return CronFormError.WebhookUrlRequired;
         if (!target.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !target.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return CronFormError.WebhookUrlInvalid;
+        if (requireHttps && !target.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             return CronFormError.WebhookUrlInvalid;
         if (!Uri.TryCreate(target, UriKind.Absolute, out var uri) || !string.IsNullOrEmpty(uri.UserInfo) || uri.Host.Contains('%') || uri.Host.Length == 0)
             return CronFormError.WebhookUrlInvalid;
@@ -430,9 +399,8 @@ public sealed record CronJobForm
             ["description"] = form.Description.Trim(),
         };
 
-        var agentId = form.ClearAgent ? null : form.AgentId.Trim();
-        if (agentId is null) job["agentId"] = null;
-        else if (agentId.Length > 0) job["agentId"] = agentId;
+        var agentId = form.AgentId.Trim();
+        if (agentId.Length > 0) job["agentId"] = agentId;
 
         var sessionKey = form.SessionKey.Trim();
         if (sessionKey.Length > 0) job["sessionKey"] = sessionKey;
@@ -441,8 +409,11 @@ public sealed record CronJobForm
         job["enabled"] = form.Enabled;
         if (form.ScheduleKind is CronScheduleKind.At or CronScheduleKind.OnExit)
             job["deleteAfterRun"] = form.DeleteAfterRun;
-        job["sessionTarget"] = form.SessionTarget;
-        job["wakeMode"] = form.WakeMode;
+        // Updates write these only when changed, so a value the Gateway omitted is not replaced by a guess.
+        if (!isUpdate || form.SessionTarget != (editing!.SessionTarget ?? DefaultSessionTarget(editing.Payload.Kind)))
+            job["sessionTarget"] = form.SessionTarget;
+        if (!isUpdate || form.WakeMode != (editing!.WakeMode ?? DefaultWakeMode))
+            job["wakeMode"] = form.WakeMode;
 
         var triggerScript = form.TriggerScript.Trim();
         if (form.TriggerEnabled)
@@ -511,14 +482,6 @@ public sealed record CronJobForm
             return false;
         switch (schedule.Kind)
         {
-            case CronScheduleKind.Event:
-                if (!schedule.IsMcpEvent)
-                    return true;
-                var args = TryParseEventArguments(EventArguments);
-                var saved = TryParseEventArguments(schedule.EventArgumentsJson ?? "{}");
-                return EventServer.Trim() == schedule.EventServer
-                    && EventName.Trim() == schedule.EventName
-                    && args is not null && saved is not null && JsonNode.DeepEquals(args, saved);
             case CronScheduleKind.At:
                 return ScheduleAt is { } at && TryParseAt(schedule.At) is { } savedAt
                     && TruncateToMinute(at) == TruncateToMinute(savedAt);
@@ -532,6 +495,7 @@ public sealed record CronJobForm
                     && StaggerAmount.Trim() == stagger.Amount
                     && StaggerUnit == stagger.Unit;
             default:
+                // Web-managed kinds cannot be changed here, so they are always written back as saved.
                 return true;
         }
     }
@@ -540,19 +504,6 @@ public sealed record CronJobForm
     {
         switch (ScheduleKind)
         {
-            case CronScheduleKind.Event:
-                var args = TryParseEventArguments(EventArguments) ?? throw new FormatException("Event arguments must be a JSON object.");
-                return new JsonObject
-                {
-                    ["kind"] = "event",
-                    ["source"] = CronProtocol.McpEventsSource,
-                    ["options"] = new JsonObject
-                    {
-                        ["server"] = EventServer.Trim(),
-                        ["name"] = EventName.Trim(),
-                        ["arguments"] = args,
-                    },
-                };
             case CronScheduleKind.At:
                 var at = ScheduleAt ?? throw new FormatException("Run time is required.");
                 return new JsonObject
@@ -721,18 +672,6 @@ public sealed record CronJobForm
         return (true, alert);
     }
 
-    public static JsonObject? TryParseEventArguments(string? json)
-    {
-        try
-        {
-            return JsonNode.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json) as JsonObject;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
     public static DateTimeOffset? TryParseAt(string? value) =>
         DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
             ? parsed.ToLocalTime()
@@ -769,24 +708,4 @@ public sealed record CronJobForm
         element is { } value ? JsonNode.Parse(value.GetRawText()) : null;
 
     private static readonly Regex HourMinute = new(@"^([01][0-9]|2[0-3]):[0-5][0-9]$", RegexOptions.CultureInvariant);
-}
-
-/// <summary>Starter automation shown on an empty, manageable list.</summary>
-public sealed record CronSuggestion(
-    string Id,
-    string Glyph,
-    CronScheduleKind ScheduleKind,
-    string? CronExpr = null,
-    string? EveryAmount = null,
-    CronDurationUnit? EveryUnit = null)
-{
-    public static IReadOnlyList<CronSuggestion> All { get; } =
-    [
-        new("repoPulse", "\uE943", CronScheduleKind.Cron, CronExpr: "0 9 * * 1-5"),
-        new("standupGhostwriter", "\uE8BD", CronScheduleKind.Cron, CronExpr: "0 9 * * 1-5"),
-        new("hackerNewsScout", "\uE774", CronScheduleKind.Cron, CronExpr: "0 8 * * *"),
-        new("dependencyRadar", "\uE7B8", CronScheduleKind.Cron, CronExpr: "0 9 * * 1"),
-        new("watchdog", "\uE9D9", CronScheduleKind.Every, EveryAmount: "1", EveryUnit: CronDurationUnit.Hours),
-        new("polyglotMinute", "\uF2B7", CronScheduleKind.Cron, CronExpr: "0 8 * * *"),
-    ];
 }

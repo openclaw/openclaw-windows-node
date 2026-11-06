@@ -11,13 +11,11 @@ public sealed partial class GatewayScenario
 
     private static readonly string[] CronMethods =
     [
-        "cron.list", "cron.status", "cron.get", "cron.add", "cron.update", "cron.remove", "cron.run",
-        "cron.runs", "cron.history", "cron.scratch.get", "cron.scratch.set", "mcp.events.list", "conversations.list",
+        "cron.list", "cron.status", "cron.get", "cron.add", "cron.update", "cron.remove", "cron.run", "cron.runs",
     ];
 
     private readonly Dictionary<string, JsonObject>? _cronJobs;
     private readonly Dictionary<string, List<JsonObject>> _cronRuns = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (string? Content, long Revision, long UpdatedAtMs)> _cronScratch = new(StringComparer.Ordinal);
     private int _cronRunCount;
     private int _cronCreated;
 
@@ -26,7 +24,7 @@ public sealed partial class GatewayScenario
     /// scheduled or executed: <c>cron.run</c> only appends a synthetic run record.
     /// Jobs belong to <c>main</c> and <c>ops</c>; <c>research</c> owns none.
     /// </summary>
-    public static GatewayScenario CreateAutomations()
+    public static GatewayScenario CreateAutomations(int additionalJobs = 0, bool sparse = false)
     {
         var browse = CreateBrowse();
         var anchor = DateTimeOffset.UtcNow;
@@ -35,22 +33,6 @@ public sealed partial class GatewayScenario
         const long Minute = 60_000, Hour = 60 * Minute, Day = 24 * Hour;
 
         var reads = new Dictionary<string, JsonElement>(browse._reads, StringComparer.Ordinal);
-        var config = JsonNode.Parse(browse._reads["config.get"].GetProperty("config").GetRawText())!.AsObject();
-        config["mcp"] = new JsonObject
-        {
-            ["servers"] = new JsonObject
-            {
-                ["github"] = new JsonObject { ["enabled"] = true, ["url"] = "https://mcp.example.test/github" },
-                ["linear"] = new JsonObject { ["enabled"] = true, ["url"] = "https://mcp.example.test/linear" },
-                ["archived"] = new JsonObject { ["enabled"] = false, ["url"] = "https://mcp.example.test/archived" },
-            },
-        };
-        config["agents"]!["defaults"]!["models"] = new JsonObject { ["fixture/fast"] = new JsonObject() };
-        var configGet = JsonNode.Parse(browse._reads["config.get"].GetRawText())!.AsObject();
-        configGet["config"] = config.DeepClone();
-        configGet["parsed"] = config.DeepClone();
-        configGet["raw"] = config.ToJsonString();
-        reads["config.get"] = JsonSerializer.SerializeToElement(configGet);
 
         JsonObject[] jobs =
         [
@@ -105,9 +87,16 @@ public sealed partial class GatewayScenario
                 new { nextRunAtMs = now + 5 * Hour }),
         ];
 
+        jobs[0]["sessionKey"] = "agent:main:main";
+        if (sparse) jobs = [jobs[0]];
+        if (additionalJobs > 0)
+            jobs = jobs.Concat(Enumerable.Range(0, additionalJobs).Select(i =>
+                Job($"scheduled-{i:D3}", $"Scheduled fixture {i:D3}", "main", true,
+                    new { kind = "at", at = DateTimeOffset.FromUnixTimeMilliseconds(now + (i + 1) * Minute).ToString("O") },
+                    new { kind = "agentTurn", message = "Synthetic agenda pagination fixture." }, new { mode = "none" },
+                    new { nextRunAtMs = now + (i + 1) * Minute }))).ToArray();
         var scenario = new GatewayScenario(browse._sessions, reads, cronJobs: jobs);
         scenario.SeedRuns(now);
-        scenario._cronScratch["morning-brief"] = ("- Follow up with the design review\n- Skip calendar items marked private\n", 3, now - Day);
         return scenario;
     }
 
@@ -117,8 +106,33 @@ public sealed partial class GatewayScenario
         lock (jobs) return jobs.Values.Select(job => JsonSerializer.SerializeToElement(job)).ToArray();
     }
 
+    /// <summary>
+    /// Set before connecting: the operator is granted <c>operator.read</c> only, so automations
+    /// can be browsed while every change is rejected with <c>FORBIDDEN</c>, as on the Gateway.
+    /// </summary>
+    public bool CronReadOnly { get; set; }
+
+    /// <summary>Every automation read and change is rejected with <c>FORBIDDEN</c>.</summary>
+    public bool CronReadDenied { get; set; }
+    public bool CronSchedulerEnabled { get; set; } = true;
+    public string? CronReadError { get; set; }
+    public string? CronStatusReadError { get; set; }
+
     /// <summary>When set, <c>cron.run</c> is accepted but stays queued: no history or last-run state yet.</summary>
     public bool QueueCronRunsOnly { get; set; }
+
+    public void SetCronJobOwner(string id, string? agentId)
+    {
+        var jobs = _cronJobs ?? throw new InvalidOperationException("Automations are not enabled.");
+        lock (jobs) jobs[id]["agentId"] = agentId;
+    }
+
+    /// <summary>Simulates a malformed Gateway row by omitting a field from its responses.</summary>
+    public void RemoveCronJobField(string id, string field)
+    {
+        var jobs = _cronJobs ?? throw new InvalidOperationException("Automations are not enabled.");
+        lock (jobs) jobs[id].Remove(field);
+    }
 
     /// <summary>Simulates a run started outside the app (a schedule or another client).</summary>
     public void SetCronJobRunning(string id, bool running)
@@ -166,6 +180,8 @@ public sealed partial class GatewayScenario
                 durationMs: 30_000 + i * 1_000, model: "browse", provider: "fixture", input: 1_800 + i * 10, output: 220 + i));
         }
         brief[0]["nextRunAtMs"] = now + 9 * Hour;
+        foreach (var run in brief)
+            run["sessionKey"] = $"agent:main:cron:morning-brief:run:{run["runId"]!.GetValue<string>()}";
         _cronRuns["morning-brief"] = brief;
         _cronRuns["inbox-sweep"] = Enumerable.Range(0, 6).Select(i => Run("inbox-sweep", "Inbox sweep", now - 18 * 60_000 - i * 30 * 60_000, "ok",
             $"Archived {4 + i} newsletters, flagged {i % 2} message.", null, "not-requested", 8_000 + i * 200, "browse", "fixture", 900, 60)).ToList();
@@ -211,6 +227,14 @@ public sealed partial class GatewayScenario
 
     private object RespondCron(string method, JsonElement p)
     {
+        if (CronReadDenied)
+            throw new FixtureRequestException("FORBIDDEN", "missing scope: operator.read");
+        if (CronReadError is { } readError && method is "cron.list" or "cron.get" or "cron.status" or "cron.runs")
+            throw new FixtureRequestException("UNAVAILABLE", readError);
+        if (CronStatusReadError is { } statusError && method == "cron.status")
+            throw new FixtureRequestException("UNAVAILABLE", statusError);
+        if (CronReadOnly && method is "cron.add" or "cron.update" or "cron.remove" or "cron.run")
+            throw new FixtureRequestException("FORBIDDEN", "missing scope: operator.admin");
         var jobs = _cronJobs!;
         lock (jobs)
         {
@@ -220,7 +244,7 @@ public sealed partial class GatewayScenario
                     ValidateProperties(p);
                     return new
                     {
-                        enabled = true,
+                        enabled = CronSchedulerEnabled,
                         jobs = jobs.Count,
                         storePath = "synthetic-memory-only",
                         nextWakeAtMs = jobs.Values.Select(j => j["state"]?["nextRunAtMs"]?.GetValue<long>()).Where(v => v is not null).Min(),
@@ -236,33 +260,18 @@ public sealed partial class GatewayScenario
                     return UpdateJob(jobs, p);
                 case "cron.remove":
                 {
-                    ValidateProperties(p, "id", "jobId", "expectedConfigRevision");
+                    // Released Gateways validate remove against a closed id-only schema; the revision guard exists only on cron.update.
+                    ValidateProperties(p, "id", "jobId");
                     var job = FindJob(jobs, p);
-                    CheckRevision(job, p);
                     var id = job["id"]!.GetValue<string>();
                     jobs.Remove(id);
                     _cronRuns.Remove(id);
-                    _cronScratch.Remove(id);
                     return new { ok = true, removed = true };
                 }
                 case "cron.run":
                     return RunJob(jobs, p);
                 case "cron.runs":
                     return ListRuns(jobs, p);
-                case "cron.history":
-                    return CronHistory(p);
-                case "cron.scratch.get":
-                {
-                    ValidateProperties(p, "id", "jobId");
-                    var id = FindJob(jobs, p)["id"]!.GetValue<string>();
-                    return Scratch(id);
-                }
-                case "cron.scratch.set":
-                    return SetScratch(jobs, p);
-                case "mcp.events.list":
-                    return McpEvents(p);
-                case "conversations.list":
-                    return Conversations(p);
                 default:
                     throw new FixtureRequestException("INVALID_REQUEST", "Unknown automations method.", unexpected: true);
             }
@@ -274,13 +283,16 @@ public sealed partial class GatewayScenario
         ValidateProperties(p, "agentId", "includeDisabled", "includeDeliveryPreviews", "limit", "offset", "query", "enabled",
             "scheduleKind", "lastRunStatus", "trigger", "sortBy", "sortDir", "compact", "sessionKey", "sessionAgentId");
         IEnumerable<JsonObject> rows = jobs.Values;
+        // Like the Gateway, a job without an explicit owner belongs to the default agent.
+        static string Owner(JsonObject job) => job["agentId"]?.GetValue<string>() ?? "main";
         if (OptionalString(p, "agentId") is { } agent)
-            rows = rows.Where(j => j["agentId"]?.GetValue<string>() == agent);
+            rows = rows.Where(j => Owner(j) == agent);
         var enabled = OptionalString(p, "enabled") ?? (OptionalBoolean(p, "includeDisabled") == false ? "enabled" : "all");
+        // A row without a state (RemoveCronJobField) is returned under either filter, so readers see it.
         rows = enabled switch
         {
-            "enabled" => rows.Where(j => j["enabled"]!.GetValue<bool>()),
-            "disabled" => rows.Where(j => !j["enabled"]!.GetValue<bool>()),
+            "enabled" => rows.Where(j => j["enabled"]?.GetValue<bool>() != false),
+            "disabled" => rows.Where(j => j["enabled"]?.GetValue<bool>() != true),
             _ => rows,
         };
         if (OptionalString(p, "query") is { } query)
@@ -303,7 +315,12 @@ public sealed partial class GatewayScenario
         var all = rows.ToList();
         var offset = OptionalInt(p, "offset") ?? 0;
         var limit = OptionalInt(p, "limit") ?? 50;
-        var page = all.Skip(offset).Take(limit).Select(j => JsonSerializer.SerializeToElement(j)).ToArray();
+        var page = all.Skip(offset).Take(limit).Select(j =>
+        {
+            var row = j.DeepClone().AsObject();
+            row["effectiveAgentId"] = Owner(j);
+            return JsonSerializer.SerializeToElement(row);
+        }).ToArray();
         var hasMore = offset + page.Length < all.Count;
         return new { jobs = page, total = all.Count, offset, limit, hasMore, nextOffset = hasMore ? offset + page.Length : (int?)null };
     }
@@ -393,6 +410,8 @@ public sealed partial class GatewayScenario
         var id = job["id"]!.GetValue<string>();
         if (OptionalString(p, "mode") == "due")
             return new { ok = true, ran = false, reason = "not-due" };
+        if (job["state"]?["runningAtMs"]?.GetValue<long>() is > 0)
+            return new { ok = true, ran = false, reason = "already-running" };
         if (QueueCronRunsOnly)
             return new { ok = true, enqueued = true, runId = $"queued-{id}" };
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -408,7 +427,8 @@ public sealed partial class GatewayScenario
 
     private object ListRuns(Dictionary<string, JsonObject> jobs, JsonElement p)
     {
-        ValidateProperties(p, "agentId", "view", "scope", "id", "jobId", "runId", "limit", "offset", "statuses", "status",
+        // Released Gateways validate cron.runs against a closed schema without the newer "view" option.
+        ValidateProperties(p, "agentId", "scope", "id", "jobId", "runId", "limit", "offset", "statuses", "status",
             "deliveryStatuses", "deliveryStatus", "query", "sortDir");
         var jobId = OptionalString(p, "id") ?? OptionalString(p, "jobId");
         IEnumerable<JsonObject> rows;
@@ -438,84 +458,6 @@ public sealed partial class GatewayScenario
         var page = all.Skip(offset).Take(limit).Select(r => JsonSerializer.SerializeToElement(r)).ToArray();
         var hasMore = offset + page.Length < all.Count;
         return new { entries = page, total = all.Count, offset, limit, hasMore, nextOffset = hasMore ? offset + page.Length : (int?)null };
-    }
-
-    private object CronHistory(JsonElement p)
-    {
-        ValidateProperties(p, "id", "runId", "runAtMs", "cursor", "limit");
-        var id = RequiredString(p, "id");
-        var runId = OptionalString(p, "runId");
-        var run = _cronRuns.TryGetValue(id, out var runs)
-            ? runs.FirstOrDefault(r => runId is not null ? r["runId"]!.GetValue<string>() == runId : r["runAtMs"]!.GetValue<long>() == OptionalLong(p, "runAtMs"))
-            : null;
-        if (run is null) throw new FixtureRequestException("NOT_FOUND", "Run not found.");
-        var at = run["runAtMs"]!.GetValue<long>();
-        var prompt = _cronJobs![id]["payload"]?["message"]?.GetValue<string>() ?? "Run the automation.";
-        var reply = run["summary"]?.GetValue<string>() ?? run["error"]?.GetValue<string>() ?? FixtureRunSummary;
-        object[] messages =
-        [
-            new { role = "user", content = prompt, timestamp = at },
-            new { role = "assistant", content = new object[] { new { type = "toolCall", id = "tc1", name = "calendar.list", arguments = new { range = "today" } } }, timestamp = at + 2_000 },
-            new { role = "toolResult", toolCallId = "tc1", toolName = "calendar.list", content = new object[] { new { type = "text", text = "3 events (synthetic)." } }, timestamp = at + 3_000 },
-            new { role = "assistant", content = new object[] { new { type = "text", text = reply } }, timestamp = at + 5_000 },
-        ];
-        return new { messages };
-    }
-
-    private object Scratch(string id) => _cronScratch.TryGetValue(id, out var scratch) && scratch.Content is { } content
-        ? new { scratch = new { content, revision = scratch.Revision, updatedAtMs = scratch.UpdatedAtMs }, currentRevision = scratch.Revision, maxBytes = 16_384 }
-        : new { scratch = (object?)null, currentRevision = ScratchRevision(id), maxBytes = 16_384 };
-
-    // Removal keeps the revision so compare-and-swap continues from the value it returned.
-    private long ScratchRevision(string id) => _cronScratch.TryGetValue(id, out var scratch) ? scratch.Revision : 0;
-
-    private object SetScratch(Dictionary<string, JsonObject> jobs, JsonElement p)
-    {
-        ValidateProperties(p, "id", "jobId", "content", "expectedRevision");
-        var id = FindJob(jobs, p)["id"]!.GetValue<string>();
-        var current = ScratchRevision(id);
-        if (OptionalLong(p, "expectedRevision") is { } expected && expected != current)
-            return new { ok = false, reason = "revision-conflict", currentRevision = current };
-        var content = p.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
-        _cronScratch[id] = (content, current + 1, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        var snapshot = Scratch(id);
-        return new { ok = true, scratch = JsonSerializer.SerializeToElement(snapshot).GetProperty("scratch"), currentRevision = current + 1, maxBytes = 16_384 };
-    }
-
-    private static object McpEvents(JsonElement p)
-    {
-        ValidateProperties(p, "agentId", "serverName", "cursor");
-        var server = RequiredString(p, "serverName");
-        object[] events = server switch
-        {
-            "github" =>
-            [
-                new { name = "pull_request.opened", description = "A pull request was opened.", delivery = new[] { "webhook" }, inputSchema = new { type = "object", properties = new { repo = new { type = "string" } } }, payloadSchema = true },
-                new { name = "issues.labeled", description = "A label was added to an issue.", delivery = new[] { "webhook" }, inputSchema = new { type = "object", properties = new { repo = new { type = "string" }, label = new { type = "string" } } }, payloadSchema = true },
-            ],
-            "linear" =>
-            [
-                new { name = "issue.created", description = "A Linear issue was created.", delivery = new[] { "webhook" }, inputSchema = new { type = "object" }, payloadSchema = true },
-            ],
-            _ => throw new FixtureRequestException("UNAVAILABLE", "MCP server is not connected."),
-        };
-        return new { serverName = server, events };
-    }
-
-    private static object Conversations(JsonElement p)
-    {
-        ValidateProperties(p, "agentId", "channel", "query", "limit");
-        var agent = RequiredString(p, "agentId");
-        var channel = OptionalString(p, "channel");
-        var all = agent != "main"
-            ? []
-            : new[]
-            {
-                new { conversationRef = "slack:work:#daily", channel = "slack", accountId = "work", kind = "channel", target = "#daily", label = "Daily standup", firstSeenAt = 1_780_000_000_000, lastSeenAt = 1_790_000_000_000 },
-                new { conversationRef = "slack:work:#oncall", channel = "slack", accountId = "work", kind = "channel", target = "#oncall", label = "On-call", firstSeenAt = 1_780_000_000_000, lastSeenAt = 1_789_000_000_000 },
-                new { conversationRef = "telegram:default:@owner", channel = "telegram", accountId = "default", kind = "direct", target = "@owner", label = "Owner", firstSeenAt = 1_780_000_000_000, lastSeenAt = 1_788_000_000_000 },
-            };
-        return new { conversations = all.Where(c => channel is null || c.channel == channel).ToArray() };
     }
 
     private static void ValidateSchedule(JsonElement schedule)

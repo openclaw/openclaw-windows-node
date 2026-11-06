@@ -12,6 +12,112 @@ namespace OpenClaw.Shared.Tests;
 public sealed partial class GatewayFixtureProtocolTests
 {
     [Fact]
+    public async Task AutomationsStore_ExcludedAgentSelectionRetiresLateReadsButPreservesQueuedRun()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateAutomations();
+        scenario.QueueCronRunsOnly = true;
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        CancellationToken watcher = default;
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, (_, ct) =>
+        {
+            watcher = ct;
+            return Task.Delay(Timeout.Infinite, ct);
+        });
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded && !store.State.ListLoading);
+        await ui.InvokeAsync(() => store.Select("morning-brief"));
+        await WaitForAsync(() => store.State.RunsLoaded && !store.State.RunsLoading);
+        await await ui.InvokeAsync(() => store.RunNowAsync("morning-brief"));
+        await WaitForAsync(() => store.State.IsRunning("morning-brief") && watcher.CanBeCanceled
+            && !store.State.ListLoading && server.Requests.All(request => request.Outcome != "pending"));
+
+        server.HoldResponses("cron.get");
+        server.HoldResponses("cron.runs");
+        await ui.InvokeAsync(() => { _ = store.LoadSelectedAsync("morning-brief"); _ = store.LoadRunsAsync(); });
+        await WaitForAsync(() => server.Requests.Any(request => request.Method == "cron.get" && request.Outcome == "pending")
+            && server.Requests.Any(request => request.Method == "cron.runs" && request.Outcome == "pending"));
+        await ui.InvokeAsync(() => store.SetAgentFilter("ops"));
+        Assert.Null(store.State.SelectedJobId);
+        Assert.Null(store.State.SelectedJob);
+        Assert.Empty(store.State.Runs);
+        Assert.Null(store.State.RunsQuery.JobId);
+        Assert.Equal("ops", store.State.RunsQuery.AgentId);
+        Assert.True(store.State.IsRunning("morning-brief"));
+        Assert.False(watcher.IsCancellationRequested);
+
+        server.ReleaseResponses("cron.get");
+        server.ReleaseResponses("cron.runs");
+        await WaitForAsync(() => store.State.ListLoaded && !store.State.ListLoading
+            && server.Requests.All(request => request.Outcome != "pending"));
+        await ui.InvokeAsync(() => { });
+        Assert.Null(store.State.SelectedJobId);
+        Assert.Empty(store.State.Runs);
+        var priorReads = server.Requests.Count(request => request.Method is "cron.get" or "cron.runs");
+        await ui.InvokeAsync(() => { store.Refresh(); store.OnGatewayCronEvent(); });
+        await WaitForAsync(() => !store.State.ListLoading && server.Requests.All(request => request.Outcome != "pending"));
+        Assert.Equal(priorReads, server.Requests.Count(request => request.Method is "cron.get" or "cron.runs"));
+        Assert.True(store.State.IsRunning("morning-brief"));
+        Assert.False(watcher.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task AutomationsStore_ExactDefinitionRetainsTheListedResolvedOwnerWithoutPinningIt()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateAutomations();
+        scenario.SetCronJobOwner("morning-brief", null);
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded);
+        await ui.InvokeAsync(() => store.Select("morning-brief"));
+        await await ui.InvokeAsync(() => store.LoadSelectedAsync("morning-brief"));
+        await ui.InvokeAsync(() => { });
+        Assert.Null(store.State.SelectedJob!.AgentId);
+        Assert.Equal("main", store.State.SelectedJob.Owner);
+        Assert.False(CronJobForm.FromJob(store.State.SelectedJob).BuildDefinition(store.State.SelectedJob).ContainsKey("agentId"));
+    }
+
+    [Fact]
+    public async Task AutomationsStore_AgendaPagesTheWholeScopeAndRevealLoadsPastTheBrowsePage()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateAutomations(additionalJobs: 205);
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.OverviewLoaded && store.State.ListLoaded);
+        Assert.Equal(213, store.State.OverviewJobs.Count);
+        Assert.True(store.State.HasMore);
+        Assert.DoesNotContain(store.State.Jobs, j => j.Id == "scheduled-204");
+        Assert.Contains(store.State.OverviewJobs, j => j.Id == "scheduled-204");
+        Assert.DoesNotContain(store.State.OverviewJobs, j => j.Id == GatewayScenario.AutomationsOtherAgentJobId);
+        await ui.InvokeAsync(() => store.RevealAsync("scheduled-204"));
+        await WaitForAsync(() => store.State.SelectedJobId == "scheduled-204");
+        Assert.Contains(store.State.Jobs, j => j.Id == "scheduled-204");
+        Assert.Equal("", store.State.ListQuery.Query);
+        Assert.NotNull(store.State.LastSeenAtMs);
+        scenario.CronStatusReadError = "Synthetic scheduler status request failure";
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.StatusError is not null && !store.State.ListLoading);
+        Assert.Null(store.State.Status);
+        Assert.Equal(213, store.State.OverviewJobs.Count);
+        scenario.CronStatusReadError = null;
+        scenario.CronReadError = "Synthetic refresh failure";
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.OverviewError is not null && store.State.ListError is not null);
+        Assert.Equal(213, store.State.OverviewJobs.Count);
+        Assert.Contains(store.State.Jobs, j => j.Id == "scheduled-204");
+    }
+
+    [Fact]
     public async Task Automations_ListIsScopedToTheRequestedAgent()
     {
         var token = CreateToken();
@@ -55,7 +161,75 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Fact]
-    public async Task Automations_RunsHistoryScratchEventsAndConversationsRoundTrip()
+    public async Task Automations_RemoveConfirmsTheLoadedRevisionAndSendsOnlyTheId()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        IOperatorGatewayClient client = connected.Client;
+
+        var job = await client.GetCronJobAsync("weekly-digest");
+        var edited = await client.UpdateCronJobDetailedAsync(job.Id, job.ConfigRevision, new JsonObject { ["enabled"] = false });
+        Assert.NotEqual(job.ConfigRevision, edited.ConfigRevision);
+
+        // A definition changed since it was loaded is reported without sending the removal.
+        var stale = await Assert.ThrowsAsync<InvalidOperationException>(() => client.RemoveCronJobDetailedAsync(job.Id, job.ConfigRevision));
+        Assert.True(CronGatewayRequests.IsRevisionConflict(stale));
+        Assert.DoesNotContain(server.Requests, request => request.Method == "cron.remove");
+        Assert.Equal(edited.ConfigRevision, (await client.GetCronJobAsync(job.Id)).ConfigRevision);
+
+        await client.RemoveCronJobDetailedAsync(job.Id, edited.ConfigRevision);
+        var removal = Assert.Single(server.Requests, request => request.Method == "cron.remove");
+        Assert.Equal("ok", removal.Outcome);
+        var gone = await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetCronJobAsync(job.Id));
+        Assert.True(CronGatewayRequests.IsJobNotFound(gone));
+    }
+
+    [Fact]
+    public async Task AutomationsStore_RemovingAJobChangedElsewhereReportsTheConflictAndKeepsIt()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        IOperatorGatewayClient client = connected.Client;
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, (_, ct) => Task.Delay(Timeout.Infinite, ct));
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded);
+
+        var loaded = store.State.Jobs.Single(job => job.Id == "weekly-digest");
+        Assert.False(string.IsNullOrEmpty(loaded.ConfigRevision));
+        await client.UpdateCronJobDetailedAsync(loaded.Id, loaded.ConfigRevision, new JsonObject { ["enabled"] = false });
+
+        await await ui.InvokeAsync(() => store.RemoveAsync(loaded.Id));
+        await WaitForAsync(() => store.State.Notice is not null);
+        Assert.Equal(AutomationsNoticeKind.Conflict, store.State.Notice!.Kind);
+        Assert.DoesNotContain(server.Requests, request => request.Method == "cron.remove");
+        await WaitForAsync(() => !store.State.ListLoading);
+        Assert.False(store.State.Jobs.Single(job => job.Id == loaded.Id).Enabled);
+        Assert.Equal(loaded.Id, (await client.GetCronJobAsync(loaded.Id)).Id);
+    }
+
+    [Theory]
+    [InlineData("cron.runs", """{"scope":"all","view":"summary"}""")]
+    [InlineData("cron.remove", """{"id":"weekly-digest","expectedConfigRevision":"rev"}""")]
+    public async Task AutomationsFixture_RejectsPropertiesTheReleasedGatewayDoesNotAccept(string method, string json)
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var parameters = System.Text.Json.JsonDocument.Parse(json);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => connected.Client.SendWizardRequestAsync(method, parameters.RootElement));
+
+        var request = Assert.Single(server.Requests, r => r.Method == method);
+        Assert.Equal("error:INVALID_PARAMS", request.Outcome);
+        Assert.Equal("weekly-digest", (await connected.Client.GetCronJobAsync("weekly-digest")).Id);
+    }
+
+    [Fact]
+    public async Task Automations_RunHistoryFiltersByJobStatusAndAgent()
     {
         var token = CreateToken();
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
@@ -72,33 +246,10 @@ public sealed partial class GatewayFixtureProtocolTests
         var all = await client.ListCronRunsAsync(new CronRunsQuery { AgentId = "main", Limit = 200 });
         Assert.DoesNotContain(all.Entries, run => run.JobId == GatewayScenario.AutomationsOtherAgentJobId);
 
-        var transcript = await client.GetCronRunTranscriptAsync(runs.Entries[0]);
-        Assert.Contains(transcript.Messages, m => m.Role == "user");
-        Assert.Contains(transcript.Messages, m => m.Role == "assistant" && m.Text.Length > 0);
-        Assert.Contains(transcript.Messages, m => m.Role == "tool" && m.ToolName == "calendar.list");
-        Assert.DoesNotContain(transcript.Messages, m => m.Role == "toolResult");
-
-        var scratch = await client.GetCronScratchAsync("morning-brief");
-        Assert.True(scratch.Exists);
-        var saved = await client.SetCronScratchAsync("morning-brief", "- new note\n", scratch.CurrentRevision);
-        Assert.True(saved.Ok);
-        Assert.Equal("- new note\n", saved.Snapshot!.Content);
-        var conflict = await client.SetCronScratchAsync("morning-brief", "lost", scratch.CurrentRevision);
-        Assert.True(conflict.Conflict);
-        var removed = await client.SetCronScratchAsync("morning-brief", null, saved.Snapshot.CurrentRevision);
-        Assert.True(removed.Ok);
-        Assert.False((await client.GetCronScratchAsync("morning-brief")).Exists);
-        // Compare-and-swap continues from the revision the removal returned.
-        Assert.True((await client.SetCronScratchAsync("morning-brief", "again", removed.CurrentRevision)).Ok);
-
-        var events = await client.ListMcpEventsAsync("main", "github");
-        Assert.Contains(events, e => e.Name == "pull_request.opened" && e.InputSchemaJson is not null);
-        var conversations = await client.ListConversationsAsync("main", "slack");
-        Assert.All(conversations, c => Assert.Equal("slack", c.Channel));
-        Assert.Contains(conversations, c => c.Target == "#daily");
-        var hints = await CronGatewayRequests.EditorHintsAsync(client);
-        Assert.Equal(["github", "linear"], hints.McpServers);
-        Assert.Contains("fixture/browse", hints.Models);
+        var everyAgent = await client.ListCronRunsAsync(new CronRunsQuery { Limit = 200 });
+        Assert.Contains(everyAgent.Entries, run => run.JobId == GatewayScenario.AutomationsOtherAgentJobId);
+        // Each run links to its chat session so "Open in chat" can show the full conversation.
+        Assert.All(runs.Entries, run => Assert.StartsWith("agent:main:cron:morning-brief:run:", run.SessionKey));
     }
 
     [Fact]
@@ -175,6 +326,148 @@ public sealed partial class GatewayFixtureProtocolTests
         await WaitForAsync(() => store.State.RunsLoaded && !store.State.RunsLoading);
         Assert.All(store.State.Runs, run => Assert.Equal("error", run.Status));
         Assert.Single(store.State.Runs);
+    }
+
+    [Fact]
+    public async Task AutomationsStore_AllAgentsListsEveryOwnerAndAgentFilterNarrowsIt()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, (_, _) => Task.CompletedTask);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded && store.State.ScopedTotal is not null);
+        Assert.Equal("main", store.State.AgentFilter);
+        Assert.DoesNotContain(store.State.Jobs, job => job.Id == GatewayScenario.AutomationsOtherAgentJobId);
+        var mainTotal = store.State.ScopedTotal!.Value;
+
+        await ui.InvokeAsync(() => store.SetAgentFilter(null));
+        await WaitForAsync(() => !store.State.ListLoading && store.State.ScopedTotal > mainTotal
+            && store.State.Jobs.Any(job => job.Id == GatewayScenario.AutomationsOtherAgentJobId));
+        Assert.True(store.State.IsAllAgents);
+        // "All" status still includes paused jobs, and new automations still belong to the route agent.
+        Assert.Contains(store.State.Jobs, job => !job.Enabled);
+        Assert.Equal("main", store.State.DefaultAgentId);
+        Assert.Contains(server.Requests, r => r.Method == "cron.list" && r.AgentId is null && r.Outcome == "ok");
+
+        await ui.InvokeAsync(() => store.SetView(AutomationsView.RunHistory));
+        await WaitForAsync(() => store.State.RunsLoaded && !store.State.RunsLoading
+            && store.State.Runs.Any(run => run.JobId == GatewayScenario.AutomationsOtherAgentJobId));
+
+        await ui.InvokeAsync(() => store.SetAgentFilter("ops"));
+        await WaitForAsync(() => !store.State.ListLoading && store.State.ScopedTotal == 1
+            && store.State.Jobs.Count == 1 && store.State.Jobs[0].Id == GatewayScenario.AutomationsOtherAgentJobId);
+        Assert.Equal("ops", store.State.DefaultAgentId);
+        await WaitForAsync(() => store.State.RunsLoaded && !store.State.RunsLoading && store.State.Runs.Count > 0
+            && store.State.Runs.All(run => run.JobId == GatewayScenario.AutomationsOtherAgentJobId));
+    }
+
+    [Fact]
+    public async Task AutomationsStore_ReadOnlyOperatorsBrowseEverythingButChangeNothing()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateAutomations();
+        scenario.CronReadOnly = true;
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, (_, _) => Task.CompletedTask);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded && !store.State.ListLoading);
+
+        Assert.False(store.State.CanManage);
+        Assert.False(store.State.ReadDenied);
+        Assert.Contains(store.State.Jobs, job => !job.Enabled);
+        await ui.InvokeAsync(() => store.Select("morning-brief"));
+        await WaitForAsync(() => store.State.RunsLoaded && !store.State.RunsLoading && store.State.SelectedJob?.ConfigRevision is not null);
+        Assert.NotEmpty(store.State.Runs);
+
+        // Without operator.admin the store sends no change at all.
+        await await ui.InvokeAsync(() => store.RunNowAsync("morning-brief"));
+        await await ui.InvokeAsync(() => store.SetEnabledAsync("morning-brief", false));
+        await await ui.InvokeAsync(() => store.RemoveAsync("morning-brief"));
+        var job = store.State.SelectedJob!;
+        var save = await await ui.InvokeAsync(() => store.SaveAsync(CronJobForm.FromJob(job) with { Name = "Mine" }, job));
+        Assert.IsType<AutomationsSaveResult.Failed>(save);
+        Assert.DoesNotContain(server.Requests, r => r.Method is "cron.run" or "cron.update" or "cron.remove" or "cron.add");
+        Assert.True(store.State.Jobs.Single(j => j.Id == "morning-brief").Enabled);
+    }
+
+    [Fact]
+    public async Task AutomationsStore_ForbiddenReadIsAnAccessErrorNotAnEmptyList()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateAutomations();
+        scenario.CronReadDenied = true;
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, (_, _) => Task.CompletedTask);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded && !store.State.ListLoading);
+
+        Assert.True(store.State.ReadDenied);
+        Assert.NotNull(store.State.ListError);
+        Assert.Empty(store.State.Jobs);
+        Assert.Empty(store.State.OverviewJobs);
+        Assert.False(store.State.OverviewLoaded);
+        Assert.Contains(server.Requests, r => r.Method == "cron.list" && r.Outcome == "error:FORBIDDEN");
+    }
+
+    [Fact]
+    public async Task AutomationsStore_AJobWithoutAnEnabledStateIsAReadErrorNotAPausedRow()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateAutomations();
+        scenario.RemoveCronJobField("morning-brief", "enabled");
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, (_, _) => Task.CompletedTask);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => !store.State.ListLoading && store.State.ListError is not null && store.State.OverviewError is not null);
+
+        Assert.Equal(CronJsonReader.UnreadableJobMessage, store.State.ListError);
+        Assert.Equal(CronJsonReader.UnreadableJobMessage, store.State.OverviewError);
+        Assert.False(store.State.ListLoaded);
+        Assert.Empty(store.State.Jobs);
+        Assert.Null(store.State.Total);
+        Assert.False(store.State.OverviewLoaded);
+        Assert.Null(store.State.ActiveCount);
+        Assert.Null(store.State.PausedCount);
+    }
+
+    [Fact]
+    public async Task AutomationsStore_AgentChangeRetiresTheInFlightPageOfThePreviousAgent()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, (_, _) => Task.CompletedTask);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded && !store.State.ListLoading && store.State.Jobs.Count > 1);
+
+        server.HoldResponses("cron.list");
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => server.Requests.Any(r => r.Method == "cron.list" && r.AgentId == "main" && r.Outcome == "pending"));
+        await ui.InvokeAsync(() => store.SetAgentFilter("ops"));
+        // The previous agent's rows are gone at once and the new page is requested without waiting.
+        Assert.Empty(store.State.Jobs);
+        Assert.Empty(store.State.OverviewJobs);
+        Assert.False(store.State.OverviewLoaded);
+        Assert.False(store.State.ListLoaded);
+        await WaitForAsync(() => server.Requests.Any(r => r.Method == "cron.list" && r.AgentId == "ops" && r.Outcome == "pending"));
+
+        server.ReleaseResponses("cron.list");
+        await WaitForAsync(() => store.State.ListLoaded && store.State.OverviewLoaded && !store.State.ListLoading
+            && server.Requests.All(r => r.Method != "cron.list" || r.Outcome != "pending"));
+        await Task.Delay(100);
+        var job = Assert.Single(store.State.Jobs);
+        Assert.Equal(GatewayScenario.AutomationsOtherAgentJobId, job.Id);
+        Assert.Equal("ops", job.Owner);
+        Assert.Equal(GatewayScenario.AutomationsOtherAgentJobId, Assert.Single(store.State.OverviewJobs).Id);
     }
 
     [Fact]

@@ -6,21 +6,21 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
+using Microsoft.UI.Reactor.Hooks;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Shared.Cron;
+using OpenClawTray.Presentation;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClawTray.Automations.AutomationsVisuals;
 
 namespace OpenClawTray.Automations;
 
 internal sealed record AutomationsRootProps(AutomationsHost Host);
-
 internal enum EditorMode { Create, Edit, Clone }
 
-/// <summary>Page-owned editor state survives child remounts during reconnect or layout changes.</summary>
+/// <summary>Root-owned draft lifetime, independent of connection, layout and dialog mounts.</summary>
 internal sealed record EditorSession(EditorMode Mode, CronJobForm Form, CronJob? Source, long Nonce)
 {
     public bool Submitted { get; init; }
@@ -30,279 +30,337 @@ internal sealed record EditorSession(EditorMode Mode, CronJobForm Form, CronJob?
     public (string Title, string Message, InfoBarSeverity Severity)? Banner { get; init; }
 }
 
-/// <summary>
-/// Native Automations page: status strip, agent-scoped list and a detail/editor
-/// pane. Stacks into a single pane below <see cref="AutomationsVisuals.NarrowBreakpoint"/>.
-/// </summary>
+/// <summary>Answer, attention, agenda and inline inventory. The only modal surface is the editor.</summary>
 internal sealed class AutomationsRoot : Component<AutomationsRootProps>
 {
     private static long s_editorNonce;
     private static readonly TimeSpan SearchDebounce = TimeSpan.FromMilliseconds(300);
-    private static readonly TimeSpan NoticeLifetime = TimeSpan.FromSeconds(8);
+    private const int MaxVisibleToasts = 3;
 
     public override Element Render()
     {
-        var baseHost = Props.Host;
+        var scrollRef = this.UseElementRef<ScrollView>();
+        var pageRef = this.UseElementRef<Microsoft.UI.Xaml.Controls.Grid>();
+        var announce = this.UseAnnounce();
+        var confirmDialogRef = UseRef<ContentDialog?>(null);
+        var measuredRows = UseRef(new Dictionary<string, WeakReference<FrameworkElement>>(StringComparer.Ordinal));
+        var revealedSelection = UseRef<string?>(null);
         var (confirm, setConfirm) = UseState<ConfirmRequest?>(null, threadSafe: true);
-        var host = baseHost with
+        var host = Props.Host with
         {
-            Confirm = (title, body, primary) =>
+            RevealElement = target => target.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
-                var request = new ConfirmRequest(title, body, primary);
+                if (!target.IsLoaded || scrollRef.Current is not { IsLoaded: true, Content: UIElement content } scroll) return;
+                var top = target.TransformToVisual(content).TransformPoint(new global::Windows.Foundation.Point()).Y;
+                scroll.ScrollTo(scroll.HorizontalOffset, Math.Clamp(top, 0, Math.Max(0, scroll.ScrollableHeight)),
+                    new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+            }),
+            Confirm = async request =>
+            {
+                if (pageRef.Current is { } page) await CloseTransientSurfacesAsync(page);
                 setConfirm(request);
-                return request.Result.Task;
+                return await request.Result.Task;
             },
         };
         var store = host.Store;
         var t = host.Text;
         var (state, setState) = UseState(store.State, threadSafe: true);
-        var (width, setWidth) = UseState(1200d);
+        var (toasts, setToasts) = UseState(ImmutableArray<AutomationsNotice>.Empty, threadSafe: true);
+        var toastRef = UseRef(toasts);
+        toastRef.Current = toasts;
+        if (state.SelectedJobId is null) revealedSelection.Current = null;
         var (editor, setEditor) = UseState<EditorSession?>(null);
         var editorRef = UseRef<EditorSession?>(null);
         editorRef.Current = editor;
         var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        var (search, setSearch) = UseState(state.ListQuery.Query);
+        var (search, setSearch) = UseState("");
         var searchToken = UseRef(0);
+        var (expandedGroups, setExpandedGroups) = UseState(ImmutableHashSet<string>.Empty);
         var look = new AutomationsLook(UseReducedMotion(), UseHighContrast());
+        var (hostSize, setHostSize) = UseState((Page: PageResponsiveLayout.WideMin, Window: PageResponsiveLayout.WideMin));
+        // The viewport backdrop matches the header band's top-of-page height.
+        var (bandHeight, setBandHeight) = UseState(0.0);
+        var tier = PageResponsiveLayout.TierFor(hostSize.Page);
+        var narrow = tier == PageWidthTier.Narrow;
+        var contentWidth = PageResponsiveLayout.ContentWidth(hostSize.Page);
+        var twoColumns = PageResponsiveLayout.UseTwoColumns(contentWidth);
+        var dialogWidth = Math.Min(DialogMaxWidth, Math.Max(0, hostSize.Window - DialogWindowMargin));
 
         UseEffect((Func<Action>)(() =>
         {
             EventHandler<AutomationsSnapshot> changed = (_, snapshot) => setState(snapshot);
-            store.Changed += changed;
-            setState(store.State);
-            return () =>
+            EventHandler<AutomationsNotice> noticed = (_, notice) =>
             {
-                store.Changed -= changed;
-                editorRef.Current = null;
+                var next = toastRef.Current.Add(notice);
+                // Persistent errors stay until explicitly closed.
+                if (next.Length > MaxVisibleToasts)
+                    for (var index = 0; index < next.Length; index++)
+                        if (!next[index].IsError) { next = next.RemoveAt(index); break; }
+                toastRef.Current = next;
+                setToasts(next);
             };
+            store.Changed += changed;
+            store.NoticeRaised += noticed;
+            setState(store.State);
+            return () => { store.Changed -= changed; store.NoticeRaised -= noticed; editorRef.Current = null; };
         }), store);
 
-        var noticeId = state.Notice?.Id ?? 0;
-        UseEffect((Func<Action>)(() =>
+        UseEffect(() =>
         {
-            if (state.Notice is not { IsError: false } notice)
-                return static () => { };
-            var cts = new CancellationTokenSource();
-            _ = Task.Delay(NoticeLifetime, cts.Token).ContinueWith(task =>
-            {
-                if (!task.IsCanceled && store.State.Notice?.Id == notice.Id)
-                    store.DismissNotice();
-            }, TaskScheduler.FromCurrentSynchronizationContext());
-            return () => cts.Cancel();
-        }), noticeId);
+            if (state.Notice is { } notice)
+                announce.Announce(t.Notice(notice).Message, assertive: notice.IsError);
+        }, state.Notice?.Id ?? 0);
 
-        void OnSearchChanged(string text)
+        void DismissToast(long id)
         {
-            setSearch(text);
+            var next = toastRef.Current.Where(notice => notice.Id != id).ToImmutableArray();
+            toastRef.Current = next;
+            setToasts(next);
+            if (store.State.Notice?.Id == id) store.DismissNotice();
+        }
+
+        UseEffect(() =>
+        {
+            ++searchToken.Current;
+            setSearch(state.ListQuery.Query);
+        }, state.ListQuery.Query, state.AgentFilter ?? "");
+
+        void SetEditorSession(EditorSession? next) { editorRef.Current = next; setEditor(next); }
+        void OpenEditor(EditorMode mode, CronJobForm form, CronJob? source) =>
+            OpenClaw.Shared.AsyncEventHandlerGuard.Run(async () =>
+            {
+                if (pageRef.Current is { } page) await CloseTransientSurfacesAsync(page);
+                SetEditorSession(new(mode, form, source, Interlocked.Increment(ref s_editorNonce)));
+            }, operationName: "Open automation editor");
+        void OnDispatcher(Action action)
+        {
+            if (dispatcher.HasThreadAccess) action(); else dispatcher.TryEnqueue(() => action());
+        }
+        void UpdateEditor(long nonce, Func<EditorSession, EditorSession> change) => OnDispatcher(() =>
+        {
+            if (editorRef.Current is { } current && current.Nonce == nonce) SetEditorSession(change(current));
+        });
+        void CloseEditor(long nonce, string? savedId) => OnDispatcher(() =>
+        {
+            if (editorRef.Current?.Nonce != nonce) return;
+            SetEditorSession(null);
+            if (savedId is not null) Reveal(savedId);
+        });
+        void OnSearch(string value)
+        {
+            setSearch(value);
             var token = ++searchToken.Current;
             _ = Task.Delay(SearchDebounce).ContinueWith(_ =>
             {
-                if (token == searchToken.Current)
-                    store.SetQuery(store.State.ListQuery with { Query = text });
+                if (token == searchToken.Current) store.SetQuery(store.State.ListQuery with { Query = value });
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
-
-        void SetEditorSession(EditorSession? next)
+        void ToggleGroup(string key) => setExpandedGroups(expandedGroups.Contains(key) ? expandedGroups.Remove(key) : expandedGroups.Add(key));
+        void Reveal(string id)
         {
-            editorRef.Current = next;
-            setEditor(next);
+            ++searchToken.Current;
+            setSearch("");
+            revealedSelection.Current = null;
+            if (measuredRows.Current.TryGetValue(id, out var reference) && reference.TryGetTarget(out var row) && row.IsLoaded)
+                host.RevealElement?.Invoke(row);
+            _ = store.RevealAsync(id);
         }
-
-        void OpenEditor(EditorMode mode, CronJobForm form, CronJob? source) =>
-            SetEditorSession(new EditorSession(mode, form, source, Interlocked.Increment(ref s_editorNonce)));
-
-        void NewAutomation() => OpenEditor(EditorMode.Create, CronJobForm.CreateDefault(state.AgentId), null);
-
-        void OnEditorDispatcher(Action action)
+        void RegisterRow(FrameworkElement row, string id)
         {
-            if (dispatcher.HasThreadAccess) action();
-            else dispatcher.TryEnqueue(() => action());
+            measuredRows.Current[id] = new(row);
+            if (store.State.SelectedJobId != id || revealedSelection.Current == id) return;
+            revealedSelection.Current = id;
+            host.RevealElement?.Invoke(row);
         }
-
-        void UpdateEditor(long nonce, Func<EditorSession, EditorSession> change) =>
-            OnEditorDispatcher(() =>
-            {
-                if (editorRef.Current is { } current && current.Nonce == nonce)
-                    SetEditorSession(change(current));
-            });
-
-        void CloseEditor(long nonce, string? savedJobId)
-        {
-            OnEditorDispatcher(() =>
-            {
-                if (editorRef.Current?.Nonce != nonce) return;
-                SetEditorSession(null);
-                if (savedJobId is not null)
-                    store.Select(savedJobId);
-            });
-        }
-
-        var narrow = width < NarrowBreakpoint;
         var actions = new AutomationsActions(
-            NewAutomation,
+            () => OpenEditor(EditorMode.Create, CronJobForm.CreateDefault(state.DefaultAgentId), null),
             job => OpenEditor(EditorMode.Edit, CronJobForm.FromJob(job), job),
-            job => OpenEditor(EditorMode.Clone, CronJobForm.FromClone(job, t.Format("CloneName", job.Name)), job),
-            suggestion => OpenEditor(EditorMode.Create, CronJobForm.FromSuggestion(
-                suggestion,
-                t[$"Suggestion_{suggestion.Id}_Name"],
-                t[$"Suggestion_{suggestion.Id}_Prompt"],
-                state.AgentId), null));
+            job => OpenEditor(EditorMode.Clone, CronJobForm.FromClone(job, t.Format("CloneName", job.Name)), job));
 
-        Element body;
-        if (!state.Connected)
-        {
-            body = Hero(GlyphDisconnected, t["Disconnected_Title"], t["Disconnected_Body"], "AutomationsDisconnected",
-                    GlyphButton(GlyphPlug, t["OpenConnection"], host.OpenConnection, "AutomationsOpenConnection", accent: true))
-                .VAlign(VerticalAlignment.Center)
-                .Margin(0, 48, 0, 48);
-        }
+        Element content;
+        if (state.ReadDenied)
+            content = Hero(GlyphLock, t["ReadDenied_Title"], t["Redesign_ReadDenied"], "AutomationsReadDenied");
+        else if (!state.Connected && !state.ListLoaded)
+            content = Hero(GlyphDisconnected, t["Disconnected_Title"], t["Disconnected_Body"], "AutomationsDisconnected",
+                GlyphButton(GlyphPlug, t["OpenConnection"], host.OpenConnection, "AutomationsOpenConnection"));
+        else if (!state.ListLoaded && state.ListError is null)
+            content = VStack(PageResponsiveLayout.GapInner, Enumerable.Range(0, 4).Select(i => (Element)Surface(
+                HStack(12, Border(Empty()).Size(40, 40).CornerRadius(8).Background(Theme.SubtleFill),
+                    VStack(8, Border(Empty()).Height(16).Width(240).Background(Theme.SubtleFill),
+                        Border(Empty()).Height(12).Width(160).Background(Theme.SubtleFill)))).WithKey(i.ToString())).ToArray())
+                .AutomationName(t["Loading"]).AutomationId("AutomationsListLoading");
+        else if (!state.ListLoaded && state.ListError is { } initialError)
+            content = Hero(GlyphError, t["ListError_Title"], initialError, "AutomationsListError",
+                GlyphButton(GlyphRefresh, t["Retry"], store.Refresh, "AutomationsRetry"));
+        else if (state.ListLoaded && state.Jobs.Count == 0 && !state.IsFiltered)
+            content = VStack(16,
+                Hero(GlyphCalendar, t["Empty_Title"], t[state.CanManage ? "Empty_Body" : "Empty_ReadOnlyBody"], "AutomationsEmpty",
+                    state.CanManage ? GlyphButton(GlyphAdd, t["NewAutomation"], actions.New, "AutomationsEmptyNew", state.Connected, accent: true) : Empty(),
+                    GlyphButton(GlyphChat, t["Review_OpenChat"], () => host.OpenChat($"agent:{state.DefaultAgentId}:main"), "AutomationsEmptyChat")),
+                Secondary(t["Review_EmptyWebCaption"], 13).TextAlignment(TextAlignment.Center).HAlign(HorizontalAlignment.Center));
         else
-        {
-            var detail = RenderDetailPane(host, state, editor, actions, UpdateEditor, CloseEditor, narrow, look);
-            var showDetailOnly = narrow && (editor is not null || state.SelectedJobId is not null
-                || state.View == AutomationsView.RunHistory || state.ShowSuggestions);
-            var list = RenderListPane(host, state, search, OnSearchChanged, narrow, look);
-            body = narrow
-                ? (showDetailOnly ? detail : list)
-                : Grid([GridSize.Px(ListPaneWidth), GridSize.Px(1), GridSize.Star()], [GridSize.Star()],
-                    list.Grid(column: 0),
-                    Border(Empty()).Background(Theme.DividerStroke).Grid(column: 1),
-                    detail.Grid(column: 2));
-        }
+            content = VStack(32,
+                RenderAttention(host, state, !twoColumns, Reveal),
+                RenderAgenda(host, state, expandedGroups, ToggleGroup, Reveal, look, !twoColumns),
+                RenderInventory(host, state, search, OnSearch, actions, look, tier, twoColumns, RegisterRow));
 
-        var dialog = confirm is { } pending
-            ? (ContentDialog(pending.Title, TextBlock(pending.Body).TextWrapping(TextWrapping.Wrap).MaxWidth(420), pending.Primary) with
+        Element dialog = Empty().WithKey("dialog-empty");
+        // ContentDialog is side-mounted. Native setters target the modal rather than its tree placeholder.
+        if (editor is { } currentEditor)
+        {
+            var nonce = currentEditor.Nonce;
+            dialog = (ContentDialog("", Component<AutomationEditor, AutomationEditorProps>(
+                new(host, currentEditor, state.DefaultAgentId, state.CanManage && state.Connected,
+                    change => UpdateEditor(nonce, change), id => CloseEditor(nonce, id))
+                { Narrow = narrow })
+                .Height(EditorHeight).WithKey($"editor-{nonce}"), "") with
+            {
+                IsOpen = true,
+                OnClosed = _ => CloseEditor(nonce, null),
+            }).Set(native =>
+            {
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(native, "AutomationEditorDialog");
+                ConfigureDialogWidth(native, dialogWidth);
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(native, currentEditor.Mode == EditorMode.Edit
+                    ? t.Format("Editor_EditTitle", currentEditor.Source?.Title ?? currentEditor.Form.Name)
+                    : currentEditor.Mode == EditorMode.Clone ? t.Format("Review_CopyAsNewTitle", currentEditor.Source?.Title ?? currentEditor.Form.Name)
+                    : t["Editor_NewTitle"]);
+            }).WithKey($"editor-dialog-{nonce}");
+        }
+        else if (confirm is { } pending)
+            dialog = (ContentDialog("", RenderConfirmation(pending, dialogWidth), pending.Primary) with
             {
                 IsOpen = true,
                 CloseButtonText = t["Cancel"],
-                DefaultButton = ContentDialogButton.Close,
-                OnClosed = result =>
-                {
-                    pending.Result.TrySetResult(result == ContentDialogResult.Primary);
-                    setConfirm(null);
-                },
-            }).AutomationId("AutomationsConfirmDialog").WithKey(pending.Id)
-            : Empty();
-
-        return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Star()],
-                RenderHeader(host, state, actions, narrow, look).Grid(row: 0),
-                RenderBanners(host, state).Grid(row: 1),
-                body.Grid(row: 2),
-                dialog.Grid(row: 0))
-            .HAlign(HorizontalAlignment.Stretch)
-            .VAlign(VerticalAlignment.Stretch)
-            .OnSizeChanged((_, args) =>
+                DefaultButton = ContentDialogButton.None,
+                OnOpened = () => { if (confirmDialogRef.Current is { } native) FocusConfirmationCancel(native); },
+                OnClosed = result => { confirmDialogRef.Current = null; pending.Result.TrySetResult(result == ContentDialogResult.Primary); setConfirm(null); },
+            }).Set(native =>
             {
-                if (args.NewSize.Width > 0 && Math.Abs(args.NewSize.Width - width) > 1)
-                    setWidth(args.NewSize.Width);
+                confirmDialogRef.Current = native;
+                ConfigureDialogWidth(native, dialogWidth);
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(native, "AutomationsConfirmDialog");
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(native, pending.Title);
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(native, pending.Body);
+                native.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+                if (pending.Destructive)
+                {
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetLocalizedControlType(native, t["Popup_AlertType"]);
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(native, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Assertive);
+                }
             })
-            .AutomationId("AutomationsRoot");
+                .WithKey(pending.Id);
+
+        return Grid([GridSize.Star()], [GridSize.Star()],
+            PageBackdrop(bandHeight).WithKey("page-backdrop"),
+            ScrollView(VStack(24,
+                Grid([GridSize.Star()], [GridSize.Auto],
+                    RenderHeader(host, state, actions, look, tier)
+                        .Width(contentWidth).HAlign(HorizontalAlignment.Center))
+                    .Width(hostSize.Page).Padding(0, 24, 0, 0)
+                    .OnSizeChanged((_, args) => setBandHeight(args.NewSize.Height))
+                    .WithKey("page-header-band"),
+                VStack(24, RenderBanners(host, state), content)
+                    .Width(contentWidth).HAlign(HorizontalAlignment.Center)
+                    .Margin(PageResponsiveLayout.HorizontalPadding(tier), 0, PageResponsiveLayout.HorizontalPadding(tier), 24))
+                .Width(hostSize.Page).HAlign(HorizontalAlignment.Stretch))
+                .AutomationId("AutomationsList").Ref(scrollRef).WithKey("page-scroll"),
+            VStack(8, toasts.Select((notice, i) => (Element)Component<AutomationToast, AutomationToastProps>(
+                    new(notice, t, i == toasts.Length - 1, DismissToast)).WithKey($"toast-{notice.Id}")).ToArray())
+                .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Bottom).MaxWidth(ToastMaxWidth)
+                .Margin(20).Set(native => native.RequestedTheme = host.ActualTheme()).WithKey("toasts"),
+            dialog,
+            announce.Region.LiveRegion(state.Notice?.IsError == true
+                    ? Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Assertive
+                    : Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite)
+                .AutomationId("AutomationAnnouncements").WithKey("announcements"))
+            .OnSizeChanged((sender, args) =>
+            {
+                if (args.NewSize.Width > 0)
+                    setHostSize((args.NewSize.Width, ((FrameworkElement)sender).XamlRoot?.Size.Width ?? args.NewSize.Width));
+            })
+            .AutomationId("AutomationsRoot").Ref(pageRef);
     }
 
-    // ─── Header and status strip ───
+    private static void ConfigureDialogWidth(ContentDialog dialog, double width)
+    {
+        // Constrain the dialog chrome, not ContentDialog's full-window popup host.
+        dialog.Resources["ContentDialogMaxWidth"] = width;
+        dialog.Resources["ContentDialogMinWidth"] = width;
+    }
 
-    private static Element RenderHeader(AutomationsHost host, AutomationsSnapshot state, AutomationsActions actions, bool narrow, AutomationsLook look)
+    private static Element RenderConfirmation(ConfirmRequest request, double width) =>
+        VStack(16,
+            DialogHeader(request.Glyph, request.Title, request.Destructive, "AutomationConfirmationTitle"),
+            Secondary(request.Body, 14).AutomationId("AutomationConfirmationBody"),
+            request.Facts.Count == 0 ? Empty() : Border(VStack(8, request.Facts.Select((fact, i) =>
+                Fact(fact.Label, fact.Value, $"AutomationConfirmationFact:{i}").WithKey($"fact-{i}")).ToArray()))
+                .Padding(12).CornerRadius(6).Background(Theme.SubtleFill))
+            .MaxWidth(420);
+
+    private static void FocusConfirmationCancel(ContentDialog sender) =>
+        sender.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () => FindCloseButton(sender, sender.CloseButtonText)?.Focus(FocusState.Programmatic));
+
+    private static Button? FindCloseButton(DependencyObject parent, string label)
+    {
+        if (parent is Button button && (button.Name == "CloseButton" || string.Equals(button.Content as string, label, StringComparison.Ordinal)))
+            return button;
+        for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+            if (FindCloseButton(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i), label) is { } close)
+                return close;
+        return null;
+    }
+
+    private static Element RenderHeader(AutomationsHost host, AutomationsSnapshot state, AutomationsActions actions, AutomationsLook look, PageWidthTier tier)
     {
         var t = host.Text;
-        var nextUp = state.Jobs
-            .Where(j => j.Enabled && j.State.NextRunAtMs is not null)
-            .OrderBy(j => j.State.NextRunAtMs)
-            .FirstOrDefault();
-        var headline = !state.Connected || !state.ListLoaded
-            ? null
-            : nextUp is { State.NextRunAtMs: { } at }
-                ? t.Format("Header_NextUp", nextUp.Title, t.Relative(at))
-                : t["Header_AllQuiet"];
-
-        var scope = Border(HStack(6,
-                Glyph(GlyphPerson, 12, Theme.AccentText),
-                TextBlock(t.Format("AgentScope", state.AgentId)).FontSize(12).FontWeight(FontWeights.SemiBold)
-                    .Foreground(Theme.AccentText).AutomationId("AutomationsAgentScope")))
-            .Padding(10, 3)
-            .CornerRadius(12)
-            .Background(Theme.CardBackground)
-            .BorderBrush(Theme.Ref("AutomationsHeroStrokeBrush"))
-            .BorderThickness(1)
-            .VAlign(VerticalAlignment.Center);
-
-        var title = VStack(6,
-            TextBlock(t["Title"]).FontSize(28).FontWeight(FontWeights.SemiBold).AutomationId("CronPageMarker"),
-            HStack(10,
-                    scope,
-                    headline is null ? Empty() : Secondary(headline, 13).TextWrapping(TextWrapping.NoWrap)
-                        .TextTrimming(TextTrimming.CharacterEllipsis).VAlign(VerticalAlignment.Center).AutomationId("AutomationsHeadline")));
-        var buttons = HStack(Gap,
-            IconButton(GlyphRefresh, t["Refresh"], host.Store.Refresh, "AutomationsRefresh", state.Connected),
-            state.CanManage
-                ? GlyphButton(GlyphAdd, t["NewAutomation"], actions.New, "AutomationsNew", state.Connected, accent: true)
-                : Empty());
-        var header = Wash(Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                (narrow ? Empty() : AppIcon(look.HighContrast, 52).Margin(0, 0, 16, 0).VAlign(VerticalAlignment.Center)).Grid(column: 0),
-                title.VAlign(VerticalAlignment.Center).Grid(column: 1),
-                buttons.VAlign(VerticalAlignment.Center).Margin(12, 0, 0, 0).Grid(column: 2))
-            .Margin(20, 16, 20, 16));
-
-        Element stats = state.Connected ? RenderStats(t, state, narrow, look) : Empty();
-        return VStack(SectionGap, header, stats)
-            .Padding(PagePadding, 16, PagePadding, 12);
-    }
-
-    private static Element RenderStats(AutomationsText t, AutomationsSnapshot state, bool narrow, AutomationsLook look)
-    {
-        var schedulerOn = state.Status?.Enabled;
-        var nextWake = state.ScopedNextWakeAtMs ?? state.Status?.NextWakeAtMs;
-        var failing = state.FailingCount;
-
-        Element Disc(string glyph, ThemeRef brush, ThemeRef fill) =>
-            Border(Glyph(glyph, 16, brush).Center()).Size(36, 36).CornerRadius(18).Background(fill)
-                .BorderBrush(Theme.Ref("AutomationsTileStrokeBrush")).BorderThickness(1);
-
-        Element Tile(Element leading, string label, Element value, string id, string? tooltip = null)
-        {
-            var tile = Surface(Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                    leading.VAlign(VerticalAlignment.Center).Margin(0, 0, 12, 0).Grid(column: 0),
-                    VStack(2, Secondary(label), value).Grid(column: 1)), padding: 14)
-                .AutomationId(id);
-            return tooltip is null ? tile : tile.ToolTip(tooltip);
-        }
-
-        TextBlockElement Big(string text) => TextBlock(text).FontSize(20).FontWeight(FontWeights.SemiBold);
-
-        var schedulerBrush = schedulerOn == false ? Theme.SystemNeutral : Theme.SystemSuccess;
-        var tiles = new[]
-        {
-            Tile(
-                Border(BreathingDot(schedulerBrush, animate: schedulerOn == true && !look.ReduceMotion, size: 12).Center())
-                    .Size(36, 36).CornerRadius(18)
-                    .Background(schedulerOn == false ? Theme.SystemNeutralBackground : Theme.SystemSuccessBackground),
-                t["Stat_Scheduler"],
-                Big(schedulerOn == false ? t["Scheduler_Off"] : schedulerOn == true ? t["Scheduler_On"] : t["Unknown"]),
-                "AutomationsStatScheduler"),
-            Tile(Disc(GlyphSparkle, Theme.AccentText, Theme.SystemAttentionBackground),
-                t["Stat_Total"],
-                Big(state.ScopedTotal?.ToString() ?? "—"),
-                "AutomationsStatTotal"),
-            Tile(failing is > 0
-                    ? Disc(GlyphError, Theme.SystemCritical, Theme.SystemCriticalBackground)
-                    : Disc(GlyphHeart, Theme.SystemSuccess, Theme.SystemSuccessBackground),
-                t["Stat_Failing"],
-                HStack(Gap,
-                    Big(failing?.ToString() ?? "—").Foreground(failing is > 0 ? Theme.SystemCritical : Theme.PrimaryText),
-                    failing == 0 ? Secondary(t["Stat_Healthy"], 13).VAlign(VerticalAlignment.Center) : Empty()),
-                "AutomationsStatFailing"),
-            Tile(Disc(GlyphClock, Theme.Ref("AutomationsKindCronBrush"), Theme.Ref("AutomationsKindCronFillBrush")),
-                t["Stat_NextWake"],
-                Big(nextWake is { } wake ? t.Relative(wake) : t["NextWake_None"]),
-                "AutomationsStatNextWake",
-                nextWake is { } w ? t.DateTime(w) : null),
-        };
-        return narrow
-            ? Grid([GridSize.Star(), GridSize.Star()], [GridSize.Auto, GridSize.Auto],
-                tiles[0].Margin(0, 0, 4, 4).Grid(row: 0, column: 0), tiles[1].Margin(4, 0, 0, 4).Grid(row: 0, column: 1),
-                tiles[2].Margin(0, 4, 4, 0).Grid(row: 1, column: 0), tiles[3].Margin(4, 4, 0, 0).Grid(row: 1, column: 1))
-            : Grid([GridSize.Star(), GridSize.Star(), GridSize.Star(), GridSize.Star()], [GridSize.Auto],
-                tiles[0].Margin(0, 0, 6, 0).Grid(column: 0), tiles[1].Margin(6, 0, 6, 0).Grid(column: 1),
-                tiles[2].Margin(6, 0, 6, 0).Grid(column: 2), tiles[3].Margin(6, 0, 0, 0).Grid(column: 3));
+        var all = state.OverviewJobs;
+        var attention = all.Count(j => j.IsFailing || j.IsAutoDisabled);
+        var next = all.Where(j => j.Enabled && !j.IsAutoDisabled && j.State.NextRunAtMs is not null)
+            .OrderBy(j => j.State.NextRunAtMs).FirstOrDefault();
+        var title = !state.Connected && state.LastSeenAtMs is { } seen ? t.Format("Redesign_LastSeen", t.DateTime(seen))
+            : !state.OverviewLoaded ? t["Title"] : all.Count == 0 ? t["Review_NothingScheduled"] : state.Status?.Enabled == false ? t["SchedulerOff_Title"]
+            : attention == 1 ? t["Redesign_NeedYouOne"]
+            : attention > 0 ? t.Format("Redesign_NeedYou", attention) : t["Redesign_OnSchedule"];
+        var agentCount = all.Select(j => j.Owner ?? state.DefaultAgentId).Distinct().Count();
+        var subtitle = !state.OverviewLoaded ? t.AgentScope(state.AgentFilter)
+            : string.Join(" ", next is { State.NextRunAtMs: { } at } ? t.Format("Redesign_Next", next.Title, t.Clock(at)) : "",
+                t.InventorySummary(all.Count(j => j.Enabled && !j.IsAutoDisabled),
+                    all.Count(j => !j.Enabled || j.IsAutoDisabled), agentCount));
+        var narrow = tier == PageWidthTier.Narrow;
+        var text = VStack(12,
+                HStack(PageResponsiveLayout.GapInner, AppIcon(look.HighContrast, 20).VAlign(VerticalAlignment.Center),
+                    TextBlock(t["Title"]).FontWeight(FontWeights.SemiBold).Foreground(Theme.SecondaryText)
+                        .VAlign(VerticalAlignment.Center).AutomationId("CronPageMarker")),
+                TextBlock(title).FontSize(28).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.WrapWholeWords)
+                    .MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(title).AutomationId("AutomationsHeadline"),
+                Secondary(subtitle, 14).AutomationId("AutomationsAgentScope"));
+        var commands = HStack(8,
+                    tier != PageWidthTier.Wide ? Empty() : GlyphButton(GlyphOpenInBrowser, t["OpenInWeb"], () => host.OpenWeb(null), "AutomationsOpenWeb", state.Connected),
+                    state.CanManage && !state.ReadDenied ? GlyphButton(GlyphAdd, t["NewAutomation"], actions.New, "AutomationsNew", accent: true) : Empty(),
+                    IconButton(GlyphRefresh, t["Refresh"], host.Store.Refresh, "AutomationsRefresh", state.Connected),
+                    tier != PageWidthTier.Wide ? Button(Glyph(GlyphMore), () => { }).AutomationId("AutomationsHeaderMore")
+                        .AutomationName(t.Format("MoreActionsFor", t["Title"])).ToolTip(t.Format("MoreActionsFor", t["Title"]))
+                        .WithKey("AutomationsHeaderMore")
+                        .WithFlyout(MenuItems(MenuItem(t["OpenInWeb"], () => host.OpenWeb(null))))
+                        .Set(native =>
+                        {
+                            if (native.Flyout is not MenuFlyout menu) return;
+                            var label = t.Format("MoreActionsFor", t["Title"]);
+                            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(menu, label);
+                            menu.MenuFlyoutPresenterStyle = new Style(typeof(MenuFlyoutPresenter))
+                            {
+                                Setters = { new Setter(Microsoft.UI.Xaml.Automation.AutomationProperties.NameProperty, label) },
+                            };
+                            foreach (var item in menu.Items.OfType<MenuFlyoutItem>()) item.IsEnabled = state.Connected;
+                        }) : Empty())
+                .HAlign(HorizontalAlignment.Left).VAlign(VerticalAlignment.Top).AutomationId("AutomationsHeaderActions");
+        return Border(Grid(narrow ? [GridSize.Star()] : [GridSize.Star(), GridSize.Auto],
+            narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
+            text.Margin(0, 0, narrow ? 0 : 16, 0).Grid(column: 0),
+            commands.Margin(0, narrow ? 12 : 0, 0, 0).Grid(column: narrow ? 0 : 1, row: narrow ? 1 : 0))
+            .Padding(0, 8, 0, 16).AutomationId("AutomationsMastGrid")).AutomationId("AutomationsMast");
     }
 
     private static Element RenderBanners(AutomationsHost host, AutomationsSnapshot state)
@@ -310,402 +368,313 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
         var t = host.Text;
         var banners = new List<Element>();
         if (!state.Connected)
-        {
             banners.Add((InfoBar(t["Disconnected_BannerTitle"], t["Disconnected_BannerBody"]) with
             {
                 Severity = InfoBarSeverity.Warning,
                 IsClosable = false,
                 ActionButtonContent = t["OpenConnection"],
                 OnActionButtonClick = host.OpenConnection,
-            }).AutomationId("AutomationsConnectionBanner"));
-        }
-        else
-        {
-            if (!state.CanManage)
-                banners.Add((InfoBar(null, t["ReadOnly"]) with { Severity = InfoBarSeverity.Informational, IsClosable = false })
-                    .AutomationId("AutomationsReadOnlyBanner"));
-            if (state.Status?.Enabled == false)
-                banners.Add((InfoBar(t["SchedulerOff_Title"], t["SchedulerOff_Body"]) with { Severity = InfoBarSeverity.Warning, IsClosable = false })
-                    .AutomationId("AutomationsSchedulerOffBanner"));
-            if (state.Notice is { } notice)
+            }).AutomationId("AutomationsOpenConnection"));
+        if (state.Connected && !state.CanManage && !state.ReadDenied)
+            banners.Add((InfoBar(null, t["ReadOnly"]) with { IsClosable = false }).AutomationId("AutomationsReadOnlyBanner"));
+        if (state.Connected && state.Status?.Enabled == false)
+            banners.Add((InfoBar(t["SchedulerOff_Title"], t["SchedulerOff_Body"]) with
+            { Severity = InfoBarSeverity.Error, IsClosable = false }).AutomationId("AutomationsSchedulerOffBanner"));
+        var error = state.ListLoaded ? state.ListError ?? state.OverviewError ?? state.StatusError : null;
+        if (error is not null && !state.ReadDenied)
+            banners.Add((InfoBar(t["Redesign_RefreshFailed"], error) with
             {
-                var (title, message) = t.Notice(notice);
-                banners.Add((InfoBar(title, message) with
-                {
-                    Severity = notice.IsError ? InfoBarSeverity.Error
-                        : notice.Kind is AutomationsNoticeKind.Conflict or AutomationsNoticeKind.RunNotStarted ? InfoBarSeverity.Warning
-                        : notice.Kind is AutomationsNoticeKind.RunQueued ? InfoBarSeverity.Informational
-                        : InfoBarSeverity.Success,
-                    OnClosed = host.Store.DismissNotice,
-                }).AutomationId("AutomationsNotice").WithKey($"notice-{notice.Id}"));
-            }
-        }
-        return banners.Count == 0 ? Empty() : VStack(Gap, banners.ToArray()).Padding(PagePadding, 0, PagePadding, 12);
+                Severity = InfoBarSeverity.Warning,
+                IsClosable = false,
+                ActionButtonContent = t["Retry"],
+                OnActionButtonClick = host.Store.Refresh,
+            }).AutomationId("AutomationsRefreshWarning"));
+        return banners.Count == 0 ? Empty() : VStack(8, banners.ToArray());
     }
 
-    // ─── List pane ───
+    private static Element Heading(AutomationsText t, string key, int? count) =>
+        HStack(12, TextBlock(t[key]).FontSize(20).FontWeight(FontWeights.SemiBold),
+            count is { } known ? CountPill(known, key == "Redesign_NeedsYou") : Empty());
 
-    private static Element RenderListPane(AutomationsHost host, AutomationsSnapshot state, string search, Action<string> onSearch, bool narrow, AutomationsLook look)
+    private static Element CountPill(int count, bool critical = false) =>
+        Border(TextBlock(count.ToString()).FontSize(12).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.NoWrap)
+                .Foreground(critical ? Theme.SystemCritical : Theme.SecondaryText).Center())
+            .Padding(8, 2).CornerRadius(10).VAlign(VerticalAlignment.Center)
+            .Background(critical ? Theme.SystemCriticalBackground : Theme.SystemNeutralBackground);
+
+    private static Element GroupHeading(AutomationsText text, string key, int count) =>
+        HStack(8, TextBlock(text[key]).FontSize(14).FontWeight(FontWeights.SemiBold), CountPill(count));
+
+    private static Element RenderAttention(AutomationsHost host, AutomationsSnapshot state, bool narrow, Action<string> reveal)
+    {
+        var t = host.Text;
+        var jobs = state.OverviewJobs.Where(j => j.IsAutoDisabled || j.IsFailing).ToArray();
+        if (jobs.Length == 0) return Empty();
+        var cards = jobs.Take(jobs.Length > 3 ? 2 : 3).Select(job =>
+            (Element)Border(Grid([GridSize.Px(4), GridSize.Star()], [GridSize.Auto],
+                Border(Empty()).Background(Theme.SystemCritical).Grid(column: 0),
+                Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                    Border(Glyph(job.IsAutoDisabled ? GlyphLock : GlyphError, 16, Theme.SystemCritical).Center())
+                        .Size(DialogBadgeSize, DialogBadgeSize).CornerRadius(DialogBadgeSize / 2)
+                        .Background(Theme.SystemCriticalBackground).Margin(0, 0, 12, 0).VAlign(VerticalAlignment.Top).Grid(column: 0),
+                    VStack(8,
+                    TextBlock(job.IsAutoDisabled ? t.Format("Review_TurnedOff", job.Title) : job.Title)
+                        .FontSize(14).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.Wrap).AutomationId($"AutomationAttentionTitle:{job.Id}"),
+                    Secondary(string.Join(" ", new[]
+                    {
+                        (job.State.AutoDisabled?.ConsecutiveErrors ?? job.State.ConsecutiveErrors) is { } count
+                            ? t.Format("Redesign_FailureStreak", count) + "." : t["Redesign_FailedLast"] + ".",
+                        job.State.LastError,
+                        job.IsAutoDisabled ? t["Review_SchedulerStopped"] : null,
+                    }.Where(value => !string.IsNullOrWhiteSpace(value)))).AutomationId($"AutomationAttentionBody:{job.Id}"),
+                    HStack(8,
+                        job.IsAutoDisabled ? Empty() : state.CanManage
+                            ? GlyphButton(GlyphPlay, t["Redesign_RetryNow"], () => _ = host.Store.RunNowAsync(job.Id),
+                                $"AutomationRetry:{job.Id}", state.Connected && !state.IsBusy(job.Id) && !state.IsRunning(job.Id) && !job.IsRunning, accent: true) : Empty(),
+                        Button(t["Redesign_SeeRuns"], () => reveal(job.Id)).AutomationName(t["Redesign_SeeRuns"]).AutomationId($"AutomationSeeRuns:{job.Id}"),
+                        job.IsAutoDisabled && state.CanManage ? Button(t["Redesign_TurnOn"], () => _ = host.Store.SetEnabledAsync(job.Id, true))
+                            .AutomationName(t["Redesign_TurnOn"]).ApplyStyle("SubtleButtonStyle")
+                            .IsEnabled(state.Connected && !state.IsBusy(job.Id)).WithKey($"AutomationTurnOn:{job.Id}") : Empty())).Grid(column: 1))
+                    .Padding(16).Grid(column: 1)))
+                .CornerRadius(CardRadius).Background(Theme.CardBackground).BorderBrush(Theme.CardStroke).BorderThickness(1)
+                .AutomationId($"AutomationAttention:{job.Id}").WithKey(job.Id)).ToList();
+        if (jobs.Length > 3)
+            cards.Add(Surface(Button(t.Format("Redesign_MoreAttention", jobs.Length - 2),
+                () => reveal(jobs[2].Id)).AutomationName(t.Format("Redesign_MoreAttention", jobs.Length - 2))));
+        Element layout = narrow ? VStack(PageResponsiveLayout.GapInner, cards.ToArray()).HAlign(HorizontalAlignment.Stretch)
+            : Grid([GridSize.Star(), GridSize.Star()], Enumerable.Repeat(GridSize.Auto, (cards.Count + 1) / 2).ToArray(),
+                cards.Select((card, i) => card.Margin(i % 2 == 0 ? 0 : 6, 0, i % 2 == 0 ? 6 : 0, 8)
+                    .Grid(column: i % 2, row: i / 2).WithKey(jobs.Length > 3 && i == 2 ? "more-attention" : jobs[i].Id))
+                    .Append(Empty().Grid(column: 1)).ToArray());
+        return VStack(12, Heading(t, "Redesign_NeedsYou", jobs.Length), layout.AutomationId("AutomationsAttentionLayout")).AutomationId("AutomationsAttention");
+    }
+
+    private static Element RenderAgenda(AutomationsHost host, AutomationsSnapshot state, ImmutableHashSet<string> expanded, Action<string> toggle, Action<string> reveal, AutomationsLook look, bool narrow)
+    {
+        var t = host.Text;
+        if (!state.OverviewLoaded) return Empty();
+        var agenda = CronAgenda.Create(state.OverviewJobs, DateTimeOffset.Now, TimeZoneInfo.Local);
+        if (agenda.Groups.Sum(g => g.Jobs.Count) == 1 && agenda.Repeating.Count == 0
+            && agenda.WaitingForEvents.Count == 0 && agenda.EarlierToday.Count == 0)
+        {
+            var next = agenda.Groups.SelectMany(g => g.Jobs).Single();
+            return Surface(VStack(12,
+                HStack(12, Glyph(GlyphClock, 24, Theme.AccentText),
+                    VStack(4, Secondary(next.IsRunning ? t["Running"] : t["NextRun"]),
+                        TextBlock(next.Title).FontSize(20).FontWeight(FontWeights.SemiBold),
+                        Secondary(next.State.NextRunAtMs is { } at && !next.IsRunning
+                            ? $"{t.FriendlyDateTime(at)} · {t.Schedule(next.Schedule)}" : t.Schedule(next.Schedule), 13))),
+                Button(t["Redesign_SeeRuns"], () => reveal(next.Id)).AutomationName(t["Redesign_SeeRuns"])
+                    .HAlign(HorizontalAlignment.Left).AutomationId($"AutomationAgenda:{next.Id}"),
+                Empty()))
+                .AutomationId("AutomationsAgenda");
+        }
+        var rows = new List<Element>();
+        var budget = 6;
+        foreach (var group in agenda.Groups)
+        {
+            var count = expanded.Contains(group.Key) ? group.Jobs.Count : Math.Min(group.Jobs.Count, Math.Min(4, budget));
+            budget = Math.Max(0, budget - count);
+            rows.Add(GroupHeading(t, "Redesign_Group_" + group.Key, group.Jobs.Count).Margin(0, 12, 0, 4)
+                .AutomationId($"AutomationAgendaGroup:{group.Key}"));
+            string? previous = null;
+            foreach (var job in group.Jobs.Take(count))
+            {
+                var clock = group.Key == "Running" ? t["Running"] : t.Clock(job.State.NextRunAtMs!.Value);
+                var time = previous == clock ? "┊" : clock;
+                previous = clock;
+                rows.Add(Button(Grid([GridSize.Px(100), GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                    (group.Key == "Running" ? (Element)HStack(4, BreathingDot(Theme.Accent, !look.ReduceMotion, 6), Secondary(clock, 13))
+                        : Secondary(time, 13)).VAlign(VerticalAlignment.Center).Grid(column: 0),
+                    AgentAvatar(job.Owner ?? state.DefaultAgentId).Margin(0, 0, 12, 0).Grid(column: 1),
+                    VStack(2, SingleLine(job.Title, 14).FontWeight(FontWeights.SemiBold),
+                        SingleLine($"{job.Owner ?? state.DefaultAgentId} · {t.Schedule(job.Schedule)}").Foreground(Theme.SecondaryText)).Grid(column: 2),
+                    job.IsFailing ? Secondary(t["Redesign_FailedLast"]).Foreground(Theme.SystemCritical).Grid(column: 3) : Empty().Grid(column: 3)),
+                    () => reveal(job.Id))
+                    .HorizontalContentAlignment(HorizontalAlignment.Stretch).HAlign(HorizontalAlignment.Stretch)
+                    .BorderThickness(0).Background(Theme.Ref("SubtleFillColorTransparentBrush")).Padding(8)
+                    .AutomationName($"{job.Title}. {clock}").AutomationId($"AutomationAgenda:{job.Id}").WithKey("agenda-" + job.Id));
+            }
+            if (count < group.Jobs.Count || expanded.Contains(group.Key) && group.Jobs.Count > 4)
+                rows.Add(HyperlinkButton(count < group.Jobs.Count ? t.Format("Redesign_ShowMore", group.Jobs.Count - count) : t["Runs_ShowLess"],
+                    null, () => toggle(group.Key)).AutomationId($"AutomationAgendaMore:{group.Key}"));
+        }
+        if (agenda.Groups.Count == 0) rows.Add(Secondary(t["Redesign_NothingSoon"], 14));
+        if (agenda.Repeating.Count > 0)
+            rows.Add(Secondary(agenda.Repeating.Count <= 2
+                ? string.Join("; ", agenda.Repeating.Select(j => $"{j.Title}: {t.Schedule(j.Schedule)}"))
+                : t.Format("Redesign_Repeating", agenda.Repeating.Count), 13).Margin(0, 8, 0, 0));
+        if (agenda.WaitingForEvents.Count > 0)
+            rows.Add(Secondary(t.Format("Redesign_WaitEvents", agenda.WaitingForEvents.Count), 13));
+        var earlierRows = new List<Element>();
+        var recentCount = expanded.Contains("Earlier") ? agenda.EarlierToday.Count : Math.Min(5, agenda.EarlierToday.Count);
+        if (recentCount > 0)
+        {
+            earlierRows.Add(GroupHeading(t, "Redesign_Earlier", agenda.EarlierToday.Count).Margin(0, 0, 0, 8)
+                .AutomationId("AutomationEarlierHeading"));
+            foreach (var job in agenda.EarlierToday.Take(recentCount))
+            {
+                var (brush, glyph) = RunTone(job.State.LastRunStatus);
+                earlierRows.Add(Button(VStack(4,
+                    HStack(8, Glyph(glyph, 14, brush), TextBlock(job.Title).TextWrapping(TextWrapping.Wrap)),
+                    Secondary(t.Clock(job.State.LastRunAtMs!.Value)).Margin(22, 0, 0, 0)),
+                    () => reveal(job.Id)).BorderThickness(0).Background(Theme.Ref("SubtleFillColorTransparentBrush"))
+                    .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Left)
+                    .AutomationName($"{job.Title}. {t.RunStatus(job.State.LastRunStatus)}").AutomationId($"AutomationEarlier:{job.Id}").WithKey(job.Id));
+            }
+            if (recentCount < agenda.EarlierToday.Count)
+                earlierRows.Add(HyperlinkButton(t.Format("Redesign_ShowMore", agenda.EarlierToday.Count - recentCount), null, () => toggle("Earlier")));
+        }
+        var health = !state.Connected ? t["Redesign_SchedulerUnknown"] : state.Status?.Enabled switch
+        { true => t["Review_SchedulerOn"], false => t["Scheduler_Off"], _ => t["Unknown"] };
+        var list = (ListView(null, null, rows.ToArray()) with { SelectionMode = ListViewSelectionMode.None })
+            .Set(native =>
+            {
+                native.Padding = new Thickness(0);
+                native.ItemContainerStyle = new Style(typeof(ListViewItem))
+                {
+                    Setters = { new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch),
+                        new Setter(Control.PaddingProperty, new Thickness(0)) },
+                };
+            })
+            .AutomationId("AutomationsAgendaList");
+        Element agendaBody = earlierRows.Count == 0 ? list : narrow
+            ? VStack(PageResponsiveLayout.GapStack, list, VStack(8, earlierRows.ToArray())).AutomationId("AutomationsAgendaBody")
+            : Grid([GridSize.Star(), GridSize.Star()], [GridSize.Auto],
+                list.MinWidth(PageResponsiveLayout.TwoColumnMinColumnWidth).Margin(0, 0, 8, 0).Grid(column: 0),
+                VStack(8, earlierRows.ToArray()).MinWidth(PageResponsiveLayout.TwoColumnMinColumnWidth).Margin(8, 0, 0, 0).Grid(column: 1))
+                .AutomationId("AutomationsAgendaBody");
+        return Surface(VStack(12,
+            Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                TextBlock(t[agenda.Groups.Sum(g => g.Jobs.Count) == 1 && agenda.Repeating.Count == 0 ? "NextRun" : "Redesign_ComingUp"])
+                    .FontSize(20).FontWeight(FontWeights.SemiBold).Grid(column: 0),
+                HStack(6, StatusDot(state.Connected && state.Status?.Enabled == true ? Theme.SystemSuccess
+                        : state.Connected && state.Status?.Enabled == false ? Theme.SystemCritical : Theme.SecondaryText, 8),
+                    Secondary(health, 13)).VAlign(VerticalAlignment.Center).Grid(column: 1)),
+            agendaBody))
+            .AutomationId("AutomationsAgenda");
+    }
+
+    private static Element RenderInventory(AutomationsHost host, AutomationsSnapshot state, string search, Action<string> onSearch,
+        AutomationsActions actions, AutomationsLook look, PageWidthTier tier, bool twoColumns, Action<FrameworkElement, string> registerRow)
     {
         var t = host.Text;
         var store = host.Store;
-        var query = state.ListQuery;
-
-        var viewBar = SelectorBar(
-                [SelectorBarItem(t["View_Automations"]), SelectorBarItem(t["View_RunHistory"])],
-                state.View == AutomationsView.Jobs ? 0 : 1,
-                index => store.SetView(index == 0 ? AutomationsView.Jobs : AutomationsView.RunHistory))
-            .AutomationId("AutomationsViewSelector");
-
-        var searchBox = (AutoSuggestBox(search, onSearch, onSearch) with
-        {
-            PlaceholderText = t["Search_Placeholder"],
-            QueryIcon = FontIcon(GlyphSearch),
-        }).AutomationName(t["Search_Placeholder"]).AutomationId("AutomationsSearch");
-
-        var statusFilter = SelectorBar(
-                [SelectorBarItem(t["Filter_All"]), SelectorBarItem(t["Filter_Active"]), SelectorBarItem(t["Filter_Paused"])],
-                query.Enabled switch { CronEnabledFilter.Enabled => 1, CronEnabledFilter.Disabled => 2, _ => 0 },
-                index => store.SetQuery(query with
-                {
-                    Enabled = index switch { 1 => CronEnabledFilter.Enabled, 2 => CronEnabledFilter.Disabled, _ => CronEnabledFilter.All },
-                }))
-            .AutomationId("AutomationsStatusFilter");
-
-        var sortMenu = DropDownButton(t["Sort"], MenuItems(
-                RadioMenuItem(t["Sort_NextRun"], "sortBy", query.SortBy == CronSortBy.NextRunAtMs, () => store.SetQuery(query with { SortBy = CronSortBy.NextRunAtMs })),
-                RadioMenuItem(t["Sort_Updated"], "sortBy", query.SortBy == CronSortBy.UpdatedAtMs, () => store.SetQuery(query with { SortBy = CronSortBy.UpdatedAtMs })),
-                RadioMenuItem(t["Sort_Name"], "sortBy", query.SortBy == CronSortBy.Name, () => store.SetQuery(query with { SortBy = CronSortBy.Name })),
-                MenuSeparator(),
-                RadioMenuItem(t["Sort_Ascending"], "sortDir", !query.Descending, () => store.SetQuery(query with { Descending = false })),
-                RadioMenuItem(t["Sort_Descending"], "sortDir", query.Descending, () => store.SetQuery(query with { Descending = true }))))
-            .AutomationId("AutomationsSort");
-
-        var filterMenu = DropDownButton(query.HasAdvancedFilters ? t["Filters_Active"] : t["Filters"], MenuItems(
-                MenuSubItem(t["Filter_ScheduleKind"],
-                    FilterItem(t["Filter_Any"], "kind", query.ScheduleKind == "all", () => store.SetQuery(query with { ScheduleKind = "all" })),
-                    FilterItem(t["Kind_Every"], "kind", query.ScheduleKind == "every", () => store.SetQuery(query with { ScheduleKind = "every" })),
-                    FilterItem(t["Kind_At"], "kind", query.ScheduleKind == "at", () => store.SetQuery(query with { ScheduleKind = "at" })),
-                    FilterItem(t["Kind_Cron"], "kind", query.ScheduleKind == "cron", () => store.SetQuery(query with { ScheduleKind = "cron" })),
-                    FilterItem(t["Kind_Event"], "kind", query.ScheduleKind == "event", () => store.SetQuery(query with { ScheduleKind = "event" })),
-                    FilterItem(t["Kind_OnExit"], "kind", query.ScheduleKind == "on-exit", () => store.SetQuery(query with { ScheduleKind = "on-exit" })),
-                    FilterItem(t["Kind_Stream"], "kind", query.ScheduleKind == "stream", () => store.SetQuery(query with { ScheduleKind = "stream" }))),
-                MenuSubItem(t["Filter_LastRun"],
-                    FilterItem(t["Filter_Any"], "last", query.LastRunStatus == "all", () => store.SetQuery(query with { LastRunStatus = "all" })),
-                    FilterItem(t["RunStatus_Ok"], "last", query.LastRunStatus == "ok", () => store.SetQuery(query with { LastRunStatus = "ok" })),
-                    FilterItem(t["RunStatus_Error"], "last", query.LastRunStatus == "error", () => store.SetQuery(query with { LastRunStatus = "error" })),
-                    FilterItem(t["RunStatus_Skipped"], "last", query.LastRunStatus == "skipped", () => store.SetQuery(query with { LastRunStatus = "skipped" })),
-                    FilterItem(t["Filter_NeverRun"], "last", query.LastRunStatus == "unknown", () => store.SetQuery(query with { LastRunStatus = "unknown" }))),
-                MenuSubItem(t["Filter_Condition"],
-                    FilterItem(t["Filter_Any"], "trigger", query.Trigger == "all", () => store.SetQuery(query with { Trigger = "all" })),
-                    FilterItem(t["Filter_Conditional"], "trigger", query.Trigger == "conditional", () => store.SetQuery(query with { Trigger = "conditional" })),
-                    FilterItem(t["Filter_Unconditional"], "trigger", query.Trigger == "unconditional", () => store.SetQuery(query with { Trigger = "unconditional" }))),
-                MenuSeparator(),
-                MenuItem(t["Filter_Reset"], () => store.SetQuery(query with { ScheduleKind = "all", LastRunStatus = "all", Trigger = "all" }))))
-            .AutomationId("AutomationsFilters");
-
-        var rows = new List<Element>();
-        if (state.ListLoading && !state.ListLoaded)
-        {
-            rows.Add(HStack(Gap, ProgressRing().Size(16, 16), Secondary(t["Loading"], 13)).Margin(0, 12, 0, 0).AutomationId("AutomationsListLoading"));
-        }
-        else if (state.ListError is { } error)
-        {
-            rows.Add((InfoBar(state.ReadDenied ? t["ReadDenied_Title"] : t["ListError_Title"], error) with
-            {
-                Severity = InfoBarSeverity.Error,
-                IsClosable = false,
-                ActionButtonContent = state.ReadDenied ? null : t["Retry"],
-                OnActionButtonClick = state.ReadDenied ? null : () => _ = store.LoadListAsync(),
-            }).AutomationId("AutomationsListError"));
-        }
-        else if (state.ListLoaded && state.Jobs.Count == 0)
-        {
-            rows.Add(Secondary(state.IsFiltered ? t["List_NoMatch"] : t["List_Empty"], 13)
-                .Margin(4, 12, 4, 0).AutomationId("AutomationsListEmpty"));
-        }
-
-        foreach (var job in state.Jobs)
-            rows.Add(RenderRow(host, state, job, look).WithKey(job.Id));
-
-        if (state.HasMore)
-        {
-            rows.Add(Button(state.ListLoadingMore ? t["Loading"] : t["LoadMore"], () => _ = store.LoadListAsync(append: true)).AutomationName(t["LoadMore"])
-                .IsEnabled(!state.ListLoadingMore)
-                .HAlign(HorizontalAlignment.Stretch)
-                .AutomationId("AutomationsLoadMore"));
-        }
-
-        var countText = state.ListLoaded && state.ListError is null
-            ? Secondary(t.Format("List_Count", state.Jobs.Count, state.Total)).AutomationId("AutomationsListCount")
+        var agents = state.FilterAgents(host.KnownAgents());
+        var labels = new[] { t["Filter_AllAgents"] }.Concat(agents).ToArray();
+        var agentIndex = state.AgentFilter is null ? 0 : Array.IndexOf(agents.ToArray(), state.AgentFilter) + 1;
+        var narrow = tier == PageWidthTier.Narrow;
+        var status = SelectorBar([
+                    SelectorBarItem(t.CountLabel("Redesign_All", state.InventoryTotal)),
+                    SelectorBarItem(t.CountLabel("Redesign_On", state.ActiveCount)),
+                    SelectorBarItem(t.CountLabel("Redesign_Off", state.PausedCount))],
+                    state.ListQuery.Enabled switch { CronEnabledFilter.Enabled => 1, CronEnabledFilter.Disabled => 2, _ => 0 },
+                    index => store.SetQuery(state.ListQuery with { Enabled = index switch { 1 => CronEnabledFilter.Enabled, 2 => CronEnabledFilter.Disabled, _ => CronEnabledFilter.All } }))
+                    .AutomationId("AutomationsStatusFilter");
+        var agent = ComboBox(labels, agentIndex, i => { if (i >= 0) store.SetAgentFilter(i == 0 ? null : agents[i - 1]); })
+                        .MinWidth(140).MaxWidth(240).HAlign(HorizontalAlignment.Left)
+                        .AutomationName(t.Format("AgentFilterFor", t.AgentScope(state.AgentFilter)))
+                        .AutomationId("AutomationsAgentFilter");
+        var searchBox = (AutoSuggestBox(search, onSearch, onSearch) with { PlaceholderText = t["Search_Placeholder"], QueryIcon = FontIcon(GlyphSearch) })
+                        .MinWidth(240).MaxWidth(tier == PageWidthTier.Wide ? 360 : double.PositiveInfinity)
+                        .HAlign(tier == PageWidthTier.Wide ? HorizontalAlignment.Right : HorizontalAlignment.Stretch)
+                        .AutomationName(t["Search_Placeholder"]).AutomationId("AutomationsSearch");
+        var filters = (state.ScopedTotal ?? state.Total) > 5 || state.IsFiltered || state.IsAllAgents
+            ? tier == PageWidthTier.Wide
+                ? (Element)Grid([GridSize.Auto, GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                    status.Grid(column: 0), agent.Margin(8, 0, 8, 0).Grid(column: 1), searchBox.Grid(column: 2))
+                : narrow
+                    ? Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto],
+                        status.Grid(row: 0), agent.Margin(0, 12, 0, 0).Grid(row: 1), searchBox.Margin(0, 12, 0, 0).Grid(row: 2))
+                    : Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto, GridSize.Auto],
+                        status.Grid(column: 0), agent.Margin(8, 0, 0, 0).Grid(column: 1),
+                        searchBox.Margin(0, 12, 0, 0).Grid(row: 1).Set(native => Microsoft.UI.Xaml.Controls.Grid.SetColumnSpan(native, 2)))
             : (Element)Empty();
-
-        return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Star()],
-                VStack(Gap,
-                    viewBar,
-                    searchBox,
-                    Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                        statusFilter.Grid(column: 0),
-                        HStack(4, filterMenu, sortMenu).Grid(column: 1)),
-                    countText).Padding(PagePadding, 0, narrow ? PagePadding : 12, 8).Grid(row: 0),
-                Empty().Grid(row: 1),
-                ScrollView(VStack(4, rows.ToArray()).Stagger(StaggerStep).Padding(PagePadding - 4, 0, narrow ? PagePadding - 4 : 8, PagePadding))
-                    .AutomationId("AutomationsList")
-                    .Grid(row: 2))
-            .AutomationId("AutomationsListPane");
-    }
-
-    private static Microsoft.UI.Reactor.Core.RadioMenuFlyoutItemData FilterItem(string text, string group, bool isChecked, Action onClick) =>
-        RadioMenuItem(text, group, isChecked, onClick);
-
-    private static Element RenderRow(AutomationsHost host, AutomationsSnapshot state, CronJob job, AutomationsLook look)
-    {
-        var t = host.Text;
-        var running = state.IsRunning(job.Id);
-        var selected = state.SelectedJobId == job.Id && state.View == AutomationsView.Jobs;
-        var (fg, _, _) = StatusTone(job, running);
-        var tone = Kind(job.Schedule.Kind);
-        var when = running || job.IsRunning
-            ? t["State_Running"]
-            : job.State.NextRunAtMs is { } next && job.Enabled
-                ? t.Format("Row_Next", t.Relative(next))
-                : job.State.LastRunAtMs is { } last
-                    ? t.Format("Row_Last", t.Relative(last))
-                    : t.JobState(job, running);
-
-        var paused = !job.Enabled && !running;
-        var kindTile = KindTile(job.Schedule.Kind, 40, content: running || job.IsRunning ? ProgressRing().Size(18, 18).Center() : null)
-            .Opacity(paused ? 0.55 : 1)
-            .HAlign(HorizontalAlignment.Left).VAlign(VerticalAlignment.Top);
-        // A short glow when the selected automation was just created, saved or resumed.
-        if (selected && !paused && !look.ReduceMotion
-            && state.Notice is { Kind: AutomationsNoticeKind.Created or AutomationsNoticeKind.Saved or AutomationsNoticeKind.Resumed } celebrated)
+        var rows = new List<Element>();
+        foreach (var enabled in new[] { true, false })
         {
-            kindTile = kindTile.Keyframes("celebrate", celebrated.Id, kf => kf
-                .Duration(900)
-                .At(0f, opacity: 1f)
-                .At(0.25f, opacity: 0.35f, easing: Microsoft.UI.Reactor.Animation.Easing.EaseOut)
-                .At(0.5f, opacity: 1f, easing: Microsoft.UI.Reactor.Animation.Easing.EaseInOut)
-                .At(0.75f, opacity: 0.5f, easing: Microsoft.UI.Reactor.Animation.Easing.EaseInOut)
-                .At(1f, opacity: 1f, easing: Microsoft.UI.Reactor.Animation.Easing.Decelerate));
-        }
-        var tile = Grid([GridSize.Px(46)], [GridSize.Px(46)],
-            kindTile,
-            (paused ? Border(Glyph(GlyphPause, 8, Theme.SecondaryText).Center()).Size(16, 16).CornerRadius(8)
-                    .Background(Theme.CardBackground).BorderBrush(Theme.CardStroke).BorderThickness(1)
-                : StatusDot(fg, 14))
-                .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Bottom));
-        var lines = VStack(2,
-            HStack(6,
-                TextBlock(job.Title).FontSize(14).FontWeight(FontWeights.SemiBold)
-                    .Foreground(paused ? Theme.SecondaryText : Theme.PrimaryText)
-                    .TextTrimming(TextTrimming.CharacterEllipsis).AutomationId($"CronJobTitle:{job.Id}"),
-                job.HasTrigger ? Glyph(GlyphBranch, 12).ToolTip(t["TriggerConfigured"]) : Empty()),
-            TextBlock(t.Schedule(job.Schedule)).FontSize(12).Foreground(Theme.SecondaryText).TextTrimming(TextTrimming.CharacterEllipsis),
-            HStack(4,
-                Glyph(job.IsFailing ? GlyphError : GlyphClock, 11, job.IsFailing ? Theme.SystemCritical : paused ? Theme.TertiaryText : tone.Brush),
-                TextBlock(when).FontSize(12).Foreground(job.IsFailing ? Theme.SystemCritical : Theme.TertiaryText)
-                    .TextTrimming(TextTrimming.CharacterEllipsis)));
-        var content = Grid([GridSize.Px(3), GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-            Border(Empty()).CornerRadius(2).Background(selected ? Theme.Accent : Theme.Ref("SubtleFillColorTransparentBrush"))
-                .Margin(0, 4, 9, 4).Grid(column: 0),
-            tile.Margin(0, 0, 12, 0).Grid(column: 1),
-            lines.VAlign(VerticalAlignment.Center).Grid(column: 2));
-
-        // Selection is drawn with Background and an accent bar: lightweight-styling
-        // resources only re-resolve on visual-state changes, so they cannot track selection.
-        return Button(content, () => host.Store.Select(job.Id))
-            .HAlign(HorizontalAlignment.Stretch)
-            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
-            .Padding(4, 8, 12, 8)
-            .CornerRadius(8)
-            .Background(selected ? Theme.SubtleFill : Theme.Ref("SubtleFillColorTransparentBrush"))
-            .BorderThickness(0)
-            .Resources(resources => resources
-                .Set("ButtonBackgroundPointerOver", Theme.SubtleFill)
-                .Set("ButtonBackgroundPressed", Theme.Ref("SubtleFillColorTertiaryBrush"))
-                .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush"))
-                .Set("ButtonBorderBrushPointerOver", Theme.Ref("SubtleFillColorTransparentBrush"))
-                .Set("ButtonBorderBrushPressed", Theme.Ref("SubtleFillColorTransparentBrush")))
-            .AutomationId($"AutomationRow:{job.Id}")
-            .AutomationName($"{job.Title}. {t.JobState(job, running)}. {t.Schedule(job.Schedule)}")
-            .ItemStatus(t.JobState(job, running))
-            .Enter(look.ReduceMotion);
-    }
-
-    // ─── Detail pane ───
-
-    private static Element RenderDetailPane(
-        AutomationsHost host,
-        AutomationsSnapshot state,
-        EditorSession? editor,
-        AutomationsActions actions,
-        Action<long, Func<EditorSession, EditorSession>> updateEditor,
-        Action<long, string?> closeEditor,
-        bool narrow,
-        AutomationsLook look)
-    {
-        var t = host.Text;
-        Element content;
-        if (editor is not null)
-        {
-            content = Component<AutomationEditor, AutomationEditorProps>(new(host, editor, state.AgentId, state.CanManage,
-                    change => updateEditor(editor.Nonce, change), savedId => closeEditor(editor.Nonce, savedId)))
-                .WithKey($"editor-{editor.Nonce}");
-        }
-        else if (state.View == AutomationsView.RunHistory)
-        {
-            content = Component<AutomationRuns, AutomationRunsProps>(new(host, state, null))
-                .WithKey("runs-all");
-        }
-        else if (state.SelectedJobId is not null && (state.SelectedJob ?? state.Jobs.FirstOrDefault(j => j.Id == state.SelectedJobId)) is { } job)
-        {
-            content = Component<AutomationDetail, AutomationDetailProps>(new(host, state, job, actions))
-                .WithKey($"detail-{job.Id}");
-        }
-        else if (state.SelectedJobId is not null && state.SelectedError is { } selectedError)
-        {
-            content = (InfoBar(t["Detail_LoadFailed"], selectedError) with { Severity = InfoBarSeverity.Error, IsClosable = false })
-                .Margin(PagePadding);
-        }
-        else if (state.ShowSuggestions)
-        {
-            content = ScrollView(RenderEmptyHero(host, actions, look).Padding(PagePadding)).WithKey("suggestions");
-        }
-        else if (state.ListLoaded && state.Jobs.Count == 0 && !state.IsFiltered)
-        {
-            content = Hero(GlyphCalendar, t["Empty_Title"], t["Empty_ReadOnlyBody"], "AutomationsEmpty").VAlign(VerticalAlignment.Center);
-        }
-        else
-        {
-            content = Hero(GlyphCalendar, t["Placeholder_Title"], t["Placeholder_Body"], "AutomationsPlaceholder").VAlign(VerticalAlignment.Center);
-        }
-        var paneKey = editor is not null ? $"editor-{editor.Nonce}"
-            : state.View == AutomationsView.RunHistory ? "runs-all"
-            : state.SelectedJobId is { } selectedId ? $"detail-{selectedId}"
-            : state.ShowSuggestions ? "suggestions"
-            : "placeholder";
-        content = Border(content).WithKey("pane-" + paneKey).Enter(look.ReduceMotion);
-
-        if (!narrow || (editor is null && state.SelectedJobId is null && state.View == AutomationsView.Jobs))
-            return content;
-
-        var back = Button(HStack(Gap, Glyph(GlyphBack, 12, Theme.PrimaryText), TextBlock(t["Back"])), () =>
+            var jobs = state.Jobs.Where(j => (j.Enabled && !j.IsAutoDisabled) == enabled).ToArray();
+            if (jobs.Length == 0) continue;
+            rows.Add(Heading(t, enabled ? "Redesign_Scheduled" : "Redesign_Paused", state.HasMore ? null : jobs.Length).Margin(0, 12, 0, 8));
+            // Each automation is its own card, separated by spacing step 2; expanded detail stays inside its card.
+            rows.Add(VStack(PageResponsiveLayout.GapInner, jobs.Select(job =>
             {
-                if (editor is not null) closeEditor(editor.Nonce, null);
-                else if (state.View == AutomationsView.RunHistory) host.Store.SetView(AutomationsView.Jobs);
-                else host.Store.Select(null);
-            })
-            .Margin(PagePadding, 0, PagePadding, 8)
-            .AutomationName(t["Back"])
-            .AutomationId("AutomationsBack");
-        return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Star()], back.Grid(row: 0), content.Grid(row: 1));
+                var selected = state.SelectedJobId == job.Id;
+                var exact = selected ? state.SelectedJob ?? job : job;
+                return (Element)Surface(VStack(0,
+                    RenderRow(host, state, job, selected, narrow, tier == PageWidthTier.Wide),
+                    selected ? Component<AutomationDetail, AutomationDetailProps>(new(host, state, exact, actions) { Narrow = !twoColumns })
+                        .WithKey("detail-" + job.Id) : Empty()), 0)
+                    .OnSizeChanged((sender, args) =>
+                    {
+                        if (args.NewSize.Height > 0 && args.NewSize.Width > 0) registerRow((FrameworkElement)sender, job.Id);
+                    }).AutomationId($"AutomationCard:{job.Id}").WithKey("row-" + job.Id);
+            }).ToArray()).AutomationId(enabled ? "AutomationsScheduledList" : "AutomationsPausedList"));
+        }
+        if (rows.Count == 0) rows.Add(Secondary(t["List_NoMatch"], 14).AutomationId("AutomationsListEmpty"));
+        rows.Add(Secondary(t.Format("List_Count", state.Jobs.Count, (object?)state.Total ?? AutomationsText.Unavailable)).AutomationId("AutomationsListCount"));
+        if (state.HasMore)
+            rows.Add(Button(state.ListLoadingMore ? t["Loading"] : t["LoadMore"], () => _ = store.LoadListAsync(true))
+                .AutomationName(t["LoadMore"]).IsEnabled(state.Connected && !state.ListLoadingMore).AutomationId("AutomationsLoadMore"));
+        return VStack(12, Heading(t, "Redesign_AllAutomations", state.InventoryTotal), filters.AutomationId("AutomationsFilters"), VStack(8, rows.ToArray()))
+            .AutomationId("AutomationsInventory");
     }
 
-    private static Element RenderEmptyHero(AutomationsHost host, AutomationsActions actions, AutomationsLook look)
+    private static Element RenderRow(AutomationsHost host, AutomationsSnapshot state, CronJob job, bool selected, bool narrow, bool wide)
     {
         var t = host.Text;
-        // Starters are topics, not schedule kinds: rotate the palette so the gallery has variety.
-        CronScheduleKind[] hues = [CronScheduleKind.Event, CronScheduleKind.Every, CronScheduleKind.Cron, CronScheduleKind.At];
-        var cards = CronSuggestion.All.Select((s, index) =>
-        {
-            var hue = hues[index % hues.Length];
-            var tone = Kind(hue);
-            return Button(Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                    KindTile(hue, 44, s.Glyph).VAlign(VerticalAlignment.Top).Margin(0, 0, 14, 0).Grid(column: 0),
-                    VStack(4,
-                        TextBlock(t[$"Suggestion_{s.Id}_Name"]).FontSize(15).FontWeight(FontWeights.SemiBold),
-                        Secondary(t[$"Suggestion_{s.Id}_Tagline"], 13),
-                        HStack(4, Glyph(GlyphClock, 11, tone.Brush),
-                            TextBlock(t[$"Suggestion_{s.Id}_Schedule"]).FontSize(12).FontWeight(FontWeights.SemiBold).Foreground(tone.Brush))
-                            .Margin(0, 2, 0, 0)).Grid(column: 1)),
-                    () => actions.Suggest(s))
-                .HAlign(HorizontalAlignment.Stretch)
-                .VAlign(VerticalAlignment.Stretch)
-                .HorizontalContentAlignment(HorizontalAlignment.Stretch)
-                .VerticalContentAlignment(VerticalAlignment.Top)
-                .Padding(16, 14)
-                .CornerRadius(10)
-                .AutomationName(t[$"Suggestion_{s.Id}_Name"])
-                .AutomationId($"AutomationSuggestion:{s.Id}")
-                .WithKey(s.Id);
-        }).ToArray();
-
-        var grid = Grid([GridSize.Star(), GridSize.Star()], Enumerable.Repeat(GridSize.Auto, (cards.Length + 1) / 2).ToArray(),
-            cards.Select((card, i) => card.Margin(i % 2 == 0 ? 0 : 6, 6, i % 2 == 0 ? 6 : 0, 6).Grid(row: i / 2, column: i % 2)
-                .Enter(look.ReduceMotion).WithKey($"s{i}")).ToArray())
-            .Stagger(TimeSpan.FromMilliseconds(45));
-
-        var hero = VStack(14,
-                Illustration(look).HAlign(HorizontalAlignment.Center),
-                TextBlock(t["Empty_Headline"]).FontSize(28).FontWeight(FontWeights.SemiBold)
-                    .TextAlignment(TextAlignment.Center).TextWrapping(TextWrapping.Wrap).HAlign(HorizontalAlignment.Center),
-                Secondary(t["Empty_Body"], 14).TextAlignment(TextAlignment.Center).MaxWidth(460).HAlign(HorizontalAlignment.Center),
-                GlyphButton(GlyphAdd, t["NewAutomation"], actions.New, "AutomationsEmptyNew", accent: true)
-                    .HAlign(HorizontalAlignment.Center).Margin(0, 6, 0, 0))
-            .AutomationId("AutomationsEmpty");
-
-        return VStack(28,
-                hero,
-                VStack(Gap,
-                    HStack(Gap, Glyph(GlyphSparkle, 16, Theme.AccentText), SectionTitle(t["Suggestions_Title"])),
-                    grid).AutomationId("AutomationsSuggestions"))
-            .MaxWidth(ReadingWidth)
-            .HAlign(HorizontalAlignment.Center);
-    }
-
-    /// <summary>
-    /// A small composition of the four schedule kinds orbiting the Automations
-    /// artwork. Decorative only; sparkles twinkle unless motion is reduced.
-    /// </summary>
-    private static Element Illustration(AutomationsLook look)
-    {
-        Element Sparkle(double size, HorizontalAlignment h, VerticalAlignment v, Thickness margin, int periodMs, float low)
-        {
-            var star = Glyph("\uE735", size, Theme.Ref("AutomationsKindAtBrush")).HAlign(h).VAlign(v).Margin(margin);
-            return look.ReduceMotion
-                ? star.Opacity(0.7)
-                : star.Keyframes("twinkle", true, kf => kf.Duration(periodMs).Loop()
-                    .At(0f, opacity: 1f)
-                    .At(0.5f, opacity: low, easing: Microsoft.UI.Reactor.Animation.Easing.EaseInOut)
-                    .At(1f, opacity: 1f, easing: Microsoft.UI.Reactor.Animation.Easing.EaseInOut));
-        }
-
-        var center = Border(AppIcon(look.HighContrast, 56).Center())
-            .Size(96, 96)
-            .CornerRadius(28)
-            .Background(Theme.CardBackground)
-            .BorderBrush(Theme.Ref("AutomationsHeroStrokeBrush"))
-            .BorderThickness(1)
-            .HAlign(HorizontalAlignment.Center)
-            .VAlign(VerticalAlignment.Center);
-
-        return Grid([GridSize.Px(300)], [GridSize.Px(156)],
-                Border(Empty()).Size(240, 120).CornerRadius(60).Background(Theme.Ref("AutomationsHeroBrush"))
-                    .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center),
-                KindTile(CronScheduleKind.Every, 48).HAlign(HorizontalAlignment.Left).VAlign(VerticalAlignment.Top).Margin(34, 10, 0, 0),
-                KindTile(CronScheduleKind.At, 38).HAlign(HorizontalAlignment.Left).VAlign(VerticalAlignment.Bottom).Margin(62, 0, 0, 6),
-                KindTile(CronScheduleKind.Cron, 44).HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Top).Margin(0, 4, 52, 0),
-                KindTile(CronScheduleKind.Event, 50).HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Bottom).Margin(0, 0, 28, 0),
-                center,
-                Sparkle(14, HorizontalAlignment.Left, VerticalAlignment.Center, new Thickness(12, 0, 0, 10), 2600, 0.25f),
-                Sparkle(10, HorizontalAlignment.Right, VerticalAlignment.Top, new Thickness(0, 0, 18, 0), 1900, 0.15f),
-                Sparkle(12, HorizontalAlignment.Center, VerticalAlignment.Bottom, new Thickness(90, 0, 0, 0), 3100, 0.3f))
-            .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
-            .AutomationId("AutomationsIllustration");
+        var running = job.IsRunning;
+        var queued = !running && state.IsRunning(job.Id);
+        var accessibleState = queued ? t["Toast_RunQueued"] : t.JobState(job, running);
+        var eventDriven = job.Schedule.Kind is CronScheduleKind.Event or CronScheduleKind.OnExit or CronScheduleKind.Stream;
+        var when = eventDriven ? t["Review_OnEvent"]
+            : job.Enabled && job.State.NextRunAtMs is { } next ? t.Clock(next) : AutomationsText.Unavailable;
+        var last = queued ? t["Toast_RunQueued"] : running ? t["Review_RunningNow"]
+            : job.IsAutoDisabled ? t["Redesign_AutoDisabled"] : job.IsFailing ? t["Review_Error"]
+            : job.State.LastRunAtMs is { } at ? t.Format("Review_LastRun", t.Relative(at)) : t["NeverRun"];
+        var (statusBrush, statusGlyph) = running || queued ? (Theme.AccentText, GlyphPlay)
+            : job.IsFailing || job.IsAutoDisabled ? (Theme.SystemCritical, GlyphError)
+            : job.State.LastRunAtMs is null ? (Theme.SecondaryText, GlyphClock)
+            // The last run's own status picks the glyph, so a skipped or unknown run never shows as a success.
+            : (job.State.LastRunStatus == "skipped" ? RunTone("skipped").Brush : Theme.SecondaryText, RunTone(job.State.LastRunStatus).Glyph);
+        var chatSession = state.RunsQuery.JobId == job.Id
+            ? state.Runs.FirstOrDefault(run => !string.IsNullOrWhiteSpace(run.SessionKey))?.SessionKey ?? job.SessionKey
+            : job.SessionKey;
+        return Grid([GridSize.Star(), GridSize.Auto, GridSize.Auto], [GridSize.Auto],
+            Button(Grid(narrow ? [GridSize.Auto, GridSize.Star()] : [GridSize.Auto, GridSize.Star(), GridSize.Auto],
+                narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
+                AgentAvatar(job.Owner ?? state.DefaultAgentId).Margin(0, 0, 12, 0).Grid(column: 0),
+                Component<AutomationRowLabels, AutomationRowLabelsProps>(new(job.Title,
+                    $"{job.Owner ?? state.DefaultAgentId} · {t.Schedule(job.Schedule)}",
+                    wide && IsAdvanced(job) ? t["Redesign_Advanced"] : null, job.Id)).Grid(column: 1),
+                VStack(4, SingleLine(when).TextAlignment(narrow ? TextAlignment.Left : TextAlignment.Right),
+                    HStack(4, Glyph(statusGlyph, 11, statusBrush), SingleLine(last).Foreground(statusBrush))
+                        .HAlign(narrow ? HorizontalAlignment.Left : HorizontalAlignment.Right))
+                    .Margin(narrow ? 0 : 12, narrow ? 8 : 0, 0, 0)
+                    .AutomationId($"AutomationRowMeta:{job.Id}").Grid(column: narrow ? 1 : 2, row: narrow ? 1 : 0)),
+                () => host.Store.Select(selected ? null : job.Id))
+                .HorizontalContentAlignment(HorizontalAlignment.Stretch).HAlign(HorizontalAlignment.Stretch)
+                .Padding(16).BorderThickness(0).Background(Theme.Ref("SubtleFillColorTransparentBrush"))
+                .AutomationName($"{job.Title}. {t.AgentScope(job.Owner)}. {accessibleState}. {t.Schedule(job.Schedule)}")
+                .ItemStatus(selected ? t["Selected"] : accessibleState)
+                .AutomationId($"AutomationRow:{job.Id}").Grid(column: 0),
+            string.IsNullOrWhiteSpace(chatSession) ? Empty().Grid(column: 1)
+                : ChatButton(host, chatSession!, job.Title, $"AutomationRowChat:{job.Id}").VAlign(VerticalAlignment.Center).Grid(column: 1),
+            IconButton(selected ? "\uE70E" : "\uE70D", $"{t["Tab_Overview"]}: {job.Title}",
+                () => host.Store.Select(selected ? null : job.Id), $"AutomationExpand:{job.Id}")
+                .VAlign(VerticalAlignment.Center).Margin(0, 0, 12, 0).Grid(column: 2))
+            .CornerRadius(CardRadius - 1, CardRadius - 1, 0, 0)
+            .Background(selected ? Theme.SubtleFill : Theme.Ref("SubtleFillColorTransparentBrush"));
     }
 }
 
-/// <summary>Editor entry points shared by the list, detail pane and suggestions.</summary>
-internal sealed record AutomationsActions(
-    Action New,
-    Action<CronJob> Edit,
-    Action<CronJob> Duplicate,
-    Action<CronSuggestion> Suggest);
-
-/// <summary>A pending pause/remove confirmation rendered as a controlled ContentDialog.</summary>
+internal sealed record AutomationsActions(Action New, Action<CronJob> Edit, Action<CronJob> Duplicate);
+internal sealed record ConfirmationFact(string Label, string Value);
 internal sealed record ConfirmRequest(string Title, string Body, string Primary)
 {
+    public string Glyph { get; init; } = AutomationsVisuals.GlyphAlert;
+    public bool Destructive { get; init; }
+    public IReadOnlyList<ConfirmationFact> Facts { get; init; } = Array.Empty<ConfirmationFact>();
     public string Id { get; } = Guid.NewGuid().ToString("N");
     public TaskCompletionSource<bool> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 }

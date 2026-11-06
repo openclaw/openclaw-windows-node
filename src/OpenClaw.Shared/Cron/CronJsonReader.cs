@@ -4,31 +4,34 @@ namespace OpenClaw.Shared.Cron;
 
 /// <summary>
 /// Tolerant readers for cron, MCP Events and conversation RPC responses.
-/// Missing or mistyped optional fields become null rather than failing the page;
-/// rows without the fields required to address them are skipped.
+/// Missing or mistyped optional fields become null rather than failing the page.
+/// A job list with a missing or unreadable job fails, so it never reads as a smaller inventory;
+/// run entries without an identity are skipped and leave the run total unknown.
 /// </summary>
 public static class CronJsonReader
 {
+    public const string UnreadableJobMessage = "The Gateway returned an unreadable automation.";
+    public const string UnreadableListMessage = "The Gateway returned an unreadable automation list.";
+    public const string UnreadableRunsMessage = "The Gateway returned an unreadable run history.";
+
     public static CronListPage ParseListPage(JsonElement payload, int requestedOffset = 0)
     {
         var source = payload.ValueKind == JsonValueKind.Array
             ? payload
             : payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("jobs", out var jobsEl) ? jobsEl : default;
-        var jobs = new List<CronJob>();
-        if (source.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in source.EnumerateArray())
-            {
-                if (ParseJob(item) is { } job)
-                    jobs.Add(job);
-            }
-        }
+        if (source.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException(UnreadableListMessage);
+        var jobs = source.EnumerateArray()
+            .Select(item => ParseJob(item) ?? throw new InvalidOperationException(UnreadableJobMessage))
+            .ToList();
 
         var offset = Int(payload, "offset") ?? requestedOffset;
-        var total = Int(payload, "total") ?? offset + jobs.Count;
-        var hasMore = Bool(payload, "hasMore") ?? false;
-        var nextOffset = Int(payload, "nextOffset") ?? (hasMore ? offset + jobs.Count : null);
-        return new CronListPage(jobs, total, offset, Int(payload, "limit") ?? jobs.Count, hasMore, nextOffset);
+        var nextOffset = Int(payload, "nextOffset");
+        var hasMore = Bool(payload, "hasMore") ?? nextOffset is not null;
+        // Without a Gateway total, only the final page says how many jobs match.
+        var total = Int(payload, "total") ?? (hasMore ? null : offset + jobs.Count);
+        return new CronListPage(jobs, total, offset, Int(payload, "limit") ?? jobs.Count, hasMore,
+            nextOffset ?? (hasMore ? offset + jobs.Count : null));
     }
 
     public static CronJob? ParseJob(JsonElement item)
@@ -40,7 +43,9 @@ public static class CronJsonReader
             return ParseJob(wrapped);
 
         var id = Str(item, "id");
-        if (string.IsNullOrWhiteSpace(id))
+        var enabled = Bool(item, "enabled");
+        // The Gateway always states both; without them a job cannot be addressed or shown as on or paused.
+        if (string.IsNullOrWhiteSpace(id) || enabled is null)
             return null;
 
         var state = item.TryGetProperty("state", out var stateEl) && stateEl.ValueKind == JsonValueKind.Object
@@ -60,8 +65,9 @@ public static class CronJsonReader
             DisplayName = Str(item, "displayName"),
             Description = Str(item, "description"),
             AgentId = Str(item, "agentId"),
+            EffectiveAgentId = Str(item, "effectiveAgentId"),
             SessionKey = Str(item, "sessionKey"),
-            Enabled = Bool(item, "enabled") ?? false,
+            Enabled = enabled.Value,
             DeleteAfterRun = Bool(item, "deleteAfterRun"),
             CreatedAtMs = Long(item, "createdAtMs"),
             UpdatedAtMs = Long(item, "updatedAtMs"),
@@ -76,8 +82,8 @@ public static class CronJsonReader
                 && Str(tr, "script") is { } script
                     ? new CronTrigger(script, Bool(tr, "once") == true)
                     : null,
-            SessionTarget = Str(item, "sessionTarget") ?? "isolated",
-            WakeMode = Str(item, "wakeMode") ?? "now",
+            SessionTarget = Str(item, "sessionTarget"),
+            WakeMode = Str(item, "wakeMode"),
             Payload = ParsePayload(item.TryGetProperty("payload", out var p) ? p : default, Str(item, "description")),
             Delivery = item.TryGetProperty("delivery", out var d) && d.ValueKind == JsonValueKind.Object ? ParseDelivery(d) : null,
             FailureAlert = item.TryGetProperty("failureAlert", out var fa) ? ParseFailureAlert(fa) : null,
@@ -225,7 +231,7 @@ public static class CronJsonReader
         ConsecutiveErrors = Int(state, "consecutiveErrors"),
         ScheduleErrorCount = Int(state, "scheduleErrorCount"),
         AutoDisabled = state.TryGetProperty("autoDisabled", out var ad) && ad.ValueKind == JsonValueKind.Object
-            ? new CronAutoDisabled(Str(ad, "reason") ?? "consecutive-failures", Long(ad, "atMs") ?? 0, Int(ad, "consecutiveErrors") ?? 0)
+            ? new CronAutoDisabled(Str(ad, "reason"), Long(ad, "atMs"), Int(ad, "consecutiveErrors"))
             : null,
         LastDeliveryStatus = Str(state, "lastDeliveryStatus"),
         LastDeliveryError = Str(state, "lastDeliveryError"),
@@ -249,36 +255,46 @@ public static class CronJsonReader
 
     public static CronRunsPage ParseRunsPage(JsonElement payload, int requestedOffset = 0)
     {
+        if (payload.ValueKind != JsonValueKind.Object
+            || !payload.TryGetProperty("entries", out var list)
+            || list.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException(UnreadableRunsMessage);
         var entries = new List<CronRunEntry>();
-        if (payload.ValueKind == JsonValueKind.Object
-            && payload.TryGetProperty("entries", out var list)
-            && list.ValueKind == JsonValueKind.Array)
+        var skipped = 0;
+        foreach (var item in list.EnumerateArray())
         {
-            foreach (var item in list.EnumerateArray())
-            {
-                if (ParseRunEntry(item) is { } entry)
-                    entries.Add(entry);
-            }
+            if (ParseRunEntry(item) is { } entry)
+                entries.Add(entry);
+            else
+                skipped++;
         }
         var offset = Int(payload, "offset") ?? requestedOffset;
-        var hasMore = Bool(payload, "hasMore") ?? false;
+        var nextOffset = Int(payload, "nextOffset");
+        var hasMore = Bool(payload, "hasMore") ?? nextOffset is not null;
         return new CronRunsPage(
             entries,
-            Int(payload, "total") ?? offset + entries.Count,
+            // Without a Gateway total, only a final page with every entry readable gives the count.
+            Int(payload, "total") ?? (hasMore || skipped > 0 ? null : offset + entries.Count),
             offset,
             Int(payload, "limit") ?? entries.Count,
             hasMore,
-            Int(payload, "nextOffset") ?? (hasMore ? offset + entries.Count : null));
+            nextOffset ?? (hasMore ? offset + entries.Count : null));
     }
 
     public static CronRunEntry? ParseRunEntry(JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object || Str(item, "jobId") is not { } jobId)
             return null;
+        var ts = Long(item, "ts");
+        var runAtMs = Long(item, "runAtMs");
+        var runId = Str(item, "runId");
+        // Without a run id or any time there is no stable identity or real time to show.
+        if (ts is null && runAtMs is null && string.IsNullOrWhiteSpace(runId))
+            return null;
         JsonElement usage = item.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object ? u : default;
         return new CronRunEntry
         {
-            Ts = Long(item, "ts") ?? 0,
+            Ts = ts,
             JobId = jobId,
             JobName = Str(item, "jobName"),
             Status = Str(item, "status"),
@@ -293,8 +309,8 @@ public static class CronJsonReader
             DeliverySuppressionReason = Str(item, "deliverySuppressionReason"),
             SessionId = Str(item, "sessionId"),
             SessionKey = Str(item, "sessionKey"),
-            RunId = Str(item, "runId"),
-            RunAtMs = Long(item, "runAtMs"),
+            RunId = runId,
+            RunAtMs = runAtMs,
             DurationMs = Long(item, "durationMs"),
             NextRunAtMs = Long(item, "nextRunAtMs"),
             Model = Str(item, "model"),
@@ -306,152 +322,6 @@ public static class CronJsonReader
             Raw = item.Clone(),
         };
     }
-
-    public static CronHistoryPage ParseHistoryPage(JsonElement payload)
-    {
-        var messages = new List<CronTranscriptMessage>();
-        var history = OpenClawGatewayClient.ParseChatHistory(payload, "cron-history");
-        foreach (var message in history.Messages)
-        {
-            long? ts = message.Ts > 0 ? message.Ts : null;
-            var isToolResult = message.Role is "toolResult" or "tool";
-            var toolName = message.ToolContent.FirstOrDefault()?.ToolName;
-            if (!string.IsNullOrWhiteSpace(message.Text))
-                messages.Add(new CronTranscriptMessage(isToolResult ? "tool" : message.Role, message.Text, ts, isToolResult ? toolName : null));
-            foreach (var tool in message.ToolContent)
-            {
-                if (tool.Kind == ChatToolContentKind.Call)
-                    messages.Add(new CronTranscriptMessage("tool", tool.Text ?? "", ts, tool.ToolName));
-                else if (isToolResult && string.IsNullOrWhiteSpace(message.Text) && !string.IsNullOrWhiteSpace(tool.Text))
-                    messages.Add(new CronTranscriptMessage("tool", tool.Text!, ts, tool.ToolName));
-            }
-        }
-        return new CronHistoryPage(messages, Str(payload, "nextCursor"));
-    }
-
-    public static CronScratchSnapshot ParseScratch(JsonElement payload)
-    {
-        var scratch = payload.ValueKind == JsonValueKind.Object
-            && payload.TryGetProperty("scratch", out var s) && s.ValueKind == JsonValueKind.Object ? s : default;
-        var exists = scratch.ValueKind == JsonValueKind.Object;
-        return new CronScratchSnapshot(
-            exists,
-            exists ? Str(scratch, "content") ?? "" : "",
-            exists ? Long(scratch, "revision") ?? 0 : 0,
-            exists ? Long(scratch, "updatedAtMs") : null,
-            Long(payload, "currentRevision") ?? 0,
-            Long(payload, "maxBytes") ?? 262_144);
-    }
-
-    public static CronScratchSetResult ParseScratchSet(JsonElement payload)
-    {
-        var ok = Bool(payload, "ok") != false;
-        var conflict = !ok && Str(payload, "reason") == "revision-conflict";
-        var current = Long(payload, "currentRevision") ?? 0;
-        return new CronScratchSetResult(ok, conflict, ok ? ParseScratch(payload) : null, current);
-    }
-
-    public static McpEventsPage ParseMcpEvents(JsonElement payload)
-    {
-        var events = new List<McpEventDefinition>();
-        if (payload.ValueKind == JsonValueKind.Object
-            && payload.TryGetProperty("events", out var list) && list.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in list.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.Object || Str(item, "name") is not { } name)
-                    continue;
-                var schema = item.TryGetProperty("inputSchema", out var sc) && sc.ValueKind is JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False
-                    ? JsonSerializer.Serialize(sc, IndentedJson)
-                    : null;
-                events.Add(new McpEventDefinition(name, Str(item, "description"), schema));
-            }
-        }
-        return new McpEventsPage(Str(payload, "serverName") ?? "", events, Str(payload, "nextCursor"));
-    }
-
-    public static IReadOnlyList<ConversationTarget> ParseConversations(JsonElement payload)
-    {
-        var result = new List<ConversationTarget>();
-        if (payload.ValueKind != JsonValueKind.Object
-            || !payload.TryGetProperty("conversations", out var list) || list.ValueKind != JsonValueKind.Array)
-            return result;
-        foreach (var item in list.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.Object || Str(item, "target") is not { } target || Str(item, "channel") is not { } channel)
-                continue;
-            result.Add(new ConversationTarget(
-                Str(item, "conversationRef") ?? $"{channel}:{target}",
-                channel,
-                Str(item, "accountId") ?? "",
-                Str(item, "kind") ?? "direct",
-                target,
-                Str(item, "label"),
-                Long(item, "lastSeenAt") ?? 0));
-        }
-        return result.OrderByDescending(c => c.LastSeenAt).ToList();
-    }
-
-    /// <summary>Enabled MCP server names from <c>config.mcp.servers</c> in a <c>config.get</c> snapshot.</summary>
-    public static IReadOnlyList<string> ParseEnabledMcpServers(JsonElement configPayload)
-    {
-        var config = configPayload.ValueKind == JsonValueKind.Object
-            && configPayload.TryGetProperty("config", out var c) && c.ValueKind == JsonValueKind.Object ? c : configPayload;
-        if (config.ValueKind != JsonValueKind.Object
-            || !config.TryGetProperty("mcp", out var mcp) || mcp.ValueKind != JsonValueKind.Object
-            || !mcp.TryGetProperty("servers", out var servers) || servers.ValueKind != JsonValueKind.Object)
-            return Array.Empty<string>();
-        return servers.EnumerateObject()
-            .Where(s => s.Value.ValueKind == JsonValueKind.Object && Bool(s.Value, "enabled") != false)
-            .Select(s => s.Name)
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
-    /// <summary>Configured model references from <c>config.agents</c>, used as model suggestions.</summary>
-    public static IReadOnlyList<string> ParseConfiguredModels(JsonElement configPayload)
-    {
-        var config = configPayload.ValueKind == JsonValueKind.Object
-            && configPayload.TryGetProperty("config", out var c) && c.ValueKind == JsonValueKind.Object ? c : configPayload;
-        var models = new SortedSet<string>(StringComparer.Ordinal);
-        if (config.ValueKind != JsonValueKind.Object
-            || !config.TryGetProperty("agents", out var agents) || agents.ValueKind != JsonValueKind.Object)
-            return models.ToList();
-        if (agents.TryGetProperty("defaults", out var defaults) && defaults.ValueKind == JsonValueKind.Object)
-        {
-            AddModelRefs(defaults, "model", models);
-            if (defaults.TryGetProperty("models", out var catalog) && catalog.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var entry in catalog.EnumerateObject())
-                    if (!string.IsNullOrWhiteSpace(entry.Name)) models.Add(entry.Name.Trim());
-            }
-        }
-        if (agents.TryGetProperty("entries", out var entries) && entries.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var entry in entries.EnumerateObject())
-                if (entry.Value.ValueKind == JsonValueKind.Object) AddModelRefs(entry.Value, "model", models);
-        }
-        return models.ToList();
-    }
-
-    private static void AddModelRefs(JsonElement owner, string property, ISet<string> into)
-    {
-        if (!owner.TryGetProperty(property, out var value))
-            return;
-        switch (value.ValueKind)
-        {
-            case JsonValueKind.String when !string.IsNullOrWhiteSpace(value.GetString()):
-                into.Add(value.GetString()!.Trim());
-                break;
-            case JsonValueKind.Object:
-                if (Str(value, "primary") is { } primary && primary.Trim().Length > 0) into.Add(primary.Trim());
-                foreach (var fallback in Strings(value, "fallbacks") ?? Array.Empty<string>())
-                    if (fallback.Trim().Length > 0) into.Add(fallback.Trim());
-                break;
-        }
-    }
-
-    private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
 
     internal static string? Str(JsonElement el, string name) =>
         el.ValueKind == JsonValueKind.Object && el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
@@ -480,4 +350,6 @@ public static class CronJsonReader
         el.ValueKind == JsonValueKind.Object && el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array
             ? v.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).ToList()
             : null;
+
+    private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
 }

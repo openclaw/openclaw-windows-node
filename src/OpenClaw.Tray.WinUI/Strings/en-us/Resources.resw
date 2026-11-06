@@ -7920,44 +7920,20 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agent: {0}</value>
   </data>
-  <data name="Automations_AutoDisabled_Body" xml:space="preserve">
-    <value>The Gateway paused this automation after repeated failures. Fix the cause, then resume it.</value>
-  </data>
   <data name="Automations_Back" xml:space="preserve">
     <value>Back</value>
   </data>
   <data name="Automations_Cancel" xml:space="preserve">
     <value>Cancel</value>
   </data>
-  <data name="Automations_Clone" xml:space="preserve">
-    <value>Clone</value>
-  </data>
   <data name="Automations_CloneName" xml:space="preserve">
     <value>{0} (copy)</value>
-  </data>
-  <data name="Automations_Condition_Every" xml:space="preserve">
-    <value>Checks before each run</value>
-  </data>
-  <data name="Automations_Condition_Once" xml:space="preserve">
-    <value>Checks before each run, disables after the first match</value>
-  </data>
-  <data name="Automations_Condition_Summary" xml:space="preserve">
-    <value>Condition checked {0} times. Last checked {1}. Last fired {2}.</value>
   </data>
   <data name="Automations_ConfirmPause_Body" xml:space="preserve">
     <value>The automation stops running on its schedule until you resume it. Its definition and run history are kept.</value>
   </data>
   <data name="Automations_ConfirmPause_Title" xml:space="preserve">
-    <value>Pause &quot;{0}&quot;?</value>
-  </data>
-  <data name="Automations_ConfirmRemove_Body" xml:space="preserve">
-    <value>This permanently deletes the automation and stops all future runs. This cannot be undone.</value>
-  </data>
-  <data name="Automations_ConfirmRemove_Title" xml:space="preserve">
-    <value>Remove &quot;{0}&quot;?</value>
-  </data>
-  <data name="Automations_Conversations_Failed" xml:space="preserve">
-    <value>Could not load recent conversations: {0}</value>
+    <value>Pause “{0}”?</value>
   </data>
   <data name="Automations_Default" xml:space="preserve">
     <value>Default</value>
@@ -7995,18 +7971,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Destination_Owner" xml:space="preserve">
     <value>Owner direct message</value>
   </data>
-  <data name="Automations_Detail_LoadFailed" xml:space="preserve">
-    <value>Could not load this automation</value>
-  </data>
-  <data name="Automations_DirectPolicy_Allow" xml:space="preserve">
-    <value>Allow</value>
-  </data>
-  <data name="Automations_DirectPolicy_Block" xml:space="preserve">
-    <value>Block</value>
-  </data>
-  <data name="Automations_DirectPolicy_Default" xml:space="preserve">
-    <value>Default policy</value>
-  </data>
   <data name="Automations_Disconnected_BannerBody" xml:space="preserve">
     <value>Automations are unavailable until the Gateway connection is restored.</value>
   </data>
@@ -8036,9 +8000,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="Automations_Editor_CantSave" xml:space="preserve">
     <value>Can&apos;t save yet</value>
-  </data>
-  <data name="Automations_Editor_CloneTitle" xml:space="preserve">
-    <value>Clone automation</value>
   </data>
   <data name="Automations_Editor_Create" xml:space="preserve">
     <value>Create automation</value>
@@ -8071,7 +8032,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Describe what OpenClaw should do, then pick when it runs.</value>
   </data>
   <data name="Automations_Empty_Body" xml:space="preserve">
-    <value>Describe what OpenClaw should do and when. It runs on schedule, even while this PC is idle.</value>
+    <value>Automations run an agent on a schedule. Create one here, or describe it in chat.</value>
   </data>
   <data name="Automations_Empty_ReadOnlyBody" xml:space="preserve">
     <value>This agent has no automations. Ask an operator with admin access to create one.</value>
@@ -8096,15 +8057,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="Automations_Error_EventAgentTurnRequired" xml:space="preserve">
     <value>Event automations need an assistant task.</value>
-  </data>
-  <data name="Automations_Error_EventArgumentsInvalid" xml:space="preserve">
-    <value>Enter a valid JSON object.</value>
-  </data>
-  <data name="Automations_Error_EventNameRequired" xml:space="preserve">
-    <value>Choose an event from the server&apos;s catalog.</value>
-  </data>
-  <data name="Automations_Error_EventServerRequired" xml:space="preserve">
-    <value>Choose an MCP server.</value>
   </data>
   <data name="Automations_Error_EveryAmountInvalid" xml:space="preserve">
     <value>Interval must be a number greater than 0.</value>
@@ -8146,61 +8098,10 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Trigger script is required when the condition trigger is on.</value>
   </data>
   <data name="Automations_Error_WebhookUrlInvalid" xml:space="preserve">
-    <value>Enter a valid http(s) URL without embedded credentials.</value>
+    <value>Enter a valid HTTPS URL without embedded credentials.</value>
   </data>
   <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
     <value>Webhook URL is required.</value>
-  </data>
-  <data name="Automations_Event_ChooseEvent" xml:space="preserve">
-    <value>Choose an event</value>
-  </data>
-  <data name="Automations_Event_ChooseServer" xml:space="preserve">
-    <value>Choose a server</value>
-  </data>
-  <data name="Automations_Event_DiscoveryFailed" xml:space="preserve">
-    <value>Event discovery failed: {0}</value>
-  </data>
-  <data name="Automations_Event_Help" xml:space="preserve">
-    <value>Runs when an MCP server delivers an event. Event automations need an assistant task.</value>
-  </data>
-  <data name="Automations_Event_Loading" xml:space="preserve">
-    <value>Loading events...</value>
-  </data>
-  <data name="Automations_Event_NoEvents" xml:space="preserve">
-    <value>This server advertises no supported events.</value>
-  </data>
-  <data name="Automations_Event_NoServers" xml:space="preserve">
-    <value>No enabled MCP servers support events. Configure one in the Gateway first.</value>
-  </data>
-  <data name="Automations_Event_Refresh" xml:space="preserve">
-    <value>Refresh events</value>
-  </data>
-  <data name="Automations_Event_ViewSchema" xml:space="preserve">
-    <value>View input schema</value>
-  </data>
-  <data name="Automations_ExactTiming" xml:space="preserve">
-    <value>Exact timing</value>
-  </data>
-  <data name="Automations_FailureAlert_Announce" xml:space="preserve">
-    <value>Announce (via channel)</value>
-  </data>
-  <data name="Automations_FailureAlert_Custom" xml:space="preserve">
-    <value>Custom</value>
-  </data>
-  <data name="Automations_FailureAlert_CustomSummary" xml:space="preserve">
-    <value>After {0} consecutive errors, at most once per {1}</value>
-  </data>
-  <data name="Automations_FailureAlert_Disabled" xml:space="preserve">
-    <value>Disabled for this automation</value>
-  </data>
-  <data name="Automations_FailureAlert_Inherit" xml:space="preserve">
-    <value>Inherit global setting</value>
-  </data>
-  <data name="Automations_FailureAlert_Webhook" xml:space="preserve">
-    <value>Webhook (HTTP POST)</value>
-  </data>
-  <data name="Automations_Field_Account" xml:space="preserve">
-    <value>Account ID</value>
   </data>
   <data name="Automations_Field_ActiveHours" xml:space="preserve">
     <value>Active hours</value>
@@ -8208,32 +8109,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Field_Agent" xml:space="preserve">
     <value>Agent</value>
   </data>
-  <data name="Automations_Field_AlertAccount" xml:space="preserve">
-    <value>Alert account ID</value>
-  </data>
-  <data name="Automations_Field_AlertAfter" xml:space="preserve">
-    <value>Alert after</value>
-  </data>
-  <data name="Automations_Field_AlertChannel" xml:space="preserve">
-    <value>Alert channel</value>
-  </data>
-  <data name="Automations_Field_AlertCooldown" xml:space="preserve">
-    <value>Cooldown (seconds)</value>
-  </data>
-  <data name="Automations_Field_AlertMode" xml:space="preserve">
-    <value>Alert mode</value>
-  </data>
-  <data name="Automations_Field_AlertTo" xml:space="preserve">
-    <value>Alert to</value>
-  </data>
-  <data name="Automations_Field_BestEffort" xml:space="preserve">
-    <value>Best effort delivery</value>
-  </data>
   <data name="Automations_Field_Channel" xml:space="preserve">
     <value>Channel</value>
-  </data>
-  <data name="Automations_Field_ClearAgent" xml:space="preserve">
-    <value>Clear agent override</value>
   </data>
   <data name="Automations_Field_Command" xml:space="preserve">
     <value>Command</value>
@@ -8241,41 +8118,17 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Field_Condition" xml:space="preserve">
     <value>Condition trigger</value>
   </data>
-  <data name="Automations_Field_Created" xml:space="preserve">
-    <value>Created</value>
-  </data>
   <data name="Automations_Field_DeleteAfterRun" xml:space="preserve">
     <value>Delete after run</value>
   </data>
-  <data name="Automations_Field_DeliveryError" xml:space="preserve">
-    <value>Delivery error</value>
-  </data>
   <data name="Automations_Field_DeliveryMode" xml:space="preserve">
-    <value>Delivery</value>
-  </data>
-  <data name="Automations_Field_Description" xml:space="preserve">
-    <value>Description</value>
+    <value>Mode</value>
   </data>
   <data name="Automations_Field_Destination" xml:space="preserve">
     <value>Destination</value>
   </data>
-  <data name="Automations_Field_DirectPolicy" xml:space="preserve">
-    <value>Direct messages</value>
-  </data>
-  <data name="Automations_Field_EventArguments" xml:space="preserve">
-    <value>Subscription arguments (JSON)</value>
-  </data>
-  <data name="Automations_Field_EventName" xml:space="preserve">
-    <value>Event</value>
-  </data>
-  <data name="Automations_Field_EventServer" xml:space="preserve">
-    <value>MCP server</value>
-  </data>
   <data name="Automations_Field_Every" xml:space="preserve">
     <value>Every</value>
-  </data>
-  <data name="Automations_Field_ExactTiming" xml:space="preserve">
-    <value>Exact timing (no stagger)</value>
   </data>
   <data name="Automations_Field_Expression" xml:space="preserve">
     <value>Expression</value>
@@ -8283,20 +8136,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Field_FailureAlerts" xml:space="preserve">
     <value>Failure alerts</value>
   </data>
-  <data name="Automations_Field_Id" xml:space="preserve">
-    <value>ID</value>
-  </data>
-  <data name="Automations_Field_IdleOnly" xml:space="preserve">
-    <value>Wait until idle</value>
-  </data>
-  <data name="Automations_Field_IncludeReasoning" xml:space="preserve">
-    <value>Include reasoning</value>
-  </data>
   <data name="Automations_Field_LastDelivery" xml:space="preserve">
     <value>Last delivery</value>
-  </data>
-  <data name="Automations_Field_LightContext" xml:space="preserve">
-    <value>Light context</value>
   </data>
   <data name="Automations_Field_Model" xml:space="preserve">
     <value>Model</value>
@@ -8307,14 +8148,11 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Field_Options" xml:space="preserve">
     <value>Options</value>
   </data>
-  <data name="Automations_Field_Preview" xml:space="preserve">
-    <value>Delivery preview</value>
-  </data>
   <data name="Automations_Field_Prompt" xml:space="preserve">
     <value>Prompt</value>
   </data>
-  <data name="Automations_Field_Revision" xml:space="preserve">
-    <value>Revision</value>
+  <data name="Automations_Field_Payload" xml:space="preserve">
+    <value>Payload</value>
   </data>
   <data name="Automations_Field_RunDate" xml:space="preserve">
     <value>Date</value>
@@ -8323,34 +8161,25 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Time</value>
   </data>
   <data name="Automations_Field_Session" xml:space="preserve">
-    <value>Runs in</value>
+    <value>Session target</value>
   </data>
   <data name="Automations_Field_SessionKey" xml:space="preserve">
     <value>Session key</value>
   </data>
-  <data name="Automations_Field_SkipEmptyScratch" xml:space="preserve">
-    <value>Skip when scratch is empty</value>
-  </data>
   <data name="Automations_Field_Stagger" xml:space="preserve">
     <value>Stagger window</value>
   </data>
-  <data name="Automations_Field_StartEnabled" xml:space="preserve">
-    <value>Start enabled</value>
-  </data>
-  <data name="Automations_Field_Suppressed" xml:space="preserve">
-    <value>Delivery suppressed</value>
+  <data name="Automations_Field_Enabled" xml:space="preserve">
+    <value>Enabled</value>
   </data>
   <data name="Automations_Field_Thinking" xml:space="preserve">
-    <value>Reasoning</value>
+    <value>Thinking</value>
   </data>
   <data name="Automations_Field_TimelineMessage" xml:space="preserve">
     <value>Main timeline message</value>
   </data>
   <data name="Automations_Field_Timeout" xml:space="preserve">
     <value>Timeout</value>
-  </data>
-  <data name="Automations_Field_TimeoutSeconds" xml:space="preserve">
-    <value>Timeout (seconds)</value>
   </data>
   <data name="Automations_Field_Timezone" xml:space="preserve">
     <value>Time zone</value>
@@ -8361,110 +8190,23 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Field_Tools" xml:space="preserve">
     <value>Allowed tools</value>
   </data>
-  <data name="Automations_Field_TriggerOnce" xml:space="preserve">
-    <value>Disable after first match</value>
-  </data>
-  <data name="Automations_Field_TriggerScript" xml:space="preserve">
-    <value>Trigger script</value>
-  </data>
   <data name="Automations_Field_Unit" xml:space="preserve">
     <value>Unit</value>
-  </data>
-  <data name="Automations_Field_Updated" xml:space="preserve">
-    <value>Updated</value>
-  </data>
-  <data name="Automations_Field_Wake" xml:space="preserve">
-    <value>Wake mode</value>
   </data>
   <data name="Automations_Field_WebhookUrl" xml:space="preserve">
     <value>Webhook URL</value>
   </data>
-  <data name="Automations_Field_WindowEnd" xml:space="preserve">
-    <value>Window end</value>
-  </data>
-  <data name="Automations_Field_WindowStart" xml:space="preserve">
-    <value>Window start</value>
-  </data>
-  <data name="Automations_Filter_Active" xml:space="preserve">
-    <value>Active</value>
-  </data>
-  <data name="Automations_Filter_All" xml:space="preserve">
-    <value>All</value>
-  </data>
-  <data name="Automations_Filter_Any" xml:space="preserve">
-    <value>Any</value>
-  </data>
-  <data name="Automations_Filter_Condition" xml:space="preserve">
-    <value>Condition</value>
-  </data>
-  <data name="Automations_Filter_Conditional" xml:space="preserve">
-    <value>Conditional</value>
-  </data>
-  <data name="Automations_Filter_LastRun" xml:space="preserve">
-    <value>Last run</value>
-  </data>
-  <data name="Automations_Filter_NeverRun" xml:space="preserve">
-    <value>Never run</value>
-  </data>
-  <data name="Automations_Filter_Paused" xml:space="preserve">
-    <value>Paused</value>
-  </data>
-  <data name="Automations_Filter_Reset" xml:space="preserve">
-    <value>Reset filters</value>
-  </data>
-  <data name="Automations_Filter_ScheduleKind" xml:space="preserve">
-    <value>Schedule</value>
-  </data>
-  <data name="Automations_Filter_Unconditional" xml:space="preserve">
-    <value>Unconditional</value>
-  </data>
-  <data name="Automations_Filters" xml:space="preserve">
-    <value>Filters</value>
-  </data>
-  <data name="Automations_Filters_Active" xml:space="preserve">
-    <value>Filters (on)</value>
-  </data>
-  <data name="Automations_Flag_IdleOnly" xml:space="preserve">
-    <value>Wait until idle</value>
-  </data>
-  <data name="Automations_Flag_IncludeReasoning" xml:space="preserve">
-    <value>Include reasoning</value>
-  </data>
-  <data name="Automations_Flag_LightContext" xml:space="preserve">
-    <value>Light context</value>
-  </data>
-  <data name="Automations_Flag_SkipEmptyScratch" xml:space="preserve">
-    <value>Skip empty scratch</value>
-  </data>
   <data name="Automations_GatewayTimezone" xml:space="preserve">
     <value>Gateway host time zone</value>
-  </data>
-  <data name="Automations_Help_ActiveHours" xml:space="preserve">
-    <value>Only run inside this window, including manual runs. Overnight windows are supported; the end is exclusive.</value>
   </data>
   <data name="Automations_Help_Agent" xml:space="preserve">
     <value>Leave blank to use this page&apos;s agent.</value>
   </data>
-  <data name="Automations_Help_AgentTurn" xml:space="preserve">
-    <value>Starts an assistant run in its own session using your prompt.</value>
-  </data>
-  <data name="Automations_Help_AlertAfter" xml:space="preserve">
-    <value>Consecutive errors before alerting.</value>
-  </data>
-  <data name="Automations_Help_AlertCooldown" xml:space="preserve">
-    <value>Minimum seconds between alerts.</value>
-  </data>
-  <data name="Automations_Help_BestEffort" xml:space="preserve">
-    <value>Do not fail the run if delivery itself fails.</value>
+  <data name="Automations_Help_AgentEdit" xml:space="preserve">
+    <value>Leave blank to keep the current owner, or enter another agent to move this automation.</value>
   </data>
   <data name="Automations_Help_Channel" xml:space="preserve">
     <value>Leave blank to use the last channel the agent talked on.</value>
-  </data>
-  <data name="Automations_Help_ClearAgent" xml:space="preserve">
-    <value>Use the Gateway default agent instead of a specific agent.</value>
-  </data>
-  <data name="Automations_Help_Condition" xml:space="preserve">
-    <value>Run a quiet check first and start the action only when it matches.</value>
   </data>
   <data name="Automations_Help_DeleteAfterRun" xml:space="preserve">
     <value>Best for one-shot reminders that should clean up after themselves.</value>
@@ -8475,68 +8217,17 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Help_DeliveryNoAnnounce" xml:space="preserve">
     <value>Announce needs an assistant task. Timeline messages already post to the main timeline.</value>
   </data>
-  <data name="Automations_Help_EventArguments" xml:space="preserve">
-    <value>Filters sent when subscribing. They must match the event&apos;s input schema.</value>
-  </data>
-  <data name="Automations_Help_ExactTiming" xml:space="preserve">
-    <value>Run exactly on the cron boundary with no spread.</value>
-  </data>
-  <data name="Automations_Help_Expression" xml:space="preserve">
-    <value>Five fields: minute, hour, day of month, month, day of week.</value>
-  </data>
-  <data name="Automations_Help_FailureAlerts" xml:space="preserve">
-    <value>Control when this automation reports repeated failures.</value>
-  </data>
-  <data name="Automations_Help_IdleOnly" xml:space="preserve">
-    <value>Yield to active work before starting.</value>
-  </data>
-  <data name="Automations_Help_IncludeReasoning" xml:space="preserve">
-    <value>Include available model reasoning in the delivered result.</value>
-  </data>
-  <data name="Automations_Help_LightContext" xml:space="preserve">
-    <value>Use a lightweight bootstrap context for this run.</value>
-  </data>
-  <data name="Automations_Help_Model" xml:space="preserve">
-    <value>Optional. Routine jobs often run well on a lighter, cheaper model.</value>
-  </data>
   <data name="Automations_Help_Owner" xml:space="preserve">
     <value>Owner delivery resolves the owner&apos;s direct message each run, never the last group conversation.</value>
   </data>
   <data name="Automations_Help_Session" xml:space="preserve">
     <value>Main posts into the agent&apos;s timeline. Isolated runs a dedicated assistant turn.</value>
   </data>
-  <data name="Automations_Help_SessionKey" xml:space="preserve">
-    <value>Optional routing key for delivery and wake routing.</value>
-  </data>
-  <data name="Automations_Help_SkipEmptyScratch" xml:space="preserve">
-    <value>Skip runs while saved scratch is empty. Missing scratch does not skip.</value>
-  </data>
-  <data name="Automations_Help_Stagger" xml:space="preserve">
-    <value>Spreads runs across a window so many automations do not start at once. Leave blank for the default.</value>
-  </data>
-  <data name="Automations_Help_SystemEvent" xml:space="preserve">
-    <value>Posts your text to the agent&apos;s main timeline. Good for reminders.</value>
-  </data>
-  <data name="Automations_Help_Thinking" xml:space="preserve">
-    <value>Optional reasoning level, such as low or high.</value>
-  </data>
-  <data name="Automations_Help_Timeout" xml:space="preserve">
-    <value>Leave blank to use the Gateway default. 0 disables the timeout.</value>
-  </data>
   <data name="Automations_Help_Timezone" xml:space="preserve">
     <value>Optional IANA time zone. Leave blank to use the Gateway host time zone.</value>
   </data>
-  <data name="Automations_Help_To" xml:space="preserve">
-    <value>Pick a recent conversation or type a recipient.</value>
-  </data>
-  <data name="Automations_Help_TriggerOnce" xml:space="preserve">
-    <value>Turn this automation off after the first run the condition starts.</value>
-  </data>
-  <data name="Automations_Help_TriggerScript" xml:space="preserve">
-    <value>Runs unattended with this automation&apos;s tool policy. Return json({ fire, message?, state? }). Limits: 30 seconds, 5 tool calls, 16 KB state.</value>
-  </data>
   <data name="Automations_Help_Webhook" xml:space="preserve">
-    <value>Run summaries are POSTed to this http(s) URL.</value>
+    <value>Run summaries are POSTed to this URL. New destinations must use HTTPS.</value>
   </data>
   <data name="Automations_Kind_At" xml:space="preserve">
     <value>Once</value>
@@ -8544,29 +8235,11 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Kind_Cron" xml:space="preserve">
     <value>Cron</value>
   </data>
-  <data name="Automations_Kind_Event" xml:space="preserve">
-    <value>Event</value>
-  </data>
   <data name="Automations_Kind_Every" xml:space="preserve">
-    <value>Interval</value>
-  </data>
-  <data name="Automations_Kind_OnExit" xml:space="preserve">
-    <value>On exit</value>
-  </data>
-  <data name="Automations_Kind_Stream" xml:space="preserve">
-    <value>Stream</value>
-  </data>
-  <data name="Automations_LastError_Title" xml:space="preserve">
-    <value>Last run failed</value>
-  </data>
-  <data name="Automations_LastRun" xml:space="preserve">
-    <value>Last run</value>
+    <value>Repeating</value>
   </data>
   <data name="Automations_List_Count" xml:space="preserve">
     <value>{0} of {1}</value>
-  </data>
-  <data name="Automations_List_Empty" xml:space="preserve">
-    <value>No automations for this agent yet.</value>
   </data>
   <data name="Automations_List_NoMatch" xml:space="preserve">
     <value>No automations match the current filters.</value>
@@ -8580,14 +8253,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_LoadMore" xml:space="preserve">
     <value>Load more</value>
   </data>
-  <data name="Automations_MoreActions" xml:space="preserve">
-    <value>More actions</value>
-  </data>
   <data name="Automations_MoreActionsFor" xml:space="preserve">
     <value>More actions for {0}</value>
-  </data>
-  <data name="Automations_NeverFired" xml:space="preserve">
-    <value>never</value>
   </data>
   <data name="Automations_NeverRun" xml:space="preserve">
     <value>Never</value>
@@ -8597,12 +8264,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="Automations_NextRun" xml:space="preserve">
     <value>Next run</value>
-  </data>
-  <data name="Automations_NextWake_None" xml:space="preserve">
-    <value>Nothing scheduled</value>
-  </data>
-  <data name="Automations_NotChecked" xml:space="preserve">
-    <value>not yet</value>
   </data>
   <data name="Automations_Notice_Conflict" xml:space="preserve">
     <value>The latest definition is loaded. Review it before trying again.</value>
@@ -8640,9 +8301,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Notice_PausedTitle" xml:space="preserve">
     <value>Paused</value>
   </data>
-  <data name="Automations_Notice_Removed" xml:space="preserve">
-    <value>{0} was removed.</value>
-  </data>
   <data name="Automations_Notice_RemovedTitle" xml:space="preserve">
     <value>Removed</value>
   </data>
@@ -8657,15 +8315,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="Automations_Notice_RunNotStartedTitle" xml:space="preserve">
     <value>Run not started</value>
-  </data>
-  <data name="Automations_Notice_RunQueued" xml:space="preserve">
-    <value>{0} is running.</value>
-  </data>
-  <data name="Automations_Notice_RunQueuedTitle" xml:space="preserve">
-    <value>Run started</value>
-  </data>
-  <data name="Automations_Notice_RunQueuedWithId" xml:space="preserve">
-    <value>{0} is running. Run ID: {1}</value>
   </data>
   <data name="Automations_Notice_Saved" xml:space="preserve">
     <value>{0} was updated.</value>
@@ -8694,9 +8343,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Payload_Command" xml:space="preserve">
     <value>Command</value>
   </data>
-  <data name="Automations_Payload_ReadOnlyHelp" xml:space="preserve">
-    <value>This action was created outside this app. It stays read-only and is preserved when you save other changes.</value>
-  </data>
   <data name="Automations_Payload_Script" xml:space="preserve">
     <value>Script</value>
   </data>
@@ -8706,50 +8352,26 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Payload_Unknown" xml:space="preserve">
     <value>Custom action</value>
   </data>
-  <data name="Automations_Placeholder_Body" xml:space="preserve">
-    <value>Pick an automation from the list to see its schedule, what it does, where results go and its run history.</value>
-  </data>
   <data name="Automations_Placeholder_ChannelLast" xml:space="preserve">
-    <value>Last used channel</value>
-  </data>
-  <data name="Automations_Placeholder_Description" xml:space="preserve">
-    <value>Optional context for this automation</value>
-  </data>
-  <data name="Automations_Placeholder_Name" xml:space="preserve">
-    <value>Morning brief</value>
-  </data>
-  <data name="Automations_Placeholder_Optional" xml:space="preserve">
-    <value>Optional</value>
+    <value>Channel ID</value>
   </data>
   <data name="Automations_Placeholder_Prompt" xml:space="preserve">
     <value>Describe what OpenClaw should do...</value>
   </data>
-  <data name="Automations_Placeholder_Timeout" xml:space="preserve">
-    <value>Optional, for example 90</value>
-  </data>
   <data name="Automations_Placeholder_Timezone" xml:space="preserve">
-    <value>America/Los_Angeles</value>
-  </data>
-  <data name="Automations_Placeholder_Title" xml:space="preserve">
-    <value>Select an automation</value>
+    <value>IANA time zone</value>
   </data>
   <data name="Automations_Placeholder_To" xml:space="preserve">
     <value>Chat ID, phone or user</value>
   </data>
   <data name="Automations_Preset_Daily" xml:space="preserve">
-    <value>Daily 9:00</value>
-  </data>
-  <data name="Automations_Preset_Hourly" xml:space="preserve">
-    <value>Hourly</value>
-  </data>
-  <data name="Automations_Preset_Monthly" xml:space="preserve">
-    <value>Monthly</value>
+    <value>Daily</value>
   </data>
   <data name="Automations_Preset_Weekdays" xml:space="preserve">
-    <value>Weekdays 9:00</value>
+    <value>Weekdays</value>
   </data>
   <data name="Automations_Preset_Weekly" xml:space="preserve">
-    <value>Mondays 9:00</value>
+    <value>Weekly</value>
   </data>
   <data name="Automations_ReadDenied_Title" xml:space="preserve">
     <value>Automations are not visible to this operator</value>
@@ -8790,20 +8412,11 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Retry" xml:space="preserve">
     <value>Retry</value>
   </data>
-  <data name="Automations_Row_Last" xml:space="preserve">
-    <value>Last ran {0}</value>
-  </data>
-  <data name="Automations_Row_Next" xml:space="preserve">
-    <value>Next {0}</value>
-  </data>
   <data name="Automations_RunHistory_Subtitle" xml:space="preserve">
     <value>Every run of every automation for agent {0}.</value>
   </data>
   <data name="Automations_RunHistory_Title" xml:space="preserve">
     <value>Run history</value>
-  </data>
-  <data name="Automations_RunIfDue" xml:space="preserve">
-    <value>Run if due</value>
   </data>
   <data name="Automations_Running" xml:space="preserve">
     <value>Running</value>
@@ -8868,9 +8481,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Runs_ErrorTitle" xml:space="preserve">
     <value>Could not load run history</value>
   </data>
-  <data name="Automations_Runs_HideTranscript" xml:space="preserve">
-    <value>Hide transcript</value>
-  </data>
   <data name="Automations_Runs_Loading" xml:space="preserve">
     <value>Loading runs...</value>
   </data>
@@ -8905,7 +8515,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Show less</value>
   </data>
   <data name="Automations_Runs_ShowMore" xml:space="preserve">
-    <value>Show full response</value>
+    <value>Show full summary</value>
   </data>
   <data name="Automations_Runs_StatusCount" xml:space="preserve">
     <value>Status ({0})</value>
@@ -8918,9 +8528,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="Automations_Runs_TriggerFired" xml:space="preserve">
     <value>Condition matched</value>
-  </data>
-  <data name="Automations_Runs_ViewTranscript" xml:space="preserve">
-    <value>View transcript</value>
   </data>
   <data name="Automations_RunStatus_Error" xml:space="preserve">
     <value>Failed</value>
@@ -8988,9 +8595,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Schedule_OnExit" xml:space="preserve">
     <value>When {0} exits</value>
   </data>
-  <data name="Automations_Schedule_ReadOnlyKind" xml:space="preserve">
-    <value>This schedule is managed outside this app. It is kept as is when you save other changes.</value>
-  </data>
   <data name="Automations_Schedule_Stream" xml:space="preserve">
     <value>On output from {0}</value>
   </data>
@@ -9009,83 +8613,23 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Scheduler_Off" xml:space="preserve">
     <value>Stopped</value>
   </data>
-  <data name="Automations_Scheduler_On" xml:space="preserve">
-    <value>Running</value>
-  </data>
   <data name="Automations_SchedulerOff_Body" xml:space="preserve">
-    <value>Scheduled automations will not run until the Gateway scheduler is enabled.</value>
+    <value>Scheduled automations won't run until the Gateway scheduler is on.</value>
   </data>
   <data name="Automations_SchedulerOff_Title" xml:space="preserve">
     <value>Scheduler is stopped</value>
   </data>
-  <data name="Automations_Scratch_Bytes" xml:space="preserve">
-    <value>{0:N0} / {1:N0} bytes</value>
-  </data>
-  <data name="Automations_Scratch_Conflict" xml:space="preserve">
-    <value>Scratch changed while you were editing. Your draft is kept. Reload the latest version before saving again.</value>
-  </data>
-  <data name="Automations_Scratch_Content" xml:space="preserve">
-    <value>Scratch content</value>
-  </data>
-  <data name="Automations_Scratch_Empty" xml:space="preserve">
-    <value>No scratch saved. Saving an empty editor creates empty scratch; removing it restores missing scratch.</value>
-  </data>
-  <data name="Automations_Scratch_Help" xml:space="preserve">
-    <value>Private working notes this automation can read and update between runs. Loaded only when you ask. Never store credentials here.</value>
-  </data>
-  <data name="Automations_Scratch_Load" xml:space="preserve">
-    <value>Load scratch</value>
-  </data>
-  <data name="Automations_Scratch_Redacted" xml:space="preserve">
-    <value>Sensitive content was hidden. Saving is disabled to protect the original. You can still remove this scratch.</value>
-  </data>
-  <data name="Automations_Scratch_Reload" xml:space="preserve">
-    <value>Reload</value>
-  </data>
-  <data name="Automations_Scratch_Remove" xml:space="preserve">
-    <value>Remove scratch</value>
-  </data>
-  <data name="Automations_Scratch_Removed" xml:space="preserve">
-    <value>Scratch removed.</value>
-  </data>
-  <data name="Automations_Scratch_Save" xml:space="preserve">
-    <value>Save scratch</value>
-  </data>
-  <data name="Automations_Scratch_Saved" xml:space="preserve">
-    <value>Scratch saved.</value>
-  </data>
-  <data name="Automations_Scratch_Title" xml:space="preserve">
-    <value>Job scratch</value>
-  </data>
-  <data name="Automations_Scratch_TooLarge" xml:space="preserve">
-    <value>Scratch exceeds the size limit.</value>
-  </data>
   <data name="Automations_Search_Placeholder" xml:space="preserve">
     <value>Search automations</value>
-  </data>
-  <data name="Automations_Seconds" xml:space="preserve">
-    <value>{0} s</value>
-  </data>
-  <data name="Automations_Section_Advanced" xml:space="preserve">
-    <value>Advanced</value>
   </data>
   <data name="Automations_Section_Basics" xml:space="preserve">
     <value>Basics</value>
   </data>
   <data name="Automations_Section_Delivery" xml:space="preserve">
-    <value>Where results go</value>
+    <value>Delivery</value>
   </data>
-  <data name="Automations_Section_Details" xml:space="preserve">
-    <value>Details</value>
-  </data>
-  <data name="Automations_Section_FailureAlerts" xml:space="preserve">
-    <value>Failure alerts</value>
-  </data>
-  <data name="Automations_Section_What" xml:space="preserve">
-    <value>What it does</value>
-  </data>
-  <data name="Automations_Section_When" xml:space="preserve">
-    <value>When it runs</value>
+  <data name="Automations_Section_Schedule" xml:space="preserve">
+    <value>Schedule</value>
   </data>
   <data name="Automations_Session_Current" xml:space="preserve">
     <value>Current session</value>
@@ -9098,39 +8642,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="Automations_Session_Named" xml:space="preserve">
     <value>Session {0}</value>
-  </data>
-  <data name="Automations_Sort" xml:space="preserve">
-    <value>Sort</value>
-  </data>
-  <data name="Automations_Sort_Ascending" xml:space="preserve">
-    <value>Ascending</value>
-  </data>
-  <data name="Automations_Sort_Descending" xml:space="preserve">
-    <value>Descending</value>
-  </data>
-  <data name="Automations_Sort_Name" xml:space="preserve">
-    <value>Name</value>
-  </data>
-  <data name="Automations_Sort_NextRun" xml:space="preserve">
-    <value>Next run</value>
-  </data>
-  <data name="Automations_Sort_Updated" xml:space="preserve">
-    <value>Recently updated</value>
-  </data>
-  <data name="Automations_StaggerWindow" xml:space="preserve">
-    <value>Up to {0} spread</value>
-  </data>
-  <data name="Automations_Stat_Failing" xml:space="preserve">
-    <value>Failing</value>
-  </data>
-  <data name="Automations_Stat_NextWake" xml:space="preserve">
-    <value>Next wake</value>
-  </data>
-  <data name="Automations_Stat_Scheduler" xml:space="preserve">
-    <value>Scheduler</value>
-  </data>
-  <data name="Automations_Stat_Total" xml:space="preserve">
-    <value>Automations</value>
   </data>
   <data name="Automations_State_Active" xml:space="preserve">
     <value>Active</value>
@@ -9153,128 +8664,14 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_State_Running" xml:space="preserve">
     <value>Running</value>
   </data>
-  <data name="Automations_StreamError_Title" xml:space="preserve">
-    <value>Stream source error</value>
-  </data>
-  <data name="Automations_Suggestion_dependencyRadar_Name" xml:space="preserve">
-    <value>Dependency radar</value>
-  </data>
-  <data name="Automations_Suggestion_dependencyRadar_Prompt" xml:space="preserve">
-    <value>Check my main project for outdated or vulnerable dependencies. List the notable updates with a one-line risk note each, and draft the upgrade command.</value>
-  </data>
-  <data name="Automations_Suggestion_dependencyRadar_Schedule" xml:space="preserve">
-    <value>Mondays at 9:00 AM</value>
-  </data>
-  <data name="Automations_Suggestion_dependencyRadar_Tagline" xml:space="preserve">
-    <value>Outdated or vulnerable dependencies, with upgrade notes.</value>
-  </data>
-  <data name="Automations_Suggestion_hackerNewsScout_Name" xml:space="preserve">
-    <value>Hacker News scout</value>
-  </data>
-  <data name="Automations_Suggestion_hackerNewsScout_Prompt" xml:space="preserve">
-    <value>Scan today&apos;s Hacker News front page for posts about AI agents, developer tooling, and TypeScript. Send me the three most interesting links, each with a one-line hot take.</value>
-  </data>
-  <data name="Automations_Suggestion_hackerNewsScout_Schedule" xml:space="preserve">
-    <value>Daily at 8:00 AM</value>
-  </data>
-  <data name="Automations_Suggestion_hackerNewsScout_Tagline" xml:space="preserve">
-    <value>Three links worth your coffee, with hot takes.</value>
-  </data>
-  <data name="Automations_Suggestion_polyglotMinute_Name" xml:space="preserve">
-    <value>Polyglot minute</value>
-  </data>
-  <data name="Automations_Suggestion_polyglotMinute_Prompt" xml:space="preserve">
-    <value>Teach me one useful phrase in Japanese: the phrase, how to pronounce it, its literal meaning, and when to use it. Keep it under five lines.</value>
-  </data>
-  <data name="Automations_Suggestion_polyglotMinute_Schedule" xml:space="preserve">
-    <value>Daily at 8:00 AM</value>
-  </data>
-  <data name="Automations_Suggestion_polyglotMinute_Tagline" xml:space="preserve">
-    <value>One useful foreign phrase with your morning coffee.</value>
-  </data>
-  <data name="Automations_Suggestion_repoPulse_Name" xml:space="preserve">
-    <value>Repo pulse</value>
-  </data>
-  <data name="Automations_Suggestion_repoPulse_Prompt" xml:space="preserve">
-    <value>Review overnight activity in my repositories: new issues, pull requests, and CI failures. Summarize the three things that most need my attention today, each with a link and a one-line reason.</value>
-  </data>
-  <data name="Automations_Suggestion_repoPulse_Schedule" xml:space="preserve">
-    <value>Weekdays at 9:00 AM</value>
-  </data>
-  <data name="Automations_Suggestion_repoPulse_Tagline" xml:space="preserve">
-    <value>Overnight issues, pull requests and CI failures, ranked by urgency.</value>
-  </data>
-  <data name="Automations_Suggestion_standupGhostwriter_Name" xml:space="preserve">
-    <value>Standup ghostwriter</value>
-  </data>
-  <data name="Automations_Suggestion_standupGhostwriter_Prompt" xml:space="preserve">
-    <value>Draft my standup update from yesterday&apos;s commits, merged pull requests, and open review threads. Three bullets max: done, doing, blocked.</value>
-  </data>
-  <data name="Automations_Suggestion_standupGhostwriter_Schedule" xml:space="preserve">
-    <value>Weekdays at 9:00 AM</value>
-  </data>
-  <data name="Automations_Suggestion_standupGhostwriter_Tagline" xml:space="preserve">
-    <value>Your standup update, drafted from yesterday&apos;s work.</value>
-  </data>
-  <data name="Automations_Suggestion_watchdog_Name" xml:space="preserve">
-    <value>Night watch</value>
-  </data>
-  <data name="Automations_Suggestion_watchdog_Prompt" xml:space="preserve">
-    <value>Check that my services and gateway are healthy: scan recent logs for new errors, restarts, or unusual load. Reply with a single short all-clear line when everything is fine; if something looks broken, report what failed and where to start looking.</value>
-  </data>
-  <data name="Automations_Suggestion_watchdog_Schedule" xml:space="preserve">
-    <value>Every hour</value>
-  </data>
-  <data name="Automations_Suggestion_watchdog_Tagline" xml:space="preserve">
-    <value>Hourly health check with a one-line verdict.</value>
-  </data>
-  <data name="Automations_Suggestions_Title" xml:space="preserve">
-    <value>Starter automations</value>
-  </data>
   <data name="Automations_Tab_Overview" xml:space="preserve">
     <value>Overview</value>
-  </data>
-  <data name="Automations_Tab_Runs" xml:space="preserve">
-    <value>Run history</value>
-  </data>
-  <data name="Automations_Tab_Scratch" xml:space="preserve">
-    <value>Scratch</value>
   </data>
   <data name="Automations_Thread" xml:space="preserve">
     <value>Thread {0}</value>
   </data>
   <data name="Automations_Title" xml:space="preserve">
     <value>Automations</value>
-  </data>
-  <data name="Automations_Transcript_Assistant" xml:space="preserve">
-    <value>Assistant</value>
-  </data>
-  <data name="Automations_Transcript_Empty" xml:space="preserve">
-    <value>No messages in this run yet.</value>
-  </data>
-  <data name="Automations_Transcript_Loading" xml:space="preserve">
-    <value>Loading transcript...</value>
-  </data>
-  <data name="Automations_Transcript_LoadOlder" xml:space="preserve">
-    <value>Load earlier messages</value>
-  </data>
-  <data name="Automations_Transcript_System" xml:space="preserve">
-    <value>System</value>
-  </data>
-  <data name="Automations_Transcript_Title" xml:space="preserve">
-    <value>Run transcript</value>
-  </data>
-  <data name="Automations_Transcript_Tool" xml:space="preserve">
-    <value>Tool: {0}</value>
-  </data>
-  <data name="Automations_Transcript_Unavailable" xml:space="preserve">
-    <value>The run transcript is unavailable: {0}</value>
-  </data>
-  <data name="Automations_Transcript_User" xml:space="preserve">
-    <value>Prompt</value>
-  </data>
-  <data name="Automations_TriggerConfigured" xml:space="preserve">
-    <value>Condition trigger configured</value>
   </data>
   <data name="Automations_Unit_Days" xml:space="preserve">
     <value>Days</value>
@@ -9291,12 +8688,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Unknown" xml:space="preserve">
     <value>Unknown</value>
   </data>
-  <data name="Automations_View_Automations" xml:space="preserve">
-    <value>Automations</value>
-  </data>
-  <data name="Automations_View_RunHistory" xml:space="preserve">
-    <value>Run history</value>
-  </data>
   <data name="Automations_Wake_NextHeartbeat" xml:space="preserve">
     <value>Next heartbeat</value>
   </data>
@@ -9306,41 +8697,65 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Yes" xml:space="preserve">
     <value>Yes</value>
   </data>
-  <data name="Automations_Empty_Headline" xml:space="preserve">
-    <value>Put OpenClaw on autopilot</value>
-  </data>
-  <data name="Automations_Header_AllQuiet" xml:space="preserve">
-    <value>All quiet. Nothing is scheduled right now.</value>
-  </data>
-  <data name="Automations_Header_NextUp" xml:space="preserve">
-    <value>Next up: {0}, {1}</value>
-  </data>
-  <data name="Automations_KindHint_At" xml:space="preserve">
-    <value>Run once at a set time</value>
-  </data>
-  <data name="Automations_KindHint_Cron" xml:space="preserve">
-    <value>Calendar rules, like weekdays at 9</value>
-  </data>
-  <data name="Automations_KindHint_Event" xml:space="preserve">
-    <value>When an MCP server sends an event</value>
-  </data>
-  <data name="Automations_KindHint_Every" xml:space="preserve">
-    <value>Repeat on a fixed interval</value>
-  </data>
-  <data name="Automations_Runs_Streak" xml:space="preserve">
-    <value>{0} successful runs in a row</value>
-  </data>
   <data name="Automations_Runs_SuccessRate" xml:space="preserve">
     <value>{0}% succeeded</value>
   </data>
   <data name="Automations_Runs_SummaryDetail" xml:space="preserve">
     <value>{0} of {1} recent runs, average {2}</value>
   </data>
-  <data name="Automations_Stat_Healthy" xml:space="preserve">
-    <value>All healthy</value>
-  </data>
   <data name="Automations_Selected" xml:space="preserve">
     <value>Selected</value>
+  </data>
+  <data name="Automations_AgentFilterFor" xml:space="preserve">
+    <value>Agent filter: {0}</value>
+  </data>
+  <data name="Automations_CopyId" xml:space="preserve">
+    <value>Copy automation ID</value>
+  </data>
+  <data name="Automations_CopyId_Done" xml:space="preserve">
+    <value>Copied automation ID {0}.</value>
+  </data>
+  <data name="Automations_CopyId_Failed" xml:space="preserve">
+    <value>Couldn't copy the automation ID. You can select it in the automation details.</value>
+  </data>
+  <data name="Automations_DeliveryMode_KeepSaved" xml:space="preserve">
+    <value>Keep current setting</value>
+  </data>
+  <data name="Automations_Editor_PreservedBody" xml:space="preserve">
+    <value>This automation also uses: {0}. Saving here keeps them as they are. Change them on the web.</value>
+  </data>
+  <data name="Automations_Editor_PreservedTitle" xml:space="preserve">
+    <value>More settings on the web</value>
+  </data>
+  <data name="Automations_Field_DeliveryRouting" xml:space="preserve">
+    <value>Delivery routing</value>
+  </data>
+  <data name="Automations_Filter_AllAgents" xml:space="preserve">
+    <value>All agents</value>
+  </data>
+  <data name="Automations_Help_RunAtLocal" xml:space="preserve">
+    <value>Runs at this time in this PC's time zone ({0}).</value>
+  </data>
+  <data name="Automations_Help_ToSaved" xml:space="preserve">
+    <value>Type a recipient, or pick one that another automation uses.</value>
+  </data>
+  <data name="Automations_OpenInWeb" xml:space="preserve">
+    <value>Open in web</value>
+  </data>
+  <data name="Automations_Payload_WebManaged" xml:space="preserve">
+    <value>This action is managed on the web. Saving here keeps it as it is.</value>
+  </data>
+  <data name="Automations_RunHistory_SubtitleAll" xml:space="preserve">
+    <value>Every run of every automation on this Gateway.</value>
+  </data>
+  <data name="Automations_Schedule_WebManaged" xml:space="preserve">
+    <value>This schedule is managed on the web. Saving here keeps it as it is.</value>
+  </data>
+  <data name="Automations_Schedule_CustomCron" xml:space="preserve">
+    <value>This custom calendar rule is edited on the web. Saving here keeps it unless you choose a pattern below.</value>
+  </data>
+  <data name="Automations_UseLocalTimezone" xml:space="preserve">
+    <value>Use this PC's time zone ({0})</value>
   </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node Sandbox</value>
@@ -9405,4 +8820,84 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway speech timed out. Synthesis may have completed. Check the Gateway before trying again; no automatic retry was made.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway speech failed. Check its voice configuration and provider quota. No local fallback or automatic retry was made.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows could not play the speech audio. Check your output device. No automatic retry was made.</value></data>
+  <data name="Automations_Redesign_ReadDenied" xml:space="preserve"><value>This operator cannot read automations. Ask a Gateway administrator for read access.</value></data>
+  <data name="Automations_Redesign_LastSeen" xml:space="preserve"><value>Automations, as last seen at {0}</value></data>
+  <data name="Automations_Redesign_NeedYou" xml:space="preserve"><value>{0} automations need you</value></data>
+  <data name="Automations_Redesign_OnSchedule" xml:space="preserve"><value>Everything is on schedule</value></data>
+  <data name="Automations_Redesign_Next" xml:space="preserve"><value>Next up: {0} at {1}.</value></data>
+  <data name="Automations_Redesign_RefreshFailed" xml:space="preserve"><value>Couldn't refresh. Showing last-known automations.</value></data>
+  <data name="Automations_Redesign_AutoDisabled" xml:space="preserve"><value>Turned off by the scheduler</value></data>
+  <data name="Automations_Redesign_FailureStreak" xml:space="preserve"><value>Failed {0} times in a row</value></data>
+  <data name="Automations_Redesign_RetryNow" xml:space="preserve"><value>Retry now</value></data>
+  <data name="Automations_Redesign_SeeRuns" xml:space="preserve"><value>See runs</value></data>
+  <data name="Automations_Redesign_TurnOn" xml:space="preserve"><value>Turn back on</value></data>
+  <data name="Automations_Redesign_MoreAttention" xml:space="preserve"><value>{0} more need attention</value></data>
+  <data name="Automations_Redesign_NeedsYou" xml:space="preserve"><value>Needs you</value></data>
+  <data name="Automations_Redesign_Group_Running" xml:space="preserve"><value>Running now</value></data>
+  <data name="Automations_Redesign_Group_Hour" xml:space="preserve"><value>In the next hour</value></data>
+  <data name="Automations_Redesign_Group_Today" xml:space="preserve"><value>Later today</value></data>
+  <data name="Automations_Redesign_Group_Tomorrow" xml:space="preserve"><value>Tomorrow</value></data>
+  <data name="Automations_Redesign_FailedLast" xml:space="preserve"><value>Failed last time</value></data>
+  <data name="Automations_Redesign_ShowMore" xml:space="preserve"><value>Show {0} more</value></data>
+  <data name="Automations_Redesign_NothingSoon" xml:space="preserve"><value>Nothing else scheduled before tomorrow night.</value></data>
+  <data name="Automations_Redesign_Repeating" xml:space="preserve"><value>{0} repeating automations</value></data>
+  <data name="Automations_Redesign_WaitEvents" xml:space="preserve"><value>{0} wait for events</value></data>
+  <data name="Automations_Redesign_Earlier" xml:space="preserve"><value>Earlier today</value></data>
+  <data name="Automations_Redesign_SchedulerUnknown" xml:space="preserve"><value>Scheduler status unknown</value></data>
+  <data name="Automations_Redesign_ComingUp" xml:space="preserve"><value>Coming up</value></data>
+  <data name="Automations_Redesign_AllCount" xml:space="preserve"><value>All ({0})</value></data>
+  <data name="Automations_Redesign_OnCount" xml:space="preserve"><value>On ({0})</value></data>
+  <data name="Automations_Redesign_OffCount" xml:space="preserve"><value>Paused or off ({0})</value></data>
+  <data name="Automations_Redesign_All" xml:space="preserve"><value>All</value></data>
+  <data name="Automations_Redesign_On" xml:space="preserve"><value>On</value></data>
+  <data name="Automations_Redesign_Off" xml:space="preserve"><value>Paused or off</value></data>
+  <data name="Automations_Redesign_Scheduled" xml:space="preserve"><value>Scheduled</value></data>
+  <data name="Automations_Redesign_Paused" xml:space="preserve"><value>Paused or off</value></data>
+  <data name="Automations_Redesign_AllAutomations" xml:space="preserve"><value>All automations</value></data>
+  <data name="Automations_Redesign_Advanced" xml:space="preserve"><value>Advanced</value></data>
+  <data name="Automations_Redesign_OpenChatFor" xml:space="preserve"><value>Open chat: {0}</value></data>
+  <data name="Automations_Redesign_EventNoRuns" xml:space="preserve"><value>Waiting for an event. No runs yet.</value></data>
+  <data name="Automations_Redesign_SuccessCount" xml:space="preserve"><value>{0}/{1} recent runs succeeded</value></data>
+  <data name="Automations_Redesign_AllRunsWeb" xml:space="preserve"><value>All runs in web</value></data>
+  <data name="Automations_Redesign_EditWeb" xml:space="preserve"><value>Edit in web</value></data>
+  <data name="Automations_Redesign_LastRunChat" xml:space="preserve"><value>Open last run in chat</value></data>
+  <data name="Automations_Redesign_CopyAsNew" xml:space="preserve"><value>Copy as new</value></data>
+  <data name="Automations_Redesign_Weekday" xml:space="preserve"><value>Day of the week</value></data>
+  <data name="Automations_Redesign_ExactNextOnSave" xml:space="preserve"><value>The Gateway sets the exact next run when saved.</value></data>
+  <data name="Automations_Redesign_NeedYouOne" xml:space="preserve"><value>One automation needs you</value></data>
+  <data name="Automations_Redesign_Response" xml:space="preserve"><value>Summary</value></data>
+  <data name="Automations_Popup_RemoveTitle" xml:space="preserve"><value>Remove “{0}”?</value></data>
+  <data name="Automations_Popup_RemoveBody" xml:space="preserve"><value>It's removed from {0} along with its schedule and run history. This can't be undone.</value></data>
+  <data name="Automations_Popup_ConnectedGateway" xml:space="preserve"><value>the connected Gateway</value></data>
+  <data name="Automations_Popup_Schedule" xml:space="preserve"><value>Schedule</value></data>
+  <data name="Automations_Popup_AlertType" xml:space="preserve"><value>Alert dialog</value></data>
+  <data name="Automations_Toast_RunQueued" xml:space="preserve"><value>Run queued</value></data>
+  <data name="Automations_Toast_RunQueuedWithId" xml:space="preserve"><value>Run queued · {0}</value></data>
+  <data name="Automations_Toast_AlreadyRunning" xml:space="preserve"><value>Not started: “{0}” is already running.</value></data>
+  <data name="Automations_Toast_Removed" xml:space="preserve"><value>Removed “{0}”</value></data>
+  <data name="Automations_Review_Today" xml:space="preserve"><value>Today {0}</value></data>
+  <data name="Automations_Review_TurnedOff" xml:space="preserve"><value>{0} was turned off</value></data>
+  <data name="Automations_Review_SchedulerStopped" xml:space="preserve"><value>The scheduler stopped it.</value></data>
+  <data name="Automations_Review_SchedulerOn" xml:space="preserve"><value>Scheduler on</value></data>
+  <data name="Automations_Review_RunningNow" xml:space="preserve"><value>Running now</value></data>
+  <data name="Automations_Review_OnEvent" xml:space="preserve"><value>On event</value></data>
+  <data name="Automations_Review_Error" xml:space="preserve"><value>Error</value></data>
+  <data name="Automations_Review_LastRun" xml:space="preserve"><value>Last run {0}</value></data>
+  <data name="Automations_Review_Tomorrow" xml:space="preserve"><value>Tomorrow {0}</value></data>
+  <data name="Automations_Review_OnceOn" xml:space="preserve"><value>Once on {0} at {1}</value></data>
+  <data name="Automations_Review_OnceToday" xml:space="preserve"><value>Once today at {0}</value></data>
+  <data name="Automations_Review_OnOne" xml:space="preserve"><value>{0} on</value></data>
+  <data name="Automations_Review_OnMany" xml:space="preserve"><value>{0} on</value></data>
+  <data name="Automations_Review_PausedOne" xml:space="preserve"><value>{0} paused or off</value></data>
+  <data name="Automations_Review_PausedMany" xml:space="preserve"><value>{0} paused or off</value></data>
+  <data name="Automations_Review_AcrossAgents" xml:space="preserve"><value>across {0} agents</value></data>
+  <data name="Automations_Review_SummaryJoin" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Automations_Review_SummaryEnd" xml:space="preserve"><value>{0}.</value></data>
+  <data name="Automations_Review_NothingScheduled" xml:space="preserve"><value>Nothing scheduled yet</value></data>
+  <data name="Automations_Review_OpenChat" xml:space="preserve"><value>Open chat</value></data>
+  <data name="Automations_Review_EmptyWebCaption" xml:space="preserve"><value>Event triggers and custom cron schedules are created in the web Control UI.</value></data>
+  <data name="Automations_Review_CopyAsNewTitle" xml:space="preserve"><value>Copy “{0}” as new</value></data>
+  <data name="Automations_Review_Repeats" xml:space="preserve"><value>Repeats</value></data>
+  <data name="Automations_Review_RunPermissionError" xml:space="preserve"><value>Couldn't start “{0}”. This connection is missing the operator.admin permission.</value></data>
+  <data name="Automations_Review_Close" xml:space="preserve"><value>Close</value></data>
 </root>

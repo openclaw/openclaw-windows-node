@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Threading.Tasks;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
@@ -13,15 +15,24 @@ using static Microsoft.UI.Reactor.Factories;
 namespace OpenClawTray.Automations;
 
 /// <summary>Everything the Automations tree needs from its WinUI host.</summary>
+/// <param name="OpenWeb">Opens Automations in the Gateway web dashboard, at one job when given its ID.</param>
+/// <param name="CopyText">Copies text to the clipboard; false when Windows refused.</param>
+/// <param name="KnownAgents">Agent IDs the app knows on the connected Gateway, for the agent filter.</param>
 internal sealed record AutomationsHost(
     AutomationsStore Store,
     AutomationsText Text,
     Func<IOperatorGatewayClient?> Client,
     Action OpenConnection,
-    Action<string> OpenChat)
+    Action<string> OpenChat,
+    Action<string?> OpenWeb,
+    Func<string, bool> CopyText,
+    Func<IReadOnlyList<string>> KnownAgents)
 {
     /// <summary>Asks for confirmation (title, body, primary label). Bound by the root to its controlled dialog.</summary>
-    public Func<string, string, string, Task<bool>> Confirm { get; init; } = static (_, _, _) => Task.FromResult(false);
+    public Func<ConfirmRequest, Task<bool>> Confirm { get; init; } = static _ => Task.FromResult(false);
+    public Action<FrameworkElement>? RevealElement { get; init; }
+    public Func<string?> GatewayDisplayName { get; init; } = static () => null;
+    public Func<ElementTheme> ActualTheme { get; init; } = static () => ElementTheme.Default;
 }
 
 /// <summary>
@@ -34,9 +45,15 @@ internal static class AutomationsVisuals
     internal const double Gap = 8;
     internal const double SectionGap = 16;
     internal const double PagePadding = 24;
+    internal const double EditorHeight = 640;
+    internal const double DialogMaxWidth = 560;
+    internal const double DialogWindowMargin = 48;
+    internal const double DialogFactsStackWidth = 400;
+    internal const double DialogBadgeSize = 36;
+    internal const double DialogFactLabelWidth = 120;
+    internal const double ToastMaxWidth = 480;
     internal const double ListPaneWidth = 360;
-    internal const double NarrowBreakpoint = 860;
-    internal const double ReadingWidth = 860;
+    internal const double ReadingWidth = 640;
     internal const double CardRadius = 8;
     internal const string MonoFont = "Cascadia Mono, Consolas";
 
@@ -47,11 +64,9 @@ internal static class AutomationsVisuals
     internal const string GlyphDelete = "\uE74D";
     internal const string GlyphRefresh = "\uE72C";
     internal const string GlyphAdd = "\uE710";
-    internal const string GlyphBack = "\uE72B";
     internal const string GlyphCalendar = "\uE787";
     internal const string GlyphClock = "\uE823";
     internal const string GlyphHistory = "\uE81C";
-    internal const string GlyphNote = "\uE70B";
     internal const string GlyphChat = "\uE8BD";
     internal const string GlyphSend = "\uE724";
     internal const string GlyphAlert = "\uE7BA";
@@ -65,6 +80,9 @@ internal static class AutomationsVisuals
     internal const string GlyphEvent = "\uE945";
     internal const string GlyphSparkle = "\uE9D5";
     internal const string GlyphDisconnected = "\uF384";
+    internal const string GlyphOpenInBrowser = "\uE8A7";
+    internal const string GlyphCopy = "\uE8C8";
+    internal const string GlyphInformation = "\uE946";
 
     internal static TextBlockElement Glyph(string glyph, double size = 16, ThemeRef? brush = null) =>
         TextBlock(glyph)
@@ -76,17 +94,22 @@ internal static class AutomationsVisuals
             .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
 
     internal static TextBlockElement Secondary(string text, double size = 12) =>
-        TextBlock(text).FontSize(size).Foreground(Theme.SecondaryText).TextWrapping(TextWrapping.Wrap);
+        TextBlock(text).FontSize(size).Foreground(Theme.SecondaryText).TextWrapping(TextWrapping.WrapWholeWords)
+            .MaxWidth(ReadingWidth).HAlign(HorizontalAlignment.Left);
+
+    internal static TextBlockElement SingleLine(string text, double size = 12) =>
+        TextBlock(text).FontSize(size).TextWrapping(TextWrapping.NoWrap).MaxLines(1)
+            .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(text);
 
     internal static TextBlockElement SectionTitle(string text) =>
         TextBlock(text).FontSize(14).FontWeight(FontWeights.SemiBold).Foreground(Theme.PrimaryText);
 
     internal static Element GlyphButton(string glyph, string label, Action onClick, string automationId, bool enabled = true, bool accent = false)
     {
-        var button = Button(HStack(Gap, Glyph(glyph, 14, accent ? Theme.Ref("TextOnAccentFillColorPrimaryBrush") : Theme.PrimaryText), TextBlock(label)), onClick)
+        var button = Button(HStack(Gap, Glyph(glyph, 14, accent ? Theme.Ref("TextOnAccentFillColorPrimaryBrush") : Theme.PrimaryText), TextBlock(label).TextWrapping(TextWrapping.NoWrap)), onClick)
             .IsEnabled(enabled)
             .AutomationId(automationId)
-            .AutomationName(label);
+            .AutomationName(label).WithKey(automationId);
         return accent ? button.ApplyStyle("AccentButtonStyle") : button;
     }
 
@@ -95,8 +118,34 @@ internal static class AutomationsVisuals
             .IsEnabled(enabled)
             .Padding(8, 6)
             .ToolTip(label)
+            .BorderThickness(0)
+            .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
             .AutomationId(automationId)
-            .AutomationName(label);
+            .AutomationName(label).WithKey(automationId);
+
+    internal static Element ChatButton(AutomationsHost host, string sessionKey, string title, string id) =>
+        IconButton(GlyphChat, host.Text["Runs_OpenChat"], () => host.OpenChat(sessionKey), id)
+            .AutomationName(host.Text.Format("Redesign_OpenChatFor", title));
+
+    internal static Element AgentAvatar(string agent) =>
+        Border(TextBlock(StringInfo.GetNextTextElement(agent).ToUpper(CultureInfo.CurrentCulture))
+            .FontSize(14).FontWeight(FontWeights.SemiBold).Foreground(Theme.AccentText).Center())
+            .Size(32, 32).CornerRadius(16).Background(Theme.SystemAttentionBackground)
+            .AutomationName(agent);
+
+    internal static Element DialogHeader(string glyph, string title, bool destructive, string titleId) =>
+        Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+            Border(Glyph(glyph, 16, destructive ? Theme.SystemCritical : Theme.AccentText).Center())
+                .Size(DialogBadgeSize, DialogBadgeSize).CornerRadius(DialogBadgeSize / 2)
+                .Background(destructive ? Theme.SystemCriticalBackground : Theme.SystemAttentionBackground)
+                .Margin(0, 0, 12, 0).VAlign(VerticalAlignment.Top).Grid(column: 0),
+            TextBlock(title).FontSize(20).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.Wrap)
+                .VAlign(VerticalAlignment.Center).AutomationId(titleId).Grid(column: 1));
+
+    internal static bool IsAdvanced(CronJob job) =>
+        job.Schedule.IsWebManaged || job.Schedule.Kind == CronScheduleKind.Cron
+            && CronCalendar.TryParse(job.Schedule.Expr) is not { Pattern: CronCalendarPattern.Daily or CronCalendarPattern.Weekdays or CronCalendarPattern.Weekly }
+        || job.Payload.IsReadOnly || job.HasTrigger;
 
     /// <summary>Elevated surface used for every section.</summary>
     internal static BorderElement Surface(Element child, double padding = 16) =>
@@ -107,30 +156,16 @@ internal static class AutomationsVisuals
             .BorderBrush(Theme.CardStroke)
             .BorderThickness(1);
 
-    internal static Element Section(string title, string glyph, params Element?[] children) =>
-        TintedSection(title, glyph, Theme.AccentText, Theme.SystemAttentionBackground, children);
-
-    internal static Element TintedSection(string title, string glyph, ThemeRef brush, ThemeRef fill, params Element?[] children) =>
-        Surface(VStack(12,
-            HStack(10,
-                Border(Glyph(glyph, 14, brush).Center()).Size(28, 28).CornerRadius(8).Background(fill)
-                    .BorderBrush(Theme.Ref("AutomationsTileStrokeBrush")).BorderThickness(1),
-                SectionTitle(title).VAlign(VerticalAlignment.Center)),
-            VStack(12, children)));
-
     /// <summary>Label/value pair for read-only detail grids. Values are selectable.</summary>
     internal static Element Fact(string label, string? value, string automationId) =>
         string.IsNullOrWhiteSpace(value)
             ? Empty()
-            : Grid([GridSize.Px(160), GridSize.Star()], [GridSize.Auto],
-                Secondary(label, 13).Grid(column: 0),
-                TextBlock(value!).FontSize(13).TextWrapping(TextWrapping.Wrap).IsTextSelectionEnabled(true)
-                    .AutomationId(automationId).Grid(column: 1));
+            : Component<AutomationFact, AutomationFactProps>(new(label, value!, automationId));
 
     internal static Element Pill(string text, ThemeRef foreground, ThemeRef background, string? glyph = null) =>
         Border(HStack(4,
                 glyph is null ? Empty() : Glyph(glyph, 11, foreground),
-                TextBlock(text).FontSize(12).FontWeight(FontWeights.SemiBold).Foreground(foreground)))
+                TextBlock(text).FontSize(12).FontWeight(FontWeights.SemiBold).Foreground(foreground).TextWrapping(TextWrapping.NoWrap)))
             .Padding(8, 2)
             .CornerRadius(10)
             .Background(background)
@@ -156,7 +191,7 @@ internal static class AutomationsVisuals
     internal static Element ErrorText(string? text, string automationId) =>
         string.IsNullOrEmpty(text)
             ? Empty()
-            : TextBlock(text).FontSize(12).Foreground(Theme.SystemCritical).TextWrapping(TextWrapping.Wrap)
+            : TextBlock(text).FontSize(12).Foreground(Theme.SystemCritical).TextWrapping(TextWrapping.WrapWholeWords).MaxWidth(ReadingWidth)
                 .AutomationId(automationId).LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
 
     internal static Element Hero(string glyph, string title, string body, string automationId, params Element?[] actions) =>
@@ -174,13 +209,42 @@ internal static class AutomationsVisuals
             .HAlign(HorizontalAlignment.Center)
             .AutomationId(automationId);
 
+    internal static async Task CloseTransientSurfacesAsync(DependencyObject root)
+    {
+        var closed = new List<Task>();
+        void Visit(DependencyObject node)
+        {
+            if (node is CommandBar { IsOpen: true } bar)
+            {
+                var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                EventHandler<object>? handler = null;
+                handler = (_, _) => { bar.Closed -= handler; completion.TrySetResult(); };
+                bar.Closed += handler;
+                closed.Add(completion.Task);
+                bar.IsOpen = false;
+            }
+            if (node is Button { Flyout: { IsOpen: true } flyout })
+            {
+                var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                EventHandler<object>? handler = null;
+                handler = (_, _) => { flyout.Closed -= handler; completion.TrySetResult(); };
+                flyout.Closed += handler;
+                closed.Add(completion.Task);
+                flyout.Hide();
+            }
+            for (var index = 0; index < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(node); index++)
+                Visit(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(node, index));
+        }
+        Visit(root);
+        await Task.WhenAll(closed);
+    }
+
     // ─── Personality: kind colours, tiles and motion ───
 
     internal const string GlyphRepeat = "\uE8EE";
     internal const string GlyphStopwatch = "\uE916";
     internal const string GlyphCommand = "\uE756";
     internal const string GlyphHeart = "\uEB51";
-    internal const string GlyphPerson = "\uE77B";
     internal const string AutomationsIcon = "ms-appx:///Assets/SidebarIcons/Cron.svg";
 
     /// <summary>Fluent motion: short, decelerating, no bounce (DESIGN.md).</summary>
@@ -201,16 +265,44 @@ internal static class AutomationsVisuals
         _ => new(Theme.Ref("AutomationsKindOtherBrush"), Theme.Ref("AutomationsKindOtherFillBrush"), GlyphCommand),
     };
 
-    /// <summary>Rounded, tinted tile carrying the kind glyph. Decorative: the row or card names it.</summary>
-    internal static BorderElement KindTile(CronScheduleKind kind, double size = 40, string? glyph = null, Element? content = null)
+    internal sealed record AutomationFactProps(string Label, string Value, string Id);
+
+    internal sealed class AutomationFact : Component<AutomationFactProps>
     {
-        var tone = Kind(kind);
-        return Border(content ?? Glyph(glyph ?? tone.Glyph, Math.Round(size * 0.46), tone.Brush).Center())
-            .Size(size, size)
-            .CornerRadius(Math.Round(size * 0.3))
-            .Background(tone.Fill)
-            .BorderBrush(Theme.Ref("AutomationsTileStrokeBrush"))
-            .BorderThickness(1);
+        public override Element Render()
+        {
+            var (stacked, setStacked) = UseState(false);
+            return Grid(stacked ? [GridSize.Star()] : [GridSize.Px(AutomationsVisuals.DialogFactLabelWidth), GridSize.Star()],
+                stacked ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
+                AutomationsVisuals.Secondary(Props.Label, 13).Grid(column: 0),
+                TextBlock(Props.Value).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords).IsTextSelectionEnabled(true)
+                    .AutomationId(Props.Id).Grid(column: stacked ? 0 : 1, row: stacked ? 1 : 0))
+                .OnSizeChanged((_, args) => setStacked(args.NewSize.Width < AutomationsVisuals.DialogFactsStackWidth));
+        }
+    }
+
+    internal sealed record AutomationRowLabelsProps(string Title, string Subtitle, string? Tag, string JobId);
+
+    internal sealed class AutomationRowLabels : Component<AutomationRowLabelsProps>
+    {
+        public override Element Render()
+        {
+            var (width, setWidth) = UseState(0d);
+            double NaturalWidth(string text, bool bold = false)
+            {
+                var probe = new TextBlock { Text = text, FontSize = 12, FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal };
+                probe.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+                return probe.DesiredSize.Width;
+            }
+            var showTag = Props.Tag is { } tag && NaturalWidth(Props.Subtitle) + NaturalWidth(tag, true) + 24 <= width;
+            return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto, GridSize.Auto],
+                AutomationsVisuals.SingleLine(Props.Title, 14).FontWeight(FontWeights.SemiBold)
+                    .AutomationId($"CronJobTitle:{Props.JobId}").Grid(row: 0).Set(native => Microsoft.UI.Xaml.Controls.Grid.SetColumnSpan(native, 2)),
+                AutomationsVisuals.SingleLine(Props.Subtitle).Foreground(Theme.SecondaryText).Margin(0, 4, 0, 0).Grid(row: 1),
+                (showTag ? AutomationsVisuals.Pill(Props.Tag!, Theme.SecondaryText, Theme.SystemNeutralBackground).Margin(8, 4, 0, 0) : Empty())
+                    .Grid(column: 1, row: 1))
+                .OnSizeChanged((_, args) => setWidth(args.NewSize.Width));
+        }
     }
 
     /// <summary>Small status dot ringed with the card colour so it reads on top of a tile.</summary>
@@ -249,13 +341,18 @@ internal static class AutomationsVisuals
             .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
     }
 
-    /// <summary>Accent-washed band that gives the page header its own identity.</summary>
-    internal static BorderElement Wash(Element child) =>
-        Border(child)
-            .Background(Theme.Ref("AutomationsHeroBrush"))
-            .BorderBrush(Theme.Ref("AutomationsHeroStrokeBrush"))
-            .BorderThickness(1)
-            .CornerRadius(12);
+    /// <summary>
+    /// Decorative accent wash behind the page ScrollView. It stays at the viewport
+    /// top while content scrolls, so it must never take input or join the UIA tree.
+    /// </summary>
+    internal static Element PageBackdrop(double height) =>
+        Border(Empty())
+            .Background(Theme.Ref("AutomationsPageWashBrush"))
+            .Height(height)
+            .HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Top)
+            .IsHitTestVisible(false)
+            .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
+            .AutomationId("AutomationsBackdrop");
 
     /// <summary>The colourful Automations artwork, or its Fluent glyph in high contrast.</summary>
     internal static Element AppIcon(bool highContrast, double size) =>

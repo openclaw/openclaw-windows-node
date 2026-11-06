@@ -1791,21 +1791,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public Task<Cron.CronRunsPage> ListCronRunsAsync(Cron.CronRunsQuery query, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
         Cron.CronGatewayRequests.RunsAsync(this, query, timeoutMs);
 
-    public Task<Cron.CronHistoryPage> GetCronRunTranscriptAsync(Cron.CronRunEntry run, string? cursor = null, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
-        Cron.CronGatewayRequests.HistoryAsync(this, run, cursor, timeoutMs);
-
-    public Task<Cron.CronScratchSnapshot> GetCronScratchAsync(string id, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
-        Cron.CronGatewayRequests.GetScratchAsync(this, id, timeoutMs);
-
-    public Task<Cron.CronScratchSetResult> SetCronScratchAsync(string id, string? content, long expectedRevision, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
-        Cron.CronGatewayRequests.SetScratchAsync(this, id, content, expectedRevision, timeoutMs);
-
-    public Task<IReadOnlyList<Cron.McpEventDefinition>> ListMcpEventsAsync(string? agentId, string serverName, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
-        Cron.CronGatewayRequests.ListMcpEventsAsync(this, agentId, serverName, timeoutMs);
-
-    public Task<IReadOnlyList<Cron.ConversationTarget>> ListConversationsAsync(string agentId, string? channel = null, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
-        Cron.CronGatewayRequests.ListConversationsAsync(this, agentId, channel, timeoutMs);
-
     // Gateway config management
 
     public async Task RequestConfigAsync()

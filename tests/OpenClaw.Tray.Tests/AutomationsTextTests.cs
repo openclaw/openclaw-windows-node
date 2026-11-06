@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Xml.Linq;
 using OpenClaw.Shared.Cron;
 using OpenClawTray.Automations;
+using OpenClawTray.Presentation;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -17,6 +18,35 @@ public sealed class AutomationsTextTests
     private static AutomationsText Text() =>
         new(key => EnUs.Value.TryGetValue(key, out var value) ? value : throw new KeyNotFoundException(key), () => Now);
 
+    [Theory]
+    [InlineData(1400, PageWidthTier.Wide, 1200, true)]
+    [InlineData(1000, PageWidthTier.Wide, 936, true)]
+    [InlineData(999.99994, PageWidthTier.Wide, 936, true)]
+    [InlineData(999.99, PageWidthTier.Medium, 935.99, false)]
+    [InlineData(760, PageWidthTier.Medium, 696, false)]
+    [InlineData(720, PageWidthTier.Medium, 656, false)]
+    [InlineData(719.99994, PageWidthTier.Medium, 656, false)]
+    [InlineData(719.99, PageWidthTier.Narrow, 679.99, false)]
+    [InlineData(719, PageWidthTier.Narrow, 679, false)]
+    [InlineData(520, PageWidthTier.Narrow, 480, false)]
+    [InlineData(480, PageWidthTier.Narrow, 440, false)]
+    public void ResponsiveLayout_UsesMeasuredHostWidth(double hostWidth, PageWidthTier tier, double contentWidth, bool columns)
+    {
+        Assert.Equal(tier, PageResponsiveLayout.TierFor(hostWidth));
+        Assert.Equal(contentWidth, PageResponsiveLayout.ContentWidth(hostWidth));
+        Assert.Equal(columns, PageResponsiveLayout.UseTwoColumns(contentWidth));
+    }
+
+    [Theory]
+    [InlineData(1200, 320, 3, 392)]
+    [InlineData(936, 320, 2, 462)]
+    [InlineData(480, 320, 1, 480)]
+    public void ResponsiveTiles_KeepMinimumWidthAndGap(double contentWidth, double minimum, int columns, double tileWidth)
+    {
+        Assert.Equal(columns, PageResponsiveLayout.TileColumns(contentWidth, minimum));
+        Assert.Equal(tileWidth, PageResponsiveLayout.TileWidth(contentWidth, columns));
+    }
+
     private static T WithCulture<T>(Func<T> action)
     {
         var previous = CultureInfo.CurrentCulture;
@@ -24,6 +54,44 @@ public sealed class AutomationsTextTests
         try { return action(); }
         finally { CultureInfo.CurrentCulture = previous; }
     }
+
+    [Theory]
+    [InlineData("2027-01-01T00:30:00Z", "Today 2:30 AM")]
+    [InlineData("2027-01-01T23:30:00Z", "Tomorrow 1:30 AM")]
+    [InlineData("2027-01-04T10:00:00Z", "Jan 4, 12:00 PM")]
+    [InlineData("2028-01-04T10:00:00Z", "Tue, Jan 4, 2028, 12:00 PM")]
+    public void FriendlyNextRun_UsesLocalCalendarAcrossUtcYearBoundary(string instant, string expected)
+    {
+        var zone = TimeZoneInfo.CreateCustomTimeZone("Fixture+02", TimeSpan.FromHours(2), "Fixture+02", "Fixture+02");
+        var t = new AutomationsText(key => EnUs.Value[key],
+            () => DateTimeOffset.Parse("2026-12-31T22:30:00Z", CultureInfo.InvariantCulture), zone);
+        Assert.Equal(expected, WithCulture(() => t.FriendlyDateTime(DateTimeOffset.Parse(instant, CultureInfo.InvariantCulture).ToUnixTimeMilliseconds())));
+    }
+
+    [Fact]
+    public void OneTimeSchedule_UsesLocalizedWeekdayMonthAndPcZone()
+    {
+        var zone = TimeZoneInfo.CreateCustomTimeZone("Fixture+02", TimeSpan.FromHours(2), "Fixture+02", "Fixture+02");
+        var t = new AutomationsText(key => EnUs.Value[key],
+            () => DateTimeOffset.Parse("2026-12-31T22:30:00Z", CultureInfo.InvariantCulture), zone);
+        var schedule = new CronSchedule(CronScheduleKind.At, "at", At: "2027-01-01T23:30:00Z");
+        Assert.Equal("Once on Sat, Jan 2 at 1:30 AM", WithCulture(() => t.Schedule(schedule)));
+        var form = CronJobForm.CreateDefault("main") with { ScheduleKind = CronScheduleKind.At, ScheduleAt = DateTimeOffset.Parse(schedule.At!, CultureInfo.InvariantCulture) };
+        Assert.Equal("Once on Sat, Jan 2 at 1:30 AM", WithCulture(() => t.FormSchedule(form)));
+        Assert.Equal("Once today at 2:30 AM", WithCulture(() => t.Schedule(schedule with { At = "2027-01-01T00:30:00Z" })));
+    }
+
+    [Theory]
+    [InlineData(1, 0, 1, "1 on.")]
+    [InlineData(0, 1, 1, "1 paused or off.")]
+    [InlineData(2, 1, 2, "2 on, 1 paused or off, across 2 agents.")]
+    [InlineData(0, 0, 0, "")]
+    public void InventorySummary_OmitsZeroCountsAndSingleAgentScope(int on, int paused, int agents, string expected) =>
+        Assert.Equal(expected, WithCulture(() => Text().InventorySummary(on, paused, agents)));
+
+    [Fact]
+    public void SchedulerOff_ExplainsGatewayOwnershipInPlainLanguage() =>
+        Assert.Equal("Scheduled automations won't run until the Gateway scheduler is on.", Text()["SchedulerOff_Body"]);
 
     [Theory]
     [InlineData("0 9 * * *", null, "Every day at 9:00 AM")]
@@ -72,6 +140,9 @@ public sealed class AutomationsTextTests
         Assert.Equal("in 2 d", t.Relative(now + 2 * 86_400_000));
         Assert.Equal("250 ms", t.Duration(250));
         Assert.Equal("2 min 5 s", t.Duration(125_000));
+        Assert.StartsWith("Today ", WithCulture(() => t.RunTimestamp(now)));
+        Assert.Matches(@"[A-Za-z]{3} \d{1,2}, ", WithCulture(() => t.RunTimestamp(now - 86_400_000)));
+        Assert.DoesNotContain("2030", WithCulture(() => t.RunTimestamp(now - 86_400_000)));
     }
 
     [Fact]
@@ -86,8 +157,66 @@ public sealed class AutomationsTextTests
         var (title, message) = t.Notice(new AutomationsNotice(AutomationsNoticeKind.JobCompleted, "Dentist"));
         Assert.Equal("Automation finished", title);
         Assert.Equal("Dentist ran and removed itself.", message);
+        Assert.Equal("Run queued · run-7", t.Notice(new(AutomationsNoticeKind.RunQueued, "Brief", RunId: "run-7")).Message);
+        Assert.Equal("Not started: “Brief” is already running.", t.Notice(new(AutomationsNoticeKind.RunNotStarted, "Brief", "already-running")).Message);
+        Assert.Equal("Removed “Brief”", t.Notice(new(AutomationsNoticeKind.Removed, "Brief")).Message);
         Assert.False(new AutomationsNotice(AutomationsNoticeKind.RunNotStarted, "x", "already-running").IsError);
         Assert.True(new AutomationsNotice(AutomationsNoticeKind.RunNotStarted, "x", "invalid-spec").IsError);
+    }
+
+    [Theory]
+    [InlineData("FORBIDDEN", "cron.run requires operator.admin.")]
+    [InlineData("invalid-spec", "delivery.to is missing.")]
+    public void RejectedRun_PreservesGatewayExplanationInToastAndAnnouncement(string reason, string detail)
+    {
+        var notice = new AutomationsNotice(AutomationsNoticeKind.RunNotStarted, "Dentist", reason, detail);
+        if (reason == "FORBIDDEN")
+            Assert.Equal("Couldn't start “Dentist”. This connection is missing the operator.admin permission.", Text().Notice(notice).Message);
+        else Assert.EndsWith(detail, Text().Notice(notice).Message);
+        Assert.Equal(detail, notice.Detail);
+        Assert.True(notice.IsError);
+    }
+
+    [Fact]
+    public void PageOwnedOutcomes_DoNotPublishDuplicateGlobalNotifications()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "CronPage.xaml.cs"));
+        Assert.DoesNotContain("AppNotificationPublisher.Show", source);
+        Assert.DoesNotContain("AppNotification_ActionOpenCron", source);
+    }
+
+    [Fact]
+    public void ModalPresentation_RetiresNativeTransientSurfacesWithoutIgnoringAccessibility()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationsRoot.cs"));
+        var visuals = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationsVisuals.cs"));
+        Assert.Contains("await CloseTransientSurfacesAsync(page)", page);
+        Assert.Contains(".WithFlyout(", page);
+        Assert.DoesNotContain("native.Flyout = menu", page);
+        Assert.Contains("bar.Closed +=", visuals);
+        Assert.Contains("flyout.Hide()", visuals);
+    }
+
+    [Theory]
+    [InlineData("en-us")]
+    [InlineData("fr-fr")]
+    [InlineData("nl-nl")]
+    [InlineData("pt-br")]
+    [InlineData("zh-cn")]
+    [InlineData("zh-tw")]
+    public void ObjectCopy_UsesTypographicQuotesWithoutExamplePlaceholdersInEveryLocale(string locale)
+    {
+        var catalog = XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw"));
+        foreach (var item in catalog.Root!.Elements("data").Where(item => ((string)item.Attribute("name")!).StartsWith("Automations_", StringComparison.Ordinal)))
+        {
+            Assert.False(System.Text.RegularExpressions.Regex.IsMatch((string)item.Element("value")!, "\"\\{[0-9]+\\}\""),
+                $"{locale}: {item.Attribute("name")} uses straight object quotes.");
+            if (((string)item.Attribute("name")!).StartsWith("Automations_Placeholder_", StringComparison.Ordinal))
+                Assert.DoesNotContain("America/Los_Angeles", (string)item.Element("value")!);
+        }
     }
 
     [Fact]
@@ -111,11 +240,10 @@ public sealed class AutomationsTextTests
         }
         Assert.NotEmpty(keys);
         Assert.DoesNotContain(keys, key => !EnUs.Value.ContainsKey("Automations_" + key));
-        foreach (var s in CronSuggestion.All)
-            foreach (var part in new[] { "Name", "Tagline", "Prompt", "Schedule" })
-                Assert.True(EnUs.Value.ContainsKey($"Automations_Suggestion_{s.Id}_{part}"), s.Id + part);
-        foreach (var kind in new[] { CronScheduleKind.Every, CronScheduleKind.At, CronScheduleKind.Cron, CronScheduleKind.Event })
-            Assert.True(EnUs.Value.ContainsKey($"Automations_KindHint_{kind}"), kind.ToString());
+        Assert.DoesNotContain(EnUs.Value.Keys, key => key.StartsWith("Automations_Suggestion_", StringComparison.Ordinal));
+        Assert.DoesNotContain("Automations_Placeholder_Name", EnUs.Value.Keys);
+        Assert.Equal("Channel ID", EnUs.Value["Automations_Placeholder_ChannelLast"]);
+        Assert.DoesNotContain("https://example.com/cron", File.ReadAllText(Path.Combine(dir, "AutomationEditor.cs")));
         Assert.DoesNotContain(EnUs.Value, kv => kv.Key.StartsWith("Automations_", StringComparison.Ordinal) && kv.Value.Contains('\u2014'));
     }
 
@@ -151,15 +279,121 @@ public sealed class AutomationsTextTests
     }
 
     [Fact]
+    public void InlineInventory_DoesNotReintroduceSplitNavigation()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationsRoot.cs"));
+        Assert.DoesNotContain("RenderDetailPane", page);
+        // AutomationsBackdrop is the page accent wash; any other AutomationsBack* id would be the removed back button.
+        Assert.DoesNotMatch(@"AutomationsBack(?!drop\b)", page);
+        Assert.DoesNotContain("ListPaneWidth", page);
+        var detail = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationDetail.cs"));
+        Assert.Contains("CommandBar(primaryCommands:", detail);
+        Assert.DoesNotContain("SelectorBar(", detail);
+    }
+
+    [Fact]
+    public void PageBackdrop_IsAViewportLayerOutsideTheScrollingContent()
+    {
+        var dir = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Automations");
+        var page = File.ReadAllText(Path.Combine(dir, "AutomationsRoot.cs"));
+        var layout = page[page.IndexOf("return Grid([GridSize.Star()], [GridSize.Star()],", StringComparison.Ordinal)..];
+        var backdrop = layout.IndexOf("PageBackdrop(bandHeight)", StringComparison.Ordinal);
+        Assert.InRange(backdrop, 0, layout.IndexOf("ScrollView(", StringComparison.Ordinal));
+
+        // The wash brush has a single owner, so no scrolling element can paint it again.
+        var washOwner = Assert.Single(Directory.GetFiles(dir, "*.cs"),
+            f => File.ReadAllText(f).Contains("\"AutomationsPageWashBrush\"", StringComparison.Ordinal));
+        Assert.Equal("AutomationsVisuals.cs", Path.GetFileName(washOwner));
+        var visuals = File.ReadAllText(Path.Combine(dir, "AutomationsVisuals.cs"));
+        var helper = visuals[visuals.IndexOf("internal static Element PageBackdrop(", StringComparison.Ordinal)..];
+        helper = helper[..helper.IndexOf(';')];
+        Assert.Contains("Theme.Ref(\"AutomationsPageWashBrush\")", helper);
+        Assert.Contains(".IsHitTestVisible(false)", helper);
+        Assert.Contains("AccessibilityView.Raw", helper);
+    }
+
+    [Fact]
     public void AgentRoute_PassesTheRouteAgentToTheAutomationsPage()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
-        var hub = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs"));
-        Assert.Contains("cron.AgentId = _currentAgentId;", hub);
+        var shell = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs"));
+        Assert.Contains("cron.AgentId = _currentAgentId;", shell);
         var page = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "CronPage.xaml.cs"));
         Assert.Contains("new AutomationsStore(", page);
         Assert.Contains("agentId,", page);
         Assert.DoesNotContain("RequestCronListAsync", page);
+        // Web handoff reuses the Dashboard launcher (tunnel, credential policy, visible failures).
+        Assert.Contains("OpenDashboard(CronProtocol.WebPath(jobId))", page);
+        Assert.DoesNotContain("LaunchUriAsync", page);
+    }
+
+    [Fact]
+    public void AgentScope_NamesAllAgentsSeparatelyFromStatus()
+    {
+        var t = Text();
+        Assert.Equal("All agents", t.AgentScope(null));
+        Assert.Equal("Agent: ops", t.AgentScope("ops"));
+
+        var state = new AutomationsSnapshot
+        {
+            AgentId = "main",
+            AgentFilter = null,
+            Jobs = [CronJsonReaderJob("""{"id":"b","agentId":"zeta","name":"B","enabled":false,"schedule":{"kind":"every","everyMs":60000},"payload":{"kind":"agentTurn","message":"m"}}""")],
+        };
+        Assert.Equal(["main", "alpha", "zeta"], state.FilterAgents(["alpha", "main"]));
+        Assert.Equal("main", state.DefaultAgentId);
+        Assert.Equal("zeta", (state with { AgentFilter = "zeta" }).DefaultAgentId);
+    }
+
+    [Fact]
+    public void Editor_NamesSettingsItKeepsButDoesNotShow()
+    {
+        var t = Text();
+        var plain = CronJsonReaderJob("""{"id":"a","name":"A","enabled":true,"schedule":{"kind":"cron","expr":"0 * * * *","staggerMs":300000},"payload":{"kind":"agentTurn","message":"m"},"delivery":{"mode":"announce","channel":"slack","to":"#a"}}""");
+        Assert.Empty(t.PreservedSettings(plain));
+
+        var advanced = CronJsonReaderJob("""
+        {"id":"b","name":"B","enabled":true,"sessionKey":"route","idleOnly":true,
+         "schedule":{"kind":"cron","expr":"0 9 * * *","staggerMs":0},
+         "activeHours":{"start":"09:00","end":"17:00"},"trigger":{"script":"x"},
+         "payload":{"kind":"agentTurn","message":"m","model":"p/1","thinking":"low","timeoutSeconds":5,"toolsAllow":["a"]},
+         "delivery":{"mode":"announce","accountId":"work"},"failureAlert":false}
+        """);
+        Assert.Equal(
+            ["Stagger window", "Active hours", "Condition trigger", "Model", "Thinking", "Timeout", "Options", "Allowed tools", "Session key", "Delivery routing", "Failure alerts"],
+            t.PreservedSettings(advanced));
+    }
+
+    [Theory]
+    [InlineData(CronPayloadKind.AgentTurn, "Prompt")]
+    [InlineData(CronPayloadKind.SystemEvent, "Main timeline message")]
+    [InlineData(CronPayloadKind.Command, "Command")]
+    [InlineData(CronPayloadKind.Script, "Script")]
+    [InlineData(CronPayloadKind.Unknown, "Payload")]
+    public void PayloadField_NamesTheGatewayField(CronPayloadKind kind, string label) =>
+        Assert.Equal(label, Text().PayloadField(kind));
+
+    [Fact]
+    public void MissingGatewayValues_StayUnknownInsteadOfInventedCounts()
+    {
+        var t = Text();
+        var partial = CronJsonReaderJob("""{"id":"p","name":"P","enabled":false,"schedule":{"kind":"every","everyMs":60000},"payload":{"kind":"agentTurn","message":"m"},"state":{"autoDisabled":{}}}""");
+        Assert.Equal("Turned off by the scheduler", t.JobState(partial, running: false));
+        Assert.Equal("All", t.CountLabel("Redesign_All", null));
+        Assert.Equal("Paused or off", t.CountLabel("Redesign_Off", null));
+        Assert.Equal("On (0)", t.CountLabel("Redesign_On", 0));
+
+        var active = CronJsonReaderJob("""{"id":"a","name":"A","enabled":true,"schedule":{"kind":"every","everyMs":60000},"payload":{"kind":"agentTurn","message":"m"}}""");
+        // Before the complete overview arrives, a filtered browse page is not the inventory.
+        var browsing = new AutomationsSnapshot { AgentId = "main", Jobs = [active], Total = 1, ListQuery = new() { Enabled = CronEnabledFilter.Enabled } };
+        Assert.Null(browsing.InventoryTotal);
+        Assert.Null(browsing.ActiveCount);
+        Assert.Null(browsing.PausedCount);
+        Assert.Equal(7, (browsing with { ScopedTotal = 7 }).InventoryTotal);
+
+        var loaded = browsing with { ScopedTotal = 7, OverviewLoaded = true, OverviewJobs = [active, partial] };
+        Assert.Equal((2, 1, 1), (loaded.InventoryTotal, loaded.ActiveCount, loaded.PausedCount));
     }
 
     private static CronJob CronJsonReaderJob(string json) =>

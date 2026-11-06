@@ -73,7 +73,7 @@ public sealed class GatewayFixtureProfile : IDisposable
             {
                 Id = GatewayId,
                 Url = endpoint.AbsoluteUri,
-                FriendlyName = $"Fixture Gateway ({RunId[..8]})",
+                FriendlyName = "Fixture Gateway",
                 SharedGatewayToken = token,
                 // This is an unmanaged test server, not a provisioned WSL Gateway.
                 // Do not claim managed ownership or bypass its credential-provenance checks.

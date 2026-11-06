@@ -1225,6 +1225,83 @@ Track and knob states bind the `toggle*`, `accent`, and `accentInk` resource tok
 
 The close control is `InfoBarCloseButtonStyle` (based on `DefaultButtonStyle` with AppBarButton resource overrides), not SubtleButtonStyle: 38x38 with a 5px margin and a 16px Cancel glyph. Its preview has hover, pressed, disabled, and keyboard-focus visuals, but **does not dismiss the banner**. The installed renderer only supports opening an overlay on click. Native `IsOpen`, `IsClosable`, actions, `InfoBarPanel` responsive reflow, high-contrast 2px border thickness, and native glyph/text rasterization are not reproduced. The preview retains a 1px border in every theme and uses representative high-contrast system colors. These limits prevent a 1:1 native rendering claim; ship the stock controls and their resources, never these SVG/browser stand-ins.
 
+### Automations page anatomy
+
+The Reactor Automations surface reads top-down: accent-tinted answer, Needs you,
+Coming up, then All automations. Use the existing Fluent gradient resources,
+status brushes, type scale, spacing steps and rounded surfaces. The page width
+token `automationPageMaxWidth` is 1200 DIPs to accommodate the agenda and inline
+definition/results columns. `PageResponsiveLayout` owns the cross-page contract,
+measured from the page host's ActualWidth: Wide starts at 1000 DIPs, Medium at
+720, and Narrow supports hosts down to 480. Horizontal padding is 32 DIPs on
+Wide/Medium and 20 on Narrow; usable content is capped at 1200 DIPs.
+Two-column bodies appear only on Wide, retain at least 320 DIPs per column,
+and otherwise stack in reading order with a 16-DIP gap.
+Inventory expansion never becomes a split pane or adds a Back
+button. Each All automations row is its own rounded card (shared card
+background, stroke and `md` radius), stacked with spacing step `2` (8 DIPs,
+`PageResponsiveLayout.GapInner`) and no joining group surface. An expanded
+row keeps its detail inside that card. Stacked Needs you cards and loading
+placeholders use the same gap; Coming up and inline recent runs stay divider lists inside
+one surface. Actions use a native CommandBar with borderless, right-labelled
+AppBarButtons and native overflow.
+An empty Gateway inventory stays empty: retain explicit guidance and New automation,
+Open chat and web handoffs, without client-authored starter cards or example payloads.
+New automation names and prompts are blank until the user supplies them.
+Style-bearing buttons and changing command groups keep stable semantic keys.
+`ApplyStyle` is mount-only: an unkeyed inserted New action can otherwise adopt a
+previously neutral Refresh control without mounting its accent style. Header
+menus use tracked flyout attachment and an accessible menu name; modal opening
+waits for transient native command bars/flyouts to close.
+
+The mast wash fades vertically without a box or rounded outline. It is a
+decorative viewport layer behind the page ScrollView, sized to the header band:
+content and header scroll normally over it while the wash stays at the top.
+It takes no input and stays out of the UI Automation tree. Section counts
+use centered pills, critical for Needs you and neutral elsewhere. Attention cards
+use a two-column grid on Wide, with an orphan retaining its column width.
+On Medium/Narrow, single-column cards stretch across the full usable content
+width and align with the heading. Do not cap or center those cards.
+The agenda and Earlier today summary are adjacent columns on Wide.
+Filters use explicit rows: one on Wide with search aligned right (240-360 DIPs),
+two on Medium with full-width search below, and three on Narrow for status,
+agent, then search. The Narrow mast puts one unwrapped action row below its text
+and Medium also moves Open in web into native overflow. Titles and subtitles use single-line
+ellipsis with full tooltips; Narrow rows move metadata below the subtitle.
+Reading-width secondary text explicitly aligns left; a MaxWidth on Stretch would
+center shorter blocks and create false indentation at wider hosts. Agenda
+ListView/item horizontal padding is zero so group headers align with their column.
+Advanced tags yield space before subtitles truncate. Basic
+schedules omit raw expressions, and run timestamps use local Today/month labels.
+
+The editor uses a native ContentDialog width of the smaller of 560 DIPs or the
+window's XamlRoot width minus 48 DIPs. Its `automationEditorHeight` is 640 DIPs
+with a scrolling form and an always-visible action footer. Narrow footers stack
+full-width actions with primary first; fields and fact rows stack when their own
+available width is below 400 DIPs. Chat actions are subtle icon-only buttons with
+localized tooltips and item-specific accessible names.
+
+Automations popups share a 36-DIP circular icon badge, title and short body.
+Typographic object quotes follow each locale consistently across confirmation,
+copy-as-new, not-started and error text.
+Destructive confirmations use critical system brushes, name the affected object,
+and focus Cancel from the native Opened handler. Use `DefaultButton=None` and
+explicit `PrimaryButtonStyle=AccentButtonStyle` so the named action, not Cancel,
+retains the accent. Optional fact panels use a 120-DIP
+label column and subtle Fluent fill. Removal names the connected Gateway from
+the current connection snapshot, never a mock or fixed machine name. Keep
+preserved-setting and revision-conflict notices at the top of the editor body.
+Results use bottom-center in-app toasts, 20 DIPs above the content edge, with
+`FlyoutPresenterBackground`, `FlyoutBorderThemeBrush`, a 1-DIP stroke and native
+ThemeShadow at elevation 16. Use 16/12-DIP horizontal/vertical padding and an
+18-DIP decorative icon. Only the icon carries severity color. Toasts
+stack upward (up to three), are at most 480 DIPs wide, and contain at most one
+action. Normal duration is four seconds, or seven with an action. Not-started
+information uses the neutral E946 glyph, not a success check. Errors remain until
+their explicit icon-only Close action and use UseAnnounce assertive announcements.
+Page-owned results are not duplicated into global notifications or stale inline
+error bars. The overlay inherits the page's ActualTheme through RequestedTheme.
+
 ## Do's and Don'ts
 
 Do:

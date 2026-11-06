@@ -80,19 +80,35 @@ public sealed class CronModelTests
     }
 
     [Fact]
-    public void ParseSchedule_ReadsEventAndProcessKindsAsReadOnlyWhereNeeded()
+    public void ParseSchedule_ReadsEventAndProcessKindsAsWebManaged()
     {
         var mcp = CronJsonReader.ParseSchedule(Json("""{"kind":"event","source":"mcp-events","options":{"server":"github","name":"pr.opened","arguments":{"repo":"a/b"}}}"""));
         Assert.True(mcp.IsMcpEvent);
-        Assert.False(mcp.IsReadOnly);
+        Assert.True(mcp.IsWebManaged);
         Assert.Equal("github", mcp.EventServer);
         Assert.Contains("\"repo\"", mcp.EventArgumentsJson);
         var plugin = CronJsonReader.ParseSchedule(Json("""{"kind":"event","source":"calendar","options":{}}"""));
-        Assert.True(plugin.IsReadOnly);
+        Assert.True(plugin.IsWebManaged);
         var stream = CronJsonReader.ParseSchedule(Json("""{"kind":"stream","command":["tail","-f"]}"""));
         Assert.Equal(CronScheduleKind.Stream, stream.Kind);
         Assert.Equal("tail -f", stream.Command);
-        Assert.True(stream.IsReadOnly);
+        Assert.True(stream.IsWebManaged);
+        Assert.False(CronJsonReader.ParseSchedule(Json("""{"kind":"cron","expr":"0 9 * * 1-5"}""")).IsWebManaged);
+        Assert.False(CronJsonReader.ParseSchedule(Json("""{"kind":"every","everyMs":60000}""")).IsWebManaged);
+        Assert.False(CronJsonReader.ParseSchedule(Json("""{"kind":"at","at":"2030-01-01T00:00:00Z"}""")).IsWebManaged);
+    }
+
+    [Fact]
+    public void ParseJob_UsesTheGatewayResolvedOwnerOnlyWhenNoneIsStored()
+    {
+        var implicitOwner = CronJsonReader.ParseJob(Json("""{"id":"a","name":"A","enabled":true,"effectiveAgentId":"main","schedule":{"kind":"every","everyMs":60000},"payload":{"kind":"agentTurn","message":"m"}}"""))!;
+        Assert.Null(implicitOwner.AgentId);
+        Assert.Equal("main", implicitOwner.Owner);
+        // The resolved owner is display-only: a basic edit does not pin it.
+        Assert.False((CronJobForm.FromJob(implicitOwner) with { Name = "B" }).BuildDefinition(implicitOwner).ContainsKey("agentId"));
+
+        var explicitOwner = CronJsonReader.ParseJob(Json("""{"id":"a","name":"A","enabled":true,"agentId":"ops","effectiveAgentId":"main","schedule":{"kind":"every","everyMs":60000},"payload":{"kind":"agentTurn","message":"m"}}"""))!;
+        Assert.Equal("ops", explicitOwner.Owner);
     }
 
     [Fact]
@@ -106,10 +122,61 @@ public sealed class CronModelTests
         var array = CronJsonReader.ParseListPage(Json($"[{FullJob}]"));
         Assert.Single(array.Jobs);
         Assert.False(array.HasMore);
+        Assert.Equal(1, array.Total);
     }
 
     [Fact]
-    public void ParseRunsAndStatusAndScratch()
+    public void ParseListPage_DerivesATotalOnlyFromTheFinalPage()
+    {
+        var partial = CronJsonReader.ParseListPage(Json($$"""{"jobs":[{{FullJob}}],"offset":0,"hasMore":true}"""));
+        Assert.Null(partial.Total);
+        Assert.Equal(1, partial.NextOffset);
+        var cursorOnly = CronJsonReader.ParseListPage(Json($$"""{"jobs":[{{FullJob}}],"nextOffset":1}"""));
+        Assert.True(cursorOnly.HasMore);
+        Assert.Null(cursorOnly.Total);
+        Assert.Equal(5, CronJsonReader.ParseListPage(Json($$"""{"jobs":[{{FullJob}}],"offset":4,"hasMore":false}""")).Total);
+    }
+
+    [Theory]
+    [InlineData("""{"id":"a","name":"A","schedule":{"kind":"every","everyMs":60000},"payload":{"kind":"agentTurn","message":"m"}}""")]
+    [InlineData("""{"id":"a","name":"A","enabled":"false","schedule":{"kind":"every","everyMs":60000},"payload":{"kind":"agentTurn","message":"m"}}""")]
+    [InlineData("""{"id":"a","name":"A","enabled":null,"schedule":{"kind":"every","everyMs":60000},"payload":{"kind":"agentTurn","message":"m"}}""")]
+    public void ParseJob_RejectsAJobWithoutAGatewayEnabledState(string json)
+    {
+        // An unstated enabled flag is not evidence that the job is paused.
+        Assert.Null(CronJsonReader.ParseJob(Json(json)));
+        var list = Assert.Throws<InvalidOperationException>(() => CronJsonReader.ParseListPage(Json($$"""{"jobs":[{{FullJob}},{{json}}],"total":2}""")));
+        Assert.Equal(CronJsonReader.UnreadableJobMessage, list.Message);
+    }
+
+    [Theory]
+    [InlineData("""{"total":3}""")]
+    [InlineData("""{"jobs":null,"total":0}""")]
+    [InlineData("""{"jobs":{},"total":0}""")]
+    [InlineData("null")]
+    public void ParseListPage_RejectsAnUnreadableEnvelope(string json)
+    {
+        var error = Assert.Throws<InvalidOperationException>(() => CronJsonReader.ParseListPage(Json(json)));
+        Assert.Equal(CronJsonReader.UnreadableListMessage, error.Message);
+    }
+
+    [Fact]
+    public void ParseRunsPage_DerivesATotalOnlyFromACompleteFinalPage()
+    {
+        Assert.Equal(9, CronJsonReader.ParseRunsPage(Json("""{"entries":[{"jobId":"j","runId":"r1"}],"total":9}""")).Total);
+        Assert.Equal(3, CronJsonReader.ParseRunsPage(Json("""{"entries":[{"jobId":"j","runId":"r1"}],"offset":2,"hasMore":false}""")).Total);
+        Assert.Null(CronJsonReader.ParseRunsPage(Json("""{"entries":[{"jobId":"j","runId":"r1"}],"hasMore":true}""")).Total);
+        Assert.Null(CronJsonReader.ParseRunsPage(Json("""{"entries":[{"jobId":"j","runId":"r1"}],"nextOffset":1}""")).Total);
+        // A dropped, unidentifiable entry means the page no longer says how many runs exist.
+        var dropped = CronJsonReader.ParseRunsPage(Json("""{"entries":[{"jobId":"j","runId":"r1"},{"jobId":"j"}],"hasMore":false}"""));
+        Assert.Single(dropped.Entries);
+        Assert.Null(dropped.Total);
+        var error = Assert.Throws<InvalidOperationException>(() => CronJsonReader.ParseRunsPage(Json("""{"total":2}""")));
+        Assert.Equal(CronJsonReader.UnreadableRunsMessage, error.Message);
+    }
+
+    [Fact]
+    public void ParseRunsAndStatus()
     {
         var runs = CronJsonReader.ParseRunsPage(Json("""
         {"entries":[{"ts":10,"jobId":"j","status":"ok","summary":"done","deliveryStatus":"delivered","runId":"r1","runAtMs":5,
@@ -120,36 +187,42 @@ public sealed class CronModelTests
         var run = runs.Entries[0];
         Assert.Equal((3L, 4L), (run.InputTokens, run.OutputTokens));
         Assert.Equal("fine", run.DiagnosticsSummary);
-        Assert.True(run.CanOpenTranscript);
-        Assert.False(runs.Entries[1].CanOpenTranscript);
+        Assert.Equal("r1", run.Key);
         Assert.Equal("j:20", runs.Entries[1].Key);
 
         var status = CronJsonReader.ParseStatus(Json("""{"enabled":false,"nextWakeAtMs":99,"jobs":4}"""));
         Assert.Equal(new CronSchedulerStatus(false, 99, 4, null), status);
-
-        var scratch = CronJsonReader.ParseScratch(Json("""{"scratch":{"content":"x","revision":2,"updatedAtMs":3},"currentRevision":2,"maxBytes":10}"""));
-        Assert.True(scratch.Exists);
-        Assert.Equal(10, scratch.MaxBytes);
-        var missing = CronJsonReader.ParseScratch(Json("""{"scratch":null,"currentRevision":0,"maxBytes":10}"""));
-        Assert.False(missing.Exists);
-        var conflict = CronJsonReader.ParseScratchSet(Json("""{"ok":false,"reason":"revision-conflict","currentRevision":4}"""));
-        Assert.True(conflict.Conflict);
-        Assert.Equal(4, conflict.CurrentRevision);
     }
 
     [Fact]
-    public void ParseConfigHints_ReadsEnabledMcpServersAndModels()
+    public void ParseRuns_LeavesAMissingTimeUnknownAndDropsUnidentifiableEntries()
     {
-        var config = Json("""
-        {"config":{"mcp":{"servers":{"b":{"enabled":true},"a":{},"off":{"enabled":false}}},
-         "agents":{"defaults":{"model":{"primary":"p/1","fallbacks":["p/2"]},"models":{"p/3":{}}},"entries":{"x":{"model":"p/4"}}}}}
-        """);
-        Assert.Equal(["a", "b"], CronJsonReader.ParseEnabledMcpServers(config));
-        Assert.Equal(["p/1", "p/2", "p/3", "p/4"], CronJsonReader.ParseConfiguredModels(config));
+        var runs = CronJsonReader.ParseRunsPage(Json("""
+        {"entries":[{"jobId":"j","runId":"r1","status":"ok"},{"jobId":"j","runAtMs":7},{"jobId":"j","status":"ok"}],"total":3,"offset":0,"hasMore":false}
+        """));
+        Assert.Equal(2, runs.Entries.Count);
+        Assert.Null(runs.Entries[0].Ts);
+        Assert.Null(runs.Entries[0].EffectiveRunAtMs);
+        Assert.Null(runs.Entries[0].InputTokens);
+        Assert.Equal(7, runs.Entries[1].EffectiveRunAtMs);
     }
 
     [Fact]
-    public void ListQuery_AlwaysSendsTheAgentScope()
+    public void ParseJob_LeavesOmittedGatewayFieldsUnset()
+    {
+        var job = CronJsonReader.ParseJob(Json("""
+        {"id":"a","name":"A","enabled":false,"schedule":{"kind":"every","everyMs":60000},"payload":{"kind":"agentTurn","message":"m"},
+         "state":{"autoDisabled":{}}}
+        """))!;
+        Assert.Null(job.SessionTarget);
+        Assert.Null(job.WakeMode);
+        Assert.Null(job.Delivery);
+        Assert.Equal(new CronAutoDisabled(null, null, null), job.State.AutoDisabled);
+        Assert.True(job.IsAutoDisabled);
+    }
+
+    [Fact]
+    public void ListQuery_SendsTheAgentScopeOnlyWhenOneAgentIsFiltered()
     {
         var p = new CronListQuery { AgentId = " research ", Query = " sync ", Enabled = CronEnabledFilter.Disabled, SortBy = CronSortBy.Name, Descending = true, Offset = 50 }.ToParameters();
         Assert.Equal("research", p["agentId"]!.GetValue<string>());
@@ -161,6 +234,12 @@ public sealed class CronModelTests
         Assert.Equal(50, p["offset"]!.GetValue<int>());
         Assert.False(p.ContainsKey("scheduleKind"));
         Assert.True(new CronListQuery { LastRunStatus = "error" }.ToParameters().ContainsKey("scheduleKind"));
+
+        // All agents: no agent scope, and "all" status still lists paused jobs.
+        var everyAgent = new CronListQuery { AgentId = null }.ToParameters();
+        Assert.False(everyAgent.ContainsKey("agentId"));
+        Assert.True(everyAgent["includeDisabled"]!.GetValue<bool>());
+        Assert.Equal("all", everyAgent["enabled"]!.GetValue<string>());
     }
 
     [Fact]
@@ -175,7 +254,62 @@ public sealed class CronModelTests
         Assert.Equal("all", all["scope"]!.GetValue<string>());
         Assert.Equal("main", all["agentId"]!.GetValue<string>());
         Assert.False(all.ContainsKey("statuses"));
+        Assert.False(new CronRunsQuery().ToParameters().ContainsKey("agentId"));
     }
+
+    [Fact]
+    public void RunsQuery_SendsOnlyPropertiesTheReleasedGatewayAccepts()
+    {
+        // The released Gateway (v2026.11.1) validates cron.runs params as a closed object.
+        // The "view" option exists only from 2026.11.5-beta and makes older Gateways reject the request.
+        string[] released =
+        [
+            "agentId", "scope", "id", "jobId", "runId", "limit", "offset", "statuses", "status",
+            "deliveryStatuses", "deliveryStatus", "query", "sortDir",
+        ];
+        CronRunsQuery[] queries =
+        [
+            new(),
+            new() { AgentId = "main", Statuses = ["error", "ok"], DeliveryStatuses = ["not-delivered"], Query = "sync", OldestFirst = true, Limit = 5, Offset = 10 },
+            new() { JobId = "a", RunId = "run-1", Statuses = ["skipped"] },
+        ];
+
+        foreach (var query in queries)
+            Assert.All(query.ToParameters().Select(property => property.Key), key => Assert.Contains(key, released));
+    }
+
+    [Theory]
+    [InlineData(CronCalendarPattern.Daily, 7, 30, "30 7 * * *")]
+    [InlineData(CronCalendarPattern.Weekdays, 9, 0, "0 9 * * 1-5")]
+    [InlineData(CronCalendarPattern.Weekly, 18, 5, "5 18 * * 1")]
+    [InlineData(CronCalendarPattern.Monthly, 0, 0, "0 0 1 * *")]
+    public void Calendar_PatternsRoundTripTheirTime(CronCalendarPattern pattern, int hour, int minute, string expr)
+    {
+        Assert.Equal(expr, CronCalendar.Build(pattern, new TimeSpan(hour, minute, 0)));
+        Assert.Equal((pattern, new TimeSpan(hour, minute, 0)), CronCalendar.TryParse(expr));
+    }
+
+    [Theory]
+    [InlineData("*/15 * * * *")]
+    [InlineData("0 9 * * 1,3")]
+    [InlineData("0 9 * 1 *")]
+    [InlineData("0 24 * * *")]
+    [InlineData("00 9 * * *")]
+    [InlineData("0 9 * * * *")]
+    [InlineData("")]
+    public void Calendar_TreatsOtherExpressionsAsCustomRules(string expr) => Assert.Null(CronCalendar.TryParse(expr));
+
+    [Fact]
+    public void Calendar_HourlyHasNoTimeOfDay() =>
+        Assert.Equal(CronCalendarPattern.Hourly, CronCalendar.TryParse(CronCalendar.Build(CronCalendarPattern.Hourly, new TimeSpan(7, 0, 0)))!.Value.Pattern);
+
+    [Theory]
+    [InlineData(null, "cron")]
+    [InlineData(" ", "cron")]
+    [InlineData("morning-brief", "cron?job=morning-brief")]
+    [InlineData("a b/c&d#e", "cron?job=a%20b%2Fc%26d%23e")]
+    public void WebPath_UsesTheDocumentedAutomationsRouteAndJobLink(string? jobId, string expected) =>
+        Assert.Equal(expected, CronProtocol.WebPath(jobId));
 
     [Theory]
     [InlineData("30", CronDurationUnit.Minutes, 1_800_000L)]
@@ -260,7 +394,7 @@ public sealed class CronJobFormTests
     }
 
     [Fact]
-    public void Validate_TriggersEventsDeliveryAndAlerts()
+    public void Validate_TriggersDeliveryAndAlerts()
     {
         var trigger = (Valid with { TriggerEnabled = true, EveryAmount = "10", EveryUnit = CronDurationUnit.Seconds }).Validate();
         Assert.Equal(CronFormError.TriggerIntervalTooShort, trigger[CronFormField.EveryAmount]);
@@ -268,16 +402,15 @@ public sealed class CronJobFormTests
         Assert.Equal(CronFormError.TriggerScheduleUnsupported,
             (Valid with { TriggerEnabled = true, TriggerScript = "x", ScheduleKind = CronScheduleKind.At, ScheduleAt = DateTimeOffset.Now }).Validate()[CronFormField.TriggerScript]);
 
-        var evt = (Valid with { ScheduleKind = CronScheduleKind.Event, EventArguments = "[1]" }).Validate();
-        Assert.Equal(CronFormError.EventServerRequired, evt[CronFormField.EventServer]);
-        Assert.Equal(CronFormError.EventNameRequired, evt[CronFormField.EventName]);
-        Assert.Equal(CronFormError.EventArgumentsInvalid, evt[CronFormField.EventArguments]);
+        var evt = (Valid with { ScheduleKind = CronScheduleKind.Event, PayloadKind = CronPayloadKind.SystemEvent, SessionTarget = "main" }).Validate();
+        Assert.Equal(CronFormError.EventAgentTurnRequired, evt[CronFormField.PayloadText]);
 
         Assert.Equal(CronFormError.WebhookUrlRequired, (Valid with { DeliveryMode = "webhook" }).Validate()[CronFormField.DeliveryTo]);
         Assert.Equal(CronFormError.WebhookUrlInvalid, CronJobForm.ValidateWebhookUrl("ftp://x.test"));
         Assert.Equal(CronFormError.WebhookUrlInvalid, CronJobForm.ValidateWebhookUrl("https://user:pw@x.test/hook"));
         Assert.Null(CronJobForm.ValidateWebhookUrl("https://x.test/hook"));
         Assert.Equal(CronFormError.DeliveryModeRequired, (Valid with { DeliveryMode = "" }).Validate()[CronFormField.DeliveryMode]);
+        Assert.DoesNotContain(CronFormField.DeliveryMode, (Valid with { DeliveryMode = "", KeepSavedDelivery = true }).Validate().Keys);
         Assert.Equal(CronFormError.TimeoutInvalid, (Valid with { TimeoutSeconds = "-1" }).Validate()[CronFormField.TimeoutSeconds]);
 
         var alerts = (Valid with { FailureAlertMode = CronFailureAlertMode.Custom, FailureAlertAfter = "0", FailureAlertCooldownSeconds = "-2" }).Validate();
@@ -298,16 +431,12 @@ public sealed class CronJobFormTests
     }
 
     [Fact]
-    public void WithScheduleKind_AppliesOneShotAndEventDefaults()
+    public void WithScheduleKind_AppliesOneShotDefaults()
     {
         var once = Valid.WithScheduleKind(CronScheduleKind.At);
         Assert.True(once.DeleteAfterRun);
         Assert.NotNull(once.ScheduleAt);
         Assert.False(once.WithScheduleKind(CronScheduleKind.Every).DeleteAfterRun);
-        var evt = (Valid with { TriggerEnabled = true, SessionTarget = "main", PayloadKind = CronPayloadKind.SystemEvent }).WithScheduleKind(CronScheduleKind.Event);
-        Assert.False(evt.TriggerEnabled);
-        Assert.Equal(CronPayloadKind.AgentTurn, evt.PayloadKind);
-        Assert.Equal("isolated", evt.SessionTarget);
     }
 
     [Fact]
@@ -391,6 +520,11 @@ public sealed class CronJobFormTests
 
         var changed = (form with { CronExpr = "5 8 * * *", StaggerAmount = "" }).BuildDefinition(job);
         Assert.Equal(0, changed["schedule"]!["staggerMs"]?.GetValue<long>() ?? 0);
+
+        // Editing only the time zone keeps the expression and its timing window.
+        var zoned = (form with { CronTz = "Europe/Paris" }).BuildDefinition(job);
+        Assert.Equal("5 7 * * *", zoned["schedule"]!["expr"]!.GetValue<string>());
+        Assert.Equal(120_000, zoned["schedule"]!["staggerMs"]!.GetValue<long>());
         Assert.False(changed.ContainsKey("pacing"));
 
         var disabled = (form with { FailureAlertMode = CronFailureAlertMode.Disabled }).BuildDefinition(job);
@@ -434,17 +568,111 @@ public sealed class CronJobFormTests
         Assert.Equal("", clone.PayloadText);
     }
 
-    [Fact]
-    public void PluginEventSchedules_ArePreservedOnSave()
+    [Theory]
+    [InlineData("""{"kind":"event","source":"plugin-x","eventName":"ping"}""")]
+    [InlineData("""{"kind":"event","source":"mcp-events","options":{"server":"github","name":"pr.opened","arguments":{"repo":"a/b"}}}""")]
+    [InlineData("""{"kind":"stream","command":["tail","-f"]}""")]
+    public void WebManagedSchedules_ArePreservedOnEditAndCopiedOnClone(string schedule)
     {
-        var job = CronJsonReader.ParseJob(JsonDocument.Parse("""
-        {"id":"j","name":"J","enabled":true,"configRevision":"r",
-         "schedule":{"kind":"event","source":"plugin-x","eventName":"ping"},
+        var job = CronJsonReader.ParseJob(JsonDocument.Parse($$$"""
+        {"id":"j","name":"J","enabled":true,"configRevision":"r","schedule":{{{schedule}}},
          "payload":{"kind":"agentTurn","message":"m"}}
         """).RootElement)!;
-        var form = CronJobForm.FromJob(job) with { EventServer = "ignored", EventName = "ignored", Name = "Renamed" };
+        var form = CronJobForm.FromJob(job) with { Name = "Renamed" };
         Assert.True(form.HasUnchangedSchedule(job));
         Assert.False(form.BuildDefinition(job).ContainsKey("schedule"));
+        var clone = CronJobForm.FromClone(job, "J (copy)").BuildDefinition(cloneSource: job);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(schedule), clone["schedule"]));
+    }
+
+    [Fact]
+    public void BasicEdit_KeepsSettingsTheNativeEditorDoesNotShow()
+    {
+        var job = CronJsonReader.ParseJob(JsonDocument.Parse("""
+        {"id":"j","name":"J","enabled":true,"configRevision":"r","sessionKey":"route","idleOnly":true,
+         "schedule":{"kind":"every","everyMs":600000},
+         "activeHours":{"start":"09:00","end":"17:00","timezone":"user"},"trigger":{"script":"x","once":true},
+         "payload":{"kind":"agentTurn","message":"m","model":"p/1","thinking":"low","timeoutSeconds":5,"lightContext":true,"skipIfScratchEmpty":true,"toolsAllow":["a"]},
+         "delivery":{"mode":"announce","channel":"slack","to":"#a","accountId":"work","threadId":"t","directPolicy":"block","bestEffort":true},
+         "failureAlert":{"after":2,"cooldownMs":60000,"channel":"slack","to":"#ops","includeSkipped":true}}
+        """).RootElement)!;
+        var patch = (CronJobForm.FromJob(job) with { Name = "Renamed", PayloadText = "New prompt", EveryAmount = "15" }).BuildDefinition(job);
+
+        Assert.Equal(900_000, patch["schedule"]!["everyMs"]!.GetValue<long>());
+        Assert.False(patch.ContainsKey("trigger"));
+        Assert.False(patch.ContainsKey("sessionTarget"));
+        Assert.False(patch.ContainsKey("wakeMode"));
+        Assert.Equal("route", patch["sessionKey"]!.GetValue<string>());
+        Assert.True(patch["idleOnly"]!.GetValue<bool>());
+        Assert.Equal("user", patch["activeHours"]!["timezone"]!.GetValue<string>());
+        var payload = patch["payload"]!.AsObject();
+        Assert.Equal("New prompt", payload["message"]!.GetValue<string>());
+        Assert.Equal("p/1", payload["model"]!.GetValue<string>());
+        Assert.Equal("low", payload["thinking"]!.GetValue<string>());
+        Assert.Equal(5, payload["timeoutSeconds"]!.GetValue<double>());
+        Assert.True(payload["lightContext"]!.GetValue<bool>());
+        Assert.True(payload["skipIfScratchEmpty"]!.GetValue<bool>());
+        var delivery = patch["delivery"]!.AsObject();
+        Assert.Equal("work", delivery["accountId"]!.GetValue<string>());
+        Assert.Equal("t", delivery["threadId"]!.GetValue<string>());
+        Assert.Equal("block", delivery["directPolicy"]!.GetValue<string>());
+        Assert.True(delivery["bestEffort"]!.GetValue<bool>());
+        var alert = patch["failureAlert"]!.AsObject();
+        Assert.Equal(2, alert["after"]!.GetValue<int>());
+        Assert.Equal(60_000, alert["cooldownMs"]!.GetValue<long>());
+        Assert.True(alert["includeSkipped"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void LegacyDelivery_IsKeptOnEditButMustBeChosenForACopy()
+    {
+        var job = CronJsonReader.ParseJob(JsonDocument.Parse("""
+        {"id":"j","name":"J","enabled":true,"configRevision":"r","schedule":{"kind":"every","everyMs":600000},
+         "payload":{"kind":"agentTurn","message":"m"},"delivery":{"mode":"legacy-push","to":"x"}}
+        """).RootElement)!;
+        var edit = CronJobForm.FromJob(job) with { Name = "Renamed" };
+        Assert.Equal("", edit.DeliveryMode);
+        Assert.True(edit.KeepSavedDelivery);
+        Assert.Empty(edit.Validate());
+        Assert.False(edit.BuildDefinition(job).ContainsKey("delivery"));
+
+        var copy = CronJobForm.FromClone(job, "J (copy)");
+        Assert.False(copy.KeepSavedDelivery);
+        Assert.Equal(CronFormError.DeliveryModeRequired, copy.Validate()[CronFormField.DeliveryMode]);
+    }
+
+    [Fact]
+    public void OmittedDeliveryAndTargets_AreNotRewrittenThroughGuessedDefaults()
+    {
+        var job = CronJsonReader.ParseJob(JsonDocument.Parse("""
+        {"id":"j","name":"J","enabled":true,"configRevision":"r","schedule":{"kind":"every","everyMs":600000},
+         "payload":{"kind":"agentTurn","message":"m"}}
+        """).RootElement)!;
+        var edit = CronJobForm.FromJob(job) with { Name = "Renamed" };
+        Assert.Equal(("", true), (edit.DeliveryMode, edit.KeepSavedDelivery));
+        Assert.Equal(("isolated", "now"), (edit.SessionTarget, edit.WakeMode));
+        Assert.Empty(edit.Validate());
+        var patch = edit.BuildDefinition(job);
+        Assert.False(patch.ContainsKey("delivery"));
+        Assert.False(patch.ContainsKey("sessionTarget"));
+        Assert.False(patch.ContainsKey("wakeMode"));
+        Assert.Equal("next-heartbeat", (edit with { WakeMode = "next-heartbeat" }).BuildDefinition(job)["wakeMode"]!.GetValue<string>());
+
+        // A copy keeps the omitted delivery omitted, so the Gateway applies the same default plan.
+        var copy = CronJobForm.FromClone(job, "J (copy)");
+        Assert.True(copy.KeepSavedDelivery);
+        Assert.Empty(copy.Validate());
+        var created = copy.BuildDefinition(cloneSource: job);
+        Assert.False(created.ContainsKey("delivery"));
+        Assert.Equal("isolated", created["sessionTarget"]!.GetValue<string>());
+
+        var timeline = CronJsonReader.ParseJob(JsonDocument.Parse("""
+        {"id":"t","name":"T","enabled":true,"configRevision":"r","schedule":{"kind":"every","everyMs":600000},
+         "payload":{"kind":"systemEvent","text":"x"}}
+        """).RootElement)!;
+        var timelineEdit = CronJobForm.FromJob(timeline);
+        Assert.Equal("main", timelineEdit.SessionTarget);
+        Assert.False(timelineEdit.BuildDefinition(timeline).ContainsKey("sessionTarget"));
     }
 
     [Theory]
@@ -466,13 +694,13 @@ public sealed class CronJobFormTests
     }
 
     [Fact]
-    public void FromSuggestion_PrefillsAnIsolatedAssistantTask()
+    public void CreateDefault_LeavesUserContentBlank()
     {
-        var suggestion = CronSuggestion.All.Single(s => s.Id == "watchdog");
-        var form = CronJobForm.FromSuggestion(suggestion, "Night watch", "Check", "ops");
-        Assert.Equal(("1", CronDurationUnit.Hours), (form.EveryAmount, form.EveryUnit));
-        Assert.Equal("isolated", form.SessionTarget);
+        var form = CronJobForm.CreateDefault("ops");
+        Assert.Empty(form.Name);
+        Assert.Empty(form.Description);
+        Assert.Empty(form.PayloadText);
+        Assert.Empty(form.DeliveryTo);
         Assert.Equal("ops", form.AgentId);
-        Assert.Empty(form.Validate());
     }
 }

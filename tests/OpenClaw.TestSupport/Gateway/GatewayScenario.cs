@@ -387,7 +387,7 @@ public sealed partial class GatewayScenario
                     : IsInteractive
                         ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
                         : _contextUsage is not null || _accessibilityBaseline ? new[] { "operator.read", "operator.write" }
-                        : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null
+                        : _allowAgentCreation || _allowSessionMutations || (_cronJobs is not null && !CronReadOnly)
                             ? new[] { "operator.admin", "operator.read" }
                             : new[] { _setup is null ? "operator.read" : "operator.admin" }
             },

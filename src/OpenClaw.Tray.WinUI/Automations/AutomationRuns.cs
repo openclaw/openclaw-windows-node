@@ -17,9 +17,7 @@ namespace OpenClawTray.Automations;
 /// <summary><paramref name="Job"/> is null for the agent-wide Run history view.</summary>
 internal sealed record AutomationRunsProps(AutomationsHost Host, AutomationsSnapshot State, CronJob? Job);
 
-internal sealed record TranscriptState(string RunKey, bool Loading, string? Error, IReadOnlyList<CronTranscriptMessage> Messages, string? NextCursor);
-
-/// <summary>Filterable run history with delivery outcomes and inline run transcripts.</summary>
+/// <summary>Filterable run history with full results, delivery outcomes and a link to each run's chat.</summary>
 internal sealed class AutomationRuns : Component<AutomationRunsProps>
 {
     private static readonly string[] Statuses = ["ok", "error", "skipped"];
@@ -31,10 +29,7 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
         var t = host.Text;
         var store = host.Store;
         var (search, setSearch) = UseState(state.RunsQuery.Query);
-        var (transcript, setTranscript) = UseState<TranscriptState?>(null, threadSafe: true);
         var (expanded, setExpanded) = UseState<string?>(null);
-        // Newest transcript request; replies to older ones (or to a hidden transcript) are dropped.
-        var transcriptRequest = UseRef(0);
         var reduceMotion = UseReducedMotion();
         var query = state.RunsQuery;
         var scopeMatches = job is null ? !query.IsJobScope : query.JobId == job.Id;
@@ -45,40 +40,6 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
                 store.ShowRuns(new CronRunsQuery { JobId = job?.Id });
             return static () => { };
         }), job?.Id ?? "all");
-
-        async Task LoadTranscriptAsync(CronRunEntry run, string? cursor)
-        {
-            var client = host.Client();
-            if (client is null) return;
-            var request = ++transcriptRequest.Current;
-            var previous = transcript is { } current && current.RunKey == run.Key ? current : null;
-            setTranscript(new TranscriptState(run.Key, true, null, previous?.Messages ?? Array.Empty<CronTranscriptMessage>(), previous?.NextCursor));
-            try
-            {
-                var page = await client.GetCronRunTranscriptAsync(run, cursor);
-                if (request != transcriptRequest.Current) return;
-                // Cursor pages are older messages and go before what is already shown.
-                var messages = cursor is null ? page.Messages : page.Messages.Concat(previous?.Messages ?? Array.Empty<CronTranscriptMessage>()).ToList();
-                var next = page.NextCursor is { } c && c != cursor ? c : null;
-                setTranscript(new TranscriptState(run.Key, false, null, messages, next));
-            }
-            catch (Exception ex)
-            {
-                if (request != transcriptRequest.Current) return;
-                setTranscript(new TranscriptState(run.Key, false, ex.Message, previous?.Messages ?? Array.Empty<CronTranscriptMessage>(), previous?.NextCursor));
-            }
-        }
-
-        void ToggleTranscript(CronRunEntry run)
-        {
-            if (transcript?.RunKey == run.Key)
-            {
-                transcriptRequest.Current++;
-                setTranscript(null);
-                return;
-            }
-            _ = LoadTranscriptAsync(run, null);
-        }
 
         void OnSearch(string text)
         {
@@ -103,7 +64,8 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
             .AutomationId("AutomationRunsSort");
 
         var filters = VStack(Gap,
-            job is null ? VStack(4, SectionTitle(t["RunHistory_Title"]), Secondary(t.Format("RunHistory_Subtitle", state.AgentId), 13),
+            job is null ? VStack(4, SectionTitle(t["RunHistory_Title"]),
+                Secondary(state.AgentFilter is { } agent ? t.Format("RunHistory_Subtitle", agent) : t["RunHistory_SubtitleAll"], 13),
                 scopeMatches ? ScoreLine(t, state.Runs) : Empty()) : Empty(),
             (AutoSuggestBox(search, OnSearch, OnSearch) with
             {
@@ -151,9 +113,6 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
                 var last = i == state.Runs.Count - 1 && !state.RunsHasMore;
                 rows.Add(RenderRun(host, run, job is null, expanded == run.Key,
                     () => setExpanded(expanded == run.Key ? null : run.Key),
-                    () => ToggleTranscript(run),
-                    transcript?.RunKey == run.Key ? transcript : null,
-                    cursor => _ = LoadTranscriptAsync(run, cursor),
                     first: i == 0,
                     last: last).Enter(reduceMotion).WithKey(run.Key));
             }
@@ -164,7 +123,7 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
                     .HAlign(HorizontalAlignment.Stretch)
                     .AutomationId("AutomationRunsLoadMore"));
             }
-            rows.Add(Secondary(t.Format("Runs_Count", state.Runs.Count, state.RunsTotal)).AutomationId("AutomationRunsCount"));
+            rows.Add(Secondary(t.Format("Runs_Count", state.Runs.Count, (object?)state.RunsTotal ?? AutomationsText.Unavailable)).AutomationId("AutomationRunsCount"));
         }
 
         return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Star()],
@@ -191,7 +150,7 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
         var ok = finished.Count(r => r.Status == "ok");
         var perfect = ok == finished.Length;
         var durations = runs.Where(r => r.DurationMs is not null).Select(r => r.DurationMs!.Value).ToArray();
-        var average = durations.Length == 0 ? "—" : t.Duration((long)durations.Average());
+        var average = durations.Length == 0 ? AutomationsText.Unavailable : t.Duration((long)durations.Average());
         return HStack(Gap,
                 Pill(t.Format("Runs_SuccessRate", (int)Math.Round(100.0 * ok / finished.Length)),
                     perfect ? Theme.SystemSuccess : ok * 2 < finished.Length ? Theme.SystemCritical : Theme.SystemCaution,
@@ -202,17 +161,15 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
             .AutomationId("AutomationRunsScore");
     }
 
-    private static Element RenderRun(
+    internal static Element RenderRun(
         AutomationsHost host,
         CronRunEntry run,
         bool showJob,
         bool expanded,
         Action toggleExpanded,
-        Action toggleTranscript,
-        TranscriptState? transcript,
-        Action<string> loadOlder,
         bool first,
-        bool last)
+        bool last,
+        bool inline = false)
     {
         var t = host.Text;
         var (brush, glyph) = RunTone(run.Status);
@@ -221,11 +178,19 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
         var text = string.IsNullOrWhiteSpace(display.PreviewText) ? t["Runs_NoSummary"] : display.PreviewText;
         var full = expanded && display.HasExpandableFullText ? display.FullText! : text;
 
-        var headline = HStack(Gap,
+        var at = run.EffectiveRunAtMs;
+        var statusLine = HStack(Gap,
             Glyph(glyph, 14, brush),
             TextBlock(t.RunStatus(run.Status)).FontWeight(FontWeights.SemiBold).Foreground(brush),
             showJob ? TextBlock(run.JobName ?? run.JobId).FontWeight(FontWeights.SemiBold).TextTrimming(TextTrimming.CharacterEllipsis) : Empty(),
-            Secondary(t.DateTime(run.EffectiveRunAtMs), 12).VAlign(VerticalAlignment.Center).ToolTip(t.Relative(run.EffectiveRunAtMs)));
+            at is { } ms
+                ? Secondary(inline ? t.RunTimestamp(ms) : t.DateTime(ms), 12).VAlign(VerticalAlignment.Center).ToolTip(t.Relative(ms))
+                : Secondary(AutomationsText.Unavailable, 12).VAlign(VerticalAlignment.Center));
+        var headline = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+            statusLine.Grid(column: 0),
+            (!string.IsNullOrWhiteSpace(run.SessionKey)
+                ? ChatButton(host, run.SessionKey!, run.JobName ?? run.JobId, $"AutomationRunChat:{run.Key}")
+                : Empty()).VAlign(VerticalAlignment.Center).Grid(column: 1));
 
         var chips = new List<Element>();
         if (run.DurationMs is { } duration)
@@ -238,39 +203,42 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
         if (!string.IsNullOrWhiteSpace(run.Model))
             chips.Add(Pill(string.IsNullOrWhiteSpace(run.Provider) ? run.Model! : $"{run.Provider}/{run.Model}", Theme.SecondaryText, Theme.SystemNeutralBackground, GlyphSparkle));
         if (run.InputTokens is not null || run.OutputTokens is not null)
-            chips.Add(Pill(t.Format("Runs_Tokens", run.InputTokens ?? 0, run.OutputTokens ?? 0), Theme.SecondaryText, Theme.SystemNeutralBackground));
+            chips.Add(Pill(t.Format("Runs_Tokens", (object?)run.InputTokens ?? AutomationsText.Unavailable, (object?)run.OutputTokens ?? AutomationsText.Unavailable),
+                Theme.SecondaryText, Theme.SystemNeutralBackground));
         if (run.TriggerFired == true)
             chips.Add(Pill(t["Runs_TriggerFired"], Theme.AccentText, Theme.SystemAttentionBackground, GlyphBranch));
 
         var details = new List<Element?>
         {
-            TextBlock(full).FontSize(13).TextWrapping(TextWrapping.Wrap).IsTextSelectionEnabled(true)
+            inline && expanded ? Empty() : TextBlock(full).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords).IsTextSelectionEnabled(true)
                 .Foreground(isError ? Theme.SystemCritical : Theme.PrimaryText)
                 .MaxLines(expanded ? 0 : 3)
                 .AutomationId($"AutomationRunSummary:{run.Key}"),
             run.DiagnosticsSummary is { Length: > 0 } diag ? Secondary(diag) : null,
             run.DeliverySuppressionReason is { Length: > 0 } reason ? Secondary(t.Format("Runs_Suppressed", reason)) : null,
             run.DeliveryError is { Length: > 0 } deliveryError ? ErrorText(t.Format("Runs_DeliveryError", deliveryError), $"AutomationRunDeliveryError:{run.Key}") : null,
-            run.NextRunAtMs is { } nextRun ? Secondary(t.Format("Runs_NextRun", t.DateTime(nextRun))) : null,
+            !inline && run.NextRunAtMs is { } nextRun ? Secondary(t.Format("Runs_NextRun", t.DateTime(nextRun))) : null,
         };
 
         var actions = new List<Element>();
-        if (display.HasExpandableFullText || (display.FullText?.Length ?? 0) > 200)
+        if (!inline && (display.HasExpandableFullText || (display.FullText?.Length ?? 0) > 200))
             actions.Add(HyperlinkButton(expanded ? t["Runs_ShowLess"] : t["Runs_ShowMore"], null, toggleExpanded).AutomationId($"AutomationRunExpand:{run.Key}"));
-        if (run.CanOpenTranscript)
-            actions.Add(HyperlinkButton(transcript is null ? t["Runs_ViewTranscript"] : t["Runs_HideTranscript"], null, toggleTranscript)
-                .AutomationId($"AutomationRunTranscript:{run.Key}"));
-        if (!string.IsNullOrWhiteSpace(run.SessionKey))
-            actions.Add(HyperlinkButton(t["Runs_OpenChat"], null, () => host.OpenChat(run.SessionKey!)).AutomationId($"AutomationRunChat:{run.Key}"));
 
-        var card = Surface(VStack(Gap,
+        var body = VStack(Gap,
                 headline,
                 chips.Count == 0 ? Empty() : (FlexRow(chips.ToArray()) with { Wrap = Microsoft.UI.Reactor.Layout.FlexWrap.Wrap, ColumnGap = 6, RowGap = 6 }),
                 VStack(4, details.ToArray()),
-                actions.Count == 0 ? Empty() : HStack(4, actions.ToArray()),
-                transcript is null ? Empty() : RenderTranscript(t, transcript, loadOlder)),
-                padding: 12)
-            .AutomationId($"AutomationRun:{run.Key}");
+                inline ? Expander(t["Redesign_Response"],
+                        TextBlock(display.FullText ?? text).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords).IsTextSelectionEnabled(true),
+                        expanded, _ => toggleExpanded())
+                    .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
+                    .Background(Theme.Ref("SubtleFillColorTransparentBrush")).BorderThickness(0)
+                    .AutomationName(t["Redesign_Response"]).AutomationId($"AutomationRunExpand:{run.Key}") : Empty(),
+                actions.Count == 0 ? Empty() : HStack(4, actions.ToArray()));
+        Element card = inline
+            ? Border(body).Padding(0, 8, 0, 12).BorderBrush(Theme.CardStroke).BorderThickness(0, 0, 0, 1)
+            : Surface(body, padding: 12).AutomationId($"AutomationRun:{run.Key}");
+        if (inline) return card;
 
         // Timeline rail: a continuous line through status nodes, bridging the list gap.
         var rail = Border(Empty()).Width(2).Background(Theme.Ref("AutomationsRailBrush"))
@@ -297,47 +265,4 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
         "skipped" => Theme.SystemCautionBackground,
         _ => Theme.SystemNeutralBackground,
     };
-
-    private static Element RenderTranscript(AutomationsText t, TranscriptState transcript, Action<string> loadOlder)
-    {
-        var items = new List<Element>();
-        if (transcript.NextCursor is { } cursor)
-            items.Add(HyperlinkButton(t["Transcript_LoadOlder"], null, () => loadOlder(cursor)).IsEnabled(!transcript.Loading));
-        foreach (var (message, index) in transcript.Messages.Select((m, i) => (m, i)))
-        {
-            var isUser = message.Role == "user";
-            var label = message.Role switch
-            {
-                "user" => t["Transcript_User"],
-                "assistant" => t["Transcript_Assistant"],
-                "tool" => t.Format("Transcript_Tool", message.ToolName ?? "tool"),
-                "system" => t["Transcript_System"],
-                _ => message.Role,
-            };
-            items.Add(Border(VStack(4,
-                    HStack(Gap, TextBlock(label).FontSize(12).FontWeight(FontWeights.SemiBold),
-                        message.TimestampMs is { } ts ? Secondary(t.DateTime(ts)) : Empty()),
-                    message.Text.Length == 0 ? Empty() : TextBlock(message.Text).FontSize(13).TextWrapping(TextWrapping.Wrap).IsTextSelectionEnabled(true)
-                        .FontFamily(message.Role == "tool" ? MonoFont : "Segoe UI Variable Text")))
-                .Padding(10, 8)
-                .CornerRadius(6)
-                .Background(isUser ? Theme.SystemAttentionBackground : Theme.SubtleFill)
-                .WithKey($"m{index}"));
-        }
-        if (transcript.Loading)
-            items.Add(HStack(Gap, ProgressRing().Size(14, 14), Secondary(t["Transcript_Loading"])));
-        else if (transcript.Error is { } error)
-            items.Add(ErrorText(t.Format("Transcript_Unavailable", error), "AutomationTranscriptError"));
-        else if (transcript.Messages.Count == 0)
-            items.Add(Secondary(t["Transcript_Empty"]));
-
-        return Border(VStack(6,
-                HStack(Gap, Glyph(GlyphChat, 14), SectionTitle(t["Transcript_Title"])),
-                VStack(6, items.ToArray())))
-            .Padding(12)
-            .CornerRadius(6)
-            .BorderBrush(Theme.CardStroke)
-            .BorderThickness(1)
-            .AutomationId("AutomationTranscript");
-    }
 }

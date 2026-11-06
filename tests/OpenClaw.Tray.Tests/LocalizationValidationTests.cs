@@ -27,9 +27,6 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
-        // Automations: the ID label and an IANA time zone example are identical in every locale.
-        "Automations_Field_Id",
-        "Automations_Placeholder_Timezone",
         // Custom model provider API types are protocol product names, and the
         // provider/model ID placeholders are literal identifier examples.
         "DefaultModelPage_CustomApiAnthropic.Content",
@@ -629,35 +626,29 @@ public class LocalizationValidationTests
         ["Automations_Duration_Milliseconds"] = ["fr-fr", "nl-nl", "pt-br"],
         ["Automations_Duration_Minutes"] = ["fr-fr", "nl-nl", "pt-br"],
         ["Automations_Duration_Seconds"] = ["fr-fr", "nl-nl", "pt-br"],
-        ["Automations_FailureAlert_Webhook"] = ["fr-fr", "nl-nl", "pt-br", "zh-tw"],
         ["Automations_Field_Agent"] = ["fr-fr", "nl-nl"],
-        ["Automations_Field_Description"] = ["fr-fr"],
+        ["Automations_Field_DeliveryMode"] = ["fr-fr"],
         ["Automations_Field_Destination"] = ["fr-fr"],
         ["Automations_Field_Expression"] = ["fr-fr"],
         ["Automations_Field_Model"] = ["nl-nl"],
         ["Automations_Field_Options"] = ["fr-fr"],
+        ["Automations_Field_Payload"] = ["nl-nl"],
         ["Automations_Field_Prompt"] = ["nl-nl", "pt-br"],
         ["Automations_Field_RunDate"] = ["fr-fr"],
         ["Automations_Field_WebhookUrl"] = ["zh-cn", "zh-tw"],
-        ["Automations_Filter_Condition"] = ["fr-fr"],
-        ["Automations_Filters"] = ["nl-nl"],
         ["Automations_Kind_Every"] = ["nl-nl"],
-        ["Automations_Kind_Stream"] = ["nl-nl"],
         ["Automations_Notice_JobMessage"] = ["nl-nl", "pt-br"],
         ["Automations_Payload_Script"] = ["fr-fr", "nl-nl", "pt-br"],
         ["Automations_Relative_Days"] = ["nl-nl", "pt-br"],
         ["Automations_Relative_Hours"] = ["fr-fr", "pt-br"],
         ["Automations_Relative_Minutes"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Review_SummaryEnd"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Review_SummaryJoin"] = ["fr-fr", "nl-nl", "pt-br"],
         ["Automations_Runs_StatusCount"] = ["nl-nl", "pt-br"],
         ["Automations_Schedule_WithTimezone"] = ["fr-fr", "nl-nl", "pt-br", "zh-tw"],
-        ["Automations_Scratch_Bytes"] = ["nl-nl", "pt-br"],
-        ["Automations_Seconds"] = ["fr-fr", "nl-nl", "pt-br"],
-        ["Automations_Section_Details"] = ["nl-nl"],
         ["Automations_Session_Named"] = ["fr-fr"],
         ["Automations_State_Active"] = ["fr-fr"],
         ["Automations_Thread"] = ["nl-nl", "pt-br"],
-        ["Automations_Transcript_Assistant"] = ["fr-fr"],
-        ["Automations_Transcript_User"] = ["nl-nl", "pt-br"],
         ["Automations_Unit_Minutes"] = ["fr-fr"],
     };
 

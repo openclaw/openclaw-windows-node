@@ -461,6 +461,26 @@ foreach ($lane in $testLanes.GetEnumerator()) {
     }
 }
 
+$uiJob = Get-JobBlock "ui-tests"
+$standardUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
+foreach ($token in @(
+        "OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard",
+        "Category!=ProductionResources"
+    )) {
+    Assert-Contains -Text $standardUiStep -Expected $token `
+        -Message "Mixed UI tests must stay separate from the production-resource lane: '$token'."
+}
+$productionUiStep = Get-StepBlock -Text $uiJob -Name "Run steady-resource Automations UI tests"
+foreach ($token in @(
+        "OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production",
+        "OPENCLAW_UI_TEST_APP_THEME: Light",
+        '-Filter "Category=ProductionResources"',
+        "AutomationsSteadyResources.trx"
+    )) {
+    Assert-Contains -Text $productionUiStep -Expected $token `
+        -Message "Steady-resource UI proof must run in its own configured test process: '$token'."
+}
+
 $coreJob = Get-JobBlock "core-tests"
 $sharedTestStep = Get-StepBlock -Text $coreJob -Name "Run Shared Tests"
 Assert-Contains -Text $sharedTestStep -Expected "timeout-minutes: 15" `
@@ -568,8 +588,8 @@ foreach ($token in @(
 }
 
 $trayUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
-Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"' `
-    -Message "Tray UI tests must exclude cases owned by the accessibility, native-onboarding and strict Gateway fixture lanes."
+Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources"' `
+    -Message "Mixed Tray UI tests must exclude separately owned proof cases."
 Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
@@ -659,8 +679,8 @@ foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-
 $runnerUses = [regex]::Matches(
     $workflow,
     "(?m)^\s+\./scripts/Invoke-CiTest\.ps1\s*$").Count
-if ($runnerUses -ne 8) {
-    throw "Expected all 8 non-E2E test projects to use Invoke-CiTest.ps1, found $runnerUses."
+if ($runnerUses -ne 9) {
+    throw "Expected 9 non-E2E Invoke-CiTest.ps1 invocations, including isolated production-resource proof, found $runnerUses."
 }
 if ($workflow -match "(?m)^\s+dotnet-coverage collect\s*$") {
     throw "Workflow test steps must not invoke dotnet-coverage directly."

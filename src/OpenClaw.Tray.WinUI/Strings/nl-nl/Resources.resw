@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -7854,44 +7854,20 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agent: {0}</value>
   </data>
-  <data name="Automations_AutoDisabled_Body" xml:space="preserve">
-    <value>De Gateway heeft deze automatisering onderbroken na herhaalde fouten. Los de oorzaak op en hervat de automatisering.</value>
-  </data>
   <data name="Automations_Back" xml:space="preserve">
     <value>Terug</value>
   </data>
   <data name="Automations_Cancel" xml:space="preserve">
     <value>Annuleren</value>
   </data>
-  <data name="Automations_Clone" xml:space="preserve">
-    <value>Klonen</value>
-  </data>
   <data name="Automations_CloneName" xml:space="preserve">
     <value>{0} (kopie)</value>
-  </data>
-  <data name="Automations_Condition_Every" xml:space="preserve">
-    <value>Controleert vóór elke uitvoering</value>
-  </data>
-  <data name="Automations_Condition_Once" xml:space="preserve">
-    <value>Controleert vóór elke uitvoering, schakelt uit na de eerste overeenkomst</value>
-  </data>
-  <data name="Automations_Condition_Summary" xml:space="preserve">
-    <value>Voorwaarde {0} keer gecontroleerd. Laatst gecontroleerd {1}. Laatst geactiveerd {2}.</value>
   </data>
   <data name="Automations_ConfirmPause_Body" xml:space="preserve">
     <value>De automatisering wordt niet meer volgens planning uitgevoerd totdat je deze hervat. De definitie en uitvoeringsgeschiedenis blijven behouden.</value>
   </data>
   <data name="Automations_ConfirmPause_Title" xml:space="preserve">
-    <value>&quot;{0}&quot; onderbreken?</value>
-  </data>
-  <data name="Automations_ConfirmRemove_Body" xml:space="preserve">
-    <value>Hiermee wordt de automatisering definitief verwijderd en worden alle toekomstige uitvoeringen gestopt. Dit kan niet ongedaan worden gemaakt.</value>
-  </data>
-  <data name="Automations_ConfirmRemove_Title" xml:space="preserve">
-    <value>&quot;{0}&quot; verwijderen?</value>
-  </data>
-  <data name="Automations_Conversations_Failed" xml:space="preserve">
-    <value>Kan recente gesprekken niet laden: {0}</value>
+    <value>“{0}” onderbreken?</value>
   </data>
   <data name="Automations_Default" xml:space="preserve">
     <value>Standaard</value>
@@ -7929,18 +7905,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Destination_Owner" xml:space="preserve">
     <value>Direct bericht aan eigenaar</value>
   </data>
-  <data name="Automations_Detail_LoadFailed" xml:space="preserve">
-    <value>Kan deze automatisering niet laden</value>
-  </data>
-  <data name="Automations_DirectPolicy_Allow" xml:space="preserve">
-    <value>Toestaan</value>
-  </data>
-  <data name="Automations_DirectPolicy_Block" xml:space="preserve">
-    <value>Blokkeren</value>
-  </data>
-  <data name="Automations_DirectPolicy_Default" xml:space="preserve">
-    <value>Standaardbeleid</value>
-  </data>
   <data name="Automations_Disconnected_BannerBody" xml:space="preserve">
     <value>Automatiseringen zijn niet beschikbaar totdat de verbinding met de Gateway is hersteld.</value>
   </data>
@@ -7970,9 +7934,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Automations_Editor_CantSave" xml:space="preserve">
     <value>Kan nog niet opslaan</value>
-  </data>
-  <data name="Automations_Editor_CloneTitle" xml:space="preserve">
-    <value>Automatisering klonen</value>
   </data>
   <data name="Automations_Editor_Create" xml:space="preserve">
     <value>Automatisering maken</value>
@@ -8005,7 +7966,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Beschrijf wat OpenClaw moet doen en kies daarna wanneer het wordt uitgevoerd.</value>
   </data>
   <data name="Automations_Empty_Body" xml:space="preserve">
-    <value>Beschrijf wat OpenClaw moet doen en wanneer. Het wordt volgens planning uitgevoerd, ook als deze pc inactief is.</value>
+    <value>Automatiseringen voeren een agent volgens een schema uit. Maak er hier een of beschrijf deze in de chat.</value>
   </data>
   <data name="Automations_Empty_ReadOnlyBody" xml:space="preserve">
     <value>Deze agent heeft geen automatiseringen. Vraag een operator met beheerderstoegang om er een te maken.</value>
@@ -8030,15 +7991,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Automations_Error_EventAgentTurnRequired" xml:space="preserve">
     <value>Gebeurtenisautomatiseringen vereisen een assistenttaak.</value>
-  </data>
-  <data name="Automations_Error_EventArgumentsInvalid" xml:space="preserve">
-    <value>Voer een geldig JSON-object in.</value>
-  </data>
-  <data name="Automations_Error_EventNameRequired" xml:space="preserve">
-    <value>Kies een gebeurtenis uit de catalogus van de server.</value>
-  </data>
-  <data name="Automations_Error_EventServerRequired" xml:space="preserve">
-    <value>Kies een MCP-server.</value>
   </data>
   <data name="Automations_Error_EveryAmountInvalid" xml:space="preserve">
     <value>Interval moet een getal groter dan 0 zijn.</value>
@@ -8080,61 +8032,10 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Triggerscript is vereist wanneer de voorwaardetrigger is ingeschakeld.</value>
   </data>
   <data name="Automations_Error_WebhookUrlInvalid" xml:space="preserve">
-    <value>Voer een geldige http(s)-URL in zonder ingesloten referenties.</value>
+    <value>Voer een geldige HTTPS-URL in zonder ingesloten referenties.</value>
   </data>
   <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
     <value>Webhook-URL is vereist.</value>
-  </data>
-  <data name="Automations_Event_ChooseEvent" xml:space="preserve">
-    <value>Kies een gebeurtenis</value>
-  </data>
-  <data name="Automations_Event_ChooseServer" xml:space="preserve">
-    <value>Kies een server</value>
-  </data>
-  <data name="Automations_Event_DiscoveryFailed" xml:space="preserve">
-    <value>Detectie van gebeurtenissen mislukt: {0}</value>
-  </data>
-  <data name="Automations_Event_Help" xml:space="preserve">
-    <value>Wordt uitgevoerd wanneer een MCP-server een gebeurtenis levert. Gebeurtenisautomatiseringen vereisen een assistenttaak.</value>
-  </data>
-  <data name="Automations_Event_Loading" xml:space="preserve">
-    <value>Gebeurtenissen laden...</value>
-  </data>
-  <data name="Automations_Event_NoEvents" xml:space="preserve">
-    <value>Deze server biedt geen ondersteunde gebeurtenissen aan.</value>
-  </data>
-  <data name="Automations_Event_NoServers" xml:space="preserve">
-    <value>Er zijn geen ingeschakelde MCP-servers die gebeurtenissen ondersteunen. Configureer er eerst een in de Gateway.</value>
-  </data>
-  <data name="Automations_Event_Refresh" xml:space="preserve">
-    <value>Gebeurtenissen vernieuwen</value>
-  </data>
-  <data name="Automations_Event_ViewSchema" xml:space="preserve">
-    <value>Invoerschema weergeven</value>
-  </data>
-  <data name="Automations_ExactTiming" xml:space="preserve">
-    <value>Exacte timing</value>
-  </data>
-  <data name="Automations_FailureAlert_Announce" xml:space="preserve">
-    <value>Aankondigen (via kanaal)</value>
-  </data>
-  <data name="Automations_FailureAlert_Custom" xml:space="preserve">
-    <value>Aangepast</value>
-  </data>
-  <data name="Automations_FailureAlert_CustomSummary" xml:space="preserve">
-    <value>Na {0} opeenvolgende fouten, maximaal eenmaal per {1}</value>
-  </data>
-  <data name="Automations_FailureAlert_Disabled" xml:space="preserve">
-    <value>Uitgeschakeld voor deze automatisering</value>
-  </data>
-  <data name="Automations_FailureAlert_Inherit" xml:space="preserve">
-    <value>Globale instelling overnemen</value>
-  </data>
-  <data name="Automations_FailureAlert_Webhook" xml:space="preserve">
-    <value>Webhook (HTTP POST)</value>
-  </data>
-  <data name="Automations_Field_Account" xml:space="preserve">
-    <value>Account-ID</value>
   </data>
   <data name="Automations_Field_ActiveHours" xml:space="preserve">
     <value>Actieve uren</value>
@@ -8142,32 +8043,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Field_Agent" xml:space="preserve">
     <value>Agent</value>
   </data>
-  <data name="Automations_Field_AlertAccount" xml:space="preserve">
-    <value>Account-ID voor meldingen</value>
-  </data>
-  <data name="Automations_Field_AlertAfter" xml:space="preserve">
-    <value>Melden na</value>
-  </data>
-  <data name="Automations_Field_AlertChannel" xml:space="preserve">
-    <value>Meldingskanaal</value>
-  </data>
-  <data name="Automations_Field_AlertCooldown" xml:space="preserve">
-    <value>Afkoelperiode (seconden)</value>
-  </data>
-  <data name="Automations_Field_AlertMode" xml:space="preserve">
-    <value>Meldingsmodus</value>
-  </data>
-  <data name="Automations_Field_AlertTo" xml:space="preserve">
-    <value>Melding aan</value>
-  </data>
-  <data name="Automations_Field_BestEffort" xml:space="preserve">
-    <value>Levering naar beste vermogen</value>
-  </data>
   <data name="Automations_Field_Channel" xml:space="preserve">
     <value>Kanaal</value>
-  </data>
-  <data name="Automations_Field_ClearAgent" xml:space="preserve">
-    <value>Agentoverschrijving wissen</value>
   </data>
   <data name="Automations_Field_Command" xml:space="preserve">
     <value>Opdracht</value>
@@ -8175,41 +8052,17 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Field_Condition" xml:space="preserve">
     <value>Voorwaardetrigger</value>
   </data>
-  <data name="Automations_Field_Created" xml:space="preserve">
-    <value>Gemaakt</value>
-  </data>
   <data name="Automations_Field_DeleteAfterRun" xml:space="preserve">
     <value>Verwijderen na uitvoering</value>
   </data>
-  <data name="Automations_Field_DeliveryError" xml:space="preserve">
-    <value>Leveringsfout</value>
-  </data>
   <data name="Automations_Field_DeliveryMode" xml:space="preserve">
-    <value>Levering</value>
-  </data>
-  <data name="Automations_Field_Description" xml:space="preserve">
-    <value>Beschrijving</value>
+    <value>Modus</value>
   </data>
   <data name="Automations_Field_Destination" xml:space="preserve">
     <value>Bestemming</value>
   </data>
-  <data name="Automations_Field_DirectPolicy" xml:space="preserve">
-    <value>Directe berichten</value>
-  </data>
-  <data name="Automations_Field_EventArguments" xml:space="preserve">
-    <value>Abonnementsargumenten (JSON)</value>
-  </data>
-  <data name="Automations_Field_EventName" xml:space="preserve">
-    <value>Gebeurtenis</value>
-  </data>
-  <data name="Automations_Field_EventServer" xml:space="preserve">
-    <value>MCP-server</value>
-  </data>
   <data name="Automations_Field_Every" xml:space="preserve">
     <value>Elke</value>
-  </data>
-  <data name="Automations_Field_ExactTiming" xml:space="preserve">
-    <value>Exacte timing (geen spreiding)</value>
   </data>
   <data name="Automations_Field_Expression" xml:space="preserve">
     <value>Expressie</value>
@@ -8217,20 +8070,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Field_FailureAlerts" xml:space="preserve">
     <value>Foutmeldingen</value>
   </data>
-  <data name="Automations_Field_Id" xml:space="preserve">
-    <value>ID</value>
-  </data>
-  <data name="Automations_Field_IdleOnly" xml:space="preserve">
-    <value>Wachten op inactiviteit</value>
-  </data>
-  <data name="Automations_Field_IncludeReasoning" xml:space="preserve">
-    <value>Redenering opnemen</value>
-  </data>
   <data name="Automations_Field_LastDelivery" xml:space="preserve">
     <value>Laatste levering</value>
-  </data>
-  <data name="Automations_Field_LightContext" xml:space="preserve">
-    <value>Lichte context</value>
   </data>
   <data name="Automations_Field_Model" xml:space="preserve">
     <value>Model</value>
@@ -8241,14 +8082,11 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Field_Options" xml:space="preserve">
     <value>Opties</value>
   </data>
-  <data name="Automations_Field_Preview" xml:space="preserve">
-    <value>Voorbeeld van levering</value>
-  </data>
   <data name="Automations_Field_Prompt" xml:space="preserve">
     <value>Prompt</value>
   </data>
-  <data name="Automations_Field_Revision" xml:space="preserve">
-    <value>Revisie</value>
+  <data name="Automations_Field_Payload" xml:space="preserve">
+    <value>Payload</value>
   </data>
   <data name="Automations_Field_RunDate" xml:space="preserve">
     <value>Datum</value>
@@ -8257,34 +8095,25 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Tijd</value>
   </data>
   <data name="Automations_Field_Session" xml:space="preserve">
-    <value>Wordt uitgevoerd in</value>
+    <value>Doelsessie</value>
   </data>
   <data name="Automations_Field_SessionKey" xml:space="preserve">
     <value>Sessiesleutel</value>
   </data>
-  <data name="Automations_Field_SkipEmptyScratch" xml:space="preserve">
-    <value>Overslaan als kladblok leeg is</value>
-  </data>
   <data name="Automations_Field_Stagger" xml:space="preserve">
     <value>Spreidingsvenster</value>
   </data>
-  <data name="Automations_Field_StartEnabled" xml:space="preserve">
-    <value>Ingeschakeld starten</value>
-  </data>
-  <data name="Automations_Field_Suppressed" xml:space="preserve">
-    <value>Levering onderdrukt</value>
+  <data name="Automations_Field_Enabled" xml:space="preserve">
+    <value>Ingeschakeld</value>
   </data>
   <data name="Automations_Field_Thinking" xml:space="preserve">
-    <value>Redenering</value>
+    <value>Denken</value>
   </data>
   <data name="Automations_Field_TimelineMessage" xml:space="preserve">
     <value>Bericht voor hoofdtijdlijn</value>
   </data>
   <data name="Automations_Field_Timeout" xml:space="preserve">
     <value>Time-out</value>
-  </data>
-  <data name="Automations_Field_TimeoutSeconds" xml:space="preserve">
-    <value>Time-out (seconden)</value>
   </data>
   <data name="Automations_Field_Timezone" xml:space="preserve">
     <value>Tijdzone</value>
@@ -8295,110 +8124,23 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Field_Tools" xml:space="preserve">
     <value>Toegestane hulpmiddelen</value>
   </data>
-  <data name="Automations_Field_TriggerOnce" xml:space="preserve">
-    <value>Uitschakelen na eerste overeenkomst</value>
-  </data>
-  <data name="Automations_Field_TriggerScript" xml:space="preserve">
-    <value>Triggerscript</value>
-  </data>
   <data name="Automations_Field_Unit" xml:space="preserve">
     <value>Eenheid</value>
-  </data>
-  <data name="Automations_Field_Updated" xml:space="preserve">
-    <value>Bijgewerkt</value>
-  </data>
-  <data name="Automations_Field_Wake" xml:space="preserve">
-    <value>Wakmodus</value>
   </data>
   <data name="Automations_Field_WebhookUrl" xml:space="preserve">
     <value>Webhook-URL</value>
   </data>
-  <data name="Automations_Field_WindowEnd" xml:space="preserve">
-    <value>Einde van venster</value>
-  </data>
-  <data name="Automations_Field_WindowStart" xml:space="preserve">
-    <value>Begin van venster</value>
-  </data>
-  <data name="Automations_Filter_Active" xml:space="preserve">
-    <value>Actief</value>
-  </data>
-  <data name="Automations_Filter_All" xml:space="preserve">
-    <value>Alle</value>
-  </data>
-  <data name="Automations_Filter_Any" xml:space="preserve">
-    <value>Alle</value>
-  </data>
-  <data name="Automations_Filter_Condition" xml:space="preserve">
-    <value>Voorwaarde</value>
-  </data>
-  <data name="Automations_Filter_Conditional" xml:space="preserve">
-    <value>Voorwaardelijk</value>
-  </data>
-  <data name="Automations_Filter_LastRun" xml:space="preserve">
-    <value>Laatste uitvoering</value>
-  </data>
-  <data name="Automations_Filter_NeverRun" xml:space="preserve">
-    <value>Nooit uitgevoerd</value>
-  </data>
-  <data name="Automations_Filter_Paused" xml:space="preserve">
-    <value>Onderbroken</value>
-  </data>
-  <data name="Automations_Filter_Reset" xml:space="preserve">
-    <value>Filters herstellen</value>
-  </data>
-  <data name="Automations_Filter_ScheduleKind" xml:space="preserve">
-    <value>Planning</value>
-  </data>
-  <data name="Automations_Filter_Unconditional" xml:space="preserve">
-    <value>Onvoorwaardelijk</value>
-  </data>
-  <data name="Automations_Filters" xml:space="preserve">
-    <value>Filters</value>
-  </data>
-  <data name="Automations_Filters_Active" xml:space="preserve">
-    <value>Filters (aan)</value>
-  </data>
-  <data name="Automations_Flag_IdleOnly" xml:space="preserve">
-    <value>Wachten op inactiviteit</value>
-  </data>
-  <data name="Automations_Flag_IncludeReasoning" xml:space="preserve">
-    <value>Redenering opnemen</value>
-  </data>
-  <data name="Automations_Flag_LightContext" xml:space="preserve">
-    <value>Lichte context</value>
-  </data>
-  <data name="Automations_Flag_SkipEmptyScratch" xml:space="preserve">
-    <value>Leeg kladblok overslaan</value>
-  </data>
   <data name="Automations_GatewayTimezone" xml:space="preserve">
     <value>Tijdzone van Gateway-host</value>
-  </data>
-  <data name="Automations_Help_ActiveHours" xml:space="preserve">
-    <value>Alleen binnen dit venster uitvoeren, ook bij handmatige uitvoeringen. Vensters over middernacht worden ondersteund; het einde telt niet mee.</value>
   </data>
   <data name="Automations_Help_Agent" xml:space="preserve">
     <value>Laat leeg om de agent van deze pagina te gebruiken.</value>
   </data>
-  <data name="Automations_Help_AgentTurn" xml:space="preserve">
-    <value>Start een assistentuitvoering in een eigen sessie met je prompt.</value>
-  </data>
-  <data name="Automations_Help_AlertAfter" xml:space="preserve">
-    <value>Aantal opeenvolgende fouten voordat er een melding wordt verzonden.</value>
-  </data>
-  <data name="Automations_Help_AlertCooldown" xml:space="preserve">
-    <value>Minimum aantal seconden tussen meldingen.</value>
-  </data>
-  <data name="Automations_Help_BestEffort" xml:space="preserve">
-    <value>Laat de uitvoering niet mislukken als de levering zelf mislukt.</value>
+  <data name="Automations_Help_AgentEdit" xml:space="preserve">
+    <value>Laat leeg om de huidige eigenaar te behouden, of voer een andere agent in om deze automatisering te verplaatsen.</value>
   </data>
   <data name="Automations_Help_Channel" xml:space="preserve">
     <value>Laat leeg om het laatste kanaal te gebruiken waarop de agent heeft gecommuniceerd.</value>
-  </data>
-  <data name="Automations_Help_ClearAgent" xml:space="preserve">
-    <value>De standaardagent van de Gateway gebruiken in plaats van een specifieke agent.</value>
-  </data>
-  <data name="Automations_Help_Condition" xml:space="preserve">
-    <value>Voer eerst een stille controle uit en start de actie alleen bij een overeenkomst.</value>
   </data>
   <data name="Automations_Help_DeleteAfterRun" xml:space="preserve">
     <value>Ideaal voor eenmalige herinneringen die zichzelf moeten opruimen.</value>
@@ -8409,68 +8151,17 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Help_DeliveryNoAnnounce" xml:space="preserve">
     <value>Aankondigen vereist een assistenttaak. Tijdlijnberichten worden al op de hoofdtijdlijn geplaatst.</value>
   </data>
-  <data name="Automations_Help_EventArguments" xml:space="preserve">
-    <value>Filters die bij het abonneren worden verzonden. Ze moeten overeenkomen met het invoerschema van de gebeurtenis.</value>
-  </data>
-  <data name="Automations_Help_ExactTiming" xml:space="preserve">
-    <value>Precies op de cron-grens uitvoeren, zonder spreiding.</value>
-  </data>
-  <data name="Automations_Help_Expression" xml:space="preserve">
-    <value>Vijf velden: minuut, uur, dag van de maand, maand, dag van de week.</value>
-  </data>
-  <data name="Automations_Help_FailureAlerts" xml:space="preserve">
-    <value>Bepaal wanneer deze automatisering herhaalde fouten meldt.</value>
-  </data>
-  <data name="Automations_Help_IdleOnly" xml:space="preserve">
-    <value>Voorrang geven aan actief werk voordat er wordt gestart.</value>
-  </data>
-  <data name="Automations_Help_IncludeReasoning" xml:space="preserve">
-    <value>Beschikbare redenering van het model opnemen in het geleverde resultaat.</value>
-  </data>
-  <data name="Automations_Help_LightContext" xml:space="preserve">
-    <value>Een lichte opstartcontext gebruiken voor deze uitvoering.</value>
-  </data>
-  <data name="Automations_Help_Model" xml:space="preserve">
-    <value>Optioneel. Routinetaken werken vaak goed met een lichter, goedkoper model.</value>
-  </data>
   <data name="Automations_Help_Owner" xml:space="preserve">
     <value>Levering aan de eigenaar gebruikt bij elke uitvoering het directe bericht van de eigenaar, nooit het laatste groepsgesprek.</value>
   </data>
   <data name="Automations_Help_Session" xml:space="preserve">
     <value>Hoofd plaatst op de tijdlijn van de agent. Geïsoleerd voert een aparte assistentbeurt uit.</value>
   </data>
-  <data name="Automations_Help_SessionKey" xml:space="preserve">
-    <value>Optionele routeringssleutel voor levering en wake-routering.</value>
-  </data>
-  <data name="Automations_Help_SkipEmptyScratch" xml:space="preserve">
-    <value>Uitvoeringen overslaan zolang het opgeslagen kladblok leeg is. Een ontbrekend kladblok wordt niet overgeslagen.</value>
-  </data>
-  <data name="Automations_Help_Stagger" xml:space="preserve">
-    <value>Spreidt uitvoeringen over een venster zodat niet veel automatiseringen tegelijk starten. Laat leeg voor de standaardwaarde.</value>
-  </data>
-  <data name="Automations_Help_SystemEvent" xml:space="preserve">
-    <value>Plaatst je tekst op de hoofdtijdlijn van de agent. Handig voor herinneringen.</value>
-  </data>
-  <data name="Automations_Help_Thinking" xml:space="preserve">
-    <value>Optioneel redeneerniveau, zoals laag of hoog.</value>
-  </data>
-  <data name="Automations_Help_Timeout" xml:space="preserve">
-    <value>Laat leeg om de standaardwaarde van de Gateway te gebruiken. 0 schakelt de time-out uit.</value>
-  </data>
   <data name="Automations_Help_Timezone" xml:space="preserve">
     <value>Optionele IANA-tijdzone. Laat leeg om de tijdzone van de Gateway-host te gebruiken.</value>
   </data>
-  <data name="Automations_Help_To" xml:space="preserve">
-    <value>Kies een recent gesprek of typ een ontvanger.</value>
-  </data>
-  <data name="Automations_Help_TriggerOnce" xml:space="preserve">
-    <value>Schakel deze automatisering uit na de eerste uitvoering die door de voorwaarde wordt gestart.</value>
-  </data>
-  <data name="Automations_Help_TriggerScript" xml:space="preserve">
-    <value>Wordt onbeheerd uitgevoerd met het hulpmiddelbeleid van deze automatisering. Retourneer json({ fire, message?, state? }). Limieten: 30 seconden, 5 hulpmiddelaanroepen, 16 KB status.</value>
-  </data>
   <data name="Automations_Help_Webhook" xml:space="preserve">
-    <value>Samenvattingen van uitvoeringen worden via POST naar deze http(s)-URL verzonden.</value>
+    <value>Samenvattingen worden via POST naar deze URL verzonden. Nieuwe bestemmingen moeten HTTPS gebruiken.</value>
   </data>
   <data name="Automations_Kind_At" xml:space="preserve">
     <value>Eenmalig</value>
@@ -8478,29 +8169,11 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Kind_Cron" xml:space="preserve">
     <value>Cron</value>
   </data>
-  <data name="Automations_Kind_Event" xml:space="preserve">
-    <value>Gebeurtenis</value>
-  </data>
   <data name="Automations_Kind_Every" xml:space="preserve">
-    <value>Interval</value>
-  </data>
-  <data name="Automations_Kind_OnExit" xml:space="preserve">
-    <value>Bij afsluiten</value>
-  </data>
-  <data name="Automations_Kind_Stream" xml:space="preserve">
-    <value>Stream</value>
-  </data>
-  <data name="Automations_LastError_Title" xml:space="preserve">
-    <value>Laatste uitvoering mislukt</value>
-  </data>
-  <data name="Automations_LastRun" xml:space="preserve">
-    <value>Laatste uitvoering</value>
+    <value>Herhalend</value>
   </data>
   <data name="Automations_List_Count" xml:space="preserve">
     <value>{0} van {1}</value>
-  </data>
-  <data name="Automations_List_Empty" xml:space="preserve">
-    <value>Nog geen automatiseringen voor deze agent.</value>
   </data>
   <data name="Automations_List_NoMatch" xml:space="preserve">
     <value>Geen automatiseringen komen overeen met de huidige filters.</value>
@@ -8514,14 +8187,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_LoadMore" xml:space="preserve">
     <value>Meer laden</value>
   </data>
-  <data name="Automations_MoreActions" xml:space="preserve">
-    <value>Meer acties</value>
-  </data>
   <data name="Automations_MoreActionsFor" xml:space="preserve">
     <value>Meer acties voor {0}</value>
-  </data>
-  <data name="Automations_NeverFired" xml:space="preserve">
-    <value>nooit</value>
   </data>
   <data name="Automations_NeverRun" xml:space="preserve">
     <value>Nooit</value>
@@ -8531,12 +8198,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Automations_NextRun" xml:space="preserve">
     <value>Volgende uitvoering</value>
-  </data>
-  <data name="Automations_NextWake_None" xml:space="preserve">
-    <value>Niets gepland</value>
-  </data>
-  <data name="Automations_NotChecked" xml:space="preserve">
-    <value>nog niet</value>
   </data>
   <data name="Automations_Notice_Conflict" xml:space="preserve">
     <value>De nieuwste definitie is geladen. Controleer deze voordat je het opnieuw probeert.</value>
@@ -8574,9 +8235,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Notice_PausedTitle" xml:space="preserve">
     <value>Onderbroken</value>
   </data>
-  <data name="Automations_Notice_Removed" xml:space="preserve">
-    <value>{0} is verwijderd.</value>
-  </data>
   <data name="Automations_Notice_RemovedTitle" xml:space="preserve">
     <value>Verwijderd</value>
   </data>
@@ -8591,15 +8249,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Automations_Notice_RunNotStartedTitle" xml:space="preserve">
     <value>Uitvoering niet gestart</value>
-  </data>
-  <data name="Automations_Notice_RunQueued" xml:space="preserve">
-    <value>{0} wordt uitgevoerd.</value>
-  </data>
-  <data name="Automations_Notice_RunQueuedTitle" xml:space="preserve">
-    <value>Uitvoering gestart</value>
-  </data>
-  <data name="Automations_Notice_RunQueuedWithId" xml:space="preserve">
-    <value>{0} wordt uitgevoerd. Uitvoerings-ID: {1}</value>
   </data>
   <data name="Automations_Notice_Saved" xml:space="preserve">
     <value>{0} is bijgewerkt.</value>
@@ -8628,9 +8277,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Payload_Command" xml:space="preserve">
     <value>Opdracht</value>
   </data>
-  <data name="Automations_Payload_ReadOnlyHelp" xml:space="preserve">
-    <value>Deze actie is buiten deze app gemaakt. Ze blijft alleen-lezen en blijft behouden wanneer je andere wijzigingen opslaat.</value>
-  </data>
   <data name="Automations_Payload_Script" xml:space="preserve">
     <value>Script</value>
   </data>
@@ -8640,50 +8286,26 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Payload_Unknown" xml:space="preserve">
     <value>Aangepaste actie</value>
   </data>
-  <data name="Automations_Placeholder_Body" xml:space="preserve">
-    <value>Kies een automatisering in de lijst om de planning, wat deze doet, waar resultaten naartoe gaan en de uitvoeringsgeschiedenis te bekijken.</value>
-  </data>
   <data name="Automations_Placeholder_ChannelLast" xml:space="preserve">
-    <value>Laatst gebruikte kanaal</value>
-  </data>
-  <data name="Automations_Placeholder_Description" xml:space="preserve">
-    <value>Optionele context voor deze automatisering</value>
-  </data>
-  <data name="Automations_Placeholder_Name" xml:space="preserve">
-    <value>Ochtendbriefing</value>
-  </data>
-  <data name="Automations_Placeholder_Optional" xml:space="preserve">
-    <value>Optioneel</value>
+    <value>Kanaal-ID</value>
   </data>
   <data name="Automations_Placeholder_Prompt" xml:space="preserve">
     <value>Beschrijf wat OpenClaw moet doen...</value>
   </data>
-  <data name="Automations_Placeholder_Timeout" xml:space="preserve">
-    <value>Optioneel, bijvoorbeeld 90</value>
-  </data>
   <data name="Automations_Placeholder_Timezone" xml:space="preserve">
-    <value>America/Los_Angeles</value>
-  </data>
-  <data name="Automations_Placeholder_Title" xml:space="preserve">
-    <value>Selecteer een automatisering</value>
+    <value>IANA-tijdzone</value>
   </data>
   <data name="Automations_Placeholder_To" xml:space="preserve">
     <value>Chat-ID, telefoon of gebruiker</value>
   </data>
   <data name="Automations_Preset_Daily" xml:space="preserve">
-    <value>Dagelijks 9:00</value>
-  </data>
-  <data name="Automations_Preset_Hourly" xml:space="preserve">
-    <value>Elk uur</value>
-  </data>
-  <data name="Automations_Preset_Monthly" xml:space="preserve">
-    <value>Maandelijks</value>
+    <value>Dagelijks</value>
   </data>
   <data name="Automations_Preset_Weekdays" xml:space="preserve">
-    <value>Weekdagen 9:00</value>
+    <value>Weekdagen</value>
   </data>
   <data name="Automations_Preset_Weekly" xml:space="preserve">
-    <value>Maandag 9:00</value>
+    <value>Wekelijks</value>
   </data>
   <data name="Automations_ReadDenied_Title" xml:space="preserve">
     <value>Automatiseringen zijn niet zichtbaar voor deze operator</value>
@@ -8724,20 +8346,11 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Retry" xml:space="preserve">
     <value>Opnieuw proberen</value>
   </data>
-  <data name="Automations_Row_Last" xml:space="preserve">
-    <value>Laatst uitgevoerd {0}</value>
-  </data>
-  <data name="Automations_Row_Next" xml:space="preserve">
-    <value>Volgende {0}</value>
-  </data>
   <data name="Automations_RunHistory_Subtitle" xml:space="preserve">
     <value>Alle uitvoeringen van alle automatiseringen voor agent {0}.</value>
   </data>
   <data name="Automations_RunHistory_Title" xml:space="preserve">
     <value>Uitvoeringsgeschiedenis</value>
-  </data>
-  <data name="Automations_RunIfDue" xml:space="preserve">
-    <value>Uitvoeren indien gepland</value>
   </data>
   <data name="Automations_Running" xml:space="preserve">
     <value>Wordt uitgevoerd</value>
@@ -8802,9 +8415,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Runs_ErrorTitle" xml:space="preserve">
     <value>Kan uitvoeringsgeschiedenis niet laden</value>
   </data>
-  <data name="Automations_Runs_HideTranscript" xml:space="preserve">
-    <value>Transcript verbergen</value>
-  </data>
   <data name="Automations_Runs_Loading" xml:space="preserve">
     <value>Uitvoeringen laden...</value>
   </data>
@@ -8839,7 +8449,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Minder weergeven</value>
   </data>
   <data name="Automations_Runs_ShowMore" xml:space="preserve">
-    <value>Volledig antwoord weergeven</value>
+    <value>Volledige samenvatting weergeven</value>
   </data>
   <data name="Automations_Runs_StatusCount" xml:space="preserve">
     <value>Status ({0})</value>
@@ -8852,9 +8462,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Automations_Runs_TriggerFired" xml:space="preserve">
     <value>Voorwaarde komt overeen</value>
-  </data>
-  <data name="Automations_Runs_ViewTranscript" xml:space="preserve">
-    <value>Transcript weergeven</value>
   </data>
   <data name="Automations_RunStatus_Error" xml:space="preserve">
     <value>Mislukt</value>
@@ -8922,9 +8529,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Schedule_OnExit" xml:space="preserve">
     <value>Wanneer {0} wordt afgesloten</value>
   </data>
-  <data name="Automations_Schedule_ReadOnlyKind" xml:space="preserve">
-    <value>Deze planning wordt buiten deze app beheerd. Ze blijft ongewijzigd wanneer je andere wijzigingen opslaat.</value>
-  </data>
   <data name="Automations_Schedule_Stream" xml:space="preserve">
     <value>Bij uitvoer van {0}</value>
   </data>
@@ -8943,83 +8547,23 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Scheduler_Off" xml:space="preserve">
     <value>Gestopt</value>
   </data>
-  <data name="Automations_Scheduler_On" xml:space="preserve">
-    <value>Actief</value>
-  </data>
   <data name="Automations_SchedulerOff_Body" xml:space="preserve">
-    <value>Geplande automatiseringen worden pas uitgevoerd als de planner van de Gateway is ingeschakeld.</value>
+    <value>Geplande automatiseringen worden pas uitgevoerd als de Gateway-planner aan staat.</value>
   </data>
   <data name="Automations_SchedulerOff_Title" xml:space="preserve">
     <value>Planner is gestopt</value>
   </data>
-  <data name="Automations_Scratch_Bytes" xml:space="preserve">
-    <value>{0:N0} / {1:N0} bytes</value>
-  </data>
-  <data name="Automations_Scratch_Conflict" xml:space="preserve">
-    <value>Het kladblok is gewijzigd terwijl je aan het bewerken was. Je concept blijft behouden. Laad de nieuwste versie opnieuw voordat je opnieuw opslaat.</value>
-  </data>
-  <data name="Automations_Scratch_Content" xml:space="preserve">
-    <value>Inhoud van kladblok</value>
-  </data>
-  <data name="Automations_Scratch_Empty" xml:space="preserve">
-    <value>Geen kladblok opgeslagen. Als je een lege editor opslaat, wordt een leeg kladblok gemaakt. Door het te verwijderen ontbreekt het kladblok weer.</value>
-  </data>
-  <data name="Automations_Scratch_Help" xml:space="preserve">
-    <value>Privé werknotities die deze automatisering tussen uitvoeringen kan lezen en bijwerken. Wordt alleen geladen als je erom vraagt. Sla hier nooit referenties op.</value>
-  </data>
-  <data name="Automations_Scratch_Load" xml:space="preserve">
-    <value>Kladblok laden</value>
-  </data>
-  <data name="Automations_Scratch_Redacted" xml:space="preserve">
-    <value>Gevoelige inhoud is verborgen. Opslaan is uitgeschakeld om het origineel te beschermen. Je kunt dit kladblok nog wel verwijderen.</value>
-  </data>
-  <data name="Automations_Scratch_Reload" xml:space="preserve">
-    <value>Opnieuw laden</value>
-  </data>
-  <data name="Automations_Scratch_Remove" xml:space="preserve">
-    <value>Kladblok verwijderen</value>
-  </data>
-  <data name="Automations_Scratch_Removed" xml:space="preserve">
-    <value>Kladblok verwijderd.</value>
-  </data>
-  <data name="Automations_Scratch_Save" xml:space="preserve">
-    <value>Kladblok opslaan</value>
-  </data>
-  <data name="Automations_Scratch_Saved" xml:space="preserve">
-    <value>Kladblok opgeslagen.</value>
-  </data>
-  <data name="Automations_Scratch_Title" xml:space="preserve">
-    <value>Kladblok van taak</value>
-  </data>
-  <data name="Automations_Scratch_TooLarge" xml:space="preserve">
-    <value>Het kladblok overschrijdt de maximale grootte.</value>
-  </data>
   <data name="Automations_Search_Placeholder" xml:space="preserve">
     <value>Automatiseringen zoeken</value>
-  </data>
-  <data name="Automations_Seconds" xml:space="preserve">
-    <value>{0} s</value>
-  </data>
-  <data name="Automations_Section_Advanced" xml:space="preserve">
-    <value>Geavanceerd</value>
   </data>
   <data name="Automations_Section_Basics" xml:space="preserve">
     <value>Basis</value>
   </data>
   <data name="Automations_Section_Delivery" xml:space="preserve">
-    <value>Waar resultaten naartoe gaan</value>
+    <value>Levering</value>
   </data>
-  <data name="Automations_Section_Details" xml:space="preserve">
-    <value>Details</value>
-  </data>
-  <data name="Automations_Section_FailureAlerts" xml:space="preserve">
-    <value>Foutmeldingen</value>
-  </data>
-  <data name="Automations_Section_What" xml:space="preserve">
-    <value>Wat het doet</value>
-  </data>
-  <data name="Automations_Section_When" xml:space="preserve">
-    <value>Wanneer het wordt uitgevoerd</value>
+  <data name="Automations_Section_Schedule" xml:space="preserve">
+    <value>Schema</value>
   </data>
   <data name="Automations_Session_Current" xml:space="preserve">
     <value>Huidige sessie</value>
@@ -9032,39 +8576,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Automations_Session_Named" xml:space="preserve">
     <value>Sessie {0}</value>
-  </data>
-  <data name="Automations_Sort" xml:space="preserve">
-    <value>Sorteren</value>
-  </data>
-  <data name="Automations_Sort_Ascending" xml:space="preserve">
-    <value>Oplopend</value>
-  </data>
-  <data name="Automations_Sort_Descending" xml:space="preserve">
-    <value>Aflopend</value>
-  </data>
-  <data name="Automations_Sort_Name" xml:space="preserve">
-    <value>Naam</value>
-  </data>
-  <data name="Automations_Sort_NextRun" xml:space="preserve">
-    <value>Volgende uitvoering</value>
-  </data>
-  <data name="Automations_Sort_Updated" xml:space="preserve">
-    <value>Recent bijgewerkt</value>
-  </data>
-  <data name="Automations_StaggerWindow" xml:space="preserve">
-    <value>Tot {0} spreiding</value>
-  </data>
-  <data name="Automations_Stat_Failing" xml:space="preserve">
-    <value>Mislukt</value>
-  </data>
-  <data name="Automations_Stat_NextWake" xml:space="preserve">
-    <value>Volgende wake</value>
-  </data>
-  <data name="Automations_Stat_Scheduler" xml:space="preserve">
-    <value>Planner</value>
-  </data>
-  <data name="Automations_Stat_Total" xml:space="preserve">
-    <value>Automatiseringen</value>
   </data>
   <data name="Automations_State_Active" xml:space="preserve">
     <value>Actief</value>
@@ -9087,128 +8598,14 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_State_Running" xml:space="preserve">
     <value>Wordt uitgevoerd</value>
   </data>
-  <data name="Automations_StreamError_Title" xml:space="preserve">
-    <value>Fout in streambron</value>
-  </data>
-  <data name="Automations_Suggestion_dependencyRadar_Name" xml:space="preserve">
-    <value>Afhankelijkhedenradar</value>
-  </data>
-  <data name="Automations_Suggestion_dependencyRadar_Prompt" xml:space="preserve">
-    <value>Controleer mijn hoofdproject op verouderde of kwetsbare afhankelijkheden. Geef de belangrijkste updates weer met elk een risiconotitie van één regel, en stel de upgradeopdracht op.</value>
-  </data>
-  <data name="Automations_Suggestion_dependencyRadar_Schedule" xml:space="preserve">
-    <value>Maandag om 9:00</value>
-  </data>
-  <data name="Automations_Suggestion_dependencyRadar_Tagline" xml:space="preserve">
-    <value>Verouderde of kwetsbare afhankelijkheden, met upgradenotities.</value>
-  </data>
-  <data name="Automations_Suggestion_hackerNewsScout_Name" xml:space="preserve">
-    <value>Hacker News-verkenner</value>
-  </data>
-  <data name="Automations_Suggestion_hackerNewsScout_Prompt" xml:space="preserve">
-    <value>Doorzoek de voorpagina van Hacker News van vandaag op berichten over AI-agents, ontwikkelhulpmiddelen en TypeScript. Stuur me de drie interessantste links, elk met een uitgesproken mening van één regel.</value>
-  </data>
-  <data name="Automations_Suggestion_hackerNewsScout_Schedule" xml:space="preserve">
-    <value>Dagelijks om 8:00</value>
-  </data>
-  <data name="Automations_Suggestion_hackerNewsScout_Tagline" xml:space="preserve">
-    <value>Drie links die je koffie waard zijn, met uitgesproken meningen.</value>
-  </data>
-  <data name="Automations_Suggestion_polyglotMinute_Name" xml:space="preserve">
-    <value>Polyglotminuut</value>
-  </data>
-  <data name="Automations_Suggestion_polyglotMinute_Prompt" xml:space="preserve">
-    <value>Leer me één nuttige zin in het Japans: de zin, hoe je die uitspreekt, de letterlijke betekenis en wanneer je die gebruikt. Houd het onder de vijf regels.</value>
-  </data>
-  <data name="Automations_Suggestion_polyglotMinute_Schedule" xml:space="preserve">
-    <value>Dagelijks om 8:00</value>
-  </data>
-  <data name="Automations_Suggestion_polyglotMinute_Tagline" xml:space="preserve">
-    <value>Eén nuttige buitenlandse zin bij je ochtendkoffie.</value>
-  </data>
-  <data name="Automations_Suggestion_repoPulse_Name" xml:space="preserve">
-    <value>Repo-polsslag</value>
-  </data>
-  <data name="Automations_Suggestion_repoPulse_Prompt" xml:space="preserve">
-    <value>Bekijk de activiteit van afgelopen nacht in mijn repository&apos;s: nieuwe issues, pull requests en CI-fouten. Vat de drie zaken samen die vandaag het meest mijn aandacht nodig hebben, elk met een link en een reden van één regel.</value>
-  </data>
-  <data name="Automations_Suggestion_repoPulse_Schedule" xml:space="preserve">
-    <value>Weekdagen om 9:00</value>
-  </data>
-  <data name="Automations_Suggestion_repoPulse_Tagline" xml:space="preserve">
-    <value>Issues, pull requests en CI-fouten van afgelopen nacht, gerangschikt op urgentie.</value>
-  </data>
-  <data name="Automations_Suggestion_standupGhostwriter_Name" xml:space="preserve">
-    <value>Standup-ghostwriter</value>
-  </data>
-  <data name="Automations_Suggestion_standupGhostwriter_Prompt" xml:space="preserve">
-    <value>Stel mijn standup-update op basis van de commits, samengevoegde pull requests en open reviewthreads van gisteren. Maximaal drie opsommingstekens: gedaan, bezig, geblokkeerd.</value>
-  </data>
-  <data name="Automations_Suggestion_standupGhostwriter_Schedule" xml:space="preserve">
-    <value>Weekdagen om 9:00</value>
-  </data>
-  <data name="Automations_Suggestion_standupGhostwriter_Tagline" xml:space="preserve">
-    <value>Je standup-update, opgesteld op basis van het werk van gisteren.</value>
-  </data>
-  <data name="Automations_Suggestion_watchdog_Name" xml:space="preserve">
-    <value>Nachtwacht</value>
-  </data>
-  <data name="Automations_Suggestion_watchdog_Prompt" xml:space="preserve">
-    <value>Controleer of mijn services en gateway in orde zijn: doorzoek recente logboeken op nieuwe fouten, herstarts of ongebruikelijke belasting. Antwoord met één korte regel dat alles in orde is als dat zo is; als er iets kapot lijkt, meld dan wat er mislukt is en waar ik moet beginnen met zoeken.</value>
-  </data>
-  <data name="Automations_Suggestion_watchdog_Schedule" xml:space="preserve">
-    <value>Elk uur</value>
-  </data>
-  <data name="Automations_Suggestion_watchdog_Tagline" xml:space="preserve">
-    <value>Elk uur een statuscontrole met een oordeel van één regel.</value>
-  </data>
-  <data name="Automations_Suggestions_Title" xml:space="preserve">
-    <value>Voorbeeldautomatiseringen</value>
-  </data>
   <data name="Automations_Tab_Overview" xml:space="preserve">
     <value>Overzicht</value>
-  </data>
-  <data name="Automations_Tab_Runs" xml:space="preserve">
-    <value>Uitvoeringsgeschiedenis</value>
-  </data>
-  <data name="Automations_Tab_Scratch" xml:space="preserve">
-    <value>Kladblok</value>
   </data>
   <data name="Automations_Thread" xml:space="preserve">
     <value>Thread {0}</value>
   </data>
   <data name="Automations_Title" xml:space="preserve">
     <value>Automatiseringen</value>
-  </data>
-  <data name="Automations_Transcript_Assistant" xml:space="preserve">
-    <value>Assistent</value>
-  </data>
-  <data name="Automations_Transcript_Empty" xml:space="preserve">
-    <value>Nog geen berichten in deze uitvoering.</value>
-  </data>
-  <data name="Automations_Transcript_Loading" xml:space="preserve">
-    <value>Transcript laden...</value>
-  </data>
-  <data name="Automations_Transcript_LoadOlder" xml:space="preserve">
-    <value>Eerdere berichten laden</value>
-  </data>
-  <data name="Automations_Transcript_System" xml:space="preserve">
-    <value>Systeem</value>
-  </data>
-  <data name="Automations_Transcript_Title" xml:space="preserve">
-    <value>Transcript van uitvoering</value>
-  </data>
-  <data name="Automations_Transcript_Tool" xml:space="preserve">
-    <value>Hulpmiddel: {0}</value>
-  </data>
-  <data name="Automations_Transcript_Unavailable" xml:space="preserve">
-    <value>Het transcript van de uitvoering is niet beschikbaar: {0}</value>
-  </data>
-  <data name="Automations_Transcript_User" xml:space="preserve">
-    <value>Prompt</value>
-  </data>
-  <data name="Automations_TriggerConfigured" xml:space="preserve">
-    <value>Voorwaardetrigger geconfigureerd</value>
   </data>
   <data name="Automations_Unit_Days" xml:space="preserve">
     <value>Dagen</value>
@@ -9225,12 +8622,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Unknown" xml:space="preserve">
     <value>Onbekend</value>
   </data>
-  <data name="Automations_View_Automations" xml:space="preserve">
-    <value>Automatiseringen</value>
-  </data>
-  <data name="Automations_View_RunHistory" xml:space="preserve">
-    <value>Uitvoeringsgeschiedenis</value>
-  </data>
   <data name="Automations_Wake_NextHeartbeat" xml:space="preserve">
     <value>Volgende heartbeat</value>
   </data>
@@ -9240,41 +8631,65 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Yes" xml:space="preserve">
     <value>Ja</value>
   </data>
-  <data name="Automations_Empty_Headline" xml:space="preserve">
-    <value>Zet OpenClaw op de automatische piloot</value>
-  </data>
-  <data name="Automations_Header_AllQuiet" xml:space="preserve">
-    <value>Alles rustig. Er is nu niets gepland.</value>
-  </data>
-  <data name="Automations_Header_NextUp" xml:space="preserve">
-    <value>Volgende: {0}, {1}</value>
-  </data>
-  <data name="Automations_KindHint_At" xml:space="preserve">
-    <value>Eén keer uitvoeren op een vast tijdstip</value>
-  </data>
-  <data name="Automations_KindHint_Cron" xml:space="preserve">
-    <value>Agendaregels, zoals werkdagen om 9 uur</value>
-  </data>
-  <data name="Automations_KindHint_Event" xml:space="preserve">
-    <value>Wanneer een MCP-server een gebeurtenis verstuurt</value>
-  </data>
-  <data name="Automations_KindHint_Every" xml:space="preserve">
-    <value>Herhalen met een vast interval</value>
-  </data>
-  <data name="Automations_Runs_Streak" xml:space="preserve">
-    <value>{0} geslaagde uitvoeringen op rij</value>
-  </data>
   <data name="Automations_Runs_SuccessRate" xml:space="preserve">
     <value>{0}% geslaagd</value>
   </data>
   <data name="Automations_Runs_SummaryDetail" xml:space="preserve">
     <value>{0} van {1} recente uitvoeringen, gemiddeld {2}</value>
   </data>
-  <data name="Automations_Stat_Healthy" xml:space="preserve">
-    <value>Alles gezond</value>
-  </data>
   <data name="Automations_Selected" xml:space="preserve">
     <value>Geselecteerd</value>
+  </data>
+  <data name="Automations_AgentFilterFor" xml:space="preserve">
+    <value>Agentfilter: {0}</value>
+  </data>
+  <data name="Automations_CopyId" xml:space="preserve">
+    <value>Automatiserings-ID kopiëren</value>
+  </data>
+  <data name="Automations_CopyId_Done" xml:space="preserve">
+    <value>Automatiserings-ID {0} gekopieerd.</value>
+  </data>
+  <data name="Automations_CopyId_Failed" xml:space="preserve">
+    <value>Kan de automatiserings-ID niet kopiëren. Je kunt deze selecteren in de details van de automatisering.</value>
+  </data>
+  <data name="Automations_DeliveryMode_KeepSaved" xml:space="preserve">
+    <value>Huidige instelling behouden</value>
+  </data>
+  <data name="Automations_Editor_PreservedBody" xml:space="preserve">
+    <value>Deze automatisering gebruikt ook: {0}. Opslaan hier laat ze ongewijzigd. Wijzig ze op het web.</value>
+  </data>
+  <data name="Automations_Editor_PreservedTitle" xml:space="preserve">
+    <value>Meer instellingen op het web</value>
+  </data>
+  <data name="Automations_Field_DeliveryRouting" xml:space="preserve">
+    <value>Leveringsroutering</value>
+  </data>
+  <data name="Automations_Filter_AllAgents" xml:space="preserve">
+    <value>Alle agents</value>
+  </data>
+  <data name="Automations_Help_RunAtLocal" xml:space="preserve">
+    <value>Wordt op dit tijdstip uitgevoerd in de tijdzone van deze pc ({0}).</value>
+  </data>
+  <data name="Automations_Help_ToSaved" xml:space="preserve">
+    <value>Typ een ontvanger of kies er een die een andere automatisering gebruikt.</value>
+  </data>
+  <data name="Automations_OpenInWeb" xml:space="preserve">
+    <value>Openen op het web</value>
+  </data>
+  <data name="Automations_Payload_WebManaged" xml:space="preserve">
+    <value>Deze actie wordt op het web beheerd. Opslaan hier laat haar ongewijzigd.</value>
+  </data>
+  <data name="Automations_RunHistory_SubtitleAll" xml:space="preserve">
+    <value>Alle uitvoeringen van alle automatiseringen op deze Gateway.</value>
+  </data>
+  <data name="Automations_Schedule_WebManaged" xml:space="preserve">
+    <value>Deze planning wordt op het web beheerd. Opslaan hier laat haar ongewijzigd.</value>
+  </data>
+  <data name="Automations_Schedule_CustomCron" xml:space="preserve">
+    <value>Deze aangepaste kalenderregel bewerk je op het web. Opslaan hier behoudt haar, tenzij je hieronder een patroon kiest.</value>
+  </data>
+  <data name="Automations_UseLocalTimezone" xml:space="preserve">
+    <value>Tijdzone van deze pc gebruiken ({0})</value>
   </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node-sandbox</value>
@@ -9339,4 +8754,84 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Time-out voor Gateway-spraak. Synthese kan voltooid zijn. Controleer de Gateway voordat u opnieuw probeert. Er is niet automatisch opnieuw geprobeerd.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway-spraak mislukt. Controleer de steminstellingen en het providerquotum. Geen lokale terugval of automatische herhaling.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
+  <data name="Automations_Redesign_ReadDenied" xml:space="preserve"><value>Deze operator kan automatiseringen niet lezen. Vraag een Gateway-beheerder om leestoegang.</value></data>
+  <data name="Automations_Redesign_LastSeen" xml:space="preserve"><value>Automatiseringen, laatst gezien op {0}</value></data>
+  <data name="Automations_Redesign_NeedYou" xml:space="preserve"><value>{0} automatiseringen hebben je nodig</value></data>
+  <data name="Automations_Redesign_OnSchedule" xml:space="preserve"><value>Alles loopt volgens planning</value></data>
+  <data name="Automations_Redesign_Next" xml:space="preserve"><value>Hierna: {0} om {1}.</value></data>
+  <data name="Automations_Redesign_RefreshFailed" xml:space="preserve"><value>Vernieuwen mislukt. De laatst bekende automatiseringen worden getoond.</value></data>
+  <data name="Automations_Redesign_AutoDisabled" xml:space="preserve"><value>Uitgeschakeld door de planner</value></data>
+  <data name="Automations_Redesign_FailureStreak" xml:space="preserve"><value>{0} keer achter elkaar mislukt</value></data>
+  <data name="Automations_Redesign_RetryNow" xml:space="preserve"><value>Nu opnieuw proberen</value></data>
+  <data name="Automations_Redesign_SeeRuns" xml:space="preserve"><value>Uitvoeringen bekijken</value></data>
+  <data name="Automations_Redesign_TurnOn" xml:space="preserve"><value>Weer inschakelen</value></data>
+  <data name="Automations_Redesign_MoreAttention" xml:space="preserve"><value>Nog {0} vragen aandacht</value></data>
+  <data name="Automations_Redesign_NeedsYou" xml:space="preserve"><value>Heeft je nodig</value></data>
+  <data name="Automations_Redesign_Group_Running" xml:space="preserve"><value>Wordt nu uitgevoerd</value></data>
+  <data name="Automations_Redesign_Group_Hour" xml:space="preserve"><value>In het komende uur</value></data>
+  <data name="Automations_Redesign_Group_Today" xml:space="preserve"><value>Later vandaag</value></data>
+  <data name="Automations_Redesign_Group_Tomorrow" xml:space="preserve"><value>Morgen</value></data>
+  <data name="Automations_Redesign_FailedLast" xml:space="preserve"><value>Vorige keer mislukt</value></data>
+  <data name="Automations_Redesign_ShowMore" xml:space="preserve"><value>Nog {0} tonen</value></data>
+  <data name="Automations_Redesign_NothingSoon" xml:space="preserve"><value>Niets anders gepland voor morgenavond.</value></data>
+  <data name="Automations_Redesign_Repeating" xml:space="preserve"><value>{0} herhalende automatiseringen</value></data>
+  <data name="Automations_Redesign_WaitEvents" xml:space="preserve"><value>{0} wachten op gebeurtenissen</value></data>
+  <data name="Automations_Redesign_Earlier" xml:space="preserve"><value>Eerder vandaag</value></data>
+  <data name="Automations_Redesign_SchedulerUnknown" xml:space="preserve"><value>Plannerstatus onbekend</value></data>
+  <data name="Automations_Redesign_ComingUp" xml:space="preserve"><value>Binnenkort</value></data>
+  <data name="Automations_Redesign_AllCount" xml:space="preserve"><value>Alle ({0})</value></data>
+  <data name="Automations_Redesign_OnCount" xml:space="preserve"><value>Aan ({0})</value></data>
+  <data name="Automations_Redesign_OffCount" xml:space="preserve"><value>Gepauzeerd of uit ({0})</value></data>
+  <data name="Automations_Redesign_All" xml:space="preserve"><value>Alle</value></data>
+  <data name="Automations_Redesign_On" xml:space="preserve"><value>Aan</value></data>
+  <data name="Automations_Redesign_Off" xml:space="preserve"><value>Gepauzeerd of uit</value></data>
+  <data name="Automations_Redesign_Scheduled" xml:space="preserve"><value>Gepland</value></data>
+  <data name="Automations_Redesign_Paused" xml:space="preserve"><value>Gepauzeerd of uit</value></data>
+  <data name="Automations_Redesign_AllAutomations" xml:space="preserve"><value>Alle automatiseringen</value></data>
+  <data name="Automations_Redesign_Advanced" xml:space="preserve"><value>Geavanceerd</value></data>
+  <data name="Automations_Redesign_OpenChatFor" xml:space="preserve"><value>Chat openen: {0}</value></data>
+  <data name="Automations_Redesign_EventNoRuns" xml:space="preserve"><value>Wacht op een gebeurtenis. Nog geen uitvoeringen.</value></data>
+  <data name="Automations_Redesign_SuccessCount" xml:space="preserve"><value>{0}/{1} recente uitvoeringen geslaagd</value></data>
+  <data name="Automations_Redesign_AllRunsWeb" xml:space="preserve"><value>Alle uitvoeringen op het web</value></data>
+  <data name="Automations_Redesign_EditWeb" xml:space="preserve"><value>Bewerken op het web</value></data>
+  <data name="Automations_Redesign_LastRunChat" xml:space="preserve"><value>Laatste uitvoering in chat openen</value></data>
+  <data name="Automations_Redesign_CopyAsNew" xml:space="preserve"><value>Kopiëren als nieuw</value></data>
+  <data name="Automations_Redesign_Weekday" xml:space="preserve"><value>Dag van de week</value></data>
+  <data name="Automations_Redesign_ExactNextOnSave" xml:space="preserve"><value>De Gateway bepaalt de exacte volgende uitvoering bij het opslaan.</value></data>
+  <data name="Automations_Redesign_NeedYouOne" xml:space="preserve"><value>Eén automatisering heeft je nodig</value></data>
+  <data name="Automations_Redesign_Response" xml:space="preserve"><value>Samenvatting</value></data>
+  <data name="Automations_Popup_RemoveTitle" xml:space="preserve"><value>“{0}” verwijderen?</value></data>
+  <data name="Automations_Popup_RemoveBody" xml:space="preserve"><value>Deze wordt samen met het schema en de uitvoeringsgeschiedenis verwijderd van {0}. Dit kan niet ongedaan worden gemaakt.</value></data>
+  <data name="Automations_Popup_ConnectedGateway" xml:space="preserve"><value>de verbonden Gateway</value></data>
+  <data name="Automations_Popup_Schedule" xml:space="preserve"><value>Schema</value></data>
+  <data name="Automations_Popup_AlertType" xml:space="preserve"><value>Waarschuwingsdialoog</value></data>
+  <data name="Automations_Toast_RunQueued" xml:space="preserve"><value>Uitvoering in wachtrij</value></data>
+  <data name="Automations_Toast_RunQueuedWithId" xml:space="preserve"><value>Uitvoering in wachtrij · {0}</value></data>
+  <data name="Automations_Toast_AlreadyRunning" xml:space="preserve"><value>Niet gestart: “{0}” wordt al uitgevoerd.</value></data>
+  <data name="Automations_Toast_Removed" xml:space="preserve"><value>“{0}” verwijderd</value></data>
+  <data name="Automations_Review_Today" xml:space="preserve"><value>Vandaag {0}</value></data>
+  <data name="Automations_Review_TurnedOff" xml:space="preserve"><value>{0} is uitgeschakeld</value></data>
+  <data name="Automations_Review_SchedulerStopped" xml:space="preserve"><value>De planner heeft deze gestopt.</value></data>
+  <data name="Automations_Review_SchedulerOn" xml:space="preserve"><value>Planner aan</value></data>
+  <data name="Automations_Review_RunningNow" xml:space="preserve"><value>Wordt nu uitgevoerd</value></data>
+  <data name="Automations_Review_OnEvent" xml:space="preserve"><value>Bij gebeurtenis</value></data>
+  <data name="Automations_Review_Error" xml:space="preserve"><value>Fout</value></data>
+  <data name="Automations_Review_LastRun" xml:space="preserve"><value>Laatste uitvoering {0}</value></data>
+  <data name="Automations_Review_Tomorrow" xml:space="preserve"><value>Morgen {0}</value></data>
+  <data name="Automations_Review_OnceOn" xml:space="preserve"><value>Eenmalig op {0} om {1}</value></data>
+  <data name="Automations_Review_OnceToday" xml:space="preserve"><value>Eenmalig vandaag om {0}</value></data>
+  <data name="Automations_Review_OnOne" xml:space="preserve"><value>{0} aan</value></data>
+  <data name="Automations_Review_OnMany" xml:space="preserve"><value>{0} aan</value></data>
+  <data name="Automations_Review_PausedOne" xml:space="preserve"><value>{0} gepauzeerd of uit</value></data>
+  <data name="Automations_Review_PausedMany" xml:space="preserve"><value>{0} gepauzeerd of uit</value></data>
+  <data name="Automations_Review_AcrossAgents" xml:space="preserve"><value>bij {0} agents</value></data>
+  <data name="Automations_Review_SummaryJoin" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Automations_Review_SummaryEnd" xml:space="preserve"><value>{0}.</value></data>
+  <data name="Automations_Review_NothingScheduled" xml:space="preserve"><value>Nog niets gepland</value></data>
+  <data name="Automations_Review_OpenChat" xml:space="preserve"><value>Chat openen</value></data>
+  <data name="Automations_Review_EmptyWebCaption" xml:space="preserve"><value>Gebeurtenistriggers en aangepaste cron-schema's worden gemaakt in de webbedieningsinterface.</value></data>
+  <data name="Automations_Review_CopyAsNewTitle" xml:space="preserve"><value>“{0}” als nieuw kopiëren</value></data>
+  <data name="Automations_Review_Repeats" xml:space="preserve"><value>Herhaalt</value></data>
+  <data name="Automations_Review_RunPermissionError" xml:space="preserve"><value>“{0}” kon niet worden gestart. Deze verbinding mist de machtiging operator.admin.</value></data>
+  <data name="Automations_Review_Close" xml:space="preserve"><value>Sluiten</value></data>
 </root>
