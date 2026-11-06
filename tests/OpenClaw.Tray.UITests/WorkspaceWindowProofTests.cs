@@ -113,6 +113,10 @@ public sealed class WorkspaceWindowProofTests
         AssertIconCenter(FindPopup(root, "WorkspaceAgent:main")!.Current.BoundingRectangle, center,
             color => color.R < 20 && color.G is > 110 and < 145 && color.B is > 110 and < 145,
             expectedWidth: toggle.Width * 32 / 40);
+        // "fallback" has no image or text avatar, so it gets the generated face: pale teal background (D5F6F3).
+        AssertIconCenter(FindPopup(root, "WorkspaceAgent:fallback")!.Current.BoundingRectangle, center,
+            color => color.R is > 190 and < 235 && color.G > color.R + 20 && color.B > color.R + 15,
+            expectedWidth: toggle.Width * 32 / 40);
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);

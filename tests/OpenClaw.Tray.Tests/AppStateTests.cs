@@ -1,5 +1,6 @@
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClawTray.Chat;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -148,6 +149,32 @@ public class AppStateTests
         Assert.Contains(nameof(AppState.GatewaySelf), fired);
         // AuthFailureMessage is NOT cleared by ClearCachedData
         Assert.DoesNotContain(nameof(AppState.AuthFailureMessage), fired);
+    }
+
+    [Fact]
+    public void FindAgent_ComposesRosterFirstIdentityAndNotifiesChatOnRosterChanges()
+    {
+        var state = CreateState();
+        using var roster = JsonDocument.Parse("""{"agents":[{"id":"main","name":"Roster Assistant"}]}""");
+        var rosterUpdates = 0;
+        state.AgentRosterChanged += (_, _) => rosterUpdates++;
+
+        state.AgentsList = roster.RootElement.Clone();
+        state.AgentIdentities = new Dictionary<string, ChatAgentIdentity>(StringComparer.Ordinal)
+        {
+            ["main"] = new("main", "Gateway identity", "data:image/png;base64,AA==", "✨"),
+        };
+
+        var agent = Assert.IsType<ChatAgentPresentation>(state.FindAgent("main"));
+        Assert.Equal("Roster Assistant", agent.Name);
+        Assert.Equal("data:image/png;base64,AA==", agent.AvatarUrl);
+        Assert.Equal("✨", agent.Emoji);
+        Assert.Equal(2, rosterUpdates);
+
+        state.ClearAgentIdentities();
+
+        Assert.Null(state.FindAgent("main")?.AvatarUrl);
+        Assert.Equal(3, rosterUpdates);
     }
 
     // ── AddAgentEvent ring buffer ───────────────────────────────────────

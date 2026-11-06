@@ -568,7 +568,8 @@ public sealed partial class ChatPage : Page
             onReadAloud: readAloud,
             onStopSpeaking: () => app?.StopChatSpeaking(),
             onOpenCheckpoints: OpenSessionCheckpoints,
-            initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey));
+            initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey),
+            agentRosterSource: app?.AppState);
         _reactorHost = mountedHost;
         _mountedProvider = provider;
         _mountedThreadId = threadIdToMount;

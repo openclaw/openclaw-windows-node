@@ -778,7 +778,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var catalog = placement?.State.Catalog;
         surfaces.Add(inputs.ShowPlacementPickers
             ? ReactorChatWelcome.Header(
-                ChatWelcomePresentation.AgentIdentity(catalog, agentId),
+                ChatWelcomePresentation.AgentIdentity(catalog, agentId, inputs.AgentIdentity),
                 viewportWidth)
             : Empty());
         if (inputs.ShowPlacementPickers && placement is not null)

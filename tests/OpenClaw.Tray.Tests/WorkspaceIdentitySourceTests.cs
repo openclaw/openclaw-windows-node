@@ -622,6 +622,24 @@ public sealed class WorkspaceIdentitySourceTests
     }
 
     [Fact]
+    public void GatewayClientReplacementClearsRosterAndInvalidatesPendingAgentIdentityLoads()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "GatewayService.cs"));
+        var attachStart = source.IndexOf("public void AttachClient", StringComparison.Ordinal);
+        var attachEnd = source.IndexOf("// ── Dispatcher helper", attachStart, StringComparison.Ordinal);
+        Assert.True(attachStart >= 0 && attachEnd > attachStart);
+        var attach = source[attachStart..attachEnd];
+        var replacementStart = attach.IndexOf("if (!ReferenceEquals(oldClient, newClient))", StringComparison.Ordinal);
+        Assert.True(replacementStart >= 0);
+        var replacement = attach[replacementStart..];
+
+        Assert.Contains("_agentIdentityRevision++;", replacement);
+        Assert.Contains("_state.AgentsList = null;", replacement);
+        Assert.Contains("_state.ClearAgentIdentities();", replacement);
+    }
+
+    [Fact]
     public async Task ProfileInvalidationSupersedesStalledAvatarAndRefreshesWithoutReconnect()
     {
         var (client, proxy) = Gateway();

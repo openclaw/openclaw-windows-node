@@ -30,16 +30,14 @@ public enum ReactorChatTimelineMode
 public sealed record ReactorChatTimelineProps(
     ReactorChatTimelineMode Mode,
     ChatTimelinePresentationContext Timeline,
-    ReactorChatIdentity? AssistantIdentity = null,
+    ChatAgentIdentity? AssistantIdentity = null,
     Action<string>? OnOpenCheckpoints = null,
     long HistoryRevision = 0,
     double ViewportWidth = 800,
-    Func<string, bool>? TryCopyText = null);
-
-public sealed record ReactorChatIdentity(
-    string? DisplayName = null,
-    string? Avatar = null,
-    string? Emoji = null);
+    Func<string, bool>? TryCopyText = null,
+    string? AssistantAgentId = null,
+    OpenClaw.Shared.ChatPlacementCatalog? AssistantCatalog = null,
+    IChatAgentAvatarImageSource? AssistantAvatarImageSource = null);
 
 /// <summary>
 /// Reactor-owned production timeline. Reactor's keyed ItemsView handles row
@@ -582,25 +580,16 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 .Margin(0, 0, 8, 0)
                 .VAlign(VerticalAlignment.Top);
 
-        var identity = row.Props.AssistantIdentity;
-        var glyph = !string.IsNullOrWhiteSpace(identity?.Avatar)
-            ? identity.Avatar
-            : identity?.Emoji;
-        Element content = !string.IsNullOrWhiteSpace(glyph)
-            ? Text(glyph, 16, FontWeights.SemiBold, "TextFillColorSecondaryBrush").Center()
-            : Image("ms-appx:///Assets/Square44x44Logo.targetsize-256_altform-unplated.png")
-                .Size(36, 36)
-                .AutomationName(identity?.DisplayName ?? "Assistant");
-
-        return Border(content)
+        // Same identity rules as the welcome header and sidebar: image, text avatar, then generated face.
+        var agent = ChatWelcomePresentation.AgentIdentity(
+            row.Props.AssistantCatalog, row.Props.AssistantAgentId, row.Props.AssistantIdentity);
+        return NativeChatWelcomeAvatarElement.NativeChatWelcomeAvatar()
+            .Set(avatar => avatar.Update(agent, 36, row.Props.AssistantAvatarImageSource))
             .Size(36, 36)
-            .CornerRadius(18)
-            .Background(BrushFor("CardBackgroundFillColorDefaultBrush", Color.FromArgb(0x24, 0x80, 0x80, 0x80)))
-            .BorderBrush(BrushFor("ControlStrokeColorDefaultBrush", Color.FromArgb(0x40, 0x80, 0x80, 0x80)))
-            .BorderThickness(1)
             .Margin(0, 0, 8, 0)
             .VAlign(VerticalAlignment.Top)
-            .AutomationName(identity?.DisplayName ?? "Assistant");
+            .AutomationId("ChatAssistantAvatar")
+            .AutomationName(agent.Name);
     }
 
     internal static Element BuildSafeMarkdown(string? text, Func<string, bool>? tryCopy = null)

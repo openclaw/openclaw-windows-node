@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Xml.Linq;
 using OpenClaw.Shared;
+using OpenClawTray.Chat;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 
@@ -1433,7 +1434,7 @@ public sealed class WorkspaceNavigationTests
             """);
         var agents = WorkspaceProjection.Agents(json.RootElement, []);
         Assert.Equal(3, agents.Count);
-        Assert.Equal("Configured assistant", agents[0].Name);
+        Assert.Equal("Roster alias", agents[0].Name);
         Assert.Equal("C", agents[0].Emoji);
         Assert.Equal("data:image/png;base64,AQID", agents[0].AvatarUrl);
         Assert.Equal("Other assistant", agents[1].Name);
@@ -1443,6 +1444,34 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("main", WorkspaceProjection.SelectedAgentId(json.RootElement, agents, null));
         Assert.Equal("other", WorkspaceProjection.SelectedAgentId(json.RootElement, agents, "other"));
         Assert.Equal("main", WorkspaceProjection.SelectedAgentId(json.RootElement, agents, "removed"));
+    }
+
+    [Fact]
+    public void Projection_FillsUnconfiguredDefaultAgentFromGatewayIdentity()
+    {
+        // agents.list omits the built-in default identity; agent.identity.get supplies "Assistant".
+        using var json = JsonDocument.Parse("""
+            {"defaultId":"main","agents":[
+              {"id":"main"},
+              {"id":"named","name":"Roster name","identity":{"avatarUrl":"https://images.example/stale.png"}},
+              {"id":"plain"}
+            ]}
+            """);
+        var identities = new Dictionary<string, ChatAgentIdentity>(StringComparer.Ordinal)
+        {
+            ["main"] = new("main", "Assistant", null, null),
+            ["named"] = new("named", "Gateway name", null, "\U0001F916"),
+            ["plain"] = new("other", "Wrong agent", "https://images.example/wrong.png", "W")
+        };
+
+        var agents = WorkspaceProjection.Agents(json.RootElement, [], identities);
+
+        Assert.Equal(("Assistant", (string?)null, (string?)null), (agents[0].Name, agents[0].Emoji, agents[0].AvatarUrl));
+        Assert.Equal("Roster name", agents[1].Name);
+        Assert.Equal("\U0001F916", agents[1].Emoji);
+        Assert.Null(agents[1].AvatarUrl);
+        Assert.Equal(("plain", (string?)null, (string?)null), (agents[2].Name, agents[2].Emoji, agents[2].AvatarUrl));
+        Assert.Equal("main", WorkspaceProjection.Agents(json.RootElement, [])[0].Name);
     }
 
     [Fact]
@@ -1512,6 +1541,11 @@ public sealed class WorkspaceNavigationTests
         }
         var badge = XDocument.Load(Source("Controls", "AgentIdentityBadge.xaml"));
         Assert.Single(badge.Descendants(), element => element.Name.LocalName == "PersonPicture");
+        var face = Assert.Single(badge.Descendants(), element => (string?)element.Attribute(x + "Name") == "Face");
+        Assert.Equal("Collapsed", (string?)face.Attribute("Visibility"));
+        foreach (var feature in new[] { "FaceEye", "FaceMouth" })
+            for (var variant = 0; variant < 4; variant++)
+                Assert.Single(badge.Descendants(), element => (string?)element.Attribute(x + "Name") == $"{feature}{variant}");
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("ConnectionStatusPresenter.Pill(snapshot?.OverallState, status)", code);
         Assert.Contains("menu.Opening +=", code);
@@ -1520,6 +1554,8 @@ public sealed class WorkspaceNavigationTests
         var avatar = File.ReadAllText(Source("Controls", "AgentIdentityBadge.xaml.cs"));
         Assert.Contains("new MediaResolver(", avatar);
         Assert.Contains("Picture.Initials = agent.Emoji", avatar);
+        Assert.Contains("AgentAvatarPresentation.Face(agentId)", avatar);
+        Assert.Contains("Picture.ProfilePicture is null && _agent?.Emoji is null", avatar);
         Assert.Contains("cancellation.IsCancellationRequested", avatar);
         Assert.DoesNotContain("File.Read", avatar);
     }
