@@ -39,7 +39,6 @@ public sealed class AccessibilityScanTests
     public static IEnumerable<object[]> PageTestData()
     {
         yield return ["AgentEventsPage", "agentevents", "AgentEventsPageMarker"];
-        yield return ["BindingsPage", "bindings", "BindingsPageMarker"];
         yield return ["ChannelsPage", "channels", "ChannelsPageMarker"];
         yield return ["ChatPage", "chat", "ChatComposerInput"];
         yield return ["ConfigPage", "config", "ConfigPageMarker"];
@@ -52,7 +51,6 @@ public sealed class AccessibilityScanTests
         yield return ["SandboxPage", "sandbox", "SandboxPageMarker"];
         yield return ["SessionsPage", "sessions", "SessionsPageMarker"];
         yield return ["SettingsPage", "settings", "SettingsPageMarker"];
-        yield return ["SkillsPage", "skills", "SkillsPageMarker"];
         yield return ["UsagePage", "usage", "UsagePageMarker"];
         yield return ["VoiceSettingsPage", "voice", "VoiceSettingsPageMarker"];
         yield return ["ChatPage", "workspace", "ChatComposerInput"];

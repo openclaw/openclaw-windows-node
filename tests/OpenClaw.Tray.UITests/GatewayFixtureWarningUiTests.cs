@@ -136,6 +136,50 @@ public sealed partial class GatewayFixtureUiTests
             releasePendingResponses: releaseVerification.Set);
     }
 
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task VerifiedSetupBindingClearsBeforeNewConversationResponse()
+    {
+        var scenario = GatewayScenario.CreateNativeSetup((method, _) => method switch
+        {
+            "openclaw.setup.verify" => new { ok = true, modelRef = "fixture/browse", latencyMs = 1 },
+            _ => throw new InvalidOperationException($"Unexpected synthetic setup request: {method}")
+        }, allowSessionMutations: true);
+        await WithAppAsync(async run =>
+        {
+            await WaitVerifiedChatAsync(run);
+            Assert.Single(AppWindows(run));
+            var registry = new GatewayRegistry(run.Profile.DataDirectory);
+            var identityPath = registry.GetIdentityDirectory(run.Profile.GatewayId);
+            File.Delete(Path.Combine(identityPath, "device-key-ed25519.json"));
+            new DeviceIdentity(identityPath).Initialize();
+            await run.Gateway.CloseConnectionsAsync();
+            await WaitUiAsync(run, () => FindText(run, AuthorityWarning) is { Current.IsOffscreen: false } &&
+                FindById(run, "WorkspaceSessionsAdd") is { } add && add.Current.IsEnabled,
+                "bound setup authority warning before ordinary new conversation");
+
+            run.Gateway.HoldSessionMutations();
+            try
+            {
+                Invoke(FindById(run, "WorkspaceSessionsAdd")!);
+                await run.Gateway.WaitForRequestAsync("sessions.create");
+                await WaitUiAsync(run, () => FindById(run, "ChatNativeSetupError") is null,
+                    "obsolete verified setup binding cleared while creation response is held");
+                Assert.DoesNotContain(run.Gateway.Requests,
+                    request => request.Method == "sessions.create" && request.Outcome == "ok");
+                CaptureContinuity(run, "native-handoff-cleared-before-create-response.png");
+            }
+            finally
+            {
+                run.Gateway.ReleaseSessionMutations();
+            }
+            await WaitUiAsync(run, () => SessionSelected(run, "Fixture: new conversation 1"),
+                "ordinary created conversation after verified binding invalidation");
+            Assert.Null(FindById(run, "ChatNativeSetupError"));
+            Assert.Single(AppWindows(run));
+        }, scenario: scenario, prepareSetupHandoff: IssueSyntheticHandoff);
+    }
+
     private static string IssueSyntheticHandoff(GatewayFixtureProfile profile) =>
         IssueSyntheticHandoff(profile, SetupNativeDestination.Chat);
 
@@ -168,13 +212,15 @@ public sealed partial class GatewayFixtureUiTests
         if (warning is null)
         {
             Assert.Null(FindById(run, "ChatNativeSetupError"));
-            OwnedWindowCapture.Save(run, window, name, FindById(run, "ChatComposerInput")!);
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+                OwnedWindowCapture.Save(run, window, name, FindById(run, "ChatComposerInput")!);
             Assert.Null(FindById(run, "ChatNativeSetupError"));
         }
         else
         {
-            OwnedWindowCapture.Save(run, window, name, FindText(run, warning)!,
-                FindById(run, "ChatNativeSetupCheckAgain")!);
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+                OwnedWindowCapture.Save(run, window, name, FindText(run, warning)!,
+                    FindById(run, "ChatNativeSetupCheckAgain")!);
             Assert.NotNull(FindText(run, warning));
         }
     }

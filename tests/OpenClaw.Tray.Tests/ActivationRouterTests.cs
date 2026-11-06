@@ -92,12 +92,12 @@ public class ActivationRouterTests
             return Task.CompletedTask;
         }
 
-        public async Task<bool> ConfirmAsync(
+        public Task<bool> ConfirmAsync(
             ActivationConfirmation confirmation,
             CancellationToken cancellationToken)
         {
             ConfirmationStarted.TrySetResult(true);
-            return await _releaseConfirmation.Task.WaitAsync(cancellationToken);
+            return _releaseConfirmation.Task.WaitAsync(cancellationToken);
         }
 
         public void ReleaseConfirmation(bool result) => _releaseConfirmation.TrySetResult(result);

@@ -9,6 +9,7 @@ public static class AiSetupReadinessPresentation
     {
         SetupNativeOwnershipException => "Onboarding_Ready_OwnershipChanged",
         SetupNativeCompletionTimeoutException { Phase: SetupNativeCompletionPhase.Verification } => "Onboarding_Ready_Timeout",
+        SetupNativeCompletionTimeoutException { Phase: SetupNativeCompletionPhase.Execution } => "Onboarding_Ready_Timeout",
         SetupNativeCompletionTimeoutException timeout => "Onboarding_Ready_Timeout" + timeout.Phase,
         NativeGatewayStartupTimeoutException => "Onboarding_Ready_TimeoutGatewayStartup",
         OperationCanceledException or TimeoutException => "Onboarding_Ready_Timeout",

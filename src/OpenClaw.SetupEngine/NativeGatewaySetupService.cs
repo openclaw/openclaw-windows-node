@@ -15,6 +15,8 @@ public interface INativeGatewaySetupHost
 {
     void ReportProgress(NativeGatewaySetupStage stage) { }
 
+    void ReportHandshakeObservation(long connectionAttempt, GatewayHandshakeObservation observation) { }
+
     Task<NativeGatewayContract> DetectContractAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken);
 
@@ -71,8 +73,11 @@ public sealed class NativeGatewaySetupService(
     GatewayRegistry registry,
     INativeGatewayPackageResolver packageResolver,
     INativeGatewaySetupHost host,
-    Func<INativeGatewayRuntime> runtimeFactory)
+    Func<INativeGatewayRuntime> runtimeFactory,
+    TimeProvider? timeProvider = null)
 {
+    public static TimeSpan ConfigurationValidationTimeout => NativeGatewayCliTimeout.ResolveTimeout();
+
     public async Task<NativeGatewaySetupDraft> CreateDraftAsync(CancellationToken cancellationToken)
     {
         var package = await packageResolver.ResolveAsync(cancellationToken);
@@ -264,7 +269,7 @@ public sealed class NativeGatewaySetupService(
             };
             var isolatedSession = new NativeGatewaySetupSession(
                 registry, selected, isolatedRecord, package,
-                new Dictionary<string, string>(), host, runtimeFactory());
+                new Dictionary<string, string>(), host, runtimeFactory(), timeProvider);
             try
             {
                 await isolatedSession.PrepareAsync(cancellationToken);
@@ -302,7 +307,7 @@ public sealed class NativeGatewaySetupService(
         cancellationToken.ThrowIfCancellationRequested();
         var record = ReadConfiguredRecord(draft, await File.ReadAllTextAsync(configPath, cancellationToken));
         var session = new NativeGatewaySetupSession(
-            registry, draft, record, package, environment, host, runtimeFactory());
+            registry, draft, record, package, environment, host, runtimeFactory(), timeProvider);
         try
         {
             await session.PrepareAsync(cancellationToken);

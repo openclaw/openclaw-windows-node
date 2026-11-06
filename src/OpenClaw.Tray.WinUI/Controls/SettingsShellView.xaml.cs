@@ -1,3 +1,13 @@
+// <summary>
+// Native Settings surface hosted by WorkspaceWindow. It owns the Settings navigation rail, page frame, status
+// presentation and command-search flyout, while HubPageRegistry supplies navigation policy and the host owns history.
+// Activating or deactivating this view starts or releases page scopes. It never mounts the Chat page.
+// Usage:
+//   var view = new SettingsShellView { AppModel = appState };
+//   view.BindToAppState();
+//   view.ShowSection("settings");
+//   view.Deactivate();
+// </summary>
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -18,10 +28,7 @@ using System.Linq;
 namespace OpenClawTray.Controls;
 
 /// <summary>
-/// The native Settings surface hosted inside <c>WorkspaceWindow</c>. It owns the section rail,
-/// the content frame, the connection status pill and the Settings search flyout. It never mounts
-/// ChatPage and never owns history: the host's <see cref="WorkspaceNavigationHistory"/> is the
-/// only Back/Forward stack, and the frame keeps no stack of its own.
+/// Hosts Settings-specific WinUI controls and applies routes selected by the Workspace host.
 /// </summary>
 internal sealed partial class SettingsShellView : UserControl
 {
@@ -59,14 +66,20 @@ internal sealed partial class SettingsShellView : UserControl
     /// </summary>
     internal Action<Func<string, bool>, string?>? PruneRequested { get; set; }
 
-    public Action? ConnectAction { get; set; }
-    public Action? ReconnectAction { get; set; }
+    /// <summary>
+    /// The host's search entry point. A deferred search reopen replays through it so the window's
+    /// visibility and modal-dialog rules apply; without a host the view opens its own search.
+    /// </summary>
+    internal Action? CommandCenterRequested { get; set; }
+
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _gatewayNavHideTimer;
 
     public event EventHandler? SettingsSaved;
 
+    /// <summary>Notifies host subscribers that a Settings action completed a save.</summary>
     public void RaiseSettingsSaved() => SettingsSaved?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>Initializes the Settings controls and their view-owned visual state.</summary>
     public SettingsShellView()
     {
         InitializeComponent();
@@ -79,12 +92,18 @@ internal sealed partial class SettingsShellView : UserControl
         RefreshDiagnosticsNavVisibility();
         ApplyHighContrastFallbackIfNeeded();
         RootGrid.SizeChanged += OnRootGridSizeChanged;
-        ToolTipService.SetToolTip(StatusPillButton, LocalizationHelper.GetString("HubWindow_StatusPill_Tooltip"));
+        _commandSearchShow = new FlyoutShowRequest(CommandSearchFlyout, () => (CommandCenterRequested ?? OpenCommandCenter)());
     }
+
+    private readonly FlyoutShowRequest _commandSearchShow;
+
+    /// <summary>The shared account, Dashboard and bell footer; <c>WorkspaceWindow</c> applies its state.</summary>
+    internal WorkspacePaneFooter Footer => PaneFooterControl;
 
     /// <summary>The element that opens the command search flyout for the current pane state.</summary>
     private FrameworkElement SearchAnchor => NavView.IsPaneOpen ? SettingsSearchButton : NavPaneToggleButton;
 
+    /// <summary>Shows or removes the diagnostics rail item and prunes its unavailable history entries.</summary>
     public void RefreshDiagnosticsNavVisibility()
     {
         var isVisible = DiagnosticsGate.IsVisible;
@@ -105,7 +124,6 @@ internal sealed partial class SettingsShellView : UserControl
         {
             AppModel.PropertyChanged -= OnAppModelChanged;
             AppModel.PropertyChanged += OnAppModelChanged;
-            UpdateStatus(AppModel.Status);
             ScheduleGatewayNavVisibilityForStatus(AppModel.Status, debounceDisconnected: false);
 
             // Apply agents list that may have arrived before this view was created.
@@ -218,13 +236,6 @@ internal sealed partial class SettingsShellView : UserControl
         _ => InfoBarSeverity.Informational
     };
 
-    private void OnStatusFlyoutOpening(object sender, object e)
-    {
-        StatusContent.Initialize(
-            () => StatusFlyout.Hide(),
-            () => NavigateTo("connection"),
-            () => (ReconnectAction ?? ConnectAction)?.Invoke());
-    }
 
     private void OnAppNotificationInfoBarClosed(InfoBar sender, InfoBarClosedEventArgs args)
     {
@@ -282,8 +293,6 @@ internal sealed partial class SettingsShellView : UserControl
                     {
                         if (_disposed) return;
                         _cachedCommands = null;
-                        var status = AppModel!.Status;
-                        UpdateStatus(status);
                         // Defer nav visibility to avoid stowed exceptions during NavigationView layout
                         DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
                         {
@@ -292,13 +301,7 @@ internal sealed partial class SettingsShellView : UserControl
                         });
                 });
                 break;
-            case nameof(AppState.GatewaySelf):
-                DispatcherQueue?.TryEnqueue(() =>
-                {
-                    if (_disposed) return;
-                    UpdateStatus(AppModel!.Status);
-                });
-                break;
+
             case nameof(AppState.AgentsList):
                 DispatcherQueue?.TryEnqueue(() =>
                 {
@@ -350,15 +353,28 @@ internal sealed partial class SettingsShellView : UserControl
     private void UpdatePaneChrome()
     {
         SettingsNavigationActions.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
-        StatusPillText.Visibility = SettingsNavigationActions.Visibility;
-        StatusPillChevron.Visibility = SettingsNavigationActions.Visibility;
-        StatusPillContent.ColumnSpacing = NavView.IsPaneOpen ? 8 : 0;
-        StatusPillButton.Width = NavView.IsPaneOpen ? double.NaN : 40;
-        StatusPillButton.HorizontalContentAlignment = NavView.IsPaneOpen ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
+        // Footer popups are anchored to buttons that move when the rail opens or closes.
+        if (PaneFooterControl.Layout != (NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail))
+            PaneFooterControl.HideFlyouts();
+        PaneFooterControl.Layout = NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail;
     }
 
     // Back/Forward live in the window-level pair driven only by WorkspaceNavigationHistory.
     // This view keeps no navigation stack of its own.
+    /// <summary>
+    /// Shows only the section content, hiding this view's own section list. Used when a pinned page
+    /// opens beside the Workspace sidebar.
+    /// </summary>
+    internal bool ContentOnly
+    {
+        get => !NavView.IsPaneVisible;
+        set
+        {
+            NavView.IsPaneVisible = !value;
+            SettingsNavigationToolbar.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
     /// <summary>Returns the currently displayed page in the content frame.</summary>
     public object? CurrentPage => ContentFrame?.Content;
 
@@ -438,13 +454,14 @@ internal sealed partial class SettingsShellView : UserControl
     /// </summary>
     private void HideTransientSurfaces()
     {
-        StatusFlyout.Hide();
+        _commandSearchShow.Cancel();
         CommandSearchFlyout.Hide();
     }
 
     internal void OpenCommandCenter()
     {
-        CommandSearchFlyout.ShowAt(SearchAnchor);
+        if (_disposed || !IsLoaded) return;
+        _commandSearchShow.ShowAt(SearchAnchor);
     }
 
     /// <summary>
@@ -469,8 +486,6 @@ internal sealed partial class SettingsShellView : UserControl
         }
         if (ContentFrame.Content is ChannelsPage channels && request.PageTag == "channels")
             await channels.WaitForNativeSetupAsync(request, ct);
-        else if (ContentFrame.Content is SkillsPage skills && request.PageTag == "skills")
-            await skills.WaitForNativeSetupAsync(request, ct);
         else
             throw new InvalidOperationException("The selected setup destination changed.");
         EnsureCurrent();
@@ -534,6 +549,7 @@ internal sealed partial class SettingsShellView : UserControl
         }
     }
 
+    /// <summary>Waits briefly for the current Settings page to report that its initial content is ready.</summary>
     public async Task WaitForCurrentContentReadyAsync()
     {
         var ready = _contentReady;
@@ -566,29 +582,6 @@ internal sealed partial class SettingsShellView : UserControl
         return null;
     }
 
-    private void UpdateStatus(ConnectionStatus status)
-    {
-        var snapshot = CurrentApp.ConnectionManager?.CurrentSnapshot;
-        var (text, accent) = ComputePillState(status, snapshot);
-        StatusPillText.Text = text;
-        StatusPillDot.Fill = Controls.GatewayStatusContent.AccentBrush(accent);
-        AutomationProperties.SetHelpText(StatusPillButton, text);
-    }
-
-    internal void UpdateStatus(GatewayConnectionSnapshot? snapshot, ConnectionStatus status)
-    {
-        var (text, accent) = ComputePillState(status, snapshot);
-        StatusPillText.Text = text;
-        StatusPillDot.Fill = Controls.GatewayStatusContent.AccentBrush(accent);
-        AutomationProperties.SetHelpText(StatusPillButton, text);
-    }
-
-    private static (string Text, ConnectionStatusAccent Accent) ComputePillState(
-        ConnectionStatus status, GatewayConnectionSnapshot? snapshot)
-    {
-        var (labelKey, accent) = ConnectionStatusPresenter.Pill(snapshot?.OverallState, status);
-        return (LocalizationHelper.GetString(labelKey), accent);
-    }
 
     private void ScheduleGatewayNavVisibilityForStatus(ConnectionStatus status, bool debounceDisconnected)
     {
@@ -644,7 +637,6 @@ internal sealed partial class SettingsShellView : UserControl
                 HubPageRegistry.ShouldKeepCurrentPageVisibleDuringDisconnect(currentTag);
 
             NavSessions.Visibility = vis;
-            NavSkills.Visibility = vis;
             NavChannels.Visibility = vis;
             NavInstances.Visibility = vis;
             NavCron.Visibility = vis;
@@ -858,7 +850,6 @@ internal sealed partial class SettingsShellView : UserControl
             case ChannelsPage channels: channels.Initialize(); break;
             case UsagePage usage: usage.Initialize(); break;
             case CronPage cron: cron.Initialize(); break;
-            case SkillsPage skills: skills.Initialize(); break;
             case ConfigPage config:
                 try { config.Initialize(); }
                 catch (Exception ex)
@@ -893,7 +884,6 @@ internal sealed partial class SettingsShellView : UserControl
                 workspace.AgentId = _currentAgentId;
                 workspace.Initialize();
                 break;
-            case BindingsPage bindings: bindings.Initialize(); break;
             case SettingsPage settings: settings.Initialize(); break;
             case NotificationsPage notifications: notifications.Initialize(_appNotificationService); break;
             case DebugPage debug: debug.Initialize(); break;
@@ -986,14 +976,13 @@ internal sealed partial class SettingsShellView : UserControl
         { "chat",        "\uE8BD" },
         { "connection",  "\uE839" },
         { "sessions",    "\uE8F2" },
-        { "skills",      "\uE945" },
         { "channels",    "\uEC05" },
         { "instances",   "\uE977" },
         { "agentevents", "\uE943" },
-        { "bindings",    "\uE8AD" },
         { "config",      "\uE90F" },
         { "usage",       "\uE9D9" },
         { "cron",        "\uE787" },
+        { "model",       "\uE8F1" },
         { "voice",       "\uE720" },
         { "settings",    "\uE713" },
         { "permissions", "\uEA18" },
