@@ -140,6 +140,24 @@ public sealed class ChatMarkdownDisclosureTests
     }
 
     [Theory]
+    [InlineData("\n\n")]
+    [InlineData("\n")]
+    public void UnterminatedSummary_StaysLiteralWithoutConsumingALaterDisclosure(string separator)
+    {
+        var malformed = $"<details><summary>First{separator}First body{separator}</details>";
+        var input = $"{malformed}{separator}<details><summary>Second</summary>{separator}Second body{separator}</details>";
+
+        Assert.Collection(ChatMarkdownDisclosures.Parse(input),
+            part => Assert.Equal(malformed, Assert.IsType<ChatMarkdownText>(part).Text),
+            part =>
+            {
+                var second = Assert.IsType<ChatMarkdownDisclosure>(part);
+                Assert.Equal("Second", second.Summary);
+                Assert.Equal("Second body", Assert.IsType<ChatMarkdownText>(Assert.Single(second.Body)).Text);
+            });
+    }
+
+    [Theory]
     [InlineData(2500)]
     [InlineData(5000)]
     public void SiblingDisclosures_InspectAtMostOneTokenPerWrapper(int count)
