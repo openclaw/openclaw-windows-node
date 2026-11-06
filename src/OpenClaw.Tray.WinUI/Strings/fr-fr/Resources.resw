@@ -7977,6 +7977,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
   <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Propriétaire</value></data>
   <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>Propriétaire partagé</value></data>
+  <data name="WorkspaceShell_SharedOwnerNamedFormat" xml:space="preserve"><value>{0} · Propriétaire partagé</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
