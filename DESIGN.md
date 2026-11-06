@@ -1055,6 +1055,11 @@ Page aliases share one search result with their canonical destination. Searching
 for notification preferences finds General, separately from notification history;
 About is a distinct result. Removed Event Stream routes do not appear.
 
+The Models page retains the `model` route and its default-model selector. Its
+sidebar artwork uses Fluent's filled cube silhouette with the existing purple
+gradient. Native search and High Contrast retain their existing theme-aware
+glyphs rather than substituting a package/archive symbol for a cube.
+
 The landing window is the native Home and Sessions workspace (`Windows/WorkspaceWindow.xaml`, shipped in #1541). The reference is reconciled against production commit `dc9f6345821075362580bd598cc32e4f2aa6a18a` and the supplied 125%-scale screenshot. It shows that screenshot's expanded, no-agent/no-session state, Owner / Error footer and one notification, not invented connected conversations. It is a Mica window with a 32px title bar, a 256px left `NavigationView` pane, and a content host that mounts the Reactor chat when connected. That historical screenshot predates the current embedded Settings surface: `Controls/SettingsShellView` is retained inside `WorkspaceWindow`, sharing its navigation history rather than opening another window.
 
 Current Settings keeps Gateway work together: Sessions, Channels, Systems, Automations, the existing Agents subtree, Usage, and Config as direct entries; there is no Gateway Advanced group. The group header and separator hide when no Gateway entries are available. Model and This Computer retain their existing tools. System contains General, Connection, conditional Diagnostics, and About, with Fluent glyph fallbacks for its colorful sidebar icons in High Contrast. Connection remains a separate page and stays reachable while disconnected. About uses the colorful book-and-lightbulb icon. General contains notification preferences alongside managed-Gateway setup/onboarding/removal and its always-reachable Advanced diagnostics switch. About owns updates and app/Gateway information; notification history remains in the bell flyout and its existing history route, separate from preferences. Permissions contains a distinct app-access consent section, not a replacement for node capability permissions.

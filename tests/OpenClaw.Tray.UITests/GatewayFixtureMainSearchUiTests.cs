@@ -324,6 +324,7 @@ public sealed partial class GatewayFixtureUiTests
                 ("About", "About", "AboutPageMarker"),
                 ("General", "General", "SettingsPageMarker"),
                 ("Notification preferences", "General", "SettingsPageMarker"),
+                ("Models", "Models", "DefaultModelPageMarker"),
                 ("Config", "Config", "ConfigPageMarker")
             })
             {
@@ -346,6 +347,13 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => FindById(run, inputId) is null &&
                     FindById(run, marker) is { Current.IsOffscreen: false },
                     $"exact native {title} page");
+                if (query == "Models")
+                {
+                    var heading = FindById(run, marker)!;
+                    Assert.Equal("Models", heading.Current.Name);
+                    await WaitForStablePageGeometryAsync(run, window, heading.Current.BoundingRectangle.Left);
+                    OwnedWindowCapture.Save(run, window, "models-page.png", heading);
+                }
                 inputId = "SettingsSearchBox";
             }
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method is "config.patch" or "chat.send");

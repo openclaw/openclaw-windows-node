@@ -11,6 +11,11 @@ solid blue/teal gradient body with metallic pins. This is the Local AI sidebar
 icon, rendered through `SvgImageSource` / `ImageIcon` like the other sidebar
 assets. The existing monochrome glyph catalog still applies to other surfaces.
 
+`Model.svg` adapts the official Fluent `cube-24-filled` silhouette with this
+app's existing purple model-icon gradient. Its geometry comes from
+[Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons/blob/e15fc0de25fab983e3e42bac8798be69a85c23bf/assets/Cube/SVG/ic_fluent_cube_24_filled.svg).
+It is a custom color adaptation, not an official `fluent-color` variant.
+
 `Notifications.svg` is a custom bell drawn in the `fluent-color` gradient style
 for the app notifications surface (#748), not an official `fluent-color`
 variant. The asset is retained from the former Notifications sidebar entry;
@@ -35,6 +40,7 @@ notification preferences now live inside General.
 | `Usage.svg` | `data-bar-vertical-ascending-24` |
 | `Cron.svg` | `calendar-clock-24` |
 | `LocalAi.svg` | `developer-board-24-filled` (custom colors and solid center) |
+| `Model.svg` | `cube-24-filled` (existing purple gradient) |
 | `Voice.svg` | `mic-24` |
 | `Settings.svg` | `settings-24` |
 | `Permissions.svg` | `lock-shield-24` |

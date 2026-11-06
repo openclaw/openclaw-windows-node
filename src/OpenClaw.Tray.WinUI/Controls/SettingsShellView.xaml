@@ -76,7 +76,7 @@
                     </NavigationViewItem>
                     <NavigationViewItemSeparator x:Name="NavGatewaySeparator"/>
                     <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_Model" Content="Model"/>
-                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_DefaultModel" Tag="model" Content="Default model">
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_DefaultModel" Tag="model" Content="Models">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Model_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_LocalAi" Tag="local-ai" Content="Local AI">

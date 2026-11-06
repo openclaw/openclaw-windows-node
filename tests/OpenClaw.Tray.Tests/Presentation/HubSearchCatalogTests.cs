@@ -37,6 +37,9 @@ public sealed class HubSearchCatalogTests
             Assert.DoesNotContain(items, item => item.Target.Value is "config" or "instances" or "agent:main:cron");
         }
         Assert.Equal("Connection", Assert.Single(items, item => item.Target.Value == "connection").Title);
+        var models = Assert.Single(items, item => item.Title == "Models");
+        Assert.Equal(new(HubSearchTargetKind.Page, "model"), models.Target);
+        Assert.Equal(models, Assert.Single(HubSearch.Find(items, "Default model")).Item);
         var general = Assert.Single(items, item => item.Title == "General");
         Assert.Equal(new(HubSearchTargetKind.Page, "settings"), general.Target);
         Assert.Equal("About", Assert.Single(items, item => item.Target.Value == "about").Title);
