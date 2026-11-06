@@ -11,6 +11,30 @@ namespace OpenClaw.Tray.UITests;
 public sealed class ConfigSearchRevealTests(UIThreadFixture ui)
 {
     [Fact]
+    public async Task UninitializedPageUnloadsWithoutResolvingProductionApp()
+    {
+        await ui.RunOnUIAsync(async () =>
+        {
+            Assert.IsType<TestApp>(Application.Current);
+            var page = new ConfigPage();
+            var unloaded = false;
+            page.Unloaded += (_, _) => unloaded = true;
+            ui.Container.Children.Add(page);
+            try
+            {
+                await ui.YieldToRenderAsync();
+                ui.Container.Children.Remove(page);
+                await ui.YieldToRenderAsync();
+                Assert.True(unloaded);
+            }
+            finally
+            {
+                ui.Container.Children.Remove(page);
+            }
+        });
+    }
+
+    [Fact]
     public async Task SearchRevealDismissesTheCancelledDetailOverlayBeforeItsContinuation()
     {
         await ui.RunOnUIAsync(async () =>

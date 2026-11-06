@@ -6,6 +6,22 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ConfigEditorLoadingTests
 {
     [Fact]
+    public void UnloadDetachesCapturedManagerWithoutResolvingCurrentApplication()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "ConfigPage.xaml.cs"));
+        var unload = source[source.IndexOf("Unloaded +=", StringComparison.Ordinal)..];
+        unload = unload[..unload.IndexOf("};", StringComparison.Ordinal)];
+        Assert.Contains("SubscribeConnectionManager(null);", unload, StringComparison.Ordinal);
+        Assert.DoesNotContain("CurrentApp", unload, StringComparison.Ordinal);
+        var observer = source[source.IndexOf("private void SubscribeConnectionManager(", StringComparison.Ordinal)..];
+        observer = observer[..observer.IndexOf("private void SubscribePermissionClient(", StringComparison.Ordinal)];
+        Assert.Contains("_observedConnectionManager.OperatorClientChanged -= OnOperatorClientChanged;",
+            observer, StringComparison.Ordinal);
+        Assert.DoesNotContain("CurrentApp", observer, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SchemaSearch_ChecksStoredAncestorsBeforeInventingEmptySection()
     {
         var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),

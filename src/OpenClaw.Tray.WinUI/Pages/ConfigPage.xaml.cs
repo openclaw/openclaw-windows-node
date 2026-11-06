@@ -36,6 +36,7 @@ public sealed partial class ConfigPage : Page
     private ConfigEditorSnapshot _serverSnapshot = ConfigEditorSnapshot.Empty;
     private ConfigEditorSnapshot _editSnapshot = ConfigEditorSnapshot.Empty;
     private IOperatorGatewayClient? _permissionClient;
+    private GatewayConnectionManager? _observedConnectionManager;
 
     private string _selectedPath = "";
     private string? _searchPath;
@@ -81,8 +82,7 @@ public sealed partial class ConfigPage : Page
             _configLoadGeneration++;
             _loading = false;
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
-            if (CurrentApp.ConnectionManager != null)
-                CurrentApp.ConnectionManager.OperatorClientChanged -= OnOperatorClientChanged;
+            SubscribeConnectionManager(null);
             UnsubscribePermissionClient();
             _searchDebounceTimer.Stop();
             _reconnectCompletionTimer.Stop();
@@ -121,11 +121,7 @@ public sealed partial class ConfigPage : Page
     public void Initialize()
     {
         _observing = true;
-        if (CurrentApp.ConnectionManager != null)
-        {
-            CurrentApp.ConnectionManager.OperatorClientChanged -= OnOperatorClientChanged;
-            CurrentApp.ConnectionManager.OperatorClientChanged += OnOperatorClientChanged;
-        }
+        SubscribeConnectionManager(CurrentApp.ConnectionManager);
         if (_appState != null)
             _appState.PropertyChanged -= OnAppStateChanged;
 
@@ -226,6 +222,20 @@ public sealed partial class ConfigPage : Page
                 UpdateMetaAndButtons();
                 break;
         }
+    }
+
+    private void SubscribeConnectionManager(GatewayConnectionManager? manager)
+    {
+        if (ReferenceEquals(_observedConnectionManager, manager))
+            return;
+
+        // Unload detaches the owner actually observed, without resolving a
+        // production App from an embedding host or a changed application owner.
+        if (_observedConnectionManager != null)
+            _observedConnectionManager.OperatorClientChanged -= OnOperatorClientChanged;
+        _observedConnectionManager = manager;
+        if (_observedConnectionManager != null)
+            _observedConnectionManager.OperatorClientChanged += OnOperatorClientChanged;
     }
 
     private void SubscribePermissionClient(IOperatorGatewayClient? client)
