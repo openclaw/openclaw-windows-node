@@ -764,6 +764,46 @@ jobs:
         -ArtifactsDirectory .\TestResults\GatewayFixture
         -Screenshots
 
+    - name: Run latest stable profile compatibility
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 15
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" | ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the latest stable release.' }
+        $assets = @($release.assets | Where-Object { $_.name -match '^OpenClawTray-[^/\\]+-win-x64\.zip$' })
+        if ($assets.Count -ne 1 -or $assets[0].digest -notmatch '^sha256:[a-fA-F0-9]{64}$') {
+          throw 'Latest stable must have one x64 portable archive with a published SHA256 digest.'
+        }
+        $asset = $assets[0]
+        $archive = Join-Path $env:RUNNER_TEMP ("gateway-fixture-stable-" + [guid]::NewGuid().ToString('N') + '.zip')
+        $expanded = [IO.Path]::ChangeExtension($archive, $null)
+        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archive
+        $digest = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+        if ($digest -ne $asset.digest.Substring(7)) { throw 'Stable archive SHA256 does not match its release metadata.' }
+        Expand-Archive -LiteralPath $archive -DestinationPath $expanded
+        $apps = @(Get-ChildItem -LiteralPath $expanded -Recurse -File -Filter OpenClaw.Tray.WinUI.exe)
+        if ($apps.Count -ne 1) { throw 'Stable archive must contain exactly one Companion executable.' }
+        $artifacts = Join-Path $env:GITHUB_WORKSPACE 'TestResults\GatewayFixture'
+        New-Item -ItemType Directory -Path $artifacts -Force | Out-Null
+        @{
+          releaseTag = $release.tag_name
+          releaseUrl = $release.html_url
+          publishedAt = $release.published_at
+          archiveUrl = $asset.browser_download_url
+          archiveSha256 = $digest
+          appPath = $apps[0].FullName
+          appSha256 = (Get-FileHash -LiteralPath $apps[0].FullName -Algorithm SHA256).Hash
+          candidateCheckout = (git rev-parse HEAD)
+        } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $artifacts 'stable-release.json')
+        ./scripts/test-gateway-fixture.ps1 `
+          -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe `
+          -StableAppPath $apps[0].FullName `
+          -ArtifactsDirectory $artifacts
+
     # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)
       id: a11y

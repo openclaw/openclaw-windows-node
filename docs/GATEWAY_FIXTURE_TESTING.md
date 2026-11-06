@@ -206,6 +206,48 @@ in that child test process and rejects failed, skipped, and zero-test runs. The
 default fixture lane excludes those keyboard-dependent cases; it does not claim
 their proof.
 
+### Saved Gateway ownership and released profiles
+
+`GatewayManagement_UsesSavedOwnershipWithoutSetupState` renders native-only,
+native-plus-WSL, and WSL-only saved profiles with no `setup-state.json`. These
+cases use credential-free, MCP-only profiles: their package/distro markers are
+synthetic and never authorize a connection, native package, or WSL process.
+The real Settings page must show WSL removal only for the WSL cases. Onboarding
+remains visible only when WSL is active, not when the selected Gateway is native.
+With `-Screenshots`, the cases retain complete Settings captures and the actual
+Shell tooltip. The tooltip capture first resolves icon ID 1 against this app's
+owned native window, then hovers that icon; an app-name match alone is not proof
+of ownership. Unavailable or blank native capture fails rather than substituting
+a screenshot or computed tooltip.
+
+For profile compatibility on an authorized disposable desktop, supply a stable
+portable app explicitly. Both builds must advertise fixture isolation version 1;
+an older unsupported binary is rejected before launch. This command selects only
+the released-profile case, not the ordinary UI smoke:
+
+```powershell
+.\scripts\test-gateway-fixture.ps1 -AppPath $app -StableAppPath '<extracted-stable-app>\OpenClaw.Tray.WinUI.exe'
+```
+
+`ReleasedProfile_PreservesGatewayRecordsIdentitiesAndSettings` starts that released
+app against the synthetic Gateway with native and WSL records saved but inactive.
+The test requires the released app to persist its successful connection, generate
+its operator identity, and save changed notification preferences. It copies
+that released-format identity into the inactive synthetic records, then stops only
+the fixture-owned process and opens the same profile with the candidate. Existing
+record fields, active selection, identity hashes, and preferences must survive.
+The normal connection timestamp may advance. This proves profile compatibility,
+not installer/update execution, Store migration, real native/WSL lifecycle, or
+production credentials.
+
+The hosted UI lane separately downloads the latest stable x64 portable archive
+and verifies its published SHA256 before this case runs. `stable-release.json`
+records the archive and candidate checkout identity; `stable-run.json`,
+`run.json`, `profile-compatibility.json`, and `fixture-released-profile.trx`
+retain the two executable identities and actual result in `test-results-ui`.
+No private keys or raw profile files are published. A missing baseline, digest
+mismatch, failed case, or zero/skipped selection is not compatibility proof.
+
 The ordinary `windows-latest` CI UI job runs this script against its explicitly
 built Debug x64 app after installing the Windows App Runtime selected by
 `Directory.Build.props`. Its dedicated step enables the fixture opt-in only for
