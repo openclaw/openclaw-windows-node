@@ -1978,17 +1978,25 @@ public sealed class NativeLocalAiLifecycleTests
     }
 
     [SetupWindowsFact]
-    public async Task NativeRecoveryAdmitsExactLegacyQwenProvider()
+    public async Task NativeRecoveryMigratesExactLegacyQwenProviderAfterInference()
     {
         using var fixture = new Fixture();
         await SeedLegacyPublishedProviderAsync(fixture);
+        string credential = fixture.Lifecycle.GetApiKey()!;
 
         await fixture.Lifecycle.PrepareStartAsync(fixture.Install, default);
         Assert.Equal(fixture.Install.Endpoint!.Port, fixture.Lifecycle.GetRecoveryPort(fixture.Install));
-        await fixture.Lifecycle.ReconcileVerifiedAsync(Record, fixture.Rpc, fixture.Install, default);
+        var published = await fixture.Lifecycle.PublishAsync(fixture.Install);
+
+        Assert.True(published.Success, published.Detail);
         Assert.False(fixture.Store.Load()!.Pending);
         Assert.Equal(1, fixture.Rpc.Verifications);
-        Assert.Equal(0, fixture.Rpc.Writes);
+        Assert.Equal(1, fixture.Rpc.Writes);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]!.ToJsonString(),
+            fixture.Install, credential));
+        Assert.Equal(credential,
+            fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]!["apiKey"]!.GetValue<string>());
     }
 
     [SetupWindowsFact]

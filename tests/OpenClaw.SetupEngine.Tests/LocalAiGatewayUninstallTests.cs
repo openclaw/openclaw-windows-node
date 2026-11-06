@@ -402,6 +402,36 @@ public sealed class LocalAiGatewayUninstallTests
     }
 
     [Fact]
+    public async Task Recovery_RollbackRestoresExactLegacyShapeWithoutReplayingRedactedCredential()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-recovery-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        var prior = JsonNode.Parse(LegacyProviderJson(original))!.AsObject();
+        prior["apiKey"] = LocalAiGatewayProviderDefinition.CliRedactedApiKey;
+        string originalProvider = prior.ToJsonString();
+        string primary = JsonSerializer.Serialize(LocalAiGatewayProviderDefinition.BuildPrimaryModel(original));
+        var commands = new GatewayStateCommandRunner(originalProvider, primary);
+        SetupContext context = CreateRecoveryContext(temp.Path, commands);
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        var replacementManifest = original.Manifest with { Endpoint = "http://127.0.0.1:39876/v1" };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacementManifest);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacementManifest);
+        var step = new ConfigureLocalAiGatewayStep();
+
+        StepResult configured = await step.ExecuteAsync(context, CancellationToken.None);
+        Assert.Equal(StepOutcome.Success, configured.Outcome);
+        await step.RollbackAsync(context, CancellationToken.None);
+
+        Assert.True(context.LocalAiRecoveryReceiptRollbackAllowed);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesLegacyProviderJson(commands.ProviderJson!, original));
+        Assert.False(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, original));
+        Assert.Equal("llama-local", JsonNode.Parse(commands.ProviderJson!)!["apiKey"]!.GetValue<string>());
+        Assert.Equal(primary, commands.PrimaryJson);
+    }
+
+    [Fact]
     public async Task Recovery_RollbackRestoresOriginalProviderAndReceipt()
     {
         using var temp = new TempDirectory("local-ai-gateway-recovery-");

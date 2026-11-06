@@ -59,8 +59,11 @@ internal static class LocalAiGatewayConfigBuilder
     {
         ArgumentNullException.ThrowIfNull(prior);
         ArgumentNullException.ThrowIfNull(originalInstall);
+        // Recreate the exact pre-recovery model shape with the known local
+        // credential; never replay a CLI-redacted API key from the snapshot.
         using JsonDocument provider = JsonDocument.Parse(
-            LocalAiGatewayProviderDefinition.BuildProviderJson(originalInstall));
+            LocalAiGatewayProviderDefinition.BuildProviderJsonForRollback(
+                prior.ProviderJson!, originalInstall));
         using JsonDocument primary = JsonDocument.Parse(prior.PrimaryModelJson!);
         object[] operations =
         [
@@ -254,9 +257,8 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         if (recoveryOriginal is not null &&
             current.ProviderExisted == prior.ProviderExisted &&
             (!current.ProviderExisted ||
-                LocalAiGatewayProviderDefinition.MatchesCurrentOrLegacyProviderJson(
-                    current.ProviderJson!,
-                    recoveryOriginal)) &&
+                LocalAiGatewayProviderDefinition.MatchesSameManagedProviderShape(
+                    prior.ProviderJson!, current.ProviderJson!, recoveryOriginal)) &&
             current.PrimaryModelExisted == prior.PrimaryModelExisted &&
             (!current.PrimaryModelExisted ||
                 JsonEquals(current.PrimaryModelJson!, prior.PrimaryModelJson!)))
@@ -367,9 +369,8 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         bool originalRestored =
             observed.ProviderExisted == prior.ProviderExisted &&
             (!observed.ProviderExisted ||
-                LocalAiGatewayProviderDefinition.MatchesCurrentOrLegacyProviderJson(
-                    observed.ProviderJson!,
-                    recoveryOriginal)) &&
+                LocalAiGatewayProviderDefinition.MatchesSameManagedProviderShape(
+                    prior.ProviderJson!, observed.ProviderJson!, recoveryOriginal)) &&
             observed.PrimaryModelExisted == prior.PrimaryModelExisted &&
             (!observed.PrimaryModelExisted ||
                 JsonEquals(observed.PrimaryModelJson!, prior.PrimaryModelJson!));

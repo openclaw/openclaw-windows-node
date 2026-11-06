@@ -664,6 +664,7 @@ internal sealed class LocalAiGatewayLifecycle(
             var current = await rpc.CaptureAsync(ct).ConfigureAwait(false);
             var config = JsonNode.Parse(current.Config.GetRawText())!;
             binding = SettleUnconfirmedPrimary(binding, config);
+            bool verifiedRecoveryPublication = false;
             if (reason == LocalAiQuiesceReason.Teardown && binding.AddedAllowlistEntry &&
                 config["agents"]?["defaults"]?["models"]?[binding.ModelRef] is { } entry &&
                 entry is not JsonObject { Count: 0 })
@@ -718,9 +719,11 @@ internal sealed class LocalAiGatewayLifecycle(
                     var after = await rpc.CaptureAsync(ct).ConfigureAwait(false);
                     if (!verification.Ok || after.Hash != current.Hash)
                         throw new InvalidOperationException("The recovered endpoint could not be verified through the original Gateway.");
-                    _store.Save(binding with { Pending = false, ConfigHash = after.Hash });
-                    _endpointRecovery = null;
-                    return LocalAiEndpointLifecycleResult.Ok();
+                    // Inference proves the old route belongs to this listener. Continue
+                    // through the guarded coordinator so an exact legacy Qwen model
+                    // receives its effort metadata before publication succeeds.
+                    binding = binding with { Pending = false, ConfigHash = after.Hash };
+                    verifiedRecoveryPublication = true;
                 }
                 else
                 {
@@ -740,6 +743,8 @@ internal sealed class LocalAiGatewayLifecycle(
                 : await coordinator.PublishAsync(ownedInstall, ct).ConfigureAwait(false);
             if (result.Success && reason == LocalAiQuiesceReason.Teardown)
                 await guarded.CompleteTeardownAsync(ct).ConfigureAwait(false);
+            if (result.Success && verifiedRecoveryPublication)
+                _endpointRecovery = null;
             return result;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }

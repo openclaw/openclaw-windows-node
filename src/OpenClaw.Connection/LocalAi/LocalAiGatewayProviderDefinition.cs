@@ -51,6 +51,26 @@ public static class LocalAiGatewayProviderDefinition
         MatchesProviderJson(providerJson, install, apiKey) ||
         MatchesLegacyProviderJson(providerJson, install, apiKey);
 
+    /// <summary>Rebuilds a trusted provider for rollback in the exact observed managed shape.</summary>
+    public static string BuildProviderJsonForRollback(string priorProviderJson, LocalAiResolvedInstall install)
+    {
+        if (MatchesProviderJson(priorProviderJson, install))
+            return BuildProviderJson(install);
+        if (MatchesLegacyProviderJson(priorProviderJson, install))
+            return BuildProviderJson(install, "llama-local", legacy: true);
+        throw new InvalidDataException("The original Local AI provider is not an exact managed configuration.");
+    }
+
+    /// <summary>Checks that recovery restored the same managed model-metadata shape.</summary>
+    public static bool MatchesSameManagedProviderShape(
+        string priorProviderJson, string restoredProviderJson, LocalAiResolvedInstall install)
+    {
+        if (MatchesProviderJson(priorProviderJson, install))
+            return MatchesProviderJson(restoredProviderJson, install);
+        return MatchesLegacyProviderJson(priorProviderJson, install) &&
+            MatchesLegacyProviderJson(restoredProviderJson, install);
+    }
+
     /// <summary>Recognizes only the exact provider shape published before effort metadata was added.</summary>
     public static bool MatchesLegacyProviderJson(string providerJson, LocalAiResolvedInstall install, string? apiKey = null) =>
         MatchesProviderJson(providerJson, install, apiKey, legacy: true);
