@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows.Automation;
 using OpenClaw.GatewayFixtureHost;
@@ -621,6 +622,62 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr window);
+
+    private static void ClickOwnedElement(GatewayFixtureRun run, AutomationElement window, AutomationElement target)
+    {
+        run.EnsureRunning();
+        Assert.Equal(run.AppProcessId, window.Current.ProcessId);
+        Assert.Equal(run.AppProcessId, target.Current.ProcessId);
+        var handle = new IntPtr(window.Current.NativeWindowHandle);
+        Assert.True(SetForegroundWindow(handle), "Cannot foreground owned fixture window.");
+        var previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        Assert.NotEqual(IntPtr.Zero, previous);
+        try
+        {
+            Assert.Equal(handle, GetForegroundWindow());
+            var bounds = target.Current.BoundingRectangle;
+            Assert.True(bounds.Width > 0 && bounds.Height > 0 && !target.Current.IsOffscreen);
+            var point = new FixturePoint { X = (int)(bounds.Left + bounds.Width / 2), Y = (int)(bounds.Top + bounds.Height / 2) };
+            Assert.Equal(handle, GetAncestor(WindowFromPoint(point), 2));
+            var hit = AutomationElement.FromPoint(new System.Windows.Point(point.X, point.Y));
+            // WinUI can return its content bridge instead of the target peer for point queries.
+            var bridgeContainsTarget = hit.Current.ClassName == "Microsoft.UI.Content.DesktopChildSiteBridge"
+                && hit.Current.ProcessId == run.AppProcessId
+                && hit.FindFirst(TreeScope.Descendants, new PropertyCondition(
+                    AutomationElement.AutomationIdProperty, target.Current.AutomationId)) is not null;
+            Assert.True(target.Current.AutomationId == hit.Current.AutomationId || bridgeContainsTarget,
+                $"Target {target.Current.AutomationId} at {bounds}, point {point.X},{point.Y}; hit " +
+                $"{hit.Current.AutomationId}/{hit.Current.Name}/{hit.Current.ClassName}/{hit.Current.ControlType.ProgrammaticName} at {hit.Current.BoundingRectangle}");
+            Assert.True(SetCursorPos(point.X, point.Y));
+            Assert.True(GetCursorPos(out var actual));
+            Assert.Equal(point, actual);
+            Assert.Equal(handle, GetForegroundWindow());
+            Assert.Equal(handle, GetAncestor(WindowFromPoint(actual), 2));
+            var inputs = new[]
+            {
+                new FixtureInput { Mouse = new FixtureMouse { Flags = 2 } },
+                new FixtureInput { Mouse = new FixtureMouse { Flags = 4 } }
+            };
+            var sent = SendInput(2, inputs, Marshal.SizeOf<FixtureInput>());
+            if (sent == 1) SendInput(1, [inputs[1]], Marshal.SizeOf<FixtureInput>());
+            Assert.Equal(2u, sent);
+        }
+        finally { SetThreadDpiAwarenessContext(previous); }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FixturePoint { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FixtureInput { public uint Type; public FixtureMouse Mouse; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FixtureMouse { public int X, Y; public uint Data, Flags, Time; public nuint Extra; }
+    [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(FixturePoint point);
+    [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out FixturePoint point);
+    [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, FixtureInput[] inputs, int size);
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]

@@ -434,6 +434,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     public event EventHandler? SelfProfileChanged;
+    public event EventHandler<JsonElement>? CronEventReceived;
     public event EventHandler<JsonElement>? CronListUpdated;
     public event EventHandler<JsonElement>? CronStatusUpdated;
     public event EventHandler<JsonElement>? CronRunsUpdated;
@@ -914,7 +915,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         || string.Equals(decision, "allow-always", StringComparison.Ordinal)
         || string.Equals(decision, "deny", StringComparison.Ordinal);
 
-    private static ChatHistoryInfo ParseChatHistory(JsonElement payload, string sessionKey)
+    internal static ChatHistoryInfo ParseChatHistory(JsonElement payload, string sessionKey)
     {
         var info = new ChatHistoryInfo { SessionKey = sessionKey };
         if (payload.ValueKind != JsonValueKind.Object) return info;
@@ -1798,6 +1799,30 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // Wire format uses "id" consistently with cron.run / cron.remove
         await SendTrackedRequestAsync("cron.runs", new { id, limit, offset });
     }
+
+    // Response-aware Automations APIs. Wire shapes live in Cron.CronGatewayRequests so
+    // test doubles that only implement SendWizardRequestAsync share them.
+
+    public Task<Cron.CronListPage> ListCronJobsAsync(Cron.CronListQuery query, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.ListAsync(this, query, timeoutMs);
+
+    public Task<Cron.CronSchedulerStatus> GetCronStatusAsync(int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.StatusAsync(this, timeoutMs);
+
+    public Task<Cron.CronJob> GetCronJobAsync(string id, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.GetAsync(this, id, timeoutMs);
+
+    public Task<Cron.CronJob> AddCronJobDetailedAsync(System.Text.Json.Nodes.JsonObject definition, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.AddAsync(this, definition, timeoutMs);
+
+    public Task<Cron.CronJob> UpdateCronJobDetailedAsync(string id, string? expectedConfigRevision, System.Text.Json.Nodes.JsonObject patch, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.UpdateAsync(this, id, expectedConfigRevision, patch, timeoutMs);
+
+    public Task RemoveCronJobDetailedAsync(string id, string? expectedConfigRevision = null, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.RemoveAsync(this, id, expectedConfigRevision, timeoutMs);
+
+    public Task<Cron.CronRunsPage> ListCronRunsAsync(Cron.CronRunsQuery query, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.RunsAsync(this, query, timeoutMs);
 
     // Gateway config management
 
@@ -3867,9 +3892,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
                 break;
             case "cron":
-                // Gateway pushes cron events when jobs run/change — refresh the list
-                _ = RequestCronListAsync();
-                _ = RequestCronStatusAsync();
+                // Pushed when jobs run or change. Subscribers refresh their own agent-scoped view.
+                CronEventReceived?.Invoke(this, root.TryGetProperty("payload", out var cronPayload)
+                    ? cronPayload.Clone()
+                    : default);
                 break;
             case "exec.approval.requested":
             case "exec.approval.resolved":

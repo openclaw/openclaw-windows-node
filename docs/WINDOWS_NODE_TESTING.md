@@ -28,7 +28,7 @@ For changes touching tray UX, Settings, onboarding, chat/canvas, Command Center,
 
 Short version: run required tests, collect a closeout proof pass with `.\run-app-local.ps1 -Isolated` when UI is involved, use computer-use or developer-provided screenshots/output for the active changed UI state, prove MCP with `winnode` or raw JSON-RPC, prove gateway paths when available, and include current-head concrete output under `## Real behavior proof`. Mid-development computer-use/MCP/rubber-duck validation is fine when explicitly requested or needed to unblock work.
 
-### Reactor preview.16 compatibility proof
+### Reactor chat compatibility proof
 
 The [fixture Gateway harness](GATEWAY_FIXTURE_TESTING.md) can populate the real
 app without a running WSL Gateway or AI provider. Run
@@ -39,7 +39,17 @@ non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
 equivalent to visible native history proof. Streaming still needs separate
 coverage.
 
-Both Reactor packages use `0.1.0-preview.16`, which includes the recycled-anchor
+Both Reactor packages use `0.1.0-preview.17`, published as
+[GitHub release assets](https://github.com/microsoft/microsoft-ui-reactor/releases/tag/v0.1.0-preview.17).
+Normal builds and CI bootstrap the digest-pinned official GitHub release assets
+into an ignored repository-local feed. Before a direct restore on a fresh
+checkout, run `.\scripts\Initialize-ReactorPackages.ps1`. The script rejects
+corrupt cached/downloaded packages; it does not fall back to a source build or
+modify machine-wide NuGet settings. Keep both references aligned. The core
+package requires `System.Drawing.Common` `10.0.14` or newer; the tray's direct
+reference meets that floor.
+
+Reactor preview.16 and later include the recycled-anchor
 workaround from
 [microsoft/microsoft-ui-reactor#1214](https://github.com/microsoft/microsoft-ui-reactor/pull/1214).
 This is a Reactor workaround for
@@ -47,14 +57,6 @@ This is a Reactor workaround for
 not evidence of a released native WinUI fix. Keep the existing row-targeted
 `StartBringItemIntoView` scrolling rather than the application-side extent-only
 workaround from #1407.
-
-Rechecked on 2026-10-22: `0.1.0-preview.16` remains the latest published version,
-including previews, in the authoritative NuGet feeds for
-[Microsoft.UI.Reactor](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor/index.json)
-and [Microsoft.UI.Reactor.Advanced](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor.advanced/index.json),
-and the [upstream releases](https://github.com/microsoft/microsoft-ui-reactor/releases).
-Keep both references aligned. The core package requires `System.Drawing.Common`
-`10.0.12` or newer; the tray's direct reference meets that floor.
 
 Preview.16 enforces pooled-control resets with `REACTOR_POOL_001`. Chat uses
 Reactor's declarative `HelpText`, `ToolTip` and `ItemStatus` modifiers instead of
@@ -76,7 +78,7 @@ native architecture. These mounted tests check ordered/unordered wrapping at
 240 DIPs, reflow at 600 DIPs, and nested/loose list content and formatting.
 Keep the existing table and disposal proof in the focused run.
 
-Before release, also exercise repeated session switching
+Before every Reactor upgrade or release, also exercise repeated session switching
 while a bring-into-view request is pending, using 240 mixed-height messages.
 `GatewayFixtureUiTests.RepeatedSessionSwitchingKeepsNativeTimelineResponsive`
 provides a separate, bounded 12-cycle A/B scrolling and session-switch smoke.
