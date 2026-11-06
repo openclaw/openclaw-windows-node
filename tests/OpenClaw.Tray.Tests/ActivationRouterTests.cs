@@ -619,12 +619,13 @@ public class ActivationRouterTests
     public async Task StopAsync_CancelsPendingConfirmationAndPreventsLateDispatch()
     {
         var pipeName = UniquePipeName();
-        var listener = new ActivationRouter(Scheme, pipeName);
+        await using var listener = new ActivationRouter(Scheme, pipeName);
         var forwarder = new ActivationRouter(Scheme, pipeName);
         var sink = new BlockingConfirmationSink();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         // The listener gets a timer-free token so only StopAsync can cancel the pending confirmation;
-        // the test's own 10 s timer must not mask a shutdown bug.
+        // the test's own 10 s timer must not mask a shutdown bug. Disposal still runs on every exit
+        // path, so a failure above cannot leave the listener task and pipe alive.
         await listener.StartForwardedActivationListenerAsync(sink, CancellationToken.None);
 
         Assert.True(await ForwardWithRetryAsync(
@@ -637,7 +638,6 @@ public class ActivationRouterTests
 
         sink.ReleaseConfirmation(true);
         Assert.DoesNotContain(sink.Dispatched, route => route is ActivationRoute.SendMessage);
-        await listener.DisposeAsync();
     }
 
     private static async Task<bool> ForwardWithRetryAsync(
