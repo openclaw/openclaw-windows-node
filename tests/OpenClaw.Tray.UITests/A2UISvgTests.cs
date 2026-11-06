@@ -329,6 +329,45 @@ public sealed class A2UISvgTests
     }
 
     [Fact]
+    public async Task DoctypeCommentContainingFakePath_StillRenders()
+    {
+        // Regression: the geometry guard used to scan before the DOCTYPE strip, so the '>' inside this
+        // DTD comment ended its skip early, the fake path inside the comment was counted, and this
+        // small SVG was rejected. The strip now runs first, so the image must render.
+        var fakePath = new string('1', SvgGeometryBudget.MaxAttributeChars + 1);
+        var svg = $"<!DOCTYPE svg [<!-- > <path d='{fakePath}'/> -->]>" + MinSvg;
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var src = await media.LoadImageAsync(DataSvgBase64(svg));
+            Assert.True(src is SvgImageSource,
+                $"DOCTYPE comment made a small SVG fail; warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
+    }
+
+    [Fact]
+    public async Task OversizedGeometryAfterDoctype_StillRejectedBeforeDecode()
+    {
+        var svg =
+            "<!DOCTYPE svg [<!-- > -->]>" +
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>" +
+            $"<path d='{new string('1', SvgGeometryBudget.MaxAttributeChars + 1)}'/></svg>";
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(DataSvgBase64(svg));
+            sw.Stop();
+            Assert.Null(src);
+            Assert.Contains(logger.Warnings, warning => warning.Contains("geometry attributes exceed", StringComparison.Ordinal));
+            Assert.True(sw.Elapsed < SvgDecodeSlack,
+                $"rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
+    }
+
+    [Fact]
     public async Task Load_QueuedBehindBusyDecodeSlots_CompletesOnceASlotFrees()
     {
         // Two-stage case: queue wait (all slots busy for a known hold) then one trivial decode.
