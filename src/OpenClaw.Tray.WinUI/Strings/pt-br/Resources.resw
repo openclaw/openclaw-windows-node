@@ -127,9 +127,6 @@
   <data name="StatusSessionsHeader.Text" xml:space="preserve">
     <value>SESSÕES ATIVAS</value>
   </data>
-  <data name="StatusChannelsHeader.Text" xml:space="preserve">
-    <value>CANAIS</value>
-  </data>
   <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
     <value>TOPOLOGIA DO GATEWAY</value>
   </data>
@@ -179,18 +176,6 @@
   </data>
   <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
     <value>A configuração de canais, as Skills e as automações agendadas são gerenciadas pelo Gateway. Use estes links quando o Gateway conectado disponibilizar as páginas correspondentes no painel.</value>
-  </data>
-  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
-    <value>Configuração de canais / esquemas</value>
-  </data>
-  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
-    <value>Abra a configuração de canais para fluxos de autenticação orientados por esquema, QR, login e painel, quando disponíveis.</value>
-  </data>
-  <data name="StatusSkillsTitle.Text" xml:space="preserve">
-    <value>Habilidades</value>
-  </data>
-  <data name="StatusSkillsDescription.Text" xml:space="preserve">
-    <value>Abra a configuração de Skills do Gateway quando o Gateway conectado oferecer suporte a esse recurso.</value>
   </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / agendamentos</value>
@@ -491,9 +476,6 @@
   </data>
   <data name="Menu_NodeInventory" xml:space="preserve">
     <value>Inventário de Nodes</value>
-  </data>
-  <data name="Menu_ChannelSummary" xml:space="preserve">
-    <value>Resumo de canais</value>
   </data>
   <data name="Menu_ActivitySummary" xml:space="preserve">
     <value>Resumo de atividades</value>
@@ -1116,17 +1098,11 @@ Use uma destas opções:
   <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
     <value>Abrir painel do menu da bandeja</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
-    <value>Conectar canais de mensagens</value>
-  </data>
   <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
     <value>Experimentar Voice Wake</value>
   </data>
   <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
     <value>Usar Canvas</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
-    <value>Ativar Skills</value>
   </data>
   <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
     <value>Iniciar o OpenClaw na inicialização</value>
@@ -1296,17 +1272,11 @@ Use uma destas opções:
   <data name="Onboarding_Ready_Feature_TrayMenu_Subtitle" xml:space="preserve">
     <value>Acesso pela bandeja do sistema</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Channels_Subtitle" xml:space="preserve">
-    <value>Configurações → Canais</value>
-  </data>
   <data name="Onboarding_Ready_Feature_Voice_Subtitle" xml:space="preserve">
     <value>Ative com sua voz</value>
   </data>
   <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
     <value>Espaço de trabalho visual</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
-    <value>Configurações → Skills</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
     <value>Origem não permitida: o Gateway rejeita esta conexão</value>
@@ -1529,15 +1499,6 @@ Use uma destas opções:
   <data name="ClearButton.Text" xml:space="preserve">
     <value>Limpar</value>
   </data>
-  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
-    <value>Vinculações</value>
-  </data>
-  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Regras de roteamento de mensagens</value>
-  </data>
-  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
-    <value>Atualizar</value>
-  </data>
   <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
     <value>🖥️ Este computador</value>
   </data>
@@ -1565,14 +1526,8 @@ Use uma destas opções:
   <data name="NodeStatusText.Text" xml:space="preserve">
     <value>Modo Node desativado</value>
   </data>
-  <data name="ChannelsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>📡 Canais</value>
-  </data>
   <data name="ConnectionWarning.Title" xml:space="preserve">
     <value>Não conectado</value>
-  </data>
-  <data name="ChannelsPage_TextBlock_22.Text" xml:space="preserve">
-    <value>Nenhum canal configurado</value>
   </data>
   <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
     <value>Conecte-se ao Gateway para começar a conversar</value>
@@ -2131,18 +2086,6 @@ Use uma destas opções:
   <data name="CancelButton.Content" xml:space="preserve">
     <value>Cancelar</value>
   </data>
-  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>🧩 Habilidades</value>
-  </data>
-  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
-    <value>Todos os agentes</value>
-  </data>
-  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
-    <value>Nenhuma Skill instalada</value>
-  </data>
-  <data name="MarketplaceLink.Content" xml:space="preserve">
-    <value>Navegar no Marketplace de Skills →</value>
-  </data>
   <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
     <value>Custo total</value>
   </data>
@@ -2305,23 +2248,14 @@ Use uma destas opções:
   <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
     <value>Fluxo de eventos</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
-    <value>Habilidades</value>
-  </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>Agentes</value>
   </data>
   <data name="DefaultAgentNavItem.Content" xml:space="preserve">
     <value>main</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_109.Content" xml:space="preserve">
-    <value>Canais</value>
-  </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
     <value>Instâncias</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
-    <value>Vinculações</value>
   </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Configuração</value>
@@ -2339,7 +2273,7 @@ Use uma destas opções:
     <value>Recursos</value>
   </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>Configurações</value>
+    <value>Configurações do aplicativo</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Permissões</value>
@@ -2436,18 +2370,6 @@ Use uma destas opções:
   </data>
   <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
     <value>Aguarde enquanto a conexão é estabelecida...</value>
-  </data>
-  <data name="PriorityInfoBar.Title" xml:space="preserve">
-    <value>Prioridade de roteamento</value>
-  </data>
-  <data name="PriorityInfoBar.Message" xml:space="preserve">
-    <value>As vinculações controlam qual agente trata as mensagens de cada canal. Prioridade: peer &gt; conta &gt; canal &gt; padrão.</value>
-  </data>
-  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
-    <value>Modo de agente único</value>
-  </data>
-  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
-    <value>Todas as mensagens são roteadas para o agente padrão. Adicione vinculações para roteamento com múltiplos agentes.</value>
   </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
     <value>Edite a configuração do Gateway (openclaw.json) com um formulário guiado por esquema.</value>
@@ -3892,18 +3814,6 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="FilterAllButton.Text" xml:space="preserve">
     <value>Todas</value>
   </data>
-  <data name="ChannelsPage_Title.Text" xml:space="preserve">
-    <value>Canais</value>
-  </data>
-  <data name="ChannelsPage_Refresh.Text" xml:space="preserve">
-    <value>Atualizar</value>
-  </data>
-  <data name="ChannelsPage_ConfiguredHeader.Text" xml:space="preserve">
-    <value>CONFIGURADOS</value>
-  </data>
-  <data name="ChannelsPage_AvailableHeader.Text" xml:space="preserve">
-    <value>DISPONÍVEIS</value>
-  </data>
   <data name="ChatPageHomeToolTip.Content" xml:space="preserve">
     <value>Início</value>
   </data>
@@ -3942,27 +3852,6 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   </data>
   <data name="HubWindow_NavigationViewItem_Sandbox.Content" xml:space="preserve">
     <value>Ambiente restrito</value>
-  </data>
-<data name="ChannelsPage_GuideBar.Title" xml:space="preserve">
-    <value>Your gateway didn't list any channels</value>
-  </data>
-  <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
-    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials. The form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
-  </data>
-  <data name="ChannelsPage_DocsLink.Content" xml:space="preserve">
-    <value>Read the channels guide</value>
-  </data>
-  <data name="ChannelsPage_NotConnected.Title" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="ChannelsPage_NotConnected.Message" xml:space="preserve">
-    <value>Connect to a gateway to manage channels.</value>
-  </data>
-  <data name="ChannelsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No channels available</value>
-  </data>
-  <data name="ChannelsPage_EmptySubtitle.Text" xml:space="preserve">
-    <value>The gateway didn't report any channels. Install channel plugins on the gateway and refresh.</value>
   </data>
   <data name="DiagnosticsPage_Title.Text" xml:space="preserve">
     <value>Diagnostics</value>
@@ -4194,18 +4083,6 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
     <value>Connection Status</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>Gateway desconectado</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>Conecte-se a um Gateway para carregar as vinculações.</value>
-  </data>
-  <data name="BindingsPage_OpenConnection.Content" xml:space="preserve">
-    <value>Abrir Conexão</value>
-  </data>
-  <data name="BindingsPage_LoadingBindings.Text" xml:space="preserve">
-    <value>Carregando vinculações...</value>
   </data>
   <data name="ConnectionPage_ApprovalsWaitingOnYou.Text" xml:space="preserve">
     <value>Aprovações aguardando você</value>
@@ -5039,27 +4916,6 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>Salvo</value>
   </data>
-  <data name="SkillsPage_Skills.Text" xml:space="preserve">
-    <value>🧩 Habilidades</value>
-  </data>
-  <data name="SkillsPage_AllAgents.Content" xml:space="preserve">
-    <value>Todos os agentes</value>
-  </data>
-  <data name="SkillsPage_Enabled.Text" xml:space="preserve">
-    <value>Ativado</value>
-  </data>
-  <data name="SkillsPage_Disabled.Text" xml:space="preserve">
-    <value>Desativado</value>
-  </data>
-  <data name="SkillsPage_LoadingSkills.Text" xml:space="preserve">
-    <value>Carregando Skills...</value>
-  </data>
-  <data name="SkillsPage_NoSkillsInstalled.Text" xml:space="preserve">
-    <value>Nenhuma Skill instalada</value>
-  </data>
-  <data name="SkillsPage_SkillsExtendYourAgent.Text" xml:space="preserve">
-    <value>Skills estendem as capacidades do seu agente. Instale skills via CLI ou ClawHub.</value>
-  </data>
   <data name="UsagePage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Gateway desconectado</value>
   </data>
@@ -5236,12 +5092,6 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   </data>
   <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
     <value>Abrir chat</value>
-  </data>
-  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
-    <value>Ativado</value>
-  </data>
-  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
-    <value>Desativado</value>
   </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>Visualizar</value>
@@ -5825,293 +5675,8 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="ConnectionPage_ConnectionTimeout" xml:space="preserve">
     <value>Tempo limite aguardando a conclusão da conexão com o Gateway.</value>
   </data>
-  <data name="ChannelsPage_UnavailableOnWindows" xml:space="preserve">
-    <value>Este canal requer um host macOS. Não pode ser configurado a partir de uma máquina Windows.</value>
-  </data>
-  <data name="ChannelsPage_ReplaceCredentials" xml:space="preserve">
-    <value>Substituir credenciais</value>
-  </data>
-  <data name="ChannelsPage_Configuration" xml:space="preserve">
-    <value>Configuração</value>
-  </data>
-  <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
-    <value>Desvincule este dispositivo do canal. Escaneie um novo QR para reconectar: sua conta permanece pareada no seu telefone.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
-    <value>Pause o canal temporariamente: as credenciais são mantidas para que você possa iniciá-lo novamente. Ou desconecte totalmente para apagá-las.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
-    <value>Inicie o canal: ele começará a processar mensagens com as credenciais armazenadas. Ou desconecte totalmente para apagá-las.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
-    <value>Pause o canal: as credenciais são mantidas para que você possa iniciá-lo novamente.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
-    <value>Inicie o canal: ele começará a processar mensagens com as credenciais armazenadas.</value>
-  </data>
-  <data name="ChannelsPage_Start" xml:space="preserve">
-    <value>Iniciar</value>
-  </data>
-  <data name="ChannelsPage_Stop" xml:space="preserve">
-    <value>Parar</value>
-  </data>
-  <data name="ChannelsPage_Logout" xml:space="preserve">
-    <value>Sair</value>
-  </data>
-  <data name="ChannelsPage_DisconnectForget" xml:space="preserve">
-    <value>Desconectar e esquecer credenciais</value>
-  </data>
-  <data name="ChannelsPage_Controls" xml:space="preserve">
-    <value>Controles</value>
-  </data>
-  <data name="ChannelsPage_HelpWhatsApp" xml:space="preserve">
-    <value>Ajuda sobre dispositivos vinculados do WhatsApp →</value>
-  </data>
-  <data name="ChannelsPage_HelpSignal" xml:space="preserve">
-    <value>Ajuda sobre dispositivos vinculados do Signal →</value>
-  </data>
-  <data name="ChannelsPage_HelpTelegram" xml:space="preserve">
-    <value>Como criar um bot do Telegram →</value>
-  </data>
-  <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
-    <value>Como criar um bot do Discord →</value>
-  </data>
-  <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
-    <value>Como adicionar um webhook do Google Chat →</value>
-  </data>
-  <data name="ChannelsPage_HelpSlack" xml:space="preserve">
-    <value>Painel de apps do Slack →</value>
-  </data>
-  <data name="ChannelsPage_HelpNostr" xml:space="preserve">
-    <value>Sobre o Nostr →</value>
-  </data>
-  <data name="ChannelsPage_HelpIMessage" xml:space="preserve">
-    <value>Sobre o macOS Messages →</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppHeadline" xml:space="preserve">
-    <value>Vincule seu telefone do WhatsApp</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
-    <value>Clique em &quot;Mostrar QR&quot; na seção Vinculação abaixo.</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
-    <value>No seu telefone: WhatsApp → Configurações → Dispositivos vinculados → Vincular um dispositivo.</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep3" xml:space="preserve">
-    <value>Escaneie o código QR que aparece aqui.</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalHeadline" xml:space="preserve">
-    <value>Vincule seu telefone com Signal</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
-    <value>Clique em &quot;Mostrar QR&quot; na seção Vinculação abaixo.</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
-    <value>No seu telefone: Signal → Configurações → Dispositivos vinculados → Vincular novo dispositivo.</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep3" xml:space="preserve">
-    <value>Escaneie o código QR que aparece aqui.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramHeadline" xml:space="preserve">
-    <value>Conecte o Telegram por meio de um bot</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep1" xml:space="preserve">
-    <value>Abra o Telegram e envie uma mensagem para @BotFather.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep2" xml:space="preserve">
-    <value>Envie /newbot e siga as instruções. Copie o token do bot ao final.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep3" xml:space="preserve">
-    <value>Cole o token no formulário de Configuração abaixo.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
-    <value>Clique em &quot;Salvar e iniciar&quot;. O canal iniciará automaticamente.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
-    <value>Conecte o Discord por meio de um bot</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
-    <value>Abra o Portal do Desenvolvedor do Discord e crie ou selecione um aplicativo.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>Abra Bot, adicione um bot se necessário e depois redefina e copie seu token.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
-    <value>Cole o token do bot no formulário de Configuração abaixo.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>Clique em &quot;Salvar e iniciar&quot; e, em seguida, adicione o bot ao seu servidor com o link de instalação OAuth2.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
-    <value>Conecte o Google Chat por meio de um webhook</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep1" xml:space="preserve">
-    <value>No Google Chat, abra o espaço → Gerenciar webhooks → Adicionar webhook.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep2" xml:space="preserve">
-    <value>Copie a URL do webhook.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep3" xml:space="preserve">
-    <value>Cole a URL no formulário de Configuração abaixo.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
-    <value>Clique em &quot;Salvar e iniciar&quot;.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
-    <value>Conecte o Slack por meio de um aplicativo</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep1" xml:space="preserve">
-    <value>Crie um app do Slack em api.slack.com/apps e instale-o no seu workspace.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep2" xml:space="preserve">
-    <value>Copie o token do bot (xoxb-…) e o signing secret.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep3" xml:space="preserve">
-    <value>Cole ambos no formulário de Configuração abaixo.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
-    <value>Clique em &quot;Salvar e iniciar&quot;.</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
-    <value>Conecte o Nostr por meio de relays</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep1" xml:space="preserve">
-    <value>Gere ou cole uma chave privada (nsec).</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep2" xml:space="preserve">
-    <value>Escolha uma ou mais URLs de relay (ex.: wss://relay.damus.io).</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep3" xml:space="preserve">
-    <value>Cole ambos no formulário de Configuração abaixo.</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
-    <value>Clique em &quot;Salvar e iniciar&quot;.</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
-    <value>O iMessage é exclusivo do macOS</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep1" xml:space="preserve">
-    <value>O iMessage lê o banco de dados local do Messages.app, que só existe no macOS.</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep2" xml:space="preserve">
-    <value>Para usar o iMessage com o OpenClaw, execute o Gateway em um Mac em vez deste host Windows.</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep3" xml:space="preserve">
-    <value>Todos os outros canais desta lista funcionam normalmente a partir de um Gateway hospedado no Windows.</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericHeadline" xml:space="preserve">
-    <value>Conecte este canal</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
-    <value>&quot;{0}&quot; é um canal de plugin. Consulte a documentação dele para saber quais campos são necessários.</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
-    <value>Use &quot;Abrir página de configuração&quot; na seção Configuração abaixo para adicionar definições em channels.{0}.</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
-    <value>Salve a configuração; o OpenClaw iniciará o canal automaticamente.</value>
-  </data>
-  <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
-    <value>Token do bot</value>
-  </data>
-  <data name="ChannelsPage_FieldDiscordBotToken" xml:space="preserve">
-    <value>Token do bot do Discord</value>
-  </data>
-  <data name="ChannelsPage_PlaceholderDiscordBotToken" xml:space="preserve">
-    <value>Cole o token do bot do Discord</value>
-  </data>
-  <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
-    <value>URL do webhook</value>
-  </data>
-  <data name="ChannelsPage_FieldSigningSecret" xml:space="preserve">
-    <value>Segredo de assinatura</value>
-  </data>
-  <data name="ChannelsPage_FieldPrivateKey" xml:space="preserve">
-    <value>Chave privada (nsec)</value>
-  </data>
-  <data name="ChannelsPage_FieldRelayUrls" xml:space="preserve">
-    <value>URLs dos relays</value>
-  </data>
-  <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
-    <value>Obtenha em @BotFather (/newbot).</value>
-  </data>
-  <data name="ChannelsPage_HelpDiscordBotToken" xml:space="preserve">
-    <value>Copie no Portal do Desenvolvedor do Discord → Bot → Reset Token.</value>
-  </data>
-  <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
-    <value>Abra um espaço → Gerenciar webhooks → Adicionar webhook.</value>
-  </data>
-  <data name="ChannelsPage_HelpSlackBotToken" xml:space="preserve">
-    <value>Tokens OAuth do seu app do Slack.</value>
-  </data>
-  <data name="ChannelsPage_HelpSlackSigningSecret" xml:space="preserve">
-    <value>Informações Básicas → Credenciais do Aplicativo.</value>
-  </data>
-  <data name="ChannelsPage_HelpRelayUrls" xml:space="preserve">
-    <value>Uma por linha.</value>
-  </data>
-  <data name="ChannelsPage_SaveChanges" xml:space="preserve">
-    <value>Salvar alterações</value>
-  </data>
-  <data name="ChannelsPage_SaveAndStart" xml:space="preserve">
-    <value>Salvar e iniciar</value>
-  </data>
-  <data name="ChannelsPage_OpenConfigPage" xml:space="preserve">
-    <value>Abrir página de configuração</value>
-  </data>
-  <data name="ChannelsPage_ConfigPlaceholderConfigured" xml:space="preserve">
-    <value>Edite as configurações deste canal na página Config do Gateway.</value>
-  </data>
-  <data name="ChannelsPage_ConfigPlaceholderUnconfigured" xml:space="preserve">
-    <value>Depois de seguir os passos acima, salve a configuração para iniciar o canal.</value>
-  </data>
-  <data name="ChannelsPage_BannerNotConnectedTitle" xml:space="preserve">
-    <value>Não conectado</value>
-  </data>
-  <data name="ChannelsPage_BannerNotConnectedMessage" xml:space="preserve">
-    <value>Conecte-se a um Gateway antes de salvar a configuração do canal.</value>
-  </data>
-  <data name="ChannelsPage_BannerMissingFieldTitle" xml:space="preserve">
-    <value>Campo ausente</value>
-  </data>
-  <data name="ChannelsPage_BannerMissingFieldMessage" xml:space="preserve">
-    <value>{0} é obrigatório.</value>
-  </data>
-  <data name="ChannelsPage_BannerSavingTitle" xml:space="preserve">
-    <value>Salvando {0}…</value>
-  </data>
-  <data name="ChannelsPage_BannerSavingMessage" xml:space="preserve">
-    <value>Gravando {0} campo(s) e ativando o canal.</value>
-  </data>
-  <data name="ChannelsPage_BannerCantLoadConfigTitle" xml:space="preserve">
-    <value>Não foi possível carregar a configuração do Gateway</value>
-  </data>
-  <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
-    <value>O Gateway não retornou sua configuração atual: não é possível salvar com segurança sem ela. Tente Atualizar e salvar novamente.</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
-    <value>A configuração do Gateway foi apagada durante o salvamento. Tente Atualizar e salvar novamente.</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveBlockedTitle" xml:space="preserve">
-    <value>Salvamento bloqueado para {0}</value>
-  </data>
-  <data name="ChannelsPage_BannerGatewayNoResponse" xml:space="preserve">
+  <data name="ConfigPage_BannerGatewayNoResponse" xml:space="preserve">
     <value>O Gateway não respondeu.</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveFailedTitle" xml:space="preserve">
-    <value>Falha ao salvar {0}</value>
-  </data>
-  <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>A configuração do seu Gateway foi alterada em outro lugar (por exemplo, pela página Config). Atualizamos o cache. Tente Salvar novamente. Detalhes: {0}</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
-    <value>{0} Se isso parecer uma incompatibilidade de formato, abra a página Config para edição direta em JSON.</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigSavedTitle" xml:space="preserve">
-    <value>Configuração de {0} salva</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
-    <value>Aguardando o Gateway confirmar que o canal está em execução…</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
     <value>Gateway WSL</value>
@@ -6179,23 +5744,11 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
     <value>Desconectado</value>
   </data>
-  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
-    <value>Could not load bindings</value>
-  </data>
-  <data name="BindingsPage_ConfigRequestFailed.Message" xml:space="preserve">
-    <value>O gateway não retornou os vínculos. Atualize para tentar novamente.</value>
-  </data>
   <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
     <value>Agent event log</value>
   </data>
   <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
     <value>Go to Agent Events</value>
-  </data>
-  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
-    <value>Gateway bindings</value>
-  </data>
-  <data name="Command_GoToBindings_Title" xml:space="preserve">
-    <value>Go to Bindings</value>
   </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
@@ -6262,12 +5815,6 @@ Certifique-se de que o Gateway está em execução.</value>
   </data>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
     <value>Go to Settings</value>
-  </data>
-  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
-    <value>Registered skills</value>
-  </data>
-  <data name="Command_GoToSkills_Title" xml:space="preserve">
-    <value>Go to Skills</value>
   </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
@@ -6730,21 +6277,6 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Open this session in Chat</value>
   </data>
-  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
-    <value>Desativado</value>
-  </data>
-  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
-    <value>Ativado</value>
-  </data>
-  <data name="SkillsPage_CountFormat" xml:space="preserve">
-    <value>({0}/{1} ativadas)</value>
-  </data>
-  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
-    <value>Desativadas ({0})</value>
-  </data>
-  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
-    <value>Ativadas ({0})</value>
-  </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
   </data>
@@ -6918,9 +6450,6 @@ Certifique-se de que o Gateway está em execução.</value>
   </data>
   <data name="HubWindow_StatusFlyout_Approve.Content" xml:space="preserve">
     <value>Approve…</value>
-  </data>
-  <data name="HubWindow_StatusPill_Tooltip" xml:space="preserve">
-    <value>Connection status</value>
   </data>
   <data name="HubWindow_Bell_Tooltip" xml:space="preserve">
     <value>Notifications</value>
@@ -7168,6 +6697,89 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>{0} de contexto · {1} KV · Carrega na primeira solicitação</value></data>
   <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>Ir para IA local</value></data>
   <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>Ver status do llama-server, modelo e Gateway</value></data>
+  <data name="HubWindow_NavigationViewItemHeader_Model.Content" xml:space="preserve"><value>Modelo</value></data>
+  <data name="HubWindow_NavigationViewItem_DefaultModel.Content" xml:space="preserve"><value>Modelo padrão</value></data>
+  <data name="Command_GoToDefaultModel_Title" xml:space="preserve"><value>Ir para Modelo padrão</value></data>
+  <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>Escolha o modelo usado pelo Gateway</value></data>
+  <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>Modelo</value></data>
+  <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>Modelo personalizado do Hugging Face (opcional)</value></data>
+  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>proprietário/repositório, proprietário/repositório:Q4_K_M ou um link huggingface.co</value></data>
+  <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>Somente modelos GGUF públicos em um único arquivo. Quando preenchido, é usado no lugar da seleção acima.</value></data>
+  <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>Este modelo pode não caber</value></data>
+  <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>Ele precisa de cerca de {0:F1} GB de memória de GPU e {1} tem {2:F1} GB. Ele pode não iniciar ou ficar lento.</value></data>
+  <data name="LocalAiPage_ForceApplyButton.Content" xml:space="preserve"><value>Trocar mesmo assim</value></data>
+  <data name="LocalAiPage_ApplyModelButton.Content" xml:space="preserve"><value>Trocar modelo</value></data>
+  <data name="LocalAiPage_CancelModelSwitchButton.Content" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="LocalAiPage_ModelOptionFormat" xml:space="preserve"><value>{0} ({1}, contexto {2}, KV {3})</value></data>
+  <data name="LocalAiPage_ModelOptionCurrent" xml:space="preserve"><value>{0} (atual)</value></data>
+  <data name="LocalAiPage_ModelOptionRecommended" xml:space="preserve"><value>{0} (recomendado)</value></data>
+  <data name="LocalAiPage_SwitchPhase_Resolving" xml:space="preserve"><value>Verificando o modelo...</value></data>
+  <data name="LocalAiPage_SwitchPhase_Downloading" xml:space="preserve"><value>Baixando o modelo</value></data>
+  <data name="LocalAiPage_SwitchPhase_Verifying" xml:space="preserve"><value>Verificando o download</value></data>
+  <data name="LocalAiPage_SwitchPhase_InstallingRuntime" xml:space="preserve"><value>Instalando o llama-server</value></data>
+  <data name="LocalAiPage_SwitchPhase_StoppingRuntime" xml:space="preserve"><value>Parando o modelo atual</value></data>
+  <data name="LocalAiPage_SwitchPhase_StartingRuntime" xml:space="preserve"><value>Iniciando o novo modelo</value></data>
+  <data name="LocalAiPage_SwitchPhase_LoadingModel" xml:space="preserve"><value>Carregando e testando o novo modelo</value></data>
+  <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>Restaurando o modelo anterior</value></data>
+  <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB de {1:F1} GB</value></data>
+  <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>Troca de modelo cancelada.</value></data>
+  <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>Uma troca de modelo ainda está sendo concluída. Você poderá trocar o modelo de novo quando ela terminar.</value></data>
+  <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>Modelo padrão</value></data>
+  <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>O Gateway usa este modelo em novas conversas. Cada chat ainda pode escolher o próprio modelo.</value></data>
+  <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>Conecte-se a um Gateway para escolher o modelo</value></data>
+  <data name="DefaultModelPage_OpenConnectionButton.Content" xml:space="preserve"><value>Abrir Conexão</value></data>
+  <data name="DefaultModelPage_ReadOnly.Title" xml:space="preserve"><value>Esta conexão com o Gateway não pode alterar a configuração</value></data>
+  <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>Modelo padrão</value></data>
+  <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>Usar este modelo</value></data>
+  <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Atualizar</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Gerenciar IA local</value></data>
+  <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>IA local: {0}</value></data>
+  <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (entre no provedor primeiro)</value></data>
+  <data name="DefaultModelPage_Applied" xml:space="preserve"><value>O modelo padrão foi atualizado.</value></data>
+  <data name="DefaultModelPage_AddProviderTitle.Text" xml:space="preserve"><value>Adicionar um provedor de modelos</value></data>
+  <data name="DefaultModelPage_AddProviderIntro.Text" xml:space="preserve"><value>Conecte um dos provedores do Gateway ou adicione seu próprio endpoint compatível com OpenAI ou Anthropic. Os novos modelos aparecem na lista acima.</value></data>
+  <data name="DefaultModelPage_ProviderKindGateway.Content" xml:space="preserve"><value>Provedor do Gateway</value></data>
+  <data name="DefaultModelPage_ProviderKindCustom.Content" xml:space="preserve"><value>Endpoint personalizado</value></data>
+  <data name="DefaultModelPage_ProviderSelector.Header" xml:space="preserve"><value>Provedor</value></data>
+  <data name="DefaultModelPage_ProviderApiKey.Header" xml:space="preserve"><value>Chave de API</value></data>
+  <data name="DefaultModelPage_SaveApiKeyButton.Content" xml:space="preserve"><value>Salvar chave de API</value></data>
+  <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>Método de entrada</value></data>
+  <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>Entrar</value></data>
+  <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>ID do provedor</value></data>
+  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>URL base</value></data>
+  <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>Tipo de API</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>Compatível com OpenAI (Chat Completions)</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiResponses.Content" xml:space="preserve"><value>OpenAI Responses</value></data>
+  <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
+  <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>Chave de API (opcional para compatível com OpenAI)</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>IDs dos modelos</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>Adicionar provedor</value></data>
+  <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0} (conectado)</value></data>
+  <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>Carregando provedores...</value></data>
+  <data name="DefaultModelPage_ProviderCatalogEmpty" xml:space="preserve"><value>Este Gateway não tem provedores para conectar.</value></data>
+  <data name="DefaultModelPage_ProviderCatalogFailedFormat" xml:space="preserve"><value>Não foi possível carregar os provedores: {0}</value></data>
+  <data name="DefaultModelPage_ProviderCatalogUnsupported" xml:space="preserve"><value>Esta versão do Gateway não permite conectar provedores aqui. Use um endpoint personalizado ou atualize o Gateway.</value></data>
+  <data name="DefaultModelPage_ProviderApiKeySaved" xml:space="preserve"><value>Chave de API salva para {0}. Os modelos aparecem na lista acima.</value></data>
+  <data name="DefaultModelPage_CustomProviderAdded" xml:space="preserve"><value>{0} adicionado. Os modelos aparecem na lista acima.</value></data>
+  <data name="DefaultModelPage_ProviderSignedIn" xml:space="preserve"><value>Conectado a {0}.</value></data>
+  <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>Conectado a {0}. Reinicie o Gateway para usar os modelos.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>A entrada foi cancelada.</value></data>
+  <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>A entrada não foi concluída.</value></data>
+  <data name="DefaultModelPage_ProviderSignInInterrupted" xml:space="preserve"><value>A entrada foi interrompida porque a conexão com o Gateway mudou. Comece novamente para continuar.</value></data>
+  <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>O Gateway não conseguiu concluir isso: {0}</value></data>
+  <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>Aguardando o provedor...</value></data>
+  <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>A entrada está demorando muito. Verifique novamente ou cancele.</value></data>
+  <data name="DefaultModelPage_ProviderSignInUnsupported" xml:space="preserve"><value>O Gateway enviou uma etapa de entrada que este aplicativo não pode exibir. Cancele e tente novamente pelo painel do Gateway.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelUnconfirmed" xml:space="preserve"><value>O Gateway ainda não confirmou o cancelamento. Tente novamente.</value></data>
+  <data name="DefaultModelPage_CustomInvalidProviderId" xml:space="preserve"><value>Use letras minúsculas, números e hifens no ID do provedor.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdReserved" xml:space="preserve"><value>Esse ID pertence a um provedor integrado. Escolha outro ID.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdInUse" xml:space="preserve"><value>Já existe um provedor com esse ID.</value></data>
+  <data name="DefaultModelPage_CustomInvalidBaseUrl" xml:space="preserve"><value>Digite uma URL base http ou https.</value></data>
+  <data name="DefaultModelPage_CustomApiKeyRequired" xml:space="preserve"><value>Este tipo de API precisa de uma chave de API.</value></data>
+  <data name="DefaultModelPage_CustomMissingModels" xml:space="preserve"><value>Digite pelo menos um ID de modelo.</value></data>
+  <data name="DefaultModelPage_CustomInvalidModelId" xml:space="preserve"><value>IDs de modelo não podem conter espaços.</value></data>
   <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>O driver NVIDIA não oferece suporte a CUDA 13. Não é necessário um CUDA Toolkit separado.</value></data>
   <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>O driver NVIDIA {0} foi detectado. A IA local requer a versão {1} ou mais recente.</value></data>
   <data name="LocalAi_Reason_Generic" xml:space="preserve"><value>O OpenClaw não conseguiu verificar os requisitos da IA local neste sistema.</value></data>
@@ -7180,8 +6792,6 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="LocalAi_Reason_UnknownMemoryAmount" xml:space="preserve"><value>uma quantidade desconhecida</value></data>
   <data name="LocalAi_Reason_UnknownModel" xml:space="preserve"><value>O modelo selecionado não está disponível nesta versão da IA local.</value></data>
   <data name="LocalAi_Reason_UnknownModelName" xml:space="preserve"><value>O modelo selecionado</value></data>
-  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>Alterar modelo</value></data>
-  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>Abre a configuração para escolher outro modelo. Substituir o Gateway local existente ainda requer confirmação.</value></data>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>O OpenClaw está verificando se este dispositivo pode executar IA local. Isso levará apenas um instante.</value></data>
   <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>Verificando a disponibilidade da IA local</value></data>
   <data name="LocalAiPage_RecheckAvailabilityButton.Content" xml:space="preserve"><value>Verificar novamente</value></data>
@@ -7223,6 +6833,7 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Chat_Model_Other" xml:space="preserve"><value>Outros modelos</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Nenhum modelo correspondente</value></data>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Pesquisar modelos</value></data>
+  <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Adicionar provedor de modelos...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Remover anexo</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Carregando mensagens...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 mensagem na fila</value></data>
@@ -7539,14 +7150,9 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>Cancelado</value></data>
   <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0} de {1}</value></data>
   <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>Sua IA está pronta</value></data>
-  <data name="Onboarding_Ready_Prompt.Text" xml:space="preserve"><value>O que você gostaria de fazer primeiro?</value></data>
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Conversar com meu agente</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Abrir o Chat com seu agente.</value></data>
-  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Conversar com meu agente, recomendado</value></data>
-  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>Explorar habilidades</value></data>
-  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Veja habilidades para seu agente. Nada é instalado automaticamente.</value></data>
-  <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Conectar canais</value></data>
-  <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram e mais. Você escolhe quando entrar.</value></data>
+  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Conversar com meu agente</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Verificar prontidão novamente</value></data>
   <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>Preparando suas opções de IA</value></data>
   <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>Preparando o gateway</value></data>
@@ -7588,15 +7194,13 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>A inicialização do Gateway nativo ou a confirmação da porta de escuta excedeu o tempo limite. Verifique o status do Gateway e tente novamente.</value></data>
   <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>A verificação da IA está indisponível no momento. Confira a conexão com o Gateway e a disponibilidade do modelo e tente novamente ou volte à configuração da IA.</value></data>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Não foi possível concluir a configuração do Windows. O destino não foi aberto. Tente novamente ou volte à configuração da IA.</value></data>
-  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>O aplicativo não conseguiu abrir o destino escolhido. Escolha novamente para tentar. Nenhum login de canal foi iniciado.</value></data>
+  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>O aplicativo não conseguiu abrir o destino escolhido. Escolha novamente para tentar.</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>Não foi possível abrir o destino escolhido</value></data>
   <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>Esta transferência de configuração foi interrompida, é incompatível, expirou ou já foi usada. Ela não pode ser repetida. Verifique o gateway salvo em Conexão e reabra explicitamente a configuração de IA para verificá-la. As ações anteriores não serão repetidas automaticamente.</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>O Gateway ou agente verificado mudou. Volte ao Gateway original e reabra a configuração da IA. Nenhuma outra conta foi aberta.</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>O Gateway verificado ou a página ainda não está pronto. Confira Connection e tente novamente explicitamente.</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Tentar novamente</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>Fechar</value></data>
-  <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>Este Gateway não ofereceu o canal escolhido. Veja os canais disponíveis ou atualize a lista após atualizar o Gateway.</value></data>
-  <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>Não foi possível confirmar a disponibilidade dos canais. Atualize para tentar novamente. Nenhum login ou configuração de canal foi iniciado.</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>Saiba mais sobre riscos e segurança</value></data>
   <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Configurar o OpenClaw</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>O Gateway conecta seu assistente de IA aos seus aplicativos e ferramentas. Escolha onde ele será executado. Você pode alterar isso depois.</value></data>
@@ -7762,6 +7366,18 @@ Escolha {1} para sair desta prévia sem iniciar a migração e continuar usando 
 
 Suas configurações, gateway, arquivos e modelos permanecem no mesmo local.</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>Sua configuração foi validada e a conclusão da migração foi registrada.
+
+1. Abra Aplicativos instalados.
+Remover: {0} (instalação para desktop)
+Manter: {1}, versão {2} (Microsoft Store)
+Mantenha todos os outros aplicativos instalados.
+
+2. Volte aqui e selecione Tentar novamente para verificar a remoção e finalizar.
+
+Suas configurações, gateway, arquivos e modelos permanecem no mesmo local.</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>Remova o aplicativo anterior</value>
   </data>
@@ -7824,6 +7440,17 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Migration2_InnoGranted" xml:space="preserve">
     <value>O consentimento para migração foi salvo. Instale e abra a versão da Store para continuar. Mantenha este aplicativo instalado até que a conclusão da migração seja confirmada.</value>
   </data>
+  <data name="Migration2_InnoRepairRequired" xml:space="preserve">
+    <value>Arquivos necessários da instalação estão ausentes ou são inválidos. Baixe o instalador completo do OpenClaw. Encerre o OpenClaw, execute o instalador sobre esta instalação com o mesmo usuário do Windows e reabra o aplicativo para tentar a migração novamente. Não desinstale o OpenClaw antes.
+
+O instalador repara os arquivos da instalação. A migração ainda precisa passar pelas verificações de compatibilidade do aplicativo da Store.</value>
+  </data>
+  <data name="Migration2_InnoSetupLinkFailed" xml:space="preserve">
+    <value>O Windows não conseguiu abrir o link de download do instalador. Copie este endereço para o navegador: {0}. Não desinstale o OpenClaw antes.</value>
+  </data>
+  <data name="Migration2_InnoDownloadSetup.Content" xml:space="preserve">
+    <value>Baixar instalador para reparar</value>
+  </data>
   <data name="Migration2_InnoFailed" xml:space="preserve">
     <value>O OpenClaw não conseguiu salvar o consentimento para migração ou abrir a página do aplicativo na Store. Consulte o log do aplicativo e tente novamente. Não desinstale este aplicativo.</value>
   </data>
@@ -7838,13 +7465,13 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Instalar um Gateway WSL local</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Verificando o suporte ao Gateway nativo...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>O suporte ao Gateway nativo está disponível neste dispositivo.</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Para usar o Gateway nativo, atualize seu dispositivo para uma versão do Windows compatível.
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>O Windows informa que a capacidade de sessão isolada exigida pelo Gateway nativo está indisponível. Uma versão mais recente do Windows não garante sua disponibilidade. Você pode instalar um Gateway WSL local ou conectar-se a um Gateway existente.
 
-O suporte ao Gateway nativo estará disponível em breve para todos os dispositivos. Até que esteja amplamente disponível, ingresse no Programa Windows Insider, selecione o canal Beta ou Experimental e escolha Windows 11, versão 26H1 em Opções avançadas durante a inscrição. Voltar ao Windows 11, versão 25H2/26H2 exige uma reinstalação limpa.
+Se precisar atualizar o Windows, você pode ingressar no Programa Windows Insider, selecionar o canal Beta ou Experimental e escolher Windows 11, versão 26H1 em Opções avançadas durante a inscrição. Voltar ao Windows 11, versão 25H2/26H2 exige uma reinstalação limpa.
 
-Após a inscrição, volte para Configurações &gt; Windows Update e verifique se há atualizações. Pode levar alguns minutos para a atualização aparecer. A disponibilidade do recurso pode variar conforme o dispositivo. Após a atualização, reabra esta página para verificar o suporte novamente.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Para usar o Gateway nativo, atualize seu dispositivo para uma versão do Windows compatível.</value></data>
-  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>estará disponível em breve para todos os dispositivos.</value></data>
+Após a inscrição, volte para Configurações &gt; Windows Update e verifique se há atualizações. Pode levar alguns minutos para a atualização aparecer. A disponibilidade do recurso pode variar conforme o dispositivo. Você pode reabrir esta página para verificar o suporte novamente.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>O Windows informa que a capacidade de sessão isolada exigida pelo Gateway nativo está indisponível.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableAlternatives" xml:space="preserve"><value>Você pode instalar um Gateway WSL local ou conectar-se a um Gateway existente.</value></data>
   <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Programa Windows Insider</value></data>
   <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta ou Experimental</value></data>
   <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11, versão 26H1</value></data>
@@ -7858,6 +7485,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Continue com o mesmo assistente Gateway usado para WSL, aqui no Companion. A configuração e a integridade são verificadas antes da conexão. Os Gateways WSL existentes e seu perfil OpenClaw padrão não são substituídos.</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Se o Gateway não estiver instalado, a configuração o instalará pela Microsoft Store usando WinGet e verificará o pacote antes de continuar automaticamente.</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>Instalando o Gateway pela Microsoft Store usando WinGet...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>Ainda instalando o Gateway pela Microsoft Store. Isso pode levar vários minutos ({0} min decorridos).</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet concluído. Verificando o registro do Gateway e seus aliases de execução antes de continuar...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>O Companion preparará seu Gateway e ajudará você a conectar sua IA.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Recuperação do Gateway</value></data>
@@ -7870,15 +7498,18 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Iniciar e verificar o Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Tentar configurar novamente</value></data>
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>Coletar diagnósticos do Gateway</value></data>
-  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>Ver log de configuração</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>Colete diagnósticos do Gateway para obter um ZIP com dados ocultados que você pode revisar ou compartilhar, ou abra um terminal dentro do Gateway isolado. Depois, escolha Tentar configurar novamente.</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>O Gateway não ficou pronto em {0} segundos. A primeira inicialização pode ser lenta. Colete diagnósticos do Gateway para ver o motivo e escolha Tentar configurar novamente. Para permitir uma inicialização mais longa, defina a variável de ambiente {1} com um número de segundos e reinicie o Companion.</value></data>
+  <data name="Onboarding_Native_RegistrationGuidance" xml:space="preserve"><value>O Windows não conseguiu registrar o pacote Gateway para o seu usuário do Windows. Instale o OpenClaw Gateway pela Microsoft Store ou execute {0} no PowerShell. Depois, escolha Tentar configurar novamente.</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>Coletando diagnósticos do Gateway com dados ocultados...</value></data>
   <data name="Onboarding_Native_DiagnosticsSaved" xml:space="preserve"><value>Diagnósticos do Gateway salvos em {0}.</value></data>
   <data name="Onboarding_Native_DiagnosticsNoPath" xml:space="preserve"><value>O pacote Gateway coletou os diagnósticos, mas não informou onde os salvou.</value></data>
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>Não foi possível coletar os diagnósticos do Gateway: {0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>Não foi possível abrir o terminal do Gateway: {0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Somente visualização. Nenhum pacote será instalado e nenhum Gateway será iniciado.</value></data>
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>Atividade detalhada</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>Abrir arquivo de log</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0} não foi concluído</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Esses recursos do Windows ficam disponíveis após o Modo Nó se conectar e emparelhar com o Gateway. As permissões do Windows e as aprovações de comandos continuam sendo aplicáveis.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Gateway nativo configurado</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. Você pode alterar essas escolhas nas configurações do Companion.</value></data>
@@ -7920,7 +7551,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
-  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
   <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
@@ -7931,11 +7561,9 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="WorkspaceShell_Notifications" xml:space="preserve"><value>Notifications</value></data>
   <data name="WorkspaceShell_More" xml:space="preserve"><value>More</value></data>
   <data name="WorkspaceShell_Connection" xml:space="preserve"><value>Connection</value></data>
-  <data name="WorkspaceShell_Channels" xml:space="preserve"><value>Channels</value></data>
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
   <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
-  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
@@ -8022,7 +7650,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
   <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
   <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
-  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
   <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
   <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
   <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>
@@ -8049,16 +7676,22 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
-  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Proprietário</value></data>
+  <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>Proprietário compartilhado</value></data>
+  <data name="WorkspaceShell_SharedOwnerNamedFormat" xml:space="preserve"><value>{0} · Proprietário compartilhado</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
+  <data name="WorkspaceShell_PagesCustomize.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Personalizar páginas</value></data>
   <data name="WorkspaceShell_MoreButton.Content" xml:space="preserve"><value>More</value></data>
   <data name="WorkspaceShell_Refresh.Content" xml:space="preserve"><value>Refresh</value></data>
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
   <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Notificações</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Abrir painel</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Abrir painel (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Avançar</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Avançar</value></data>
   <data name="WorkspaceShell_Back.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Back</value></data>
@@ -8264,4 +7897,65 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Esta pergunta está sendo resolvida. Atualize para verificar seu status.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Escolha uma resposta válida para cada pergunta.</value></data>
+  <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>Pesquisar no OpenClaw</value></data>
+  <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>Pesquisar no OpenClaw</value></data>
+  <data name="Search_Results" xml:space="preserve"><value>Resultados da pesquisa</value></data>
+  <data name="Search_Empty" xml:space="preserve"><value>Nenhum resultado correspondente.</value></data>
+  <data name="Search_Dashboard" xml:space="preserve"><value>Painel</value></data>
+  <data name="Search_Dashboard_Channels" xml:space="preserve"><value>Canais</value></data>
+  <data name="Search_NoCounterpart" xml:space="preserve"><value>Este resultado não tem equivalente no painel.</value></data>
+  <data name="SearchMore.Content" xml:space="preserve"><value>Mostrar mais</value></data>
+  <data name="SearchRetry.Content" xml:space="preserve"><value>Tentar novamente</value></data>
+  <data name="Search_Group_Chats" xml:space="preserve"><value>Conversas</value></data>
+  <data name="Search_Group_Messages" xml:space="preserve"><value>Nas mensagens</value></data>
+  <data name="Search_Group_Settings" xml:space="preserve"><value>Configurações</value></data>
+  <data name="Search_Group_Automations" xml:space="preserve"><value>Automações</value></data>
+  <data name="Search_Group_Skills" xml:space="preserve"><value>Habilidades</value></data>
+  <data name="Search_Group_Agents" xml:space="preserve"><value>Agentes</value></data>
+  <data name="Search_Group_Models" xml:space="preserve"><value>Modelos</value></data>
+  <data name="Search_Group_Dashboard" xml:space="preserve"><value>Painel</value></data>
+  <data name="Search_Status_Loading" xml:space="preserve"><value>{0}: pesquisando…</value></data>
+  <data name="Search_Status_Offline" xml:space="preserve"><value>{0}: conecte-se ao Gateway para pesquisar.</value></data>
+  <data name="Search_Status_Denied" xml:space="preserve"><value>{0}: é necessária permissão de leitura.</value></data>
+  <data name="Search_Status_TooLong" xml:space="preserve"><value>{0}: use no máximo 4096 caracteres.</value></data>
+  <data name="Search_Status_Unavailable" xml:space="preserve"><value>{0}: indisponível neste Gateway.</value></data>
+  <data name="Search_Status_Partial" xml:space="preserve"><value>{0}: os resultados podem estar incompletos. Refine sua pesquisa.</value></data>
+  <data name="Search_Status_Failed" xml:space="preserve"><value>{0}: a pesquisa falhou. Os outros resultados continuam disponíveis.</value></data>
+  <data name="Search_Dashboard_Approvals" xml:space="preserve"><value>Aprovações</value></data>
+  <data name="Search_Dashboard_Secrets" xml:space="preserve"><value>Segredos</value></data>
+  <data name="Search_Dashboard_Models" xml:space="preserve"><value>Provedores de modelos</value></data>
+  <data name="Search_Dashboard_Automation" xml:space="preserve"><value>Ativação e heartbeat</value></data>
+  <data name="Search_Dashboard_Mcp" xml:space="preserve"><value>Servidores MCP do Gateway</value></data>
+  <data name="Search_Dashboard_Memory" xml:space="preserve"><value>Memória</value></data>
+  <data name="Search_Dashboard_Security" xml:space="preserve"><value>Segurança do Gateway</value></data>
+  <data name="Search_Dashboard_Logs" xml:space="preserve"><value>Logs do Gateway</value></data>
+  <data name="Search_Dashboard_Systems" xml:space="preserve"><value>Sistemas</value></data>
+  <data name="Search_Dashboard_Dashboards" xml:space="preserve"><value>Painéis</value></data>
+  <data name="Search_Dashboard_Plugins" xml:space="preserve"><value>Plugins</value></data>
+  <data name="Search_Dashboard_Apps" xml:space="preserve"><value>Aplicativos</value></data>
+  <data name="Search_Dashboard_Meetings" xml:space="preserve"><value>Reuniões</value></data>
+  <data name="Search_Dashboard_Activity" xml:space="preserve"><value>Atividade do Gateway</value></data>
+  <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portais</value></data>
+  <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Árvores de trabalho</value></data>
+  <data name="Search_TargetUnavailable" xml:space="preserve"><value>O item solicitado não está mais disponível aqui.</value></data>
+  <data name="Search_Compatibility" xml:space="preserve"><value>Alguns destinos do painel não estão disponíveis para esta versão do Gateway.</value></data>
+  <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: escolha um assistente primeiro.</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>Remover item</value>
+  </data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Usar a voz da Gateway conectada</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>A leitura do chat e as respostas automáticas usam a voz configurada na Gateway. O texto é enviado à Gateway e ao provedor de voz. As chaves ficam na Gateway. A fala local do nó e do MCP não muda.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>Sem alternativa local automática. Se indisponível, desative esta opção para usar o provedor local.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>Parar</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>Gerando fala na Gateway…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Voz da Gateway: {0}.</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>Conecte uma Gateway nas configurações de conexão para usar sua voz.</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>Esta Gateway não anuncia os RPCs de voz necessários. Atualize a Gateway ou desative a voz da Gateway.</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>A voz da Gateway requer operator.write. Revise a aprovação deste dispositivo na Gateway. O Companion não altera permissões.</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>O texto está vazio ou excede o limite de 4096 caracteres do Companion. Escolha uma mensagem menor.</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>A Gateway retornou áudio vazio, inválido ou grande demais. Verifique a configuração de TTS. Nada foi reproduzido.</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>Este formato de áudio não é compatível. Configure a saída MP3 ou WAV na Gateway.</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>O tempo da fala da Gateway esgotou. A síntese pode ter terminado. Verifique a Gateway antes de tentar de novo. Não houve nova tentativa automática.</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>A fala da Gateway falhou. Verifique a configuração de voz e a cota do provedor. Não houve alternativa local nem nova tentativa automática.</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>O Windows não conseguiu reproduzir o áudio. Verifique o dispositivo de saída. Não houve nova tentativa automática.</value></data>
 </root>

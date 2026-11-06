@@ -14,7 +14,112 @@ Read-only placement discovery returns an empty project catalog and one synthetic
 local environment through `projects.list` and `environments.list`. It creates no
 project or host resources; `projects.add` is rejected as a write.
 
+The fixture also advertises read-only `sessions.search` over its synthetic
+message text and accepts the scoped metadata search fields on `sessions.list`.
+The main-search UI regressions exercise icon/shortcut opening and immediate
+reopening, shared Settings search, draft-preserving dismissal, read-only setting
+navigation and native conversation navigation from a message hit. Keyboard
+regressions also exercise Enter on Show more/Retry, immediate cross-shell
+reopening, absent Config sections and Dashboard-only skill results.
+Cross-surface search waits for the previous flyout's existing close owner to
+settle before opening the visible surface. A delayed destination reveal cannot
+take focus from a newer search generation; an ordinary Settings search still
+reveals its target while its original flyout closes. The immediate Enter/Ctrl+K
+journey has no added delay or retry. Focused
+cases cover a failed Config reveal followed by manual navigation to a section
+with the same field name, and session title/recency changes while result or
+input focus is active, including user-controlled result scroll. The
+disappearing-result case renames the focused conversation out of the query,
+checks input focus and the remaining selection, then repeats with no matches.
+Config detail cancellation is also exercised directly on the real page before
+its pending continuation, so a search reveal cannot retain the loading overlay.
+The search-navigation scenario adds optional schema fields without corresponding
+saved values and a read-only skill catalog. Read-response overrides model
+failures and long descriptions. Skills are explicitly labeled Dashboard
+destinations rather than retired native pages. The separately verified `/skills`
+route on released Gateway `2026.11.1` does not enable its other unverified
+Dashboard routes; unknown versions retain root fallback. No provider is contacted,
+no skill mutation is accepted, and config writes remain rejected. Keyboard
+journeys use the shared native SendInput helper, with the fixture opt-in,
+foreground ownership and released-modifier guards intact. Open-popup Axe scans
+cover empty results, matching results and source-status states, including a
+horizontal-clipping assertion. This proves the application boundary, not a real
+Gateway's indexing or Dashboard route compatibility.
+
+The search popup has no footer or visible source-status/compatibility messages.
+More/Retry stay beside the search input; UI Automation ItemStatus on that input
+retains accessible source and empty-result feedback without a message block.
+The long-description journey verifies that the complete last description can
+be scrolled into view without a footer consuming space or covering it.
+Keyboard expansion must focus and reveal the first newly added result without
+test-driven scrolling or a jump back to an old selected row. Expansion appends
+to the existing observable groups rather than replacing the native grouped view.
+Native page-name proof searches the old Agent Events alias and Config,
+checks plain destination names, captures the actual symbol icons and navigates
+to the corresponding native pages without sending chat or config writes.
+
 ## Build and explore
+
+### Assistant continuity capture
+
+The opt-in UI case
+`SelectedAssistantAndConversationSurviveTransientRosterLossButNotAuthoritativeRemoval`
+selects an assistant and conversation through normal UI Automation. It closes
+only fixture-owned connections, holds the next connection's `agents.list`
+responses, and then releases the unchanged roster. It then sends one message
+through the ordinary composer and requires the fixture Gateway to record a
+successful `chat.send` for the restored conversation. A second reconnect returns
+an authoritative roster without that assistant and requires a fresh selection.
+`FixtureGatewayServer.SetAgentsRoster`, `HoldAgentsList`, and `ReleaseAgentsList`
+control only this synthetic producer; authentication and the production client
+are unchanged. With `-Screenshots`, the case saves five owned-HWND PrintWindow
+PNGs and adjacent UIA assertion metadata in the fixture artifact directory.
+Without requested screenshots, the same UIA selection and protocol assertions
+still run, but no pixel proof is claimed. Requested capture remains strict:
+blank or unavailable native pixels fail instead of producing a fallback image.
+
+Use the opt-in UI runner described below with this exact method-name filter.
+These captures show actual Workspace controls with synthetic Gateway data, not
+installed-app or live-provider behavior.
+
+`UnsupportedAgentListing_PreservesLegacySessionsAndDefaultCreation` exercises
+a different compatibility path. After a fixture-owned reconnect, the actual
+client receives `unknown method: agents.list` while `sessions.list` still works.
+Workspace must show the legacy sessions and enable new-conversation creation
+with the Gateway's default target. The assistant selector remains unavailable,
+because no authoritative agent roster was delivered. A pending or failed listing
+is not treated as an explicitly unsupported method.
+
+The disconnected assistant menu still exposes its existing connection guidance.
+This does not authorize session creation or treat a pending connected roster as
+available.
+
+`VerifiedSetupBindingClearsBeforeNewConversationResponse` starts with a real
+production handoff receipt and a synthetic model-verification response. It
+holds the fixture's session-creation response and checks that the prior bound
+setup warning is already cleared, then releases creation and observes the
+ordinary selected conversation. Existing warning recovery coverage checks the
+navigation path; the shutdown guard has a mounted WindowManager case. These
+are behavioral handoff checks, not source-text ordering assertions.
+
+Channels management lives in the Gateway Dashboard, and the native Channels
+page no longer exists. Four cases in `GatewayFixtureDashboardUiTests` keep its
+entry points honest through the real app: a legacy receipt whose destination is
+Channels, `app.navigate channels` and the owner menu's **Pair device** item.
+The shared-search case also checks the Dashboard badge and opens Channels from
+both Workspace and Settings, using Enter and Alt+Enter respectively. It checks
+that local MCP discovery and `app.search` return the same Dashboard destination.
+A valid receipt performs one `openclaw.setup.verify` and then one Dashboard
+launch for `/channels` on the fixture Gateway's port. A receipt whose persisted
+device identity is rotated while verification is held is rejected with the
+"Gateway or agent changed" dialog (no Retry), consumes the receipt and never
+launches. A simulated browser failure shows the matching Retry dialog, keeps a
+receipt for explicit retry, and Retry launches and consumes it. The launch
+evidence is the redacted line described in the isolation contract, because
+fixture mode does not start a browser or serve the Dashboard page.
+Replacement of the active Gateway and the final dispatch authorizer are covered
+at launcher level by `SetupDashboardDispatchRequiresTheOriginalGatewayAndIdentity`,
+not by a full-app case.
 
 Build the current app first, then pass its executable explicitly. An installed
 app is never discovered or selected implicitly.
@@ -73,6 +178,11 @@ test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
 orders work; this is deliberately not sequential packet playback.
 
+MCP startup retries transient sharing and lock violations when reading the
+published token file, within the existing startup deadline. Missing-file,
+permission and other I/O failures are not hidden.
+The token value is never included in readiness diagnostics.
+
 ## Run the application smoke
 
 ```powershell
@@ -90,10 +200,59 @@ tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
+On an authorized, exclusive interactive desktop, add `-KeyboardProof` to run the
+separate foreground keyboard fixture lane as well. It enables native input only
+in that child test process and rejects failed, skipped, and zero-test runs. The
+default fixture lane excludes those keyboard-dependent cases; it does not claim
+their proof.
+
+### Saved Gateway ownership and released profiles
+
+`GatewayManagement_UsesSavedOwnershipWithoutSetupState` renders native-only,
+native-plus-WSL, and WSL-only saved profiles with no `setup-state.json`. These
+cases use credential-free, MCP-only profiles: their package/distro markers are
+synthetic and never authorize a connection, native package, or WSL process.
+The real Settings page must show WSL removal only for the WSL cases. Onboarding
+remains visible only when WSL is active, not when the selected Gateway is native.
+With `-Screenshots`, the cases retain complete Settings captures and the actual
+Shell tooltip. The tooltip capture first resolves icon ID 1 against this app's
+owned native window, then hovers that icon; an app-name match alone is not proof
+of ownership. Unavailable or blank native capture fails rather than substituting
+a screenshot or computed tooltip.
+
+For profile compatibility on an authorized disposable desktop, supply a stable
+portable app explicitly. Both builds must advertise fixture isolation version 1;
+an older unsupported binary is rejected before launch. This command selects only
+the released-profile case, not the ordinary UI smoke:
+
+```powershell
+.\scripts\test-gateway-fixture.ps1 -AppPath $app -StableAppPath '<extracted-stable-app>\OpenClaw.Tray.WinUI.exe'
+```
+
+`ReleasedProfile_PreservesGatewayRecordsIdentitiesAndSettings` starts that released
+app against the synthetic Gateway with native and WSL records saved but inactive.
+The test requires the released app to persist its successful connection, generate
+its operator identity, and save changed notification preferences. It copies
+that released-format identity into the inactive synthetic records, then stops only
+the fixture-owned process and opens the same profile with the candidate. Existing
+record fields, active selection, identity hashes, and preferences must survive.
+The normal connection timestamp may advance. This proves profile compatibility,
+not installer/update execution, Store migration, real native/WSL lifecycle, or
+production credentials.
+
+The hosted UI lane separately downloads the latest stable x64 portable archive
+and verifies its published SHA256 before this case runs. `stable-release.json`
+records the archive and candidate checkout identity; `stable-run.json`,
+`run.json`, `profile-compatibility.json`, and `fixture-released-profile.trx`
+retain the two executable identities and actual result in `test-results-ui`.
+No private keys or raw profile files are published. A missing baseline, digest
+mismatch, failed case, or zero/skipped selection is not compatibility proof.
+
 The ordinary `windows-latest` CI UI job runs this script against its explicitly
 built Debug x64 app after installing the Windows App Runtime selected by
 `Directory.Build.props`. Its dedicated step enables the fixture opt-in only for
-the child test processes and selects `Category=GatewayFixture`, including the
+the child test processes and selects `Category=GatewayFixture` without keyboard-only
+cases, including the
 context-usage and chat-run correlation scenarios. The general UI test step
 excludes that category so each scenario runs once. TRX, synthetic request logs,
 run receipts and owned-window screenshots are uploaded in `test-results-ui`
@@ -141,6 +300,9 @@ interactive question lifecycles remain owned by the explicit interactive scenari
 `GatewayFixtureStartupTests` exercise parent and foreign browser-control startup
 without launching the app. Cancellation and readiness failures must reap the
 owned child, remove its readiness file, and release both listener ports.
+They share the nonparallel `Gateway fixture environment` collection so another
+test cannot allocate a just-released ephemeral port before the cleanup rebind
+assertion. Occupancy, child-exit, readiness-file and rebind checks remain required.
 The Shared browser-proxy regression runs the production client and a default-handler
 control in separate test-host processes with explicit proxy settings. It does not
 change the test runner's environment or cached default proxy.
@@ -388,10 +550,30 @@ policy from considering the installed default WSL distro. Sensitive node
 capabilities, automatic repair, hotkeys, notifications and voice are disabled
 in the synthetic settings. Telemetry export remains unconfigured.
 
+Opening the Gateway Dashboard is also a host side effect. A launch that goes
+through App's `GatewayDashboardLauncher` (the Dashboard buttons and menu items,
+setup receipts and `app.navigate`) ends in `DashboardBrowser`. Outside fixture
+mode it hands the exact URL to Windows. In fixture mode it never reaches the
+user's default browser: it logs `Gateway fixture mode: suppressed Dashboard
+browser launch:` plus the redacted target (`http://<host>:PORT/channels`, never
+the credential fragment) and reports success. Creating
+`dashboard-browser-failure.once` in the run's profile directory arms one
+simulated browser failure: the next launch deletes the file, logs `simulated
+Dashboard browser failure` and returns the failure Windows would. An invalid
+fixture context fails closed instead of reaching the browser. Other places that
+call Windows directly, such as the Connection page's saved-gateway row action,
+are outside this guard and must not be invoked from a fixture test.
+
 The fake binds a numeric IPv4 loopback listener to an OS-assigned port. The
 launcher never takes over a standard Gateway/MCP port or terminates a process
 by name. MCP bind collisions have a bounded retry limited to the owned child.
 Cleanup refuses reparse points and only removes the run's owned data.
+After the owned app exits, profile removal waits up to 10 seconds for Windows
+sharing or lock violations to clear. Set
+`OPENCLAW_GATEWAY_FIXTURE_CLEANUP_TIMEOUT_SECONDS` to a positive finite number
+to override that cleanup deadline. A persistent lock remains an explicit
+timeout with the original I/O error; other cleanup errors propagate immediately.
+This does not retry the test or relax its assertions.
 
 This remains a desktop application, not a general OS sandbox. Only the
 documented browse/preferences and inert interactive-chat workflows are supported on a developer machine.
@@ -416,6 +598,24 @@ the unexpected-request assertions still surface them as smoke failures.
 Non-interactive scenario responder exceptions still propagate through server
 cleanup, preserving negative-test guards. Only interactive runtime faults are
 translated into `INTERNAL` responses and recorded as unexpected requests.
+
+The server also answers one plain HTTP request: the authenticated scenario
+profile's photo at `GET /api/users/<profile id>/avatar`, which the Workspace
+footer sends after `users.self` returns a profile. The browse scenario serves
+`fixture-owner`; owner-identity UI cases can select another synthetic profile
+with `CreateBrowseWithOwnerProfile`, and the HTTP route serves that scenario's
+authenticated profile ID. A request with the shared
+Gateway token (or the issued device token once the server accepts one) for the
+scenario profile receives a small solid-colour PNG. A missing or wrong
+credential receives 401 and an unknown profile receives 404. Each request is recorded as
+`http:users.avatar` with only its outcome, never the credential, the profile id
+or the query string. The 401 and 404 outcomes are unexpected requests, so a
+broken photo path fails the smoke instead of quietly falling back to initials.
+Any other request that is not a WebSocket upgrade is still rejected as an unexpected `<upgrade>`.
+`OwnerFooterUsesAuthenticatedProfileAndLiveConnectionStatus` waits for the served
+photo. With `-Screenshots` it also counts footer pixels in that photo's colour in
+the captured Workspace window, so the capture shows the image was decoded and
+painted, not only requested.
 
 Add new behavior at the server boundary. Do not introduce fixture providers,
 demo branches in pages, bypasses in the connection manager, or a second chat

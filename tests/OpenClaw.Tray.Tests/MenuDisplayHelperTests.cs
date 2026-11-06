@@ -24,54 +24,6 @@ public class MenuDisplayHelperTests
 
     #endregion
 
-    #region GetChannelStatusIcon
-
-    [Theory]
-    [InlineData("ok", "🟢")]
-    [InlineData("connected", "🟢")]
-    [InlineData("running", "🟢")]
-    [InlineData("active", "🟢")]
-    [InlineData("ready", "🟢")]
-    [InlineData("stopped", "🟡")]
-    [InlineData("idle", "🟡")]
-    [InlineData("paused", "🟡")]
-    [InlineData("configured", "🟡")]
-    [InlineData("pending", "🟡")]
-    [InlineData("connecting", "🟡")]
-    [InlineData("reconnecting", "🟡")]
-    [InlineData("error", "🔴")]
-    [InlineData("disconnected", "🔴")]
-    [InlineData("failed", "🔴")]
-    public void GetChannelStatusIcon_KnownStatuses(string status, string expected)
-    {
-        Assert.Equal(expected, MenuDisplayHelper.GetChannelStatusIcon(status));
-    }
-
-    [Theory]
-    [InlineData("OK", "🟢")]
-    [InlineData("Connected", "🟢")]
-    [InlineData("RUNNING", "🟢")]
-    [InlineData("Error", "🔴")]
-    [InlineData("Connecting", "🟡")]
-    [InlineData("RECONNECTING", "🟡")]
-    public void GetChannelStatusIcon_CaseInsensitive(string status, string expected)
-    {
-        Assert.Equal(expected, MenuDisplayHelper.GetChannelStatusIcon(status));
-    }
-
-    [Theory]
-    [InlineData(null, "⚪")]
-    [InlineData("", "⚪")]
-    [InlineData("unknown", "🔴")]
-    [InlineData("something-new", "🔴")]
-    [InlineData("timeout", "🔴")]
-    public void GetChannelStatusIcon_UnknownOrEmpty(string? status, string expected)
-    {
-        Assert.Equal(expected, MenuDisplayHelper.GetChannelStatusIcon(status));
-    }
-
-    #endregion
-
     #region TruncateText
 
     [Fact]
