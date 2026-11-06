@@ -1101,6 +1101,55 @@ public class OpenClawGatewayClientTests
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SearchSessions_CallerCancellationCleansItsRequestWithoutClosingTheConnection(bool messages)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("search-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        using var cancellation = new CancellationTokenSource();
+        var search = client.SearchSessionsAsync("private-query", messages, cancellation.Token);
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        using (var json = JsonDocument.Parse(request))
+        {
+            Assert.Equal(messages ? "sessions.search" : "sessions.list", json.RootElement.GetProperty("method").GetString());
+            var parameters = json.RootElement.GetProperty("params");
+            Assert.Equal("private-query", parameters.GetProperty(messages ? "query" : "search").GetString());
+            if (messages)
+            {
+                Assert.Equal(25, parameters.GetProperty("limit").GetInt32());
+                Assert.False(parameters.GetProperty("scope").GetProperty("includeGlobal").GetBoolean());
+                Assert.False(parameters.TryGetProperty("sessionKeys", out _));
+                Assert.False(parameters.TryGetProperty("agentId", out _));
+            }
+        }
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => search);
+        Assert.Equal(0, helper.GetPendingRequestCount());
+        var rosterUpdates = 0;
+        client.SessionsUpdated += (_, _) => Interlocked.Increment(ref rosterUpdates);
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res", id = ReadRequestId(request), ok = true,
+            payload = new { sessions = new[] { new { key = "agent:main:stale-search", label = "Stale result" } } }
+        }));
+        var probe = client.SendWizardRequestAsync("health");
+        var next = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res", id = ReadRequestId(next), ok = true, payload = new { ok = true }
+        }));
+        Assert.True((await probe).GetProperty("ok").GetBoolean());
+        Assert.Equal(0, rosterUpdates);
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
     [Fact]
     public async Task SendWizardRequestAsync_GatewayError_PropagatesUnchangedAndCleansTracking()
     {

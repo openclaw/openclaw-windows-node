@@ -10,6 +10,22 @@ namespace OpenClaw.Tray.Tests;
 public sealed class FileWorkerManifestTests
 {
     [Theory]
+    [InlineData("win-x64")]
+    [InlineData("win-arm64")]
+    public async Task ReleaseManifestRejectsUnsignedWorkerBeforeWritingDigests(string rid)
+    {
+        using var directory = new TempDirectory();
+        File.WriteAllBytes(directory.Combine("OpenClaw.FileWorker.exe"), Image());
+        File.WriteAllBytes(directory.Combine("OpenClaw.FileWorker.dll"), Image());
+        File.WriteAllBytes(directory.Combine("coreclr.dll"), Image());
+        File.WriteAllText(directory.Combine("OpenClaw.FileWorker.runtimeconfig.json"), "{}");
+        var (exitCode, diagnostics) = await RunManifest(directory.Path, rid, requireSigned: true);
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("before manifest generation", diagnostics);
+        Assert.False(File.Exists(directory.Combine("payload-manifest.json")));
+    }
+
+    [Theory]
     [InlineData(false, null)]
     [InlineData(false, "VCRUNTIME140.dll")]
     [InlineData(true, "MSVCP140.dll")]
@@ -71,7 +87,7 @@ public sealed class FileWorkerManifestTests
         Assert.False(File.Exists(directory.Combine("OpenClaw.FileWorker.pdb")));
     }
 
-    private static async Task<(int ExitCode, string Diagnostics)> RunManifest(string directory, string rid)
+    private static async Task<(int ExitCode, string Diagnostics)> RunManifest(string directory, string rid, bool requireSigned = false)
     {
         var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
         {
@@ -83,6 +99,7 @@ public sealed class FileWorkerManifestTests
             Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "scripts", "Write-FileWorkerManifest.ps1"),
             "-PayloadDirectory", directory, "-RuntimeIdentifier", rid, "-ProductVersion", "fixture"
         }) start.ArgumentList.Add(argument);
+        if (requireSigned) start.ArgumentList.Add("-RequireSignedWorker");
         start.Environment.Remove("PSModulePath");
         using var process = Process.Start(start)!;
         var output = process.StandardOutput.ReadToEndAsync();

@@ -1140,6 +1140,11 @@ public class LocalizationValidationTests
                         or "HubWindow_NavigationViewItem_145.Content"
                         or "WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
+                    "Search_Dashboard" or "Search_Group_Dashboard" or "Search_Dashboard_Apps" or
+                        "Search_Dashboard_Dashboards" or "Search_Group_Chats" => ["nl-nl"],
+                    "Search_Dashboard_Plugins" => ["pt-br"],
+                    "Search_Dashboard_Secrets" => ["fr-fr"],
+                    "Search_Group_Agents" => ["fr-fr", "nl-nl"],
                     _ => [],
                 };
                 if (naturalLoanwordLocales.Length > 0 &&

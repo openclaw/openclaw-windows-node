@@ -25,7 +25,7 @@ public sealed class NodeSandboxPolicyStore
     private readonly object _gate = new();
     private NodeSandboxPolicy _current;
     private readonly Func<SettingsData>? _legacyProvider;
-    private readonly Queue<Action> _pending = new();
+    private readonly Queue<Func<Task>> _pending = new();
     private bool _dispatching;
 
     public NodeSandboxPolicyStore(SettingsData initial) => _current = new(0, initial);
@@ -76,14 +76,17 @@ public sealed class NodeSandboxPolicyStore
         Persist(settings, () => { });
     }
 
-    internal Task<T> Submit<T>(NodeSandboxPolicy prepared, Func<Task<T>> launch, CancellationToken stop)
+    internal Task<T> Submit<T>(NodeSandboxPolicy prepared, Func<Task<T>> launch, CancellationToken stop,
+        Func<ValueTask>? revalidate = null)
     {
         RefreshLegacyProvider();
         var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Enqueue(() =>
+        Enqueue(async () =>
         {
             try
             {
+                stop.ThrowIfCancellationRequested();
+                if (revalidate is not null) await revalidate().ConfigureAwait(false);
                 stop.ThrowIfCancellationRequested();
                 lock (_gate)
                     if (!ReferenceEquals(prepared, _current))
@@ -108,6 +111,9 @@ public sealed class NodeSandboxPolicyStore
     }
 
     private void Enqueue(Action action)
+        => Enqueue(() => { action(); return Task.CompletedTask; });
+
+    private void Enqueue(Func<Task> action)
     {
         lock (_gate)
         {
@@ -115,14 +121,14 @@ public sealed class NodeSandboxPolicyStore
             if (_dispatching) return;
             _dispatching = true;
         }
-        _ = Task.Factory.StartNew(Dispatch, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        _ = Task.Factory.StartNew(DispatchAsync, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
     }
 
-    private void Dispatch()
+    private async Task DispatchAsync()
     {
         while (true)
         {
-            Action next;
+            Func<Task> next;
             lock (_gate)
             {
                 if (!_pending.TryDequeue(out next!))
@@ -131,7 +137,7 @@ public sealed class NodeSandboxPolicyStore
                     return;
                 }
             }
-            next();
+            await next().ConfigureAwait(false);
         }
     }
 }

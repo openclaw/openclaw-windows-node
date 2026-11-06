@@ -13,7 +13,7 @@ using InstalledFileWorkerResolver = CacheResolver::OpenClaw.Shared.FileTransfer.
 namespace OpenClaw.FileWorker.Tests;
 
 [SupportedOSPlatform("windows")]
-public sealed class WorkerCacheProcessTests
+public sealed class WorkerCacheProcessTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     [Fact]
     public async Task RealAppHostMappedWithoutResolverPinsVetoesEvictionUntilWorkerExits()
@@ -58,8 +58,9 @@ public sealed class WorkerCacheProcessTests
             File.WriteAllText(Path.Combine(string.IsNullOrWhiteSpace(evidence) ? root : evidence, "worker-cache-process-" + worker.Id + ".json"),
                 JsonSerializer.Serialize(new { Pid = worker.Id, StartTime = started.ToUniversalTime(), Executable = image,
                     Arguments = new[] { "--stdio" }, WorkingDirectory = root, Ports = Array.Empty<int>(),
-                    Data = start.Environment["OPENCLAW_TRAY_DATA_DIR"], AppData = start.Environment["OPENCLAW_TRAY_APPDATA_DIR"],
-                    LocalAppData = start.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"] }));
+                    Data = start.Environment.TryGetValue("OPENCLAW_TRAY_DATA_DIR", out var dataRoot) ? dataRoot : null,
+                    AppData = start.Environment.TryGetValue("OPENCLAW_TRAY_APPDATA_DIR", out var appDataRoot) ? appDataRoot : null,
+                    LocalAppData = start.Environment.TryGetValue("OPENCLAW_TRAY_LOCALAPPDATA_DIR", out var localDataRoot) ? localDataRoot : null }));
             FileWorkerProtocol.WriteJson(worker.StandardInput.BaseStream, FilePacketKind.Request,
                 new FileWorkerRequest(1, admission, new(FileOperation.Fetch, data, Binary: true,
                     ExpectedBinding: binding, ExpectedCanonicalPath: data)));
@@ -90,6 +91,11 @@ public sealed class WorkerCacheProcessTests
             using var admitted = next.Resolve(cache);
             Assert.False(Directory.Exists(entry));
             Assert.Equal(8, Directory.GetDirectories(cache).Length);
+        }
+        catch (Exception ex)
+        {
+            output.WriteLine(ex.ToString());
+            throw;
         }
         finally
         {

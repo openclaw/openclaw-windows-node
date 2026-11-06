@@ -119,6 +119,12 @@ file commands and preflight. Explicit binary/create execution requires a channel
    Timeout (at most ten minutes), token replacement, profile/server teardown also
    cancel channels. Sandbox settings changes do not cancel admitted work.
 
+The HTTP server snapshots the bearer and file-channel epoch as one immutable
+authentication generation. Rotation first invalidates existing channels, then
+publishes the replacement generation. Requests holding an older snapshot cannot
+open or attach channels in the new generation, including requests concurrent
+with rotation.
+
 Frames match upstream `82df040c9c584fce0decbac9ebf260ec134e04c4`:
 `{v:1,kind:"ready"}` or
 `{v:1,kind:"data",message:0,index:0,last:true,data:"canonical-padded-base64"}`.

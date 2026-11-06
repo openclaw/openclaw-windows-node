@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory)][string]$PayloadDirectory,
     [Parameter(Mandatory)][ValidateSet('win-x64', 'win-arm64')][string]$RuntimeIdentifier,
-    [Parameter(Mandatory)][string]$ProductVersion
+    [Parameter(Mandatory)][string]$ProductVersion,
+    [switch]$RequireSignedWorker
 )
 $ErrorActionPreference = 'Stop'
 
@@ -74,6 +75,17 @@ function Assert-NoExternalVcRuntimeImport([string]$Path) {
 }
 
 $directory = [IO.Path]::GetFullPath($PayloadDirectory)
+if ($RequireSignedWorker) {
+    foreach ($name in @('OpenClaw.FileWorker.exe', 'OpenClaw.FileWorker.dll')) {
+        $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $directory $name)
+        if ($signature.Status -ne 'Valid' -or
+            -not [string]::Equals($signature.SignerCertificate.Subject,
+                'CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US',
+                [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Fixed worker must be validly signed by the OpenClaw release signer before manifest generation: $name."
+        }
+    }
+}
 if (Get-ChildItem -LiteralPath $directory -Directory) {
     throw 'The fixed file worker must be a flat self-contained payload.'
 }

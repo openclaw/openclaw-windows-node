@@ -153,6 +153,50 @@ public class McpFileTransportTests
     }
 
     [Fact]
+    public async Task RequestDuringBearerRotationCannotAcquireTheReplacementEpoch()
+    {
+        var bodyRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var rotating = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseRotation = new ManualResetEventSlim();
+        var bridge = new McpToolBridge(() => [new ResultCapability("file.fetch", "must not run")]);
+        var open = new { v = 1, command = "file.fetch", requestId = "old", timeoutMs = 30000 };
+        var opened = JsonSerializer.SerializeToElement(bridge.FileChannels.Control("openclaw/files/open",
+            JsonSerializer.SerializeToElement(open), bridge.FileChannels.Epoch));
+        var lease = bridge.FileChannels.Attach(
+            JsonSerializer.SerializeToElement(new { v = 1, lease = opened.GetProperty("lease").GetString() }),
+            "file.fetch", McpToolBridge.GetRequestKey(JsonSerializer.SerializeToElement("old")), bridge.FileChannels.Epoch);
+        using var registration = lease.Token.Register(() =>
+        {
+            rotating.SetResult();
+            Assert.True(releaseRotation.Wait(TimeSpan.FromSeconds(10)));
+        });
+        await using var fixture = new Server(new ResultCapability("file.fetch", "must not run"), bridge: bridge,
+            bodyReader: async (request, _, ct) =>
+            {
+                bodyRead.TrySetResult();
+                using var reader = new StreamReader(request.InputStream);
+                return await reader.ReadToEndAsync(ct);
+            });
+        var rotation = Task.Run(() => fixture.HttpServer.UpdateAuthToken("replacement"));
+        Task<JsonElement>? stale = null;
+        try
+        {
+            await rotating.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            stale = fixture.Call("openclaw/files/open", open);
+            await bodyRead.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            releaseRotation.Set();
+            await rotation;
+        }
+        Assert.True((await stale!).GetProperty("result").GetProperty("isError").GetBoolean());
+        fixture.Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "replacement");
+        var current = await fixture.Call("openclaw/files/open", open);
+        Assert.True(current.GetProperty("result").TryGetProperty("lease", out _));
+    }
+
+    [Fact]
     public async Task FullSizeUnaryRoundTripsPlusHeavyBase64ButNormalBodyLimitStaysSmall()
     {
         var bytes = Enumerable.Repeat((byte)0xfb, 16 * 1024 * 1024).ToArray();
@@ -254,14 +298,16 @@ public class McpFileTransportTests
     {
         public McpHttpServer HttpServer { get; }
         public HttpClient Http { get; }
-        public Server(INodeCapability capability, int handlers = 16)
+        public Server(INodeCapability capability, int handlers = 16, McpToolBridge? bridge = null,
+            Func<HttpListenerRequest, long, CancellationToken, Task<string>>? bodyReader = null)
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             listener.Stop();
-            HttpServer = new McpHttpServer(new McpToolBridge(() => [capability]), port, NullLogger.Instance, "fixture-token",
-                new McpHttpServerOptions(handlers, TimeSpan.FromMilliseconds(50), TimeSpan.FromMinutes(6), TimeSpan.FromSeconds(5)));
+            HttpServer = new McpHttpServer(bridge ?? new McpToolBridge(() => [capability]), port, NullLogger.Instance, "fixture-token",
+                new McpHttpServerOptions(handlers, TimeSpan.FromMilliseconds(50), TimeSpan.FromMinutes(6), TimeSpan.FromSeconds(5),
+                    requestBodyReader: bodyReader));
             HttpServer.Start();
             Http = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { BaseAddress = new Uri(HttpServer.Endpoint), Timeout = TimeSpan.FromSeconds(30) };
             Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "fixture-token");

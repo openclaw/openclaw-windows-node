@@ -8029,6 +8029,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
   <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Proprietário</value></data>
   <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>Proprietário compartilhado</value></data>
+  <data name="WorkspaceShell_SharedOwnerNamedFormat" xml:space="preserve"><value>{0} · Proprietário compartilhado</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
@@ -8247,6 +8248,48 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Esta pergunta está sendo resolvida. Atualize para verificar seu status.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Escolha uma resposta válida para cada pergunta.</value></data>
+  <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>Pesquisar no OpenClaw</value></data>
+  <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>Pesquisar no OpenClaw</value></data>
+  <data name="Search_Results" xml:space="preserve"><value>Resultados da pesquisa</value></data>
+  <data name="Search_Empty" xml:space="preserve"><value>Nenhum resultado correspondente.</value></data>
+  <data name="Search_Dashboard" xml:space="preserve"><value>Painel</value></data>
+  <data name="Search_NoCounterpart" xml:space="preserve"><value>Este resultado não tem equivalente no painel.</value></data>
+  <data name="SearchMore.Content" xml:space="preserve"><value>Mostrar mais</value></data>
+  <data name="SearchRetry.Content" xml:space="preserve"><value>Tentar novamente</value></data>
+  <data name="Search_Group_Chats" xml:space="preserve"><value>Conversas</value></data>
+  <data name="Search_Group_Messages" xml:space="preserve"><value>Nas mensagens</value></data>
+  <data name="Search_Group_Settings" xml:space="preserve"><value>Configurações</value></data>
+  <data name="Search_Group_Automations" xml:space="preserve"><value>Automações</value></data>
+  <data name="Search_Group_Skills" xml:space="preserve"><value>Habilidades</value></data>
+  <data name="Search_Group_Agents" xml:space="preserve"><value>Agentes</value></data>
+  <data name="Search_Group_Models" xml:space="preserve"><value>Modelos</value></data>
+  <data name="Search_Group_Dashboard" xml:space="preserve"><value>Painel</value></data>
+  <data name="Search_Status_Loading" xml:space="preserve"><value>{0}: pesquisando…</value></data>
+  <data name="Search_Status_Offline" xml:space="preserve"><value>{0}: conecte-se ao Gateway para pesquisar.</value></data>
+  <data name="Search_Status_Denied" xml:space="preserve"><value>{0}: é necessária permissão de leitura.</value></data>
+  <data name="Search_Status_TooLong" xml:space="preserve"><value>{0}: use no máximo 4096 caracteres.</value></data>
+  <data name="Search_Status_Unavailable" xml:space="preserve"><value>{0}: indisponível neste Gateway.</value></data>
+  <data name="Search_Status_Partial" xml:space="preserve"><value>{0}: os resultados podem estar incompletos. Refine sua pesquisa.</value></data>
+  <data name="Search_Status_Failed" xml:space="preserve"><value>{0}: a pesquisa falhou. Os outros resultados continuam disponíveis.</value></data>
+  <data name="Search_Dashboard_Approvals" xml:space="preserve"><value>Aprovações</value></data>
+  <data name="Search_Dashboard_Secrets" xml:space="preserve"><value>Segredos</value></data>
+  <data name="Search_Dashboard_Models" xml:space="preserve"><value>Provedores de modelos</value></data>
+  <data name="Search_Dashboard_Automation" xml:space="preserve"><value>Ativação e heartbeat</value></data>
+  <data name="Search_Dashboard_Mcp" xml:space="preserve"><value>Servidores MCP do Gateway</value></data>
+  <data name="Search_Dashboard_Memory" xml:space="preserve"><value>Memória</value></data>
+  <data name="Search_Dashboard_Security" xml:space="preserve"><value>Segurança do Gateway</value></data>
+  <data name="Search_Dashboard_Logs" xml:space="preserve"><value>Logs do Gateway</value></data>
+  <data name="Search_Dashboard_Systems" xml:space="preserve"><value>Sistemas</value></data>
+  <data name="Search_Dashboard_Dashboards" xml:space="preserve"><value>Painéis</value></data>
+  <data name="Search_Dashboard_Plugins" xml:space="preserve"><value>Plugins</value></data>
+  <data name="Search_Dashboard_Apps" xml:space="preserve"><value>Aplicativos</value></data>
+  <data name="Search_Dashboard_Meetings" xml:space="preserve"><value>Reuniões</value></data>
+  <data name="Search_Dashboard_Activity" xml:space="preserve"><value>Atividade do Gateway</value></data>
+  <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portais</value></data>
+  <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Árvores de trabalho</value></data>
+  <data name="Search_TargetUnavailable" xml:space="preserve"><value>O item solicitado não está mais disponível aqui.</value></data>
+  <data name="Search_Compatibility" xml:space="preserve"><value>Alguns destinos do painel não estão disponíveis para esta versão do Gateway.</value></data>
+  <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: escolha um assistente primeiro.</value></data>
   <data name="SandboxPage_SharedFilePolicy.Text" xml:space="preserve"><value>As ações de arquivo e system.run usam as mesmas configurações salvas do Sandbox. As alterações se aplicam a novas operações; operações em andamento mantêm as configurações originais. Em versões do Windows sem suporte, nenhuma delas é isolada.</value></data>
   <data name="SandboxPage_UploadStorage.Header" xml:space="preserve"><value>Local de armazenamento de uploads</value></data>
   <data name="SandboxPage_UploadStorageHelp.Text" xml:space="preserve"><value>Escolha uma pasta pai para OpenClaw-upload-staging. Escolher um local não concede acesso. Quando o Sandbox estiver ativo, conceda acesso de leitura e gravação abaixo. Os uploads são mantidos por 24 horas, com limite de 64 pastas ou 256 MiB. Remover o acesso pode bloquear a limpeza.</value></data>

@@ -627,6 +627,25 @@ modify, resubmit, or claim acceptance of the package already in Microsoft Store.
 
 ## Release channel policy
 
+### Fixed file-worker signing
+
+The `sign-cleanup-host` job also publishes the x64 and ARM64 fixed file workers
+and signs only their first-party EXE/DLL files on the x64 signing runner. It
+verifies their release signer before generating each payload manifest.
+The portable/Inno and MSIX build jobs download those complete signed payloads
+and set `OpenClawSignedFileWorkerPath` to the matching RID directory.
+`RequireSignedFileWorker=true` rejects missing or unsigned input before
+Companion embeds its manifest. Ordinary non-release builds still publish a
+local unsigned worker.
+
+Do not sign or republish the worker after manifest generation: either changes
+the bytes checked by Companion's embedded digests. Final release signing covers
+the app binaries separately and verifies the already-signed worker in its
+manifest-addressed slot. Signed-package and native runtime proof remain separate
+release obligations.
+
+### Tag channels
+
 Stable, stable-correction, and alpha tags use the same signed CI release pipeline:
 
 - `vX.Y.Z` creates a normal release eligible to become latest.

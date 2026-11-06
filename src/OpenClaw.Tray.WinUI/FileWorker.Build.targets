@@ -4,15 +4,20 @@
     <FileWorkerRid Condition="'$(FileWorkerRid)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'ARM64'">win-arm64</FileWorkerRid>
     <FileWorkerRid Condition="'$(FileWorkerRid)' == ''">win-x64</FileWorkerRid>
     <FileWorkerPayload>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\OpenClaw.FileWorker\bin\$(Configuration)\net10.0\$(FileWorkerRid)\publish\'))</FileWorkerPayload>
+    <FileWorkerPayload Condition="'$(OpenClawSignedFileWorkerPath)' != ''">$([System.IO.Path]::GetFullPath('$(OpenClawSignedFileWorkerPath)\'))</FileWorkerPayload>
+    <_FileWorkerSignatureArgs Condition="'$(RequireSignedFileWorker)' == 'true' or '$(OpenClawSignedFileWorkerPath)' != ''">-RequireSignedWorker</_FileWorkerSignatureArgs>
   </PropertyGroup>
   <Target Name="BuildFixedFileWorker" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
     <Error Condition="'$(FileWorkerRid)' != 'win-x64' and '$(FileWorkerRid)' != 'win-arm64'"
            Text="A self-contained fixed file worker is required for this product RID." />
+    <Error Condition="'$(RequireSignedFileWorker)' == 'true' and '$(OpenClawSignedFileWorkerPath)' == ''"
+           Text="Release builds require a signed fixed-worker payload before manifest generation." />
     <MSBuild Projects="..\OpenClaw.FileWorker\OpenClaw.FileWorker.csproj"
+             Condition="'$(OpenClawSignedFileWorkerPath)' == ''"
              Targets="Restore;Publish"
              RemoveProperties="TargetFramework;TargetFrameworks;Platform;OutputPath;RuntimeIdentifiers;AppxPackage;WindowsPackageType"
              Properties="Configuration=$(Configuration);RuntimeIdentifier=$(FileWorkerRid);SelfContained=true;PublishDir=$(FileWorkerPayload)" />
-    <Exec Command="&quot;$(SystemRoot)\System32\WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\Write-FileWorkerManifest.ps1&quot; -PayloadDirectory &quot;$(FileWorkerPayload).&quot; -RuntimeIdentifier &quot;$(FileWorkerRid)&quot; -ProductVersion &quot;$(Version)&quot;" />
+    <Exec Command="&quot;$(SystemRoot)\System32\WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\Write-FileWorkerManifest.ps1&quot; -PayloadDirectory &quot;$(FileWorkerPayload).&quot; -RuntimeIdentifier &quot;$(FileWorkerRid)&quot; -ProductVersion &quot;$(Version)&quot; $(_FileWorkerSignatureArgs)" />
     <GetFileHash Files="$(FileWorkerPayload)payload-manifest.json" Algorithm="SHA256">
       <Output TaskParameter="Items" ItemName="_FixedFileWorkerManifestIdentity" />
     </GetFileHash>

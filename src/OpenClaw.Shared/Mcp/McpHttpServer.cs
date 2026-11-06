@@ -61,7 +61,9 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     /// pre-auth contract — kept so existing dev configs keep working). When set,
     /// every request must carry <c>Authorization: Bearer &lt;token&gt;</c>.
     /// </summary>
-    private string? _authToken;
+    private sealed record Authentication(string? Token, long FileEpoch);
+    private Authentication _authentication;
+    private readonly object _authenticationUpdateLock = new();
     private readonly CancellationTokenSource _cts = new();
     private readonly SemaphoreSlim _handlerLimiter;
     private readonly SemaphoreSlim _ingressLimiter = new(32, 32);
@@ -160,7 +162,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         _writeText = writeText ?? throw new ArgumentNullException(nameof(writeText));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _port = port;
-        _authToken = string.IsNullOrEmpty(authToken) ? null : authToken;
+        _authentication = new(string.IsNullOrEmpty(authToken) ? null : authToken, _bridge.FileChannels.Epoch);
         _listener = listener ?? new SystemMcpHttpListener(port);
         _handlerLimiter = new SemaphoreSlim(
             _options.MaxConcurrentHandlers,
@@ -218,8 +220,11 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
     public void UpdateAuthToken(string? authToken)
     {
-        _bridge.FileChannels.Reset();
-        Volatile.Write(ref _authToken, string.IsNullOrEmpty(authToken) ? null : authToken);
+        lock (_authenticationUpdateLock)
+        {
+            var epoch = _bridge.FileChannels.Reset();
+            Volatile.Write(ref _authentication, new(string.IsNullOrEmpty(authToken) ? null : authToken, epoch));
+        }
     }
 
     private async Task AcceptLoopAsync(CancellationToken ct)
@@ -453,13 +458,11 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         ActivityContext requestTelemetryContext,
         Admission admission)
     {
-        // Snapshot the auth token once. UpdateAuthToken can rotate _authToken
-        // on another thread, and reading the field separately for the null-test
-        // and the comparison would let a single request observe two different
-        // values (e.g. enter the auth branch with the old token, then compare
-        // against the new one — or vice versa).
-        var fileEpoch = _bridge.FileChannels.Epoch;
-        var authToken = Volatile.Read(ref _authToken);
+        // A request admitted during rotation keeps the old epoch, which channel
+        // admission rejects. It must never pair an old bearer with the new epoch.
+        var authentication = Volatile.Read(ref _authentication);
+        var fileEpoch = authentication.FileEpoch;
+        var authToken = authentication.Token;
         var largeReserved = false;
         McpToolBridge.McpTransportResponse? transportResponse = null;
         try

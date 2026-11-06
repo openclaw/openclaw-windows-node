@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using OpenClaw.Connection;
@@ -42,8 +43,10 @@ public sealed partial class WorkspaceWindow : WindowEx
     // clicks coalesce onto the latest ChatPage.QueueSession value.
     private bool _chatApplyQueued;
     private bool _showingAgentCreation;
+    private readonly ProfileAutoFillCoordinator _profileAutoFill = CurrentApp.ProfileAutoFill;
     private IOperatorGatewayClient? _refreshingClient;
     private readonly HubCommandExecutor _commandExecutor = new();
+    private readonly HubSearchController _search;
     private readonly WorkspaceAgentSelection _agentSelection = new();
     // Settings lives in this window as a retained sibling of the chat section. Chat is only
     // collapsed while Settings is visible, so its control identity, draft and focus survive.
@@ -73,10 +76,14 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         InitializeComponent();
         _state = state;
+        WorkspaceSearchFlyout.FlyoutPresenterStyle = SearchHost.CreatePresenterStyle();
+        _search = new(CaptureSearch, new Presentation.Adapters.WinUIDispatcher(DispatcherQueue),
+            category => Logger.Warn($"[Search] {category}"));
         _notifications = notifications;
         _openTimeline = openTimeline;
         _identity = new WorkspaceIdentitySource(UpdateOwnerIdentity,
             category => Logger.Warn(WorkspaceIdentitySource.DescribeUnavailable(category)));
+        _profileAutoFill.ProfileChanged += OnProfileAutoFilled;
         _sessionMenu = new WorkspaceSessionMenuController(
             () => IsClosed ? null : CurrentApp.GatewayClient,
             key => _state.Sessions.FirstOrDefault(s => s.Key == key),
@@ -92,8 +99,6 @@ public sealed partial class WorkspaceWindow : WindowEx
         var searchLabel = LocalizationHelper.GetString("TitleSearchBox.PlaceholderText");
         AutomationProperties.SetName(WorkspaceSearchButton, searchLabel);
         ToolTipService.SetToolTip(WorkspaceSearchButton, searchLabel);
-        WorkspaceSearchBox.PlaceholderText = searchLabel;
-        AutomationProperties.SetName(WorkspaceSearchBox, searchLabel);
         _gatewayStatusFlyout.Opening += (_, _) => _gatewayStatusContent.Initialize(
             () => _gatewayStatusFlyout.Hide(),
             () => OpenCompanion(CompanionPageId.Connection),
@@ -234,6 +239,8 @@ public sealed partial class WorkspaceWindow : WindowEx
             }));
             return;
         }
+        if (_workspaceSearchShow.DeferUntilClosed() || _settings?.DeferCommandSearchUntilClosed() == true)
+            return;
         if (IsSettingsVisible && !Destination.Embedded)
         {
             if (_settings is { IsLoaded: true }) _settings.OpenCommandCenter();
@@ -260,57 +267,32 @@ public sealed partial class WorkspaceWindow : WindowEx
         _workspaceSearchShow.ShowAt(anchor);
     }
 
-    private ImmutableArray<HubCommand>? _workspaceCommands;
-
-    private ImmutableArray<HubCommand> BuildWorkspaceCommands() =>
-        HubCommandCatalog.Build(_state, CurrentApp.SettingsOrNull, SelectedAgentId ?? "main");
-
-    private void OnWorkspaceSearchOpening(object sender, object e)
+    private HubSearchContext CaptureSearch()
     {
-        _workspaceCommands = BuildWorkspaceCommands();
-        WorkspaceSearchBox.Text = string.Empty;
-        WorkspaceSearchBox.ItemsSource = HubPageRegistry.SearchCommands(_workspaceCommands.Value, string.Empty);
+        var agent = IsSettingsVisible ? _settings!.CurrentAgentId : SelectedAgentId ?? "";
+        var client = CurrentApp.GatewayClient;
+        var items = HubCommandCatalog.BuildSearch(_state, agent, client?.GrantedOperatorScopes.Contains("operator.admin") == true);
+        return new(client, agent, _state.GatewaySelf?.ServerVersion, items,
+            _state.Sessions.Select(session => session.Clone()).ToArray(), _state.SelfProfileRevision,
+            _state.Status == ConnectionStatus.Connected);
     }
 
-    private void OnWorkspaceSearchOpened(object sender, object e)
-    {
-        WorkspaceSearchBox.Focus(FocusState.Programmatic);
-        WorkspaceSearchBox.IsSuggestionListOpen = true;
-    }
+    private void OnWorkspaceSearchOpening(object sender, object e) =>
+        WorkspaceSearchHost.Begin(_search, ExecuteSearch, () => WorkspaceSearchFlyout.Hide(), "WorkspaceSearchBox");
 
-    private void OnWorkspaceSearchKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
-    {
-        if (e.Key != global::Windows.System.VirtualKey.Escape) return;
-        e.Handled = true;
-        WorkspaceSearchBox.IsSuggestionListOpen = false;
-        WorkspaceSearchFlyout.Hide();
-    }
+    private void OnWorkspaceSearchClosed(object sender, object e) => WorkspaceSearchHost.End();
+    private void OnWorkspaceSearchOpened(object sender, object e) => WorkspaceSearchHost.FocusInput();
 
-    private void OnWorkspaceSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    private void ExecuteSearch(HubSearchTarget target) => _commandExecutor.Execute(target, destination =>
     {
-        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
-        _workspaceCommands ??= BuildWorkspaceCommands();
-        sender.ItemsSource = HubPageRegistry.SearchCommands(_workspaceCommands.Value, sender.Text);
-    }
-
-    private void OnWorkspaceSearchSuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
-    {
-        if (args.SelectedItem is HubCommand cmd)
-            sender.Text = cmd.Title;
-    }
-
-    private void OnWorkspaceSearchQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
-    {
-        var command = args.ChosenSuggestion as HubCommand
-            ?? HubPageRegistry.SearchCommands(_workspaceCommands ?? BuildWorkspaceCommands(), args.QueryText)
-                .FirstOrDefault();
-        if (command is null) return;
-        WorkspaceSearchFlyout.Hide();
-        sender.Text = string.Empty;
-        sender.ItemsSource = null;
-        _workspaceCommands = null;
-        _commandExecutor.Execute(command, OnSettingsWorkspaceRoute, () => SettingsSaved?.Invoke(this, EventArgs.Empty));
-    }
+        if (destination.Kind == HubSearchTargetKind.Session)
+            SelectSession(destination.Value);
+        else
+        {
+            OnSettingsWorkspaceRoute(destination.Value);
+            if (destination.Focus is not null) _settings?.RevealSearchTarget(destination);
+        }
+    });
 
     internal void SelectSession(string sessionKey) =>
         Navigate(new(WorkspacePageId.Home, sessionKey));
@@ -470,6 +452,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         view.NavigateRequested = tag => OpenSettings(tag);
         view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
         view.PruneRequested = PruneSettingsHistory;
+        view.SearchController = _search;
+        view.SearchNavigation = ExecuteSearch;
         view.CommandCenterRequested = OpenCommandCenter;
         view.SettingsSaved += OnSettingsViewSaved;
         view.BindAppNotifications(_notifications);
@@ -981,6 +965,9 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(AppState.Sessions) or nameof(AppState.AgentsList) or
+            nameof(AppState.Status) or nameof(AppState.SelfProfileRevision))
+            _search.Refresh();
         if (e.PropertyName is nameof(AppState.Status) or nameof(AppState.Presence) or nameof(AppState.SelfProfileRevision))
             RefreshOwnerIdentity(e.PropertyName == nameof(AppState.SelfProfileRevision));
         if (e.PropertyName is nameof(AppState.AgentsList) or nameof(AppState.AgentsListUnsupported)
@@ -1025,8 +1012,11 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void UpdateOwnerIdentity()
     {
         var name = _identity.DisplayName;
-        // macOS parity: the shared-credential owner is labelled as such; no known profile shows Owner.
-        var label = _identity.IsSharedOwner ? Text("SharedOwner.Text") : name ?? Text("Owner.Text");
+        // Web UI parity: the shared-credential owner keeps its marker beside any saved name; no known profile shows Owner.
+        var label = _identity.FooterLabel(Text("Owner.Text"), Text("SharedOwner.Text"),
+            ownerName => LocalizationHelper.Format("WorkspaceShell_SharedOwnerNamedFormat", ownerName));
+        if (!IsClosed && name is not null)
+            AsyncEventHandlerGuard.Run(_profileAutoFill.ObserveAsync, new AppLogger(), nameof(UpdateOwnerIdentity));
         var avatar = _identity.Avatar;
         var avatarChanged = !ReferenceEquals(avatar, _shownAvatar);
         if (avatarChanged)
@@ -1138,6 +1128,12 @@ public sealed partial class WorkspaceWindow : WindowEx
             _showingAgentCreation = false;
             if (!IsClosed) NewAgentOption.IsEnabled = true;
         }
+    }
+
+    private void OnProfileAutoFilled(object? sender, EventArgs e)
+    {
+        if (!IsClosed)
+            RefreshOwnerIdentity(invalidate: true);
     }
 
     private void OnNavigationChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs e)
@@ -1401,6 +1397,9 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void OnClosed(object sender, WindowEventArgs args)
     {
         IsClosed = true;
+        WorkspaceSearchFlyout.Hide();
+        _search.Dispose();
+        _profileAutoFill.ProfileChanged -= OnProfileAutoFilled;
         _identity.SetConnection(null, ConnectionStatus.Disconnected);
         _state.PropertyChanged -= OnStateChanged;
         UnwirePins();

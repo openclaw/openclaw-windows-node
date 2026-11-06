@@ -17,13 +17,14 @@ internal sealed class McpFileChannels
     private long _epoch;
     public long Epoch { get { lock (_gate) return _epoch; } }
 
-    public void Reset()
+    public long Reset()
     {
         lock (_gate)
         {
             _epoch++;
             foreach (var lease in _leases.Values) lease.Cancel();
             _leases.Clear();
+            return _epoch;
         }
     }
 

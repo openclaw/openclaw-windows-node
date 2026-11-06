@@ -212,7 +212,7 @@ public sealed class NodeSandboxExecutor : IDisposable
                 await Task.Yield();
                 return await MxcProcessLifetime.RunAsync(process, policy, resources, workload.StartIo, stop,
                     () => processSettled = true).ConfigureAwait(false);
-            }, stop);
+            }, stop, () => workload.RevalidateAsync(stop, mode));
             if (mode == NodeToolExecutionMode.Host)
                 _logger.Warn("[mxc] operation=compatibility executionMode=host reason=windows_unsupported sandboxControlsEnforced=false");
             return await launch.ConfigureAwait(false);

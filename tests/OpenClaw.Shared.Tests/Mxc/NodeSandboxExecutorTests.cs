@@ -83,6 +83,69 @@ public sealed class NodeSandboxExecutorTests : IDisposable
     }
 
     [Fact]
+    public async Task QueuedCommandRechecksRevokedApprovalBeforeNativeSpawn()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var approved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        var allowed = true;
+        var calls = 0;
+        using var executor = Executor(new(new SettingsData()), _ =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                entered.SetResult();
+                Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
+            }
+            return Task.FromResult<IMxcProcess>(new MxcCommandRunnerTests.FakeProcess());
+        });
+        var runner = new MxcCommandRunner(executor);
+        var first = runner.RunAsync(Command);
+        Task<CommandResult>? second = null;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var command = Command;
+            command.RevalidateApproval = _ =>
+            {
+                var result = Volatile.Read(ref allowed)
+                    ? ExecApprovals.ExecApprovalRevalidationResult.Current
+                    : ExecApprovals.ExecApprovalRevalidationResult.PolicyDenied("revoked");
+                approved.TrySetResult();
+                return ValueTask.FromResult(result);
+            };
+            second = runner.RunAsync(command);
+            await approved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Volatile.Write(ref allowed, false);
+        }
+        finally { release.Set(); }
+        Assert.Equal(0, (await first).ExitCode);
+        var denied = await second!;
+        Assert.Equal(NodeToolErrorCategory.ExecPolicyDenied, denied.ErrorCategory);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task ExecutorShutdownReleasesUncertainPayloadPinsWithoutDeletingUnknownRuntime()
+    {
+        var executor = Executor(new(new SettingsData()),
+            _ => throw new IOException("Native launch outcome is unknown."));
+        try
+        {
+            await Assert.ThrowsAsync<NodeSandboxExecutionException>(() => executor.RunFileAsync(Noop()));
+            Assert.False(_worker.LastLease!.Disposed);
+            var retained = Assert.Single(Directory.GetDirectories(Runs));
+            Assert.Throws<IOException>(() => Directory.Move(Runs, Runs + ".moved"));
+            executor.Dispose();
+            await _worker.LastLease.Released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Directory.Move(Runs, Runs + ".moved");
+            Assert.True(Directory.Exists(Path.Combine(Runs + ".moved", Path.GetFileName(retained))));
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => executor.RunFileAsync(Noop()));
+        }
+        finally { executor.Dispose(); }
+    }
+
+    [Fact]
     public async Task FailedNativeSpawnDoesNotFabricateAnExitDiagnostic()
     {
         var logger = new CapturingLogger();

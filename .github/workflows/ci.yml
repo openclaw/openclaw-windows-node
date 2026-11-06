@@ -1083,7 +1083,7 @@ jobs:
         if-no-files-found: warn
 
   sign-cleanup-host:
-    name: Sign embedded cleanup host before compilation
+    name: Sign cleanup host and fixed workers before compilation
     needs: [change-classification, metadata]
     if: (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && needs.metadata.result == 'success'
     runs-on: windows-latest
@@ -1091,6 +1091,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -1106,6 +1108,18 @@ jobs:
 
     - name: Build AnyCPU cleanup host
       run: dotnet build src/OpenClaw.GatewayCleanupHost -c Release -o signing-cleanup-host
+
+    - name: Publish fixed workers before signing
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Path signing-file-workers | Out-Null
+        foreach ($rid in @('win-x64', 'win-arm64')) {
+          dotnet publish src/OpenClaw.FileWorker -c Release -r $rid --self-contained -o "signed-file-workers\$rid" -p:Version=$env:OPENCLAW_BUILD_VERSION
+          if ($LASTEXITCODE -ne 0) { throw "Fixed-worker publish failed for $rid." }
+          foreach ($binary in @('OpenClaw.FileWorker.exe', 'OpenClaw.FileWorker.dll')) {
+            New-Item -ItemType HardLink -Path "signing-file-workers\$rid-$binary" -Target "signed-file-workers\$rid\$binary" | Out-Null
+          }
+        }
 
     - name: Disable NuGet source mapping for cleanup signing
       shell: pwsh
@@ -1139,6 +1153,32 @@ jobs:
         -HostPath signing-cleanup-host\OpenClaw.GatewayCleanupHost.exe -RequireSigned
         -SignerSubject "CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
 
+    - name: Sign fixed workers before manifest generation
+      uses: azure/artifact-signing-action@v2
+      with:
+        endpoint: https://eus.codesigning.azure.net/
+        signing-account-name: openclaw
+        certificate-profile-name: openclaw
+        files-folder: signing-file-workers
+        files-folder-filter: exe,dll
+        files-folder-depth: 1
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Verify signed workers and generate manifests
+      shell: pwsh
+      run: |
+        foreach ($rid in @('win-x64', 'win-arm64')) {
+          .\scripts\Write-FileWorkerManifest.ps1 -PayloadDirectory "signed-file-workers\$rid" -RuntimeIdentifier $rid -ProductVersion $env:OPENCLAW_BUILD_VERSION -RequireSignedWorker
+        }
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-signed-file-workers
+        path: signed-file-workers/
+        if-no-files-found: error
+
     - uses: actions/upload-artifact@v7
       with:
         name: openclaw-signed-cleanup-host
@@ -1154,6 +1194,8 @@ jobs:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
       RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
       OpenClawSignedCleanupHostPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', github.workspace) || '' }}
+      RequireSignedFileWorker: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
+      OpenClawSignedFileWorkerPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-file-workers\win-x64', github.workspace) || '' }}
 
     steps:
     - uses: actions/checkout@v7
@@ -1186,6 +1228,13 @@ jobs:
       with:
         name: openclaw-signed-cleanup-host
         path: signed-cleanup-host
+
+    - name: Download signed fixed workers
+      if: needs.sign-cleanup-host.result == 'success'
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-signed-file-workers
+        path: signed-file-workers
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-x64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
@@ -1223,6 +1272,8 @@ jobs:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
       RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
       OpenClawSignedCleanupHostPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', github.workspace) || '' }}
+      RequireSignedFileWorker: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
+      OpenClawSignedFileWorkerPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-file-workers\win-arm64', github.workspace) || '' }}
 
     steps:
     - uses: actions/checkout@v7
@@ -1255,6 +1306,13 @@ jobs:
       with:
         name: openclaw-signed-cleanup-host
         path: signed-cleanup-host
+
+    - name: Download signed fixed workers
+      if: needs.sign-cleanup-host.result == 'success'
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-signed-file-workers
+        path: signed-file-workers
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-arm64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
@@ -1295,6 +1353,8 @@ jobs:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
       RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
       OpenClawSignedCleanupHostPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe', github.workspace) || '' }}
+      RequireSignedFileWorker: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
+      OpenClawSignedFileWorkerPath: ${{ needs.sign-cleanup-host.result == 'success' && format('{0}\signed-file-workers\win-{1}', github.workspace, matrix.architecture) || '' }}
       DEV_MSIX_REVISION: ${{ github.run_number }}
       MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo || needs.metadata.outputs.msixVersionInfo }}
       MSIX_SOURCE_VERSION: ${{ needs.reserve-msix-version.outputs.sourceVersion || needs.metadata.outputs.msixSourceVersion }}
@@ -1343,6 +1403,13 @@ jobs:
       with:
         name: openclaw-signed-cleanup-host
         path: signed-cleanup-host
+
+    - name: Download signed fixed workers
+      if: needs.sign-cleanup-host.result == 'success'
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-signed-file-workers
+        path: signed-file-workers
 
     - name: Build and validate unsigned Store MSIX
       shell: pwsh

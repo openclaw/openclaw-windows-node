@@ -2580,6 +2580,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         // Best-effort disposal during teardown; surface failures at Debug for diagnostics
         // but never let a cleanup throw block the rest of the teardown chain.
+        try { _sandboxExecutor?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose NodeSandboxExecutor failed: {ex.Message}"); }
         try { _cameraCaptureService?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose CameraCaptureService failed: {ex.Message}"); }
         try { _screenRecordingService?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose ScreenRecordingService failed: {ex.Message}"); }
         try { _textToSpeechService?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose TextToSpeechService failed: {ex.Message}"); }

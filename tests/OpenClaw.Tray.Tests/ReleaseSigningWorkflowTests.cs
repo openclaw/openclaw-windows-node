@@ -3,6 +3,39 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ReleaseSigningWorkflowTests
 {
     [Fact]
+    public void FixedWorkerSigningPrecedesManifestEmbeddingInEveryDistribution()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var workflow = File.ReadAllText(Path.Combine(root, ".github", "workflows", "ci.yml"));
+        var targets = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "FileWorker.Build.targets"));
+        var signing = workflow[workflow.IndexOf("  sign-cleanup-host:", StringComparison.Ordinal)..
+            workflow.IndexOf("  build-x64:", StringComparison.Ordinal)];
+        Assert.True(signing.IndexOf("name: Publish fixed workers before signing", StringComparison.Ordinal) <
+            signing.IndexOf("name: Sign fixed workers before manifest generation", StringComparison.Ordinal));
+        Assert.True(signing.IndexOf("name: Sign fixed workers before manifest generation", StringComparison.Ordinal) <
+            signing.IndexOf("name: Verify signed workers and generate manifests", StringComparison.Ordinal));
+        Assert.Contains("@('OpenClaw.FileWorker.exe', 'OpenClaw.FileWorker.dll')", signing);
+        Assert.Contains("-RequireSignedWorker", signing);
+        Assert.Contains("files-folder: signing-file-workers", signing);
+        Assert.Contains("files-folder-depth: 1", signing);
+        Assert.Contains(@"-Path ""signing-file-workers\$rid-$binary"" -Target ""signed-file-workers\$rid\$binary""", signing);
+        foreach (var job in new[] { "build-x64", "build-arm64", "build-msix" })
+        {
+            var start = workflow.IndexOf($"  {job}:", StringComparison.Ordinal);
+            var next = System.Text.RegularExpressions.Regex.Match(workflow[(start + 1)..], @"(?m)^  [a-z][a-z0-9-]+:");
+            var block = workflow[start..(start + 1 + next.Index)];
+            Assert.Contains("RequireSignedFileWorker:", block);
+            Assert.Contains("OpenClawSignedFileWorkerPath:", block);
+            Assert.Contains("name: openclaw-signed-file-workers", block);
+        }
+        Assert.Contains("Condition=\"'$(OpenClawSignedFileWorkerPath)' == ''\"", targets);
+        Assert.Contains("'$(RequireSignedFileWorker)' == 'true' and '$(OpenClawSignedFileWorkerPath)' == ''", targets);
+        Assert.Contains("-RequireSignedWorker", targets);
+        var verifier = File.ReadAllText(Path.Combine(root, "scripts", "Test-ReleaseExecutableSignatures.ps1"));
+        Assert.Contains(@"^Workers\\FileWorker\\win-(x64|arm64)\\[0-9a-f]{32}\\OpenClaw\.FileWorker\.(exe|dll)$", verifier);
+    }
+
+    [Fact]
     public void ReleaseWorkflow_SignsOnlyOpenClawOwnedPayloadBinaries()
     {
         var workflow = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
