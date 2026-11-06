@@ -362,7 +362,8 @@ public sealed class NativeLocalAiLifecycleTests
             () => runtime, ct => store.LoadAsync(ct), (_, _) => Task.FromResult(verified),
             _ => Task.FromResult(new HostHardwareInfo(Architecture.X64, 128L << 30, 100L << 30,
                 [new(GpuVendor.Nvidia, "Test GPU", 96L << 30, 80L << 30,
-                    DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test")], false)),
+                    DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test",
+                    ComputeCapability: new Version(12, 0))], false)),
             () => throw new InvalidOperationException(), nativeLifecycle: lifecycle);
         host.ConfigureNative(Record, rpc, _ => Task.CompletedTask);
         var observed = await host.ObserveAsync(default);
@@ -392,7 +393,8 @@ public sealed class NativeLocalAiLifecycleTests
             (_, _) => Task.FromResult(false),
             _ => Task.FromResult(new HostHardwareInfo(Architecture.X64, 128L << 30, 100L << 30,
                 [new(GpuVendor.Nvidia, "Test GPU", 96L << 30, 80L << 30,
-                    DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test")], false)),
+                    DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test",
+                    ComputeCapability: new Version(12, 0))], false)),
             () => throw new InvalidOperationException(), nativeLifecycle: fixture.Lifecycle);
         host.ConfigureNative(Record, fixture.Rpc, _ => Task.CompletedTask);
         var observed = await host.ObserveAsync(default);
@@ -527,7 +529,8 @@ public sealed class NativeLocalAiLifecycleTests
 
     private static HostHardwareInfo RepairHardware() => new(Architecture.X64, 128L << 30, 100L << 30,
         [new(GpuVendor.Nvidia, "Test GPU", 96L << 30, 80L << 30,
-            DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test")], false);
+            DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test",
+            ComputeCapability: new Version(12, 0))], false);
 
     [Fact]
     public void LegacyBindingRetainsAutomaticRecoveryDefault()
@@ -859,7 +862,8 @@ public sealed class NativeLocalAiLifecycleTests
         };
         var hardware = new HostHardwareInfo(Architecture.X64, 128L << 30, 100L << 30,
             [new(GpuVendor.Nvidia, "Test GPU", 96L << 30, 80L << 30,
-                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test")], false);
+                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test",
+                ComputeCapability: new Version(12, 0))], false);
         var host = new SetupLocalAiHost(() => throw new InvalidOperationException(), () => null, () => runtime,
             _ => Task.FromResult<LocalAiResolvedInstall?>(fixture.Install), (_, _) => Task.FromResult(true),
             _ => Task.FromResult(hardware), () => throw new InvalidOperationException(), nativeLifecycle: fixture.Lifecycle);
