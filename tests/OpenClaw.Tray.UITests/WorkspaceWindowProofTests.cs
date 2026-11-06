@@ -248,8 +248,8 @@ public sealed class WorkspaceWindowProofTests
             .FirstOrDefault(element => element is not null && !element.Current.IsOffscreen);
         Invoke(Find(root, "SettingsSearch"));
         await WaitUntilAsync(() => SearchBox() is not null);
-        var input = SearchBox()!.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
+        var input = SearchBox()!;
+        Assert.Equal(ControlType.Edit, input.Current.ControlType);
         await WaitUntilAsync(() => input.Current.HasKeyboardFocus);
         System.Windows.Forms.SendKeys.SendWait("Go to Settings");
         await WaitUntilAsync(() => ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Go to Settings");
@@ -269,8 +269,7 @@ public sealed class WorkspaceWindowProofTests
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^e");
         await WaitUntilAsync(() => SearchBox() is not null);
-        await WaitUntilAsync(() => SearchBox()!.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Current.HasKeyboardFocus);
+        await WaitUntilAsync(() => SearchBox()!.Current.HasKeyboardFocus);
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         Find(root, "SettingsTogglePane").SetFocus();
@@ -696,7 +695,6 @@ public sealed class WorkspaceWindowProofTests
         {
             ("Settings", "settings", "SettingsPage", "SettingsPageMarker"),
             ("Usage", "usage", "UsagePage", "UsagePageMarker"),
-            ("Pair device", "channels", "ChannelsPage", "ChannelsPageMarker"),
             ("About OpenClaw", "about", "SettingsPage", "SettingsPageMarker")
         })
         {

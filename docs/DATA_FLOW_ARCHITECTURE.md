@@ -124,7 +124,6 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
 |------|----------|
 | ConnectionPage | Status, NodePairList, DevicePairList, Channels, UsageCost, Sessions, GatewaySelf |
 | SessionsPage | Sessions, ModelsList |
-| ChannelsPage | Channels |
 | UsagePage | Usage, UsageCost, UsageStatus |
 | InstancesPage | Nodes, Presence |
 | ConfigPage | Config, ConfigSchema |

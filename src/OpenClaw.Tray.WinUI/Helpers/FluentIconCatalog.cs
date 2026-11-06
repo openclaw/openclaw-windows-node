@@ -69,10 +69,6 @@ static class FluentIconCatalog
     public const string Inference = "\uE839";      // PC1 (alias of System/Plug) — Ollama local inference runs on this PC
     public const string MoreOverflow = "\uE712";   // More — saved-row overflow ⋯ button
 
-    // ── Channel actions ────────────────────────────────────────────
-    public const string ChannelLogout = "\uF3B1";   // SignOut — per-channel logout (WhatsApp/Signal in the header; non-QR channels' destructive "disconnect" body action)
-    public const string ChannelStart = "\uE768";    // Play — start-channel header action
-
     // ── Glance chips (Connection page) ─────────────────────────────
     public const string People = "\uE716";         // People — N clients chip
     public const string Money = "\uE9D9";          // Money — $today chip
