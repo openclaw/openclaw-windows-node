@@ -1009,7 +1009,8 @@ public sealed class WorkspaceNavigationTests
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("footer.SetOwnerMenu(BuildOwnerMenu(footer))", code);
         Assert.Contains("footer.DashboardRequested += (_, _) => OpenDashboard();", code);
-        Assert.Contains("private static void OpenDashboard(string? path = null) => ((IAppCommands)CurrentApp).OpenDashboard(path);", code);
+        Assert.Contains("((IAppCommands)CurrentApp).OpenDashboard(path ?? ResolveDashboardPath())", code);
+        Assert.Contains("destination.SessionKey ?? _chat.CurrentSessionKey", code);
         Assert.Contains("OpenCompanion(CompanionPageId.Usage)", code);
         Assert.Contains("OpenDashboard(\"channels\")", code);
         Assert.Contains("OpenCompanion(CompanionPageId.About)", code);

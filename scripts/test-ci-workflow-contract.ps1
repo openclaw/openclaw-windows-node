@@ -867,6 +867,26 @@ foreach ($build in $releaseBuilds.GetEnumerator()) {
         -Message "Release builds must start in parallel with tests and E2E."
 }
 
+foreach ($jobName in @('build-x64', 'build-arm64', 'build-msix')) {
+    $job = Get-JobBlock $jobName
+    $jobEnvironment = [regex]::Match($job, '(?ms)^    env:\r?\n.*?(?=^    \S|\z)')
+    if (-not $jobEnvironment.Success) {
+        throw "Release build '$jobName' is missing its job environment."
+    }
+    Assert-NotContains -Text $jobEnvironment.Value -Unexpected 'runner.' `
+        -Message "Release build '$jobName' must not use the unavailable runner context in job-level env."
+    $download = Get-StepBlock -Text $job -Name 'Download signed cleanup host'
+    Assert-Contains -Text $download `
+        -Expected 'path: ${{ runner.temp }}\signed-cleanup-host' `
+        -Message "Release build '$jobName' must download the signed helper outside the checkout to preserve clean-source provenance."
+    $binding = Get-StepBlock -Text $job -Name 'Bind signed cleanup host path'
+    Assert-Contains -Text $binding -Expected "if: needs.sign-cleanup-host.result == 'success'" `
+        -Message "Release build '$jobName' must bind its helper only after successful signing."
+    Assert-Contains -Text $binding `
+        -Expected '"OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV' `
+        -Message "Release build '$jobName' must export the runner-temporary helper path for subsequent build steps."
+}
+
 $buildMsixJob = Get-JobBlock "build-msix"
 Assert-JobDependencies -Name 'build-msix' -Expected @('change-classification', 'metadata', 'reserve-msix-version', 'sign-cleanup-host')
 foreach ($token in @(

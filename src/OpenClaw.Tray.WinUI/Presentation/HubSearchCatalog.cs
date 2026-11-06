@@ -70,6 +70,29 @@ internal static class HubSearchCatalog
         return Counterparts.FirstOrDefault(pair => pair.Tag == tag).Path;
     }
 
+    internal static string? ContextualDashboardPath(
+        WorkspaceDestination destination,
+        string? currentSessionKey,
+        bool? isMain,
+        string? gatewayVersion)
+    {
+        var supported = SupportsDashboard(gatewayVersion);
+        if (destination.Page == WorkspacePageId.Settings)
+        {
+            if (destination.CompanionTag is not { } tag)
+                return null;
+            if (tag.StartsWith("agent:", StringComparison.Ordinal) &&
+                tag.IndexOf(':', "agent:".Length) < 0)
+                return null;
+            return Counterpart(tag, supported);
+        }
+        if (!supported || destination.Page != WorkspacePageId.Home)
+            return null;
+
+        var sessionKey = destination.SessionKey ?? currentSessionKey;
+        return string.IsNullOrWhiteSpace(sessionKey) ? null : SessionPath(sessionKey, isMain);
+    }
+
     internal static IEnumerable<HubSearchItem> Navigation(
         IEnumerable<HubCommand> commands, bool connected, bool dashboardSupported, Func<string, string> localize)
     {
