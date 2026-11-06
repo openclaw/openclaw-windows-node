@@ -54,9 +54,15 @@ be scrolled into view without a footer consuming space or covering it.
 Keyboard expansion must focus and reveal the first newly added result without
 test-driven scrolling or a jump back to an old selected row. Expansion appends
 to the existing observable groups rather than replacing the native grouped view.
-Native page-name proof searches the old Agent Events alias and Config,
-checks plain destination names, captures the actual symbol icons and navigates
-to the corresponding native pages without sending chat or config writes.
+Native page-name proof searches About, General, notification preferences and
+Config, checks plain destination names, captures the actual symbol icons and
+navigates to the corresponding native pages without sending chat or config
+writes. Notification preferences resolves to General. Settings split proof
+discovers local MCP tools, rejects removed Event Stream routes without changing
+the visible page, and toggles the three app-access consents through native
+controls. It verifies their saved values after page reactivation without
+enabling node capabilities. This is disposable-profile persistence proof, not
+an installed-profile upgrade or Store migration.
 
 ## Build and explore
 

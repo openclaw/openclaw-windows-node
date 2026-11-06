@@ -1469,50 +1469,11 @@ Use one of these options:
   <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
     <value>Capture screenshots</value>
   </data>
-<data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
-    <value>Event Stream</value>
-  </data>
   <data name="AgentFilterCombo.Header" xml:space="preserve">
     <value>Agent</value>
   </data>
   <data name="AgentFilterCombo.PlaceholderText" xml:space="preserve">
     <value>All Agents</value>
-  </data>
-  <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>Real-time stream of agent activity: tool calls, responses, errors, and lifecycle events.</value>
-  </data>
-  <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
-    <value>All Agents</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_36.Text" xml:space="preserve">
-    <value>Tool</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_37.Text" xml:space="preserve">
-    <value>Assistant</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_38.Text" xml:space="preserve">
-    <value>Error</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_39.Text" xml:space="preserve">
-    <value>Lifecycle</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_40.Text" xml:space="preserve">
-    <value>Plan</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_41.Text" xml:space="preserve">
-    <value>Approval</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_42.Text" xml:space="preserve">
-    <value>Thinking</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_43.Text" xml:space="preserve">
-    <value>Patch</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
-    <value>No events in this session</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_99.Text" xml:space="preserve">
-    <value>Events stream here in real-time as agents run. History clears when the app restarts.</value>
   </data>
   <data name="ClearButton.Content" xml:space="preserve">
     <value>Clear</value>
@@ -1526,6 +1487,13 @@ Use one of these options:
   <data name="PermissionsPage_IntroText.Text" xml:space="preserve">
     <value>Device capabilities provided to agents via the gateway. Toggle what this computer can do.</value>
   </data>
+  <data name="PermissionsPage_AppAccess.Text" xml:space="preserve">
+    <value>App access</value>
+  </data>
+  <data name="PermissionsPage_AppAccessDescription.Text" xml:space="preserve">
+    <value>Allow sensitive capture without prompting every time. OpenClaw still notifies you before each access and shows a countdown before recordings.</value>
+  </data>
+
   <data name="PermissionsPage_McpHeader.Text" xml:space="preserve">
     <value>Local MCP Server</value>
   </data>
@@ -2270,9 +2238,6 @@ Use one of these options:
   <data name="ConversationsNavItem.Content" xml:space="preserve">
     <value>Conversations</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
-    <value>Event Stream</value>
-  </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>Agents</value>
   </data>
@@ -2283,7 +2248,7 @@ Use one of these options:
     <value>Channels</value>
   </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
-    <value>Instances</value>
+    <value>Systems</value>
   </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Config</value>
@@ -2292,7 +2257,7 @@ Use one of these options:
     <value>Usage</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>Cron</value>
+    <value>Automations</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>This Computer</value>
@@ -2300,8 +2265,14 @@ Use one of these options:
   <data name="HubWindow_NavigationViewItem_130.Content" xml:space="preserve">
     <value>Capabilities</value>
   </data>
+  <data name="HubWindow_SystemHeader.Content" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="HubWindow_AboutItem.Content" xml:space="preserve">
+    <value>About</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>App settings</value>
+    <value>General</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Permissions</value>
@@ -4923,8 +4894,11 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SessionActionPrompt_Restore_ConfirmLabel" xml:space="preserve">
     <value>Restore</value>
   </data>
+  <data name="SettingsPage_AdvancedExpander.Header" xml:space="preserve">
+    <value>Advanced</value>
+  </data>
   <data name="SettingsPage_Settings.Text" xml:space="preserve">
-    <value>Settings</value>
+    <value>General</value>
   </data>
   <data name="SettingsPage_General.Text" xml:space="preserve">
     <value>General</value>
@@ -5157,20 +5131,11 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>Disconnected</value>
   </data>
-  <data name="HubWindow_Advanced.Content" xml:space="preserve">
-    <value>Advanced</value>
-  </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
     <value>Log tails are sanitized and truncated. Sensitive tokens, payloads, recordings, and raw settings files are excluded. Review before sharing.</value>
   </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
     <value>Review before sharing</value>
-  </data>
-  <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
-    <value>Live</value>
-  </data>
-  <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
-    <value>Clear</value>
   </data>
   <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
     <value>Conversations this gateway is currently handling, grouped by channel.</value>
@@ -5189,11 +5154,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
     <value>Commands the agent runs directly on the gateway aren't. If the gateway is on this PC they may still be able to reach your Windows files, clipboard, and network: check your gateway's configuration.</value>
-  </data>  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
-    <value>All Agents</value>
-  </data>
-  <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
-    <value>{0} of {1} events</value>
   </data>
   <data name="CronPage_CreateJobLabel" xml:space="preserve">
     <value>Create Job</value>
@@ -6111,18 +6071,6 @@ Make sure the gateway is running.</value>
   <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Restart WSL gateway</value>
   </data>
-  <data name="AgentEventsPage_Status_Live" xml:space="preserve">
-    <value>Live</value>
-  </data>
-  <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
-    <value>Offline</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
-    <value>Agent event log</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
-    <value>Go to Agent Events</value>
-  </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
   </data>
@@ -6184,10 +6132,22 @@ Make sure the gateway is running.</value>
     <value>Go to Sessions</value>
   </data>
   <data name="Command_GoToSettings_Subtitle" xml:space="preserve">
-    <value>Application settings</value>
+    <value>General settings</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Title" xml:space="preserve">
+    <value>Go to notification preferences</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Subtitle" xml:space="preserve">
+    <value>Configure notification preferences</value>
+  </data>
+  <data name="Command_GoToAbout_Title" xml:space="preserve">
+    <value>Go to About</value>
+  </data>
+  <data name="Command_GoToAbout_Subtitle" xml:space="preserve">
+    <value>App and Gateway information</value>
   </data>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
-    <value>Go to Settings</value>
+    <value>Go to General</value>
   </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
@@ -7930,7 +7890,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Channels" xml:space="preserve"><value>Channels</value></data>
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
-  <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>

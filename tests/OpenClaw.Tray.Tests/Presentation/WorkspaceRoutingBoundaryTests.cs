@@ -9,10 +9,15 @@ namespace OpenClaw.Tray.Tests.Presentation;
 public sealed class WorkspaceRoutingBoundaryTests
 {
     [Theory]
-    [InlineData("workspace:unknown")]
-    [InlineData("workspace:agents:unknown")]
-    [InlineData("workspace:")]
-    public async Task UnknownRoute_ReturnsMcpErrorBeforeCreatingOrForwardingAnyWindow(string route)
+    [InlineData("workspace:unknown", "Unknown Workspace route")]
+    [InlineData("workspace:agents:unknown", "Unknown Workspace route")]
+    [InlineData("workspace:", "Unknown Workspace route")]
+    [InlineData("agentevents", "Unknown companion Settings route")]
+    [InlineData("agent:main:agentevents", "Unknown companion Settings route")]
+    [InlineData("unknown", "Unknown companion Settings route")]
+    public async Task UnknownRoute_ReturnsMcpErrorBeforeCreatingOrForwardingAnyWindow(
+        string route,
+        string expectedError)
     {
         var workspaceCalls = 0;
         var companionCalls = 0;
@@ -41,7 +46,7 @@ public sealed class WorkspaceRoutingBoundaryTests
         using var json = JsonDocument.Parse(response!);
         var result = json.RootElement.GetProperty("result");
         Assert.True(result.GetProperty("isError").GetBoolean());
-        Assert.Contains("Unknown Workspace route", result.GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.Contains(expectedError, result.GetProperty("content")[0].GetProperty("text").GetString());
         Assert.Equal(0, workspaceCalls);
         Assert.Equal(0, companionCalls);
     }
@@ -56,6 +61,8 @@ public sealed class WorkspaceRoutingBoundaryTests
     [InlineData("workspace:notifications", true)]
     [InlineData("workspace:agents", true)]
     [InlineData("workspace:sessions", true)]
+    [InlineData("general", false)]
+    [InlineData("command-center", false)]
     [InlineData("settings", false)]
     [InlineData("sessions", false)]
     [InlineData("cron", false)]

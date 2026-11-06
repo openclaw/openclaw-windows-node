@@ -419,13 +419,7 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (_disposed) return;
         _active = true;
-        var showAbout = tag == "about";
-        NavigateInternal(showAbout ? "settings" : tag, nativeRequest);
-        if (ContentFrame.Content is SettingsPage settingsPage)
-        {
-            if (showAbout) settingsPage.ShowAbout();
-            else if (tag == "settings") settingsPage.ShowTop();
-        }
+        NavigateInternal(tag, nativeRequest);
     }
 
     /// <summary>
@@ -645,8 +639,12 @@ internal sealed partial class SettingsShellView : UserControl
             NavChannels.Visibility = vis;
             NavInstances.Visibility = vis;
             NavCron.Visibility = vis;
-            NavAdvanced.Visibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
-            NavGatewaySeparator.Visibility = vis;
+            var gatewayToolVisibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
+            AgentsNavItem.Visibility = gatewayToolVisibility;
+            NavUsage.Visibility = gatewayToolVisibility;
+            NavConfig.Visibility = gatewayToolVisibility;
+            NavGatewayHeader.Visibility = gatewayToolVisibility;
+            NavGatewaySeparator.Visibility = gatewayToolVisibility;
 
             if (!connected)
             {
@@ -866,30 +864,12 @@ internal sealed partial class SettingsShellView : UserControl
             case PermissionsPage: break;
             case SandboxPage sandbox: sandbox.Initialize(); break;
             case VoiceSettingsPage voice: voice.Initialize(CurrentApp.VoiceService); break;
-            case AgentEventsPage agentEvents:
-                agentEvents.Initialize(GetAgentIds());
-                agentEvents.ClearCentralCache = () => AppModel?.ClearAgentEvents();
-                agentEvents.PopulateAgentFilter(GetAgentIds());
-                // When navigated via top-level nav (tag "agentevents") show all
-                // agents; when reached via an agent-scoped tag (e.g.
-                // "agent:main:agentevents") scope to that agent. Reading
-                // _currentNavTag (set by OnContentFrameNavigated) is more
-                // reliable than peeking NavView.SelectedItem, which may briefly
-                // disagree during Back/Forward.
-                var eventsAgentFilter = _currentNavTag?.StartsWith("agent:") == true ? _currentAgentId : null;
-                agentEvents.SetAgentFilter(eventsAgentFilter);
-                // Seed existing events from AppState
-                if (agentEvents.EventCount == 0 && AppModel?.AgentEvents is { Count: > 0 } events)
-                {
-                    for (int i = events.Count - 1; i >= 0; i--)
-                        agentEvents.AddEvent(events[i]);
-                }
-                break;
             case WorkspacePage workspace:
                 workspace.AgentId = _currentAgentId;
                 workspace.Initialize();
                 break;
             case SettingsPage settings: settings.Initialize(); break;
+            case AboutPage about: about.Initialize(); break;
             case NotificationsPage notifications: notifications.Initialize(_appNotificationService); break;
             case DebugPage debug: debug.Initialize(); break;
         }
@@ -951,7 +931,6 @@ internal sealed partial class SettingsShellView : UserControl
         { "sessions",    "\uE8F2" },
         { "channels",    "\uEC05" },
         { "instances",   "\uE977" },
-        { "agentevents", "\uE943" },
         { "config",      "\uE90F" },
         { "usage",       "\uE9D9" },
         { "cron",        "\uE787" },
@@ -963,9 +942,9 @@ internal sealed partial class SettingsShellView : UserControl
         { "activity",    "\uEA95" },
         { "notifications", "\uE7F4" },
         { "debug",       "\uEBE8" },
+        { "about",       FluentIconCatalog.About },
     };
 
-    private const string AdvancedGroupGlyph = "\uE950";
     private const string AgentsGroupGlyph = "\uE99A";
     private bool _isHighContrast;
 
@@ -1006,8 +985,6 @@ internal sealed partial class SettingsShellView : UserControl
 
         if (item == AgentsNavItem)
             return FluentIconCatalog.Build(AgentsGroupGlyph, 20);
-        if (item == NavAdvanced)
-            return FluentIconCatalog.Build(AdvancedGroupGlyph, 20);
 
         return FluentIconCatalog.Build("\uE700", 20);
     }

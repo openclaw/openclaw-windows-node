@@ -15,6 +15,17 @@ public static class SetupExistingGatewayClassifier
 {
     private static string AppOwnedDistroName => AppIdentity.SetupDistroName;
 
+    public static bool HasWslInstallationForSettings(
+        bool hasSetupState,
+        IEnumerable<GatewayRecord>? records,
+        GatewayRecord? activeGateway,
+        string? legacyGatewayUrl) =>
+        hasSetupState
+        || WslKeepAlivePolicy.HasSetupManagedLocalGateway(records)
+        || (activeGateway?.NativePackageFamilyName is null
+            && legacyGatewayUrl is not null
+            && LocalGatewayUrlClassifier.IsLocalGatewayUrl(legacyGatewayUrl));
+
     public static SetupExistingGatewayKind ClassifyWithoutWslProbe(
         GatewayRegistry? registry,
         SettingsManager settings,

@@ -1422,50 +1422,11 @@ Utilisez l'une de ces options :
   <data name="Onboarding_LocalSetup_Phase_MintToken" xml:space="preserve">
     <value>Génération du code de configuration</value>
   </data>
-  <data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
-    <value>Événements d’agent</value>
-  </data>
   <data name="AgentFilterCombo.Header" xml:space="preserve">
     <value>Agent logiciel</value>
   </data>
   <data name="AgentFilterCombo.PlaceholderText" xml:space="preserve">
     <value>Tous les agents</value>
-  </data>
-  <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>Flux en temps réel de l'activité des agents: appels d'outils, réponses, erreurs et événements de cycle de vie.</value>
-  </data>
-  <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
-    <value>Tous les agents</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_36.Text" xml:space="preserve">
-    <value>Outil</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_37.Text" xml:space="preserve">
-    <value>Assistant virtuel</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_38.Text" xml:space="preserve">
-    <value>Erreur</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_39.Text" xml:space="preserve">
-    <value>Cycle de vie</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_40.Text" xml:space="preserve">
-    <value>Planification</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_41.Text" xml:space="preserve">
-    <value>Approbation</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_42.Text" xml:space="preserve">
-    <value>Réflexion</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_43.Text" xml:space="preserve">
-    <value>Correctif</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
-    <value>Aucun événement d’agent pour le moment</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_99.Text" xml:space="preserve">
-    <value>Les événements d’agent en temps réel (appels d’outils, réponses, erreurs) apparaîtront ici pendant l’exécution des agents.</value>
   </data>
   <data name="ClearButton.Content" xml:space="preserve">
     <value>Effacer</value>
@@ -1479,6 +1440,13 @@ Utilisez l'une de ces options :
   <data name="PermissionsPage_IntroText.Text" xml:space="preserve">
     <value>Fonctionnalités de l’appareil fournies aux agents via la passerelle. Activez ce que cet ordinateur peut faire.</value>
   </data>
+  <data name="PermissionsPage_AppAccess.Text" xml:space="preserve">
+    <value>Accès de l’application</value>
+  </data>
+  <data name="PermissionsPage_AppAccessDescription.Text" xml:space="preserve">
+    <value>Autorisez les captures sensibles sans confirmation à chaque fois. OpenClaw vous avertit toujours avant chaque accès et affiche un compte à rebours avant les enregistrements.</value>
+  </data>
+
   <data name="PermissionsPage_McpHeader.Text" xml:space="preserve">
     <value>Serveur MCP local</value>
   </data>
@@ -2223,9 +2191,6 @@ Utilisez l'une de ces options :
   <data name="ConversationsNavItem.Content" xml:space="preserve">
     <value>Discussions</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
-    <value>Événements d’agent</value>
-  </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>Agents logiciels</value>
   </data>
@@ -2236,7 +2201,7 @@ Utilisez l'une de ces options :
     <value>Canaux</value>
   </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
-    <value>Instances connectées</value>
+    <value>Systèmes</value>
   </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Configuration</value>
@@ -2245,7 +2210,7 @@ Utilisez l'une de ces options :
     <value>Utilisations</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>Planification</value>
+    <value>Automatisations</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>Cet ordinateur</value>
@@ -2253,8 +2218,14 @@ Utilisez l'une de ces options :
   <data name="HubWindow_NavigationViewItem_130.Content" xml:space="preserve">
     <value>Fonctionnalités</value>
   </data>
+  <data name="HubWindow_SystemHeader.Content" xml:space="preserve">
+    <value>Système</value>
+  </data>
+  <data name="HubWindow_AboutItem.Content" xml:space="preserve">
+    <value>À propos</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>Paramètres de l'application</value>
+    <value>Général</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Autorisations</value>
@@ -4876,8 +4847,11 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="SessionActionPrompt_Restore_ConfirmLabel" xml:space="preserve">
     <value>Restaurer</value>
   </data>
+  <data name="SettingsPage_AdvancedExpander.Header" xml:space="preserve">
+    <value>Avancé</value>
+  </data>
   <data name="SettingsPage_Settings.Text" xml:space="preserve">
-    <value>Paramètres</value>
+    <value>Général</value>
   </data>
   <data name="SettingsPage_General.Text" xml:space="preserve">
     <value>Général</value>
@@ -5152,20 +5126,11 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>Déconnecté</value>
   </data>
-  <data name="HubWindow_Advanced.Content" xml:space="preserve">
-    <value>Avancé</value>
-  </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
     <value>Les extraits de journaux sont assainis et tronqués. Les jetons sensibles, les charges utiles, les enregistrements et les fichiers de paramètres bruts sont exclus. Vérifiez avant de partager.</value>
   </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
     <value>Examiner avant de partager</value>
-  </data>
-  <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
-    <value>En direct</value>
-  </data>
-  <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
-    <value>Effacer</value>
   </data>
   <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
     <value>Conversations actuellement gérées par cette passerelle, regroupées par canal.</value>
@@ -5184,12 +5149,6 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
     <value>Les commandes que l'agent exécute directement sur la passerelle ne le sont pas. Si la passerelle se trouve sur ce PC, elles peuvent toujours accéder à vos fichiers Windows, au presse-papiers et au réseau: vérifiez la configuration de votre passerelle.</value>
-  </data>
-  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
-    <value>Tous les agents</value>
-  </data>
-  <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
-    <value>{0} sur {1} événements</value>
   </data>
   <data name="CronPage_CreateJobLabel" xml:space="preserve">
     <value>Créer la tâche</value>
@@ -6107,18 +6066,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Redémarrer la passerelle WSL</value>
   </data>
-  <data name="AgentEventsPage_Status_Live" xml:space="preserve">
-    <value>En direct</value>
-  </data>
-  <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
-    <value>Hors ligne</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
-    <value>Agent event log</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
-    <value>Go to Agent Events</value>
-  </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
   </data>
@@ -6180,10 +6127,22 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Go to Sessions</value>
   </data>
   <data name="Command_GoToSettings_Subtitle" xml:space="preserve">
-    <value>Application settings</value>
+    <value>Paramètres généraux</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Title" xml:space="preserve">
+    <value>Ouvrir les préférences de notification</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Subtitle" xml:space="preserve">
+    <value>Configurer les préférences de notification</value>
+  </data>
+  <data name="Command_GoToAbout_Title" xml:space="preserve">
+    <value>Ouvrir À propos</value>
+  </data>
+  <data name="Command_GoToAbout_Subtitle" xml:space="preserve">
+    <value>Informations sur l’application et la passerelle</value>
   </data>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
-    <value>Go to Settings</value>
+    <value>Ouvrir Général</value>
   </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
@@ -6863,7 +6822,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Permissions incomplete</value>
   </data>
   <data name="SettingsPage_About.Text" xml:space="preserve">
-    <value>About</value>
+    <value>À propos</value>
   </data>
   <data name="SettingsPage_GatewayInfoExpander.Header" xml:space="preserve">
     <value>Gateway info</value>
@@ -7862,7 +7821,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_Channels" xml:space="preserve"><value>Channels</value></data>
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
-  <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>

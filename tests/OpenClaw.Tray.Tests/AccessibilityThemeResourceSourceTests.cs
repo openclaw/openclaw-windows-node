@@ -111,7 +111,8 @@ public sealed class AccessibilityThemeResourceSourceTests
         Assert.Contains("HubNavigationUseHighContrastIcons", hub);
         Assert.Contains("SwapToFontIcons", hub);
         Assert.Contains("FluentIconCatalog.Build", hub);
-        Assert.Contains("item == NavAdvanced", hub);
+        Assert.Contains("item == AgentsNavItem", hub);
+        Assert.DoesNotContain("NavAdvanced", hub);
         Assert.DoesNotContain("content.Equals(\"Advanced\"", hub);
         Assert.Contains("return FluentIconCatalog.Build(\"\\uE700\", 20);", hub);
         Assert.DoesNotContain("<IconSourceElement", hubXaml);
@@ -126,6 +127,33 @@ public sealed class AccessibilityThemeResourceSourceTests
         Assert.Contains("SystemColorWindowColor", resources);
         Assert.Contains("SystemColorHighlightColor", resources);
         Assert.Contains("<x:Boolean x:Key=\"HubNavigationUseHighContrastIcons\">True</x:Boolean>", resources);
+    }
+
+    [Fact]
+    public void SystemSettingsNavigationSvgIcons_EachHaveAHighContrastGlyphFallback()
+    {
+        // Fixed-color SVGs are swapped for system-foreground glyphs in High Contrast; an unmapped tag
+        // would silently render the generic hamburger glyph instead of a meaningful icon.
+        var hub = ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
+        var settings = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml"));
+        var fallbackTags = System.Text.RegularExpressions.Regex
+            .Matches(hub, "\\{\\s*\"([a-z-]+)\",")
+            .Select(match => match.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var menu = settings.Descendants().Single(element => element.Name.LocalName == "NavigationView.MenuItems");
+        var systemSvgTags = menu.Elements()
+            .SkipWhile(element => (string?)element.Attribute("Content") != "System")
+            .Skip(1)
+            .TakeWhile(element => element.Name.LocalName is not ("NavigationViewItemHeader" or "NavigationViewItemSeparator"))
+            .Where(element => element.Descendants().Any(icon => icon.Name.LocalName == "ImageIcon"))
+            .Select(element => (string?)element.Attribute("Tag"))
+            .OfType<string>()
+            .ToArray();
+
+        Assert.Contains("connection", systemSvgTags);
+        Assert.Contains("about", systemSvgTags);
+        Assert.All(systemSvgTags, tag => Assert.Contains(tag, fallbackTags));
     }
 
     private static string ReadSource(params string[] relativePathParts)

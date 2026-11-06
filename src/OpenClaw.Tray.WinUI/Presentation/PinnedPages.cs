@@ -28,7 +28,6 @@ internal static class PinnedPages
         new("channels", "HubWindow_NavigationViewItem_109.Content", "Channels"),
         new("instances", "HubWindow_NavigationViewItem_112.Content", "Instances"),
         new("cron", "HubWindow_NavigationViewItem_124.Content", "Cron"),
-        new("agentevents", "HubWindow_NavigationViewItem_94.Content", "AgentEvents"),
         new("config", "HubWindow_NavigationViewItem_118.Content", "Config"),
         new("usage", "HubWindow_NavigationViewItem_121.Content", "Usage"),
     ];

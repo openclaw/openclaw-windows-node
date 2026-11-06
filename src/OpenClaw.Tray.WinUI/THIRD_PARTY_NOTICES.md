@@ -11,6 +11,11 @@ solid blue/teal gradient body with metallic pins. This is the Local AI sidebar
 icon, rendered through `SvgImageSource` / `ImageIcon` like the other sidebar
 assets. The existing monochrome glyph catalog still applies to other surfaces.
 
+`Notifications.svg` is a custom bell drawn in the `fluent-color` gradient style
+for the app notifications surface (#748), not an official `fluent-color`
+variant. The asset is retained from the former Notifications sidebar entry;
+notification preferences now live inside General.
+
 - Upstream repositories:
   - <https://github.com/microsoft/fluentui-system-icons> (sidebar icons)
 - License: MIT
@@ -25,8 +30,6 @@ assets. The existing monochrome glyph catalog still applies to other surfaces.
 | `Sessions.svg` | `chat-multiple-24` |
 | `Channels.svg` | `molecule-24` |
 | `Instances.svg` | `phone-laptop-24` |
-| `Advanced.svg` | `org-24` |
-| `AgentEvents.svg` | `list-bar-24` |
 | `Agents.svg` | `bot-sparkle-24` |
 | `Config.svg` | `options-24` |
 | `Usage.svg` | `data-bar-vertical-ascending-24` |
@@ -37,6 +40,7 @@ assets. The existing monochrome glyph catalog still applies to other surfaces.
 | `Permissions.svg` | `lock-shield-24` |
 | `Sandbox.svg` | `shield-24` |
 | `Activity.svg` | `data-trending-24` |
+| `Notifications.svg` | custom bell in the `fluent-color` style (see above) |
 | `Debug.svg` | `wrench-screwdriver-24` |
 | `Info.svg` | `book-open-lightbulb-24` |
 
