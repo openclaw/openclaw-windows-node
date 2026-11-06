@@ -127,9 +127,6 @@
   <data name="StatusSessionsHeader.Text" xml:space="preserve">
     <value>ACTIVE SESSIONS</value>
   </data>
-  <data name="StatusChannelsHeader.Text" xml:space="preserve">
-    <value>CHANNELS</value>
-  </data>
   <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
     <value>GATEWAY TOPOLOGY</value>
   </data>
@@ -179,12 +176,6 @@
   </data>
   <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
     <value>Channel setup, skills, and scheduled automations are gateway-owned surfaces. Use these links when the connected gateway exposes the matching dashboard pages.</value>
-  </data>
-  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
-    <value>Channel setup / schemas</value>
-  </data>
-  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
-    <value>Open channel setup for schema-driven auth, QR, login, and dashboard flows where available.</value>
   </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / schedules</value>
@@ -485,9 +476,6 @@
   </data>
   <data name="Menu_NodeInventory" xml:space="preserve">
     <value>Node Inventory</value>
-  </data>
-  <data name="Menu_ChannelSummary" xml:space="preserve">
-    <value>Channel Summary</value>
   </data>
   <data name="Menu_ActivitySummary" xml:space="preserve">
     <value>Activity Summary</value>

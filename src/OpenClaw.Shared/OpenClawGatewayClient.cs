@@ -2127,48 +2127,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     }
 
     /// <summary>
-    /// Start a channel using <c>channels.start { channel }</c>.
-    /// Returns true only when the Gateway acknowledges that the channel started.
-    /// </summary>
-    public async Task<bool> StartChannelAsync(string channelName)
-    {
-        if (!IsConnected) return false;
-        try
-        {
-            var response = await SendWizardRequestAsync(
-                "channels.start",
-                new { channel = channelName },
-                12000);
-            var started = response.ValueKind == JsonValueKind.Object &&
-                response.TryGetProperty("started", out var value) && value.ValueKind == JsonValueKind.True;
-            _logger.Info($"channels.start {channelName} → started={started}");
-            return started;
-        }
-        catch (Exception ex)
-        {
-            _logger.Warn($"channels.start {channelName} failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    /// <summary>Stop a channel. Sends <c>channels.stop { channel }</c>.</summary>
-    public async Task<bool> StopChannelAsync(string channelName)
-    {
-        if (!IsConnected) return false;
-        try
-        {
-            await SendWizardRequestAsync("channels.stop", new { channel = channelName }, 12000);
-            _logger.Info($"channels.stop {channelName} succeeded");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.Warn($"channels.stop {channelName} failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    /// <summary>
     /// Fetches the installed Gateway's effective update channel. RPC failures
     /// propagate so the companion updater can preserve its fail-open behavior.
     /// </summary>

@@ -127,9 +127,6 @@
   <data name="StatusSessionsHeader.Text" xml:space="preserve">
     <value>SESSÕES ATIVAS</value>
   </data>
-  <data name="StatusChannelsHeader.Text" xml:space="preserve">
-    <value>CANAIS</value>
-  </data>
   <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
     <value>TOPOLOGIA DO GATEWAY</value>
   </data>
@@ -179,12 +176,6 @@
   </data>
   <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
     <value>A configuração de canais, as Skills e as automações agendadas são gerenciadas pelo Gateway. Use estes links quando o Gateway conectado disponibilizar as páginas correspondentes no painel.</value>
-  </data>
-  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
-    <value>Configuração de canais / esquemas</value>
-  </data>
-  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
-    <value>Abra a configuração de canais para fluxos de autenticação orientados por esquema, QR, login e painel, quando disponíveis.</value>
   </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / agendamentos</value>
@@ -485,9 +476,6 @@
   </data>
   <data name="Menu_NodeInventory" xml:space="preserve">
     <value>Inventário de Nodes</value>
-  </data>
-  <data name="Menu_ChannelSummary" xml:space="preserve">
-    <value>Resumo de canais</value>
   </data>
   <data name="Menu_ActivitySummary" xml:space="preserve">
     <value>Resumo de atividades</value>

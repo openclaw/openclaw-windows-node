@@ -116,9 +116,6 @@
   <data name="StatusSessionsHeader.Text" xml:space="preserve">
     <value>活跃会话</value>
   </data>
-  <data name="StatusChannelsHeader.Text" xml:space="preserve">
-    <value>频道</value>
-  </data>
   <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
     <value>网关拓扑</value>
   </data>
@@ -166,12 +163,6 @@
   </data>
   <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
     <value>频道设置、技能和计划自动化由网关管理。连接的网关公开相应仪表板页面时，请使用这些链接。</value>
-  </data>
-  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
-    <value>频道设置 / 架构</value>
-  </data>
-  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
-    <value>在可用时打开频道设置，用于基于架构的身份验证、二维码、登录和仪表板流程。</value>
   </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / 计划</value>
@@ -456,9 +447,6 @@
   </data>
   <data name="Menu_NodeInventory" xml:space="preserve">
     <value>节点清单</value>
-  </data>
-  <data name="Menu_ChannelSummary" xml:space="preserve">
-    <value>频道摘要</value>
   </data>
   <data name="Menu_ActivitySummary" xml:space="preserve">
     <value>活动摘要</value>

@@ -164,8 +164,6 @@ public sealed class PairingApprovalCoordinatorTests
         }
 
         public Task<bool> DevicePairRejectAsync(string requestId) => Task.FromResult(false);
-        public Task<bool> StartChannelAsync(string channelName) => Task.FromResult(false);
-        public Task<bool> StopChannelAsync(string channelName) => Task.FromResult(false);
         public Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000) => Task.FromResult(default(JsonElement));
     }
 #pragma warning restore CS0067

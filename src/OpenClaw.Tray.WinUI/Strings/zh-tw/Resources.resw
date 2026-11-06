@@ -116,9 +116,6 @@
   <data name="StatusSessionsHeader.Text" xml:space="preserve">
     <value>活躍會話</value>
   </data>
-  <data name="StatusChannelsHeader.Text" xml:space="preserve">
-    <value>頻道</value>
-  </data>
   <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
     <value>閘道拓撲</value>
   </data>
@@ -166,12 +163,6 @@
   </data>
   <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
     <value>頻道設定、技能和排程自動化由閘道管理。連線的閘道公開相符儀表板頁面時，請使用這些連結。</value>
-  </data>
-  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
-    <value>頻道設定 / 結構描述</value>
-  </data>
-  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
-    <value>在可用時開啟頻道設定，用於結構描述導向的驗證、QR、登入和儀表板流程。</value>
   </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / 排程</value>
@@ -456,9 +447,6 @@
   </data>
   <data name="Menu_NodeInventory" xml:space="preserve">
     <value>節點清單</value>
-  </data>
-  <data name="Menu_ChannelSummary" xml:space="preserve">
-    <value>頻道摘要</value>
   </data>
   <data name="Menu_ActivitySummary" xml:space="preserve">
     <value>活動摘要</value>

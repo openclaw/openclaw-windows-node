@@ -1326,7 +1326,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             case "portdiagnostics": _diagnosticsClipboard!.CopyPortDiagnostics(); break;
             case "capabilitydiagnostics": _diagnosticsClipboard!.CopyCapabilityDiagnostics(); break;
             case "nodeinventory": _diagnosticsClipboard!.CopyNodeInventory(); break;
-            case "channelsummary": _diagnosticsClipboard!.CopyChannelSummary(); break;
             case "activitysummary": _diagnosticsClipboard!.CopyActivitySummary(); break;
             case "extensibilitysummary": _diagnosticsClipboard!.CopyExtensibilitySummary(); break;
             case "restartsshtunnel": RestartSshTunnel(); break;
@@ -1363,8 +1362,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     OpenDashboard(action["dashboard:".Length..]);
                 else if (action.StartsWith("activity:", StringComparison.Ordinal))
                     ShowHub("channels");
-                else if (action.StartsWith("channel:", StringComparison.Ordinal))
-                    ToggleChannel(action[8..]);
                 else
                     // Default: treat as a Hub navigation tag (e.g. "nodes", "agent:main:sessions")
                     ShowHub(action);
@@ -4153,44 +4150,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             (false, true) => PermissionsVoiceSetupRequirement.VoiceSetup,
             _ => PermissionsVoiceSetupRequirement.None,
         };
-    }
-
-    private void ToggleChannel(string channelName) =>
-        AsyncEventHandlerGuard.Run(
-            () => ToggleChannelAsync(channelName),
-            new AppLogger(),
-            nameof(ToggleChannel));
-
-    private async Task ToggleChannelAsync(string channelName)
-    {
-        var client = _connectionManager?.OperatorClient;
-        if (client == null) return;
-
-        var channel = _appState!.Channels.FirstOrDefault(c => c.Name == channelName);
-        if (channel == null) return;
-
-        try
-        {
-            var isRunning = ChannelHealth.IsHealthyStatus(channel.Status);
-            if (isRunning)
-            {
-                await client.StopChannelAsync(channelName);
-                AddRecentActivity($"Stopped channel: {channelName}", category: "channel", dashboardPath: "settings");
-            }
-            else
-            {
-                await client.StartChannelAsync(channelName);
-                AddRecentActivity($"Started channel: {channelName}", category: "channel", dashboardPath: "settings");
-            }
-             
-            // Refresh health
-            await RunHealthCheckAsync();
-        }
-        catch (Exception ex)
-        {
-            AddRecentActivity($"Channel toggle failed: {channelName}", category: "channel", details: ex.Message);
-            Logger.Error($"Failed to toggle channel: {ex.Message}");
-        }
     }
 
     private void ToggleAutoStart() =>

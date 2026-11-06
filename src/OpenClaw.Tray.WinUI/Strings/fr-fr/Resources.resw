@@ -116,9 +116,6 @@
   <data name="StatusSessionsHeader.Text" xml:space="preserve">
     <value>SESSIONS ACTIVES</value>
   </data>
-  <data name="StatusChannelsHeader.Text" xml:space="preserve">
-    <value>CANAUX</value>
-  </data>
   <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
     <value>TOPOLOGIE DE LA PASSERELLE</value>
   </data>
@@ -166,12 +163,6 @@
   </data>
   <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
     <value>La configuration des canaux, les compétences et les automatisations planifiées sont gérées par la passerelle. Utilisez ces liens quand la passerelle connectée expose les pages de tableau de bord correspondantes.</value>
-  </data>
-  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
-    <value>Configuration des canaux / schémas</value>
-  </data>
-  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
-    <value>Ouvrir la configuration des canaux pour l'authentification pilotée par schéma, QR, connexion et flux de tableau de bord quand disponible.</value>
   </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / planifications</value>
@@ -456,9 +447,6 @@
   </data>
   <data name="Menu_NodeInventory" xml:space="preserve">
     <value>Inventaire des nœuds</value>
-  </data>
-  <data name="Menu_ChannelSummary" xml:space="preserve">
-    <value>Résumé des canaux</value>
   </data>
   <data name="Menu_ActivitySummary" xml:space="preserve">
     <value>Résumé d'activité</value>

@@ -164,8 +164,6 @@ public interface IOperatorGatewayClient
     Task RequestDevicePairListAsync();
     Task<bool> DevicePairApproveAsync(string requestId);
     Task<bool> DevicePairRejectAsync(string requestId);
-    Task<bool> StartChannelAsync(string channelName);
-    Task<bool> StopChannelAsync(string channelName);
     /// <summary>
     /// Fetches the Gateway's effective update track (<c>update.status</c>).
     /// Older Gateway client implementations return no status.

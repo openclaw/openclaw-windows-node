@@ -18,35 +18,6 @@ public class OpenClawGatewayClientTests
     // Session-event regressions explicitly unset the refresh-window override.
     private static readonly TimeSpan SessionRefreshQuietInterval = TimeSpan.FromMilliseconds(600);
 
-    [Theory]
-    [InlineData(true, """{"started":true}""", true)]
-    [InlineData(true, """{"started":false}""", false)]
-    [InlineData(true, """{"channel":"telegram"}""", false)]
-    [InlineData(true, """{"started":"true"}""", false)]
-    [InlineData(false, """{"started":true}""", false)]
-    public async Task StartChannel_RequiresSuccessfulGatewayAcknowledgement(bool ok, string payload, bool expected)
-    {
-        using var server = new LoopbackWebSocketServer();
-        using var identity = new TempDirectory("channel-start-");
-        await server.StartAsync();
-        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
-        using var client = helper.Client;
-        await client.ConnectAsync();
-        helper.MarkHandshakeReady();
-        var starting = client.StartChannelAsync("telegram");
-        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5));
-        using var frame = JsonDocument.Parse(request);
-        Assert.Equal("channels.start", frame.RootElement.GetProperty("method").GetString());
-        Assert.Equal("telegram", frame.RootElement.GetProperty("params").GetProperty("channel").GetString());
-        await server.SendTextAsync(JsonSerializer.Serialize(new
-        {
-            type = "res", id = ReadRequestId(request), ok,
-            payload = JsonSerializer.Deserialize<JsonElement>(payload),
-            error = ok ? null : new { message = "Synthetic channel start rejected" },
-        }));
-        Assert.Equal(expected, await starting.WaitAsync(TimeSpan.FromSeconds(5)));
-    }
-
     [Fact]
     public void LateWebLoginError_OmitsPairingImageFromUntrackedResponseLog()
     {

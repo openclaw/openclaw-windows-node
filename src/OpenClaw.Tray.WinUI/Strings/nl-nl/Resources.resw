@@ -116,9 +116,6 @@
   <data name="StatusSessionsHeader.Text" xml:space="preserve">
     <value>ACTIEVE SESSIES</value>
   </data>
-  <data name="StatusChannelsHeader.Text" xml:space="preserve">
-    <value>KANALEN</value>
-  </data>
   <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
     <value>GATEWAYTOPOLOGIE</value>
   </data>
@@ -166,12 +163,6 @@
   </data>
   <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
     <value>Kanaalconfiguratie, skills en geplande automatiseringen zijn gateway-beheerde onderdelen. Gebruik deze koppelingen wanneer de verbonden gateway de bijbehorende dashboardpagina's aanbiedt.</value>
-  </data>
-  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
-    <value>Kanaalconfiguratie / schema's</value>
-  </data>
-  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
-    <value>Open kanaalconfiguratie voor schema-gestuurde verificatie, QR, aanmelden en dashboardstromen wanneer beschikbaar.</value>
   </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / planningen</value>
@@ -457,9 +448,6 @@
   </data>
   <data name="Menu_NodeInventory" xml:space="preserve">
     <value>Knooppuntinventaris</value>
-  </data>
-  <data name="Menu_ChannelSummary" xml:space="preserve">
-    <value>Kanaaloverzicht</value>
   </data>
   <data name="Menu_ActivitySummary" xml:space="preserve">
     <value>Activiteitenoverzicht</value>
