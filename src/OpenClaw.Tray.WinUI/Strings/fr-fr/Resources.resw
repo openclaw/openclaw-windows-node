@@ -8209,4 +8209,11 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>La voix Gateway a expiré. La synthèse a pu aboutir. Vérifiez la Gateway avant de réessayer. Aucune nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>La voix Gateway a échoué. Vérifiez sa configuration et le quota du fournisseur. Aucun repli local ni nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows n’a pas pu lire le son. Vérifiez le périphérique de sortie. Aucune nouvelle tentative automatique.</value></data>
+  <data name="LocalAi_GatewayUpgrade" xml:space="preserve"><value>Les réglages du raisonnement de l’IA locale nécessitent OpenClaw Gateway 2026.9.8 ou une version ultérieure. Mettez le Gateway à jour avant de publier ce modèle.</value></data>
+  <data name="LocalAi_GatewayRunningVersionUnavailable" xml:space="preserve"><value>La version du Gateway WSL en cours d’exécution n’a pas pu être vérifiée. Reconnectez le Gateway avant de publier l’IA locale.</value></data>
+  <data name="LocalAi_GatewaySavedRouteRestart" xml:space="preserve"><value>Le Gateway WSL n’a pas pu adopter la route d’IA locale enregistrée. Vérifiez son redémarrage avant de réessayer.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationValidation" xml:space="preserve"><value>Les anciens réglages du modèle d’IA locale n’ont pas pu être validés pour la migration. La configuration du Gateway n’a pas été modifiée.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationChanged" xml:space="preserve"><value>Les anciens réglages du modèle d’IA locale ont changé avant la confirmation de la migration. Reconnectez le Gateway d’origine pour les réconcilier.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationRestart" xml:space="preserve"><value>Les réglages du modèle d’IA locale ont été enregistrés, mais le redémarrage du Gateway WSL n’a pas été confirmé. Réconciliez le Gateway d’origine avant de réessayer.</value></data>
+  <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>La route d’IA locale enregistrée n’a pas pu être vérifiée. Conservez le point de terminaison et réconciliez le Gateway d’origine.</value></data>
 </root>

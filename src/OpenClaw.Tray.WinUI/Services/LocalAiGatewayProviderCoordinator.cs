@@ -19,33 +19,39 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
     private readonly ILocalAiGatewayAtomicConfigurationTransport? _atomicConfiguration;
     private readonly Func<string>? _getApiKey;
     private readonly IOpenClawLogger _logger;
+    private readonly Func<string, string>? _getString;
 
     public LocalAiGatewayProviderCoordinator(
         IWslCommandRunner commands,
         ILocalAiGatewayDistroResolver distroResolver,
-        IOpenClawLogger logger)
+        IOpenClawLogger logger,
+        Func<string, string>? getString = null)
         : this(new WslLocalAiGatewayConfigurationTransport(
             commands ?? throw new ArgumentNullException(nameof(commands)),
-            distroResolver ?? throw new ArgumentNullException(nameof(distroResolver))), logger)
+            distroResolver ?? throw new ArgumentNullException(nameof(distroResolver))), logger, getString)
     {
     }
 
     public LocalAiGatewayProviderCoordinator(
         ILocalAiGatewayConfigurationTransport configuration,
-        IOpenClawLogger logger)
+        IOpenClawLogger logger,
+        Func<string, string>? getString = null)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _getString = getString;
     }
 
     public LocalAiGatewayProviderCoordinator(
         ILocalAiGatewayAtomicConfigurationTransport configuration,
         Func<string> getApiKey,
-        IOpenClawLogger logger)
+        IOpenClawLogger logger,
+        Func<string, string>? getString = null)
     {
         _atomicConfiguration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _getApiKey = getApiKey ?? throw new ArgumentNullException(nameof(getApiKey));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _getString = getString;
     }
 
     public async Task<LocalAiEndpointLifecycleResult> QuiesceAsync(
@@ -198,7 +204,7 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             LocalAiGatewayCommandOutcome resumed = await _configuration!.RunAsync(
                 ["gateway", "restart"], cancellationToken).ConfigureAwait(false);
             if (!resumed.Routed || !resumed.Result!.Success)
-                return Failed("The saved Local AI route could not be adopted by the WSL Gateway. Confirm its restart before retrying.");
+                return Failed(Localized("LocalAi_GatewaySavedRouteRestart", "The saved Local AI route could not be adopted by the WSL Gateway. Confirm its restart before retrying."));
             return await VerifyExistingProviderAsync(install).ConfigureAwait(false);
         }
 
@@ -302,11 +308,11 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         if (_atomicConfiguration is not null)
             return LocalAiReasoningGatewayCompatibility.IsSupported(_atomicConfiguration.ServerVersion)
                 ? LocalAiEndpointLifecycleResult.Ok()
-                : Failed(LocalAiReasoningGatewayCompatibility.UpgradeMessage);
+                : Failed(Localized("LocalAi_GatewayUpgrade", LocalAiReasoningGatewayCompatibility.UpgradeMessage));
         LocalAiGatewayCommandOutcome version = await _configuration!.RunAsync(["--version"], ct).ConfigureAwait(false);
         if (!version.Routed || !version.Result!.Success ||
             !LocalAiReasoningGatewayCompatibility.IsSupportedCliOutput(version.Result.StandardOutput))
-            return Failed(LocalAiReasoningGatewayCompatibility.UpgradeMessage);
+            return Failed(Localized("LocalAi_GatewayUpgrade", LocalAiReasoningGatewayCompatibility.UpgradeMessage));
         if (!checkRunning) return LocalAiEndpointLifecycleResult.Ok();
 
         // The CLI may have been upgraded while its systemd service still runs
@@ -316,10 +322,10 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         if (!running.Routed || !running.Result!.Success ||
             !LocalAiReasoningGatewayCompatibility.TryReadRunningVersion(
                 running.Result.StandardOutput, out string? runningVersion))
-            return Failed(LocalAiReasoningGatewayCompatibility.RunningVersionUnavailableMessage);
+            return Failed(Localized("LocalAi_GatewayRunningVersionUnavailable", LocalAiReasoningGatewayCompatibility.RunningVersionUnavailableMessage));
         return LocalAiReasoningGatewayCompatibility.IsSupported(runningVersion)
             ? LocalAiEndpointLifecycleResult.Ok()
-            : Failed(LocalAiReasoningGatewayCompatibility.UpgradeMessage);
+            : Failed(Localized("LocalAi_GatewayUpgrade", LocalAiReasoningGatewayCompatibility.UpgradeMessage));
     }
 
     private LocalAiEndpointLifecycleResult CheckPublication(GatewayCapture current, LocalAiResolvedInstall install)
@@ -381,16 +387,16 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                 ["config", "set", LocalAiGatewayProviderDefinition.ProviderModelsPath,
                     models, "--strict-json", "--replace", "--dry-run"], ct).ConfigureAwait(false);
             if (!dryRun.Routed || !dryRun.Result!.Success)
-                return Failed("The legacy Local AI model settings could not be validated for migration. No Gateway configuration was changed.");
+                return Failed(Localized("LocalAi_GatewayLegacyMigrationValidation", "The legacy Local AI model settings could not be validated for migration. No Gateway configuration was changed."));
             LocalAiGatewayCommandOutcome applied = await _configuration.RunAsync(args, ct).ConfigureAwait(false);
             if (!applied.Routed || !applied.Result!.Success)
-                return Failed("The legacy Local AI model settings changed before migration could be confirmed. Reconnect the original Gateway to reconcile.");
+                return Failed(Localized("LocalAi_GatewayLegacyMigrationChanged", "The legacy Local AI model settings changed before migration could be confirmed. Reconnect the original Gateway to reconcile."));
             // The conditional write has landed; drain the restart despite
             // cancellation so the running Gateway can adopt this revision.
             LocalAiGatewayCommandOutcome restarted = await _configuration.RunAsync(
                 ["gateway", "restart"], CancellationToken.None).ConfigureAwait(false);
             if (!restarted.Routed || !restarted.Result!.Success)
-                return Failed("The Local AI model settings were saved, but the WSL Gateway restart was not confirmed. Reconcile the original Gateway before retrying.");
+                return Failed(Localized("LocalAi_GatewayLegacyMigrationRestart", "The Local AI model settings were saved, but the WSL Gateway restart was not confirmed. Reconcile the original Gateway before retrying."));
         }
 
         return await VerifyExistingProviderAsync(install).ConfigureAwait(false);
@@ -408,7 +414,7 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                string.Equals(verified.PrimaryModel,
                    LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), StringComparison.Ordinal)
             ? LocalAiEndpointLifecycleResult.Ok()
-            : Failed("The saved Local AI route could not be verified. Preserve the endpoint and reconcile the original Gateway.");
+            : Failed(Localized("LocalAi_GatewaySavedRouteVerification", "The saved Local AI route could not be verified. Preserve the endpoint and reconcile the original Gateway."));
     }
 
     private LocalAiEndpointLifecycleResult PublicationFailed(
@@ -531,6 +537,12 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         if (Encoding.UTF8.GetByteCount(value) > MaximumConfigBytes)
             throw new JsonException("The gateway configuration is too large.");
         return JsonDocument.Parse(value, new JsonDocumentOptions { MaxDepth = 32 });
+    }
+
+    private string Localized(string key, string fallback)
+    {
+        string? value = _getString?.Invoke(key);
+        return string.IsNullOrWhiteSpace(value) || value == key ? fallback : value;
     }
 
     private LocalAiEndpointLifecycleResult Failed(string detail)

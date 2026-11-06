@@ -22,7 +22,7 @@ namespace OpenClawTray.Services;
 internal sealed class LocalAiGatewayLifecycle(
     LocalAiPaths paths, string dataDirectory, Func<GatewayRegistry?> getRegistry,
     Func<GatewayConnectionManager?> getManager, ILocalAiEndpointLifecycle wsl,
-    IOpenClawLogger logger) : ILocalAiEndpointLifecycle
+    IOpenClawLogger logger, Func<string, string>? getString = null) : ILocalAiEndpointLifecycle
 {
     private const string UnconfirmedGatewayChangeDetail =
         "Local AI has an unconfirmed Gateway change. Reconnect the original Gateway and review Local AI first.";
@@ -329,6 +329,7 @@ internal sealed class LocalAiGatewayLifecycle(
     public async Task ReconcileVerifiedAsync(GatewayRecord record, IGatewayAiSetupTransport transport,
         LocalAiResolvedInstall install, CancellationToken ct, IProgress<LocalAiRuntimeStartStage>? progress = null)
     {
+        RequireReasoningGatewayVersion(install, transport);
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
         var binding = _store.Load() ?? throw new InvalidOperationException("The Local AI ownership receipt is unavailable.");
         var target = NativeLocalAiGatewayTarget.Capture(record, transport.Route);
@@ -340,7 +341,7 @@ internal sealed class LocalAiGatewayLifecycle(
         var provider = config["models"]?["providers"]?["llamacpp"];
         if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) ||
             config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() != binding.ModelRef ||
-            provider is null || !LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            provider is null || !LocalAiGatewayProviderDefinition.MatchesCurrentOrLegacyProviderJson(
                 provider.ToJsonString(), install, _credentials.GetOrCreate()))
             throw new InvalidOperationException("The saved Local AI provider or primary model was changed. No ownership was adopted.");
         // A redacted credential cannot establish ownership. Explicit verification
@@ -552,9 +553,21 @@ internal sealed class LocalAiGatewayLifecycle(
         IProgress<LocalAiRuntimeStartStage>? progress) =>
         _store.Exists ? RunNativeAsync(install, null, ct, progress) : Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
 
+    private void RequireReasoningGatewayVersion(LocalAiResolvedInstall install, IGatewayAiSetupTransport transport)
+    {
+        if (!LocalAiGatewayProviderDefinition.UsesReasoningEffortMetadata(install) ||
+            LocalAiReasoningGatewayCompatibility.IsSupported(transport.ServerVersion))
+            return;
+        string? localized = getString?.Invoke("LocalAi_GatewayUpgrade");
+        throw new LocalAiSelectionRejectedException(
+            string.IsNullOrWhiteSpace(localized) || localized == "LocalAi_GatewayUpgrade"
+                ? LocalAiReasoningGatewayCompatibility.UpgradeMessage : localized);
+    }
+
     private async Task PrepareCoreAsync(LocalAiResolvedInstall install, NativeLocalAiGatewayTarget target,
         IGatewayAiSetupTransport transport, CancellationToken ct)
     {
+        RequireReasoningGatewayVersion(install, transport);
         _endpointRecovery = null;
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
         var rpc = new LocalAiGatewayRpcConfigurationTransport(target, transport);
@@ -580,7 +593,7 @@ internal sealed class LocalAiGatewayLifecycle(
                 }
                 else if (provider is not null && primary == binding.ModelRef && install.Endpoint is { } endpoint &&
                     binding.ModelRef == LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) &&
-                    LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                    LocalAiGatewayProviderDefinition.MatchesCurrentOrLegacyProviderJson(
                         provider.ToJsonString(), install, _credentials.GetOrCreate()))
                 {
                     // Explicit Use may restore only the same authenticated listener.
@@ -671,7 +684,7 @@ internal sealed class LocalAiGatewayLifecycle(
                 }
                 else if (reason == LocalAiQuiesceReason.Teardown && !binding.Pending &&
                     provider is not null && primary == binding.ModelRef &&
-                    LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                    LocalAiGatewayProviderDefinition.MatchesCurrentOrLegacyProviderJson(
                         provider.ToJsonString(), install, _credentials.GetOrCreate()))
                 {
                     // Redacted keys alone cannot authorize deletion after an external edit.
@@ -718,7 +731,7 @@ internal sealed class LocalAiGatewayLifecycle(
             _store.Save(binding);
             var guarded = new JournaledTransport(new(target, transport), _store, binding,
                 reason == LocalAiQuiesceReason.Teardown);
-            var coordinator = new LocalAiGatewayProviderCoordinator(guarded, _credentials.GetOrCreate, logger);
+            var coordinator = new LocalAiGatewayProviderCoordinator(guarded, _credentials.GetOrCreate, logger, getString);
             var ownedInstall = install with { Manifest = install.Manifest with { GatewayFallbackModel = binding.PreviousPrimary } };
             ct.ThrowIfCancellationRequested();
             if (reason is null) progress?.Report(LocalAiRuntimeStartStage.PublishingProvider);

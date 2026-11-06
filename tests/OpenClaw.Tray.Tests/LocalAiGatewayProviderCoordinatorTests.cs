@@ -49,6 +49,20 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     }
 
     [Fact]
+    public async Task RpcValidation_UsesLocalizedUpgradeGuidance()
+    {
+        var transport = new AtomicTransport("{}") { ServerVersion = "2026.9.7" };
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret",
+            NullLogger.Instance, key => key == "LocalAi_GatewayUpgrade" ? "Localized upgrade guidance" : key);
+
+        var result = await coordinator.ValidatePublicationAsync(Install(28_765));
+
+        Assert.False(result.Success);
+        Assert.Equal("Localized upgrade guidance", result.Detail);
+        Assert.Empty(transport.Patches);
+    }
+
+    [Fact]
     public async Task RpcPublish_RejectsOldGatewayBeforePatch()
     {
         var transport = new AtomicTransport("{}") { ServerVersion = "2026.9.7" };

@@ -1946,6 +1946,85 @@ public sealed class NativeLocalAiLifecycleTests
         Assert.Equal(0, fixture.Rpc.Writes);
     }
 
+    [Fact]
+    public async Task NativeUseRejectsOldReasoningGatewayBeforeRuntimeOrRouteMutation()
+    {
+        using var fixture = new Fixture();
+        fixture.Rpc.ServerVersion = "2026.9.7";
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Stopped))
+        {
+            StartResult = LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Healthy),
+        };
+        var hardware = new HostHardwareInfo(Architecture.X64, 128L << 30, 100L << 30,
+            [new(GpuVendor.Nvidia, "Test GPU", 96L << 30, 80L << 30,
+                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test")], false);
+        var host = new SetupLocalAiHost(() => throw new InvalidOperationException(), () => null, () => runtime,
+            _ => Task.FromResult<LocalAiResolvedInstall?>(fixture.Install), (_, _) => Task.FromResult(true),
+            _ => Task.FromResult(hardware), () => throw new InvalidOperationException(), nativeLifecycle: fixture.Lifecycle);
+        host.ConfigureNative(Record, fixture.Rpc, _ => Task.CompletedTask);
+        var intent = new LocalAiInstallAndUseIntent(new(Record.Id, "", new Uri(Record.Url).Port, null, null,
+            true, GatewayDashboardBinding.Capture(Record)), fixture.Install.Manifest.ModelCatalogId,
+            fixture.Install.Manifest.RequestedPort);
+
+        var error = await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() =>
+            host.UseInstalledAsync(intent, default, null));
+
+        Assert.Contains("2026.9.8", error.Message);
+        Assert.Equal(0, runtime.Calls);
+        Assert.Equal(0, fixture.Rpc.Writes);
+        Assert.Equal(0, fixture.Rpc.Verifications);
+        Assert.False(fixture.Store.Exists);
+    }
+
+    [SetupWindowsFact]
+    public async Task NativeRecoveryAdmitsExactLegacyQwenProvider()
+    {
+        using var fixture = new Fixture();
+        await SeedLegacyPublishedProviderAsync(fixture);
+
+        await fixture.Lifecycle.PrepareStartAsync(fixture.Install, default);
+        Assert.Equal(fixture.Install.Endpoint!.Port, fixture.Lifecycle.GetRecoveryPort(fixture.Install));
+        await fixture.Lifecycle.ReconcileVerifiedAsync(Record, fixture.Rpc, fixture.Install, default);
+        Assert.False(fixture.Store.Load()!.Pending);
+        Assert.Equal(1, fixture.Rpc.Verifications);
+        Assert.Equal(0, fixture.Rpc.Writes);
+    }
+
+    [SetupWindowsFact]
+    public async Task NativeTeardownAcceptsExactLegacyQwenProvider()
+    {
+        using var fixture = new Fixture();
+        await SeedLegacyPublishedProviderAsync(fixture);
+
+        var result = await fixture.Lifecycle.QuiesceAsync(fixture.Install, LocalAiQuiesceReason.Teardown);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Null(fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]);
+    }
+
+    private static async Task SeedLegacyPublishedProviderAsync(Fixture fixture)
+    {
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        var provider = JsonNode.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(
+            fixture.Install, fixture.Lifecycle.GetApiKey()!))!.AsObject();
+        RemoveEffortMetadata(provider);
+        fixture.Rpc.Config["models"]!["providers"]!["llamacpp"] = provider;
+        fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"] = fixture.Model;
+        fixture.Rpc.Config["agents"]!["defaults"]!["models"]![fixture.Model] = new JsonObject();
+        fixture.Rpc.Revision++;
+    }
+
+    private static void RemoveEffortMetadata(JsonObject provider)
+    {
+        var model = ((JsonArray)provider["models"]!)[0]!.AsObject();
+        var compat = model["compat"]!.AsObject();
+        compat.Remove("supportsReasoningEffort");
+        compat.Remove("supportedReasoningEfforts");
+        compat.Remove("reasoningEffortMap");
+        model.Remove("thinkingLevelMap");
+    }
+
     private sealed class Fixture : IDisposable
     {
         private readonly TempDirectory _directory = new();
@@ -2012,7 +2091,7 @@ public sealed class NativeLocalAiLifecycleTests
             GatewayDashboardBinding.Capture(Record), new string('A', 64), "agent:main:main");
         public long Generation => 1;
         public bool IsConnected { get; set; } = true;
-        public string? ServerVersion => "2026.9.8";
+        public string? ServerVersion { get; set; } = "2026.9.8";
         public bool OfferDetectedModel { get; set; }
         public IReadOnlyCollection<string> Methods => OfferDetectedModel
             ? ["config.get", "config.patch", "openclaw.setup.verify", "openclaw.setup.detect", "openclaw.setup.activate"]
@@ -2100,5 +2179,14 @@ public sealed class NativeLocalAiLifecycleTests
                 else target[pair.Key] = pair.Value.DeepClone();
             }
         }
+    }
+}
+
+internal sealed class SetupWindowsFactAttribute : FactAttribute
+{
+    public SetupWindowsFactAttribute()
+    {
+        if (!OperatingSystem.IsWindows())
+            Skip = "Native Local AI credential integration requires Windows user protection.";
     }
 }

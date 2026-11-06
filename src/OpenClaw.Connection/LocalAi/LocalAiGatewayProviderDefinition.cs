@@ -45,6 +45,12 @@ public static class LocalAiGatewayProviderDefinition
     public static bool MatchesProviderJson(string providerJson, LocalAiResolvedInstall install, string? apiKey = null) =>
         MatchesProviderJson(providerJson, install, apiKey, legacy: false);
 
+    /// <summary>Recognizes an exact current or pre-effort-metadata managed provider for ownership recovery.</summary>
+    public static bool MatchesCurrentOrLegacyProviderJson(
+        string providerJson, LocalAiResolvedInstall install, string? apiKey = null) =>
+        MatchesProviderJson(providerJson, install, apiKey) ||
+        MatchesLegacyProviderJson(providerJson, install, apiKey);
+
     /// <summary>Recognizes only the exact provider shape published before effort metadata was added.</summary>
     public static bool MatchesLegacyProviderJson(string providerJson, LocalAiResolvedInstall install, string? apiKey = null) =>
         MatchesProviderJson(providerJson, install, apiKey, legacy: true);
