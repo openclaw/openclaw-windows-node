@@ -48,9 +48,6 @@
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Chat_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_87" x:Name="NavGatewayHeader" Content="Gateway"/>
-                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_91" x:Name="NavSessions" Tag="sessions" Content="Sessions">
-                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Sessions_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-                    </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_109" x:Name="NavChannels" Tag="channels" Content="Channels">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Channels_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
@@ -60,6 +57,14 @@
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_124" x:Name="NavCron" Tag="cron" Content="Automations">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Cron_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_121" x:Name="NavUsage" Tag="usage" Content="Usage">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Usage_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_118" x:Name="NavConfig" Tag="config" Content="Config">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Config_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItemSeparator x:Name="NavGatewaySeparator"/>
+                    <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_Model" Content="Agents and tools"/>
                     <NavigationViewItem x:Uid="AgentsNavItem" x:Name="AgentsNavItem" Content="Agents" SelectsOnInvoked="False" IsExpanded="True">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Agents_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                         <NavigationViewItem.MenuItems>
@@ -68,14 +73,9 @@
                             </NavigationViewItem>
                         </NavigationViewItem.MenuItems>
                     </NavigationViewItem>
-                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_121" x:Name="NavUsage" Tag="usage" Content="Usage">
-                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Usage_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_91" x:Name="NavSessions" Tag="sessions" Content="Sessions">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Sessions_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
-                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_118" x:Name="NavConfig" Tag="config" Content="Config">
-                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Config_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-                    </NavigationViewItem>
-                    <NavigationViewItemSeparator x:Name="NavGatewaySeparator"/>
-                    <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_Model" Content="Model"/>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_DefaultModel" Tag="model" Content="Models">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Model_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>

@@ -645,9 +645,16 @@ public sealed class DiagnosticsPageContractTests
             .TakeWhile(element => element.Name.LocalName is not ("NavigationViewItemHeader" or "NavigationViewItemSeparator"))
             .ToArray();
 
-        Assert.Equal(new[] { "sessions", "channels", "instances", "cron", "usage", "config" },
+        Assert.Equal(new[] { "channels", "instances", "cron", "usage", "config" },
             gateway.Select(element => (string?)element.Attribute("Tag")).OfType<string>());
-        var agents = Assert.Single(gateway, element => (string?)element.Attribute(x + "Name") == "AgentsNavItem");
+        var tools = menu.Elements()
+            .SkipWhile(element => (string?)element.Attribute("Content") != "Agents and tools")
+            .Skip(1)
+            .TakeWhile(element => element.Name.LocalName is not ("NavigationViewItemHeader" or "NavigationViewItemSeparator"))
+            .ToArray();
+        Assert.Equal(new[] { "AgentsNavItem", "sessions", "model", "local-ai" },
+            tools.Select(element => (string?)element.Attribute("Tag") ?? (string?)element.Attribute(x + "Name")));
+        var agents = Assert.Single(tools, element => (string?)element.Attribute(x + "Name") == "AgentsNavItem");
         Assert.Contains(agents.Descendants(), element => (string?)element.Attribute("Tag") == "agent:main");
         Assert.DoesNotContain(settings.Descendants(), element => (string?)element.Attribute(x + "Name") == "NavAdvanced");
         Assert.DoesNotContain(settings.Descendants(), element => (string?)element.Attribute(x + "Uid") == "HubWindow_Advanced");
@@ -657,6 +664,7 @@ public sealed class DiagnosticsPageContractTests
         var hub = Read("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
         Assert.Contains("var gatewayToolVisibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;", hub);
         Assert.Contains("AgentsNavItem.Visibility = gatewayToolVisibility;", hub);
+        Assert.Contains("NavSessions.Visibility = vis;", hub);
         Assert.Contains("NavUsage.Visibility = gatewayToolVisibility;", hub);
         Assert.Contains("NavConfig.Visibility = gatewayToolVisibility;", hub);
         Assert.Contains("NavGatewayHeader.Visibility = gatewayToolVisibility;", hub);
