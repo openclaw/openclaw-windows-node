@@ -619,25 +619,34 @@ public class ActivationRouterTests
     public async Task StopAsync_CancelsPendingConfirmationAndPreventsLateDispatch()
     {
         var pipeName = UniquePipeName();
-        await using var listener = new ActivationRouter(Scheme, pipeName);
+        var listener = new ActivationRouter(Scheme, pipeName);
         var forwarder = new ActivationRouter(Scheme, pipeName);
         var sink = new BlockingConfirmationSink();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        // The listener gets a timer-free token so only StopAsync can cancel the pending confirmation;
-        // the test's own 10 s timer must not mask a shutdown bug. Disposal still runs on every exit
-        // path, so a failure above cannot leave the listener task and pipe alive.
-        await listener.StartForwardedActivationListenerAsync(sink, CancellationToken.None);
+        try
+        {
+            // The listener gets a timer-free token so only StopAsync can cancel the pending
+            // confirmation; the test's own 10 s timer must not mask a shutdown bug.
+            await listener.StartForwardedActivationListenerAsync(sink, CancellationToken.None);
 
-        Assert.True(await ForwardWithRetryAsync(
-            forwarder,
-            $"{Scheme}://agent?message=hello",
-            cts.Token));
-        await sink.ConfirmationStarted.Task.WaitAsync(cts.Token);
+            Assert.True(await ForwardWithRetryAsync(
+                forwarder,
+                $"{Scheme}://agent?message=hello",
+                cts.Token));
+            await sink.ConfirmationStarted.Task.WaitAsync(cts.Token);
 
-        await listener.StopAsync().WaitAsync(ActivationWaitTimeout);
+            await listener.StopAsync().WaitAsync(ActivationWaitTimeout);
 
-        sink.ReleaseConfirmation(true);
-        Assert.DoesNotContain(sink.Dispatched, route => route is ActivationRoute.SendMessage);
+            sink.ReleaseConfirmation(true);
+            Assert.DoesNotContain(sink.Dispatched, route => route is ActivationRoute.SendMessage);
+        }
+        finally
+        {
+            // Unblock a confirmation that ignored cancellation, then bound the dispose: a plain
+            // dispose awaits the same stop task, so a shutdown bug would hang instead of fail.
+            sink.ReleaseConfirmation(false);
+            await listener.DisposeAsync().AsTask().WaitAsync(ActivationWaitTimeout);
+        }
     }
 
     private static async Task<bool> ForwardWithRetryAsync(

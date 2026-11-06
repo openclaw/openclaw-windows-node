@@ -27,9 +27,10 @@ internal static class SvgGeometryBudget
     /// XML structure: comments, CDATA, processing instructions and DOCTYPE are skipped, and
     /// attributes are only read inside element start tags, so attribute-like text in comments or
     /// other attributes' values (<c>data-d=</c>, <c>id='d='</c>) never counts.
-    /// Callers must pass bytes with the DOCTYPE already removed
-    /// (<see cref="TryPrepareSvgForDecode"/>): this scan ends a declaration at its
-    /// first <c>&gt;</c>, so a DTD internal subset would not match what the decoder parses.
+    /// Callers must pass bytes with the DOCTYPE already removed: this scan ends a declaration at
+    /// its first <c>&gt;</c>, so a DTD internal subset would not match what the decoder parses.
+    /// <see cref="TryPrepareSvgForDecode"/> guarantees that by rejecting any input where a
+    /// declaration survives the strip.
     /// </summary>
     internal static bool Exceeds(byte[] bytes)
     {
@@ -96,10 +97,14 @@ internal static class SvgGeometryBudget
 
     /// <summary>
     /// Pre-decode policy over the exact bytes the decoder receives: reject encodings the ASCII
-    /// scan cannot read, strip the DOCTYPE, then enforce the geometry budget. The strip must run
-    /// before the budget: <see cref="Exceeds"/> ends a <c>&lt;!</c> declaration at its first
-    /// <c>&gt;</c>, while <see cref="StripDoctype"/> honors a DTD internal subset, so scanning
-    /// unstripped bytes would count text the decoder never sees (and could miss text it does).
+    /// scan cannot read, strip the DOCTYPE, reject the input if any declaration survives that
+    /// strip, then enforce the geometry budget. The strip must run before the budget:
+    /// <see cref="Exceeds"/> ends a <c>&lt;!</c> declaration at its first <c>&gt;</c>, while
+    /// <see cref="StripDoctype"/> honors a DTD internal subset, so scanning unstripped bytes
+    /// would count text the decoder never sees (and could miss text it does). The leftover check
+    /// fails closed: <see cref="StripDoctype"/> removes the first textual declaration, which a
+    /// comment or processing instruction before the real one can displace. An SVG that keeps a
+    /// literal <c>&lt;!DOCTYPE</c> in its own comment is therefore rejected with the same reason.
     /// </summary>
     /// <param name="bytes">Raw SVG bytes.</param>
     /// <param name="sanitized">Bytes to decode; equal to <paramref name="bytes"/> when nothing was stripped.</param>
@@ -114,6 +119,12 @@ internal static class SvgGeometryBudget
         }
 
         sanitized = StripDoctype(bytes);
+        if (IndexOfAsciiCi(sanitized, 0, "<!DOCTYPE") >= 0)
+        {
+            rejection = "DOCTYPE could not be stripped";
+            return false;
+        }
+
         if (Exceeds(sanitized))
         {
             rejection = $"geometry attributes exceed {MaxAttributeChars} characters";

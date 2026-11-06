@@ -105,7 +105,6 @@ public sealed class A2UISvgGeometryBudgetTests
         var bytes = Encoding.UTF8.GetBytes(
             $"<!DOCTYPE svg [<!-- > <path d='{fakePath}'/> -->]>" + Svg("<path d='M0 0 L1 1'/>"));
 
-        Assert.True(SvgGeometryBudget.Exceeds(bytes));
         Assert.True(SvgGeometryBudget.TryPrepareSvgForDecode(bytes, out var sanitized, out var rejection));
         Assert.Empty(rejection);
         Assert.DoesNotContain("<!DOCTYPE", Encoding.UTF8.GetString(sanitized), StringComparison.OrdinalIgnoreCase);
@@ -114,8 +113,24 @@ public sealed class A2UISvgGeometryBudgetTests
     [Fact]
     public void TryPrepareSvgForDecode_OversizedGeometryAfterDoctype_IsRejected()
     {
+        // The raw scan ends the declaration at the '>' in the DTD comment, then treats the '<?' as a
+        // processing instruction and skips to end of input because there is no '?>', so it never
+        // counts the oversized path the decoder would parse. The strip removes the whole declaration.
         var bytes = Encoding.UTF8.GetBytes(
-            "<!DOCTYPE svg [<!-- > -->]>" + Svg($"<path d='{new string('1', Budget + 1)}'/>"));
+            "<!DOCTYPE svg [<!-- > <? -->]>" + Svg($"<path d='{new string('1', Budget + 1)}'/>"));
+
+        Assert.False(SvgGeometryBudget.Exceeds(bytes));
+        Assert.False(SvgGeometryBudget.TryPrepareSvgForDecode(bytes, out _, out _));
+    }
+
+    [Fact]
+    public void TryPrepareSvgForDecode_DoctypeSurvivingTheStrip_IsRejected()
+    {
+        // A decoy <!DOCTYPE inside a comment is the first textual match, so the strip removes only
+        // that one and leaves the real declaration, whose DTD hides the oversized path from the scan.
+        var bytes = Encoding.UTF8.GetBytes(
+            "<!-- <!DOCTYPE x> --><!DOCTYPE svg [<!-- > <![CDATA[ -->]>" +
+            Svg($"<path d='{new string('1', Budget + 1)}'/>"));
 
         Assert.False(SvgGeometryBudget.TryPrepareSvgForDecode(bytes, out _, out _));
     }
