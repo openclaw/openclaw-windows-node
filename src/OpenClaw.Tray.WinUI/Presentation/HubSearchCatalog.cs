@@ -9,7 +9,7 @@ internal static class HubSearchCatalog
     internal static readonly (string Tag, string Path)[] Counterparts =
     [
         ("connection", "/settings/connection"), ("sessions", "/sessions"), ("skills", "/skills"),
-        ("channels", "/settings/channels"), ("instances", "/settings/devices"),
+        ("instances", "/settings/devices"),
         ("cron", "/automations"), ("config", "/settings/general"), ("usage", "/usage")
     ];
 
@@ -70,6 +70,29 @@ internal static class HubSearchCatalog
         return Counterparts.FirstOrDefault(pair => pair.Tag == tag).Path;
     }
 
+    internal static string? ContextualDashboardPath(
+        WorkspaceDestination destination,
+        string? currentSessionKey,
+        bool? isMain,
+        string? gatewayVersion)
+    {
+        var supported = SupportsDashboard(gatewayVersion);
+        if (destination.Page == WorkspacePageId.Settings)
+        {
+            if (destination.CompanionTag is not { } tag)
+                return null;
+            if (tag.StartsWith("agent:", StringComparison.Ordinal) &&
+                tag.IndexOf(':', "agent:".Length) < 0)
+                return null;
+            return Counterpart(tag, supported);
+        }
+        if (!supported || destination.Page != WorkspacePageId.Home)
+            return null;
+
+        var sessionKey = destination.SessionKey ?? currentSessionKey;
+        return string.IsNullOrWhiteSpace(sessionKey) ? null : SessionPath(sessionKey, isMain);
+    }
+
     internal static IEnumerable<HubSearchItem> Navigation(
         IEnumerable<HubCommand> commands, bool connected, bool dashboardSupported, Func<string, string> localize)
     {
@@ -80,6 +103,12 @@ internal static class HubSearchCatalog
                 if (!connected && HubPageRegistry.IsGatewayPageTag(tag)) continue;
                 if (tag.StartsWith("agent:", StringComparison.Ordinal) && HubPageRegistry.ParseAgentId(tag).Length == 0) continue;
                 var presentation = HubPageRegistry.SearchPresentation(tag);
+                if (tag == "channels")
+                {
+                    yield return new($"dashboard:{tag}", HubSearchGroup.Dashboard, localize(presentation.TitleKey), command.Subtitle,
+                        presentation.Icon, new(HubSearchTargetKind.Dashboard, tag), $"{tag} {command.Title}", tag);
+                    continue;
+                }
                 yield return new($"page:{tag}", HubSearchGroup.Settings, localize(presentation.TitleKey), command.Subtitle,
                     presentation.Icon, new(HubSearchTargetKind.Page, tag), $"{tag} {command.Title}",
                     Counterpart(tag, dashboardSupported));

@@ -15,6 +15,28 @@ public sealed partial class GatewayFixtureProtocolTests
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
 
     [Fact]
+    public async Task SearchNavigationScenario_AcceptsScopedSkillsReadsWithoutAdvertisingRetiredChannelsStatus()
+    {
+        var scenario = GatewayScenario.CreateSearchNavigation();
+        Assert.Contains("skills.status", scenario.ReadMethods);
+        Assert.DoesNotContain("channels.status", scenario.ReadMethods);
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var deadline = new CancellationTokenSource(Deadline);
+
+        var result = await connected.Client.ReadSearchCatalogAsync(
+            "skills.status", new { agentId = "main" }, deadline.Token);
+
+        Assert.Empty(result.GetProperty("skills").EnumerateArray());
+        Assert.Contains(server.Requests, request => request.Method == "skills.status" && request.Outcome == "ok");
+        var error = await Assert.ThrowsAsync<GatewayRequestException>(() =>
+            connected.Client.ReadSearchCatalogAsync("skills.status", new { agentId = "unknown" }, deadline.Token));
+        Assert.Equal("INVALID_PARAMS", error.Code);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
     public async Task BrowseQuestionDiscovery_ReturnsNoQuestionsWithoutEnablingInteractiveMutations()
     {
         var token = CreateToken();
@@ -58,25 +80,6 @@ public sealed partial class GatewayFixtureProtocolTests
             connected.Client.SendWizardRequestAsync("projects.add", new { gitUrl = "https://example.test/fixture.git" }));
         Assert.Contains("read-only", error.Message);
         Assert.Contains(server.Requests, request => request.Method == "projects.add" && request.Outcome == "error:FIXTURE_READ_ONLY");
-        Assert.Empty(server.UnexpectedRequests);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ReadOnlyScenarios_ReturnEmptyChannelStatus(bool nativeSetup)
-    {
-        var scenario = nativeSetup
-            ? GatewayScenario.CreateNativeSetup((method, _) =>
-                throw new InvalidOperationException($"Unexpected setup operation: {method}"))
-            : GatewayScenario.CreateBrowse();
-        var token = CreateToken();
-        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
-        await using var connected = await ConnectedClient.OpenAsync(server, token);
-        var channels = await connected.Client.GetChannelsStatusAsync();
-        Assert.NotNull(channels);
-        Assert.Empty(channels.Channels);
-        Assert.Empty(channels.ChannelOrder);
         Assert.Empty(server.UnexpectedRequests);
     }
 
@@ -781,9 +784,6 @@ public sealed partial class GatewayFixtureProtocolTests
     [InlineData("environments.list", """{"unexpected":true}""", "Unsupported fixture request parameter")]
     [InlineData("agent.identity.get", """{"agentId":"main","typo":true}""", "Unsupported fixture request parameter")]
     [InlineData("agent.identity.get", "{}", "Missing agentId")]
-    [InlineData("channels.status", """{"probe":"yes"}""", "must be a boolean")]
-    [InlineData("channels.status", """{"timeoutMs":-1}""", "positive integer")]
-    [InlineData("channels.status", """{"unexpected":true}""", "Unsupported fixture request parameter")]
     public async Task RealClient_InvalidOrUnknownParametersFailExplicitly(string method, string json, string message)
     {
         var token = CreateToken();

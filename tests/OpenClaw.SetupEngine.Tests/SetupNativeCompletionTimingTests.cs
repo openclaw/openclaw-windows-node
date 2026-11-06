@@ -80,7 +80,8 @@ public sealed class SetupNativeCompletionTimingTests
         Assert.True(handoff > startup + IsolatedGatewayRuntime.StartupConfirmationTimeout);
         Assert.True(SetupNativeCompletionTiming.Connection >= handoff);
         Assert.Equal(SetupNativeCompletionTiming.Connection + SetupNativeCompletionTiming.ModelVerification,
-            SetupNativeCompletionCoordinator.VerificationTimeout);
+            SetupNativeCompletionTiming.PreparationVerification);
+        Assert.Equal(TimeSpan.FromSeconds(30), SetupNativeCompletionTiming.PreparationDrain);
         Assert.Equal(SetupNativeCompletionTiming.ExecutionFor(SetupNativeCompletionTiming.Connection),
             SetupNativeCompletionTiming.Execution);
         Assert.InRange(SetupNativeCompletionTiming.Execution,

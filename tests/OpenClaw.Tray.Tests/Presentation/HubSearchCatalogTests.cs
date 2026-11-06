@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Collections.Immutable;
 using System.Xml.Linq;
 using OpenClawTray.Presentation;
+using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests.Presentation;
 
@@ -26,8 +27,38 @@ public sealed class HubSearchCatalogTests
         });
         Assert.Equal("Config", Assert.Single(items, item => item.Target.Value == "config").Title);
         Assert.Equal("Event Stream", Assert.Single(items, item => item.Target.Value == "agentevents").Title);
-        Assert.Equal("Dashboard", Assert.Single(items, item => item.Target.Kind == HubSearchTargetKind.Dashboard).Title);
+        Assert.Equal("Dashboard", Assert.Single(items, item =>
+            item.Target == new HubSearchTarget(HubSearchTargetKind.Dashboard, "")).Title);
         Assert.Contains(HubSearch.Find(items, "Agent Events"), match => match.Item.Target.Value == "agentevents");
+    }
+
+    [Theory]
+    [InlineData("Channels", true, true)]
+    [InlineData("Go to Channels", true, false)]
+    [InlineData("Channels", false, false)]
+    public void ChannelsSearchOpensDashboardInsteadOfRetiredNativePage(
+        string query, bool connected, bool dashboardSupported)
+    {
+        var resources = XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw"))
+            .Root!.Elements("data").ToImmutableDictionary(element => (string)element.Attribute("name")!,
+                element => element.Element("value")!.Value);
+        var commands = HubPageRegistry.BuildCommands(new("main", false, null, [], resources));
+        var items = HubSearchCatalog.Navigation(commands, connected, dashboardSupported, key => resources[key]);
+        var result = Assert.Single(HubSearch.Find(items, query), match => match.Item.Title == "Channels").Item;
+
+        Assert.Equal(HubSearchGroup.Dashboard, result.Group);
+        Assert.True(result.OpensDashboard);
+        Assert.Equal(new HubSearchTarget(HubSearchTargetKind.Dashboard, "channels"), result.Target);
+        Assert.Equal("channels", result.DashboardPath);
+        Assert.Null(HubPageRegistry.ResolvePage("channels"));
+
+        var opened = new List<string?>();
+        var navigated = new List<HubSearchTarget>();
+        var executor = new HubCommandExecutor(() => null, () => null, opened.Add);
+        executor.Execute(result.Target, navigated.Add);
+        Assert.Equal(["channels"], opened);
+        Assert.Empty(navigated);
     }
 
     [Fact]
@@ -79,6 +110,38 @@ public sealed class HubSearchCatalogTests
     {
         Assert.Equal("/chat/work", HubSearchCatalog.SessionPath("agent:work:custom-home", isMain: true));
         Assert.Equal("/chat/work/~key/main", HubSearchCatalog.SessionPath("agent:work:main", isMain: false));
+    }
+
+    [Fact]
+    public void ContextualDashboardPath_UsesCurrentChatSessionWhenHomeHistoryHasNoSession()
+    {
+        Assert.Equal("/chat/work/~key/12345678", HubSearchCatalog.ContextualDashboardPath(
+            new(WorkspacePageId.Home), "agent:work:12345678", isMain: false, "2026.10.9"));
+    }
+
+    [Fact]
+    public void ContextualDashboardPath_PrefersVisibleSettingsOverRetainedChat()
+    {
+        Assert.Equal("/usage", HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings("usage"), "agent:work:12345678", isMain: false, "2026.10.9"));
+    }
+
+    [Fact]
+    public void ContextualDashboardPath_UsesExplicitSessionAndFallsBackWithoutVerifiedCounterpart()
+    {
+        Assert.Equal("/chat/work/~key/main", HubSearchCatalog.ContextualDashboardPath(
+            new(WorkspacePageId.Home, "agent:work:main"), "agent:main:main",
+            isMain: false, "2026.10.9"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings("local-ai"), null, null, "2026.10.9"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings("agent:research"), null, null, "2026.10.9"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings("config"), null, null, "2026.11.1"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            new(WorkspacePageId.Home), null, null, "2026.10.9"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            new(WorkspacePageId.Notifications), "agent:work:12345678", isMain: false, "2026.10.9"));
     }
 
     [Fact]

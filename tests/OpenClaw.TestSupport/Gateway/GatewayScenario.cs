@@ -332,11 +332,6 @@ public sealed partial class GatewayScenario
             ["node.pair.list"] = JsonSerializer.SerializeToElement(new { pending = Array.Empty<object>(), paired = Array.Empty<object>() }),
             ["device.pair.list"] = JsonSerializer.SerializeToElement(new { pending = Array.Empty<object>(), paired = Array.Empty<object>() }),
             ["question.list"] = JsonSerializer.SerializeToElement(new { questions = Array.Empty<object>() }),
-            ["channels.status"] = JsonSerializer.SerializeToElement(new
-            {
-                ts = Epoch.ToUnixTimeMilliseconds(), channelOrder = Array.Empty<string>(),
-                channels = new { }, channelAccounts = new { }
-            }),
             ["usage.status"] = JsonSerializer.SerializeToElement(new
             {
                 updatedAt = Epoch.ToUnixTimeMilliseconds(), providers = Array.Empty<object>()
@@ -784,7 +779,6 @@ public sealed partial class GatewayScenario
         ValidateProperties(p, method switch
         {
             "health" => ["deep", "probe"],
-            "channels.status" => ["probe", "timeoutMs"],
             "skills.status" => ["agentId"],
             _ => []
         });
@@ -792,11 +786,6 @@ public sealed partial class GatewayScenario
         {
             OptionalBoolean(p, "deep");
             OptionalBoolean(p, "probe");
-        }
-        else if (method == "channels.status")
-        {
-            OptionalBoolean(p, "probe");
-            PositiveInt(p, "timeoutMs", 10000);
         }
         else if (method == "skills.status")
         {

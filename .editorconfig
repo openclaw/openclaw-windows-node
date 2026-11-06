@@ -188,9 +188,6 @@ dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 [src/OpenClaw.Tray.WinUI/Pages/ConfigPage.xaml.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
-[src/OpenClaw.Tray.WinUI/Pages/ChannelsPage.xaml.cs]
-dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
-
 [src/OpenClaw.Tray.WinUI/Pages/ConnectionPage.xaml.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
