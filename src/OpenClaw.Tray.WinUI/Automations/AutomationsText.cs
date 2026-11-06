@@ -310,8 +310,12 @@ internal sealed class AutomationsText(Func<string, string> lookup, Func<DateTime
         AutomationsNoticeKind.Conflict => (this["Notice_ConflictTitle"], this["Notice_Conflict"]),
         AutomationsNoticeKind.ConflictUnloadable => (this["Notice_ConflictTitle"], this["Notice_ConflictUnloadable"]),
         AutomationsNoticeKind.MissingRevision => (this["Notice_ConflictTitle"], this["Notice_MissingRevision"]),
+        AutomationsNoticeKind.JobUnavailable => (JobUnavailableMessage, JobUnavailableMessage),
         _ => (this["Notice_FailedTitle"], Format("Notice_JobMessage", notice.JobName, notice.Detail ?? "")),
     };
+
+    /// <summary>Shares the Hub search wording, so it is also the heading: the page shows only the message.</summary>
+    private string JobUnavailableMessage => lookup("Search_TargetUnavailable");
 
     public string FormError(CronFormError error) => this["Error_" + error];
 

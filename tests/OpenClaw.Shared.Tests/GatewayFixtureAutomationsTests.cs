@@ -99,7 +99,7 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.DoesNotContain(store.State.Jobs, j => j.Id == "scheduled-204");
         Assert.Contains(store.State.OverviewJobs, j => j.Id == "scheduled-204");
         Assert.DoesNotContain(store.State.OverviewJobs, j => j.Id == GatewayScenario.AutomationsOtherAgentJobId);
-        await ui.InvokeAsync(() => store.RevealAsync("scheduled-204"));
+        Assert.Equal(AutomationRevealOutcome.Revealed, await await ui.InvokeAsync(() => store.RevealAsync("scheduled-204")));
         await WaitForAsync(() => store.State.SelectedJobId == "scheduled-204");
         Assert.Contains(store.State.Jobs, j => j.Id == "scheduled-204");
         Assert.Equal("", store.State.ListQuery.Query);
@@ -115,6 +115,119 @@ public sealed partial class GatewayFixtureProtocolTests
         await WaitForAsync(() => store.State.OverviewError is not null && store.State.ListError is not null);
         Assert.Equal(213, store.State.OverviewJobs.Count);
         Assert.Contains(store.State.Jobs, j => j.Id == "scheduled-204");
+    }
+
+    [Fact]
+    public async Task AutomationsStore_RevealOfAMissingJobSaysSoWithoutSelectingOrWidening()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, (_, _) => Task.CompletedTask);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded && !store.State.ListLoading);
+
+        Assert.Equal(AutomationRevealOutcome.NotFound, await await ui.InvokeAsync(() => store.RevealAsync("deleted-elsewhere", widenToAllAgents: true)));
+        await WaitForAsync(() => store.State.Notice?.Kind == AutomationsNoticeKind.JobUnavailable && !store.State.ListLoading);
+
+        var notice = store.State.Notice!;
+        Assert.Equal("deleted-elsewhere", notice.JobName);
+        Assert.True(notice.IsInformational);
+        Assert.False(notice.IsError);
+        // Nothing is selected for a job the list does not hold, and a miss does not leave the filtered agent.
+        Assert.Null(store.State.SelectedJobId);
+        Assert.Null(store.State.SelectedJob);
+        Assert.Equal("main", store.State.AgentFilter);
+        Assert.Contains(store.State.Jobs, job => job.Id == "morning-brief");
+        Assert.DoesNotContain(store.State.Jobs, job => job.Id == GatewayScenario.AutomationsOtherAgentJobId);
+    }
+
+    [Fact]
+    public async Task AutomationsStore_RevealStaysInTheFilteredAgentUnlessWidened()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, (_, _) => Task.CompletedTask);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded && store.State.OverviewLoaded && !store.State.ListLoading);
+
+        // An agenda link is scoped: another agent's job is not reachable from this filter.
+        Assert.Equal(AutomationRevealOutcome.NotFound, await await ui.InvokeAsync(() => store.RevealAsync(GatewayScenario.AutomationsOtherAgentJobId)));
+        await WaitForAsync(() => store.State.Notice?.Kind == AutomationsNoticeKind.JobUnavailable && !store.State.ListLoading);
+        Assert.Null(store.State.SelectedJobId);
+        Assert.Equal("main", store.State.AgentFilter);
+        Assert.DoesNotContain(server.Requests, r => r.Method == "cron.list" && r.AgentId is null && r.Outcome == "ok");
+
+        // A search result is not: the owning agent is shown instead of a dead end.
+        Assert.Equal(AutomationRevealOutcome.Revealed,
+            await await ui.InvokeAsync(() => store.RevealAsync(GatewayScenario.AutomationsOtherAgentJobId, widenToAllAgents: true)));
+        await WaitForAsync(() => store.State.SelectedJobId == GatewayScenario.AutomationsOtherAgentJobId
+            && store.State.OverviewLoaded && !store.State.ListLoading);
+        Assert.True(store.State.IsAllAgents);
+        Assert.Contains(store.State.Jobs, job => job.Id == GatewayScenario.AutomationsOtherAgentJobId);
+        Assert.Contains(store.State.Jobs, job => job.Id == "morning-brief");
+        Assert.Contains(store.State.OverviewJobs, job => job.Id == GatewayScenario.AutomationsOtherAgentJobId);
+        // New automations still belong to the route agent, not the revealed job's owner.
+        Assert.Equal("main", store.State.DefaultAgentId);
+        Assert.Equal(GatewayScenario.AutomationsOtherAgentJobId, store.State.SelectedJob?.Id);
+    }
+
+    [Fact]
+    public async Task AutomationsStore_AJobSavedForAnotherAgentIsRevealedByWideningTheFilter()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, (_, _) => Task.CompletedTask);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded && !store.State.ListLoading);
+
+        var created = await await ui.InvokeAsync(() => store.SaveAsync(CronJobForm.CreateDefault("ops") with { Name = "Ops nightly", PayloadText = "Check the backups" }, null));
+        var saved = Assert.IsType<AutomationsSaveResult.Saved>(created).Job;
+        Assert.Equal("ops", saved.AgentId);
+        await WaitForAsync(() => store.State.Notice?.Kind == AutomationsNoticeKind.Created);
+
+        Assert.Equal(AutomationRevealOutcome.Revealed, await await ui.InvokeAsync(() => store.RevealAsync(saved.Id, widenToAllAgents: true)));
+        await WaitForAsync(() => store.State.SelectedJobId == saved.Id && store.State.IsAllAgents && !store.State.ListLoading
+            && store.State.Jobs.Any(job => job.Id == saved.Id));
+        Assert.Equal("main", store.State.DefaultAgentId);
+    }
+
+    [Fact]
+    public async Task AutomationsStore_RevealNeedsAConnectedGatewayAndYieldsToANewerLoad()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, (_, _) => Task.CompletedTask);
+
+        // Before the first Refresh the store has not confirmed a connection, so it asks the Gateway for nothing.
+        Assert.Equal(AutomationRevealOutcome.Failed, await await ui.InvokeAsync(() => store.RevealAsync("morning-brief")));
+        Assert.DoesNotContain(server.Requests, r => r.Method == "cron.list");
+        Assert.Null(store.State.SelectedJobId);
+
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded && store.State.OverviewLoaded && !store.State.ListLoading);
+        server.HoldResponses("cron.list");
+        var reveal = await ui.InvokeAsync(() => store.RevealAsync("weekly-digest"));
+        await WaitForAsync(() => server.Requests.Any(r => r.Method == "cron.list" && r.AgentId == "main" && r.Outcome == "pending"));
+        await ui.InvokeAsync(() => store.SetAgentFilter("ops"));
+        server.ReleaseResponses("cron.list");
+
+        Assert.Equal(AutomationRevealOutcome.Superseded, await reveal);
+        await WaitForAsync(() => store.State.ListLoaded && store.State.OverviewLoaded && !store.State.ListLoading
+            && server.Requests.All(r => r.Method != "cron.list" || r.Outcome != "pending"));
+        await Task.Delay(100);
+        // The request that lost has no say: no selection, no notice and the newer agent's rows stand.
+        Assert.Null(store.State.SelectedJobId);
+        Assert.Null(store.State.Notice);
+        Assert.Equal("ops", store.State.AgentFilter);
+        Assert.Equal(GatewayScenario.AutomationsOtherAgentJobId, Assert.Single(store.State.Jobs).Id);
     }
 
     [Fact]

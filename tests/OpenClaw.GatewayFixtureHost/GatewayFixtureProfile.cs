@@ -11,6 +11,9 @@ namespace OpenClaw.GatewayFixtureHost;
 /// <summary>Owns synthetic app state. No installed settings or identities are imported.</summary>
 public sealed class GatewayFixtureProfile : IDisposable
 {
+    private const double DefaultCleanupTimeoutSeconds = 10;
+    private const string CleanupTimeoutEnvironmentVariable = "OPENCLAW_GATEWAY_FIXTURE_CLEANUP_TIMEOUT_SECONDS";
+    private static readonly TimeSpan CleanupPollInterval = TimeSpan.FromMilliseconds(100);
     private readonly TempDirectory _directory;
     private bool _disposed;
 
@@ -162,9 +165,32 @@ public sealed class GatewayFixtureProfile : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
-        EnsureNoReparsePoints(RunDirectory);
-        Directory.Delete(RunDirectory, recursive: true);
+        var configuredTimeout = Environment.GetEnvironmentVariable(CleanupTimeoutEnvironmentVariable);
+        var seconds = string.IsNullOrWhiteSpace(configuredTimeout)
+            ? DefaultCleanupTimeoutSeconds
+            : double.Parse(configuredTimeout, CultureInfo.InvariantCulture);
+        if (!double.IsFinite(seconds) || seconds <= 0)
+            throw new InvalidOperationException($"{CleanupTimeoutEnvironmentVariable} must be a positive finite number.");
+        var timeout = TimeSpan.FromSeconds(seconds);
+        var elapsed = Stopwatch.StartNew();
+        while (true)
+        {
+            try
+            {
+                EnsureNoReparsePoints(RunDirectory);
+                Directory.Delete(RunDirectory, recursive: true);
+                _disposed = true;
+                return;
+            }
+            catch (IOException ex) when ((ex.HResult & 0xffff) is 32 or 33)
+            {
+                // Process exit can precede release of the final Windows log handle.
+                var remaining = timeout - elapsed.Elapsed;
+                if (remaining <= TimeSpan.Zero)
+                    throw new TimeoutException($"Timed out waiting to remove the locked fixture profile: {RunDirectory}", ex);
+                Thread.Sleep(remaining < CleanupPollInterval ? remaining : CleanupPollInterval);
+            }
+        }
     }
 
     private static void EnsureNoReparsePoints(string directory)

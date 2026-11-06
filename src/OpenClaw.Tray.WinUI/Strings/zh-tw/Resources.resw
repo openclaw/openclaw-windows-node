@@ -8735,6 +8735,48 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在處理此問題。請重新整理以查看其狀態。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>請為每個問題選擇有效的答案。</value></data>
+  <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>搜尋 OpenClaw</value></data>
+  <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>搜尋 OpenClaw</value></data>
+  <data name="Search_Results" xml:space="preserve"><value>搜尋結果</value></data>
+  <data name="Search_Empty" xml:space="preserve"><value>沒有相符的結果。</value></data>
+  <data name="Search_Dashboard" xml:space="preserve"><value>控制面板</value></data>
+  <data name="Search_NoCounterpart" xml:space="preserve"><value>此結果沒有對應的控制面板頁面。</value></data>
+  <data name="SearchMore.Content" xml:space="preserve"><value>顯示更多</value></data>
+  <data name="SearchRetry.Content" xml:space="preserve"><value>重試</value></data>
+  <data name="Search_Group_Chats" xml:space="preserve"><value>聊天</value></data>
+  <data name="Search_Group_Messages" xml:space="preserve"><value>訊息內容</value></data>
+  <data name="Search_Group_Settings" xml:space="preserve"><value>設定</value></data>
+  <data name="Search_Group_Automations" xml:space="preserve"><value>自動化</value></data>
+  <data name="Search_Group_Skills" xml:space="preserve"><value>技能</value></data>
+  <data name="Search_Group_Agents" xml:space="preserve"><value>代理程式</value></data>
+  <data name="Search_Group_Models" xml:space="preserve"><value>模型</value></data>
+  <data name="Search_Group_Dashboard" xml:space="preserve"><value>控制面板</value></data>
+  <data name="Search_Status_Loading" xml:space="preserve"><value>{0}：正在搜尋…</value></data>
+  <data name="Search_Status_Offline" xml:space="preserve"><value>{0}：連線至閘道以進行搜尋。</value></data>
+  <data name="Search_Status_Denied" xml:space="preserve"><value>{0}：需要讀取權限。</value></data>
+  <data name="Search_Status_TooLong" xml:space="preserve"><value>{0}：最多可使用 4096 個字元。</value></data>
+  <data name="Search_Status_Unavailable" xml:space="preserve"><value>{0}：此閘道不支援。</value></data>
+  <data name="Search_Status_Partial" xml:space="preserve"><value>{0}：結果可能不完整。請縮小搜尋範圍。</value></data>
+  <data name="Search_Status_Failed" xml:space="preserve"><value>{0}：搜尋失敗。其他結果仍然可用。</value></data>
+  <data name="Search_Dashboard_Approvals" xml:space="preserve"><value>核准</value></data>
+  <data name="Search_Dashboard_Secrets" xml:space="preserve"><value>祕密</value></data>
+  <data name="Search_Dashboard_Models" xml:space="preserve"><value>模型提供者</value></data>
+  <data name="Search_Dashboard_Automation" xml:space="preserve"><value>喚醒與心跳</value></data>
+  <data name="Search_Dashboard_Mcp" xml:space="preserve"><value>閘道 MCP 伺服器</value></data>
+  <data name="Search_Dashboard_Memory" xml:space="preserve"><value>記憶</value></data>
+  <data name="Search_Dashboard_Security" xml:space="preserve"><value>閘道安全性</value></data>
+  <data name="Search_Dashboard_Logs" xml:space="preserve"><value>閘道記錄</value></data>
+  <data name="Search_Dashboard_Systems" xml:space="preserve"><value>系統</value></data>
+  <data name="Search_Dashboard_Dashboards" xml:space="preserve"><value>控制面板集合</value></data>
+  <data name="Search_Dashboard_Plugins" xml:space="preserve"><value>外掛程式</value></data>
+  <data name="Search_Dashboard_Apps" xml:space="preserve"><value>應用程式</value></data>
+  <data name="Search_Dashboard_Meetings" xml:space="preserve"><value>會議</value></data>
+  <data name="Search_Dashboard_Activity" xml:space="preserve"><value>閘道活動</value></data>
+  <data name="Search_Dashboard_Portals" xml:space="preserve"><value>入口網站</value></data>
+  <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>工作樹</value></data>
+  <data name="Search_TargetUnavailable" xml:space="preserve"><value>要求的項目已無法使用。</value></data>
+  <data name="Search_Compatibility" xml:space="preserve"><value>此閘道版本不支援部分控制面板頁面。</value></data>
+  <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：請先選擇助理。</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>移除項目</value>
   </data>

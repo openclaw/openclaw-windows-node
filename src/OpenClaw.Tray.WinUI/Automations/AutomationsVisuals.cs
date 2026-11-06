@@ -33,6 +33,8 @@ internal sealed record AutomationsHost(
     public Action<FrameworkElement>? RevealElement { get; init; }
     public Func<string?> GatewayDisplayName { get; init; } = static () => null;
     public Func<ElementTheme> ActualTheme { get; init; } = static () => ElementTheme.Default;
+    /// <summary>Carries an outside "show this job" request (Hub search) to the mounted root. One instance per host, shared by the copies the root makes.</summary>
+    public AutomationsRevealChannel Reveals { get; init; } = new();
 }
 
 /// <summary>

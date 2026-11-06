@@ -7,6 +7,13 @@ pinning. See the
 [Gateway, node, and exec flow FAQ](OPENCLAW_GATEWAY_NODE_EXEC_FAQ.md#are-we-pinned-to-a-gateway-protocol-version-or-a-gateway-release)
 for those separate version axes.
 
+Navigation search adds response-aware `sessions.search` and filtered
+`sessions.list` reads. Their request shapes are pinned against the released
+`v2026.10.9` schema (`8b18b5578f66eab1501cba4cef2310d88bfb9a41`).
+Transcript requests use `{ query, limit, scope }`, not top-level agent/session
+filters alongside scope. Parser and loopback tests additionally cover incomplete
+results and caller cancellation without closing the shared connection.
+
 ## Why this exists
 
 The Windows companion can silently drift from the upstream OpenClaw gateway

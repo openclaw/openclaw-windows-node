@@ -23,10 +23,13 @@ namespace OpenClawTray.Pages;
 /// </summary>
 public sealed partial class CronPage : Page
 {
+    private const string SearchUnavailableMarker = "[Search] automation-destination-unavailable";
+
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
 
     private AppState? _appState;
     private AutomationsStore? _store;
+    private AutomationsRevealChannel? _reveals;
     private ReactorHostControl? _host;
     private IOperatorGatewayClient? _subscribedClient;
     private string? _storeAgentId;
@@ -84,10 +87,27 @@ public sealed partial class CronPage : Page
             GatewayDisplayName = ConnectedGatewayDisplayName,
             ActualTheme = () => ActualTheme,
         };
+        _reveals = host.Reveals;
         _host?.Dispose();
         _host = new ReactorHostControl();
         _host.Mount(_ => Component<AutomationsRoot, AutomationsRootProps>(new AutomationsRootProps(host)));
         ReactorTarget.Child = _host;
+    }
+
+    /// <summary>
+    /// Hub search handoff. Shows one automation in the full inventory, switching to All agents when it
+    /// belongs to another agent. An automation that is gone raises the page's own notice; this only logs.
+    /// </summary>
+    internal void RevealSearchJob(string jobId)
+    {
+        if (_reveals is not { } reveals)
+            return;
+        AsyncEventHandlerGuard.Run(async () =>
+        {
+            var outcome = await reveals.RevealAsync(jobId);
+            if (outcome is AutomationRevealOutcome.NotFound or AutomationRevealOutcome.Failed)
+                Logger.Warn(SearchUnavailableMarker);
+        }, new AppLogger(), nameof(RevealSearchJob));
     }
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -132,6 +152,8 @@ public sealed partial class CronPage : Page
 
     private void DisposeStore()
     {
+        _reveals?.Dispose();
+        _reveals = null;
         if (_store is null)
             return;
         _store.Dispose();

@@ -39,7 +39,7 @@ internal sealed class AutomationToast : Component<AutomationToastProps>
         }), notice.Id, hasAction);
 
         var (_, message) = text.Notice(notice);
-        var information = notice.Kind == AutomationsNoticeKind.RunNotStarted && !notice.IsError;
+        var information = notice.IsInformational;
         var brush = information ? Theme.SecondaryText : Theme.Ref(notice.IsError ? "SystemFillColorCriticalBrush" : "SystemFillColorSuccessBrush");
         var glyph = notice.IsError ? GlyphError : information ? GlyphInformation : GlyphOk;
         return Border(Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],

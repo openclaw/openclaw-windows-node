@@ -14,6 +14,50 @@ Read-only placement discovery returns an empty project catalog and one synthetic
 local environment through `projects.list` and `environments.list`. It creates no
 project or host resources; `projects.add` is rejected as a write.
 
+The fixture also advertises read-only `sessions.search` over its synthetic
+message text and accepts the scoped metadata search fields on `sessions.list`.
+The main-search UI regressions exercise icon/shortcut opening and immediate
+reopening, shared Settings search, draft-preserving dismissal, read-only setting
+navigation and native conversation navigation from a message hit. Keyboard
+regressions also exercise Enter on Show more/Retry, immediate cross-shell
+reopening, absent Config sections and Dashboard-only skill results.
+Cross-surface search waits for the previous flyout's existing close owner to
+settle before opening the visible surface. A delayed destination reveal cannot
+take focus from a newer search generation; an ordinary Settings search still
+reveals its target while its original flyout closes. The immediate Enter/Ctrl+K
+journey has no added delay or retry. Focused
+cases cover a failed Config reveal followed by manual navigation to a section
+with the same field name, and session title/recency changes while result or
+input focus is active, including user-controlled result scroll. The
+disappearing-result case renames the focused conversation out of the query,
+checks input focus and the remaining selection, then repeats with no matches.
+Config detail cancellation is also exercised directly on the real page before
+its pending continuation, so a search reveal cannot retain the loading overlay.
+The search-navigation scenario adds optional schema fields without corresponding
+saved values and a read-only skill catalog. Read-response overrides model
+failures and long descriptions. Skills are explicitly labeled Dashboard
+destinations rather than retired native pages. The separately verified `/skills`
+route on released Gateway `2026.11.1` does not enable its other unverified
+Dashboard routes; unknown versions retain root fallback. No provider is contacted,
+no skill mutation is accepted, and config writes remain rejected. Keyboard
+journeys use the shared native SendInput helper, with the fixture opt-in,
+foreground ownership and released-modifier guards intact. Open-popup Axe scans
+cover empty results, matching results and source-status states, including a
+horizontal-clipping assertion. This proves the application boundary, not a real
+Gateway's indexing or Dashboard route compatibility.
+
+The search popup has no footer or visible source-status/compatibility messages.
+More/Retry stay beside the search input; UI Automation ItemStatus on that input
+retains accessible source and empty-result feedback without a message block.
+The long-description journey verifies that the complete last description can
+be scrolled into view without a footer consuming space or covering it.
+Keyboard expansion must focus and reveal the first newly added result without
+test-driven scrolling or a jump back to an old selected row. Expansion appends
+to the existing observable groups rather than replacing the native grouped view.
+Native page-name proof searches the old Agent Events alias and Config,
+checks plain destination names, captures the actual symbol icons and navigates
+to the corresponding native pages without sending chat or config writes.
+
 ## Build and explore
 
 ### Assistant continuity capture
@@ -572,6 +616,12 @@ The fake binds a numeric IPv4 loopback listener to an OS-assigned port. The
 launcher never takes over a standard Gateway/MCP port or terminates a process
 by name. MCP bind collisions have a bounded retry limited to the owned child.
 Cleanup refuses reparse points and only removes the run's owned data.
+After the owned app exits, profile removal waits up to 10 seconds for Windows
+sharing or lock violations to clear. Set
+`OPENCLAW_GATEWAY_FIXTURE_CLEANUP_TIMEOUT_SECONDS` to a positive finite number
+to override that cleanup deadline. A persistent lock remains an explicit
+timeout with the original I/O error; other cleanup errors propagate immediately.
+This does not retry the test or relax its assertions.
 
 This remains a desktop application, not a general OS sandbox. Only the
 documented browse/preferences and inert interactive-chat workflows are supported on a developer machine.

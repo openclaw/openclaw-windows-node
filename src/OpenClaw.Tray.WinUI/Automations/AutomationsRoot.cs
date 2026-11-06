@@ -45,6 +45,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
         var confirmDialogRef = UseRef<ContentDialog?>(null);
         var measuredRows = UseRef(new Dictionary<string, WeakReference<FrameworkElement>>(StringComparer.Ordinal));
         var revealedSelection = UseRef<string?>(null);
+        var revealRef = UseRef<Func<string, bool, Task<AutomationRevealOutcome>>?>(null);
         var (confirm, setConfirm) = UseState<ConfirmRequest?>(null, threadSafe: true);
         var host = Props.Host with
         {
@@ -105,6 +106,13 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
             return () => { store.Changed -= changed; store.NoticeRaised -= noticed; editorRef.Current = null; };
         }), store);
 
+        // Hub search reaches the root through the page's channel; the latest render serves it, widened to every agent.
+        UseEffect((Func<Action>)(() =>
+        {
+            var attached = host.Reveals.Attach(id => revealRef.Current?.Invoke(id, true) ?? Task.FromResult(AutomationRevealOutcome.Superseded));
+            return attached.Dispose;
+        }), store);
+
         UseEffect(() =>
         {
             if (state.Notice is { } notice)
@@ -144,7 +152,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
         {
             if (editorRef.Current?.Nonce != nonce) return;
             SetEditorSession(null);
-            if (savedId is not null) Reveal(savedId);
+            if (savedId is not null) _ = RevealJob(savedId, widenToAllAgents: true);
         });
         void OnSearch(string value)
         {
@@ -156,15 +164,19 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
         void ToggleGroup(string key) => setExpandedGroups(expandedGroups.Contains(key) ? expandedGroups.Remove(key) : expandedGroups.Add(key));
-        void Reveal(string id)
+        // Resets browse state so the row is reachable, then reveals through the store. A saved job or a
+        // search result may belong to another agent and widens to All agents; the agenda stays in scope.
+        Task<AutomationRevealOutcome> RevealJob(string id, bool widenToAllAgents)
         {
             ++searchToken.Current;
             setSearch("");
             revealedSelection.Current = null;
             if (measuredRows.Current.TryGetValue(id, out var reference) && reference.TryGetTarget(out var row) && row.IsLoaded)
                 host.RevealElement?.Invoke(row);
-            _ = store.RevealAsync(id);
+            return store.RevealAsync(id, widenToAllAgents);
         }
+        void Reveal(string id) => _ = RevealJob(id, widenToAllAgents: false);
+        revealRef.Current = RevealJob;
         void RegisterRow(FrameworkElement row, string id)
         {
             measuredRows.Current[id] = new(row);

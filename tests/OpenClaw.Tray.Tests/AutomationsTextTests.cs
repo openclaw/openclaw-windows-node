@@ -164,6 +164,24 @@ public sealed class AutomationsTextTests
         Assert.True(new AutomationsNotice(AutomationsNoticeKind.RunNotStarted, "x", "invalid-spec").IsError);
     }
 
+    [Fact]
+    public void UnavailableJob_SharesTheHubSearchWordingAndIsNeitherSuccessNorFailure()
+    {
+        var notice = new AutomationsNotice(AutomationsNoticeKind.JobUnavailable, "deleted-elsewhere");
+        var (title, message) = Text().Notice(notice);
+        Assert.Equal(EnUs.Value["Search_TargetUnavailable"], message);
+        Assert.Equal(message, title);
+        Assert.DoesNotContain("deleted-elsewhere", message);
+        Assert.False(notice.IsError);
+        Assert.True(notice.IsInformational);
+
+        // Only a request that cannot be honored as asked is informational; results and failures are not.
+        Assert.True(new AutomationsNotice(AutomationsNoticeKind.RunNotStarted, "x", "not-due").IsInformational);
+        Assert.False(new AutomationsNotice(AutomationsNoticeKind.RunNotStarted, "x", "invalid-spec").IsInformational);
+        Assert.False(new AutomationsNotice(AutomationsNoticeKind.Saved, "x").IsInformational);
+        Assert.False(new AutomationsNotice(AutomationsNoticeKind.OperationFailed, "x").IsInformational);
+    }
+
     [Theory]
     [InlineData("FORBIDDEN", "cron.run requires operator.admin.")]
     [InlineData("invalid-spec", "delivery.to is missing.")]
@@ -326,6 +344,22 @@ public sealed class AutomationsTextTests
         // Web handoff reuses the Dashboard launcher (tunnel, credential policy, visible failures).
         Assert.Contains("OpenDashboard(CronProtocol.WebPath(jobId))", page);
         Assert.DoesNotContain("LaunchUriAsync", page);
+    }
+
+    [Fact]
+    public void HubSearchHandoff_ReachesTheMountedRootThroughThePageChannel()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var shell = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs"));
+        Assert.Contains("cron.RevealSearchJob(target.Focus)", shell);
+        var page = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "CronPage.xaml.cs"));
+        Assert.Contains("internal void RevealSearchJob(string jobId)", page);
+        Assert.Contains("_reveals = host.Reveals;", page);
+        Assert.Contains("reveals.RevealAsync(jobId)", page);
+        // The root serves the page's requests with its latest render, which resets browse state and may widen to All agents.
+        var automations = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationsRoot.cs"));
+        Assert.Contains("host.Reveals.Attach(", automations);
+        Assert.Contains("store.RevealAsync(id, widenToAllAgents)", automations);
     }
 
     [Fact]

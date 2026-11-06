@@ -20,7 +20,12 @@ public enum AutomationsNoticeKind
     ConflictUnloadable,
     MissingRevision,
     OperationFailed,
+    /// <summary>A job asked for by id (<see cref="AutomationsNotice.JobName"/>) is not on the Gateway any more.</summary>
+    JobUnavailable,
 }
+
+/// <summary>How a reveal request resolved. <see cref="Superseded"/> means a newer load, a disconnect or disposal took over.</summary>
+public enum AutomationRevealOutcome { Revealed, NotFound, Failed, Superseded }
 
 /// <summary>Structured feedback; the UI picks wording. <see cref="Reason"/> is a Gateway reason code when known.</summary>
 public sealed record AutomationsNotice(AutomationsNoticeKind Kind, string JobName, string? Reason = null, string? Detail = null, string? RunId = null)
@@ -29,6 +34,9 @@ public sealed record AutomationsNotice(AutomationsNoticeKind Kind, string JobNam
     public bool IsError => Kind is AutomationsNoticeKind.RunFailed or AutomationsNoticeKind.OperationFailed
         or AutomationsNoticeKind.ConflictUnloadable or AutomationsNoticeKind.MissingRevision
         || (Kind == AutomationsNoticeKind.RunNotStarted && Reason is not ("not-due" or "already-running"));
+    /// <summary>Neither a success nor a failure: the request cannot be honored as asked.</summary>
+    public bool IsInformational => Kind == AutomationsNoticeKind.JobUnavailable
+        || (Kind == AutomationsNoticeKind.RunNotStarted && !IsError);
 }
 
 public sealed record AutomationsSnapshot
@@ -249,7 +257,10 @@ public sealed class AutomationsStore : IDisposable
     /// Lists one agent's automations, or every agent's when <paramref name="agentId"/> is null.
     /// Retires a selection outside the new scope without cancelling locally requested runs.
     /// </summary>
-    public void SetAgentFilter(string? agentId)
+    public void SetAgentFilter(string? agentId) => SetAgentFilter(agentId, reloadList: true);
+
+    /// <param name="reloadList">False when the caller applies the new scope's first page itself.</param>
+    private void SetAgentFilter(string? agentId, bool reloadList)
     {
         var agent = string.IsNullOrWhiteSpace(agentId) ? null : agentId.Trim();
         if (agent == _state.AgentFilter) return;
@@ -294,7 +305,7 @@ public sealed class AutomationsStore : IDisposable
                 RunsLoadingMore = false, RunsHasMore = false, RunsTotal = null, RunsError = null,
             };
         });
-        _ = LoadListAsync();
+        if (reloadList) _ = LoadListAsync();
         _ = LoadStatsAsync();
         if (_state.View == AutomationsView.RunHistory)
             ShowRuns(new CronRunsQuery());
@@ -574,46 +585,73 @@ public sealed class AutomationsStore : IDisposable
             }
         }
 
-        /// <summary>Agenda links reveal the real inventory row, even beyond its first page.</summary>
-    public async Task RevealAsync(string jobId)
+    /// <summary>One reveal scan: the query it ran, the rows it loaded and whether the job was among them.</summary>
+    private readonly record struct RevealScan(CronListQuery Query, CronListPage Page, bool Found);
+
+    /// <summary>
+    /// Reveals a job the user asked for by id (an agenda link, a saved job or a search result)
+    /// through the real inventory row, even beyond its first page. Browse filters reset so the
+    /// row is reachable. With <paramref name="widenToAllAgents"/>, a job outside the filtered
+    /// agent switches the list to All agents; a job found nowhere leaves the filter alone and
+    /// raises <see cref="AutomationsNoticeKind.JobUnavailable"/> instead of selecting a row the
+    /// list does not hold. The outcome is what the Gateway answered; the list and selection are
+    /// applied on the dispatcher afterwards.
+    /// </summary>
+    public async Task<AutomationRevealOutcome> RevealAsync(string jobId, bool widenToAllAgents = false)
+    {
+        var client = _client();
+        if (client is null || !_state.Connected) return AutomationRevealOutcome.Failed;
+        var generation = ++_listGeneration;
+        _listReloadPending = false;
+        var agent = _state.AgentFilter;
+        var query = new CronListQuery { AgentId = agent };
+        Set(s => s with { ListQuery = query, ListLoading = true, ListLoadingMore = false });
+        try
         {
-            var client = _client();
-            if (client is null || !_state.Connected) return;
-            var generation = ++_listGeneration;
-            _listReloadPending = false;
-            var query = new CronListQuery { AgentId = _state.AgentFilter };
-            Set(s => s with
+            if (await ScanForJobAsync(client, query, jobId, generation).ConfigureAwait(false) is not { } scan)
+                return AutomationRevealOutcome.Superseded;
+            if (!scan.Found && widenToAllAgents && agent is not null)
             {
-                ListQuery = query, ListLoading = true, ListLoadingMore = false,
+                if (await ScanForJobAsync(client, query with { AgentId = null }, jobId, generation).ConfigureAwait(false) is not { } widened)
+                    return AutomationRevealOutcome.Superseded;
+                if (widened.Found) scan = widened;
+            }
+            Post(() =>
+            {
+                if (generation != _listGeneration) return;
+                if (scan.Query.AgentId != _state.AgentFilter) SetAgentFilter(scan.Query.AgentId, reloadList: false);
+                ApplyListPage(scan.Page, false, scan.Query);
+                Set(s => s with { ListLoading = false });
+                if (scan.Found) Select(jobId);
+                else Notify(new AutomationsNotice(AutomationsNoticeKind.JobUnavailable, jobId));
             });
-            try
-            {
-                var jobs = new List<CronJob>();
-                CronListPage page;
-                do
-                {
-                    page = await client.ListCronJobsAsync(query with { Offset = jobs.Count }).ConfigureAwait(false);
-                    if (generation != _listGeneration || !_state.Connected || _disposed) return;
-                    jobs.AddRange(page.Jobs);
-                    if (page.HasMore && page.Jobs.Count == 0) throw new InvalidOperationException(IncompletePageMessage);
-                } while (page.HasMore && jobs.All(j => j.Id != jobId));
-                Post(() =>
-                {
-                    if (generation != _listGeneration) return;
-                    ApplyListPage(page with { Jobs = jobs }, false, query);
-                    Set(s => s with { ListLoading = false });
-                    Select(jobId);
-                });
-            }
-            catch (Exception ex)
-            {
-                Post(() =>
-                {
-                    if (generation != _listGeneration) return;
-                    Set(s => s with { ListLoading = false, ListError = ex.Message });
-                });
-            }
+            return scan.Found ? AutomationRevealOutcome.Revealed : AutomationRevealOutcome.NotFound;
         }
+        catch (Exception ex)
+        {
+            Post(() =>
+            {
+                if (generation != _listGeneration) return;
+                Set(s => s with { ListLoading = false, ListError = ex.Message });
+            });
+            return AutomationRevealOutcome.Failed;
+        }
+    }
+
+    /// <summary>Pages <paramref name="query"/> until <paramref name="jobId"/> appears or the inventory ends; null when a newer request, a disconnect or disposal took over.</summary>
+    private async Task<RevealScan?> ScanForJobAsync(IOperatorGatewayClient client, CronListQuery query, string jobId, long generation)
+    {
+        var jobs = new List<CronJob>();
+        CronListPage page;
+        do
+        {
+            page = await client.ListCronJobsAsync(query with { Offset = jobs.Count }).ConfigureAwait(false);
+            if (generation != _listGeneration || !_state.Connected || _disposed) return null;
+            jobs.AddRange(page.Jobs);
+            if (page.HasMore && page.Jobs.Count == 0) throw new InvalidOperationException(IncompletePageMessage);
+        } while (page.HasMore && jobs.All(j => j.Id != jobId));
+        return new RevealScan(query, page with { Jobs = jobs }, jobs.Any(j => j.Id == jobId));
+    }
 
     // ─── Selection ───
 
