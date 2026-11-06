@@ -1027,8 +1027,9 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void UpdateOwnerIdentity()
     {
         var name = _identity.DisplayName;
-        // macOS parity: the shared-credential owner is labelled as such; no known profile shows Owner.
-        var label = _identity.IsSharedOwner ? Text("SharedOwner.Text") : name ?? Text("Owner.Text");
+        // Web UI parity: the shared-credential owner keeps its marker beside any saved name; no known profile shows Owner.
+        var label = _identity.FooterLabel(Text("Owner.Text"), Text("SharedOwner.Text"),
+            ownerName => LocalizationHelper.Format("WorkspaceShell_SharedOwnerNamedFormat", ownerName));
         if (!IsClosed && name is not null)
             AsyncEventHandlerGuard.Run(_profileAutoFill.ObserveAsync, new AppLogger(), nameof(UpdateOwnerIdentity));
         var avatar = _identity.Avatar;
