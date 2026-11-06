@@ -165,5 +165,5 @@ public sealed record SettingsSnapshot
         System.Collections.Immutable.ImmutableDictionary<string, System.Collections.Immutable.ImmutableArray<string>>.Empty;
 
     public System.Collections.Immutable.ImmutableArray<string> PinnedPagesFor(string? gatewayId) =>
-        PinnedPagesByGateway.TryGetValue(PinnedPages.ScopeKey(gatewayId), out var pins) ? pins : [];
+        PinnedPagesByGateway.TryGetValue(PinnedPages.ScopeKey(gatewayId), out var pins) ? pins : PinnedPages.DefaultPins;
 }

@@ -56,6 +56,7 @@ internal sealed partial class SettingsShellView : UserControl
 
     /// <summary>Raised when the rail or an in-page link requests another Settings section.</summary>
     internal Action<string>? NavigateRequested { get; set; }
+    internal Action? PageNavigationChanged { get; set; }
 
     /// <summary>Raised when the rail's Chat item or a notification route leaves Settings.</summary>
     internal Action<string>? WorkspaceRouteRequested { get; set; }
@@ -149,6 +150,7 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (_disposed) return;
         _disposed = true;
+        PageNavigationChanged = null;
         Deactivate();
         _contentReady.TrySetResult(true);
         _gatewayNavHideTimer?.Stop();
@@ -359,8 +361,18 @@ internal sealed partial class SettingsShellView : UserControl
         PaneFooterControl.Layout = NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail;
     }
 
-    // Back/Forward live in the window-level pair driven only by WorkspaceNavigationHistory.
-    // This view keeps no navigation stack of its own.
+    // Workspace owns history. A board can return to its gallery without adding a view-local stack.
+    internal bool HasOpenDashboard => ContentFrame.Content is DashboardsPage { HasOpenBoard: true };
+
+    internal bool TryReturnToDashboardGallery() =>
+        ContentFrame.Content is DashboardsPage dashboards && dashboards.TryReturnToGallery();
+
+    internal void RefreshPageNavigation()
+    {
+        if (!_disposed)
+            PageNavigationChanged?.Invoke();
+    }
+
     /// <summary>
     /// Shows only the section content, hiding this view's own section list. Used when a pinned page
     /// opens beside the Workspace sidebar.
@@ -506,6 +518,10 @@ internal sealed partial class SettingsShellView : UserControl
         if (nativeRequest is null && ContentFrame.Content is not null &&
             ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
+            // Dashboards opens and closes boards in-page without changing the hub tag,
+            // so the same tag can still mean a different visible destination.
+            if (ContentFrame.Content is DashboardsPage dashboards)
+                dashboards.Initialize(this, tag);
             _contentReady = CreateCompletedContentReady();
             AccessibilityNavigationSignal.WritePageReady(pageType.Name);
             return;
@@ -640,7 +656,9 @@ internal sealed partial class SettingsShellView : UserControl
             NavChannels.Visibility = vis;
             NavInstances.Visibility = vis;
             NavCron.Visibility = vis;
-            NavAdvanced.Visibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
+            NavAdvanced.Visibility = keepCurrentGatewayPageVisible && !DashboardsRoute.IsDashboardsTag(currentTag)
+                ? Visibility.Visible
+                : vis;
             NavGatewaySeparator.Visibility = vis;
 
             if (!connected)
@@ -858,6 +876,7 @@ internal sealed partial class SettingsShellView : UserControl
                 }
                 break;
             case InstancesPage instances: instances.Initialize(); break;
+            case DashboardsPage dashboards: dashboards.Initialize(this, _currentNavTag); break;
             case PermissionsPage: break;
             case SandboxPage sandbox: sandbox.Initialize(); break;
             case VoiceSettingsPage voice: voice.Initialize(CurrentApp.VoiceService); break;

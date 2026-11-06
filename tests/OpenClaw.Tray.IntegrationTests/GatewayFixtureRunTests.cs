@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using OpenClaw.GatewayFixtureHost;
 
 namespace OpenClaw.Tray.IntegrationTests;
@@ -7,6 +8,91 @@ public sealed class GatewayFixtureRunTests
     private const string Description = "history loaded for agent:main:fixture-long";
     private const string ArtifactsDirectory = @"C:\fixture-artifacts\test-run";
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
+
+    [Fact]
+    public void BrowserCleanup_RetainsNestedOwnedChildrenButRejectsForeignAndStaleParents()
+    {
+        var started = DateTime.UnixEpoch.AddDays(1);
+        var app = new GatewayFixtureRun.BrowserProcessIdentity(10, 0, started);
+        var descendants = GatewayFixtureRun.SelectOwnedBrowserDescendants(app,
+        [
+            new(30, 20, started.AddSeconds(2)),
+            new(20, 10, started.AddSeconds(1)),
+            new(40, 999, started.AddSeconds(1)),
+            new(50, 40, started.AddSeconds(2)),
+            new(60, 20, started),
+            new(70, 60, started.AddSeconds(3)),
+            new(80, 20, started.AddMinutes(2)),
+        ], started.AddMinutes(1));
+        Assert.Equal([20, 30], descendants);
+    }
+
+    [Fact]
+    public async Task Teardown_PreservesProcessAndProfileFailuresAndAttemptsEveryOwnerInOrder()
+    {
+        var processFailure = new InvalidOperationException("Synthetic owned browser remains live.");
+        var profileFailure = new IOException("Synthetic profile file remains locked.");
+        var steps = new List<string>();
+        var error = await Assert.ThrowsAsync<AggregateException>(() =>
+            GatewayFixtureRun.DisposeOwnedResourcesAsync(
+                () => { steps.Add("process"); return Task.FromException(processFailure); },
+                () => { steps.Add("gateway"); return Task.CompletedTask; },
+                () => { steps.Add("profile"); throw profileFailure; }));
+        Assert.Equal(["process", "gateway", "profile"], steps);
+        Assert.Equal([processFailure, profileFailure], error.InnerExceptions);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StartupFailure_PreservesTheOriginalAndStillCleansUpAfterReportFailure(bool reportFails)
+    {
+        var startupFailure = new InvalidOperationException("synthetic startup failure");
+        var reportFailure = new IOException("synthetic report failure");
+        var cleanupFailure = new AggregateException(new System.ComponentModel.Win32Exception(5));
+        var cleanupAttempted = false;
+
+        var error = await Assert.ThrowsAsync<AggregateException>(() =>
+            GatewayFixtureRun.HandleStartupFailureAsync(startupFailure,
+                () => reportFails ? Task.FromException(reportFailure) : Task.CompletedTask,
+                () =>
+                {
+                    cleanupAttempted = true;
+                    return Task.FromException(cleanupFailure);
+                }));
+
+        Assert.True(cleanupAttempted);
+        Assert.Same(startupFailure, error.InnerExceptions[0]);
+        Assert.Same(cleanupFailure, error.InnerExceptions[^1]);
+        Assert.Equal(reportFails ? 3 : 2, error.InnerExceptions.Count);
+        if (reportFails)
+            Assert.Same(reportFailure, error.InnerExceptions[1]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StopOwnedProcesses_AttemptsAndDisposesEveryProcessAfterAFailure(bool aggregate)
+    {
+        using var first = Process.GetCurrentProcess();
+        using var second = Process.GetCurrentProcess();
+        var handles = new[] { first.SafeHandle, second.SafeHandle };
+        var attempted = new List<Process>();
+        Exception original = aggregate
+            ? new AggregateException(new System.ComponentModel.Win32Exception(5))
+            : new TimeoutException("synthetic process exit timeout");
+
+        var error = await Assert.ThrowsAsync<AggregateException>(() =>
+            GatewayFixtureRun.StopOwnedProcessesAsync([first, second], process =>
+            {
+                attempted.Add(process);
+                return ReferenceEquals(process, first) ? Task.FromException(original) : Task.CompletedTask;
+            }));
+
+        Assert.Equal([first, second], attempted);
+        Assert.All(handles, handle => Assert.True(handle.IsClosed));
+        Assert.Same(original, Assert.Single(error.InnerExceptions).InnerException);
+    }
 
     [Fact]
     public async Task WaitForAsync_SlowConditionPreservesTimeoutContext()

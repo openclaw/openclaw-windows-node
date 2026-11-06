@@ -92,10 +92,12 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
             var home = FindById(run, "WorkspaceNavHome")!;
             var homeBounds = home.Current.BoundingRectangle;
+            var defaultPinBounds = FindById(run, "WorkspacePinnedPage:dashboards")!.Current.BoundingRectangle;
             var pinBounds = FindById(run, "WorkspacePinnedPage:connection")!.Current.BoundingRectangle;
             var sessionsHeader = FindText(run, "Sessions")!.Current.BoundingRectangle;
             var other = FindById(run, $"WorkspaceSession:{GatewayScenario.LongSessionKey}")!.Current.BoundingRectangle;
-            Assert.InRange((pinBounds.Top - homeBounds.Bottom) / scale, -1, 8);
+            Assert.InRange((defaultPinBounds.Top - homeBounds.Bottom) / scale, -1, 8);
+            Assert.InRange((pinBounds.Top - defaultPinBounds.Bottom) / scale, -1, 8);
             Assert.InRange((sessionsHeader.Top - pinBounds.Bottom) / scale, 4, 48);
             Assert.True(other.Top >= sessionsHeader.Bottom);
             Assert.Null(FindText(run, "Pages"));

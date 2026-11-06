@@ -1,0 +1,676 @@
+using System.Collections.Immutable;
+using Microsoft.UI.Reactor;
+using Microsoft.UI.Reactor.Core;
+using Microsoft.UI.Text;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Controls;
+using OpenClaw.Shared.Dashboards;
+using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
+using static Microsoft.UI.Reactor.Factories;
+using static OpenClawTray.Presentation.PageResponsiveLayout;
+
+namespace OpenClawTray.Dashboards;
+
+internal sealed record DashboardsRootProps(DashboardsPageState State);
+
+/// <summary>
+/// Production Reactor root for the Dashboards hub page: the gallery of
+/// session dashboards, or one open dashboard.
+/// </summary>
+internal sealed class ReactorDashboardsRoot : Component<DashboardsRootProps>
+{
+    public override Element Render()
+    {
+        var state = Props.State;
+        var (_, setVersion) = UseState(0, threadSafe: true);
+        var version = UseRef(0);
+        UseEffect((Func<Action>)(() =>
+        {
+            void OnChanged() => state.Post(() => setVersion(++version.Current));
+            state.Changed += OnChanged;
+            return () => state.Changed -= OnChanged;
+        }), state);
+
+        var announce = this.UseAnnounce();
+        UseEffect((Func<Action>)(() =>
+        {
+            var current = true;
+            if (state.Connected && state.CopySucceeded is { } copied)
+            {
+                var message = LocalizationHelper.GetString(copied ? "Dashboards_CopiedSessionKey" : "Dashboards_CopyFailed");
+                state.Post(() =>
+                {
+                    if (current)
+                        announce.Announce(message, assertive: !copied);
+                });
+            }
+            return () => current = false;
+        }), state.CopyNoticeRevision, state.Connected);
+
+        if (state.Client is not { } client || !state.Connected)
+            return DashboardsStates.Disconnected(state);
+
+        Element content = state.OpenTarget is { } target
+            ? Component<ReactorBoardView, BoardViewProps>(new BoardViewProps(state, client, target, state.ConnectionRevision, state.ViewportWidth))
+                .WithKey("board:" + target.AgentId + "\0" + target.SessionKey)
+            : Component<ReactorDashboardGallery, DashboardGalleryProps>(
+                    new DashboardGalleryProps(state, client, state.AgentId, state.ConnectionRevision, state.ViewportWidth))
+                .WithKey("gallery");
+        Element notice = Empty();
+        if (state.CopySucceeded is { } copied)
+        {
+            notice = Border(Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                    DashboardsStates.Glyph(copied ? "\uE73E" : "\uE783", 18,
+                        copied ? "SystemFillColorSuccessBrush" : "SystemFillColorCriticalBrush")
+                        .VAlign(VerticalAlignment.Center).Margin(0, 0, 12, 0).Grid(column: 0),
+                    TextBlock(LocalizationHelper.GetString(copied ? "Dashboards_CopiedSessionKey" : "Dashboards_CopyFailed"))
+                        .Foreground(Theme.Ref("TextFillColorPrimaryBrush")).TextWrapping(TextWrapping.WrapWholeWords)
+                        .AutomationId("DashboardCopyNoticeMessage").Grid(column: 1)))
+                .Set(control => control.RequestedTheme = state.DarkTheme ? ElementTheme.Dark : ElementTheme.Light)
+                .Padding(16, 12).CornerRadius(8)
+                .Background(Theme.Ref("FlyoutPresenterBackground"))
+                .BorderBrush(Theme.Ref("FlyoutBorderThemeBrush")).BorderThickness(1)
+                .Set(control => control.Shadow = new Microsoft.UI.Xaml.Media.ThemeShadow())
+                .Translation(0, 0, 16)
+                .AutomationId("DashboardCopyNotice")
+                .MaxWidth(480).Margin(20)
+                .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Bottom);
+        }
+        return Grid([GridSize.Star()], [GridSize.Star()],
+            content,
+            notice.WithKey("copy-notice"),
+            announce.Region.LiveRegion(state.CopySucceeded == false ? AutomationLiveSetting.Assertive : AutomationLiveSetting.Polite)
+                .AutomationId("DashboardResultAnnouncements").WithKey("announcements"));
+    }
+}
+
+internal static class DashboardsGlyphs
+{
+    public const string Back = "\uE72B";
+    public const string Refresh = "\uE72C";
+    public const string Search = "\uE721";
+    public const string Chat = "\uE8BD";
+    public const string Dashboard = "\uECA5";
+    public const string Shield = "\uEA18";
+    public const string Disconnected = "\uF384";
+    public const string Error = "\uEA39";
+    public const string More = "\uE712";
+    public const string Copy = "\uE8C8";
+    public const string OpenInBrowser = "\uE8A7";
+}
+
+/// <summary>Shared visual building blocks: status panels, glyphs, icon buttons.</summary>
+internal static class DashboardsStates
+{
+    public static ScrollViewerElement VerticalScroll(Element content) => ScrollViewer(content) with
+    {
+        HorizontalScrollMode = ScrollMode.Disabled,
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        VerticalScrollMode = ScrollMode.Enabled,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+    };
+
+    public static Element Eyebrow(bool highContrast) => HStack(GapInner,
+        (highContrast
+            ? (Element)Glyph(DashboardsGlyphs.Dashboard, 16)
+            : Image("ms-appx:///Assets/SidebarIcons/Dashboards.svg").Size(20, 20).AccessibilityHidden())
+            .VAlign(VerticalAlignment.Center),
+        TextBlock(LocalizationHelper.GetString("Dashboards_Title")).SemiBold()
+            .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
+            .VAlign(VerticalAlignment.Center));
+
+    public static Element ChatButton(string title, Action open, string id) =>
+        IconButton(DashboardsGlyphs.Chat, LocalizationHelper.GetString("Dashboards_OpenChat"), open, id)
+            .AutomationName(LocalizationHelper.Format("Dashboards_OpenChatFor", title));
+
+    public static TextBlockElement Glyph(string glyph, double size, string brush = "TextFillColorSecondaryBrush") =>
+        TextBlock(glyph)
+            .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+            .FontSize(size)
+            .Foreground(Theme.Ref(brush))
+            .AccessibilityView(AccessibilityView.Raw);
+
+    public static Element Status(string id, string glyph, string title, string? detail, Element? action = null, bool alert = false, Element? art = null, int hue = DashboardHues.Blue)
+    {
+        var children = new List<Element>
+        {
+            (art ?? (alert
+                    ? DashboardsArt.GlyphBadge(glyph, "SystemFillColorCriticalBrush", "SystemFillColorCriticalBackgroundBrush", 72)
+                    : DashboardsArt.HueBadge(glyph, hue, 72)))
+                .HAlign(HorizontalAlignment.Center)
+                .Margin(0, 0, 0, 4),
+            TextBlock(title).FontSize(20).SemiBold()
+                .TextWrapping(TextWrapping.WrapWholeWords).TextAlignment(TextAlignment.Center)
+                .HeadingLevel(AutomationHeadingLevel.Level2)
+                .AutomationId(id + "Title"),
+        };
+        if (!string.IsNullOrWhiteSpace(detail))
+        {
+            children.Add(TextBlock(detail).FontSize(14)
+                .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
+                .TextWrapping(TextWrapping.WrapWholeWords).TextAlignment(TextAlignment.Center)
+                .MaxWidth(440)
+                .AutomationId(id + "Detail"));
+        }
+        if (action is not null)
+            children.Add(action.HAlign(HorizontalAlignment.Center).Margin(0, 8, 0, 0));
+        return VStack(12, children.ToArray())
+            .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center)
+            .Margin(24, 48)
+            .LiveRegion(alert ? AutomationLiveSetting.Assertive : AutomationLiveSetting.Polite)
+            .AutomationId(id);
+    }
+
+    public static Element Disconnected(DashboardsPageState state) =>
+        Status(
+            "DashboardsDisconnected",
+            DashboardsGlyphs.Disconnected,
+            LocalizationHelper.GetString("Dashboards_Disconnected_Title"),
+            LocalizationHelper.GetString("Dashboards_Disconnected_Detail"),
+            state.OpenConnection is { } open
+                ? Button(LocalizationHelper.GetString("Dashboards_Disconnected_Action"), open).AccentButton()
+                    .AutomationName(LocalizationHelper.GetString("Dashboards_Disconnected_Action"))
+                    .AutomationId("DashboardsOpenConnection")
+                : null,
+            art: DashboardsArt.GlyphBadge(DashboardsGlyphs.Disconnected, "SystemFillColorCriticalBrush", "SystemFillColorCriticalBackgroundBrush", 72));
+
+    public static Element Unavailable() =>
+        Status(
+            "DashboardsUnavailable",
+            DashboardsGlyphsExtra.Lock,
+            LocalizationHelper.GetString("Dashboards_Unavailable_Title"),
+            LocalizationHelper.GetString("Dashboards_Unavailable_Detail"),
+            hue: DashboardHues.Purple);
+
+    public static ButtonElement IconButton(string glyph, string label, Action onClick, string automationId) =>
+        Button(Glyph(glyph, 16, "TextFillColorPrimaryBrush"), onClick)
+            .SubtleButton()
+            .Size(36, 36)
+            .Padding(0)
+            .Set(button =>
+            {
+                button.HorizontalContentAlignment = HorizontalAlignment.Center;
+                button.VerticalContentAlignment = VerticalAlignment.Center;
+            })
+            .ToolTip(label)
+            .AutomationName(label)
+            .AutomationId(automationId);
+}
+
+internal sealed record DashboardGalleryProps(
+    DashboardsPageState State,
+    IBoardGatewayClient Client,
+    string AgentId,
+    int ConnectionRevision,
+    double ViewportWidth = 0);
+
+/// <summary>
+/// Gallery of every session dashboard for the selected agent. Cards are
+/// static gallery-row metadata: opening a card loads its board, but the
+/// gallery itself never loads boards, widget tickets, or web content.
+/// </summary>
+internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
+{
+    private const double CardHeight = 296;
+
+    public override Element Render()
+    {
+        var props = Props;
+        var (snapshot, setSnapshot) = UseState(DashboardGallerySnapshot.Initial, threadSafe: true);
+        var (query, setQuery) = UseState("");
+        var (sort, setSort) = UseState(DashboardGallerySort.Updated);
+        var (shown, setShown) = UseState(24);
+        var (measuredWidth, setWidth) = UseState(MinWidth);
+        var (backdropHeight, setBackdropHeight) = UseState(0d);
+        var width = props.ViewportWidth > 0 ? props.ViewportWidth : measuredWidth;
+        var model = UseRef<DashboardGalleryModel?>(null);
+
+        UseEffect((Func<Action>)(() =>
+        {
+            var gallery = new DashboardGalleryModel(props.Client, props.State.Post);
+            model.Current = gallery;
+            var discovering = props.State.NeedsDefaultAgent;
+            gallery.Changed += next =>
+            {
+                if (!discovering)
+                    setSnapshot(next);
+            };
+            async Task Load()
+            {
+                if (discovering)
+                {
+                    await gallery.LoadAsync(null);
+                    props.State.Post(() =>
+                    {
+                        if (!ReferenceEquals(model.Current, gallery))
+                            return;
+                        var result = gallery.Snapshot;
+                        discovering = false;
+                        if (result.Status != DashboardLoadStatus.Ready)
+                        {
+                            setSnapshot(result);
+                            return;
+                        }
+                        props.State.ResolveDefaultAgent(result.Rows);
+                        if (props.State.AgentId == props.AgentId)
+                            _ = gallery.LoadAsync(props.AgentId);
+                    });
+                    return;
+                }
+                await gallery.LoadAsync(props.AgentId);
+            }
+            _ = Load();
+            return () =>
+            {
+                model.Current = null;
+                gallery.Dispose();
+            };
+        }), props.Client, props.AgentId, props.ConnectionRevision);
+
+        var refresh = () => { _ = model.Current?.LoadAsync(props.AgentId); };
+        var reducedMotion = UseReducedMotion();
+        var highContrast = UseHighContrast();
+        var header = Hero(props, snapshot, refresh, width, highContrast)
+            .OnSizeChanged((sender, args) =>
+            {
+                var element = (FrameworkElement)sender;
+                var height = args.NewSize.Height + element.Margin.Top + element.Margin.Bottom + 24;
+                if (Snap(height) != Snap(backdropHeight))
+                    setBackdropHeight(height);
+            });
+
+        Element body = snapshot.Status switch
+        {
+            DashboardLoadStatus.Unavailable => DashboardsStates.Unavailable(),
+            DashboardLoadStatus.Disconnected => DashboardsStates.Disconnected(props.State),
+            DashboardLoadStatus.Loading when !snapshot.HasRows => Skeleton(width),
+            DashboardLoadStatus.Error when !snapshot.HasRows => DashboardsStates.Status(
+                "DashboardsLoadError",
+                DashboardsGlyphs.Error,
+                LocalizationHelper.GetString("Dashboards_LoadError_Title"),
+                LocalizationHelper.Format("Dashboards_LoadErrorFormat", snapshot.Error ?? ""),
+                Button(LocalizationHelper.GetString("Dashboards_Retry"), refresh).AutomationName(LocalizationHelper.GetString("Dashboards_Retry")).AutomationId("DashboardsRetry"),
+                alert: true),
+            _ when !snapshot.HasRows => DashboardsStates.Status(
+                "DashboardsEmpty",
+                DashboardsGlyphs.Dashboard,
+                LocalizationHelper.GetString("Dashboards_Empty_Title"),
+                LocalizationHelper.GetString("Dashboards_Empty_Detail"),
+                action: props.State.OpenAgentChat is { } open
+                    ? Button(LocalizationHelper.GetString("Dashboards_OpenChat"), () => open(props.AgentId))
+                        .AutomationName(LocalizationHelper.GetString("Dashboards_OpenChat"))
+                        .AutomationId("DashboardsEmptyOpenChat")
+                    : null,
+                art: DashboardsArt.GlyphBadge(DashboardsGlyphs.Dashboard, "AccentTextFillColorPrimaryBrush", "SubtleFillColorSecondaryBrush", 72)),
+            _ => Gallery(props, snapshot, query, setQuery, sort, setSort, reducedMotion, shown, setShown, width),
+        };
+
+        var children = new List<Element> { header.Grid(row: 0) };
+        if (snapshot.Status == DashboardLoadStatus.Error && snapshot.HasRows)
+        {
+            children.Add(InfoBar(
+                    LocalizationHelper.GetString("Dashboards_LoadError_Title"),
+                    LocalizationHelper.Format("Dashboards_LoadErrorFormat", snapshot.Error ?? ""))
+                .Warning().IsClosable(false)
+                .Margin(0, 0, 0, 12)
+                .AutomationId("DashboardsStaleError")
+                .Grid(row: 1));
+        }
+        children.Add(body.Grid(row: 2));
+        var column = Border(Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto], children.ToArray()))
+            .Width(ContentWidth(width) + 2 * HorizontalPadding(TierFor(width)))
+            .MaxWidth(ContentMaxWidth + 2 * HorizontalPadding(TierFor(width)))
+            .Padding(HorizontalPadding(TierFor(width)), 24, HorizontalPadding(TierFor(width)), 0)
+            .HAlign(HorizontalAlignment.Center)
+            .AutomationId("DashboardsGallery");
+        return Grid([GridSize.Star()], [GridSize.Star()],
+                Border(Empty()).Background(Theme.Ref(DashboardHues.Hero))
+                    .Height(backdropHeight).HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Top)
+                    .Set(border => border.IsHitTestVisible = false)
+                    .AccessibilityView(AccessibilityView.Raw).AutomationId("DashboardsBackdrop"),
+                DashboardsStates.VerticalScroll(column)
+                    .AutomationName(LocalizationHelper.GetString("Dashboards_GalleryLabel"))
+                    .AutomationId("DashboardsGalleryScroll"))
+            .OnSizeChanged((_, args) =>
+            {
+                if (props.ViewportWidth <= 0 && Snap(args.NewSize.Width) != Snap(measuredWidth))
+                    setWidth(args.NewSize.Width);
+            });
+    }
+
+    private static Element Hero(DashboardGalleryProps props, DashboardGallerySnapshot snapshot, Action refresh, double width, bool highContrast)
+    {
+        var narrow = TierFor(width) == PageWidthTier.Narrow;
+        var headline = LocalizationHelper.Format("Dashboards_ForAgentFormat", props.State.AgentName(props.AgentId));
+        var subtitle = snapshot.Status is DashboardLoadStatus.Ready || snapshot.HasRows
+            ? snapshot.Rows.Length switch
+            {
+                0 => LocalizationHelper.GetString("Dashboards_Empty_Title"),
+                1 => LocalizationHelper.GetString("Dashboards_CountOne"),
+                _ => LocalizationHelper.Format("Dashboards_CountManyFormat", snapshot.Rows.Length),
+            }
+            : LocalizationHelper.GetString(snapshot.Status switch
+            {
+                DashboardLoadStatus.Loading => "Dashboards_Loading",
+                DashboardLoadStatus.Unavailable => "Dashboards_Unavailable_Title",
+                DashboardLoadStatus.Disconnected => "Dashboards_Disconnected_Title",
+                _ => "Dashboards_LoadError_Title",
+            });
+        var titleStack = VStack(8,
+            DashboardsStates.Eyebrow(highContrast),
+            TextBlock(headline).FontSize(32).SemiBold()
+                .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis)
+                .ToolTip(headline)
+                .HeadingLevel(AutomationHeadingLevel.Level1)
+                .AutomationId("DashboardsTitle"),
+            TextBlock(subtitle).FontSize(14)
+                .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
+                .TextWrapping(TextWrapping.WrapWholeWords)
+                .MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(subtitle)
+                .AutomationId("DashboardsSubtitle"));
+
+        var more = new MenuFlyout();
+        if (props.State.OpenWebDashboards is { } browser)
+        {
+            var item = new MenuFlyoutItem { Text = LocalizationHelper.GetString("Dashboards_OpenWebGallery") };
+            AutomationProperties.SetAutomationId(item, "DashboardsOpenWebMenu");
+            item.Click += (_, _) => browser();
+            more.Items.Add(item);
+        }
+        var actions = HStack(GapInner,
+                narrow && more.Items.Count > 0
+                    ? DashboardsStates.IconButton(DashboardsGlyphs.More, LocalizationHelper.GetString("Dashboards_MoreActions"),
+                            () => { }, "DashboardsGalleryMore")
+                        .Set(button => button.Flyout = more)
+                    : props.State.OpenWebDashboards is { } openWeb
+                    ? Button(
+                            HStack(8,
+                                DashboardsStates.Glyph(DashboardsGlyphs.OpenInBrowser, 14, "TextFillColorPrimaryBrush").VAlign(VerticalAlignment.Center),
+                                TextBlock(LocalizationHelper.GetString("Dashboards_OpenWebGallery"))),
+                            openWeb)
+                        .ApplyStyle("DefaultButtonStyle")
+                        .Background(Theme.Ref("ControlFillColorDefaultBrush"))
+                        .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
+                        .BorderThickness(1)
+                        .Padding(11, 5, 11, 6).MinHeight(32)
+                        .Resources(resources => resources
+                            .Set("ButtonBackground", Theme.Ref("ControlFillColorDefaultBrush"))
+                            .Set("ButtonBorderBrush", Theme.Ref("ControlStrokeColorDefaultBrush")))
+                        .Height(36).VAlign(VerticalAlignment.Top)
+                        .ToolTip(LocalizationHelper.GetString("Dashboards_OpenWebGallery_GalleryHint"))
+                        .AutomationName(LocalizationHelper.GetString("Dashboards_OpenWebGallery"))
+                        .AutomationId("DashboardsOpenWeb")
+                    : Empty(),
+                DashboardsStates.IconButton(DashboardsGlyphs.Refresh, LocalizationHelper.GetString("Dashboards_Refresh"), refresh, "DashboardsRefresh"))
+            .VAlign(VerticalAlignment.Top)
+            .HAlign(narrow ? HorizontalAlignment.Left : HorizontalAlignment.Right)
+            .AutomationId("DashboardsMastActions");
+
+        return Border(Grid(
+                    narrow ? [GridSize.Star()] : [GridSize.Star(), GridSize.Auto],
+                    narrow ? [GridSize.Auto, GridSize.Auto, GridSize.Auto] : [GridSize.Auto, GridSize.Auto],
+                    titleStack.Grid(row: 0, column: 0),
+                    AgentPicker(props.State).Margin(0, GapStack, 0, 0).Grid(row: narrow ? 2 : 1, column: 0),
+                    actions.Margin(narrow ? 0 : GapStack, narrow ? GapGroup : 0, 0, 0)
+                        .Grid(row: narrow ? 1 : 0, column: narrow ? 0 : 1)))
+            .Padding(0, 8, 0, 20)
+            .Margin(0, 0, 0, 20);
+    }
+
+    private static Element AgentPicker(DashboardsPageState state)
+    {
+        if (state.AgentIds.Length <= 1)
+            return Empty();
+        var index = Math.Max(0, state.AgentIds.IndexOf(state.AgentId));
+        return HStack(12, TextBlock(LocalizationHelper.GetString("Dashboards_AgentLabel")).VAlign(VerticalAlignment.Center),
+            ComboBox(state.AgentIds.Select(state.AgentName).ToArray(), index, selected =>
+            {
+                if (selected >= 0 && selected < state.AgentIds.Length)
+                    state.SelectAgent(state.AgentIds[selected]);
+            })
+            .MinWidth(140)
+            .AutomationName(LocalizationHelper.GetString("Dashboards_AgentLabel"))
+            .AutomationId("DashboardsAgentPicker"));
+    }
+
+    private static Element Gallery(
+        DashboardGalleryProps props,
+        DashboardGallerySnapshot snapshot,
+        string query,
+        Action<string> setQuery,
+        DashboardGallerySort sort,
+        Action<DashboardGallerySort> setSort,
+        bool reducedMotion,
+        int shown,
+        Action<int> setShown,
+        double width)
+    {
+        var fallbackAgentId = props.AgentId;
+        var filters = new DashboardGalleryFilters(query, sort);
+        var visible = DashboardGalleryPolicy.Apply(snapshot.Rows, filters, fallbackAgentId, DashboardsPresentation.RowTitle);
+
+        var sortLabels = new[]
+        {
+            LocalizationHelper.GetString("Dashboards_SortUpdated"),
+            LocalizationHelper.GetString("Dashboards_SortTitle"),
+        };
+
+        var toolbar = Grid(
+            TierFor(width) == PageWidthTier.Wide ? [GridSize.Auto, GridSize.Star()] : [GridSize.Star()],
+            TierFor(width) == PageWidthTier.Wide ? [GridSize.Auto] : [GridSize.Auto, GridSize.Auto],
+            TextBox(query, setQuery, LocalizationHelper.GetString("Dashboards_SearchPlaceholder"))
+                .SearchInput()
+                .AutomationName(LocalizationHelper.GetString("Dashboards_SearchLabel"))
+                .AutomationId("DashboardsSearch")
+                .HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Bottom)
+                .MinWidth(240).MaxWidth(TierFor(width) == PageWidthTier.Wide ? 360 : double.PositiveInfinity)
+                .HAlign(TierFor(width) == PageWidthTier.Wide ? HorizontalAlignment.Right : HorizontalAlignment.Stretch)
+                .Margin(0, TierFor(width) == PageWidthTier.Wide ? 0 : GapGroup, 0, 0)
+                .Grid(row: TierFor(width) == PageWidthTier.Wide ? 0 : 1, column: TierFor(width) == PageWidthTier.Wide ? 1 : 0),
+            ComboBox(sortLabels, sort == DashboardGallerySort.Title ? 1 : 0, selected =>
+                    setSort(selected == 1 ? DashboardGallerySort.Title : DashboardGallerySort.Updated))
+                .AutomationName(LocalizationHelper.GetString("Dashboards_SortLabel"))
+                .MinWidth(160)
+                .AutomationId("DashboardsSort")
+                .Grid(column: 0))
+            .VAlign(VerticalAlignment.Bottom);
+
+        Element results = visible.IsEmpty
+            ? DashboardsStates.Status(
+                "DashboardsNoResults",
+                DashboardsGlyphs.Search,
+                LocalizationHelper.GetString("Dashboards_NoResults_Title"),
+                LocalizationHelper.GetString("Dashboards_NoResults_Detail"),
+                hue: DashboardHues.Teal)
+            : Cards(props, visible.Take(shown).ToImmutableArray(), fallbackAgentId, reducedMotion, width);
+
+        var sections = new List<Element>();
+        var fresh = snapshot.Rows.Where(row => row.UpdatedAtMs is { } ms &&
+            ms >= DateTimeOffset.Now.Date.ToUniversalTime().Subtract(DateTime.UnixEpoch).TotalMilliseconds)
+            .OrderByDescending(row => row.UpdatedAtMs).Take(3).ToImmutableArray();
+        if (snapshot.Rows.Length >= 5 && !fresh.IsEmpty && string.IsNullOrEmpty(query))
+        {
+            sections.Add(TextBlock(LocalizationHelper.GetString("Dashboards_FreshToday")).FontSize(22).SemiBold());
+            var now = DateTimeOffset.UtcNow;
+            Element feature = Border(Card(props, fresh[0], fallbackAgentId, now, reducedMotion, "Fresh", featured: true))
+                .Margin(0).HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Stretch);
+            var sides = fresh.Skip(1).Select((row, index) =>
+                Border(Card(props, row, fallbackAgentId, now, reducedMotion, "Fresh", compact: true))
+                    .Margin(0).HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Stretch)
+                    .Grid(row: TierFor(width) == PageWidthTier.Medium ? 0 : index,
+                        column: TierFor(width) == PageWidthTier.Medium ? index : 0)
+                    .WithKey(row.AgentId + "\0" + row.Key)).ToArray();
+            var sideGrid = Grid(
+                TierFor(width) == PageWidthTier.Medium ? Enumerable.Repeat(GridSize.Star(), sides.Length).ToArray() : [GridSize.Star()],
+                TierFor(width) == PageWidthTier.Medium ? [GridSize.Auto] : Enumerable.Repeat(GridSize.Star(), sides.Length).ToArray(), sides)
+                .Set(grid => { grid.ColumnSpacing = GapGroup; grid.RowSpacing = GapStack; })
+                .Margin(0).HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Stretch)
+                .AutomationId("DashboardsFreshSides");
+            sections.Add((fresh.Length == 1
+                ? feature
+                : TierFor(width) == PageWidthTier.Wide
+                    ? Grid([GridSize.Star(3), GridSize.Star(2)], [GridSize.Auto],
+                    feature.Grid(column: 0),
+                    sideGrid.Grid(column: 1))
+                        .Set(grid => { grid.ColumnSpacing = GapStack; grid.RowSpacing = GapStack; })
+                    : Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto],
+                        feature.Grid(row: 0), sideGrid.Grid(row: 1))
+                        .Set(grid => { grid.ColumnSpacing = GapStack; grid.RowSpacing = GapStack; }))
+                .AutomationId("DashboardsFreshLayout"));
+        }
+        sections.Add(HStack(12,
+            TextBlock(LocalizationHelper.Format("Dashboards_AgentBoards", props.State.AgentName(props.AgentId))).FontSize(24).SemiBold(),
+            Border(TextBlock(visible.Length.ToString(System.Globalization.CultureInfo.CurrentCulture)).FontSize(14).LiveRegion()
+                .AutomationName(LocalizationHelper.Format("Dashboards_ResultCountFormat", visible.Length))
+                .AutomationId("DashboardsResultCount"))
+                .Padding(10, 3).CornerRadius(12).VAlign(VerticalAlignment.Center)
+                .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))));
+        if (snapshot.Rows.Length > 5)
+            sections.Add(toolbar);
+        sections.Add(results);
+        if (visible.Length > shown)
+            sections.Add(Button(LocalizationHelper.GetString("Dashboards_ShowMore"), () => setShown(shown + 24))
+                .AutomationName(LocalizationHelper.GetString("Dashboards_ShowMore"))
+                .HAlign(HorizontalAlignment.Center).AutomationId("DashboardsShowMore"));
+        return VStack(GapStack, sections.ToArray());
+    }
+
+    private static Element Cards(DashboardGalleryProps props, ImmutableArray<DashboardSessionRow> rows, string fallbackAgentId, bool reducedMotion, double width)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var columns = TileColumns(ContentWidth(width), DashboardsPresentation.BoardTileMinWidth);
+        return Grid(Enumerable.Repeat(GridSize.Star(), columns).ToArray(),
+                Enumerable.Repeat(GridSize.Auto, (rows.Length + columns - 1) / columns).ToArray(),
+                // The layout cell owns Grid placement; entrance motion stays inside it.
+                rows.Select((row, index) => Border(Card(props, row, fallbackAgentId, now, reducedMotion, ""))
+                    .Grid(row: index / columns, column: index % columns)
+                    .WithKey(row.AgentId + "\0" + row.Key)).ToArray())
+            .Set(grid => { grid.ColumnSpacing = GapGroup; grid.RowSpacing = GapGroup; })
+            .Margin(0, 0, 0, 24)
+            .AutomationName(LocalizationHelper.GetString("Dashboards_GalleryLabel"))
+            .AutomationId("DashboardsCards");
+    }
+
+    private static Element Card(DashboardGalleryProps props, DashboardSessionRow row, string fallbackAgentId, DateTimeOffset now, bool reducedMotion, string prefix,
+        bool featured = false, bool compact = false)
+    {
+        var title = DashboardsPresentation.RowTitle(row);
+        var author = DashboardGalleryPolicy.ResolveAuthor(row, fallbackAgentId);
+        var updated = DashboardsPresentation.UpdatedText(row, now);
+        var hue = DashboardHues.For(row.AgentId ?? fallbackAgentId);
+
+        var heading = Grid(
+            [GridSize.Star(), GridSize.Auto],
+            [GridSize.Auto],
+                    TextBlock(title).FontSize(18).SemiBold()
+                        .TextTrimming(TextTrimming.CharacterEllipsis)
+                        .ToolTip(title).Grid(column: 0),
+            (row.IsLive ? DashboardsArt.LiveBadge(reducedMotion) : Empty())
+                .Margin(8, 0, 0, 0).VAlign(VerticalAlignment.Top)
+                .Grid(column: 1));
+        Element summary = string.IsNullOrWhiteSpace(row.LastMessagePreview)
+            ? Empty()
+            : TextBlock(row.LastMessagePreview!).FontSize(13)
+                .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
+                .TextWrapping(TextWrapping.WrapWholeWords)
+                .TextTrimming(TextTrimming.CharacterEllipsis)
+                .MaxLines(2)
+                .ToolTip(row.LastMessagePreview!)
+                .Margin(16, 8, 16, 12)
+                .VAlign(VerticalAlignment.Top);
+
+        var cover = Border(DashboardsStates.Glyph(DashboardsGlyphs.Dashboard, 40, DashboardHues.Strong(hue)).Center())
+            .Height(featured || compact ? double.NaN : 112)
+            .MinHeight(featured ? 168 : compact ? 64 : 112)
+            .Background(Theme.Ref(DashboardHues.Subtle(hue))).CornerRadius(12, 12, 0, 0);
+        var content = Grid(
+            [GridSize.Star()],
+            [featured || compact ? GridSize.Star() : GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto],
+            cover.Grid(row: 0),
+            heading.Margin(16, 12, 16, 0).Grid(row: 1),
+            summary.Grid(row: 2),
+            Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                DashboardsArt.Avatar(author.Initial, DashboardHues.For(author.Id), 20).Margin(0, 0, 6, 0).Grid(column: 0),
+                TextBlock(author.Label + " · " + updated).FontSize(12)
+                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).TextTrimming(TextTrimming.CharacterEllipsis)
+                    .ToolTip(author.Label + " · " + updated).Grid(column: 1))
+                .Margin(16, 0, 52, 16).Grid(row: 3));
+        var label = string.Join(", ", new[]
+        {
+            title,
+            row.IsLive ? LocalizationHelper.GetString("Dashboards_Live") : null,
+            LocalizationHelper.Format("Dashboards_ByAuthorFormat", author.Label),
+            updated,
+        }.Where(part => !string.IsNullOrEmpty(part)));
+
+        // The card surface is one native subtle button (click, Enter, and Space open the
+        // dashboard); the outer frame owns the backplate, stroke, and hover lift.
+        var button = Button(content, () => props.State.Open(new BoardSessionTarget(row.Key, row.AgentId), title, row))
+            .SubtleButton()
+            .Padding(0)
+            .Set(b =>
+            {
+                b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                b.VerticalContentAlignment = VerticalAlignment.Stretch;
+            })
+            .CornerRadius(12)
+            .HAlign(HorizontalAlignment.Stretch)
+            .VAlign(VerticalAlignment.Stretch)
+            .AutomationName(label)
+            .AutomationId("DashboardCard" + prefix + "_" + row.Key);
+
+        // The chat action is a sibling, never an interactive control inside the card button.
+        Element card = Border(Grid([GridSize.Star()], [GridSize.Star()],
+                button,
+                props.State.OpenChat is { } chat
+                    ? DashboardsStates.ChatButton(title, () => chat(row.Key), "DashboardCardChat" + prefix + "_" + row.Key)
+                        .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Bottom).Margin(8)
+                    : Empty()))
+            .VAlign(featured || compact ? VerticalAlignment.Stretch : VerticalAlignment.Top)
+            .CornerRadius(12)
+            .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
+            .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
+            .BorderThickness(1);
+        if (!reducedMotion)
+        {
+            card = card.InteractionStates(states => states
+                    .PointerOver(translation: new System.Numerics.Vector3(0, -4, 0))
+                    .Pressed(translation: new System.Numerics.Vector3(0, -1, 0)),
+                Microsoft.UI.Reactor.Animation.Curve.Ease(160, Microsoft.UI.Reactor.Animation.Easing.Decelerate));
+        }
+        return DashboardsArt.Enter(card, reducedMotion)
+            .Margin(0).HAlign(HorizontalAlignment.Stretch)
+            .VAlign(featured || compact ? VerticalAlignment.Stretch : VerticalAlignment.Top);
+    }
+
+    private static Element Skeleton(double width)
+    {
+        var columns = TileColumns(ContentWidth(width), DashboardsPresentation.BoardTileMinWidth);
+        var placeholders = Enumerable.Range(0, 6)
+            .Select(index =>
+            {
+                Element tile = Border(Empty())
+                    .Height(CardHeight)
+                    .CornerRadius(12)
+                    .Background(Theme.Ref(DashboardHues.Wash(index)))
+                    .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
+                    .BorderThickness(1);
+                return tile.Grid(row: index / columns, column: index % columns).WithKey("skeleton" + index);
+            })
+            .ToArray();
+        return VStack(12,
+                TextBlock(LocalizationHelper.GetString("Dashboards_Loading")).FontSize(14)
+                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).LiveRegion(),
+                Grid(Enumerable.Repeat(GridSize.Star(), columns).ToArray(),
+                    Enumerable.Repeat(GridSize.Auto, (6 + columns - 1) / columns).ToArray(), placeholders)
+                    .Set(grid =>
+                    {
+                        grid.ColumnSpacing = GapGroup;
+                        grid.RowSpacing = GapGroup;
+                    }))
+            .AutomationId("DashboardsLoading");
+    }
+}
