@@ -185,6 +185,21 @@ jobs:
       shell: pwsh
       run: ./scripts/test-native-gateway-source-build.ps1
 
+    - name: Setup .NET for offline Gateway trace analysis
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Test offline Gateway performance traces
+      shell: pwsh
+      run: |
+        dotnet build .\scripts\gateway-startup-trace\Analyzer\GatewayTraceAnalyzer.csproj --nologo -v:q
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & .\scripts\test-gateway-startup-trace.ps1
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & .\scripts\test-gateway-resource-trace.ps1
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
     - name: Test Gateway npm release selection
       shell: pwsh
       run: ./scripts/test-gateway-npm-release.ps1

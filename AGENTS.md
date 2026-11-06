@@ -22,6 +22,7 @@ requirement. A tool's successful exit is not proof that the intended work ran.
 | Retrigger CI on a PR with failing checks | [retrigger-flaky-ci](.agents/skills/retrigger-flaky-ci/SKILL.md); rerun only failures unrelated to the PR's changes, otherwise warn |
 | Change a WinUI owner or its caller | [WinUI instructions](src/OpenClaw.Tray.WinUI/AGENTS.md) and the affected architecture ledger rows |
 | Debug Companion, setup, Gateway connection, node capabilities, packaging, or `system.run` | [Windows debugging](.agents/skills/openclaw-debugging/SKILL.md) |
+| Record or analyze startup, setup, chat latency, CPU, memory, I/O or Defender performance | [Windows tracing](.agents/skills/openclaw-tracing/SKILL.md); live capture requires explicit workload and recorder authority |
 | Drive the app through local MCP | [windows-app-mcp](.agents/skills/windows-app-mcp/SKILL.md); use [winnode](.agents/skills/winnode/SKILL.md) for the shipped command contract |
 | Review code | [Shared autoreview](.agents/skills/autoreview/SKILL.md); use [Hanselman review](.agents/skills/hanselman-code-review/SKILL.md) when adversarial review is requested |
 | Run remote native Windows proof | [Crabbox](.agents/skills/crabbox/SKILL.md), with explicit host/provider authority |
