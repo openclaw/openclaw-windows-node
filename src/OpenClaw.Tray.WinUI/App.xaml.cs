@@ -150,6 +150,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// <summary>Exposes the active chat data and speech coordinators to the hosted chat surface.</summary>
     public OpenClawTray.Chat.OpenClawChatDataProvider? ChatProvider => _chatCoordinator?.Provider;
     public OpenClawTray.Chat.OpenClawChatCoordinator? ChatSpeech => _chatCoordinator;
+    internal OpenClawTray.Chat.ChatVerificationState ChatVerificationState =>
+        _chatCoordinator?.VerificationState ?? OpenClawTray.Chat.ChatVerificationState.None;
+    internal bool RetryChatVerification(OpenClaw.Shared.IOperatorGatewayClient? expectedClient = null) =>
+        _chatCoordinator?.RetryVerification(expectedClient) == true;
     /// <summary>
     /// Raised after the tray-wide settings have been saved (either via the
     /// SettingsPage Save button or a direct toggle from the tray menu).
@@ -713,6 +717,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 ? null
                 : OpenClawTray.Chat.ReactorChatHostExtensions.AsPost(_dispatcherQueue),
             _voicePlaybackMute.Acquire);
+        _chatCoordinator.ProviderChanged += (_, _) => RaiseChatProviderChanged();
         DiagnosticsJsonlService.Configure(DataPath);
 
         // Central observable model + gateway event handler.
@@ -849,6 +854,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         var appLogger = new AppLogger();
         _gatewayRegistry = new GatewayRegistry(SettingsManager.SettingsDirectoryPath, logger: appLogger);
         _gatewayRegistry.Load();
+        _chatCoordinator?.ConfigureRegistry(_gatewayRegistry);
         if (nativeRestart)
             _windowManager.ShowNativeSetupStartupProgress();
         var localAiLogger = new AppLogger();
@@ -2376,6 +2382,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// </summary>
     private void OnManagerStateChanged(object? sender, GatewayConnectionSnapshot snap)
     {
+        _chatCoordinator?.ObserveConnection(snap);
         _openTelemetryConnection?.SendConnectionState(snap);
         var mapped = ConnectionStatusPresenter.ToLegacyStatus(snap);
         var connectedSideEffectsKey = snap.OperatorState == RoleConnectionState.Connected

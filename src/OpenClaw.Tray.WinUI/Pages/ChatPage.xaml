@@ -91,12 +91,12 @@
                        Text="Waiting for chat to start…"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
-            <TextBlock x:Name="WaitingStatusText" x:Uid="ChatPage_WaitingStatusText"
+            <TextBlock x:Name="WaitingStatusText" x:Uid="ChatPage_WaitingStatusText" AutomationProperties.AutomationId="ChatVerificationStatus"
                        Text="The gateway is connected; the chat surface is still coming online."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="360"/>
-            <Button x:Name="RetryChatButton" x:Uid="CanvasRetryButton" Content="Retry" Click="OnRetryChat" Visibility="Collapsed"
+            <Button x:Name="RetryChatButton" x:Uid="CanvasRetryButton" AutomationProperties.AutomationId="ChatRetryVerification" Content="Retry" Click="OnRetryChat" Visibility="Collapsed"
                     HorizontalAlignment="Center"/>
         </StackPanel>
 

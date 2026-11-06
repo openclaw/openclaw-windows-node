@@ -1,0 +1,16 @@
+{
+  "PrivateKeyBase64": "\u002BVlCQWzV6n0SeJCp1PQC6GdM013e6yw4xCqbxYp0sjU=",
+  "PublicKeyBase64": "37HP1vPgMTQdoO91N6FT1Dk/kcV9OFixtYTQbtwjDTM=",
+  "DeviceId": "ad4eda4924826cf01c5784239639cbefc12de477831386ca7a24394c08de0678",
+  "DeviceToken": "fixture-stable-operator-token",
+  "DeviceTokenScopes": [
+    "operator.read",
+    "operator.write"
+  ],
+  "NodeDeviceToken": "fixture-stable-node-token",
+  "NodeDeviceTokenScopes": [
+    "node"
+  ],
+  "Algorithm": "Ed25519",
+  "CreatedAt": 1793476929438
+}

@@ -45,7 +45,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="Fixtures\Stable2026_9_8_1\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatGatewayBridge.cs" Link="Chat\IChatGatewayBridge.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\RetainedChatGatewayBridge.cs" Link="Chat\RetainedChatGatewayBridge.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatProviderConnection.cs" Link="Chat\ChatProviderConnection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatQuestionGateway.cs" Link="Chat\IChatQuestionGateway.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatQuestionCoordinator.cs" Link="Chat\ChatQuestionCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatQuestionDraft.cs" Link="Chat\ChatQuestionDraft.cs" />

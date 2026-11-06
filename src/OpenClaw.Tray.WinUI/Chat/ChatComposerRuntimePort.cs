@@ -17,6 +17,8 @@ namespace OpenClawTray.Chat;
 internal sealed class ChatComposerRuntimePort(IChatDataProvider provider) : IChatComposerRuntimePort
 {
     public bool SupportsNativeLifecycle => provider is OpenClawChatDataProvider;
+    public bool RetryConnectionVerification() =>
+        provider is OpenClawChatDataProvider native && native.RetryVerification();
     public bool SupportsSessionScopedModelCatalog =>
         provider is OpenClawChatDataProvider { SupportsSessionScopedModelCatalog: true };
     public long ModelCatalogRevision =>

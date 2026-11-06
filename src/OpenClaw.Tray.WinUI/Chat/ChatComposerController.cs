@@ -83,6 +83,10 @@ internal sealed partial class ChatComposerController : IDisposable
     private int _sendGate;
     private volatile bool _disposed;
 
+    internal bool RetryConnectionVerification() =>
+        !_disposed && _composerVisible && _vm.Inputs is { IsVisible: true, VerificationState: ChatVerificationState.Failed }
+        && _port.RetryConnectionVerification();
+
 #if OPENCLAW_TRAY_TESTS
     /// <summary>Test-only synchronization seam invoked in <see cref="SendCoreAsync"/>
     /// after its entry disposed check, before any port call.</summary>

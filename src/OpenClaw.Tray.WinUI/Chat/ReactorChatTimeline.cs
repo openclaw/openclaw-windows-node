@@ -105,8 +105,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         }
 
         var rows = BuildRows(props with { ViewportWidth = viewportWidth });
-        var initialTailRequestKey =
-            $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.HistoryRevision}|{props.Timeline.ScrollToBottomToken}";
+        var navigation = TailNavigationIdentity.Create(props.Timeline.SessionId,
+            props.Timeline.TimelineGeneration, props.HistoryRevision, props.Timeline.ScrollToBottomToken);
         var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null;
         void SetEntryHovered(string entryId, bool isHovered)
         {
@@ -174,8 +174,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     annotatedScrollBarRef,
                     rows.Count - 1,
                     rows.Count,
-                    initialTailRequestKey,
-                    displayedTailKey)
+                    navigation.RequestKey,
+                    navigation.ExplicitRequestKey,
+                    displayedTailKey,
+                    historyRevision: props.HistoryRevision)
                 .Grid(column: 0)
                 .Margin(0, ChatVisuals.TranscriptTopInset, 0, 0)
                 .AutomationName("Chat messages")
