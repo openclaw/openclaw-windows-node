@@ -251,8 +251,8 @@ public sealed class WorkspaceWindowProofTests
         var input = SearchBox()!.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
         await WaitUntilAsync(() => input.Current.HasKeyboardFocus);
-        System.Windows.Forms.SendKeys.SendWait("Go to Settings");
-        await WaitUntilAsync(() => ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Go to Settings");
+        System.Windows.Forms.SendKeys.SendWait("Go to General");
+        await WaitUntilAsync(() => ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Go to General");
         System.Windows.Forms.SendKeys.SendWait("{ENTER}");
         await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
         await WaitUntilAsync(() => SearchBox() is null);
@@ -697,7 +697,7 @@ public sealed class WorkspaceWindowProofTests
             ("Settings", "settings", "SettingsPage", "SettingsPageMarker"),
             ("Usage", "usage", "UsagePage", "UsagePageMarker"),
             ("Pair device", "channels", "ChannelsPage", "ChannelsPageMarker"),
-            ("About OpenClaw", "about", "SettingsPage", "SettingsPageMarker")
+            ("About OpenClaw", "about", "AboutPage", "AboutPageMarker")
         })
         {
             await app.NavigateAsync("workspace:home", "ChatPage", "WorkspaceNavHome");

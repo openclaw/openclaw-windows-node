@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:OpenClawTray.Controls"
+    xmlns:presentation="using:OpenClawTray.Presentation.Adapters"
     xmlns:winex="using:WinUIEx"
     MinWidth="800" MinHeight="560">
     <Window.SystemBackdrop><MicaBackdrop/></Window.SystemBackdrop>
@@ -12,6 +13,7 @@
             <DataTemplate x:Key="AgentIdentityTemplate">
                 <controls:AgentIdentityBadge/>
             </DataTemplate>
+            <presentation:HubCommandIconConverter x:Key="HubCommandIconConverter"/>
         </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -80,7 +82,10 @@
                                             <AutoSuggestBox.ItemTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal" Spacing="8" Padding="4">
-                                                        <TextBlock Text="{Binding Icon}" FontSize="14" VerticalAlignment="Center"/>
+                                                        <FontIcon Glyph="{Binding Icon, Converter={StaticResource HubCommandIconConverter}}"
+                                                                  FontSize="16"
+                                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                  VerticalAlignment="Center"/>
                                                         <StackPanel>
                                                             <TextBlock Text="{Binding Title}" Style="{StaticResource BodyTextBlockStyle}"/>
                                                             <TextBlock Text="{Binding Subtitle}" Style="{StaticResource CaptionTextBlockStyle}"

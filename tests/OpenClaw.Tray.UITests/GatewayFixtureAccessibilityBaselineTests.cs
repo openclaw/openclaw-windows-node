@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Windows.Automation;
 using OpenClaw.TestSupport.Gateway;
 using OpenClaw.GatewayFixtureHost;
@@ -6,6 +7,108 @@ namespace OpenClaw.Tray.UITests;
 
 public sealed partial class GatewayFixtureUiTests
 {
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task SettingsPages_GroupPreferencesInGeneral_AndKeepConnectionAboutAndConsentSeparate()
+    {
+        await WithAppAsync(async run =>
+        {
+            var commands = await run.InvokeAsync("app.search", new { query = "Connection" });
+            Assert.Equal(JsonValueKind.Array, commands.ValueKind);
+            Assert.Contains(commands.EnumerateArray(),
+                command => command.GetProperty("Icon").GetString() == "\U0001F50C");
+
+            foreach (var (route, marker, control) in new[]
+            {
+                ("settings", "SettingsPageMarker", "SettingsPageAdvancedExpander"),
+                ("connection", "ConnectionPageMarker", "SettingsNavConnection"),
+                ("about", "AboutPageMarker", "SettingsPageCheckUpdates"),
+                ("permissions", "PermissionsPageMarker", "SettingsPageScreenRecording"),
+                ("notifications", "NotificationsPageMarker", "NotificationsPageMarker")
+            })
+            {
+                var navigationId = route switch
+                {
+                    "connection" => "SettingsNavConnection",
+                    "about" => "SettingsNavAbout",
+                    _ => null
+                };
+                if (navigationId is not null)
+                {
+                    var navigationItem = FindById(run, navigationId)!;
+                    ((ScrollItemPattern)navigationItem.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+                    Invoke(navigationItem);
+                }
+                else
+                {
+                    await run.InvokeAsync("app.navigate", new { page = route });
+                }
+                await WaitUiAsync(run, () => FindById(run, marker) is { Current.IsOffscreen: false },
+                    $"{route} page mounted");
+                Assert.NotNull(FindById(run, control));
+                if (route != "settings")
+                    Assert.Null(FindById(run, "SettingsPageNotifyHealth"));
+                else
+                    Assert.NotNull(FindById(run, "SettingsPageNotifyHealth"));
+                if (route != "permissions")
+                    Assert.Null(FindById(run, "SettingsPageScreenRecording"));
+                if (route != "about")
+                    Assert.Null(FindById(run, "SettingsPageCheckUpdates"));
+
+                if (route == "permissions")
+                    foreach (var id in new[] { "SettingsPageScreenRecording", "SettingsPageCameraRecording", "SettingsPageLocationConsent" })
+                        Assert.True(FindById(run, id)!.TryGetCurrentPattern(TogglePattern.Pattern, out _));
+
+                var markerCondition = new PropertyCondition(AutomationElement.AutomationIdProperty, marker);
+                var window = AppWindows(run).Single(candidate =>
+                    candidate.FindFirst(TreeScope.Descendants, markerCondition) is not null);
+                var pageLeft = FindById(run, marker)!.Current.BoundingRectangle.Left;
+                await WaitForStablePageGeometryAsync(run, window, pageLeft);
+                OwnedWindowCapture.Save(run, window, $"settings-split-{route}.png", FindById(run, marker)!);
+                if (route == "permissions")
+                {
+                    var cards = new[] { "AppAccessScreenCaptureCard", "AppAccessCameraCaptureCard", "AppAccessLocationCard" }
+                        .Select(id => FindById(run, id)!).ToArray();
+                    ((ScrollItemPattern)cards[^1].GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+                    await WaitUiAsync(run, () => cards.All(card => !card.Current.IsOffscreen),
+                        "all three app-access consent rows visible");
+                    await WaitForStablePageGeometryAsync(run, window, pageLeft);
+                    OwnedWindowCapture.Save(run, window, "permissions-app-access.png", cards);
+                }
+            }
+
+            var about = await run.InvokeAsync("app.search", new { query = "About" });
+            Assert.Contains(about.EnumerateArray(),
+                command => command.GetProperty("Icon").GetString() == "\u2139\uFE0F");
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+    }
+
+    private const int StableGeometryPolls = 5;
+
+    // A SettingsExpander slides its items in for a few hundred milliseconds after mount or expansion.
+    // Wait until the page text stops moving so an evidence frame is never captured mid-animation.
+    private static Task WaitForStablePageGeometryAsync(GatewayFixtureRun run, AutomationElement window, double pageLeft)
+    {
+        var request = new CacheRequest();
+        request.Add(AutomationElement.BoundingRectangleProperty);
+        var text = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text);
+        string? previous = null;
+        var unchangedPolls = 0;
+        return WaitUiAsync(run, () =>
+        {
+            AutomationElementCollection elements;
+            using (request.Activate())
+                elements = window.FindAll(TreeScope.Descendants, text);
+            var current = string.Join('|', elements.Cast<AutomationElement>()
+                .Select(element => element.Cached.BoundingRectangle)
+                .Where(bounds => bounds.Left >= pageLeft - 1));
+            unchangedPolls = current == previous ? unchangedPolls + 1 : 0;
+            previous = current;
+            return unchangedPolls >= StableGeometryPolls;
+        }, "page geometry to stop moving");
+    }
+
     private AutomationElement ConfigRowRemoveButton(AutomationElement window, AutomationElement edit)
     {
         var bounds = edit.Current.BoundingRectangle;
@@ -116,6 +219,8 @@ public sealed partial class GatewayFixtureUiTests
         {
             await run.InvokeAsync("app.navigate", new { page = "settings" });
             await WaitUiAsync(run, () => FindById(run, "SettingsPageNotifyHealth") is not null, "notification settings");
+            Assert.NotNull(FindById(run, "SettingsPageMarker"));
+            Assert.Null(FindById(run, "SettingsNavNotificationPreferences"));
             Assert.NotNull(FindText(run, "Show notifications for:"));
             foreach (var (id, name) in new[] {
                 ("Health", "Health alerts"), ("Urgent", "Urgent messages"), ("Reminder", "Reminders"),
@@ -128,6 +233,75 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.Equal(name, box.Current.Name);
                 Assert.True(box.TryGetCurrentPattern(TogglePattern.Pattern, out _));
             }
+
+            var pageLeft = FindById(run, "SettingsPageMarker")!.Current.BoundingRectangle.Left;
+            var master = FindById(run, "GeneralNotificationsCard")!;
+            var categories = FindById(run, "GeneralNotificationCategoriesCard")!;
+            ((ScrollItemPattern)categories.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+            await WaitUiAsync(run, () => !master.Current.IsOffscreen && !categories.Current.IsOffscreen,
+                "General notification controls visible");
+            var marker = new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsPageMarker");
+            var window = AppWindows(run).Single(candidate =>
+                candidate.FindFirst(TreeScope.Descendants, marker) is not null);
+            await WaitForStablePageGeometryAsync(run, window, pageLeft);
+            OwnedWindowCapture.Save(run, window, "general-notifications.png", master, categories);
+
+            var health = (TogglePattern)FindById(run, "SettingsPageNotifyHealth")!.GetCurrentPattern(TogglePattern.Pattern);
+            var original = health.Current.ToggleState;
+            health.Toggle();
+            var expected = original == ToggleState.On ? ToggleState.Off : ToggleState.On;
+            await run.InvokeAsync("app.navigate", new { page = "about" });
+            await WaitUiAsync(run, () => FindById(run, "AboutPageMarker") is not null, "leave General");
+            await run.InvokeAsync("app.navigate", new { page = "notification-preferences" });
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is not null
+                && FindById(run, "SettingsPageNotifyHealth") is not null, "preferences alias opens General");
+            Assert.Equal(expected,
+                ((TogglePattern)FindById(run, "SettingsPageNotifyHealth")!.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task General_AdvancedExpanderKeepsDiagnosticsToggleReachable()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageAdvancedExpander") is not null,
+                "General advanced settings");
+            var pageLeft = FindById(run, "SettingsPageMarker")!.Current.BoundingRectangle.Left;
+            var expander = FindById(run, "SettingsPageAdvancedExpander")!;
+            Assert.True(FindById(run, "SettingsPageShowDiagnostics") is null or { Current.IsOffscreen: true },
+                "Diagnostics must be hidden inside the initially collapsed disclosure.");
+            var header = Assert.Single(expander.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true))
+                .Cast<AutomationElement>());
+            var pattern = (ExpandCollapsePattern)header.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+            Assert.Equal(ExpandCollapseState.Collapsed, pattern.Current.ExpandCollapseState);
+            pattern.Expand();
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageShowDiagnostics") is not null,
+                "diagnostics visibility switch");
+
+            var toggle = FindById(run, "SettingsPageShowDiagnostics")!;
+            Assert.Equal("Enable Diagnostics", toggle.Current.Name);
+            Assert.True(toggle.TryGetCurrentPattern(TogglePattern.Pattern, out _));
+            var card = Assert.Single(expander.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ClassNameProperty, "SettingsCard")).Cast<AutomationElement>(),
+                candidate => candidate.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsPageShowDiagnostics")) is not null);
+            ((ScrollItemPattern)card.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+            await WaitUiAsync(run, () => !card.Current.IsOffscreen && !toggle.Current.IsOffscreen,
+                "visible diagnostics row and switch");
+            var marker = new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsPageMarker");
+            var window = AppWindows(run).Single(candidate =>
+                candidate.FindFirst(TreeScope.Descendants, marker) is not null);
+            await WaitForStablePageGeometryAsync(run, window, pageLeft);
+            OwnedWindowCapture.Save(run, window, "settings-advanced-expanded.png", expander, card, toggle);
+
+            pattern.Collapse();
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageShowDiagnostics") is null or { Current.IsOffscreen: true },
+                "diagnostics switch hidden again");
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
 
