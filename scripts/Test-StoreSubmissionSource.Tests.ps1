@@ -105,7 +105,7 @@ $global:StoreSourceTest_run.head_sha = ('d' * 40)
 Assert-Fails { Invoke-Source } 'release tag run'
 
 
-foreach ($channel in @('auto', 'development')) {
+foreach ($channel in @('auto', 'development', 'Auto', 'AUTO', 'Development', 'DEVELOPMENT')) {
     Reset-Fixture
     $global:StoreSourceTest_run.head_branch = 'v2026.10.21-alpha.12'
     $global:StoreSourceTest_witness.releaseTag = 'v2026.10.21-alpha.12'

@@ -7,6 +7,7 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$Channel = $Channel.ToLowerInvariant()
 $repository = 'openclaw/openclaw-windows-node'
 if ($null -eq $ApiInvoker) {
     $ApiInvoker = {

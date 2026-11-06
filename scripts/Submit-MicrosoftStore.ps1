@@ -17,6 +17,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$Channel = $Channel.ToLowerInvariant()
 $isFlight = $Channel -ceq 'development'
 $parsedFlightId = [guid]::Empty
 if ($isFlight -and -not [guid]::TryParse($FlightId, [ref]$parsedFlightId)) {

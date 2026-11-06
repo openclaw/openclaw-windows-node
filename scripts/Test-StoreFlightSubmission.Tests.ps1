@@ -101,10 +101,10 @@ try {
         '<Bundle><Identity Name="Test.Product" Publisher="CN=Test" /></Bundle>')
     [IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $root 'bundle'), (Join-Path $root 'fixture.msixbundle'))
     [IO.File]::WriteAllText((Join-Path $root 'assertion'), 'fixture-assertion')
-    foreach ($case in @('', 'first-flight')) {
+    foreach ($case in @('', 'first-flight', 'Development', 'DEVELOPMENT')) {
         Reset-Fixture
         $global:StoreFlightTest_scenario = $case
-        Invoke-Fixture
+        Invoke-Fixture -Channel $(if ($case -in @('Development', 'DEVELOPMENT')) { $case } else { 'development' })
         $evidence = Get-Content (Join-Path $root 'evidence.json') -Raw | ConvertFrom-Json
         if ($evidence.channel -cne 'development' -or $evidence.flightId -cne $flightId -or
             $evidence.commitStatus -cne 'CommitStarted' -or $global:StoreFlightTest_pending) { throw 'Missing flight commit receipt.' }
@@ -135,7 +135,14 @@ try {
     Assert-Rejected { Invoke-Fixture -Id '' } 'requires the configured flight'
     Assert-Rejected { Invoke-Fixture -Channel production } 'must not specify a flight'
     if ($global:StoreFlightTest_calls.Count) { throw 'Invalid destination reached authentication.' }
-    Write-Host 'Store flight submission: 12 scenarios passed.'
+    foreach ($channel in @('Development', 'DEVELOPMENT')) {
+        Assert-Rejected { Invoke-Fixture -Channel $channel -Id '' } 'requires the configured flight'
+    }
+    foreach ($channel in @('Production', 'PRODUCTION')) {
+        Assert-Rejected { Invoke-Fixture -Channel $channel } 'must not specify a flight'
+    }
+    if ($global:StoreFlightTest_calls.Count) { throw 'Case-variant destination reached authentication.' }
+    Write-Host 'Store flight submission: 18 scenarios passed.'
 } finally {
     Get-Variable -Scope Global -Name StoreFlightTest_* | Remove-Variable -Scope Global
     Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
