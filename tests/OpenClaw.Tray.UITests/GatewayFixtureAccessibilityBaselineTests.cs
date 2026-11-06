@@ -170,7 +170,9 @@ public sealed partial class GatewayFixtureUiTests
                 "Connection remains reachable under Gateway while offline");
             var connectionWindow = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "ConnectionPageMarker")) is not null);
-            OwnedWindowCapture.Save(run, connectionWindow, "connection-offline.png", connection);
+            var connectionHeading = FindById(run, "ConnectionPageMarker")!;
+            await WaitForStablePageGeometryAsync(run, connectionWindow, connectionHeading.Current.BoundingRectangle.Left);
+            OwnedWindowCapture.Save(run, connectionWindow, "connection-offline.png", connection, connectionHeading);
             ReleaseHandshake();
         }, scenario: GatewayScenario.CreateAccessibilityBaseline(),
             releasePendingResponses: ReleaseHandshake);

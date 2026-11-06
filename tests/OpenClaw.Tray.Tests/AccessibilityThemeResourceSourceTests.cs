@@ -130,7 +130,7 @@ public sealed class AccessibilityThemeResourceSourceTests
     }
 
     [Fact]
-    public void SystemSettingsNavigationSvgIcons_EachHaveAHighContrastGlyphFallback()
+    public void SystemAndConnectionNavigationSvgIcons_HaveHighContrastGlyphFallbacks()
     {
         // Fixed-color SVGs are swapped for system-foreground glyphs in High Contrast; an unmapped tag
         // would silently render the generic hamburger glyph instead of a meaningful icon.
@@ -151,7 +151,10 @@ public sealed class AccessibilityThemeResourceSourceTests
             .OfType<string>()
             .ToArray();
 
-        Assert.Contains("connection", systemSvgTags);
+        var connection = Assert.Single(menu.Elements(),
+            element => (string?)element.Attribute("Tag") == "connection");
+        Assert.Contains(connection.Descendants(), icon => icon.Name.LocalName == "ImageIcon");
+        Assert.Contains("connection", fallbackTags);
         Assert.Contains("about", systemSvgTags);
         Assert.All(systemSvgTags, tag => Assert.Contains(tag, fallbackTags));
     }
