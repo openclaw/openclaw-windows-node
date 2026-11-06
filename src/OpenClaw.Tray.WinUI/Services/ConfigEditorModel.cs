@@ -56,6 +56,22 @@ internal static class ConfigEditorModel
     public static bool CanTraverseObjectConfig(JsonElement config) =>
         config.ValueKind is JsonValueKind.Object or JsonValueKind.Undefined;
 
+    /// <summary>Allows schema-only sections only when absent, without crossing an opaque stored ancestor.</summary>
+    public static bool CanMaterializeSchemaSection(JsonElement root, string path)
+    {
+        var current = root;
+        foreach (var segment in path.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (current.ValueKind == JsonValueKind.Undefined)
+                return true;
+            if (current.ValueKind != JsonValueKind.Object)
+                return false;
+            if (!current.TryGetProperty(segment, out current))
+                return true;
+        }
+        return CanTraverseObjectConfig(current);
+    }
+
     // A Gateway may redact a whole object to its native mask. Keep that value
     // on the section itself, but never invent editable descendants beneath it.
     public static IEnumerable<ConfigSchemaSection> ReadSchemaSections(JsonElement schema, JsonElement? config)

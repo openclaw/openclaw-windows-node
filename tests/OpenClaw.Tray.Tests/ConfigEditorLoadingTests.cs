@@ -5,6 +5,20 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class ConfigEditorLoadingTests
 {
+    [Fact]
+    public void SchemaSearch_ChecksStoredAncestorsBeforeInventingEmptySection()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "ConfigPage.xaml.cs"));
+        var restore = source[source.IndexOf("private void RestoreSelectedDetail()", StringComparison.Ordinal)..];
+        restore = restore[..restore.IndexOf("internal void RevealSearchPath", StringComparison.Ordinal)];
+        const string guard = "ConfigEditorModel.CanMaterializeSchemaSection(_serverSnapshot.Root, _selectedPath)";
+        const string fallback = "ShowDetail(_selectedPath, s_emptyObject);";
+        Assert.Contains(guard, restore, StringComparison.Ordinal);
+        Assert.Contains(fallback, restore, StringComparison.Ordinal);
+        Assert.True(restore.IndexOf(guard, StringComparison.Ordinal) < restore.IndexOf(fallback, StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("parsed", "hash")]
     [InlineData("config", "baseHash")]
@@ -94,6 +108,10 @@ public sealed class ConfigEditorLoadingTests
         var save = source[source.IndexOf("private async Task OnSaveAsync()", StringComparison.Ordinal)..];
         Assert.Contains("!SnapshotMatchesCurrentConnection()", save, StringComparison.Ordinal);
         Assert.Contains("_pendingChanges.Count", save, StringComparison.Ordinal);
+        Assert.Contains("_snapshotTicket?.Epoch is not long connectionEpoch", save, StringComparison.Ordinal);
+        Assert.Contains("client.PatchConfigOnConnectionAsync(updated, saveBase.BaseHash, connectionEpoch)",
+            save, StringComparison.Ordinal);
+        Assert.DoesNotContain("client.PatchConfigDetailedAsync(", save, StringComparison.Ordinal);
         Assert.True(save.IndexOf("!SnapshotMatchesCurrentConnection()", StringComparison.Ordinal) <
                     save.IndexOf("_pendingChanges.Count", StringComparison.Ordinal));
         var locked = source[source.IndexOf("private bool IsConfigEditingLocked", StringComparison.Ordinal)..];

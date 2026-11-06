@@ -417,7 +417,8 @@ public sealed partial class ConfigPage : Page
             return;
         }
 
-        if (ConfigEditorModel.ResolveSearchSection(GetSchemaRoot(_lastSchema.Value), _selectedPath) == _selectedPath)
+        if (ConfigEditorModel.ResolveSearchSection(GetSchemaRoot(_lastSchema.Value), _selectedPath) == _selectedPath &&
+            ConfigEditorModel.CanMaterializeSchemaSection(_serverSnapshot.Root, _selectedPath))
         {
             ShowDetail(_selectedPath, s_emptyObject);
             return;
@@ -570,7 +571,8 @@ public sealed partial class ConfigPage : Page
     private async Task OnSaveAsync()
     {
         if (_saving) return;
-        if (_draftConnectionChanged || !SnapshotMatchesCurrentConnection())
+        if (_draftConnectionChanged || !SnapshotMatchesCurrentConnection() ||
+            _snapshotTicket?.Epoch is not long connectionEpoch)
         {
             InvalidateLoadedConnection();
             ShowDraftConnectionChanged();
@@ -642,7 +644,7 @@ public sealed partial class ConfigPage : Page
         {
             var updated = ConfigEditorModel.ApplyChanges(saveBase.Root, _pendingChanges);
             var saveIdentity = _snapshotTicket!.Value;
-            var result = await client.PatchConfigDetailedAsync(updated, saveBase.BaseHash);
+            var result = await client.PatchConfigOnConnectionAsync(updated, saveBase.BaseHash, connectionEpoch);
             if (!saveIdentity.MatchesConnection(CurrentApp.GatewayClient, client.SessionMutationConnectionEpoch,
                     _appState?.SelfProfileRevision ?? 0))
             {
