@@ -73,9 +73,9 @@ public static class DeepLinkHandler
                 return new ActivationRoute.OpenHub("chat");
 
             case "activity":
-                // ActivityPage was removed. Redirect by filter: channel events
-                // now live on the Channels page; sessions/usage/nodes have their
-                // own dedicated pages; notifications fall through to Channels.
+                // ActivityPage was removed. Redirect by filter: sessions/usage/nodes
+                // have their own pages; "channels" opens the Gateway dashboard
+                // channels view through WorkspaceNavigation.
                 {
                     var filter = result.Parameters.GetValueOrDefault("filter");
                     return new ActivationRoute.OpenHub(filter switch
@@ -88,7 +88,7 @@ public static class DeepLinkHandler
                 }
 
             case "history":
-                // Legacy notification-history alias — Channels page is the closest match.
+                // Legacy notification-history alias — the dashboard channels view is the closest match.
                 return new ActivationRoute.OpenHub("channels");
 
             case "commandcenter":
@@ -186,7 +186,7 @@ public static class DeepLinkHandler
             case "notifications":
             case "notification-history":
             case "activity-stream":
-                // ActivityPage removed — channel events now live on the Channels page.
+                // ActivityPage removed. Channel events live in the Gateway dashboard.
                 return new ActivationRoute.OpenHub("channels");
 
             case "dashboard":

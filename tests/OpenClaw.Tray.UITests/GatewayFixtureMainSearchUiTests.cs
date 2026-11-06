@@ -805,6 +805,7 @@ public sealed partial class GatewayFixtureUiTests
             case "{ESC}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Escape); break;
             case "{ENTER}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Enter); break;
             case "^{ENTER}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Enter, control: true); break;
+            case "%{ENTER}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Enter, alt: true); break;
             case "{DOWN}": NativeKeyboardProof.Press(foreground, Windows.System.VirtualKey.Down); break;
             case "Settings{ENTER}":
                 NativeKeyboardProof.TypeText(foreground, "Settings");

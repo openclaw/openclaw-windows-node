@@ -365,4 +365,49 @@ public sealed class TrayTooltipBuilderTests : IDisposable
 
         Assert.Contains("Mac over SSH", result);
     }
+
+    [Theory]
+    [InlineData("GatewayB", null, "WSL")]
+    [InlineData(null, "OpenClaw.Gateway_test", "Windows native")]
+    public void Build_LoopbackGateway_LabelsByInstallationOwner(
+        string? setupManagedDistroName, string? nativePackageFamilyName, string expectedLabel)
+    {
+        var snapshot = BaseConnected() with
+        {
+            Settings = new SettingsManager(_tempDir) { GatewayUrl = "ws://127.0.0.1:18789" },
+            ActiveGateway = new GatewayRecord
+            {
+                Id = "local",
+                Url = "ws://127.0.0.1:18789",
+                IsLocal = true,
+                SetupManagedDistroName = setupManagedDistroName,
+                NativePackageFamilyName = nativePackageFamilyName,
+            },
+        };
+
+        var result = new TrayTooltipBuilder(snapshot).Build();
+
+        Assert.Contains($"; {expectedLabel};", result);
+    }
+
+    [Fact]
+    public void Build_ManagedWslTailscaleGateway_PreservesTailscaleTopologyLabel()
+    {
+        var snapshot = BaseConnected() with
+        {
+            Settings = new SettingsManager(_tempDir) { GatewayUrl = "wss://openclaw.tailnet.ts.net" },
+            ActiveGateway = new GatewayRecord
+            {
+                Id = "wsl-tailscale",
+                Url = "wss://openclaw.tailnet.ts.net",
+                IsLocal = true,
+                SetupManagedDistroName = "GatewayB",
+            },
+        };
+
+        var result = new TrayTooltipBuilder(snapshot).Build();
+
+        Assert.Contains("; Tailscale;", result);
+        Assert.DoesNotContain("; WSL;", result);
+    }
 }

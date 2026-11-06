@@ -641,6 +641,14 @@ foreach ($token in @('always()', 'test-results-ui', 'path: TestResults/')) {
     Assert-Contains -Text $uiUpload -Expected $token -Message "The complete UI diagnostic archive must be retained: '$token'."
 }
 $fixtureRunner = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\test-gateway-fixture.ps1') -Raw
+$releasedProfileStep = Get-StepBlock -Text $uiJob -Name 'Run latest stable profile compatibility'
+foreach ($token in @('releases/latest', 'Get-FileHash', 'SHA256', '$asset.digest.Substring(7)',
+        'stable-release.json', '-StableAppPath $apps[0].FullName', '-ArtifactsDirectory $artifacts')) {
+    Assert-Contains -Text $releasedProfileStep -Expected $token `
+        -Message "Released-profile proof must use a verified portable baseline and retain provenance: '$token'."
+}
+Assert-Contains -Text $fixtureRunner -Expected "'FullyQualifiedName~GatewayFixtureUpgradeTests' 'fixture-released-profile'" `
+    -Message 'Released-profile proof must select and admit the actual compatibility scenario.'
 foreach ($token in @(
         "`$start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] = '1'",
         "`$start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] = `$resolvedApp",
@@ -857,6 +865,26 @@ foreach ($build in $releaseBuilds.GetEnumerator()) {
         -Text $job `
         -Unexpected "core-tests" `
         -Message "Release builds must start in parallel with tests and E2E."
+}
+
+foreach ($jobName in @('build-x64', 'build-arm64', 'build-msix')) {
+    $job = Get-JobBlock $jobName
+    $jobEnvironment = [regex]::Match($job, '(?ms)^    env:\r?\n.*?(?=^    \S|\z)')
+    if (-not $jobEnvironment.Success) {
+        throw "Release build '$jobName' is missing its job environment."
+    }
+    Assert-NotContains -Text $jobEnvironment.Value -Unexpected 'runner.' `
+        -Message "Release build '$jobName' must not use the unavailable runner context in job-level env."
+    $download = Get-StepBlock -Text $job -Name 'Download signed cleanup host'
+    Assert-Contains -Text $download `
+        -Expected 'path: ${{ runner.temp }}\signed-cleanup-host' `
+        -Message "Release build '$jobName' must download the signed helper outside the checkout to preserve clean-source provenance."
+    $binding = Get-StepBlock -Text $job -Name 'Bind signed cleanup host path'
+    Assert-Contains -Text $binding -Expected "if: needs.sign-cleanup-host.result == 'success'" `
+        -Message "Release build '$jobName' must bind its helper only after successful signing."
+    Assert-Contains -Text $binding `
+        -Expected '"OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV' `
+        -Message "Release build '$jobName' must export the runner-temporary helper path for subsequent build steps."
 }
 
 $buildMsixJob = Get-JobBlock "build-msix"
