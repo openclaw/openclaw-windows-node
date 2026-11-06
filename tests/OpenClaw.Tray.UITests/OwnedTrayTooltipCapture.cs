@@ -25,8 +25,8 @@ internal static class OwnedTrayTooltipCapture
         {
             var appBounds = appWindow.Current.BoundingRectangle;
             Assert.Equal(run.AppProcessId, appWindow.Current.ProcessId);
-            Assert.True(SetPhysicalCursorPos((int)appBounds.Left + 100, (int)appBounds.Top + 100));
-            await run.WaitForAsync(() => Task.FromResult(FindTooltip() is null), "previous tray tooltip dismissed");
+            MoveCursorTo((int)appBounds.Left + 100, (int)appBounds.Top + 100);
+            await run.WaitForAsync(() => Task.FromResult(FindTooltip(run) is null), "previous tray tooltip dismissed");
 
             Icon? icon = null;
             await run.WaitForAsync(() => Task.FromResult((icon = FindIcon(run)) is not null),
@@ -57,11 +57,11 @@ internal static class OwnedTrayTooltipCapture
             }
 
             var ownedIcon = icon!.Value;
-            Assert.True(SetPhysicalCursorPos(ownedIcon.Bounds.CenterX, ownedIcon.Bounds.CenterY));
+            MoveCursorTo(ownedIcon.Bounds.CenterX, ownedIcon.Bounds.CenterY);
             AutomationElement? tooltip = null;
             try
             {
-                await run.WaitForAsync(() => Task.FromResult((tooltip = FindTooltip()) is not null),
+                await run.WaitForAsync(() => Task.FromResult((tooltip = FindTooltip(run, topology)) is not null),
                     "Shell tooltip for the hovered owned icon");
             }
             catch (TimeoutException)
@@ -75,15 +75,15 @@ internal static class OwnedTrayTooltipCapture
                 "Tooltip must belong to this app or its Windows Shell.");
             Assert.Equal(ownedIcon, FindIcon(run));
             Assert.True(GetPhysicalCursorPos(out var cursor));
-            Assert.Equal(ownedIcon.Bounds.CenterX, cursor.X);
-            Assert.Equal(ownedIcon.Bounds.CenterY, cursor.Y);
+            Assert.InRange(cursor.X, ownedIcon.Bounds.Left, ownedIcon.Bounds.Right - 1);
+            Assert.InRange(cursor.Y, ownedIcon.Bounds.Top, ownedIcon.Bounds.Bottom - 1);
 
             if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
                 Capture(run, ownedIcon, tooltip, fileName);
         }
         finally
         {
-            Assert.True(SetPhysicalCursorPos(previousCursor.X, previousCursor.Y));
+            MoveCursorTo(previousCursor.X, previousCursor.Y);
             if (chevron is not null)
                 ((InvokePattern)chevron.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
         }
@@ -113,17 +113,9 @@ internal static class OwnedTrayTooltipCapture
     private static bool IsIconVisible(Icon icon)
     {
         using var dpi = new PhysicalDpiScope();
-        var taskbar = FindWindow("Shell_TrayWnd", null);
-        GetWindowThreadProcessId(taskbar, out var shellPid);
-        Assert.NotEqual(0u, shellPid);
-        // The XAML overflow exposes the icon in its subtree even when point hit-testing misses it.
-        foreach (var window in new[] { taskbar, FindWindow("TopLevelWindowForOverflowXamlIsland", null) })
+        var shellPid = GetShellProcessId();
+        foreach (var window in FindVisibleWindows(shellPid))
         {
-            if (window == IntPtr.Zero || !IsWindowVisible(window))
-                continue;
-            GetWindowThreadProcessId(window, out var windowPid);
-            if (windowPid != shellPid)
-                continue;
             var buttons = AutomationElement.FromHandle(window).FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
             foreach (AutomationElement button in buttons)
@@ -132,8 +124,10 @@ internal static class OwnedTrayTooltipCapture
                 var bounds = current.BoundingRectangle;
                 if (current.ProcessId == shellPid && !current.IsOffscreen
                     && current.Name.StartsWith("OpenClaw", StringComparison.Ordinal)
-                    && bounds.Left == icon.Bounds.Left && bounds.Top == icon.Bounds.Top
-                    && bounds.Right == icon.Bounds.Right && bounds.Bottom == icon.Bounds.Bottom)
+                    && Math.Abs(bounds.Left - icon.Bounds.Left) <= 1
+                    && Math.Abs(bounds.Top - icon.Bounds.Top) <= 1
+                    && Math.Abs(bounds.Right - icon.Bounds.Right) <= 1
+                    && Math.Abs(bounds.Bottom - icon.Bounds.Bottom) <= 1)
                     return true;
             }
         }
@@ -175,11 +169,11 @@ internal static class OwnedTrayTooltipCapture
         EnumWindows((handle, _) =>
         {
             var className = new StringBuilder(256);
+            GetWindowThreadProcessId(handle, out var pid);
             GetClassName(handle, className, className.Capacity);
             var name = className.ToString();
             if (name != "Shell_TrayWnd" && !name.Contains("Overflow", StringComparison.OrdinalIgnoreCase))
                 return true;
-            GetWindowThreadProcessId(handle, out var pid);
             windows.Add((handle, name, pid));
             return true;
         }, IntPtr.Zero);
@@ -235,20 +229,96 @@ internal static class OwnedTrayTooltipCapture
             }, new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    private static AutomationElement? FindTooltip() =>
-        AutomationElement.RootElement.FindAll(TreeScope.Children,
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ToolTip))
-            .Cast<AutomationElement>()
-            .SingleOrDefault(element => !element.Current.IsOffscreen
-                && element.Current.Name.StartsWith("OpenClaw", StringComparison.Ordinal));
+    private static AutomationElement? FindTooltip(GatewayFixtureRun run, string? topology = null)
+    {
+        using var dpi = new PhysicalDpiScope();
+        var shellPid = GetShellProcessId();
+        var appPid = checked((uint)run.AppProcessId);
+        foreach (var window in FindVisibleWindows(shellPid, appPid))
+        {
+            var elements = AutomationElement.FromHandle(window).FindAll(TreeScope.Subtree,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ToolTip));
+            foreach (AutomationElement element in elements)
+            {
+                var current = element.Current;
+                if (!current.IsOffscreen
+                    && current.Name.StartsWith("OpenClaw", StringComparison.Ordinal)
+                    && (topology is null || current.Name.Contains($"; {topology};", StringComparison.Ordinal)))
+                    return element;
+            }
+        }
+        return null;
+    }
+
+    private static uint GetShellProcessId()
+    {
+        var taskbar = FindWindow("Shell_TrayWnd", null);
+        Assert.NotEqual(IntPtr.Zero, taskbar);
+        GetWindowThreadProcessId(taskbar, out var shellPid);
+        Assert.NotEqual(0u, shellPid);
+        return shellPid;
+    }
+
+    private static void MoveCursorTo(int x, int y)
+    {
+        using var dpi = new PhysicalDpiScope();
+        var left = GetSystemMetrics(76);
+        var top = GetSystemMetrics(77);
+        var width = GetSystemMetrics(78);
+        var height = GetSystemMetrics(79);
+        Assert.True(width > 1 && height > 1);
+        var absoluteX = (int)Math.Round((x - left) * 65535d / (width - 1));
+        var absoluteY = (int)Math.Round((y - top) * 65535d / (height - 1));
+        Assert.InRange(absoluteX, 0, 65535);
+        Assert.InRange(absoluteY, 0, 65535);
+        var input = new NativeInput
+        {
+            Type = 0,
+            Mouse = new MouseInput
+            {
+                X = absoluteX,
+                Y = absoluteY,
+                Flags = 0x0001 | 0x4000 | 0x8000
+            }
+        };
+        Assert.Equal(1u, SendInput(1, [input], Marshal.SizeOf<NativeInput>()));
+        Assert.True(GetPhysicalCursorPos(out var cursor));
+        Assert.InRange(cursor.X, x - 1, x + 1);
+        Assert.InRange(cursor.Y, y - 1, y + 1);
+    }
+
+    private static IReadOnlyList<IntPtr> FindVisibleWindows(params uint[] processIds)
+    {
+        var owners = processIds.ToHashSet();
+        var windows = new List<IntPtr>();
+        EnumWindows((window, _) =>
+        {
+            if (!IsWindowVisible(window))
+                return true;
+            GetWindowThreadProcessId(window, out var processId);
+            if (owners.Contains(processId))
+                windows.Add(window);
+            return true;
+        }, IntPtr.Zero);
+        return windows;
+    }
 
     private static void Capture(GatewayFixtureRun run, Icon icon, AutomationElement tooltip, string fileName)
     {
         using var dpi = new PhysicalDpiScope();
-        var handle = new IntPtr(tooltip.Current.NativeWindowHandle);
-        Assert.True(GetWindowRect(handle, out var rect));
         var area = tooltip.Current.BoundingRectangle;
         Assert.True(area.Width > 0 && area.Height > 0);
+        var point = new NativePoint
+        {
+            X = (int)(area.Left + area.Width / 2),
+            Y = (int)(area.Top + area.Height / 2)
+        };
+        var handle = GetAncestor(WindowFromPoint(point), 2);
+        Assert.True(handle != IntPtr.Zero, "Could not resolve the visible Shell tooltip window.");
+        GetWindowThreadProcessId(handle, out var processId);
+        Assert.True(processId == GetShellProcessId() || processId == run.AppProcessId,
+            "Captured window must belong to this app or its Windows Shell.");
+        Assert.True(GetWindowRect(handle, out var rect));
         Assert.True(area.Left >= rect.Left && area.Top >= rect.Top
             && area.Right <= rect.Right && area.Bottom <= rect.Bottom, "Tooltip is cropped.");
         using var image = new Bitmap(rect.Right - rect.Left, rect.Bottom - rect.Top);
@@ -300,6 +370,19 @@ internal static class OwnedTrayTooltipCapture
     }
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint { public int X, Y; }
+    [StructLayout(LayoutKind.Explicit, Size = 40)]
+    private struct NativeInput
+    {
+        [FieldOffset(0)] public uint Type;
+        [FieldOffset(8)] public MouseInput Mouse;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseInput
+    {
+        public int X, Y;
+        public uint Data, Flags, Time;
+        public nuint ExtraInfo;
+    }
     private delegate bool EnumWindowCallback(IntPtr window, IntPtr state);
     [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowCallback callback, IntPtr state);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
@@ -309,7 +392,10 @@ internal static class OwnedTrayTooltipCapture
     [DllImport("shell32.dll")] private static extern int Shell_NotifyIconGetRect(ref IconIdentifier identifier, out NativeRect bounds);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out NativeRect bounds);
     [DllImport("user32.dll")] private static extern bool GetPhysicalCursorPos(out NativePoint point);
-    [DllImport("user32.dll")] private static extern bool SetPhysicalCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(NativePoint point);
+    [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, NativeInput[] inputs, int size);
     [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] private static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
 }
