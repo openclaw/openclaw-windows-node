@@ -154,8 +154,12 @@ public sealed partial class InstalledFileWorkerResolverTests
         privateAcl.SetAccessRuleProtection(true, false);
         // Elevated Directory.CreateDirectory can select Administrators instead of the current user as owner.
         using var identity = WindowsIdentity.GetCurrent();
-        privateAcl.SetOwner(identity.User!);
-        new DirectoryInfo(Cache).SetAccessControl(privateAcl);
+        var cache = new DirectoryInfo(Cache);
+        var currentOwner = cache.GetAccessControl(AccessControlSections.Owner).GetOwner(typeof(SecurityIdentifier));
+        // An already-correct owner need not request WRITE_OWNER merely to update the DACL.
+        if (currentOwner != identity.User)
+            privateAcl.SetOwner(identity.User!);
+        cache.SetAccessControl(privateAcl);
         Assert.Contains("root ownership changed", Assert.Throws<NotSupportedException>(() => VersionResolver(8).Resolve(Cache)).Message);
         Assert.Equal(8, Directory.GetDirectories(Cache).Length);
     }

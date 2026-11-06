@@ -389,7 +389,8 @@ internal static class Native
             {
                 using var identity = WindowsIdentity.GetCurrent();
                 var sid = identity.User?.Value ?? throw new IOException("A private file owner could not be resolved.");
-                if (!ConvertStringSecurityDescriptorToSecurityDescriptorW($"D:P(A;OICI;FA;;;{sid})(A;OICI;FA;;;SY)", 1, out security, out _))
+                // A token's default owner can be a group rather than its user.
+                if (!ConvertStringSecurityDescriptorToSecurityDescriptorW($"O:{sid}D:P(A;OICI;FA;;;{sid})(A;OICI;FA;;;SY)", 1, out security, out _))
                     ThrowLastError();
             }
             var attributes = new ObjectAttributes

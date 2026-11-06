@@ -102,6 +102,33 @@ public sealed class FileWorkerTests : IDisposable
     }
 
     [Fact]
+    public void PrivateStagesAndUploadStorageAreOwnedByTheCurrentUser()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var expectedOwner = identity.User!;
+        using (var fs = new RetainedFileSystem(Host))
+        using (var parent = fs.Open(_root))
+        using (var stage = fs.CreateStage(parent))
+            Assert.Equal(expectedOwner, new FileInfo(stage.Path).GetAccessControl().GetOwner(typeof(SecurityIdentifier)));
+
+        var upload = Run("terminal.upload", new { name = "private.txt", contentBase64 = "YWJj" });
+        Good(upload);
+        var payload = upload.Payload.GetProperty("path").GetString()!;
+        FileSystemSecurity[] descriptors =
+        [
+            new DirectoryInfo(Host.UploadRoot).GetAccessControl(),
+            new DirectoryInfo(Path.GetDirectoryName(payload)!).GetAccessControl(),
+            new FileInfo(payload).GetAccessControl(),
+            new FileInfo(Path.Combine(Host.UploadRoot, ".openclaw-lock")).GetAccessControl()
+        ];
+        foreach (var descriptor in descriptors)
+        {
+            Assert.Equal(expectedOwner, descriptor.GetOwner(typeof(SecurityIdentifier)));
+            Assert.True(descriptor.AreAccessRulesProtected);
+        }
+    }
+
+    [Fact]
     public void KernelHandleClosureRollsBackOnlyTheOwnedStageWithoutManagedDeletion()
     {
         File.WriteAllText(PathOf(".openclaw-write-unowned"), "keep");
