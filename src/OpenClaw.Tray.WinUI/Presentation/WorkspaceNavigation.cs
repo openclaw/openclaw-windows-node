@@ -29,9 +29,12 @@ internal enum CompanionPageId
 internal sealed record WorkspaceDestination(
    WorkspacePageId Page, string? SessionKey = null, string? CompanionTag = null, bool Embedded = false)
 {
-   /// <summary>Creates a Settings destination for the supplied canonical companion tag.</summary>
+   /// <summary>
+   /// Creates a native page destination. Dashboards always uses the standalone pinned-page
+   /// presentation, including session links and command navigation, never the Settings section list.
+   /// </summary>
    public static WorkspaceDestination Settings(string companionTag, bool embedded = false) =>
-       new(WorkspacePageId.Settings, null, companionTag, embedded);
+       new(WorkspacePageId.Settings, null, companionTag, embedded || DashboardsRoute.IsDashboardsTag(companionTag));
 
    /// <summary>The replacement for a pruned section keeps the presentation the user was in.</summary>
    public static WorkspaceDestination PrunedFallback(WorkspaceDestination current, string fallbackTag) =>

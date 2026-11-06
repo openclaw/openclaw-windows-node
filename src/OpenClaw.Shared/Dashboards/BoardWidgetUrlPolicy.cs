@@ -127,30 +127,25 @@ public static class BoardWidgetUrlPolicy
 
     /// <summary>
     /// Validates <c>session:website</c> props: a public HTTPS URL of at most 2048
-    /// characters without credentials. A website on the Gateway's host is not
-    /// embedded because cookies are scoped to hosts, not ports.
+    /// characters without credentials. Windows opens it in the user's browser.
     /// </summary>
-    public static bool TryParseWebsite(string? url, Uri? gatewayOrigin, out Uri website, out bool sameHostAsGateway)
+    public static bool TryParseWebsite(string? url, out Uri website)
     {
         website = null!;
-        sameHostAsGateway = false;
         if (string.IsNullOrWhiteSpace(url) || url.Length > MaxWebsiteUrlLength ||
             !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var candidate) ||
             !IsPublicHttpsUrl(candidate) ||
             candidate.AbsoluteUri.Length > MaxWebsiteUrlLength)
             return false;
         website = candidate;
-        sameHostAsGateway = gatewayOrigin is not null &&
-            string.Equals(candidate.IdnHost, gatewayOrigin.IdnHost, StringComparison.OrdinalIgnoreCase);
         return true;
     }
 
     /// <summary>
-    /// Navigation rule for embedded websites, checked for the first load and
-    /// every later navigation or redirect: HTTPS, no credentials, and a public
-    /// host. Literal loopback, private, link-local, CGNAT and unspecified
-    /// addresses and single-label intranet names are refused so a widget
-    /// cannot steer the user's machine at local services.
+    /// Website link rule: HTTPS, no credentials, and a public host. Literal
+    /// loopback, private, link-local, CGNAT and unspecified addresses and
+    /// single-label intranet names are refused so a widget cannot point the
+    /// user's browser at local services.
     /// </summary>
     public static bool IsPublicHttpsUrl(Uri? url)
     {
@@ -159,17 +154,6 @@ public static class BoardWidgetUrlPolicy
             return false;
         return !IsPrivateNetworkHost(url.IdnHost);
     }
-
-    /// <summary>
-    /// Subresource rule for embedded websites: HTTP(S) requests from documents,
-    /// frames and workers to a private-network host are refused. Non-network
-    /// schemes such as <c>data:</c> and <c>blob:</c> pass. WebSocket schemes are
-    /// classified too, though WebView2 does not surface their handshakes.
-    /// </summary>
-    public static bool IsBlockedWebsiteRequest(Uri? url) =>
-        url is not null && url.IsAbsoluteUri &&
-        url.Scheme is "http" or "https" or "ws" or "wss" &&
-        IsPrivateNetworkHost(url.IdnHost);
 
     /// <summary>
     /// True for literal loopback, private, link-local, CGNAT, unique-local and

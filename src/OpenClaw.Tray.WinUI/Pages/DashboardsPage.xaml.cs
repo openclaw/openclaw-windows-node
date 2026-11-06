@@ -8,6 +8,7 @@ using OpenClaw.Shared.Dashboards;
 using OpenClawTray.Chat;
 using OpenClawTray.Controls;
 using OpenClawTray.Dashboards;
+using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using static Microsoft.UI.Reactor.Factories;
@@ -27,11 +28,14 @@ public sealed partial class DashboardsPage : Page
     private ReactorHostControl? _host;
     private AppState? _appState;
     private SettingsShellView? _hub;
+    private IDisposable? _copyNotice;
+    private static readonly TimeSpan s_copyNoticeDuration = TimeSpan.FromSeconds(4);
 
     public DashboardsPage()
     {
         InitializeComponent();
         Unloaded += (_, _) => Detach();
+        ActualThemeChanged += (_, _) => _state?.SetTheme(ActualTheme == ElementTheme.Dark);
     }
 
     internal void Initialize(SettingsShellView hub, string? tag)
@@ -46,8 +50,15 @@ public sealed partial class DashboardsPage : Page
                 ((IAppCommands)CurrentApp).Navigate("chat");
             },
             OpenConnection = () => ((IAppCommands)CurrentApp).Navigate("connection"),
+            OpenAgentChat = _ => ((IAppCommands)CurrentApp).Navigate("chat"),
+            OpenWebDashboards = () => ((IAppCommands)CurrentApp).OpenDashboard(DashboardsRoute.WebGalleryPath),
+            CopySessionKey = CopySessionKey,
         };
         _hub = hub;
+        _state.SetTheme(ActualTheme == ElementTheme.Dark);
+        UpdateAgentNames();
+        _state.Changed -= OnPageStateChanged;
+        _state.Changed += OnPageStateChanged;
         _state.ApplyNavigation(hub.GetAgentIds(), hub.CurrentAgentId, DashboardsRoute.TryParseSession(tag));
 
         if (_appState is null)
@@ -56,15 +67,39 @@ public sealed partial class DashboardsPage : Page
             if (_appState is not null)
                 _appState.PropertyChanged += OnAppStateChanged;
         }
+
         BindConnection();
 
         if (_host is null)
         {
             var state = _state;
             _host = new ReactorHostControl();
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_host, "DashboardsContentHost");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_host, LocalizationHelper.GetString("Dashboards_Title"));
+            _host.SizeChanged += (_, args) => state.SetViewportWidth(args.NewSize.Width);
             _host.Mount(_ => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)));
             ReactorTarget.Child = _host;
         }
+    }
+
+    internal bool HasOpenBoard => _state?.OpenTarget is not null;
+
+    internal bool TryReturnToGallery()
+    {
+        if (!HasOpenBoard)
+            return false;
+        _state!.Open(null);
+        return true;
+    }
+
+    private void OnPageStateChanged() => _hub?.RefreshPageNavigation();
+
+    private void CopySessionKey(string key)
+    {
+        var copied = ClipboardHelper.TryCopyText(key);
+        _state?.ReportCopyResult(copied);
+        _copyNotice?.Dispose();
+        _copyNotice = Schedule(s_copyNoticeDuration, () => _state?.ReportCopyResult(null));
     }
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -79,7 +114,25 @@ public sealed partial class DashboardsPage : Page
     private void RefreshAgents()
     {
         if (_state is not null && _hub is not null)
+        {
+            UpdateAgentNames();
             _state.SetAgents(_hub.GetAgentIds(), _state.AgentId);
+        }
+    }
+
+    private void UpdateAgentNames()
+    {
+        if (_state is null || _hub?.LastAgentsData is not { } data ||
+            !data.TryGetProperty("agents", out var agents) || agents.ValueKind != System.Text.Json.JsonValueKind.Array)
+            return;
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var agent in agents.EnumerateArray())
+        {
+            if (agent.TryGetProperty("id", out var id) && id.GetString() is { } key &&
+                agent.TryGetProperty("name", out var name) && name.GetString() is { Length: > 0 } label)
+                names[key] = label;
+        }
+        _state.AgentNames = names;
     }
 
     private void BindConnection()
@@ -102,6 +155,10 @@ public sealed partial class DashboardsPage : Page
 
     private void Detach()
     {
+        _copyNotice?.Dispose();
+        _copyNotice = null;
+        if (_state is not null)
+            _state.Changed -= OnPageStateChanged;
         if (_appState is not null)
             _appState.PropertyChanged -= OnAppStateChanged;
         _appState = null;

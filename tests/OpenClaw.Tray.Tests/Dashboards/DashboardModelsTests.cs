@@ -2,10 +2,54 @@ using System.Collections.Immutable;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Dashboards;
 using OpenClawTray.Dashboards;
+using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using static OpenClaw.Tray.Tests.Dashboards.DashboardTestAsync;
 
 namespace OpenClaw.Tray.Tests.Dashboards;
+
+public sealed class DashboardResponsiveContractTests
+{
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public void BackdropResource_FadesVerticallyToTransparentBeforeItsBottom(string theme)
+    {
+        var resources = System.Xml.Linq.XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Themes", "DashboardResources.xaml"));
+        System.Xml.Linq.XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        System.Xml.Linq.XNamespace key = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var dictionary = resources.Descendants(xaml + "ResourceDictionary").Single(element =>
+            (string?)element.Attribute(key + "Key") == theme);
+        var brush = dictionary.Elements(xaml + "LinearGradientBrush").Single(element =>
+            (string?)element.Attribute(key + "Key") == "DashboardHeroBrush");
+        Assert.Equal("0,0", (string?)brush.Attribute("StartPoint"));
+        Assert.Equal("0,1", (string?)brush.Attribute("EndPoint"));
+        var stops = brush.Elements(xaml + "GradientStop").ToArray();
+        Assert.Equal("{ThemeResource SystemAccentColor}", (string?)stops[0].Attribute("Color"));
+        Assert.Equal("Transparent", (string?)stops[^1].Attribute("Color"));
+        Assert.Equal("0.9", (string?)stops[^1].Attribute("Offset"));
+    }
+
+    [Theory]
+    [InlineData(1400, PageWidthTier.Wide, 1200, 4)]
+    [InlineData(1000, PageWidthTier.Wide, 936, 3)]
+    [InlineData(999.99994, PageWidthTier.Wide, 936, 3)]
+    [InlineData(999, PageWidthTier.Medium, 935, 3)]
+    [InlineData(760, PageWidthTier.Medium, 696, 2)]
+    [InlineData(720, PageWidthTier.Medium, 656, 2)]
+    [InlineData(719.99994, PageWidthTier.Medium, 656, 2)]
+    [InlineData(719, PageWidthTier.Narrow, 679, 2)]
+    [InlineData(520, PageWidthTier.Narrow, 480, 1)]
+    [InlineData(480, PageWidthTier.Narrow, 440, 1)]
+    public void SharedContract_UsesHostWidthAndGapAwareBoardColumns(double hostWidth, PageWidthTier tier, double contentWidth, int columns)
+    {
+        Assert.Equal(tier, PageResponsiveLayout.TierFor(hostWidth));
+        Assert.Equal(contentWidth, PageResponsiveLayout.ContentWidth(hostWidth));
+        Assert.Equal(columns, PageResponsiveLayout.TileColumns(contentWidth, 240));
+        Assert.True(PageResponsiveLayout.TileWidth(contentWidth, columns) >= 240);
+    }
+}
 
 public sealed class DashboardsRouteTests
 {
@@ -34,6 +78,57 @@ public sealed class DashboardsRouteTests
     [InlineData(null)]
     public void SessionRoute_GalleryAndInvalidTagsOpenNoSession(string? tag) =>
         Assert.Null(DashboardsRoute.TryParseSession(tag));
+
+    [Theory]
+    [InlineData("ws://127.0.0.1:18789", "http://127.0.0.1:18789/dashboards")]
+    [InlineData("wss://gw.example.com/openclaw", "https://gw.example.com/openclaw/dashboards")]
+    public void WebHandoff_OpensTheControlUiGalleryUnderTheGatewayMount(string gatewayUrl, string expected) =>
+        Assert.Equal(expected, GatewayDashboardUrlBuilder.Build(gatewayUrl, DashboardsRoute.WebGalleryPath, null, false));
+
+    [Fact]
+    public void WebHandoff_IsNeverTheNativeSessionRoute()
+    {
+        // The native hub tag carries an escaped session and agent; it is not a Control UI path.
+        var native = DashboardsRoute.ForSession("agent:research:dashboard:study");
+        Assert.NotEqual(DashboardsRoute.WebGalleryPath, native);
+        Assert.Null(DashboardsRoute.TryParseSession(DashboardsRoute.WebGalleryPath));
+        Assert.DoesNotContain('?', DashboardsRoute.WebGalleryPath);
+    }
+}
+
+public sealed class DashboardsWebHandoffTests
+{
+    [Theory]
+    [InlineData("wss://gateway.example/control", "https://gateway.example/control/dashboards")]
+    [InlineData("ws://127.0.0.1:18789", "http://127.0.0.1:18789/dashboards")]
+    public async Task Handoff_ThroughTheDashboardLauncher_OpensTheWebGalleryNotABoard(string gatewayUrl, string expected)
+    {
+        var launched = new List<string>();
+        var launcher = new OpenClawTray.Services.GatewayDashboardLauncher(() => true,
+            () => new OpenClaw.Connection.InteractiveGatewayCredential(gatewayUrl, "do-not-export", false,
+                OpenClaw.Connection.CredentialResolver.SourceDeviceToken),
+            url => { launched.Add(url); return Task.FromResult(true); },
+            () => throw new InvalidOperationException("Unexpected launch failure"));
+        Assert.True(await launcher.OpenAsync(DashboardsRoute.WebGalleryPath));
+
+        var url = Assert.Single(launched);
+        Assert.Equal(expected, url);
+        // A gallery handoff never names a session or an exact-board Control UI path.
+        Assert.DoesNotContain("session", url, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/dashboard/", url, StringComparison.Ordinal);
+        Assert.DoesNotContain("~key", url, StringComparison.Ordinal);
+        Assert.DoesNotContain("do-not-export", url, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DashboardsPage_WiresItsBrowserActionsToTheHandoff()
+    {
+        var page = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "DashboardsPage.xaml.cs"));
+        Assert.Contains("OpenWebDashboards = () => ((IAppCommands)CurrentApp).OpenDashboard(DashboardsRoute.WebGalleryPath),", page);
+        Assert.DoesNotContain("OpenDashboard(DashboardsRoute.ForSession", page);
+    }
+
 }
 
 public sealed class DashboardGalleryModelTests
@@ -172,6 +267,23 @@ public sealed class DashboardGalleryModelTests
 
 public sealed class DashboardsPageStateTests
 {
+    [Fact]
+    public void FirstGallery_ChoosesTheLatestKnownAgentButNeverReplacesAnExplicitSelection()
+    {
+        var state = new DashboardsPageState { Post = action => action(), Schedule = new FakeScheduler().Schedule };
+        state.ApplyNavigation(["main", "research"], "main", null);
+        var rows = new[]
+        {
+            new DashboardSessionRow { Session = new SessionInfo { Key = "a", AgentId = "main" }, UpdatedAtMs = 100 },
+            new DashboardSessionRow { Session = new SessionInfo { Key = "b", AgentId = "research" }, UpdatedAtMs = 200 },
+        };
+        state.ResolveDefaultAgent(rows);
+        Assert.Equal("research", state.AgentId);
+        state.SelectAgent("main");
+        state.ResolveDefaultAgent(rows);
+        Assert.Equal("main", state.AgentId);
+    }
+
     [Theory]
     [InlineData("main", null, "research")]
     [InlineData("main", "ops", "ops")]
@@ -469,40 +581,6 @@ public sealed class BoardDocumentModelTests
     };
 }
 
-public sealed class BoardPreviewSlotLeaseTests
-{
-    [Fact]
-    public void RetryQueuedBeforeDisposeClaimsNoSlot()
-    {
-        var slots = new BoardPreviewSlots(1);
-        var queued = new List<Action>();
-        var other = new object();
-        Assert.True(slots.TryAcquire(other));
-        var lease = new BoardPreviewSlotLease(slots, ["chart"], queued.Add, _ => { });
-
-        slots.Release(other);
-        lease.Dispose();
-        foreach (var retry in queued)
-            retry();
-
-        Assert.Equal(0, slots.InUse);
-    }
-
-    [Fact]
-    public void WaitingPreviewTakesTheNextFreedSlot()
-    {
-        var slots = new BoardPreviewSlots(1);
-        var granted = ImmutableHashSet<string>.Empty;
-        var first = new BoardPreviewSlotLease(slots, ["a"], action => action(), _ => { });
-        using var second = new BoardPreviewSlotLease(slots, ["b"], action => action(), next => granted = next);
-        Assert.Empty(granted);
-
-        first.Dispose();
-
-        Assert.Equal(["b"], granted);
-    }
-}
-
 public sealed class BoardWidgetWebHostRequestTests
 {
     private static readonly Uri Origin = new("http://127.0.0.1:18789/");
@@ -526,11 +604,7 @@ public sealed class BoardWidgetWebHostRequestTests
 
         Assert.Equal(key, new BoardWidgetWebHostRequest(widget with { FrameUrl = "/__openclaw__/board/k/chart/index.html?bt=two", ViewTicket = "two" }, Origin).DocumentKey);
         Assert.NotEqual(key, new BoardWidgetWebHostRequest(widget with { Revision = 4 }, Origin).DocumentKey);
-
-        // Preview resizes rescale in place; switching between preview and full view reloads.
-        var preview = new BoardWidgetWebHostRequest(widget, Origin, Scale: 0.25).DocumentKey;
-        Assert.Equal(preview, new BoardWidgetWebHostRequest(widget, Origin, Scale: 0.31).DocumentKey);
-        Assert.NotEqual(key, preview);
+        Assert.NotEqual(key, new BoardWidgetWebHostRequest(widget with { SandboxOrigin = "https://sandbox.example.com" }, Origin).DocumentKey);
     }
 }
 

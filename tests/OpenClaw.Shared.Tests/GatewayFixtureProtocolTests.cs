@@ -102,6 +102,26 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Empty(server.UnexpectedRequests);
     }
 
+    [Fact]
+    public async Task Dashboards_UseSupportedCompactRowsAndRejectTheObsoleteDashboardRowMode()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateDashboards(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+
+        var page = await connected.Client.ListDashboardSessionsAsync("main").WaitAsync(Deadline);
+        Assert.NotNull(page);
+        Assert.Equal(6, page.Rows.Length);
+        Assert.Contains(page.Rows, row => row.Key == FixtureBoards.OpsSessionKey);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            connected.Client.SendWizardRequestAsync("sessions.list", new
+            {
+                source = "dashboard", rowMode = "dashboard", hasBoard = true, agentId = "main",
+            }));
+        Assert.Contains("/rowMode", error.Message);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

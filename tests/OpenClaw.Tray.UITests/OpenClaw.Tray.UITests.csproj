@@ -26,6 +26,8 @@
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <RootNamespace>OpenClaw.Tray.UITests</RootNamespace>
+    <!-- The referenced app owns source-map metadata; generating it again collides in this harness. -->
+    <ReactorSourceMap>false</ReactorSourceMap>
     <DefineConstants Condition="'$(LocalAiProofBaseline)' == 'true'">$(DefineConstants);LOCAL_AI_BASELINE</DefineConstants>
 
     <!-- System.Drawing.Common 4.7.0 advisory comes in transitively via the

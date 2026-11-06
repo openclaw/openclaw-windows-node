@@ -83,14 +83,10 @@ internal sealed class BoardWidgetWebHost : Control
     {
         var previousFrameUrl = _request?.Widget.FrameUrl;
         var previousAttempt = _request?.Attempt ?? 0;
-        var previousScale = _request?.Scale;
         _request = request;
         var key = request.DocumentKey;
         if (key == _documentKey)
         {
-            // A preview resize only rescales the loaded frame; init picks up the latest scale otherwise.
-            if (previousScale != request.Scale)
-                PostJson(BoardWidgetHostPage.ScaleMessage(request.Scale));
             if (request.Attempt != previousAttempt)
             {
                 Retry();
@@ -213,14 +209,7 @@ internal sealed class BoardWidgetWebHost : Control
                 // widgets show the window base color until the WinUI fix
                 // (bkudiess/webview2-transparent-background) ships.
                 DefaultBackgroundColor = Colors.Transparent,
-                IsHitTestVisible = _request?.IsPreview != true,
             };
-            if (_request?.IsPreview == true)
-            {
-                // Previews are inert: no keyboard focus and no input reaches widget script.
-                _webView.IsTabStop = false;
-                _webView.AllowFocusOnInteraction = false;
-            }
             if (_contentRoot is not null)
                 _contentRoot.Content = _webView;
         }
@@ -304,7 +293,7 @@ internal sealed class BoardWidgetWebHost : Control
         switch (message)
         {
             case BoardWidgetHostMessage.PageReady when _sandboxUrl is not null && _request is not null:
-                PostJson(BoardWidgetHostPage.InitMessage(_sandboxUrl, _request.Widget.Label, _request.Scale));
+                PostJson(BoardWidgetHostPage.InitMessage(_sandboxUrl, _request.Widget.Label));
                 break;
             case BoardWidgetHostMessage.ProxyReady ready when _sandboxUrl is not null &&
                 string.Equals(ready.SandboxUrl, _sandboxUrl.AbsoluteUri, StringComparison.Ordinal):

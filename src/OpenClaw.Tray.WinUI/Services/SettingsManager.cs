@@ -226,14 +226,18 @@ public class SettingsManager
         ClonePinnedPages(_data.PinnedPagesByGateway)
             .ToImmutableDictionary(entry => entry.Key, entry => entry.Value.ToImmutableArray(), StringComparer.Ordinal);
     public System.Collections.Immutable.ImmutableArray<string> GetPinnedPages(string scopeKey) =>
-        PinnedPagesByGateway.TryGetValue(OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey), out var pins) ? pins : [];
+        PinnedPagesByGateway.TryGetValue(OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey), out var pins)
+            ? pins : OpenClawTray.Presentation.PinnedPages.DefaultPins;
     public void TogglePinnedPage(string scopeKey, string tag, bool pinned)
     {
+        if (OpenClawTray.Presentation.PinnedPages.Find(tag) is null)
+            return;
         var key = OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey);
         var all = ClonePinnedPages(_data.PinnedPagesByGateway);
-        all.TryGetValue(key, out var current);
+        IEnumerable<string> current = all.TryGetValue(key, out var stored)
+            ? stored : OpenClawTray.Presentation.PinnedPages.DefaultPins;
         var next = OpenClawTray.Presentation.PinnedPages.Toggle(current, tag, pinned);
-        if (next.IsEmpty) all.Remove(key); else all[key] = [.. next];
+        all[key] = [.. next];
         _data = _data with { PinnedPagesByGateway = all.Count == 0 ? null : all };
     }
     public void SetPinnedPages(string scopeKey, IEnumerable<string>? tags)
@@ -241,7 +245,7 @@ public class SettingsManager
         var key = OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey);
         var all = ClonePinnedPages(_data.PinnedPagesByGateway);
         var normalized = OpenClawTray.Presentation.PinnedPages.Normalize(tags);
-        if (normalized.IsEmpty) all.Remove(key); else all[key] = [.. normalized];
+        all[key] = [.. normalized];
         _data = _data with { PinnedPagesByGateway = all.Count == 0 ? null : all };
     }
     private static Dictionary<string, List<string>>? NullIfEmpty(Dictionary<string, List<string>> pins) =>
@@ -255,7 +259,7 @@ public class SettingsManager
         {
             if (string.IsNullOrWhiteSpace(key)) continue;
             var normalized = OpenClawTray.Presentation.PinnedPages.Normalize(tags);
-            if (!normalized.IsEmpty) clone[key.Trim()] = [.. normalized];
+            clone[key.Trim()] = [.. normalized];
         }
         return clone;
     }

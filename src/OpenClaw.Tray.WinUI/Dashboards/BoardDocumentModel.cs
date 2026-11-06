@@ -67,8 +67,6 @@ internal sealed class BoardDocumentModel : IDisposable
         _client.BoardCommandReceived += OnBoardCommand;
     }
 
-    public BoardSessionTarget Target => _target;
-
     public BoardDocumentSnapshot Snapshot { get; private set; } = BoardDocumentSnapshot.Initial;
 
     public event Action<BoardDocumentSnapshot>? Changed;

@@ -1,6 +1,7 @@
 using System.Numerics;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
+using Microsoft.UI.Reactor.Wrappers;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -11,6 +12,17 @@ using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Dashboards;
 
+[GenerateReactorWrapper(typeof(BoardWidgetWebHost), AutoDiscover = false, RegisterAssembly = false)]
+internal partial record BoardWidgetWebHostElement;
+
+/// <summary>
+/// One widget card: native chrome (title, kind, granted access) and a body
+/// chosen by <see cref="BoardWidgetBodyPolicy"/>. HTML content loads in an
+/// isolated <see cref="BoardWidgetWebHost"/>; loading, slow, and error
+/// states are native overlays so a failure stays contained to this card.
+/// Widgets Windows only displays (approval requests, rejected access, MCP
+/// apps, unsupported core kinds) offer <see cref="OpenWebDashboards"/>.
+/// </summary>
 internal sealed record BoardWidgetCellProps(
     BoardWidget Widget,
     BoardWidgetBodyKind Body,
@@ -21,53 +33,8 @@ internal sealed record BoardWidgetCellProps(
     Action<string> OnReady,
     Action<string> OnRetryAuthorization,
     Action<string, double> OnContentHeight,
-    bool ReducedMotion = false);
-
-/// <summary>
-/// One widget card: native chrome (title, kind, granted access) and a body
-/// chosen by <see cref="BoardWidgetBodyPolicy"/>. Web content loads in an
-/// isolated <see cref="BoardWidgetWebHost"/>; loading, slow, and error
-/// states are native overlays so a failure stays contained to this card.
-/// </summary>
-internal sealed record BoardWebsiteProps(BoardWidget Widget, Uri Website);
-
-/// <summary>
-/// Body of a <c>session:website</c> widget: the isolated website host plus a
-/// native failure overlay with Retry, since built-in browser error pages are off.
-/// </summary>
-internal sealed class ReactorBoardWebsite : Component<BoardWebsiteProps>
-{
-    public override Element Render()
-    {
-        var props = Props;
-        var (failed, setFailed) = UseState(false, threadSafe: true);
-        var (attempt, setAttempt) = UseState(0);
-        var host = BoardWebsiteHostElement.BoardWebsiteHost()
-            .Set(control =>
-            {
-                control.FailedChanged = setFailed;
-                control.Update(props.Website, attempt);
-            })
-            .Opacity(failed ? 0 : 1)
-            .AutomationName(props.Widget.Label)
-            .AutomationId("BoardWebsite_" + props.Widget.Name);
-        // The host stays first and mounted so a retry reuses this cell instead of remounting it.
-        return Grid([GridSize.Star()], [GridSize.Star()],
-            host,
-            failed
-                ? Border(ReactorBoardWidgets.Error(
-                        LocalizationHelper.GetString("Dashboards_Widget_WebsiteFailed"),
-                        null,
-                        () =>
-                        {
-                            setFailed(false);
-                            setAttempt(attempt + 1);
-                        }))
-                    .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
-                    .AutomationId("BoardWebsiteFailed_" + props.Widget.Name)
-                : Empty());
-    }
-}
+    bool ReducedMotion = false,
+    Action? OpenWebDashboards = null);
 
 internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
 {
@@ -77,22 +44,25 @@ internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
         var widget = props.Widget;
         var (hostState, setHostState) = UseState<BoardWidgetWebHostState?>(null, threadSafe: true);
         var (retryToken, setRetryToken) = UseState(0);
+        var web = props.OpenWebDashboards;
 
         var header = Header(widget, props.KindLabel);
         var body = props.Body switch
         {
             BoardWidgetBodyKind.Frame => Frame(props, hostState, setHostState, retryToken, setRetryToken),
-            BoardWidgetBodyKind.Report => ScrollView(ReactorBoardWidgets.Report(widget).Margin(16, 4, 16, 16)),
-            BoardWidgetBodyKind.Website => ReactorBoardWidgets.Website(widget, props.GatewayOrigin),
-            BoardWidgetBodyKind.NeedsApproval => ReactorBoardWidgets.NeedsApproval(widget),
+            BoardWidgetBodyKind.Report => DashboardsStates.VerticalScroll(ReactorBoardWidgets.Report(widget).Margin(16, 4, 16, 16)),
+            BoardWidgetBodyKind.Website => ReactorBoardWidgets.Website(widget),
+            BoardWidgetBodyKind.NeedsApproval => ReactorBoardWidgets.NeedsApproval(widget, web),
             BoardWidgetBodyKind.Rejected => ReactorBoardWidgets.Notice(
                 "BoardWidgetRejected", DashboardsArt.GlyphBadge(DashboardsGlyphs.Shield, "SystemFillColorCriticalBrush", "SystemFillColorCriticalBackgroundBrush", 44),
                 LocalizationHelper.GetString("Dashboards_Widget_Rejected"),
-                LocalizationHelper.GetString("Dashboards_Widget_RejectedDetail")),
+                LocalizationHelper.GetString("Dashboards_Widget_RejectedDetail"),
+                ReactorBoardWidgets.BrowserAction(widget, web)),
             BoardWidgetBodyKind.McpApp => ReactorBoardWidgets.Notice(
                 "BoardWidgetMcpApp", DashboardsArt.HueBadge(DashboardsGlyphsExtra.Apps, DashboardHues.Pumpkin, 44),
                 LocalizationHelper.GetString("Dashboards_Widget_McpAppTitle"),
-                LocalizationHelper.GetString("Dashboards_Widget_McpAppDetail")),
+                LocalizationHelper.GetString("Dashboards_Widget_McpAppDetail"),
+                ReactorBoardWidgets.BrowserAction(widget, web)),
             BoardWidgetBodyKind.DisabledPlugin => ReactorBoardWidgets.Notice(
                 "BoardWidgetDisabledPlugin", DashboardsArt.GlyphBadge(DashboardsGlyphsExtra.Puzzle, "TextFillColorSecondaryBrush", "SubtleFillColorSecondaryBrush", 44),
                 LocalizationHelper.Format("Dashboards_Widget_DisabledPluginFormat", widget.PluginId),
@@ -100,7 +70,8 @@ internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
             BoardWidgetBodyKind.UnsupportedCorePlugin => ReactorBoardWidgets.Notice(
                 "BoardWidgetUnsupported", DashboardsArt.HueBadge(DashboardsGlyphsExtra.ForKind(widget), DashboardHues.ForKind(widget), 44),
                 LocalizationHelper.GetString("Dashboards_Widget_UnsupportedTitle"),
-                LocalizationHelper.Format("Dashboards_Widget_UnsupportedFormat", props.KindLabel)),
+                LocalizationHelper.Format("Dashboards_Widget_UnsupportedFormat", props.KindLabel),
+                ReactorBoardWidgets.BrowserAction(widget, web)),
             _ => ReactorBoardWidgets.Error(LocalizationHelper.GetString("Dashboards_Widget_ContentUnavailable"), null),
         };
 
@@ -118,7 +89,7 @@ internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
             .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
             .BorderThickness(BoardGridLayout.BorderWidth)
             .CornerRadius(10)
-            .AutomationName(LocalizationHelper.Format("Dashboards_Widget_CellFormat", widget.Label))
+            .AutomationName(LocalizationHelper.Format("Dashboards_Widget_CellFormat", widget.Label) + ", " + props.KindLabel)
             .AutomationId("BoardWidget_" + widget.Name);
         return DashboardsArt.Enter(cell, props.ReducedMotion);
     }
@@ -138,19 +109,14 @@ internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
                 .AutomationId("BoardWidgetGranted_" + widget.Name)
             : Empty();
         return Border(Grid(
-                [GridSize.Star(), GridSize.Auto, GridSize.Auto],
+                [GridSize.Star(), GridSize.Auto],
                 [GridSize.Auto],
                 TextBlock(widget.Label).FontSize(14).SemiBold()
                     .TextTrimming(TextTrimming.CharacterEllipsis)
                     .ToolTip(widget.Label)
                     .VAlign(VerticalAlignment.Center)
                     .Grid(column: 0),
-                granted.Margin(8, 0, 0, 0).VAlign(VerticalAlignment.Center).Grid(column: 1),
-                DashboardsArt.KindChip(widget, kindLabel)
-                    .Margin(8, 0, 0, 0)
-                    .VAlign(VerticalAlignment.Center)
-                    .AutomationId("BoardWidgetKind_" + widget.Name)
-                    .Grid(column: 2)))
+                granted.Margin(8, 0, 0, 0).VAlign(VerticalAlignment.Center).Grid(column: 1)))
             .Padding(14, 8, 10, 4)
             .Height(BoardGridLayout.ChromeHeaderHeight);
     }
@@ -208,7 +174,7 @@ internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
                     ProgressRing().IsActive(true).Size(24, 24).HAlign(HorizontalAlignment.Center),
                     TextBlock(LocalizationHelper.GetString("Dashboards_Widget_Slow")).FontSize(12)
                         .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-                        .TextWrapping(TextWrapping.Wrap).TextAlignment(TextAlignment.Center))
+                        .TextWrapping(TextWrapping.WrapWholeWords).TextAlignment(TextAlignment.Center))
                 .Center().Margin(16).LiveRegion()
                 .AutomationId("BoardWidgetSlow_" + widget.Name),
             BoardWidgetWebHostStatus.Failed => Border(ReactorBoardWidgets.Error(
@@ -237,23 +203,39 @@ internal static class ReactorBoardWidgets
     private const double ChartWidth = 600;
     private const double ChartHeight = 160;
     private const double ChartLabelHeight = 40;
+    private const double ProseMaxWidth = 640;
 
-    public static Element Notice(string id, Element badge, string title, string? detail)
+    public static Element Notice(string id, Element badge, string title, string? detail, Element? action = null)
     {
         var children = new List<Element>
         {
             badge.HAlign(HorizontalAlignment.Center).Margin(0, 0, 0, 4),
             TextBlock(title).FontSize(14).SemiBold()
-                .TextWrapping(TextWrapping.Wrap).TextAlignment(TextAlignment.Center),
+                .TextWrapping(TextWrapping.WrapWholeWords).TextAlignment(TextAlignment.Center),
         };
         if (!string.IsNullOrWhiteSpace(detail))
         {
             children.Add(TextBlock(detail).FontSize(12)
                 .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-                .TextWrapping(TextWrapping.Wrap).TextAlignment(TextAlignment.Center));
+                .TextWrapping(TextWrapping.WrapWholeWords).TextAlignment(TextAlignment.Center));
         }
-        return ScrollView(VStack(8, children.ToArray()).Center().Margin(16)).AutomationId(id);
+        if (action is not null)
+            children.Add(action.HAlign(HorizontalAlignment.Center).Margin(0, 4, 0, 0));
+        return DashboardsStates.VerticalScroll(VStack(8, children.ToArray()).Center().Margin(16)).AutomationId(id);
     }
+
+    /// <summary>
+    /// Hands work Windows doesn't do (approvals, removal, MCP apps) to the
+    /// Gateway's web Dashboards gallery. It opens the gallery, not this
+    /// dashboard: exact-board web routes depend on the installed Gateway version.
+    /// </summary>
+    public static Element? BrowserAction(BoardWidget widget, Action? openWebDashboards) =>
+        openWebDashboards is null
+            ? null
+            : Button(LocalizationHelper.GetString("Dashboards_OpenWebGallery"), openWebDashboards)
+                .ToolTip(LocalizationHelper.GetString("Dashboards_OpenWebGallery_BoardHint"))
+                .AutomationName(LocalizationHelper.GetString("Dashboards_OpenWebGallery"))
+                .AutomationId("BoardWidgetOpenWeb_" + widget.Name);
 
     public static Element Error(string detail, string? technical, Action? retry = null)
     {
@@ -263,17 +245,17 @@ internal static class ReactorBoardWidgets
                 DashboardsArt.GlyphBadge(DashboardsGlyphs.Error, "SystemFillColorCriticalBrush", "SystemFillColorCriticalBackgroundBrush", 32)
                     .VAlign(VerticalAlignment.Center),
                 TextBlock(LocalizationHelper.GetString("Dashboards_Widget_ErrorTitle")).FontSize(14).SemiBold()
-                    .TextWrapping(TextWrapping.Wrap).VAlign(VerticalAlignment.Center)),
+                    .TextWrapping(TextWrapping.WrapWholeWords).VAlign(VerticalAlignment.Center)),
             TextBlock(detail).FontSize(12)
                 .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-                .TextWrapping(TextWrapping.Wrap),
+                .TextWrapping(TextWrapping.WrapWholeWords),
         };
         if (!string.IsNullOrWhiteSpace(technical))
         {
             children.Add(Expander(
                     LocalizationHelper.GetString("Dashboards_Widget_ShowDetails"),
                     TextBlock(technical).FontSize(12).FontFamily("Cascadia Mono, Consolas")
-                        .IsTextSelectionEnabled(true).TextWrapping(TextWrapping.Wrap))
+                        .IsTextSelectionEnabled(true).TextWrapping(TextWrapping.WrapWholeWords))
                 .HAlign(HorizontalAlignment.Stretch)
                 .HorizontalContentAlignment(HorizontalAlignment.Stretch));
         }
@@ -284,12 +266,12 @@ internal static class ReactorBoardWidgets
                 .AutomationName(LocalizationHelper.GetString("Dashboards_Retry"))
                 .AutomationId("BoardWidgetRetry"));
         }
-        return ScrollView(VStack(8, children.ToArray()).Margin(16).VAlign(VerticalAlignment.Center))
+        return DashboardsStates.VerticalScroll(VStack(8, children.ToArray()).Margin(16).VAlign(VerticalAlignment.Center))
             .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Assertive)
             .AutomationId("BoardWidgetError");
     }
 
-    public static Element NeedsApproval(BoardWidget widget)
+    public static Element NeedsApproval(BoardWidget widget, Action? openWebDashboards = null)
     {
         var groups = new List<Element>();
         void AddGroup(string resourceKey, string glyph, IEnumerable<string> values)
@@ -302,7 +284,8 @@ internal static class ReactorBoardWidgets
                     .Concat(list.Select(value => (Element)Border(HStack(6,
                             DashboardsStates.Glyph(glyph, 12, "SystemFillColorCautionBrush").VAlign(VerticalAlignment.Center),
                             TextBlock(value).FontSize(12).FontFamily("Cascadia Mono, Consolas")
-                                .TextWrapping(TextWrapping.Wrap).VAlign(VerticalAlignment.Center)))
+                                .TextWrapping(TextWrapping.WrapWholeWords).TextTrimming(TextTrimming.CharacterEllipsis)
+                                .ToolTip(value).VAlign(VerticalAlignment.Center)))
                         .Padding(8, 4, 10, 4)
                         .CornerRadius(6)
                         .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
@@ -315,9 +298,9 @@ internal static class ReactorBoardWidgets
         {
             groups.Add(widget.DeclaredSummary.IsDefaultOrEmpty
                 ? TextBlock(LocalizationHelper.GetString("Dashboards_Widget_NeedsApprovalDetail")).FontSize(12)
-                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).TextWrapping(TextWrapping.Wrap)
+                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).TextWrapping(TextWrapping.WrapWholeWords)
                 : VStack(4, widget.DeclaredSummary.Select(line => (Element)TextBlock("• " + line).FontSize(12)
-                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).TextWrapping(TextWrapping.Wrap)).ToArray()));
+                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).TextWrapping(TextWrapping.WrapWholeWords)).ToArray()));
         }
         var children = new List<Element>
         {
@@ -327,37 +310,33 @@ internal static class ReactorBoardWidgets
                     .VAlign(VerticalAlignment.Center)),
         };
         children.AddRange(groups);
-        return ScrollView(VStack(12, children.ToArray()).Margin(16))
+        if (BrowserAction(widget, openWebDashboards) is { } action)
+            children.Add(action.HAlign(HorizontalAlignment.Left));
+        return DashboardsStates.VerticalScroll(VStack(12, children.ToArray()).Margin(16))
             .AutomationId("BoardWidgetNeedsApproval_" + widget.Name);
     }
 
-    public static Element Website(BoardWidget widget, Uri? gatewayOrigin)
+    /// <summary>
+    /// <c>session:website</c>: the validated public HTTPS address as a link that
+    /// opens in the user's browser, with its own sign-in and cookie policy.
+    /// Windows does not embed websites in the board.
+    /// </summary>
+    public static Element Website(BoardWidget widget)
     {
         var url = widget.Props is { } props && props.TryGetProperty("url", out var value) &&
             value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
-        if (!BoardWidgetUrlPolicy.TryParseWebsite(url, gatewayOrigin, out var website, out var sameHost))
+        if (!BoardWidgetUrlPolicy.TryParseWebsite(url, out var website))
             return Error(LocalizationHelper.GetString("Dashboards_Widget_WebsiteInvalid"), null);
         var open = HyperlinkButton(LocalizationHelper.GetString("Dashboards_Widget_WebsiteOpen"), website)
-            .ToolTip(LocalizationHelper.GetString("Dashboards_Widget_WebsiteEmbedHint"))
+            .ToolTip(website.AbsoluteUri)
+            .AutomationName(LocalizationHelper.GetString("Dashboards_Widget_WebsiteOpen") + ": " + website.Host)
             .AutomationId("BoardWebsiteOpen_" + widget.Name);
-        var footer = Border(Grid(
-                [GridSize.Star(), GridSize.Auto],
-                [GridSize.Auto],
-                TextBlock(website.Host).FontSize(12)
-                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-                    .TextTrimming(TextTrimming.CharacterEllipsis)
-                    .VAlign(VerticalAlignment.Center)
-                    .Grid(column: 0),
-                open.Grid(column: 1)))
-            .Padding(12, 2)
-            .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
-            .BorderThickness(0, 1, 0, 0);
-        Element content = sameHost
-            ? Notice("BoardWebsiteSameOrigin", DashboardsArt.HueBadge(DashboardsGlyphs.Shield, DashboardHues.Teal, 44), LocalizationHelper.GetString("Dashboards_Widget_WebsiteSameOrigin"), null)
-            : Component<ReactorBoardWebsite, BoardWebsiteProps>(new BoardWebsiteProps(widget, website));
-        return Grid([GridSize.Star()], [GridSize.Star(), GridSize.Auto],
-            content.Grid(row: 0),
-            footer.Grid(row: 1));
+        return Notice(
+            "BoardWebsite_" + widget.Name,
+            DashboardsArt.HueBadge(DashboardsGlyphsExtra.Globe, DashboardHues.Teal, 44),
+            website.Host,
+            LocalizationHelper.GetString("Dashboards_Widget_WebsiteLinkDetail"),
+            open);
     }
 
     /// <summary>Native <c>session:report</c>: text, metrics, table, chart, and link blocks.</summary>
@@ -380,7 +359,8 @@ internal static class ReactorBoardWidgets
     private static Element Block(BoardReportBlock block) => block switch
     {
         BoardReportTextBlock text => VStack(4, Titled(text.Title,
-            TextBlock(text.Text).FontSize(14).TextWrapping(TextWrapping.Wrap).IsTextSelectionEnabled(true))),
+            TextBlock(text.Text).FontSize(14).TextWrapping(TextWrapping.WrapWholeWords).MaxWidth(ProseMaxWidth)
+                .HAlign(HorizontalAlignment.Left).IsTextSelectionEnabled(true))),
         BoardReportMetricsBlock metrics => WrapGrid(metrics.Items.Select((metric, index) => Metric(metric, index).WithKey("metric" + index)).ToArray())
             .Set(grid =>
             {
@@ -410,7 +390,7 @@ internal static class ReactorBoardWidgets
         if (!string.IsNullOrWhiteSpace(metric.Detail))
         {
             children.Add(TextBlock(metric.Detail).FontSize(12).Foreground(Theme.Ref("TextFillColorTertiaryBrush"))
-                .TextWrapping(TextWrapping.Wrap).MaxLines(2));
+                .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2));
         }
         // Each metric gets its own hue: a colored rail on a matching soft wash.
         return Border(Grid([GridSize.Px(4), GridSize.Star()], [GridSize.Star()],
@@ -440,7 +420,7 @@ internal static class ReactorBoardWidgets
         {
             for (var c = 0; c < table.Columns.Length; c++)
             {
-                cells.Add(Border(TextBlock(table.Rows[r][c]).FontSize(13).TextWrapping(TextWrapping.Wrap).MaxWidth(360))
+                cells.Add(Border(TextBlock(table.Rows[r][c]).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords).MaxWidth(360))
                     .Padding(10, 7)
                     .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
                     .BorderThickness(0, 1, 0, 0)
@@ -471,7 +451,7 @@ internal static class ReactorBoardWidgets
         double Y(double value) => (ChartHeight - 8) - ((value - minimum) / span) * (ChartHeight - 24);
         var baseline = Y(0);
         var slot = ChartWidth / chart.Points.Length;
-        var series = DashboardHues.Strong(DashboardHues.Purple);
+        const string series = "AccentFillColorDefaultBrush";
         var peak = Array.IndexOf(values, values.Max());
         var shapes = new List<Element>();
         // Soft gridlines at a quarter, half, and three quarters of the plot.
@@ -554,7 +534,7 @@ internal static class ReactorBoardWidgets
         {
             children.Add(TextBlock(link.Detail).FontSize(12)
                 .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-                .TextWrapping(TextWrapping.Wrap));
+                .TextWrapping(TextWrapping.WrapWholeWords));
         }
         return VStack(0, children.ToArray());
     }

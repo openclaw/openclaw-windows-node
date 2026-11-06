@@ -1142,7 +1142,8 @@ public class LocalizationValidationTests
                         or "HubWindow_NavigationViewItem_145.Content"
                         or "WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
-                    "Dashboards_Title" or "HubWindow_NavDashboards.Content" or "Dashboards_Live" or "Dashboards_StatTotal" => ["nl-nl"],
+                    "Dashboards_Title" or "HubWindow_NavDashboards.Content" or "Dashboards_Live" or "Dashboards_StatTotal"
+                        or "Dashboards_CountOne" or "Dashboards_CountManyFormat" => ["nl-nl"],
                     "Dashboards_AgentLabel" => ["fr-fr", "nl-nl"],
                     _ => [],
                 };

@@ -68,8 +68,6 @@ internal static class DashboardsGlyphsExtra
     public const string Stopwatch = "\uE916";
     public const string Sparkle = "\uE734";
     public const string Lock = "\uE72E";
-    public const string Clock = "\uE823";
-    public const string ArrowRight = "\uE72A";
     public const string Wrench = "\uE90F";
 
     public static string ForKind(BoardWidget widget) => widget.ContentKind switch
@@ -89,21 +87,6 @@ internal static class DashboardsGlyphsExtra
 /// <summary>Decorative building blocks with personality: monograms, glyph badges, illustrations, live halo.</summary>
 internal static class DashboardsArt
 {
-    /// <summary>Rounded tile with a tinted wash and the first letter in the identity hue.</summary>
-    public static Element Monogram(string text, int hue, double size)
-    {
-        var letter = string.IsNullOrWhiteSpace(text) ? "?" : text.Trim()[..1].ToUpperInvariant();
-        return Border(TextBlock(letter)
-                .FontSize(Math.Round(size * 0.46))
-                .SemiBold()
-                .Foreground(Theme.Ref(DashboardHues.Strong(hue)))
-                .Center())
-            .Size(size, size)
-            .CornerRadius(Math.Round(size * 0.28))
-            .Background(Theme.Ref(DashboardHues.Subtle(hue)))
-            .AccessibilityView(AccessibilityView.Raw);
-    }
-
     /// <summary>Circular avatar filled with the hue; text uses the matching on-hue brush.</summary>
     public static Element Avatar(string initial, int hue, double size) =>
         Border(TextBlock(initial).FontSize(Math.Round(size * 0.48)).SemiBold()
@@ -174,8 +157,7 @@ internal static class DashboardsArt
             .AutomationName(LocalizationHelper.GetString("Dashboards_Live"));
 
     /// <summary>
-    /// A small mosaic of colored widget tiles: the dashboards illustration used
-    /// by the hero, empty gallery, and empty board. Tiles drift gently unless
+    /// A small mosaic of colored widget tiles for the empty board. Tiles drift gently unless
     /// the user prefers reduced motion.
     /// </summary>
     public static Element Mosaic(double scale, bool reducedMotion)

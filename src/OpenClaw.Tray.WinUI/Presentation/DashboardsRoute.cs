@@ -12,6 +12,14 @@ internal static class DashboardsRoute
     public const string Tag = "dashboards";
     private const string SessionPrefix = Tag + "?";
 
+    /// <summary>
+    /// Gateway Control UI path of the web Dashboards gallery, relative to the
+    /// Control UI base path. Exact-board web paths depend on the installed
+    /// Gateway's session URL grammar (configured main key, reserved names, short
+    /// ids), so native handoff opens this gallery rather than guessing one.
+    /// </summary>
+    public const string WebGalleryPath = "dashboards";
+
     public static bool IsDashboardsTag(string? tag) =>
         string.Equals(tag, Tag, StringComparison.Ordinal) ||
         tag?.StartsWith(SessionPrefix, StringComparison.Ordinal) == true;

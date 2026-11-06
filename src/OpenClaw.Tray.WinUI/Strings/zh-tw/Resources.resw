@@ -8162,12 +8162,6 @@
   <data name="Dashboards_AgentLabel" xml:space="preserve">
     <value>代理程式</value>
   </data>
-  <data name="Dashboards_AllAuthors" xml:space="preserve">
-    <value>所有作者</value>
-  </data>
-  <data name="Dashboards_AuthorLabel" xml:space="preserve">
-    <value>作者</value>
-  </data>
   <data name="Dashboards_SortLabel" xml:space="preserve">
     <value>排序</value>
   </data>
@@ -8225,9 +8219,6 @@
   <data name="Dashboards_UpdatedUnknown" xml:space="preserve">
     <value>更新時間不明</value>
   </data>
-  <data name="Dashboards_PreviewErrorFormat" xml:space="preserve">
-    <value>無法預覽: {0}</value>
-  </data>
   <data name="Dashboards_Disconnected_Title" xml:space="preserve">
     <value>未連線到閘道</value>
   </data>
@@ -8259,7 +8250,7 @@
     <value>空白看板，隨時可用</value>
   </data>
   <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
-    <value>代理程式可以在這裡釘選小工具。試著要求一張狀態卡。</value>
+    <value>代理程式可以在這裡釘選小工具。</value>
   </data>
   <data name="Dashboards_GridLabel" xml:space="preserve">
     <value>儀表板小工具</value>
@@ -8372,17 +8363,8 @@
   <data name="Dashboards_Widget_WebsiteInvalid" xml:space="preserve">
     <value>此網站小工具需要有效的 HTTPS 位址。</value>
   </data>
-  <data name="Dashboards_Widget_WebsiteFailed" xml:space="preserve">
-    <value>無法載入此網站。請檢查連線，然後選取 [重試]。</value>
-  </data>
   <data name="Dashboards_Widget_WebsiteOpen" xml:space="preserve">
     <value>開啟網站</value>
-  </data>
-  <data name="Dashboards_Widget_WebsiteEmbedHint" xml:space="preserve">
-    <value>如果此網站無法在這裡載入，請在瀏覽器中開啟。</value>
-  </data>
-  <data name="Dashboards_Widget_WebsiteSameOrigin" xml:space="preserve">
-    <value>請在瀏覽器中開啟此網站。閘道頁面無法內嵌在網站小工具中。</value>
   </data>
   <data name="Command_GoToDashboards_Title" xml:space="preserve">
     <value>前往儀表板</value>
@@ -8414,14 +8396,29 @@
   <data name="Dashboards_StatAuthors" xml:space="preserve">
     <value>作者</value>
   </data>
-  <data name="Dashboards_PreviewEmpty" xml:space="preserve">
-    <value>尚未釘選任何內容</value>
-  </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
     <value>開啟</value>
   </data>
   <data name="Dashboards_AskInChat" xml:space="preserve">
     <value>在聊天中詢問</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery" xml:space="preserve">
+    <value>在網頁中開啟</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_GalleryHint" xml:space="preserve">
+    <value>在瀏覽器中開啟儀表板，以編輯儀表板並核准小工具存取權。</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_BoardHint" xml:space="preserve">
+    <value>在瀏覽器中開啟儀表板庫，而不是此儀表板。可依名稱或工作階段金鑰在其中找到它。</value>
+  </data>
+  <data name="Dashboards_MoreActions" xml:space="preserve">
+    <value>更多選項</value>
+  </data>
+  <data name="Dashboards_CopySessionKey" xml:space="preserve">
+    <value>複製工作階段金鑰</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteLinkDetail" xml:space="preserve">
+    <value>此網站會在瀏覽器中開啟。</value>
   </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>節點沙箱</value>
@@ -8486,4 +8483,31 @@
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 語音已逾時。合成可能已完成。再次嘗試前請檢查 Gateway；未進行自動重試。</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 語音失敗。請檢查其語音設定和供應商配額。未改用本機或自動重試。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 無法播放語音音訊。請檢查輸出裝置。未進行自動重試。</value></data>
+  <data name="Dashboards_OpenChatFor" xml:space="preserve">
+    <value>開啟聊天：{0}</value>
+  </data>
+  <data name="Dashboards_ForAgentFormat" xml:space="preserve">
+    <value>{0} 的儀表板</value>
+  </data>
+  <data name="Dashboards_CountManyFormat" xml:space="preserve">
+    <value>{0} 個儀表板</value>
+  </data>
+  <data name="Dashboards_CountOne" xml:space="preserve">
+    <value>1 個儀表板</value>
+  </data>
+  <data name="Dashboards_FreshToday" xml:space="preserve">
+    <value>今日更新</value>
+  </data>
+  <data name="Dashboards_AgentBoards" xml:space="preserve">
+    <value>{0} 的儀表板</value>
+  </data>
+  <data name="Dashboards_ShowMore" xml:space="preserve">
+    <value>顯示更多</value>
+  </data>
+  <data name="Dashboards_CopiedSessionKey" xml:space="preserve">
+    <value>已複製工作階段金鑰</value>
+  </data>
+  <data name="Dashboards_CopyFailed" xml:space="preserve">
+    <value>無法複製工作階段金鑰。</value>
+  </data>
 </root>

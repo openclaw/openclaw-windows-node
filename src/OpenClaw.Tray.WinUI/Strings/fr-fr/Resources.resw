@@ -8162,12 +8162,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Dashboards_AgentLabel" xml:space="preserve">
     <value>Agent</value>
   </data>
-  <data name="Dashboards_AllAuthors" xml:space="preserve">
-    <value>Tous les auteurs</value>
-  </data>
-  <data name="Dashboards_AuthorLabel" xml:space="preserve">
-    <value>Auteur</value>
-  </data>
   <data name="Dashboards_SortLabel" xml:space="preserve">
     <value>Trier</value>
   </data>
@@ -8225,9 +8219,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Dashboards_UpdatedUnknown" xml:space="preserve">
     <value>Heure de mise à jour inconnue</value>
   </data>
-  <data name="Dashboards_PreviewErrorFormat" xml:space="preserve">
-    <value>Aperçu indisponible : {0}</value>
-  </data>
   <data name="Dashboards_Disconnected_Title" xml:space="preserve">
     <value>Non connecté à une passerelle</value>
   </data>
@@ -8259,7 +8250,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
     <value>Un tableau vide, prêt à l'emploi</value>
   </data>
   <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
-    <value>Votre agent peut épingler des widgets ici. Demandez-lui une carte d'état.</value>
+    <value>Votre agent peut épingler des widgets ici.</value>
   </data>
   <data name="Dashboards_GridLabel" xml:space="preserve">
     <value>Widgets du tableau de bord</value>
@@ -8372,17 +8363,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Dashboards_Widget_WebsiteInvalid" xml:space="preserve">
     <value>Ce widget de site web nécessite une adresse HTTPS valide.</value>
   </data>
-  <data name="Dashboards_Widget_WebsiteFailed" xml:space="preserve">
-    <value>Impossible de charger ce site web. Vérifiez votre connexion, puis sélectionnez Réessayer.</value>
-  </data>
   <data name="Dashboards_Widget_WebsiteOpen" xml:space="preserve">
     <value>Ouvrir le site web</value>
-  </data>
-  <data name="Dashboards_Widget_WebsiteEmbedHint" xml:space="preserve">
-    <value>Si ce site ne se charge pas ici, ouvrez-le dans votre navigateur.</value>
-  </data>
-  <data name="Dashboards_Widget_WebsiteSameOrigin" xml:space="preserve">
-    <value>Ouvrez ce site web dans votre navigateur. Les pages de la passerelle ne peuvent pas être incorporées dans un widget de site web.</value>
   </data>
   <data name="Command_GoToDashboards_Title" xml:space="preserve">
     <value>Accéder aux tableaux de bord</value>
@@ -8414,14 +8396,29 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Dashboards_StatAuthors" xml:space="preserve">
     <value>Auteurs</value>
   </data>
-  <data name="Dashboards_PreviewEmpty" xml:space="preserve">
-    <value>Rien d'épinglé pour le moment</value>
-  </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
     <value>Ouvrir</value>
   </data>
   <data name="Dashboards_AskInChat" xml:space="preserve">
     <value>Demander dans la conversation</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery" xml:space="preserve">
+    <value>Ouvrir sur le web</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_GalleryHint" xml:space="preserve">
+    <value>Ouvre les tableaux de bord dans votre navigateur pour modifier les tableaux et approuver l'accès des widgets.</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_BoardHint" xml:space="preserve">
+    <value>Ouvre la galerie des tableaux de bord dans votre navigateur, pas ce tableau de bord. Retrouvez-le par son nom ou sa clé de session.</value>
+  </data>
+  <data name="Dashboards_MoreActions" xml:space="preserve">
+    <value>Plus d'options</value>
+  </data>
+  <data name="Dashboards_CopySessionKey" xml:space="preserve">
+    <value>Copier la clé de session</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteLinkDetail" xml:space="preserve">
+    <value>Ce site web s'ouvre dans votre navigateur.</value>
   </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Sandbox du nœud</value>
@@ -8486,4 +8483,31 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>La voix Gateway a expiré. La synthèse a pu aboutir. Vérifiez la Gateway avant de réessayer. Aucune nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>La voix Gateway a échoué. Vérifiez sa configuration et le quota du fournisseur. Aucun repli local ni nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows n’a pas pu lire le son. Vérifiez le périphérique de sortie. Aucune nouvelle tentative automatique.</value></data>
+  <data name="Dashboards_OpenChatFor" xml:space="preserve">
+    <value>Ouvrir la discussion : {0}</value>
+  </data>
+  <data name="Dashboards_ForAgentFormat" xml:space="preserve">
+    <value>Tableaux de bord de {0}</value>
+  </data>
+  <data name="Dashboards_CountManyFormat" xml:space="preserve">
+    <value>{0} tableaux de bord</value>
+  </data>
+  <data name="Dashboards_CountOne" xml:space="preserve">
+    <value>1 tableau de bord</value>
+  </data>
+  <data name="Dashboards_FreshToday" xml:space="preserve">
+    <value>Mis à jour aujourd’hui</value>
+  </data>
+  <data name="Dashboards_AgentBoards" xml:space="preserve">
+    <value>Tableaux de bord de {0}</value>
+  </data>
+  <data name="Dashboards_ShowMore" xml:space="preserve">
+    <value>Afficher plus</value>
+  </data>
+  <data name="Dashboards_CopiedSessionKey" xml:space="preserve">
+    <value>Clé de session copiée</value>
+  </data>
+  <data name="Dashboards_CopyFailed" xml:space="preserve">
+    <value>Impossible de copier la clé de session.</value>
+  </data>
 </root>

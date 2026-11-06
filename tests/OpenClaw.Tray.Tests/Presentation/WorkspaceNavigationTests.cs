@@ -250,6 +250,24 @@ public sealed class WorkspaceNavigationTests
         Assert.False(history.CanGoForward);
     }
 
+    [Theory]
+    [InlineData("dashboards")]
+    [InlineData("dashboards?session=agent%3Amain%3Adashboard%3Aops&agent=main")]
+    public void DashboardsRoutes_AlwaysUseStandalonePagePresentation_AndShareWorkspaceHistory(string tag)
+    {
+        var destination = WorkspaceDestination.Settings(tag);
+        Assert.True(destination.Embedded);
+        Assert.Equal(tag, destination.CompanionTag);
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "kept-chat"));
+        history.Navigate(destination);
+        Assert.True(history.GoBack());
+        Assert.Equal("kept-chat", history.Current.SessionKey);
+        Assert.True(history.GoForward());
+        Assert.Equal(destination, history.Current);
+        Assert.False(WorkspaceDestination.Settings("connection").Embedded);
+    }
+
     [Fact]
     public void Settings_ReturnsToExactPriorChat_AndForwardRestoresSection()
     {

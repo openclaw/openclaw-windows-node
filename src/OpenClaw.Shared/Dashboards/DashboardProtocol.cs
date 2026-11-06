@@ -39,7 +39,7 @@ public static partial class DashboardProtocol
     {
         var parameters = new Dictionary<string, object?>
         {
-            ["rowMode"] = "dashboard",
+            ["rowMode"] = "compact",
             ["source"] = "dashboard",
             ["includeGlobal"] = true,
             ["includeUnknown"] = true,
@@ -76,32 +76,30 @@ public static partial class DashboardProtocol
     public static DashboardSessionPage ParseSessionPage(JsonElement payload, Func<JsonElement, SessionInfo?> parseSession)
     {
         ArgumentNullException.ThrowIfNull(parseSession);
-        if (payload.ValueKind != JsonValueKind.Object)
-            return new DashboardSessionPage([], false, null, 0);
+        if (payload.ValueKind != JsonValueKind.Object ||
+            !payload.TryGetProperty("sessions", out var sessions) || sessions.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("The Gateway returned an invalid dashboard session page.");
 
         var rows = ImmutableArray.CreateBuilder<DashboardSessionRow>();
-        if (payload.TryGetProperty("sessions", out var sessions) && sessions.ValueKind == JsonValueKind.Array)
+        foreach (var item in sessions.EnumerateArray())
         {
-            foreach (var item in sessions.EnumerateArray())
+            if (item.ValueKind != JsonValueKind.Object || string.IsNullOrWhiteSpace(ReadString(item, "key")))
+                continue;
+            var session = parseSession(item);
+            if (session is null || string.IsNullOrWhiteSpace(session.Key))
+                continue;
+            rows.Add(new DashboardSessionRow
             {
-                if (item.ValueKind != JsonValueKind.Object || string.IsNullOrWhiteSpace(ReadString(item, "key")))
-                    continue;
-                var session = parseSession(item);
-                if (session is null || string.IsNullOrWhiteSpace(session.Key))
-                    continue;
-                rows.Add(new DashboardSessionRow
-                {
-                    Session = session,
-                    Status = ReadString(item, "status"),
-                    UpdatedAtMs = ReadLong(item, "updatedAt"),
-                    LastMessagePreview = ReadString(item, "lastMessagePreview"),
-                    CreatedActor = ReadActor(item, "createdActor"),
-                    OwnerActor = item.TryGetProperty("owner", out var owner) && owner.ValueKind == JsonValueKind.Object
-                        ? ReadActor(owner, "actor")
-                        : null,
-                    Archived = item.TryGetProperty("archived", out var archived) && archived.ValueKind == JsonValueKind.True,
-                });
-            }
+                Session = session,
+                Status = ReadString(item, "status"),
+                UpdatedAtMs = ReadLong(item, "updatedAt"),
+                LastMessagePreview = ReadString(item, "lastMessagePreview"),
+                CreatedActor = ReadActor(item, "createdActor"),
+                OwnerActor = item.TryGetProperty("owner", out var owner) && owner.ValueKind == JsonValueKind.Object
+                    ? ReadActor(owner, "actor")
+                    : null,
+                Archived = item.TryGetProperty("archived", out var archived) && archived.ValueKind == JsonValueKind.True,
+            });
         }
 
         var hasMore = payload.TryGetProperty("hasMore", out var more) && more.ValueKind == JsonValueKind.True;
@@ -135,36 +133,33 @@ public static partial class DashboardProtocol
         var sessionKey = ReadString(payload, "sessionKey");
         if (string.IsNullOrWhiteSpace(sessionKey))
             throw new InvalidOperationException("The Gateway returned a board without a session key.");
+        if (!payload.TryGetProperty("tabs", out var tabArray) || tabArray.ValueKind != JsonValueKind.Array ||
+            !payload.TryGetProperty("widgets", out var widgetArray) || widgetArray.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("The Gateway returned a board without valid tab and widget collections.");
 
         var tabs = ImmutableArray.CreateBuilder<BoardTab>();
         var seenTabs = new HashSet<string>(StringComparer.Ordinal);
-        if (payload.TryGetProperty("tabs", out var tabArray) && tabArray.ValueKind == JsonValueKind.Array)
+        foreach (var item in tabArray.EnumerateArray())
         {
-            foreach (var item in tabArray.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.Object)
-                    continue;
-                var tabId = ReadString(item, "tabId");
-                if (!IsValidTabId(tabId) || !seenTabs.Add(tabId!))
-                    continue;
-                var title = ReadString(item, "title");
-                tabs.Add(new BoardTab(
-                    tabId!,
-                    string.IsNullOrWhiteSpace(title) ? tabId! : title!,
-                    (int)Math.Clamp(ReadLong(item, "position") ?? 0, 0, int.MaxValue),
-                    ReadString(item, "chatDock") ?? "right"));
-            }
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+            var tabId = ReadString(item, "tabId");
+            if (!IsValidTabId(tabId) || !seenTabs.Add(tabId!))
+                continue;
+            var title = ReadString(item, "title");
+            tabs.Add(new BoardTab(
+                tabId!,
+                string.IsNullOrWhiteSpace(title) ? tabId! : title!,
+                (int)Math.Clamp(ReadLong(item, "position") ?? 0, 0, int.MaxValue),
+                ReadString(item, "chatDock") ?? "right"));
         }
 
         var widgets = ImmutableArray.CreateBuilder<BoardWidget>();
         var seenWidgets = new HashSet<string>(StringComparer.Ordinal);
-        if (payload.TryGetProperty("widgets", out var widgetArray) && widgetArray.ValueKind == JsonValueKind.Array)
+        foreach (var item in widgetArray.EnumerateArray())
         {
-            foreach (var item in widgetArray.EnumerateArray())
-            {
-                if (TryParseWidget(item) is { } widget && seenWidgets.Add(widget.Name))
-                    widgets.Add(widget);
-            }
+            if (TryParseWidget(item) is { } widget && seenWidgets.Add(widget.Name))
+                widgets.Add(widget);
         }
 
         return new BoardSnapshot(

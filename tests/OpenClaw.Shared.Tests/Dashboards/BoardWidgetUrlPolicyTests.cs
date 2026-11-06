@@ -116,38 +116,19 @@ public class BoardWidgetUrlPolicyTests
     }
 
     [Theory]
-    [InlineData("https://example.com/docs", true, false)]
-    [InlineData("https://user:pw@example.com/", false, false)]
-    [InlineData("javascript:alert(1)", false, false)]
-    [InlineData("", false, false)]
-    public void Website_RequiresHttpsWithoutCredentialsAndFlagsGatewayHost(string url, bool valid, bool sameHost)
-    {
-        Assert.Equal(valid, BoardWidgetUrlPolicy.TryParseWebsite(url, Gateway, out _, out var actualSameHost));
-        Assert.Equal(sameHost, actualSameHost);
-    }
+    [InlineData("https://example.com/docs", true)]
+    [InlineData("https://gw.example.com:9443/app", true)]
+    [InlineData("https://user:pw@example.com/", false)]
+    [InlineData("http://example.com/", false)]
+    [InlineData("https://192.168.1.1/admin", false)]
+    [InlineData("javascript:alert(1)", false)]
+    [InlineData("", false)]
+    public void Website_RequiresPublicHttpsWithoutCredentials(string url, bool valid) =>
+        Assert.Equal(valid, BoardWidgetUrlPolicy.TryParseWebsite(url, out _));
 
     [Fact]
     public void Website_RejectsOverlongUrls() =>
-        Assert.False(BoardWidgetUrlPolicy.TryParseWebsite("https://example.com/" + new string('a', 2100), Gateway, out _, out _));
-
-    [Theory]
-    [InlineData("https://cdn.example.com/app.js", false)]
-    [InlineData("wss://live.example.com/socket", false)]
-    [InlineData("data:text/plain,hi", false)]
-    [InlineData("http://127.0.0.1:18789/api", true)]
-    [InlineData("https://app.localhost./x", true)]
-    [InlineData("ws://192.168.1.10:9000/", true)]
-    [InlineData("https://[fe80::1]/", true)]
-    [InlineData("https://nas/share", true)]
-    public void Website_SubresourcesToPrivateNetworkHostsAreBlocked(string url, bool expected) =>
-        Assert.Equal(expected, BoardWidgetUrlPolicy.IsBlockedWebsiteRequest(new Uri(url)));
-
-    [Fact]
-    public void Website_FlagsGatewayHostRegardlessOfPort()
-    {
-        Assert.True(BoardWidgetUrlPolicy.TryParseWebsite("https://gw.example.com:9443/app", new Uri("https://gw.example.com/"), out _, out var sameHost));
-        Assert.True(sameHost);
-    }
+        Assert.False(BoardWidgetUrlPolicy.TryParseWebsite("https://example.com/" + new string('a', 2100), out _));
 
     [Theory]
     [InlineData("https://example.com/", true)]
@@ -170,7 +151,7 @@ public class BoardWidgetUrlPolicyTests
     [InlineData("https://app.localhost./", false)]
     [InlineData("https://router./", false)]
     [InlineData("https://127.0.0.1./", false)]
-    public void Website_NavigationsMustStayOnPublicHttpsHosts(string url, bool expected) =>
+    public void Website_LinksMustUsePublicHttpsHosts(string url, bool expected) =>
         Assert.Equal(expected, BoardWidgetUrlPolicy.IsPublicHttpsUrl(new Uri(url)));
 
     [Theory]

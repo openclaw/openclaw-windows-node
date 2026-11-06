@@ -2,6 +2,7 @@ using OpenClaw.Shared;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using System.Text.Json;
+using System.Xml.Linq;
 
 namespace OpenClaw.Tray.Tests.Presentation;
 
@@ -16,14 +17,17 @@ public sealed class PinnedPagesTests
     private static string[] Tags(IEnumerable<string> pins) => pins.ToArray();
 
     [Fact]
-    public void Default_IsEmpty_AndNullOrEmptyBothMeanNoPins()
+    public void Default_IsDashboardsForUnsavedScopes_WithoutWritingSettings()
     {
         Assert.Empty(PinnedPages.Normalize(null));
         Assert.Empty(PinnedPages.Normalize([]));
         using var temp = new TempDir();
-        using var store = Store(temp.Path, out _);
-        Assert.Empty(store.Current.PinnedPagesFor("gw-a"));
-        Assert.Empty(store.Current.PinnedPagesFor(null));
+        using var store = Store(temp.Path, out var settings);
+        Assert.Equal(["dashboards"], Tags(store.Current.PinnedPagesFor("gw-a")));
+        Assert.Equal(["dashboards"], Tags(store.Current.PinnedPagesFor(null)));
+        Assert.Equal(["dashboards"], Tags(settings.GetPinnedPages("gw-a")));
+        Assert.Empty(settings.PinnedPagesByGateway);
+        Assert.False(File.Exists(Path.Combine(temp.Path, "settings.json")));
     }
 
     [Fact]
@@ -67,9 +71,18 @@ public sealed class PinnedPagesTests
         Assert.Equal(HubPageKind.Sandbox, HubPageRegistry.ResolvePage("sandbox"));
         Assert.Equal(tags.Length, tags.Distinct().Count());
         Assert.Equal(
-            ["connection", "sessions", "channels", "instances", "cron", "agentevents",
+            ["connection", "sessions", "dashboards", "channels", "instances", "cron", "agentevents",
              "config", "usage"],
             tags);
+    }
+
+    [Fact]
+    public void Dashboards_IsPinnableButItsSettingsNavigationEntryRemainsClosed()
+    {
+        Assert.NotNull(PinnedPages.Find("dashboards"));
+        var settings = XDocument.Parse(ReadSource("Controls", "SettingsShellView.xaml"));
+        Assert.DoesNotContain(settings.Descendants().Where(node => node.Name.LocalName == "NavigationViewItem"),
+            node => node.Attribute("Tag")?.Value == "dashboards");
     }
 
     [Fact]
@@ -156,9 +169,9 @@ public sealed class PinnedPagesTests
             store.Update(null, e => e.SetPagePinned("gw-b", "usage", true));
         }
         using var reloaded = Store(temp.Path, out _);
-        Assert.Equal(["cron", "channels"], Tags(reloaded.Current.PinnedPagesFor("gw-a")));
-        Assert.Equal(["usage"], Tags(reloaded.Current.PinnedPagesFor("gw-b")));
-        Assert.Empty(reloaded.Current.PinnedPagesFor(null));
+        Assert.Equal(["dashboards", "cron", "channels"], Tags(reloaded.Current.PinnedPagesFor("gw-a")));
+        Assert.Equal(["dashboards", "usage"], Tags(reloaded.Current.PinnedPagesFor("gw-b")));
+        Assert.Equal(["dashboards"], Tags(reloaded.Current.PinnedPagesFor(null)));
     }
 
     [Fact]
@@ -218,7 +231,7 @@ public sealed class PinnedPagesTests
             AssertExistingPreferences(settings);
             Assert.Empty(settings.PinnedPagesByGateway);
             Assert.Empty(store.Current.PinnedPagesByGateway);
-            Assert.Empty(store.Current.PinnedPagesFor("gw-compat"));
+            Assert.Equal(["dashboards"], Tags(store.Current.PinnedPagesFor("gw-compat")));
             store.Update(store.CreateOrigin(), editor =>
             {
                 editor.SetPagePinned("gw-compat", "connection", true);
@@ -234,24 +247,47 @@ public sealed class PinnedPagesTests
             Assert.True(JsonElement.DeepEquals(original.Value, saved.RootElement.GetProperty(original.Name)),
                 $"Pin save changed existing preference {original.Name}.");
         }
-        Assert.Equal(["connection", "sessions"], saved.RootElement.GetProperty("PinnedPagesByGateway")
+        Assert.Equal(["dashboards", "connection", "sessions"], saved.RootElement.GetProperty("PinnedPagesByGateway")
             .GetProperty("gw-compat").EnumerateArray().Select(value => value.GetString()!).ToArray());
         using var reloaded = Store(temp.Path, out var restartedSettings);
         AssertExistingPreferences(restartedSettings);
-        Assert.Equal(["connection", "sessions"], Tags(reloaded.Current.PinnedPagesFor("gw-compat")));
-        Assert.Equal(["connection", "sessions"], Tags(restartedSettings.GetPinnedPages("gw-compat")));
-        Assert.Empty(reloaded.Current.PinnedPagesFor("gw-other"));
+        Assert.Equal(["dashboards", "connection", "sessions"], Tags(reloaded.Current.PinnedPagesFor("gw-compat")));
+        Assert.Equal(["dashboards", "connection", "sessions"], Tags(restartedSettings.GetPinnedPages("gw-compat")));
+        Assert.Equal(["dashboards"], Tags(reloaded.Current.PinnedPagesFor("gw-other")));
     }
 
     [Fact]
-    public void Unpin_LastPin_RemovesEntry_AndExplicitEmptyStaysEmpty()
+    public void Unpin_LastPin_PersistsExplicitEmptyAcrossRestart_WithoutResettingOtherScopes()
     {
         using var temp = new TempDir();
         using var store = Store(temp.Path, out _);
+        store.Update(null, e => e.SetPagePinned("gw-a", "dashboards", false));
         store.Update(null, e => e.SetPagePinned("gw-a", "cron", true));
         store.Update(null, e => e.SetPagePinned("gw-a", "cron", false));
         Assert.Empty(store.Current.PinnedPagesFor("gw-a"));
-        Assert.Empty(store.Current.PinnedPagesByGateway);
+        Assert.Empty(store.Current.PinnedPagesByGateway["gw-a"]);
+        using var reloaded = Store(temp.Path, out var settings);
+        Assert.Empty(reloaded.Current.PinnedPagesFor("gw-a"));
+        Assert.Empty(settings.GetPinnedPages("gw-a"));
+        Assert.Equal(["dashboards"], Tags(reloaded.Current.PinnedPagesFor("gw-b")));
+        using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(temp.Path, "settings.json")));
+        Assert.Equal(0, saved.RootElement.GetProperty("PinnedPagesByGateway").GetProperty("gw-a").GetArrayLength());
+    }
+
+    [Fact]
+    public void ExistingCustomizedAndExplicitlyEmptyScopes_DoNotGainTheDefaultPin()
+    {
+        using var temp = new TempDir();
+        var settings = new SettingsManager(temp.Path);
+        settings.SetPinnedPages("custom", ["usage"]);
+        settings.SetPinnedPages("empty", []);
+        settings.Save();
+        using var store = Store(temp.Path, out _);
+        Assert.Equal(["usage"], Tags(store.Current.PinnedPagesFor("custom")));
+        Assert.Empty(store.Current.PinnedPagesFor("empty"));
+        store.Update(null, editor => editor.SetPagePinned("empty", "channels", true));
+        Assert.Equal(["channels"], Tags(store.Current.PinnedPagesFor("empty")));
+        Assert.Equal(["dashboards"], Tags(store.Current.PinnedPagesFor("new")));
     }
 
     [Fact]
@@ -261,7 +297,7 @@ public sealed class PinnedPagesTests
         using var store = Store(temp.Path, out _);
         store.Update(null, e => e.SetPagePinned("gw-a", "cron", true));
         store.Update(null, e => e.SetPagePinned("gw-a", "usage", true));
-        Assert.Equal(["cron", "usage"], Tags(store.Current.PinnedPagesFor("gw-a")));
+        Assert.Equal(["dashboards", "cron", "usage"], Tags(store.Current.PinnedPagesFor("gw-a")));
     }
 
     [Fact]
@@ -275,9 +311,9 @@ public sealed class PinnedPagesTests
             e.SetPagePinned("gw-a", "usage", true);
             throw new InvalidOperationException("boom");
         }));
-        Assert.Equal(["cron"], Tags(store.Current.PinnedPagesFor("gw-a")));
+        Assert.Equal(["dashboards", "cron"], Tags(store.Current.PinnedPagesFor("gw-a")));
         using var reloaded = Store(temp.Path, out _);
-        Assert.Equal(["cron"], Tags(reloaded.Current.PinnedPagesFor("gw-a")));
+        Assert.Equal(["dashboards", "cron"], Tags(reloaded.Current.PinnedPagesFor("gw-a")));
     }
 
     [Fact]
@@ -288,7 +324,7 @@ public sealed class PinnedPagesTests
         store.Update(null, e => e.SetPagePinned("gw-a", "cron", true));
         var snapshot = store.Current;
         store.Update(null, e => e.SetPagePinned("gw-a", "usage", true));
-        Assert.Equal(["cron"], Tags(snapshot.PinnedPagesFor("gw-a")));
+        Assert.Equal(["dashboards", "cron"], Tags(snapshot.PinnedPagesFor("gw-a")));
     }
 
     [Fact]
@@ -329,10 +365,10 @@ public sealed class PinnedPagesTests
         using var store = Store(temp.Path, out _);
         store.Update(null, e => e.SetPagePinned("gw-a", "cron", true));
         var stored = Tags(store.Current.PinnedPagesFor("gw-a"));
-        Assert.Equal(["cron"], stored);
-        Assert.Equal("agent:A:cron", PinnedPages.ResolveRoute(stored[0], "A"));
-        Assert.Equal("agent:C:cron", PinnedPages.ResolveRoute(stored[0], "C"));
-        Assert.Equal(["cron"], Tags(store.Current.PinnedPagesFor("gw-a")));
+        Assert.Equal(["dashboards", "cron"], stored);
+        Assert.Equal("agent:A:cron", PinnedPages.ResolveRoute(stored[1], "A"));
+        Assert.Equal("agent:C:cron", PinnedPages.ResolveRoute(stored[1], "C"));
+        Assert.Equal(["dashboards", "cron"], Tags(store.Current.PinnedPagesFor("gw-a")));
     }
 
     [Fact]

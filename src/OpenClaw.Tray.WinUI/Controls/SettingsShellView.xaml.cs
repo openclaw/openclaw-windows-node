@@ -56,6 +56,7 @@ internal sealed partial class SettingsShellView : UserControl
 
     /// <summary>Raised when the rail or an in-page link requests another Settings section.</summary>
     internal Action<string>? NavigateRequested { get; set; }
+    internal Action? PageNavigationChanged { get; set; }
 
     /// <summary>Raised when the rail's Chat item or a notification route leaves Settings.</summary>
     internal Action<string>? WorkspaceRouteRequested { get; set; }
@@ -149,6 +150,7 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (_disposed) return;
         _disposed = true;
+        PageNavigationChanged = null;
         Deactivate();
         _contentReady.TrySetResult(true);
         _gatewayNavHideTimer?.Stop();
@@ -359,8 +361,18 @@ internal sealed partial class SettingsShellView : UserControl
         PaneFooterControl.Layout = NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail;
     }
 
-    // Back/Forward live in the window-level pair driven only by WorkspaceNavigationHistory.
-    // This view keeps no navigation stack of its own.
+    // Workspace owns history. A board can return to its gallery without adding a view-local stack.
+    internal bool HasOpenDashboard => ContentFrame.Content is DashboardsPage { HasOpenBoard: true };
+
+    internal bool TryReturnToDashboardGallery() =>
+        ContentFrame.Content is DashboardsPage dashboards && dashboards.TryReturnToGallery();
+
+    internal void RefreshPageNavigation()
+    {
+        if (!_disposed)
+            PageNavigationChanged?.Invoke();
+    }
+
     /// <summary>
     /// Shows only the section content, hiding this view's own section list. Used when a pinned page
     /// opens beside the Workspace sidebar.
@@ -535,9 +547,6 @@ internal sealed partial class SettingsShellView : UserControl
     private void SyncNavSelection(string? tag)
     {
         if (tag == null) return;
-        // A session dashboard route lights up the Dashboards rail item.
-        if (DashboardsRoute.IsDashboardsTag(tag))
-            tag = DashboardsRoute.Tag;
         var item = FindNavItemForTag(NavView.MenuItems, tag)
                 ?? FindNavItemForTag(NavView.FooterMenuItems, tag);
         if (item != null && !ReferenceEquals(NavView.SelectedItem, item))
@@ -644,9 +653,6 @@ internal sealed partial class SettingsShellView : UserControl
                 HubPageRegistry.ShouldKeepCurrentPageVisibleDuringDisconnect(currentTag);
 
             NavSessions.Visibility = vis;
-            NavDashboards.Visibility = keepCurrentGatewayPageVisible && DashboardsRoute.IsDashboardsTag(currentTag)
-                ? Visibility.Visible
-                : vis;
             NavChannels.Visibility = vis;
             NavInstances.Visibility = vis;
             NavCron.Visibility = vis;

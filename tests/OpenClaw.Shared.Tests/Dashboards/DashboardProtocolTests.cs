@@ -11,7 +11,7 @@ public class DashboardProtocolTests
     {
         var parameters = DashboardProtocol.BuildSessionListParams(" research ", offset: 200);
 
-        Assert.Equal("dashboard", parameters["rowMode"]);
+        Assert.Equal("compact", parameters["rowMode"]);
         Assert.Equal("dashboard", parameters["source"]);
         Assert.Equal(true, parameters["hasBoard"]);
         Assert.Equal(true, parameters["excludeDock"]);
@@ -67,6 +67,48 @@ public class DashboardProtocolTests
         Assert.False(page.Rows[1].IsLive);
         Assert.True(page.HasMore);
         Assert.Equal(3, page.NextOffset);
+    }
+
+    [Fact]
+    public void SessionPage_ExplicitEmptyArrayIsAnAuthoritativeEmptyResult()
+    {
+        using var document = JsonDocument.Parse("""{ "sessions": [] }""");
+        var page = DashboardProtocol.ParseSessionPage(document.RootElement, ParseSession);
+        Assert.Empty(page.Rows);
+        Assert.Equal(0, page.Count);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("{}")]
+    [InlineData("""{ "sessions": null }""")]
+    [InlineData("""{ "sessions": {} }""")]
+    public void SessionPage_MissingCollectionIsNotInventedAsZeroBoards(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        Assert.Throws<InvalidOperationException>(() =>
+            DashboardProtocol.ParseSessionPage(document.RootElement, ParseSession));
+    }
+
+    [Theory]
+    [InlineData("""{ "sessionKey": "k" }""")]
+    [InlineData("""{ "sessionKey": "k", "tabs": [], "widgets": null }""")]
+    [InlineData("""{ "sessionKey": "k", "tabs": null, "widgets": [] }""")]
+    [InlineData("""{ "sessionKey": "k", "tabs": {}, "widgets": [] }""")]
+    public void BoardSnapshot_MissingCollectionsAreNotInventedAsAnEmptyBoard(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        Assert.Throws<InvalidOperationException>(() => DashboardProtocol.ParseBoardSnapshot(document.RootElement));
+    }
+
+    [Fact]
+    public void BoardSnapshot_ExplicitEmptyCollectionsRemainReadable()
+    {
+        using var document = JsonDocument.Parse("""{ "sessionKey": "k", "tabs": [], "widgets": [] }""");
+        var board = DashboardProtocol.ParseBoardSnapshot(document.RootElement);
+        Assert.Empty(board.Tabs);
+        Assert.Empty(board.Widgets);
     }
 
     [Fact]

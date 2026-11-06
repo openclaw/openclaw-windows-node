@@ -8229,12 +8229,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Dashboards_AgentLabel" xml:space="preserve">
     <value>Agent</value>
   </data>
-  <data name="Dashboards_AllAuthors" xml:space="preserve">
-    <value>All authors</value>
-  </data>
-  <data name="Dashboards_AuthorLabel" xml:space="preserve">
-    <value>Author</value>
-  </data>
   <data name="Dashboards_SortLabel" xml:space="preserve">
     <value>Sort</value>
   </data>
@@ -8292,9 +8286,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Dashboards_UpdatedUnknown" xml:space="preserve">
     <value>Update time unknown</value>
   </data>
-  <data name="Dashboards_PreviewErrorFormat" xml:space="preserve">
-    <value>Preview unavailable: {0}</value>
-  </data>
   <data name="Dashboards_Disconnected_Title" xml:space="preserve">
     <value>Not connected to a Gateway</value>
   </data>
@@ -8326,7 +8317,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>A clear board, ready for work</value>
   </data>
   <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
-    <value>Your agent can pin widgets here. Try asking for a status card.</value>
+    <value>Your agent can pin widgets here.</value>
   </data>
   <data name="Dashboards_GridLabel" xml:space="preserve">
     <value>Dashboard widgets</value>
@@ -8439,17 +8430,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Dashboards_Widget_WebsiteInvalid" xml:space="preserve">
     <value>This website widget needs a valid HTTPS address.</value>
   </data>
-  <data name="Dashboards_Widget_WebsiteFailed" xml:space="preserve">
-    <value>This website couldn't be loaded. Check your connection, then select Retry.</value>
-  </data>
   <data name="Dashboards_Widget_WebsiteOpen" xml:space="preserve">
     <value>Open website</value>
-  </data>
-  <data name="Dashboards_Widget_WebsiteEmbedHint" xml:space="preserve">
-    <value>If this site doesn't load here, open it in your browser.</value>
-  </data>
-  <data name="Dashboards_Widget_WebsiteSameOrigin" xml:space="preserve">
-    <value>Open this website in your browser. Gateway pages can't be embedded in a website widget.</value>
   </data>
   <data name="Command_GoToDashboards_Title" xml:space="preserve">
     <value>Go to Dashboards</value>
@@ -8481,14 +8463,29 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Dashboards_StatAuthors" xml:space="preserve">
     <value>Authors</value>
   </data>
-  <data name="Dashboards_PreviewEmpty" xml:space="preserve">
-    <value>Nothing pinned yet</value>
-  </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
     <value>Open</value>
   </data>
   <data name="Dashboards_AskInChat" xml:space="preserve">
     <value>Ask in chat</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery" xml:space="preserve">
+    <value>Open in web</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_GalleryHint" xml:space="preserve">
+    <value>Opens Dashboards in your browser for editing boards and approving widget access.</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_BoardHint" xml:space="preserve">
+    <value>Opens the Dashboards gallery in your browser, not this dashboard. Find it there by name or session key.</value>
+  </data>
+  <data name="Dashboards_MoreActions" xml:space="preserve">
+    <value>More options</value>
+  </data>
+  <data name="Dashboards_CopySessionKey" xml:space="preserve">
+    <value>Copy session key</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteLinkDetail" xml:space="preserve">
+    <value>This website opens in your browser.</value>
   </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node Sandbox</value>
@@ -8553,4 +8550,31 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway speech timed out. Synthesis may have completed. Check the Gateway before trying again; no automatic retry was made.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway speech failed. Check its voice configuration and provider quota. No local fallback or automatic retry was made.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows could not play the speech audio. Check your output device. No automatic retry was made.</value></data>
+  <data name="Dashboards_OpenChatFor" xml:space="preserve">
+    <value>Open chat: {0}</value>
+  </data>
+  <data name="Dashboards_ForAgentFormat" xml:space="preserve">
+    <value>Dashboards for {0}</value>
+  </data>
+  <data name="Dashboards_CountManyFormat" xml:space="preserve">
+    <value>{0} dashboards</value>
+  </data>
+  <data name="Dashboards_CountOne" xml:space="preserve">
+    <value>1 dashboard</value>
+  </data>
+  <data name="Dashboards_FreshToday" xml:space="preserve">
+    <value>Fresh today</value>
+  </data>
+  <data name="Dashboards_AgentBoards" xml:space="preserve">
+    <value>{0}’s boards</value>
+  </data>
+  <data name="Dashboards_ShowMore" xml:space="preserve">
+    <value>Show more</value>
+  </data>
+  <data name="Dashboards_CopiedSessionKey" xml:space="preserve">
+    <value>Copied session key</value>
+  </data>
+  <data name="Dashboards_CopyFailed" xml:space="preserve">
+    <value>Couldn't copy the session key.</value>
+  </data>
 </root>

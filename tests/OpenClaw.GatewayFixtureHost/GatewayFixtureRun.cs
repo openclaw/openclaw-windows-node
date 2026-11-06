@@ -536,11 +536,10 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         _client?.Dispose();
         _client = null;
         if (_process is null) return;
-        // Retain direct WebView children before killing the app. A browser can
-        // outlive its parent during tree termination and keep Crashpad files open.
+        // Retain every browser descendant before tree termination can orphan it.
         var browsers = FindOwnedBrowsers(_process);
         var owned = new List<Process> { _process };
-        owned.AddRange(browsers);
+        owned.AddRange(browsers.AsEnumerable().Reverse());
         try
         {
             await StopOwnedProcessesAsync(owned, async process =>
@@ -586,7 +585,8 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
 
     private static List<Process> FindOwnedBrowsers(Process app)
     {
-        var owned = new List<Process>();
+        var candidates = new Dictionary<int, Process>();
+        var identities = new List<BrowserProcessIdentity>();
         var appStarted = app.StartTime.ToUniversalTime();
         var latestChildStart = app.HasExited ? app.ExitTime.ToUniversalTime() : DateTime.UtcNow;
         foreach (var candidate in Process.GetProcessesByName("msedgewebview2"))
@@ -594,16 +594,13 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
             var keep = false;
             try
             {
-                if (!candidate.HasExited && candidate.StartTime.ToUniversalTime() >= appStarted
-                    && candidate.StartTime.ToUniversalTime() <= latestChildStart
+                if (!candidate.HasExited
                     && NtQueryInformationProcess(candidate.Handle, 0, out var info,
-                        Marshal.SizeOf<ProcessBasicInformation>(), out _) == 0
-                    && info.ParentProcessId == (nuint)app.Id)
+                        Marshal.SizeOf<ProcessBasicInformation>(), out _) == 0)
                 {
-                    // The retained process handle, parent ID and start time bind this
-                    // to the fixture app, never another session's browser.
+                    identities.Add(new(candidate.Id, checked((int)info.ParentProcessId), candidate.StartTime.ToUniversalTime()));
+                    candidates.Add(candidate.Id, candidate);
                     keep = true;
-                    owned.Add(candidate);
                 }
             }
             catch (System.ComponentModel.Win32Exception)
@@ -620,7 +617,36 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
                     candidate.Dispose();
             }
         }
-        return owned;
+        var ids = SelectOwnedBrowserDescendants(new(app.Id, 0, appStarted), identities, latestChildStart);
+        var selected = ids.ToHashSet();
+        foreach (var candidate in candidates)
+            if (!selected.Contains(candidate.Key))
+                candidate.Value.Dispose();
+        return ids.Select(id => candidates[id]).ToList();
+    }
+
+    internal sealed record BrowserProcessIdentity(int Id, int ParentId, DateTime StartedUtc);
+
+    internal static int[] SelectOwnedBrowserDescendants(BrowserProcessIdentity app,
+        IReadOnlyCollection<BrowserProcessIdentity> candidates, DateTime latestChildStart)
+    {
+        var owned = new Dictionary<int, BrowserProcessIdentity> { [app.Id] = app };
+        var selected = new List<int>();
+        bool added;
+        do
+        {
+            added = false;
+            foreach (var candidate in candidates)
+            {
+                if (owned.ContainsKey(candidate.Id) || !owned.TryGetValue(candidate.ParentId, out var parent) ||
+                    candidate.StartedUtc < parent.StartedUtc || candidate.StartedUtc > latestChildStart)
+                    continue;
+                owned.Add(candidate.Id, candidate);
+                selected.Add(candidate.Id);
+                added = true;
+            }
+        } while (added);
+        return selected.ToArray();
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -638,18 +664,22 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        try
-        {
-            await StopAppAsync();
-        }
-        finally
-        {
-            try
-            {
-                await DisposeGatewayResourcesAsync(Gateway, _control, _foreignControl, ForeignControlCountFile);
-            }
-            finally { Profile.Dispose(); }
-        }
+        await DisposeOwnedResourcesAsync(StopAppAsync,
+            () => DisposeGatewayResourcesAsync(Gateway, _control, _foreignControl, ForeignControlCountFile),
+            Profile.Dispose);
+    }
+
+    internal static async Task DisposeOwnedResourcesAsync(Func<Task> stopApp, Func<Task> disposeGateway, Action disposeProfile)
+    {
+        var errors = new List<Exception>();
+        try { await stopApp(); }
+        catch (Exception error) { errors.Add(error); }
+        try { await disposeGateway(); }
+        catch (Exception error) { errors.Add(error); }
+        try { disposeProfile(); }
+        catch (Exception error) { errors.Add(error); }
+        if (errors.Count > 0)
+            throw new AggregateException("Fixture teardown failed.", errors);
     }
 
     private sealed class McpPortCollisionException : Exception

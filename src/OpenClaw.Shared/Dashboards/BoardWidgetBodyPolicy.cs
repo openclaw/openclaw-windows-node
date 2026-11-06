@@ -5,7 +5,7 @@ public enum BoardWidgetBodyKind
 {
     /// <summary>Ticketed web content in the isolated sandbox host.</summary>
     Frame,
-    /// <summary>MCP app view (Step 3: MCP app host).</summary>
+    /// <summary>MCP app view: not hosted on Windows; shown as a placeholder.</summary>
     McpApp,
     /// <summary>Capabilities requested; the user must allow or reject.</summary>
     NeedsApproval,
@@ -13,7 +13,7 @@ public enum BoardWidgetBodyKind
     Rejected,
     /// <summary>Native <c>session:report</c> renderer.</summary>
     Report,
-    /// <summary>Isolated <c>session:website</c> frame.</summary>
+    /// <summary><c>session:website</c>: a validated link that opens in the browser.</summary>
     Website,
     /// <summary>Trusted core kind without a native renderer yet.</summary>
     UnsupportedCorePlugin,
@@ -26,8 +26,7 @@ public enum BoardWidgetBodyKind
 /// <summary>
 /// Chooses a widget body, matching upstream <c>board-widget-cell.solid.tsx</c>
 /// and <c>lib/board/widgets/index.ts</c>: pending and rejected grants block
-/// content; plugin kinds render only when the Gateway advertises them;
-/// previews admit only saved HTML and preview-safe core widgets.
+/// content; plugin kinds render only when the Gateway advertises them.
 /// </summary>
 public static class BoardWidgetBodyPolicy
 {
@@ -62,17 +61,6 @@ public static class BoardWidgetBodyPolicy
             _ => BoardWidgetBodyKind.UnsupportedCorePlugin,
         };
     }
-
-    /// <summary>
-    /// Previews never acquire live subscriptions or host capabilities: they
-    /// show saved HTML and data-only core widgets.
-    /// </summary>
-    public static bool IsPreviewSafe(BoardWidget widget, IReadOnlyList<PluginWidgetKind> advertisedKinds) =>
-        widget.ContentKind == BoardWidgetContentKind.Html ||
-        (widget.ContentKind == BoardWidgetContentKind.Plugin &&
-         string.IsNullOrEmpty(widget.FrameUrl) &&
-         widget.PluginKind == ReportKind &&
-         IsAdvertisedCoreKind(widget, advertisedKinds));
 
     /// <summary>Label of an advertised core plugin kind, if any.</summary>
     public static string? AdvertisedLabel(BoardWidget widget, IReadOnlyList<PluginWidgetKind> advertisedKinds) =>

@@ -3,25 +3,18 @@ using Microsoft.Web.WebView2.Core;
 namespace OpenClawTray.Dashboards;
 
 /// <summary>
-/// WebView2 environment for untrusted board content. It uses its own user
-/// data folder, so widgets run in a browser process separate from Canvas and
-/// Gateway Chat, and every controller uses an in-private profile so nothing
-/// persists between sessions.
+/// WebView2 environment for untrusted board widget content. It uses its own
+/// user data folder, so widgets run in a browser process separate from Canvas
+/// and Gateway Chat, and every controller uses an in-private profile so
+/// nothing persists between sessions.
 /// </summary>
 internal static class BoardWebViewEnvironment
 {
-    public const string WidgetProfile = "openclaw-board-widgets";
-
-    /// <summary>Prefix of the per-widget website profiles; see <see cref="NewWebsiteProfileName"/>.</summary>
-    public const string WebsiteProfilePrefix = "openclaw-board-website-";
-
     /// <summary>
-    /// A fresh profile name for one website WebView, so same-origin sites in
-    /// different website widgets never share cookies or storage. HTML widgets
-    /// share <see cref="WidgetProfile"/> safely: their content runs in an
-    /// opaque-origin sandbox frame without <c>allow-same-origin</c>.
+    /// Shared by HTML widgets: their content runs in an opaque-origin sandbox
+    /// frame without <c>allow-same-origin</c>, so widgets cannot share storage.
     /// </summary>
-    public static string NewWebsiteProfileName() => WebsiteProfilePrefix + Guid.NewGuid().ToString("N");
+    public const string WidgetProfile = "openclaw-board-widgets";
 
     private static Task<CoreWebView2Environment>? s_environment;
 

@@ -8162,12 +8162,6 @@
   <data name="Dashboards_AgentLabel" xml:space="preserve">
     <value>代理</value>
   </data>
-  <data name="Dashboards_AllAuthors" xml:space="preserve">
-    <value>所有作者</value>
-  </data>
-  <data name="Dashboards_AuthorLabel" xml:space="preserve">
-    <value>作者</value>
-  </data>
   <data name="Dashboards_SortLabel" xml:space="preserve">
     <value>排序</value>
   </data>
@@ -8225,9 +8219,6 @@
   <data name="Dashboards_UpdatedUnknown" xml:space="preserve">
     <value>更新时间未知</value>
   </data>
-  <data name="Dashboards_PreviewErrorFormat" xml:space="preserve">
-    <value>预览不可用: {0}</value>
-  </data>
   <data name="Dashboards_Disconnected_Title" xml:space="preserve">
     <value>未连接到网关</value>
   </data>
@@ -8259,7 +8250,7 @@
     <value>空白看板，随时可用</value>
   </data>
   <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
-    <value>代理可以在此固定小组件。试试请求一张状态卡。</value>
+    <value>代理可以在此固定小组件。</value>
   </data>
   <data name="Dashboards_GridLabel" xml:space="preserve">
     <value>仪表板小组件</value>
@@ -8372,17 +8363,8 @@
   <data name="Dashboards_Widget_WebsiteInvalid" xml:space="preserve">
     <value>此网站小组件需要有效的 HTTPS 地址。</value>
   </data>
-  <data name="Dashboards_Widget_WebsiteFailed" xml:space="preserve">
-    <value>无法加载此网站。请检查连接，然后选择“重试”。</value>
-  </data>
   <data name="Dashboards_Widget_WebsiteOpen" xml:space="preserve">
     <value>打开网站</value>
-  </data>
-  <data name="Dashboards_Widget_WebsiteEmbedHint" xml:space="preserve">
-    <value>如果此网站无法在此处加载，请在浏览器中打开。</value>
-  </data>
-  <data name="Dashboards_Widget_WebsiteSameOrigin" xml:space="preserve">
-    <value>请在浏览器中打开此网站。网关页面无法嵌入网站小组件。</value>
   </data>
   <data name="Command_GoToDashboards_Title" xml:space="preserve">
     <value>转到仪表板</value>
@@ -8414,14 +8396,29 @@
   <data name="Dashboards_StatAuthors" xml:space="preserve">
     <value>作者</value>
   </data>
-  <data name="Dashboards_PreviewEmpty" xml:space="preserve">
-    <value>尚未固定任何内容</value>
-  </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
     <value>打开</value>
   </data>
   <data name="Dashboards_AskInChat" xml:space="preserve">
     <value>在聊天中询问</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery" xml:space="preserve">
+    <value>在网页中打开</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_GalleryHint" xml:space="preserve">
+    <value>在浏览器中打开仪表板，以编辑仪表板并批准小组件访问权限。</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_BoardHint" xml:space="preserve">
+    <value>在浏览器中打开仪表板库，而不是此仪表板。可按名称或会话密钥在其中找到它。</value>
+  </data>
+  <data name="Dashboards_MoreActions" xml:space="preserve">
+    <value>更多选项</value>
+  </data>
+  <data name="Dashboards_CopySessionKey" xml:space="preserve">
+    <value>复制会话密钥</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteLinkDetail" xml:space="preserve">
+    <value>此网站将在浏览器中打开。</value>
   </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>节点沙盒</value>
@@ -8486,4 +8483,31 @@
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 语音已超时。合成可能已完成。再次尝试前请检查 Gateway；未进行自动重试。</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 语音失败。请检查其语音配置和提供商配额。未回退到本地或自动重试。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 无法播放语音音频。请检查输出设备。未进行自动重试。</value></data>
+  <data name="Dashboards_OpenChatFor" xml:space="preserve">
+    <value>打开聊天：{0}</value>
+  </data>
+  <data name="Dashboards_ForAgentFormat" xml:space="preserve">
+    <value>{0} 的仪表板</value>
+  </data>
+  <data name="Dashboards_CountManyFormat" xml:space="preserve">
+    <value>{0} 个仪表板</value>
+  </data>
+  <data name="Dashboards_CountOne" xml:space="preserve">
+    <value>1 个仪表板</value>
+  </data>
+  <data name="Dashboards_FreshToday" xml:space="preserve">
+    <value>今日更新</value>
+  </data>
+  <data name="Dashboards_AgentBoards" xml:space="preserve">
+    <value>{0} 的仪表板</value>
+  </data>
+  <data name="Dashboards_ShowMore" xml:space="preserve">
+    <value>显示更多</value>
+  </data>
+  <data name="Dashboards_CopiedSessionKey" xml:space="preserve">
+    <value>已复制会话密钥</value>
+  </data>
+  <data name="Dashboards_CopyFailed" xml:space="preserve">
+    <value>无法复制会话密钥。</value>
+  </data>
 </root>

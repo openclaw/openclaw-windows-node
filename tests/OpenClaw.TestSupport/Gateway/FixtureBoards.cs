@@ -43,6 +43,13 @@ public sealed class FixtureBoards
                 OpsRow(EmptySessionKey, "main", "Fixture: empty board", "fixture-owner", "Fixture Owner", s_now - 86_400_000, "idle", "Nothing pinned yet."),
                 [new Tab("main", "Main", 0)], []),
         };
+        foreach (var (key, title) in new[] { ("reading", "Reading list"), ("travel", "Travel plans"), ("energy", "Home energy") })
+        {
+            var session = "agent:main:dashboard:" + key;
+            _boards[session] = new BoardDefinition(
+                OpsRow(session, "main", title, "fixture-owner", "Fixture Owner", s_now - 2 * 86_400_000, "idle", "Synthetic saved board."),
+                [new Tab("main", "Main", 0)], []);
+        }
     }
 
     /// <summary>Loopback port of the sandbox proxy listener; set by the fixture server.</summary>
@@ -61,6 +68,8 @@ public sealed class FixtureBoards
     {
         GatewayScenario.ValidateProperties(p, "rowMode", "source", "includeGlobal", "includeUnknown", "configuredAgentsOnly",
             "excludeDock", "hasBoard", "archived", "limit", "offset", "agentId");
+        if (GatewayScenario.OptionalString(p, "rowMode") is { } mode && mode != "compact")
+            throw new FixtureRequestException("INVALID_PARAMS", "invalid sessions.list params: at /rowMode: must be equal to constant");
         var agent = GatewayScenario.OptionalString(p, "agentId");
         var limit = GatewayScenario.PositiveInt(p, "limit", int.MaxValue);
         var offset = p.TryGetProperty("offset", out var o) && o.ValueKind == JsonValueKind.Number ? o.GetInt32() : 0;

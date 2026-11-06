@@ -8,6 +8,8 @@ namespace OpenClawTray.Dashboards;
 /// <summary>Localized text projections for the dashboards surface.</summary>
 internal static class DashboardsPresentation
 {
+    public const double BoardTileMinWidth = 240;
+
     public static string RowTitle(DashboardSessionRow row) => SessionTitleFormatter.Format(row.Session);
 
     /// <summary>Largest Unix millisecond value <see cref="DateTimeOffset"/> can represent (year 9999).</summary>

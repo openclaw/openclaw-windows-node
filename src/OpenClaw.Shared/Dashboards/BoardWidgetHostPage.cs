@@ -57,7 +57,7 @@ public static class BoardWidgetHostPage
         <!doctype html>
         <html><head><meta charset="utf-8"><meta name="referrer" content="origin">
         <style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}
-        iframe{display:block;border:0;background:transparent;width:100%;height:100%;transform-origin:0 0}</style>
+        iframe{display:block;border:0;background:transparent;width:100%;height:100%}</style>
         </head><body>
         <script nonce="{{nonce}}">
         (() => {
@@ -69,15 +69,6 @@ public static class BoardWidgetHostPage
           // from its document's. Track the widget theme on the element; the page stays
           // transparent so native card chrome shows through.
           const setScheme = (mode) => { if (frame && (mode === "light" || mode === "dark")) frame.style.colorScheme = mode; };
-          // Previews render the full-size widget scaled down; resizing only changes the transform.
-          const setScale = (value) => {
-            if (!frame) return;
-            const scale = Number(value);
-            const mini = Number.isFinite(scale) && scale > 0 && scale < 1;
-            frame.style.width = mini ? (100 / scale) + "%" : "";
-            frame.style.height = mini ? (100 / scale) + "%" : "";
-            frame.style.transform = mini ? "scale(" + scale + ")" : "";
-          };
           window.addEventListener("message", (event) => {
             if (!frame || event.source !== frame.contentWindow || event.origin !== sandboxOrigin) return;
             // Widgets get no host bridge authority: close every offered private port.
@@ -94,15 +85,10 @@ public static class BoardWidgetHostPage
               frame = document.createElement("iframe");
               frame.setAttribute("title", String(message.title || ""));
               frame.setAttribute("allow", "fullscreen");
-              setScale(message.scale);
               frame.addEventListener("error", () => send("frame-error", null));
               frame.src = String(message.sandboxUrl || "about:blank");
               try { setScheme(new URLSearchParams(new URL(frame.src).hash.slice(1)).get("theme")); } catch {}
               document.body.appendChild(frame);
-              return;
-            }
-            if (message.channel === "scale") {
-              setScale(message.scale);
               return;
             }
             if (message.channel === "sandbox" && frame && frame.contentWindow) {
@@ -152,19 +138,14 @@ public static class BoardWidgetHostPage
         string.Equals(parsed.GetLeftPart(UriPartial.Path), PageUrl, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Native-to-page <c>init</c> message.</summary>
-    public static string InitMessage(Uri sandboxUrl, string title, double scale) =>
+    public static string InitMessage(Uri sandboxUrl, string title) =>
         JsonSerializer.Serialize(new
         {
             channel = "init",
             sandboxUrl = sandboxUrl.AbsoluteUri,
             sandboxOrigin = BoardWidgetUrlPolicy.OriginString(sandboxUrl),
             title,
-            scale = scale > 0 && scale < 1 ? scale : 1,
         });
-
-    /// <summary>Native-to-page preview scale change; the loaded document stays in place.</summary>
-    public static string ScaleMessage(double scale) =>
-        JsonSerializer.Serialize(new { channel = "scale", scale = scale > 0 && scale < 1 ? scale : 1 });
 
     /// <summary>Native-to-proxy document delivery (<c>sandbox-resource-ready</c>).</summary>
     public static string ResourceReadyMessage(string html, string renderId) =>

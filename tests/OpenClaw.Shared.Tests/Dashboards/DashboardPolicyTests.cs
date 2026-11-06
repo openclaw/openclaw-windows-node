@@ -23,13 +23,6 @@ public class DashboardGalleryPolicyTests
     }
 
     [Fact]
-    public void Authors_AreDistinctAndOrderedByLabel()
-    {
-        var authors = DashboardGalleryPolicy.Authors([Release, Ops, Study, Ops], "main");
-        Assert.Equal(["Ada", "Release Bot", "research"], authors.Select(author => author.Label));
-    }
-
-    [Fact]
     public void DefaultSort_IsMostRecentlyUpdated()
     {
         var rows = DashboardGalleryPolicy.Apply([Release, Study, Ops], new(), "main", Title);
@@ -52,13 +45,6 @@ public class DashboardGalleryPolicyTests
     {
         var rows = DashboardGalleryPolicy.Apply([Ops, Release, Study], new(Query: query), "main", Title);
         Assert.Equal([expectedKey], rows.Select(row => row.Key));
-    }
-
-    [Fact]
-    public void AuthorFilter_KeepsOnlyThatAuthor()
-    {
-        var rows = DashboardGalleryPolicy.Apply([Ops, Release, Study], new(AuthorId: "bot"), "main", Title);
-        Assert.Equal([Release], rows.ToArray());
     }
 
     [Fact]
@@ -165,6 +151,14 @@ public class BoardReportParserTests
     [Fact]
     public void Parse_RejectsMissingProps() => Assert.Throws<FormatException>(() => BoardReportParser.Parse(null));
 
+    [Theory]
+    [InlineData("""{ "blocks": [ { "type": "metrics", "items": [ { "label": "Uptime" } ] } ] }""")]
+    [InlineData("""{ "blocks": [ { "type": "metrics", "items": [ { "label": "Uptime", "value": null } ] } ] }""")]
+    [InlineData("""{ "blocks": [ { "type": "chart", "points": [ { "label": "Today" } ] } ] }""")]
+    [InlineData("""{ "blocks": [ { "type": "chart", "points": [ { "label": "Today", "value": null } ] } ] }""")]
+    public void Parse_MissingMeasurementsDoNotBecomeZeroOrSuccessfulValues(string json) =>
+        Assert.Throws<FormatException>(() => BoardReportParser.Parse(Json(json)));
+
     private static JsonElement Json(string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -205,16 +199,6 @@ public class BoardWidgetBodyPolicyTests
     [Fact]
     public void Plugins_AreDisabledWhenGatewayDoesNotAdvertiseThem() =>
         Assert.Equal(BoardWidgetBodyKind.DisabledPlugin, BoardWidgetBodyPolicy.Resolve(TestWidgets.Plugin("p", "session:report"), []));
-
-    [Fact]
-    public void Previews_AdmitOnlyHtmlAndDataOnlyReports()
-    {
-        Assert.True(BoardWidgetBodyPolicy.IsPreviewSafe(TestWidgets.Html("w"), Kinds));
-        Assert.True(BoardWidgetBodyPolicy.IsPreviewSafe(TestWidgets.Plugin("r", "session:report"), Kinds));
-        Assert.False(BoardWidgetBodyPolicy.IsPreviewSafe(TestWidgets.Plugin("s", "session:website"), Kinds));
-        Assert.False(BoardWidgetBodyPolicy.IsPreviewSafe(TestWidgets.Plugin("r", "session:report"), []));
-        Assert.False(BoardWidgetBodyPolicy.IsPreviewSafe(TestWidgets.Html("m") with { ContentKind = BoardWidgetContentKind.McpApp }, Kinds));
-    }
 }
 
 public class BoardWidgetHostPageTests
@@ -274,18 +258,13 @@ public class BoardWidgetHostPageTests
     }
 
     [Fact]
-    public void InitMessage_CarriesSandboxOriginAndScale()
+    public void InitMessage_CarriesSandboxOriginAndTitle()
     {
         using var init = JsonDocument.Parse(BoardWidgetHostPage.InitMessage(
-            new Uri("http://127.0.0.1:18790/mcp-app-sandbox?v=1#theme=dark"), "Chart", scale: 0.25));
+            new Uri("http://127.0.0.1:18790/mcp-app-sandbox?v=1#theme=dark"), "Chart"));
         Assert.Equal("init", init.RootElement.GetProperty("channel").GetString());
         Assert.Equal("http://127.0.0.1:18790", init.RootElement.GetProperty("sandboxOrigin").GetString());
-        Assert.Equal(0.25, init.RootElement.GetProperty("scale").GetDouble());
-
-        using var rescale = JsonDocument.Parse(BoardWidgetHostPage.ScaleMessage(0.4));
-        Assert.Equal("scale", rescale.RootElement.GetProperty("channel").GetString());
-        Assert.Equal(0.4, rescale.RootElement.GetProperty("scale").GetDouble());
-        Assert.Contains("message.channel === \"scale\"", BoardWidgetHostPage.BuildHtml("n"));
+        Assert.Equal("Chart", init.RootElement.GetProperty("title").GetString());
     }
 }
 

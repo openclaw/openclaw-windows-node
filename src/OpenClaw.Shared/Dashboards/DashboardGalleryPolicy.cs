@@ -9,8 +9,8 @@ public enum DashboardGallerySort
     Title,
 }
 
-/// <summary>User-selected gallery filters. An empty author id means all authors.</summary>
-public sealed record DashboardGalleryFilters(string Query = "", string AuthorId = "", DashboardGallerySort Sort = DashboardGallerySort.Updated);
+/// <summary>User-selected gallery search and ordering.</summary>
+public sealed record DashboardGalleryFilters(string Query = "", DashboardGallerySort Sort = DashboardGallerySort.Updated);
 
 public sealed record DashboardAuthor(string Id, string Label)
 {
@@ -29,7 +29,7 @@ public sealed record DashboardAuthor(string Id, string Label)
 
 /// <summary>
 /// Gallery projection matching upstream <c>pages/dashboards/view.tsx</c>:
-/// author resolution, search, author filter, and ordering.
+/// author resolution, search, and ordering.
 /// </summary>
 public static class DashboardGalleryPolicy
 {
@@ -43,18 +43,6 @@ public static class DashboardGalleryPolicy
         var id = FirstNonBlank(actor?.Id, row.AgentId, fallbackAgentId) ?? "";
         var label = FirstNonBlank(actor?.Label, id) ?? "";
         return new DashboardAuthor(id, label);
-    }
-
-    /// <summary>Distinct authors of all rows, ordered by label for the author filter.</summary>
-    public static ImmutableArray<DashboardAuthor> Authors(IEnumerable<DashboardSessionRow> rows, string fallbackAgentId)
-    {
-        var byId = new Dictionary<string, DashboardAuthor>(StringComparer.Ordinal);
-        foreach (var row in rows)
-        {
-            var author = ResolveAuthor(row, fallbackAgentId);
-            byId[author.Id] = author;
-        }
-        return [.. byId.Values.OrderBy(author => author.Label, StringComparer.CurrentCulture)];
     }
 
     /// <summary>
@@ -72,8 +60,6 @@ public static class DashboardGalleryPolicy
         var matches = rows.Where(row =>
         {
             var author = ResolveAuthor(row, fallbackAgentId);
-            if (filters.AuthorId.Length > 0 && !string.Equals(author.Id, filters.AuthorId, StringComparison.Ordinal))
-                return false;
             return query.Length == 0 ||
                 Contains(title(row), query) ||
                 Contains(author.Label, query) ||

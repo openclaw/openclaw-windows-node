@@ -128,7 +128,7 @@ public sealed record BoardSessionTarget(string SessionKey, string? AgentId);
 /// <summary>Projected actor (<c>SessionCreatedActorSchema</c>) with display label.</summary>
 public sealed record DashboardActor(string? Id, string? Label);
 
-/// <summary>One dashboard gallery row from <c>sessions.list</c> with <c>rowMode:"dashboard"</c>.</summary>
+/// <summary>One dashboard gallery row from <c>sessions.list</c> with <c>rowMode:"compact"</c> and <c>hasBoard:true</c>.</summary>
 public sealed record DashboardSessionRow
 {
     public required SessionInfo Session { get; init; }

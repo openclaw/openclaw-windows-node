@@ -8214,12 +8214,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Dashboards_AgentLabel" xml:space="preserve">
     <value>Agente</value>
   </data>
-  <data name="Dashboards_AllAuthors" xml:space="preserve">
-    <value>Todos os autores</value>
-  </data>
-  <data name="Dashboards_AuthorLabel" xml:space="preserve">
-    <value>Autor</value>
-  </data>
   <data name="Dashboards_SortLabel" xml:space="preserve">
     <value>Ordenar</value>
   </data>
@@ -8277,9 +8271,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Dashboards_UpdatedUnknown" xml:space="preserve">
     <value>Hora da atualização desconhecida</value>
   </data>
-  <data name="Dashboards_PreviewErrorFormat" xml:space="preserve">
-    <value>Visualização indisponível: {0}</value>
-  </data>
   <data name="Dashboards_Disconnected_Title" xml:space="preserve">
     <value>Não conectado a um gateway</value>
   </data>
@@ -8311,7 +8302,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
     <value>Um painel limpo, pronto para o trabalho</value>
   </data>
   <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
-    <value>Seu agente pode fixar widgets aqui. Tente pedir um cartão de status.</value>
+    <value>Seu agente pode fixar widgets aqui.</value>
   </data>
   <data name="Dashboards_GridLabel" xml:space="preserve">
     <value>Widgets do painel</value>
@@ -8424,17 +8415,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Dashboards_Widget_WebsiteInvalid" xml:space="preserve">
     <value>Este widget de site precisa de um endereço HTTPS válido.</value>
   </data>
-  <data name="Dashboards_Widget_WebsiteFailed" xml:space="preserve">
-    <value>Não foi possível carregar este site. Verifique sua conexão e selecione Tentar novamente.</value>
-  </data>
   <data name="Dashboards_Widget_WebsiteOpen" xml:space="preserve">
     <value>Abrir site</value>
-  </data>
-  <data name="Dashboards_Widget_WebsiteEmbedHint" xml:space="preserve">
-    <value>Se este site não carregar aqui, abra-o no navegador.</value>
-  </data>
-  <data name="Dashboards_Widget_WebsiteSameOrigin" xml:space="preserve">
-    <value>Abra este site no navegador. As páginas do gateway não podem ser incorporadas em um widget de site.</value>
   </data>
   <data name="Command_GoToDashboards_Title" xml:space="preserve">
     <value>Ir para Painéis</value>
@@ -8466,14 +8448,29 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Dashboards_StatAuthors" xml:space="preserve">
     <value>Autores</value>
   </data>
-  <data name="Dashboards_PreviewEmpty" xml:space="preserve">
-    <value>Nada fixado ainda</value>
-  </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
     <value>Abrir</value>
   </data>
   <data name="Dashboards_AskInChat" xml:space="preserve">
     <value>Perguntar no chat</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery" xml:space="preserve">
+    <value>Abrir na web</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_GalleryHint" xml:space="preserve">
+    <value>Abre os painéis no navegador para editar painéis e aprovar o acesso de widgets.</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_BoardHint" xml:space="preserve">
+    <value>Abre a galeria de painéis no navegador, não este painel. Encontre-o pelo nome ou pela chave da sessão.</value>
+  </data>
+  <data name="Dashboards_MoreActions" xml:space="preserve">
+    <value>Mais opções</value>
+  </data>
+  <data name="Dashboards_CopySessionKey" xml:space="preserve">
+    <value>Copiar chave da sessão</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteLinkDetail" xml:space="preserve">
+    <value>Este site abre no navegador.</value>
   </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Sandbox do Node</value>
@@ -8538,4 +8535,31 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>O tempo da fala da Gateway esgotou. A síntese pode ter terminado. Verifique a Gateway antes de tentar de novo. Não houve nova tentativa automática.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>A fala da Gateway falhou. Verifique a configuração de voz e a cota do provedor. Não houve alternativa local nem nova tentativa automática.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>O Windows não conseguiu reproduzir o áudio. Verifique o dispositivo de saída. Não houve nova tentativa automática.</value></data>
+  <data name="Dashboards_OpenChatFor" xml:space="preserve">
+    <value>Abrir conversa: {0}</value>
+  </data>
+  <data name="Dashboards_ForAgentFormat" xml:space="preserve">
+    <value>Painéis de {0}</value>
+  </data>
+  <data name="Dashboards_CountManyFormat" xml:space="preserve">
+    <value>{0} painéis</value>
+  </data>
+  <data name="Dashboards_CountOne" xml:space="preserve">
+    <value>1 painel</value>
+  </data>
+  <data name="Dashboards_FreshToday" xml:space="preserve">
+    <value>Atualizados hoje</value>
+  </data>
+  <data name="Dashboards_AgentBoards" xml:space="preserve">
+    <value>Painéis de {0}</value>
+  </data>
+  <data name="Dashboards_ShowMore" xml:space="preserve">
+    <value>Mostrar mais</value>
+  </data>
+  <data name="Dashboards_CopiedSessionKey" xml:space="preserve">
+    <value>Chave da sessão copiada</value>
+  </data>
+  <data name="Dashboards_CopyFailed" xml:space="preserve">
+    <value>Não foi possível copiar a chave da sessão.</value>
+  </data>
 </root>

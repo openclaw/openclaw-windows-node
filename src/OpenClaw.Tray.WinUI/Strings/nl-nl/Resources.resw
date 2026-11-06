@@ -8163,12 +8163,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Dashboards_AgentLabel" xml:space="preserve">
     <value>Agent</value>
   </data>
-  <data name="Dashboards_AllAuthors" xml:space="preserve">
-    <value>Alle auteurs</value>
-  </data>
-  <data name="Dashboards_AuthorLabel" xml:space="preserve">
-    <value>Auteur</value>
-  </data>
   <data name="Dashboards_SortLabel" xml:space="preserve">
     <value>Sorteren</value>
   </data>
@@ -8226,9 +8220,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Dashboards_UpdatedUnknown" xml:space="preserve">
     <value>Bijwerktijd onbekend</value>
   </data>
-  <data name="Dashboards_PreviewErrorFormat" xml:space="preserve">
-    <value>Voorbeeld niet beschikbaar: {0}</value>
-  </data>
   <data name="Dashboards_Disconnected_Title" xml:space="preserve">
     <value>Niet verbonden met een gateway</value>
   </data>
@@ -8260,7 +8251,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Een leeg bord, klaar voor gebruik</value>
   </data>
   <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
-    <value>Je agent kan hier widgets vastmaken. Vraag bijvoorbeeld om een statuskaart.</value>
+    <value>Je agent kan hier widgets vastmaken.</value>
   </data>
   <data name="Dashboards_GridLabel" xml:space="preserve">
     <value>Dashboardwidgets</value>
@@ -8373,17 +8364,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Dashboards_Widget_WebsiteInvalid" xml:space="preserve">
     <value>Deze websitewidget heeft een geldig HTTPS-adres nodig.</value>
   </data>
-  <data name="Dashboards_Widget_WebsiteFailed" xml:space="preserve">
-    <value>Deze website kan niet worden geladen. Controleer je verbinding en selecteer daarna Opnieuw proberen.</value>
-  </data>
   <data name="Dashboards_Widget_WebsiteOpen" xml:space="preserve">
     <value>Website openen</value>
-  </data>
-  <data name="Dashboards_Widget_WebsiteEmbedHint" xml:space="preserve">
-    <value>Als deze site hier niet laadt, open je deze in je browser.</value>
-  </data>
-  <data name="Dashboards_Widget_WebsiteSameOrigin" xml:space="preserve">
-    <value>Open deze website in je browser. Gatewaypagina's kunnen niet in een websitewidget worden ingesloten.</value>
   </data>
   <data name="Command_GoToDashboards_Title" xml:space="preserve">
     <value>Naar dashboards gaan</value>
@@ -8415,14 +8397,29 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Dashboards_StatAuthors" xml:space="preserve">
     <value>Auteurs</value>
   </data>
-  <data name="Dashboards_PreviewEmpty" xml:space="preserve">
-    <value>Nog niets vastgemaakt</value>
-  </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
     <value>Openen</value>
   </data>
   <data name="Dashboards_AskInChat" xml:space="preserve">
     <value>Vragen in chat</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery" xml:space="preserve">
+    <value>Openen op het web</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_GalleryHint" xml:space="preserve">
+    <value>Opent Dashboards in je browser om dashboards te bewerken en widgettoegang goed te keuren.</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_BoardHint" xml:space="preserve">
+    <value>Opent de dashboardgalerie in je browser, niet dit dashboard. Zoek het daar op naam of sessiesleutel.</value>
+  </data>
+  <data name="Dashboards_MoreActions" xml:space="preserve">
+    <value>Meer opties</value>
+  </data>
+  <data name="Dashboards_CopySessionKey" xml:space="preserve">
+    <value>Sessiesleutel kopiëren</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteLinkDetail" xml:space="preserve">
+    <value>Deze website wordt geopend in je browser.</value>
   </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node-sandbox</value>
@@ -8487,4 +8484,31 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Time-out voor Gateway-spraak. Synthese kan voltooid zijn. Controleer de Gateway voordat u opnieuw probeert. Er is niet automatisch opnieuw geprobeerd.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway-spraak mislukt. Controleer de steminstellingen en het providerquotum. Geen lokale terugval of automatische herhaling.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
+  <data name="Dashboards_OpenChatFor" xml:space="preserve">
+    <value>Chat openen: {0}</value>
+  </data>
+  <data name="Dashboards_ForAgentFormat" xml:space="preserve">
+    <value>Dashboards voor {0}</value>
+  </data>
+  <data name="Dashboards_CountManyFormat" xml:space="preserve">
+    <value>{0} dashboards</value>
+  </data>
+  <data name="Dashboards_CountOne" xml:space="preserve">
+    <value>1 dashboard</value>
+  </data>
+  <data name="Dashboards_FreshToday" xml:space="preserve">
+    <value>Vandaag bijgewerkt</value>
+  </data>
+  <data name="Dashboards_AgentBoards" xml:space="preserve">
+    <value>Dashboards van {0}</value>
+  </data>
+  <data name="Dashboards_ShowMore" xml:space="preserve">
+    <value>Meer tonen</value>
+  </data>
+  <data name="Dashboards_CopiedSessionKey" xml:space="preserve">
+    <value>Sessiesleutel gekopieerd</value>
+  </data>
+  <data name="Dashboards_CopyFailed" xml:space="preserve">
+    <value>De sessiesleutel kon niet worden gekopieerd.</value>
+  </data>
 </root>

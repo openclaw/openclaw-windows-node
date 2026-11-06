@@ -434,7 +434,7 @@ public sealed partial class GatewayScenario
     {
         if (_boards is not null && method == "board.get")
             return _boards.GetBoard(parameters);
-        if (_boards is not null && method == "sessions.list" && OptionalString(parameters, "rowMode") == "dashboard")
+        if (_boards is not null && method == "sessions.list" && OptionalString(parameters, "source") == "dashboard")
             return _boards.ListSessions(parameters);
         if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
             return RespondCron(method, parameters);
