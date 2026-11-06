@@ -150,15 +150,15 @@ public sealed partial class GatewayFixtureUiTests
 
             var connection = FindById(run, "SettingsNavConnection")!;
             ((ScrollItemPattern)connection.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
-            var channelsName = new PropertyCondition(AutomationElement.NameProperty, "Channels");
-            Assert.NotNull(FindInApp(run, channelsName));
+            var systemsName = new PropertyCondition(AutomationElement.NameProperty, "Systems");
+            Assert.NotNull(FindInApp(run, systemsName));
             run.Gateway.HoldConnectionHandshakes();
             releaseHandshake = run.Gateway.ReleaseConnectionHandshakes;
             await run.Gateway.CloseConnectionsAsync();
             await run.WaitForAsync(async () =>
                 (await run.InvokeAsync("app.status")).GetProperty("operatorState").GetString() != "Connected",
                 "fixture operator disconnected");
-            await WaitUiAsync(run, () => FindInApp(run, channelsName) is null,
+            await WaitUiAsync(run, () => FindInApp(run, systemsName) is null,
                 "Gateway-dependent entries hidden while disconnected");
             Assert.True(connection.Current.IsEnabled);
             ((ScrollItemPattern)connection.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();

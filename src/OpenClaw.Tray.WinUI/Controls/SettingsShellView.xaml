@@ -25,7 +25,6 @@
                     <SvgImageSource x:Key="Chat_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Chat.svg"/>
                     <SvgImageSource x:Key="Connection_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Connection.svg"/>
                     <SvgImageSource x:Key="Sessions_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Sessions.svg"/>
-                    <SvgImageSource x:Key="Channels_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Channels.svg"/>
                     <SvgImageSource x:Key="Instances_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Instances.svg"/>
                     <SvgImageSource x:Key="Agents_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Agents.svg"/>
                     <SvgImageSource x:Key="Config_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Config.svg"/>
@@ -51,9 +50,6 @@
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_88" Tag="connection" Content="Connection"
                                         AutomationProperties.AutomationId="SettingsNavConnection">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Connection_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-                    </NavigationViewItem>
-                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_109" x:Name="NavChannels" Tag="channels" Content="Channels">
-                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Channels_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_112" x:Name="NavInstances" Tag="instances" Content="Systems">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Instances_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>

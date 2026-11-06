@@ -27,7 +27,7 @@ public sealed class WorkspaceRoutingBoundaryTests
             {
                 try
                 {
-                    WorkspaceNavigation.Dispatch(page, _ => workspaceCalls++, _ => companionCalls++);
+                    WorkspaceNavigation.Dispatch(page, _ => workspaceCalls++, _ => companionCalls++, _ => { });
                     return Task.FromResult<object?>(new { navigated = true, page });
                 }
                 catch (ArgumentException ex)
@@ -71,11 +71,29 @@ public sealed class WorkspaceRoutingBoundaryTests
     {
         var workspaces = new List<WorkspaceDestination>();
         var companions = new List<string>();
-        WorkspaceNavigation.Dispatch(route, workspaces.Add, companions.Add);
+        var dashboards = new List<string>();
+        WorkspaceNavigation.Dispatch(route, workspaces.Add, companions.Add, dashboards.Add);
         Assert.Equal(workspace ? 1 : 0, workspaces.Count);
         Assert.Equal(workspace ? 0 : 1, companions.Count);
+        Assert.Empty(dashboards);
         if (!workspace)
             Assert.Equal(route, Assert.Single(companions));
+    }
+
+    [Theory]
+    [InlineData("channels")]
+    [InlineData("activity")]
+    public void RetiredChannelRoutes_OpenDashboardInsteadOfAnEmptySettingsPage(string route)
+    {
+        var workspaces = new List<WorkspaceDestination>();
+        var companions = new List<string>();
+        var dashboards = new List<string>();
+
+        WorkspaceNavigation.Dispatch(route, workspaces.Add, companions.Add, dashboards.Add);
+
+        Assert.Empty(workspaces);
+        Assert.Empty(companions);
+        Assert.Equal("channels", Assert.Single(dashboards));
     }
 
     [Fact]
@@ -87,8 +105,9 @@ public sealed class WorkspaceRoutingBoundaryTests
         var workspace = File.ReadAllText(Path.Combine(root, "Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("WorkspaceNavigation.Dispatch(navigateTo, destination =>", manager);
         Assert.Contains("tag => ShowWorkspace(WorkspaceDestination.Settings(\"settings\"), activate, preserveCurrent: false, settingsTag: tag)", manager);
+        Assert.Contains("path => ((IAppCommands)Application.Current).OpenDashboard(path)", manager);
         Assert.DoesNotContain("ShowCompanion", manager);
-        Assert.Contains("WorkspaceNavigation.Dispatch(tag, _ => WorkspaceRouteRequested?.Invoke(tag), NavigateCompanion)",
+        Assert.Contains("WorkspaceNavigation.Dispatch(tag, _ => WorkspaceRouteRequested?.Invoke(tag), NavigateCompanion,",
             File.ReadAllText(Path.Combine(root, "Controls", "SettingsShellView.xaml.cs")));
         Assert.Contains("WorkspaceNavigation.Dispatch(", workspace);
     }

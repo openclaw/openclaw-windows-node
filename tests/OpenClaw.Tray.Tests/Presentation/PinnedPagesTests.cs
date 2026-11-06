@@ -37,7 +37,7 @@ public sealed class PinnedPagesTests
     public void Visible_OmitsUnknownTags_ButStorageKeepsThem()
     {
         var visible = PinnedPages.Visible(["future-page", "channels"]);
-        Assert.Equal(["channels"], visible.Select(page => page.Tag).ToArray());
+        Assert.Empty(visible);
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public sealed class PinnedPagesTests
         Assert.Equal(HubPageKind.Sandbox, HubPageRegistry.ResolvePage("sandbox"));
         Assert.Equal(tags.Length, tags.Distinct().Count());
         Assert.Equal(
-            ["connection", "sessions", "channels", "instances", "cron", "config", "usage"],
+            ["connection", "sessions", "instances", "cron", "config", "usage"],
             tags);
     }
 
@@ -76,20 +76,20 @@ public sealed class PinnedPagesTests
     {
         using var temp = new TempDir();
         var settings = new SettingsManager(temp.Path);
-        settings.SetPinnedPages("gw-a", ["settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "skills", "agentevents", "future-page", "connection"]);
+        settings.SetPinnedPages("gw-a", ["settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "skills", "channels", "agentevents", "future-page", "connection"]);
         settings.Save();
         using (var store = Store(temp.Path, out _))
         {
             Assert.Equal(["connection"], PinnedPages.Visible(store.Current.PinnedPagesFor("gw-a")).Select(page => page.Tag).ToArray());
-            store.Update(null, editor => editor.SetPagePinned("gw-a", "channels", true));
-            foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "skills", "agentevents" })
+            store.Update(null, editor => editor.SetPagePinned("gw-a", "instances", true));
+            foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "skills", "channels", "agentevents" })
                 store.Update(null, editor => editor.SetPagePinned("gw-a", excluded, false));
         }
         using var reloaded = Store(temp.Path, out _);
-        Assert.Equal(["settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "skills", "agentevents", "future-page", "connection", "channels"],
+        Assert.Equal(["settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "skills", "channels", "agentevents", "future-page", "connection", "instances"],
             Tags(reloaded.Current.PinnedPagesFor("gw-a")));
-        Assert.Equal(["connection", "channels"], PinnedPages.Visible(reloaded.Current.PinnedPagesFor("gw-a")).Select(page => page.Tag).ToArray());
-        foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "skills", "agentevents" })
+        Assert.Equal(["connection", "instances"], PinnedPages.Visible(reloaded.Current.PinnedPagesFor("gw-a")).Select(page => page.Tag).ToArray());
+        foreach (var excluded in new[] { "settings", "local-ai", "voice", "permissions", "sandbox", "bindings", "skills", "channels", "agentevents" })
             Assert.Empty(PinnedPages.Toggle([], excluded, true));
     }
 
@@ -155,7 +155,7 @@ public sealed class PinnedPagesTests
             store.Update(null, e => e.SetPagePinned("gw-b", "usage", true));
         }
         using var reloaded = Store(temp.Path, out _);
-        Assert.Equal(["cron", "channels"], Tags(reloaded.Current.PinnedPagesFor("gw-a")));
+        Assert.Equal(["cron"], Tags(reloaded.Current.PinnedPagesFor("gw-a")));
         Assert.Equal(["usage"], Tags(reloaded.Current.PinnedPagesFor("gw-b")));
         Assert.Empty(reloaded.Current.PinnedPagesFor(null));
     }

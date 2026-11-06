@@ -395,17 +395,14 @@ internal sealed partial class SettingsShellView : UserControl
     // suppress the resulting SelectionChanged from re-entering NavigateInternal.
     private bool _syncingNavSelection;
 
-    // The one-shot native setup request this view is currently honoring. Waits compare against it
-    // so history replay or a later navigation can never satisfy an older request.
-    private SetupNativeNavigationRequest? _activeNativeRequest;
-
     /// <summary>
     /// Requests a section. Rail clicks, in-page links and search all flow through here; the host
     /// decides whether it becomes a history entry. Workspace routes leave Settings.
     /// </summary>
     public void NavigateTo(string tag)
     {
-        WorkspaceNavigation.Dispatch(tag, _ => WorkspaceRouteRequested?.Invoke(tag), NavigateCompanion);
+        WorkspaceNavigation.Dispatch(tag, _ => WorkspaceRouteRequested?.Invoke(tag), NavigateCompanion,
+            _ => WorkspaceRouteRequested?.Invoke(tag));
     }
 
     private void NavigateCompanion(string tag) =>
@@ -415,11 +412,11 @@ internal sealed partial class SettingsShellView : UserControl
     /// Renders <paramref name="tag"/> without touching history. Also re-activates the view after
     /// <see cref="Deactivate"/>, so re-entry never depends on <c>Frame.Navigated</c> alone.
     /// </summary>
-    internal void ShowSection(string tag, SetupNativeNavigationRequest? nativeRequest = null)
+    internal void ShowSection(string tag)
     {
         if (_disposed) return;
         _active = true;
-        NavigateInternal(tag, nativeRequest);
+        NavigateInternal(tag);
     }
 
     /// <summary>
@@ -430,7 +427,6 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (!_active && ContentFrame.Content is null) return;
         _active = false;
-        _activeNativeRequest = null;
         HideTransientSurfaces();
         _currentNavTag = null;
         // Clearing Content does not raise OnNavigatedFrom, so pages with cleanup are stopped here.
@@ -463,36 +459,8 @@ internal sealed partial class SettingsShellView : UserControl
 
     internal bool DeferCommandSearchUntilClosed() => _commandSearchShow.DeferUntilClosed();
 
-    /// <summary>
-    /// Waits until the requested native setup page is the one shown and ready. Fails if the view
-    /// moved to another section or request, so a stale wait can never report success.
-    /// </summary>
-    internal async Task WaitForNativeSetupAsync(SetupNativeNavigationRequest request, CancellationToken ct)
+    private void NavigateInternal(string tag)
     {
-        void EnsureCurrent()
-        {
-            if (!ReferenceEquals(_activeNativeRequest, request) || _currentNavTag != request.PageTag)
-                throw new InvalidOperationException("The selected setup destination changed.");
-        }
-
-        EnsureCurrent();
-        await WaitForCurrentContentReadyAsync().WaitAsync(ct);
-        EnsureCurrent();
-        while (ContentFrame.Content is not FrameworkElement { IsLoaded: true })
-        {
-            await Task.Delay(50, ct);
-            EnsureCurrent();
-        }
-        if (ContentFrame.Content is ChannelsPage channels && request.PageTag == "channels")
-            await channels.WaitForNativeSetupAsync(request, ct);
-        else
-            throw new InvalidOperationException("The selected setup destination changed.");
-        EnsureCurrent();
-    }
-
-    private void NavigateInternal(string tag, SetupNativeNavigationRequest? nativeRequest = null)
-    {
-        _activeNativeRequest = nativeRequest;
         if (tag == "debug" && !DiagnosticsGate.IsVisible)
             tag = "settings";
 
@@ -502,7 +470,7 @@ internal sealed partial class SettingsShellView : UserControl
         // Identity dedupe: navigation identity = (PageType, normalized tag).
         // Page-type-only dedupe would collapse distinct logical destinations
         // that share a Page (e.g. agent switching on WorkspacePage).
-        if (nativeRequest is null && ContentFrame.Content is not null &&
+        if (ContentFrame.Content is not null &&
             ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
             _contentReady = CreateCompletedContentReady();
@@ -517,7 +485,7 @@ internal sealed partial class SettingsShellView : UserControl
         // can recover the canonical destination.
         var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _contentReady = ready;
-        if (!ContentFrame.Navigate(pageType, (object?)nativeRequest ?? tag))
+        if (!ContentFrame.Navigate(pageType, tag))
             CompleteContentReady(ready, pageName: null);
     }
 
@@ -636,7 +604,6 @@ internal sealed partial class SettingsShellView : UserControl
                 HubPageRegistry.ShouldKeepCurrentPageVisibleDuringDisconnect(currentTag);
 
             NavSessions.Visibility = vis;
-            NavChannels.Visibility = vis;
             NavInstances.Visibility = vis;
             NavCron.Visibility = vis;
             var gatewayToolVisibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
@@ -848,7 +815,6 @@ internal sealed partial class SettingsShellView : UserControl
         {
             case SessionsPage sessions: sessions.Initialize(); break;
             case ConnectionPage connection: connection.Initialize(); break;
-            case ChannelsPage channels: channels.Initialize(); break;
             case UsagePage usage: usage.Initialize(); break;
             case CronPage cron: cron.Initialize(); break;
             case ConfigPage config:
@@ -927,7 +893,6 @@ internal sealed partial class SettingsShellView : UserControl
         { "chat",        "\uE8BD" },
         { "connection",  "\uE839" },
         { "sessions",    "\uE8F2" },
-        { "channels",    "\uEC05" },
         { "instances",   "\uE977" },
         { "config",      "\uE90F" },
         { "usage",       "\uE9D9" },

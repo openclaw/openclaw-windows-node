@@ -33,7 +33,6 @@ notification preferences now live inside General.
 | `Chat.svg` | `chat-24` |
 | `Connection.svg` | `globe-24` |
 | `Sessions.svg` | `chat-multiple-24` |
-| `Channels.svg` | `molecule-24` |
 | `Instances.svg` | `phone-laptop-24` |
 | `Agents.svg` | `bot-sparkle-24` |
 | `Config.svg` | `options-24` |

@@ -975,7 +975,7 @@ Requires .NET 10.0 SDK, Windows 10/11. For testing node protocol, you'll need a 
 ## Open Questions
 
 - [x] Should dangerous command opt-ins be shown in the tray as a guided repair flow, a docs link, or both? Command Center now shows copyable safety guidance but intentionally avoids one-click dangerous repair commands.
-- [ ] How much channel management should live in the native tray versus opening the web dashboard?
+- [x] How much channel management should live in the native tray versus opening the web dashboard? Channel setup and management live in the Gateway Dashboard, and old Channels entry points open it. Windows keeps read-only channel health on the Connection page, in the tray tooltip and in diagnostics.
 - [x] Should Voice Mode land as a separate parity track after the open PR is reviewed against current Mac architecture? Yes. PR #120 should not advertise voice commands from Windows until the shared contract, Settings gate, gateway allowlist, and credential-storage concerns are resolved.
 
 ---

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Collections.Immutable;
 using System.Xml.Linq;
 using OpenClawTray.Presentation;
+using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests.Presentation;
 
@@ -43,13 +44,43 @@ public sealed class HubSearchCatalogTests
         var general = Assert.Single(items, item => item.Title == "General");
         Assert.Equal(new(HubSearchTargetKind.Page, "settings"), general.Target);
         Assert.Equal("About", Assert.Single(items, item => item.Target.Value == "about").Title);
-        Assert.Equal("Dashboard", Assert.Single(items, item => item.Target.Kind == HubSearchTargetKind.Dashboard).Title);
+        Assert.Equal("Dashboard", Assert.Single(items, item =>
+            item.Target == new HubSearchTarget(HubSearchTargetKind.Dashboard, "")).Title);
         foreach (var query in new[] { "General", "Notification preferences", "notification-preferences" })
             Assert.Equal(general, Assert.Single(HubSearch.Find(items, query)).Item);
         Assert.Contains(HubSearch.Find(items, "notifications"), match => match.Item.Target.Value == "notifications");
         Assert.Empty(HubSearch.Find(items, "Agent Events"));
         Assert.Empty(HubSearch.Find(items, "Event Stream"));
         Assert.DoesNotContain(items, item => item.Target.Value.Contains("agentevents", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("Channels", true, true)]
+    [InlineData("Go to Channels", true, false)]
+    [InlineData("Channels", false, false)]
+    public void ChannelsSearchOpensDashboardInsteadOfRetiredNativePage(
+        string query, bool connected, bool dashboardSupported)
+    {
+        var resources = XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw"))
+            .Root!.Elements("data").ToImmutableDictionary(element => (string)element.Attribute("name")!,
+                element => element.Element("value")!.Value);
+        var commands = HubPageRegistry.BuildCommands(new("main", false, null, [], resources));
+        var items = HubSearchCatalog.Navigation(commands, connected, dashboardSupported, key => resources[key]);
+        var result = Assert.Single(HubSearch.Find(items, query), match => match.Item.Title == "Channels").Item;
+
+        Assert.Equal(HubSearchGroup.Dashboard, result.Group);
+        Assert.True(result.OpensDashboard);
+        Assert.Equal(new HubSearchTarget(HubSearchTargetKind.Dashboard, "channels"), result.Target);
+        Assert.Equal("channels", result.DashboardPath);
+        Assert.Null(HubPageRegistry.ResolvePage("channels"));
+
+        var opened = new List<string?>();
+        var navigated = new List<HubSearchTarget>();
+        var executor = new HubCommandExecutor(() => null, () => null, opened.Add);
+        executor.Execute(result.Target, navigated.Add);
+        Assert.Equal(["channels"], opened);
+        Assert.Empty(navigated);
     }
 
     [Fact]

@@ -645,7 +645,7 @@ public sealed class DiagnosticsPageContractTests
             .TakeWhile(element => element.Name.LocalName is not ("NavigationViewItemHeader" or "NavigationViewItemSeparator"))
             .ToArray();
 
-        Assert.Equal(new[] { "connection", "channels", "instances", "cron", "usage", "config" },
+        Assert.Equal(new[] { "connection", "instances", "cron", "usage", "config" },
             gateway.Select(element => (string?)element.Attribute("Tag")).OfType<string>());
         var tools = menu.Elements()
             .SkipWhile(element => (string?)element.Attribute("Content") != "Agents and Tools")

@@ -106,9 +106,6 @@ public static class SetupNativeCompletionVerifier
         return verified;
     }
 
-    internal static void RequireAvailable(GatewayAiSetupVerification result)
-        => SetupModelVerification.RequireAvailable(result);
-
     internal static Task<GatewayAiSetupCompletion> VerifyModelAsync(
         GatewayAiSetupClient client, string modelRef, CancellationToken ct, TimeProvider? timeProvider = null)
         => SetupModelVerification.VerifyAsync(client, modelRef, ct, timeProvider);

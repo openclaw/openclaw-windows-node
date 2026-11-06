@@ -38,7 +38,6 @@ public sealed class AccessibilityScanTests
 
     public static IEnumerable<object[]> PageTestData()
     {
-        yield return ["ChannelsPage", "channels", "ChannelsPageMarker"];
         yield return ["ChatPage", "chat", "ChatComposerInput"];
         yield return ["ConfigPage", "config", "ConfigPageMarker"];
         yield return ["ConnectionPage", "connection", "ConnectionPageMarker"];
