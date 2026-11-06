@@ -189,8 +189,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _operatorReadScopeUnavailable = false;
         _sessionsUsageUnsupported = false;
         _sessionsUsageOverviewUnsupported = false;
-        _sessionsUsageTimeseriesUnsupported = false;
-        _sessionsUsageLogsUnsupported = false;
         if (agentsListWasUnsupported)
             AgentsListUnsupportedChanged?.Invoke(this, false);
     }

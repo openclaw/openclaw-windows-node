@@ -7,8 +7,11 @@ internal enum UsageAvailability
 {
     Connected,
     Disconnected,
-    /// <summary>The Gateway predates <c>sessions.usage</c>; the page shows <c>usage.cost</c> totals only.</summary>
-    Legacy,
+    /// <summary>
+    /// The Gateway has no usable <c>sessions.usage</c>. Every Gateway setup installs (2026.9.36 and later) has it,
+    /// so the page asks for an update and shows only provider plans.
+    /// </summary>
+    Unsupported,
     /// <summary>The connection lacks <c>operator.read</c>.</summary>
     Forbidden,
 }
@@ -28,20 +31,15 @@ internal sealed record UsageRead<T>(UsageLoadPhase Phase, T? Value, string? Erro
     public bool IsLoading => Phase == UsageLoadPhase.Loading;
 }
 
-internal sealed record UsageDetailState(
-    string Key,
-    string? AgentId,
-    UsageRead<SessionUsageRow> Row,
-    UsageRead<SessionUsageTimeseries> Timeseries,
-    UsageRead<IReadOnlyList<UsageLogView>> Logs,
-    UsageTimelineMode TimelineMode = UsageTimelineMode.Cumulative,
-    bool TimelineByType = false);
+/// <summary>The selected session: its list row is shown at once, and a single-session read refines it.</summary>
+internal sealed record UsageDetailState(string Key, string? AgentId, UsageRead<SessionUsageRow> Row);
 
 internal sealed record UsagePageState
 {
     public required UsageFilters Filters { get; init; }
-    public UsageMetric Metric { get; init; } = UsageMetric.Tokens;
-    public UsageDailyChartMode ChartMode { get; init; } = UsageDailyChartMode.Total;
+    public UsageMetric Metric { get; init; } = UsageMetric.Cost;
+    public string? FocusProvider { get; init; }
+    public int FocusProviderRequest { get; init; }
     public UsageAvailability Availability { get; init; } = UsageAvailability.Disconnected;
     public UsageLoadPhase Phase { get; init; } = UsageLoadPhase.Idle;
     public string? Error { get; init; }
@@ -53,26 +51,26 @@ internal sealed record UsagePageState
     public bool AutoRefreshPaused { get; init; }
     public UsageRead<ProviderUsageSummary> Providers { get; init; } = UsageRead<ProviderUsageSummary>.Idle;
     public UsageDetailState? Detail { get; init; }
-    public IReadOnlyList<string> RecentKeys { get; init; } = Array.Empty<string>();
-    public bool HeaderPinned { get; init; }
     public bool Exporting { get; init; }
+    public bool ExportInteraction { get; init; }
+    public UsageExportCoverage? ExportCoverage { get; init; }
+    public UsageExportBlock? ExportBlock { get; init; }
     /// <summary>Outcome of the last user-requested export, shown until the next export or dismissal.</summary>
     public UsageExportNotice? ExportNotice { get; init; }
 
     /// <summary>
-    /// The connected Gateway returns full rows without the server-side overview (released 2026.10.7), so query,
-    /// day and hour filters, session sort and paging, and the activity view are unavailable.
+    /// The connected Gateway returns full rows without the server-side overview (every released Gateway through
+    /// 2026.10.9), so search, facets, session sort and paging are unavailable.
     /// </summary>
     public bool BasicGateway => Availability == UsageAvailability.Connected && Report is { Overview: null };
 
     /// <summary>
-    /// Query, day, hour, sort, paging and recent filters need the server-side overview. Basic Gateways ignore them and
-    /// legacy <c>usage.cost</c> Gateways cannot apply any filter, so the page neither sends nor shows them.
+    /// Search, sort and paging need the server-side overview. Basic Gateways ignore them, so the page neither sends
+    /// nor shows them.
     /// </summary>
-    public bool ServerFiltersUnavailable => BasicGateway || Availability == UsageAvailability.Legacy;
+    public bool ServerFiltersUnavailable => BasicGateway || Availability == UsageAvailability.Unsupported;
 
-    public bool ShowLoadError => Phase == UsageLoadPhase.Failed
-        && Availability is UsageAvailability.Connected or UsageAvailability.Legacy;
+    public bool ShowLoadError => Phase == UsageLoadPhase.Failed && Availability == UsageAvailability.Connected;
 }
 
 /// <summary>Timing for re-checking incomplete usage. Override with OPENCLAW_USAGE_RECHECK_INTERVAL_MS.</summary>
@@ -123,8 +121,14 @@ internal sealed class UsagePageController : IDisposable
     }
 
     public UsagePageState State { get; private set; }
+    internal object? ExportConnectionIdentity => _client();
 
     public event Action? Changed;
+
+    internal void PostUi(Action action) => _post(() =>
+    {
+        if (!_disposed) action();
+    });
 
     // ── lifecycle ──
 
@@ -161,9 +165,7 @@ internal sealed class UsagePageController : IDisposable
     {
         Phase = s.Report is null ? UsageLoadPhase.Idle : UsageLoadPhase.Loaded,
         Providers = Settle(s.Providers),
-        Detail = s.Detail is { } d
-            ? d with { Row = Settle(d.Row), Timeseries = Settle(d.Timeseries), Logs = Settle(d.Logs) }
-            : null,
+        Detail = s.Detail is { } d ? d with { Row = Settle(d.Row) } : null,
     };
 
     private static UsageRead<T> Settle<T>(UsageRead<T> read) where T : class =>
@@ -171,48 +173,14 @@ internal sealed class UsagePageController : IDisposable
             ? read with { Phase = read.Value is null ? UsageLoadPhase.Idle : UsageLoadPhase.Loaded }
             : read;
 
-    /// <summary>
-    /// Legacy <c>usage.cost</c> only counts days back from today, so request enough days to reach the range start
-    /// and keep only the selected days, with totals recomputed from them.
-    /// </summary>
-    internal static int LegacyRequestDays(UsageFilters filters, DateOnly today) =>
-        Math.Clamp(today.DayNumber - filters.Start.DayNumber + 1, 1, 366);
-
-    internal static SessionsUsageReport ClipLegacyReport(SessionsUsageReport report, UsageFilters filters)
-    {
-        var daily = report.Aggregates.CostDaily;
-        if (daily.Count == 0) return report;
-        var start = filters.Start.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-        var end = filters.End.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-        var kept = daily.Where(d => string.CompareOrdinal(d.Date, start) >= 0 && string.CompareOrdinal(d.Date, end) <= 0).ToList();
-        if (kept.Count == daily.Count) return report;
-        var totals = new UsageTotals
-        {
-            Report = kept.Any(d => d.Totals.IsLowerBound) ? UsageReportState.Unavailable : UsageReportState.Unknown,
-            Input = kept.Sum(d => d.Totals.Input),
-            Output = kept.Sum(d => d.Totals.Output),
-            CacheRead = kept.Sum(d => d.Totals.CacheRead),
-            CacheWrite = kept.Sum(d => d.Totals.CacheWrite),
-            TotalTokens = kept.Sum(d => d.Totals.TotalTokens),
-            TotalCost = kept.Sum(d => d.Totals.TotalCost),
-            InputCost = kept.Sum(d => d.Totals.InputCost),
-            OutputCost = kept.Sum(d => d.Totals.OutputCost),
-            CacheReadCost = kept.Sum(d => d.Totals.CacheReadCost),
-            CacheWriteCost = kept.Sum(d => d.Totals.CacheWriteCost),
-            MissingCostEntries = kept.Sum(d => d.Totals.MissingCostEntries),
-        };
-        return report with
-        {
-            StartDate = kept.Count > 0 ? kept[0].Date : start,
-            EndDate = kept.Count > 0 ? kept[^1].Date : end,
-            Totals = totals,
-            Aggregates = report.Aggregates with { CostDaily = kept },
-        };
-    }
-
     public void Dispose()
     {
+        if (_disposed) return;
         _disposed = true;
+        _noticeCts.Cancel();
+        _noticeCts.Dispose();
+        _exportAlternative?.TrySetResult(false);
+        _exportAlternative = null;
         CancelAll();
         _exportCts.Cancel();
         Changed = null;
@@ -220,7 +188,7 @@ internal sealed class UsagePageController : IDisposable
 
     private DateOnly Today(UsageTimeZoneMode zone) => zone == UsageTimeZoneMode.Utc ? _utcToday() : _today();
 
-    // Relative presets resolve against today in the selected time zone. Unchanged dates keep day selections.
+    // Relative presets resolve against today in the selected time zone. Unchanged dates keep the filters as they are.
     private UsageFilters Rebased(UsageFilters filters)
     {
         if (filters.Preset == UsagePreset.Custom) return filters;
@@ -234,16 +202,13 @@ internal sealed class UsagePageController : IDisposable
 
     public void SetRange(DateOnly start, DateOnly end) => Query(s => s.WithRange(start, end));
 
-    public void SetTimeZone(UsageTimeZoneMode zone) =>
-        Query(s => Rebased(s with { TimeZone = zone, SelectedHours = [], SelectedDays = [] }));
+    public void SetTimeZone(UsageTimeZoneMode zone) => Query(s => Rebased(s with { TimeZone = zone }));
 
     public void SetScope(UsageScope scope) => Query(s => s with { Scope = scope, Offset = 0 });
 
-    public void SetCreator(string? key) => Query(s => s with { CreatorKey = s.CreatorKey == key ? null : key, Offset = 0 });
-
     public void SetQuery(string query) => ServerQuery(s => s with { Query = query.Trim(), Offset = 0 });
 
-    /// <summary>Adds or removes a <c>key:value</c> term, as the web filter chips do.</summary>
+    /// <summary>Adds or removes a <c>key:value</c> facet term in the search text.</summary>
     public void ToggleQueryTerm(string term)
     {
         var tokens = State.Filters.Query.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
@@ -251,20 +216,11 @@ internal sealed class UsagePageController : IDisposable
         SetQuery(string.Join(' ', tokens));
     }
 
-    public void ToggleDay(string iso, bool append) =>
-        ServerQuery(s => s with { SelectedDays = UsageFilters.Toggle(s.SelectedDays, iso, append), Offset = 0 });
-
-    public void ToggleHour(int hour, bool append) =>
-        ServerQuery(s => s with { SelectedHours = UsageFilters.Toggle(s.SelectedHours, hour, append), Offset = 0 });
-
-    public void ClearAllFilters() =>
-        Query(s => s with { Query = "", CreatorKey = null, SelectedDays = [], SelectedHours = [], SelectedSessions = [], Offset = 0 }, closeDetail: true);
+    public void ClearQuery() => ServerQuery(s => s with { Query = "", Offset = 0 });
 
     public void SetSort(UsageSort sort) => ServerQuery(s => s with { Sort = sort, Offset = 0 });
 
     public void ToggleSortDirection() => ServerQuery(s => s with { SortDescending = !s.SortDescending, Offset = 0 });
-
-    public void SetRecentOnly(bool recent) => ServerQuery(s => s with { RecentOnly = recent, Offset = 0 });
 
     public void SetPage(int offset) => ServerQuery(s => s with { Offset = Math.Max(0, offset) });
 
@@ -274,60 +230,105 @@ internal sealed class UsagePageController : IDisposable
         if (!State.ServerFiltersUnavailable) Query(change);
     }
 
-    public void SetMetric(UsageMetric metric) => Display(s => s with { Metric = metric });
-
-    public void SetChartMode(UsageDailyChartMode mode) => Display(s => s with { ChartMode = mode });
-
-    public void SetHeaderPinned(bool pinned) => Update(s => s with { HeaderPinned = pinned });
-
-    public void SetExportNotice(UsageExportNotice? notice) => Update(s => s with { ExportNotice = notice });
-
-    // ── sessions and details ──
-
-    /// <summary>Plain click selects one session and opens its details; append toggles a multi-selection.</summary>
-    public void SelectSession(string key, string? agentId, bool append)
+    public void SetMetric(UsageMetric metric)
     {
-        if (State.Availability == UsageAvailability.Legacy) return;
-        var selected = UsageFilters.Toggle(State.Filters.SelectedSessions, key, append);
-        var recent = new[] { key }.Concat(State.RecentKeys.Where(k => k != key)).Take(SessionsUsageQuery.MaxRecentKeys).ToArray();
-        Update(s => s with { RecentKeys = recent });
-        Query(s => s with { SelectedSessions = selected }, closeDetail: selected.Count == 0, selectionOnly: true);
-        if (selected.Count > 0)
-        {
-            var primary = selected[0];
-            if (State.Detail?.Key != primary)
-                LoadDetail(primary, primary == key ? agentId : State.Report?.Sessions.FirstOrDefault(r => r.Key == primary)?.AgentId);
-        }
+        Update(s => s with { Metric = metric });
+        Reproject();
     }
 
-    public void CloseDetail() => Query(s => s with { SelectedSessions = [] }, closeDetail: true, selectionOnly: true);
+    private CancellationTokenSource _noticeCts = new();
+    private TaskCompletionSource<bool>? _exportAlternative;
 
-    public void SetTimelineMode(UsageTimelineMode mode) => DetailUpdate(d => d with { TimelineMode = mode });
+    public void SetExportInteraction(bool active) => Update(s => s with { ExportInteraction = active });
 
-    public void SetTimelineByType(bool byType) => DetailUpdate(d => d with { TimelineByType = byType });
+    public void SetExportNotice(UsageExportNotice? notice)
+    {
+        _noticeCts.Cancel();
+        _noticeCts.Dispose();
+        _noticeCts = new();
+        Update(s => s with { ExportNotice = notice });
+        if (notice is not null) _ = DismissNoticeAsync(notice, _noticeCts.Token);
+    }
+
+    private async Task DismissNoticeAsync(UsageExportNotice notice, CancellationToken token)
+    {
+        try
+        {
+            await _delay(TimeSpan.FromMilliseconds(UsageNotificationPolicy.AutoDismissMs(notice.Folder is not null)), token).ConfigureAwait(false);
+            _post(() =>
+            {
+                if (!token.IsCancellationRequested && ReferenceEquals(State.ExportNotice, notice))
+                    Update(s => s with { ExportNotice = null });
+            });
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
+
+    public Task<bool> OfferDailyExportAsync(UsageFilters filters)
+    {
+        _exportAlternative?.TrySetResult(false);
+        _exportAlternative = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Update(s => s with { ExportBlock = new(filters, s.ExportCoverage ?? new(0, null)) });
+        return _exportAlternative.Task;
+    }
+
+    public void CompleteExportAlternative(bool daily)
+    {
+        var completion = _exportAlternative;
+        _exportAlternative = null;
+        Update(s => s with { ExportBlock = null });
+        completion?.TrySetResult(daily);
+    }
+
+    public void InspectProvider(string provider) => Update(s => s with
+    {
+        FocusProvider = provider,
+        FocusProviderRequest = s.FocusProviderRequest + 1,
+    });
+
+    // ── session details ──
+
+    /// <summary>Opens a session's details, or closes them when the same session is selected again.</summary>
+    public void SelectSession(string key, string? agentId)
+    {
+        if (State.Availability == UsageAvailability.Unsupported) return;
+        if (State.Detail?.Key == key)
+        {
+            CloseDetail();
+            return;
+        }
+        LoadDetail(key, agentId);
+        Reproject();
+    }
+
+    public void CloseDetail()
+    {
+        if (State.Detail is null) return;
+        CancelDetail();
+        Update(s => s with { Detail = null });
+        Reproject();
+    }
 
     // ── export ──
 
     /// <summary>
-    /// Re-reads every matching session (upstream behavior) and returns file content, or an error kind. Returns
-    /// neither when the page closed or the Gateway changed during the read, so no save dialog opens for it.
-    /// Called on the UI thread; the read resumes there so the client check sees the current Gateway.
+    /// Re-reads every matching session and returns file content, or an error kind. Returns neither when the page
+    /// closed or the Gateway changed during the read, so no save dialog opens for it. Called on the UI thread; the
+    /// read resumes there so the client check sees the current Gateway.
     /// </summary>
-    public async Task<(string? Content, UsageExportError? Error)> ExportAsync(UsageExportFormat format)
+    public async Task<(string? Content, UsageExportError? Error)> ExportAsync(UsageExportFormat format, UsageFilters? snapshot = null)
     {
         var client = _client();
         if (client is not { IsConnectedToGateway: true })
             return (null, UsageExportError.Offline);
-        var filters = State.Filters;
+        var filters = snapshot ?? State.Filters;
         var token = _exportCts.Token;
-        Update(s => s with { Exporting = true });
+        Update(s => s with { Exporting = true, ExportCoverage = null });
         try
         {
-            var query = filters.ToOverviewQuery(null) with
+            var query = filters.ToOverviewQuery() with
             {
                 Offset = 0,
-                RecentKeys = null,
-                IncludeContextWeight = format == UsageExportFormat.Json,
                 OverviewProjection = format == UsageExportFormat.DailyCsv,
                 Limit = format == UsageExportFormat.DailyCsv ? SessionsUsageQuery.OverviewRowLimit : SessionsUsageQuery.FullRowLimit,
             };
@@ -335,10 +336,17 @@ internal sealed class UsagePageController : IDisposable
             if (_disposed || !ReferenceEquals(_client(), client)) return (null, null);
             if (!result.IsOk) return (null, UsageExportError.Failed);
             var report = result.Value!;
+            var count = report.Aggregates.SessionCount ?? report.Overview?.Total;
+            Update(s => s with { ExportCoverage = new(report.Sessions.Count, count >= report.Sessions.Count ? count : null) });
             if (!UsageExport.IsExportable(report)) return (null, UsageExportError.Incomplete);
-            if (format != UsageExportFormat.DailyCsv && UsageExport.IsTruncated(report, filters.SelectedSessions))
+            if (format == UsageExportFormat.SessionsCsv && UsageExport.IsTruncated(report))
                 return (null, UsageExportError.TooMany);
-            return (UsageExport.Build(format, report, filters.SelectedSessions), null);
+            if (format == UsageExportFormat.SessionsCsv
+                && report.Sessions.Any(session => session.Computing || session.Usage is null || session.Usage.Totals.IsLowerBound))
+                return (null, UsageExportError.Incomplete);
+            if (format == UsageExportFormat.DailyCsv && report.Aggregates.CostDaily.Any(day => day.Totals.IsLowerBound))
+                return (null, UsageExportError.Incomplete);
+            return (UsageExport.Build(format, report), null);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -356,27 +364,18 @@ internal sealed class UsagePageController : IDisposable
 
     // ── loading ──
 
-    private void Query(Func<UsageFilters, UsageFilters> change, bool closeDetail = false, bool selectionOnly = false)
+    private void Query(Func<UsageFilters, UsageFilters> change)
     {
-        var filters = change(State.Filters);
-        if (filters == State.Filters && !closeDetail) return;
-        Update(s => s with { Filters = filters, Detail = closeDetail ? null : s.Detail });
-        if (closeDetail) CancelDetail();
-        // Released Gateways ignore session selection, so re-reading every row would only repeat the same reply.
-        if (selectionOnly && State.BasicGateway)
-        {
-            Reproject();
-            return;
-        }
+        var previous = State.Filters;
+        var filters = change(previous);
+        if (filters == previous) return;
+        Update(s => s with { Filters = filters });
         Reload(resetRechecks: true);
-        if (!closeDetail && State.Detail is { } detail && filters.SelectedSessions.Contains(detail.Key))
+        // Details cover the selected range, time zone and scope; search, sort and paging do not change them.
+        if (State.Detail is { } detail
+            && (filters.Start != previous.Start || filters.End != previous.End
+                || filters.TimeZone != previous.TimeZone || filters.Scope != previous.Scope))
             LoadDetail(detail.Key, detail.AgentId);
-    }
-
-    private void Display(Func<UsagePageState, UsagePageState> change)
-    {
-        Update(change);
-        Reproject();
     }
 
     private void Reload(bool resetRechecks)
@@ -395,27 +394,17 @@ internal sealed class UsagePageController : IDisposable
         var token = _overviewCts.Token;
         var generation = ++_overviewGeneration;
         var filters = State.Filters;
-        var recent = State.RecentKeys;
         Update(s => s with { Phase = UsageLoadPhase.Loading, Error = null });
-        _ = LoadOverviewAsync(client, filters, recent, generation, token);
+        _ = LoadOverviewAsync(client, filters, generation, token);
     }
 
     private async Task LoadOverviewAsync(
-        IOperatorGatewayClient client, UsageFilters filters, IReadOnlyList<string> recent, int generation, CancellationToken token)
+        IOperatorGatewayClient client, UsageFilters filters, int generation, CancellationToken token)
     {
         UsageReadResult<SessionsUsageReport> result;
-        var legacy = false;
         try
         {
-            result = await client.GetSessionsUsageAsync(filters.ToOverviewQuery(recent), cancellationToken: token).ConfigureAwait(false);
-            if (result.Status == UsageReadStatus.Unsupported)
-            {
-                legacy = true;
-                var today = Today(filters.TimeZone);
-                result = await client.GetUsageCostSummaryAsync(LegacyRequestDays(filters, today), cancellationToken: token).ConfigureAwait(false);
-                if (result is { IsOk: true, Value: { } legacyReport })
-                    result = UsageReadResult<SessionsUsageReport>.Ok(ClipLegacyReport(legacyReport, filters));
-            }
+            result = await client.GetSessionsUsageAsync(filters.ToOverviewQuery(), cancellationToken: token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -424,42 +413,21 @@ internal sealed class UsagePageController : IDisposable
         _post(() =>
         {
             if (_disposed || generation != _overviewGeneration) return;
-            ApplyOverview(result, legacy);
+            ApplyOverview(result);
         });
     }
 
-    // Keeps only the filters the answering Gateway applied. Legacy usage.cost applies none beyond the date range.
-    private static UsageFilters Supported(UsageFilters filters, bool legacy, SessionsUsageReport report) =>
-        legacy ? filters.WithoutServerFilters() with { CreatorKey = null, SelectedSessions = [] }
-        : report.Overview is null ? filters.WithoutServerFilters()
-        : filters;
+    // Keeps only the filters the answering Gateway applied.
+    private static UsageFilters Supported(UsageFilters filters, SessionsUsageReport report) =>
+        report.Overview is null ? filters.WithoutServerFilters() : filters;
 
-    private void ApplyOverview(UsageReadResult<SessionsUsageReport> result, bool legacy)
+    private void ApplyOverview(UsageReadResult<SessionsUsageReport> result)
     {
         switch (result.Status)
         {
             case UsageReadStatus.Ok:
-                var report = result.Value!;
-                if (legacy) CancelDetail();
-                // Projected with the current filters: basic Gateways change the session selection locally, without a
-                // reload, so the filters captured when this read started can be older. Other filter changes start a
-                // new read, which discards this reply by generation.
-                Update(s =>
-                {
-                    var filters = Supported(s.Filters, legacy, report);
-                    return s with
-                    {
-                        Availability = legacy ? UsageAvailability.Legacy : UsageAvailability.Connected,
-                        Phase = UsageLoadPhase.Loaded,
-                        Filters = filters,
-                        Detail = legacy ? null : s.Detail,
-                        Report = report,
-                        Dashboard = UsageDashboardProjection.Project(report, filters, s.Metric, s.ChartMode, Today(filters.TimeZone)),
-                        LoadedAt = DateTimeOffset.Now,
-                        Error = null,
-                    };
-                });
-                ScheduleRecheck(report);
+                ApplyReport(result.Value!);
+                ScheduleRecheck(result.Value!);
                 break;
             case UsageReadStatus.Disconnected:
                 Update(s => s with { Availability = UsageAvailability.Disconnected, Phase = s.Report is null ? UsageLoadPhase.Idle : UsageLoadPhase.Loaded, AutoRefreshing = false });
@@ -468,28 +436,43 @@ internal sealed class UsagePageController : IDisposable
                 Update(s => s with { Availability = UsageAvailability.Forbidden, Phase = UsageLoadPhase.Failed, Error = result.Error, AutoRefreshing = false });
                 break;
             case UsageReadStatus.Unsupported:
-                // Neither sessions.usage nor usage.cost: an empty legacy page, not an error.
+                // Older than any Gateway setup installs: ask for an update instead of showing partial figures.
                 CancelDetail();
-                Update(s =>
+                Update(s => s with
                 {
-                    var empty = new SessionsUsageReport();
-                    var filters = Supported(s.Filters, legacy: true, empty);
-                    return s with
-                    {
-                        Availability = UsageAvailability.Legacy,
-                        Phase = UsageLoadPhase.Loaded,
-                        Filters = filters,
-                        Detail = null,
-                        Report = empty,
-                        Dashboard = UsageDashboardProjection.Project(empty, filters, s.Metric, s.ChartMode, Today(filters.TimeZone)),
-                        LoadedAt = DateTimeOffset.Now,
-                    };
+                    Availability = UsageAvailability.Unsupported,
+                    Phase = UsageLoadPhase.Loaded,
+                    Filters = s.Filters.WithoutServerFilters(),
+                    Detail = null,
+                    Report = null,
+                    Dashboard = null,
+                    LoadedAt = DateTimeOffset.Now,
+                    Error = null,
+                    AutoRefreshing = false,
                 });
                 break;
             default:
                 Update(s => s with { Phase = UsageLoadPhase.Failed, Error = result.Error, AutoRefreshing = false });
                 break;
         }
+    }
+
+    private void ApplyReport(SessionsUsageReport report)
+    {
+        Update(s =>
+        {
+            var filters = Supported(s.Filters, report);
+            return s with
+            {
+                Availability = UsageAvailability.Connected,
+                Phase = UsageLoadPhase.Loaded,
+                Filters = filters,
+                Report = report,
+                Dashboard = UsageDashboardProjection.Project(report, filters, s.Metric, s.Detail?.Key),
+                LoadedAt = DateTimeOffset.Now,
+                Error = null,
+            };
+        });
     }
 
     private void ScheduleRecheck(SessionsUsageReport report)
@@ -554,7 +537,7 @@ internal sealed class UsagePageController : IDisposable
         _post(() =>
         {
             if (_disposed || generation != _providersGeneration) return;
-            // A refreshing or failed provider read keeps the last complete snapshot, like the web page.
+            // A refreshing or failed provider read keeps the last complete snapshot.
             Update(s => s with
             {
                 Providers = result.IsOk
@@ -568,56 +551,29 @@ internal sealed class UsagePageController : IDisposable
     {
         var client = _client();
         CancelDetail();
-        var previous = State.Detail?.Key == key ? State.Detail : null;
+        var previous = State.Detail?.Key == key ? State.Detail.Row.Value : null;
         Update(s => s with
         {
-            Detail = new UsageDetailState(
-                key, agentId,
-                new UsageRead<SessionUsageRow>(UsageLoadPhase.Loading, previous?.Row.Value, null),
-                new UsageRead<SessionUsageTimeseries>(UsageLoadPhase.Loading, previous?.Timeseries.Value, null),
-                new UsageRead<IReadOnlyList<UsageLogView>>(UsageLoadPhase.Loading, previous?.Logs.Value, null),
-                previous?.TimelineMode ?? UsageTimelineMode.Cumulative,
-                previous?.TimelineByType ?? false),
+            Detail = new UsageDetailState(key, agentId, new UsageRead<SessionUsageRow>(UsageLoadPhase.Loading, previous, null)),
         });
         if (client is not { IsConnectedToGateway: true })
         {
-            Update(s => s with { Detail = s.Detail is { } d ? d with { Row = Settle(d.Row), Timeseries = Settle(d.Timeseries), Logs = Settle(d.Logs) } : null });
+            Update(s => s with { Detail = s.Detail is { } d ? d with { Row = Settle(d.Row) } : null });
             return;
         }
         var token = _detailCts.Token;
         var generation = ++_detailGeneration;
         var filters = State.Filters;
-        _ = LoadDetailPartAsync(generation, token,
-            () => client.GetSessionsUsageAsync(filters.ToDetailQuery(key, agentId), cancellationToken: token),
-            (d, r) => d with { Row = Read(r, r.Value?.Sessions.FirstOrDefault(s => s.Key == key)) });
-        _ = LoadDetailPartAsync(generation, token,
-            () => client.GetSessionUsageTimeseriesAsync(key, agentId, cancellationToken: token),
-            (d, r) => d with { Timeseries = Read(r, r.Value) });
-        _ = LoadDetailPartAsync(generation, token,
-            () => client.GetSessionUsageLogsAsync(key, agentId, cancellationToken: token),
-            (d, r) => d with
-            {
-                Logs = Read(r, r.Value is { } logs
-                    ? (IReadOnlyList<UsageLogView>)logs.Select(UsageSessionDetailProjection.ParseLog).ToList()
-                    : null),
-            });
+        _ = LoadDetailAsync(client, filters.ToDetailQuery(key, agentId), key, generation, token);
     }
 
-    private static UsageRead<TOut> Read<TIn, TOut>(UsageReadResult<TIn> result, TOut? value)
-        where TIn : class where TOut : class =>
-        result.IsOk
-            ? new UsageRead<TOut>(UsageLoadPhase.Loaded, value, null)
-            : new UsageRead<TOut>(UsageLoadPhase.Failed, null, result.Error, result.Status);
-
-    private async Task LoadDetailPartAsync<T>(
-        int generation, CancellationToken token, Func<Task<UsageReadResult<T>>> read,
-        Func<UsageDetailState, UsageReadResult<T>, UsageDetailState> apply)
-        where T : class
+    private async Task LoadDetailAsync(
+        IOperatorGatewayClient client, SessionsUsageQuery query, string key, int generation, CancellationToken token)
     {
-        UsageReadResult<T> result;
+        UsageReadResult<SessionsUsageReport> result;
         try
         {
-            result = await read().ConfigureAwait(false);
+            result = await client.GetSessionsUsageAsync(query, cancellationToken: token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -625,8 +581,11 @@ internal sealed class UsagePageController : IDisposable
         }
         _post(() =>
         {
-            if (_disposed || generation != _detailGeneration || State.Detail is null) return;
-            DetailUpdate(d => apply(d, result));
+            if (_disposed || generation != _detailGeneration || State.Detail?.Key != key) return;
+            var row = result.IsOk
+                ? new UsageRead<SessionUsageRow>(UsageLoadPhase.Loaded, result.Value!.Sessions.FirstOrDefault(s => s.Key == key), null)
+                : new UsageRead<SessionUsageRow>(UsageLoadPhase.Failed, null, result.Error, result.Status);
+            Update(s => s with { Detail = s.Detail is { } d ? d with { Row = row } : null });
         });
     }
 
@@ -635,12 +594,10 @@ internal sealed class UsagePageController : IDisposable
     private void Reproject()
     {
         if (State.Report is { } report)
-            Update(s => s with { Dashboard = UsageDashboardProjection.Project(report, s.Filters, s.Metric, s.ChartMode, Today(s.Filters.TimeZone)) });
-    }
-
-    private void DetailUpdate(Func<UsageDetailState, UsageDetailState> change)
-    {
-        if (State.Detail is { } detail) Update(s => s with { Detail = change(detail) });
+            Update(s => s with
+            {
+                Dashboard = UsageDashboardProjection.Project(report, s.Filters, s.Metric, s.Detail?.Key),
+            });
     }
 
     private void Update(Func<UsagePageState, UsagePageState> change)
@@ -674,10 +631,19 @@ internal enum UsageExportError
 {
     Offline,
     Failed,
+    OpenFolder,
     Incomplete,
     /// <summary>More sessions match than one Gateway read returns, so a sessions export would drop rows.</summary>
     TooMany,
 }
 
 /// <summary>Export outcome: a saved file name, or an error kind (null when the user cancelled).</summary>
-internal sealed record UsageExportNotice(string? FileName, UsageExportError? Error);
+internal sealed record UsageExportNotice(string? FileName, UsageExportError? Error, string? Folder = null);
+
+internal static class UsageNotificationPolicy
+{
+    public const int DefaultAutoDismissMs = 7000;
+    public const int DefaultPassiveAutoDismissMs = 4000;
+    public static int AutoDismissMs(bool hasAction) => int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_USAGE_NOTIFICATION_MS"), out var value)
+        && value >= 1000 ? value : hasAction ? DefaultAutoDismissMs : DefaultPassiveAutoDismissMs;
+}

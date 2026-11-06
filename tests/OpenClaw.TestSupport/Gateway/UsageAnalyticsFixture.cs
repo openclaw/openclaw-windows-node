@@ -9,17 +9,17 @@ public enum UsageAnalyticsMode
     Populated,
     Empty,
     Partial,
-    /// <summary>A Gateway older than <c>sessions.usage</c>: the method is unknown.</summary>
+    /// <summary>A Gateway older than any setup installs: <c>sessions.usage</c> is unknown, so the page asks for an update.</summary>
     Legacy,
     /// <summary>
-    /// Released Gateway 2026.10.7: <c>sessions.usage</c> exists but rejects the server-side overview
-    /// parameters (<c>projection</c>, <c>query</c>, selections, paging and sort) and never returns <c>overview</c>.
+    /// Released Gateways through 2026.10.9, including extended-stable 2026.9.36: <c>sessions.usage</c> exists but rejects the server-side
+    /// overview parameters (<c>projection</c>, <c>query</c>, selections, paging and sort) and never returns <c>overview</c>.
     /// </summary>
     Released,
 }
 
 /// <summary>
-/// Deterministic synthetic <c>sessions.usage*</c> and <c>usage.status</c> replies. Rows are anchored
+/// Deterministic synthetic <c>sessions.usage</c> and <c>usage.status</c> replies. Rows are anchored
 /// to the requested date range so any preset renders populated charts. Shapes follow
 /// openclaw/openclaw@5089aa71 src/shared/usage-types.ts. This is a browse fixture: it applies a
 /// small, documented subset of the Gateway's server-side filtering and is not a usage engine.
@@ -64,8 +64,7 @@ public sealed class UsageAnalyticsFixture
         }
     }
 
-    internal static bool Handles(string method) =>
-        method is "sessions.usage" or "sessions.usage.timeseries" or "sessions.usage.logs";
+    internal static bool Handles(string method) => method == "sessions.usage";
 
     internal object Respond(string method, JsonElement parameters)
     {
@@ -75,8 +74,6 @@ public sealed class UsageAnalyticsFixture
         return method switch
         {
             "sessions.usage" => SessionsUsage(parameters, mode),
-            "sessions.usage.timeseries" => Timeseries(parameters, mode),
-            "sessions.usage.logs" => Logs(parameters, mode),
             _ => throw new FixtureRequestException("METHOD_NOT_FOUND", "Unknown fixture Gateway method.", unexpected: true),
         };
     }
@@ -732,85 +729,6 @@ public sealed class UsageAnalyticsFixture
     }
 
     private static bool Eq(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
-
-    // ── sessions.usage.timeseries / logs ──
-
-    private object Timeseries(JsonElement p, UsageAnalyticsMode mode)
-    {
-        GatewayScenario.ValidateProperties(p, "key", "agentId");
-        var row = FindRow(GatewayScenario.RequiredString(p, "key"), mode);
-        var points = new JsonArray();
-        long cumulativeTokens = 0;
-        double cumulativeCost = 0;
-        foreach (var day in row.Days.TakeLast(25))
-        {
-            // Four turns per active day, front-loaded like a real conversation.
-            int[] shares = [40, 25, 20, 15];
-            for (var turn = 0; turn < shares.Length; turn++)
-            {
-                var share = shares[turn] / 100.0;
-                var input = (long)(day.Input * share);
-                var output = (long)(day.Output * share);
-                var read = (long)(day.CacheRead * share);
-                var write = (long)(day.CacheWrite * share);
-                var total = input + output + read + write;
-                var cost = day.Cost * share;
-                cumulativeTokens += total;
-                cumulativeCost += cost;
-                points.Add(new JsonObject
-                {
-                    ["timestamp"] = Start(row, day) + turn * 7 * 60_000,
-                    ["input"] = input, ["output"] = output, ["cacheRead"] = read, ["cacheWrite"] = write,
-                    ["totalTokens"] = total, ["cost"] = Math.Round(cost, 6),
-                    ["cumulativeTokens"] = cumulativeTokens, ["cumulativeCost"] = Math.Round(cumulativeCost, 6),
-                });
-            }
-        }
-        var result = new JsonObject
-        {
-            ["sessionId"] = $"00000000-0000-4000-9000-{row.Index + 1:D12}",
-            ["points"] = points,
-        };
-        if (row.Days.Any(d => d.LowerBound)) result["usageReport"] = Unavailable();
-        return result;
-    }
-
-    private object Logs(JsonElement p, UsageAnalyticsMode mode)
-    {
-        GatewayScenario.ValidateProperties(p, "key", "agentId", "limit");
-        var row = FindRow(GatewayScenario.RequiredString(p, "key"), mode);
-        var limit = p.TryGetProperty("limit", out var l) && l.TryGetInt32(out var lv) ? Math.Clamp(lv, 1, 1000) : 200;
-        var logs = new JsonArray();
-        foreach (var day in row.Days.TakeLast(6))
-        {
-            var at = Start(row, day);
-            var tool = row.Spec.Tools.FirstOrDefault();
-            logs.Add(Log(at, "user", $"Synthetic request for {row.Spec.Label.ToLowerInvariant()} on {day.Date}.", day.Input / 4, null));
-            if (tool is not null)
-            {
-                logs.Add(Log(at + 30_000, "assistant", $"Checking the fixture data first.\n[Tool: {tool}]", day.Output / 5, day.Cost / 5));
-                logs.Add(Log(at + 45_000, "toolResult", $"[Tool: {tool}]\n[Tool Result]\nSynthetic result. No command executed.", null, null));
-            }
-            logs.Add(Log(at + 90_000, "assistant",
-                $"Here is the synthetic summary for {day.Date}. All names and values are fictional.", day.Output / 3, day.Cost / 3));
-        }
-        return new JsonObject { ["logs"] = new JsonArray(logs.TakeLast(limit).Select(n => n!.DeepClone()).ToArray()) };
-    }
-
-    private static JsonObject Log(long timestamp, string role, string content, long? tokens, double? cost)
-    {
-        var log = new JsonObject { ["timestamp"] = timestamp, ["role"] = role, ["content"] = content };
-        if (tokens is { } t) log["tokens"] = t;
-        if (cost is { } c) log["cost"] = Math.Round(c, 6);
-        return log;
-    }
-
-    private static Row FindRow(string key, UsageAnalyticsMode mode)
-    {
-        var end = DateOnly.FromDateTime(DateTime.UtcNow);
-        return Population(end.AddDays(-(MaxFixtureDays - 1)), end, mode).FirstOrDefault(r => r.Spec.Key == key)
-            ?? throw new FixtureRequestException("INVALID_REQUEST", $"No transcript found for session: {key}");
-    }
 
     // ── usage.status ──
 

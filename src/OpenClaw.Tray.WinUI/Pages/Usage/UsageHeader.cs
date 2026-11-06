@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Text;
@@ -6,332 +5,226 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using OpenClaw.Shared.Usage;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Usage;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClawTray.Pages.Usage.UsageUi;
 
 namespace OpenClawTray.Pages.Usage;
 
-/// <summary>Usage page header: title, refresh/export/pin, range and scope filters, summary strip and query.</summary>
 internal static class UsageHeader
 {
     private static readonly UsagePreset[] Presets =
-        [UsagePreset.Today, UsagePreset.Last7Days, UsagePreset.Last30Days, UsagePreset.Last90Days, UsagePreset.LastYear, UsagePreset.All];
+        [UsagePreset.Today, UsagePreset.Last7Days, UsagePreset.Last30Days, UsagePreset.Custom];
 
-    private static readonly string[] Facets = ["agent", "channel", "provider", "model", "tool"];
-
-    public static Element Render(
-        UsagePageState state, UsagePageController controller, Func<UsageExportFormat, Task> export, double width)
+    public static Element Render(UsagePageState state, UsagePageProps actions, UsagePageLayout layout, bool highContrast)
     {
-        var filters = state.Filters;
-
-        // Like the web page: title and a one-line description, then one "Reporting range" card holding every control.
-        var title = HStack(14,
-            Image("ms-appx:///Assets/SidebarIcons/Usage.svg").AccessibilityHidden().Size(36, 36).VAlign(VerticalAlignment.Center),
-            VStack(0,
-                TextBlock(S("Usage_Title")).FontSize(28).FontWeight(FontWeights.SemiBold)
-                    .HeadingLevel(AutomationHeadingLevel.Level1).AutomationId("UsagePageMarker"),
-                Note(S("Usage_Subtitle")).AutomationId("UsageSubtitle")));
-
-        var card = VStack(14,
-            RangeRow(state, controller),
-            OptionsRow(state, controller),
-            Border(null).Height(1).Background(CardStroke),
-            TotalsRow(state, export, controller, width),
-            state.ServerFiltersUnavailable ? null : QueryRow(state, controller),
-            state.ServerFiltersUnavailable ? null : FacetRow(state, controller),
-            ActiveFilters(state, controller));
-
-        return VStack(16,
-                title,
-                VStack(8,
-                    TextBlock(S("Usage_ReportingRange")).FontSize(14).FontWeight(FontWeights.SemiBold)
-                        .HeadingLevel(AutomationHeadingLevel.Level2).Margin(2, 0, 2, 0),
-                    Card(card, "UsageFilters")))
+        var summary = state.Dashboard?.Summary;
+        var unsupported = state.Availability == UsageAvailability.Unsupported;
+        var forbidden = state.Availability == UsageAvailability.Forbidden;
+        var amount = summary is null || !summary.CostKnown ? Dash
+            : summary.Cost == 0 && summary.MissingCostEntries > 0 ? S("Usage_Overview_Unpriced")
+            : Cost(summary.Cost, summary.LowerBound || summary.MissingCostEntries > 0);
+        Element headline = unsupported || forbidden
+            ? TextBlock(S(unsupported ? "Usage_Unsupported_Title" : "Usage_Forbidden_Title"))
+                .FontSize(32).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.WrapWholeWords)
+                .MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis)
+            : Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                TextBlock(amount).FontSize(32).FontWeight(FontWeights.SemiBold).Foreground(AccentText)
+                    .TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis)
+                    .MaxWidth(layout.ContentWidth / 2).ToolTip(amount)
+                    .AutomationId("UsageSummaryCostValue").Margin(0, 0, PageResponsiveLayout.GapInner, 0).Grid(column: 0),
+                TextBlock(RangeWords(state.Filters)).FontSize(32).FontWeight(FontWeights.SemiBold)
+                    .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis)
+                    .ToolTip(RangeCaption(state.Filters)).HelpText(RangeCaption(state.Filters))
+                    .AutomationId("UsageSummaryRange").Grid(column: 1));
+        var badges = new Element?[]
+        {
+                summary?.Partial == true || summary?.LowerBound == true
+                    ? Pill(S("Usage_PartialShort"), "UsageIncompleteChip") : null,
+                summary?.MissingCostEntries > 0
+                    ? Pill(S("Usage_MissingCostShort"), "UsageMissingCostChip")
+                        .HelpText(FN("Usage_MissingCostNoteFormat", summary.MissingCostEntries)) : null,
+        };
+        var subtitle = unsupported ? S("Usage_Unsupported_Message")
+            : forbidden ? S("Usage_Forbidden_Message") : SummaryText(state);
+        var icon = highContrast
+            ? TextBlock("\uE9D2").FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(20)
+                .Foreground(SecondaryText).TextAlignment(TextAlignment.Center)
+            : (Element)Image("ms-appx:///Assets/SidebarIcons/Usage.svg").AccessibilityHidden();
+        var title = VStack(PageResponsiveLayout.GapGroup,
+            HStack(PageResponsiveLayout.GapInner, icon.Size(20, 20).VAlign(VerticalAlignment.Center).AccessibilityHidden(),
+                TextBlock(S("Usage_Title")).Foreground(SecondaryText).FontWeight(FontWeights.SemiBold)
+                    .VAlign(VerticalAlignment.Center).HeadingLevel(AutomationHeadingLevel.Level1).AutomationId("UsagePageMarker"))
+                .VAlign(VerticalAlignment.Center),
+            headline.AutomationId("UsageHeadline"),
+            Note(subtitle).MaxLines(3).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(subtitle).AutomationId("UsageSubtitle"),
+            badges.Any(item => item is not null) ? HStack(PageResponsiveLayout.GapInner, badges) : null)
+            .AutomationId("UsageMastText");
+        var buttons = layout.Narrow
+            ? HStack(PageResponsiveLayout.GapInner,
+                ExportMenu(state, actions.Export).WithKey("export"),
+                MenuFlyout(Button(TextBlock("\uE712").FontFamily(FluentIconCatalog.SymbolThemeFontFamily).AccessibilityHidden())
+                        .Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources)
+                        .AutomationName(S("NodesPage_Action_MoreOptions")).ToolTip(S("NodesPage_Action_MoreOptions")).AutomationId("UsageMastOverflow"),
+                    MenuItem(S("Usage_OpenWeb"), actions.OpenWebUsage) with { IsEnabled = state.Availability != UsageAvailability.Disconnected }).WithKey("overflow"))
+            : HStack(PageResponsiveLayout.GapInner,
+                OpenWebButton(state, actions.OpenWebUsage).WithKey("web"),
+                ExportMenu(state, actions.Export).WithKey("export"));
+        var mast = Grid(layout.Narrow ? [GridSize.Star()] : [GridSize.Star(), GridSize.Auto],
+            layout.Narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
+            title.Grid(row: 0, column: 0),
+            unsupported || forbidden ? null : buttons.HAlign(HorizontalAlignment.Left).VAlign(VerticalAlignment.Top)
+                .Margin(layout.Narrow ? 0 : PageResponsiveLayout.GapGroup, layout.Narrow ? PageResponsiveLayout.GapStack : 0, 0, 0)
+                .Grid(row: layout.Narrow ? 1 : 0, column: layout.Narrow ? 0 : 1).AutomationId("UsageMastActions"))
+            .AutomationId("UsageMast");
+        return VStack(PageResponsiveLayout.GapStack,
+            mast,
+            unsupported || forbidden ? null : RangeRow(state, actions.Controller, layout))
             .AutomationId("UsageHeader");
     }
 
-    // ── reporting range card ──
+    public static string RangeWords(UsageFilters filters) => filters.Preset switch
+    {
+        UsagePreset.Today => S("Usage_Mast_Today"),
+        UsagePreset.Last7Days => S("Usage_Mast_7d"),
+        UsagePreset.Last30Days => S("Usage_Mast_30d"),
+        _ => UsageFormat.CompactRange(filters.Start, filters.End, Culture, S("Usage_RangeFormat")),
+    };
 
-    /// <summary>Row 1: presets, dates and time zone.</summary>
-    private static Element RangeRow(UsagePageState state, UsagePageController controller)
+    private static string SummaryText(UsagePageState state)
+    {
+        var summary = state.Dashboard?.Summary;
+        if (summary is null) return S("Usage_Loading");
+        var count = summary.SessionsKnown ? AtLeast(Count(summary.Sessions), summary.SessionsAtLeast) : Dash;
+        var text = F(summary.Sessions == 1 && !summary.SessionsAtLeast
+            ? "Usage_Filter_SessionsInRangeFormatOne" : "Usage_Filter_SessionsInRangeFormat", count);
+        if (state.Availability == UsageAvailability.Disconnected && state.LoadedAt is { } loaded)
+            text += " · " + F("Usage_LastKnownFormat", loaded.ToLocalTime().ToString("t", Culture));
+        return text;
+    }
+
+    private static Element RangeRow(UsagePageState state, UsagePageController controller, UsagePageLayout layout)
     {
         var filters = state.Filters;
-        var presetLabels = new[] { "Usage_Preset_Today", "Usage_Preset_7d", "Usage_Preset_30d", "Usage_Preset_90d", "Usage_Preset_1y", "Usage_Preset_All" };
-        return Flow(
-                SelectorBar(presetLabels.Select(k => SelectorBarItem(S(k))).ToArray(), Array.IndexOf(Presets, filters.Preset),
-                        index => { if (index >= 0 && index < Presets.Length) controller.SetPreset(Presets[index]); })
-                    .AutomationName(S("Usage_Filter_Range")).AutomationId("UsagePresets")
-                    .VAlign(VerticalAlignment.Center).Margin(0, 0, 16, 6).WithKey("presets"),
-                HStack(6,
-                        DatePicker(filters.Preset == UsagePreset.All ? null : filters.Start,
-                            date => controller.SetRange(date, filters.End), S("Usage_Filter_StartDate"), "UsageStartDate"),
-                        TextBlock(S("Usage_Filter_To")).Foreground(SecondaryText).VAlign(VerticalAlignment.Center),
-                        DatePicker(filters.End, date => controller.SetRange(filters.Preset == UsagePreset.All ? date.AddDays(-29) : filters.Start, date),
-                            S("Usage_Filter_EndDate"), "UsageEndDate"))
-                    .VAlign(VerticalAlignment.Center).Margin(0, 0, 12, 6).WithKey("dates"),
-                ComboBox([S("Usage_TimeZone_Local"), S("Usage_TimeZone_Utc")],
-                        filters.TimeZone == UsageTimeZoneMode.Utc ? 1 : 0,
-                        index => controller.SetTimeZone(index == 1 ? UsageTimeZoneMode.Utc : UsageTimeZoneMode.Local))
-                    .MinWidth(100).ToolTip(S("Usage_Filter_TimeZone"))
-                    .AutomationName(S("Usage_Filter_TimeZone")).AutomationId("UsageTimeZone")
-                    .VAlign(VerticalAlignment.Center).Margin(0, 0, 0, 6).WithKey("zone"))
+        var advanced = !state.ServerFiltersUnavailable && state.Dashboard is not null;
+        var segments = SelectorBar(new[] { "Usage_Preset_Today", "Usage_Preset_7d", "Usage_Preset_30d", "Usage_Preset_Custom" }
+                    .Select(key => SelectorBarItem(S(key))).ToArray(), Array.IndexOf(Presets, filters.Preset),
+                    index => { if (index >= 0 && index < Presets.Length) controller.SetPreset(Presets[index]); })
+                .HAlign(HorizontalAlignment.Left).AutomationName(S("Usage_Filter_Range")).AutomationId("UsagePresets");
+        var controls = HStack(PageResponsiveLayout.GapInner,
+            advanced ? AgentMenu(state, controller).WithKey("agent") : null,
+            OptionsMenu(state, controller).WithKey("options"),
+            state.Phase == UsageLoadPhase.Loading
+                ? ProgressRing().Size(20, 20).AutomationName(S("Usage_Refreshing")).AutomationId("UsageRefreshing").WithKey("refreshing")
+                : IconButton("\uE72C", S("Usage_Refresh"), controller.Refresh, "UsageRefresh",
+                    state.Availability != UsageAvailability.Disconnected).WithKey("refresh"))
+            .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Center).AutomationId("UsageFilterOptions");
+        var wide = layout.Tier == PageWidthTier.Wide;
+        var custom = filters.Preset == UsagePreset.Custom;
+        var inlineDates = wide && custom;
+        var inlineSearch = wide && !custom;
+        var searchRow = wide ? inlineDates ? 1 : 0 : layout.Narrow ? 2 : 1;
+        var dateRow = inlineDates ? 0 : (advanced ? searchRow : layout.Narrow ? 1 : 0) + 1;
+        var columns = wide && (advanced || custom) ? 3 : layout.Narrow ? 1 : 2;
+        var rows = Math.Max(advanced ? searchRow + 1 : layout.Narrow ? 2 : 1, custom ? dateRow + 1 : 1);
+        return Grid(columns == 3 ? [GridSize.Auto, GridSize.Star(), GridSize.Auto]
+                : layout.Narrow ? [GridSize.Star()] : [GridSize.Star(), GridSize.Auto],
+            Enumerable.Repeat(GridSize.Auto, rows).ToArray(),
+            segments.VAlign(VerticalAlignment.Center).Grid(row: 0, column: 0).WithKey("presets"),
+            controls.Margin(layout.Narrow ? 0 : PageResponsiveLayout.GapGroup, layout.Narrow ? PageResponsiveLayout.GapGroup : 0,
+                    inlineSearch && advanced ? PageResponsiveLayout.GapGroup : 0, 0)
+                .Grid(row: layout.Narrow ? 1 : 0, column: inlineDates ? 2 : layout.Narrow ? 0 : 1).WithKey("controls"),
+            advanced
+                ? Component<UsageQueryBox, UsageQueryBoxProps>(new(filters.Query, controller.SetQuery))
+                    .MinWidth(inlineSearch ? 240 : 0).MaxWidth(inlineSearch ? 360 : double.PositiveInfinity)
+                    .Width(inlineSearch ? Math.Clamp(layout.ContentWidth / 3, 240, 360) : double.NaN)
+                    .Margin(0, inlineSearch ? 0 : PageResponsiveLayout.GapGroup, 0, 0)
+                    .Grid(row: searchRow, column: inlineSearch ? 2 : 0, columnSpan: inlineSearch ? 1 : columns).WithKey("search")
+                : null,
+            custom
+                ? Grid([GridSize.Star(), GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                    DatePicker(filters.Start, date => controller.SetRange(date, filters.End), S("Usage_Filter_StartDate"), "UsageStartDate").Grid(column: 0),
+                    TextBlock(S("Usage_Filter_To")).VAlign(VerticalAlignment.Center).Margin(PageResponsiveLayout.GapInner, 0)
+                        .Grid(column: 1),
+                    DatePicker(filters.End, date => controller.SetRange(filters.Start, date), S("Usage_Filter_EndDate"), "UsageEndDate").Grid(column: 2))
+                    .Width(inlineDates ? double.NaN : Math.Min(layout.ContentWidth, 360)).MaxWidth(360)
+                    .HAlign(HorizontalAlignment.Left).VAlign(VerticalAlignment.Center)
+                    .Margin(inlineDates ? PageResponsiveLayout.GapGroup : 0, inlineDates ? 0 : PageResponsiveLayout.GapGroup, 0, 0)
+                    .Grid(row: dateRow, column: inlineDates ? 1 : 0, columnSpan: inlineDates ? 1 : columns)
+                    .AutomationId("UsageCustomDates").WithKey("dates")
+                : null)
             .AutomationId("UsageFilterRow");
     }
 
-    /// <summary>Row 2: who started the sessions, instance or lineage scope, the shown metric, and refresh.</summary>
-    private static Element OptionsRow(UsagePageState state, UsagePageController controller)
+    private static Element AgentMenu(UsagePageState state, UsagePageController controller)
     {
-        var filters = state.Filters;
-        var creators = state.Report?.CreatorOptions ?? Array.Empty<UsageCreator>();
-        var creatorLabels = new[] { S("Usage_Creators_All") }.Concat(creators.Select(CreatorLabel)).ToArray();
-        var creatorIndex = filters.CreatorKey is null ? 0 : creators.ToList().FindIndex(c => c.Key == filters.CreatorKey) + 1;
-        return Flow(
-                ComboBox(creatorLabels, Math.Max(0, creatorIndex),
-                        index => controller.SetCreator(index <= 0 ? null : creators[index - 1].Key))
-                    .MinWidth(170).IsEnabled(creators.Count > 0).ToolTip(S("Usage_Creators_Title"))
-                    .AutomationName(S("Usage_Creators_Filter")).AutomationId("UsageCreatorFilter")
-                    .VAlign(VerticalAlignment.Center).Margin(0, 0, 12, 6).WithKey("creator"),
-                // Legacy usage.cost has no sessions, so there is no instance or lineage to choose.
-                state.Availability == UsageAvailability.Legacy ? null : SelectorBar([SelectorBarItem(S("Usage_Scope_Instance")), SelectorBarItem(S("Usage_Scope_Family"))],
-                        filters.Scope == UsageScope.Family ? 1 : 0,
-                        index => controller.SetScope(index == 1 ? UsageScope.Family : UsageScope.Instance))
-                    .ToolTip(S("Usage_Scope_FamilyHint")).HelpText(S("Usage_Scope_FamilyHint"))
-                    .AutomationName(S("Usage_Filter_Scope")).AutomationId("UsageScope")
-                    .VAlign(VerticalAlignment.Center).Margin(0, 0, 12, 6).WithKey("scope"),
-                SelectorBar([SelectorBarItem(S("Usage_Metric_Tokens")), SelectorBarItem(S("Usage_Metric_Cost"))],
-                        state.Metric == UsageMetric.Cost ? 1 : 0,
-                        index => controller.SetMetric(index == 1 ? UsageMetric.Cost : UsageMetric.Tokens))
-                    .AutomationName(S("Usage_Filter_Show")).AutomationId("UsageMetric")
-                    .VAlign(VerticalAlignment.Center).Margin(0, 0, 0, 6).WithKey("metric"))
-            .AutomationId("UsageOptionsRow");
+        var values = state.Dashboard!.FilterOptions.TryGetValue("agent", out var agents) ? agents : [];
+        return MenuFlyout(Button(S("Usage_Facet_agent")).AutomationName(S("Usage_Facet_agent")).AutomationId("UsageFacet_agent"),
+            values.Select(agent => (MenuFlyoutItemBase)ToggleMenuItem(agent,
+                state.Filters.Query.Split(' ').Contains("agent:" + agent),
+                _ => controller.ToggleQueryTerm("agent:" + agent))).ToArray());
     }
 
-    private static Element RefreshButton(UsagePageState state, UsagePageController controller) =>
-        state.Phase == UsageLoadPhase.Loading
-            ? HStack(8, ProgressRing().Size(16, 16).VAlign(VerticalAlignment.Center),
-                    TextBlock(S("Usage_Refreshing")).Foreground(SecondaryText).VAlign(VerticalAlignment.Center))
-                .AutomationName(S("Usage_Refreshing")).AutomationId("UsageRefreshing")
-            : Button(HStack(6,
-                        TextBlock("\uE72C").AccessibilityHidden().FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(14)
-                            .VAlign(VerticalAlignment.Center),
-                        TextBlock(S("Usage_Refresh")).VAlign(VerticalAlignment.Center)),
-                    controller.Refresh)
-                .AccentButton()
-                .IsEnabled(state.Availability != UsageAvailability.Disconnected)
-                .AutomationName(S("Usage_Refresh")).AutomationId("UsageRefresh");
-
-    /// <summary>The range's totals on the left; when it was updated, pin and export on the right.</summary>
-    private static Element TotalsRow(UsagePageState state, Func<UsageExportFormat, Task> export, UsagePageController controller, double width)
+    private static Element OptionsMenu(UsagePageState state, UsagePageController controller)
     {
-        var summary = state.Dashboard?.Summary;
-        var lowerBound = summary?.LowerBound == true;
-        var totals = Flow(
-            Total(S("Usage_Metric_Tokens"), summary is null ? Dash : UsageUi.Tokens(summary.Tokens, lowerBound), GlyphTokens, 0, "UsageSummaryTokens"),
-            Total(S("Usage_Metric_Cost"), summary is null ? Dash : UsageUi.Cost(summary.Cost, lowerBound), GlyphCost, 5, "UsageSummaryCost"),
-            Total(S("Usage_Overview_Sessions"), summary is null ? Dash : Count(summary.Sessions), GlyphSessions, 4, "UsageSummarySessions"),
-            lowerBound || summary?.Partial == true
-                ? Pill(lowerBound ? S("Usage_LowerBoundShort") : S("Usage_PartialShort"), "UsageIncompleteChip")
-                    .ToolTip(lowerBound ? S("Usage_LowerBoundNote") : S("Usage_PartialNote"))
-                    .AutomationName(lowerBound ? S("Usage_LowerBoundNote") : S("Usage_PartialNote"))
-                    .VAlign(VerticalAlignment.Center).WithKey("incomplete")
-                : null);
-        var actions = HStack(8,
-            UpdatedText(state),
-            RefreshButton(state, controller),
-            ToggleButton("\uE718", state.HeaderPinned, controller.SetHeaderPinned)
-                .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                .ToolTip(state.HeaderPinned ? S("Usage_Unpin") : S("Usage_Pin"))
-                .AutomationName(state.HeaderPinned ? S("Usage_Unpin") : S("Usage_Pin"))
-                .AutomationId("UsagePin"),
-            ExportMenu(state, export));
-        // Totals need about 560px and actions about 420px; below that the actions move under the totals.
-        return width < 1000
-            ? VStack(10, totals, actions.HAlign(HorizontalAlignment.Right))
-            : Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                totals.VAlign(VerticalAlignment.Center).Grid(column: 0),
-                actions.VAlign(VerticalAlignment.Center).Grid(column: 1));
+        var zone = state.Filters.TimeZone;
+        var scope = state.Filters.Scope;
+        var local = F("Usage_Options_LocalFormat", TimeZoneInfo.Local.StandardName);
+        return MenuFlyout(Button(HStack(6,
+                    TextBlock("\uE713").FontFamily(FluentIconCatalog.SymbolThemeFontFamily).AccessibilityHidden(),
+                    TextBlock(S("Usage_Options")).TextWrapping(TextWrapping.NoWrap)))
+                .Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources)
+                .AutomationName(S("Usage_Options"))
+                .ToolTip($"{(zone == UsageTimeZoneMode.Utc ? S("Usage_TimeZone_Utc") : local)} · {S(scope == UsageScope.Family ? "Usage_Scope_Family" : "Usage_Scope_Instance")}")
+                .AutomationId("UsageOptions"),
+            MenuItem(S("Usage_Filter_TimeZone")) with { IsEnabled = false },
+            RadioMenuItem(local, "usage-zone", zone == UsageTimeZoneMode.Local, () => controller.SetTimeZone(UsageTimeZoneMode.Local)),
+            RadioMenuItem(S("Usage_TimeZone_Utc"), "usage-zone", zone == UsageTimeZoneMode.Utc, () => controller.SetTimeZone(UsageTimeZoneMode.Utc)),
+            MenuSeparator(),
+            MenuItem(S("Usage_Filter_Scope")) with { IsEnabled = false },
+            RadioMenuItem(S("Usage_Scope_Instance"), "usage-scope", scope == UsageScope.Instance, () => controller.SetScope(UsageScope.Instance)),
+            RadioMenuItem(S("Usage_Scope_Family"), "usage-scope", scope == UsageScope.Family, () => controller.SetScope(UsageScope.Family)));
     }
 
-    private static Element Total(string label, string value, string glyph, int palette, string automationId) =>
-        HStack(10,
-                IconBadge(glyph, palette, 36).VAlign(VerticalAlignment.Center),
-                VStack(0,
-                    TextBlock(value).FontSize(26).FontWeight(FontWeights.SemiBold).AutomationId(automationId + "Value"),
-                    TextBlock(label).FontSize(12).Foreground(SecondaryText)))
-            .Margin(0, 0, 32, 4)
-            .AutomationName($"{label}: {value}")
-            .AutomationId(automationId)
-            .WithKey(automationId);
+    public static Element OpenWebButton(UsagePageState state, Action openWebUsage, string automationId = "UsageOpenWeb") =>
+        Button(HStack(6, TextBlock(S("Usage_OpenWeb")).TextWrapping(TextWrapping.NoWrap),
+                TextBlock("\uE8A7").AccessibilityHidden().FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(14)), openWebUsage)
+            .IsEnabled(state.Availability != UsageAvailability.Disconnected)
+            .ToolTip(S("Usage_OpenWebHint")).HelpText(S("Usage_OpenWebHint"))
+            .AutomationName(S("Usage_OpenWeb")).AutomationId(automationId);
 
-    /// <summary>The session filter box with the in-range count beside it, like the web page.</summary>
-    private static Element QueryRow(UsagePageState state, UsagePageController controller)
-    {
-        var count = state.Dashboard?.Sessions.Total;
-        return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-            Component<UsageQueryBox, UsageQueryBoxProps>(new UsageQueryBoxProps(state.Filters.Query, controller.SetQuery)).Grid(column: 0),
-            count is { } total
-                ? TextBlock(FN("Usage_Filter_SessionsInRangeFormat", total)).FontSize(12).Foreground(SecondaryText)
-                    .VAlign(VerticalAlignment.Center).Margin(12, 0, 0, 0).AutomationId("UsageSessionsInRange").Grid(column: 1)
-                : null);
-    }
+    public static string RangeCaption(UsageFilters filters) =>
+        F("Usage_RangeCaptionFormat",
+            F("Usage_RangeFormat", UsageFormat.FullDate(filters.Start, Culture), UsageFormat.FullDate(filters.End, Culture)),
+            filters.TimeZone == UsageTimeZoneMode.Utc ? S("Usage_TimeZone_Utc") : TimeZoneInfo.Local.StandardName);
 
-    /// <summary>Facet menus followed by a short hint, like the web page's filter chips row.</summary>
-    private static Element FacetRow(UsagePageState state, UsagePageController controller) =>
-        Flow(FacetMenus(state, controller).WithKey("facets"),
-                Note(S("Usage_Filter_Tip")).VAlign(VerticalAlignment.Center).Margin(4, 0, 0, 4).WithKey("tip"))
-            .AutomationId("UsageFacetRow");
-
-    public static string RangeCaption(UsageFilters filters)
-    {
-        var zone = filters.TimeZone == UsageTimeZoneMode.Utc ? S("Usage_TimeZone_Utc") : TimeZoneInfo.Local.StandardName;
-        var range = filters.Preset == UsagePreset.All
-            ? S("Usage_Range_AllTime")
-            : filters.Start == filters.End
-                ? UsageFormat.FullDate(filters.Start, Culture)
-                : F("Usage_RangeFormat", UsageFormat.FullDate(filters.Start, Culture), UsageFormat.FullDate(filters.End, Culture));
-        return F("Usage_RangeCaptionFormat", range, zone);
-    }
-
-    private static Element UpdatedText(UsagePageState state) =>
-        state.LoadedAt is { } loaded
-            ? TextBlock(F("Usage_UpdatedFormat", loaded.ToLocalTime().ToString("t", Culture))).FontSize(12)
-                .Foreground(TertiaryText).VAlign(VerticalAlignment.Center).Margin(0, 0, 8, 0).AutomationId("UsageUpdated")
-            : Empty();
-
-    private static Element ExportMenu(UsagePageState state, Func<UsageExportFormat, Task> export)
-    {
-        var enabled = state.Report is not null && !state.Exporting && state.Availability == UsageAvailability.Connected;
-        var target = Button(HStack(6,
-                    TextBlock("\uEDE1").FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(14).VAlign(VerticalAlignment.Center),
-                    TextBlock(state.Exporting ? S("Usage_Exporting") : S("Usage_Export")).VAlign(VerticalAlignment.Center),
-                    TextBlock("\uE70D").FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(10).VAlign(VerticalAlignment.Center)))
-            .IsEnabled(enabled)
-            .Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources)
-            .AutomationName(S("Usage_Export"))
-            .AutomationId("UsageExport");
-        return MenuFlyout(target,
+    private static Element ExportMenu(UsagePageState state, Func<UsageExportFormat, Task> export) =>
+        MenuFlyout(Button(HStack(6,
+                    TextBlock("\uE896").AccessibilityHidden().FontFamily(FluentIconCatalog.SymbolThemeFontFamily),
+                    TextBlock(state.Exporting ? S("Usage_Exporting") : S("Usage_Export")).TextWrapping(TextWrapping.NoWrap),
+                    TextBlock("\uE70D").AccessibilityHidden().FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(10)))
+                .IsEnabled(state.Report is not null && !state.Exporting && !state.ExportInteraction && state.Availability == UsageAvailability.Connected)
+                .AutomationName(S("Usage_Export")).AutomationId("UsageExport"),
             MenuItem(S("Usage_Export_SessionsCsv"), () => _ = export(UsageExportFormat.SessionsCsv)),
-            MenuItem(S("Usage_Export_DailyCsv"), () => _ = export(UsageExportFormat.DailyCsv)),
-            MenuItem(S("Usage_Export_Json"), () => _ = export(UsageExportFormat.Json)));
-    }
+            MenuItem(S("Usage_Export_DailyCsv"), () => _ = export(UsageExportFormat.DailyCsv)));
 
-    private static Element DatePicker(DateOnly? date, Action<DateOnly> onChanged, string name, string automationId) =>
-        CalendarDatePicker(
-                date is { } d ? new DateTimeOffset(d.ToDateTime(TimeOnly.MinValue)) : null,
-                value => { if (value is { } picked) onChanged(DateOnly.FromDateTime(picked.Date)); })
-            .PlaceholderText(name)
-            .Width(140)
-            .AutomationName(name)
-            .AutomationId(automationId);
-
-    public static string CreatorLabel(UsageCreator creator) =>
-        creator.Actor is null
-            ? creator.Key == "system" ? S("Usage_Creators_System") : S("Usage_Creators_NotRecorded")
-            : CreatorLabel(creator.Key, creator.Actor.Label, creator.Actor.Type);
-
-    // Like upstream: a creator without a recorded actor is unattributed, whatever its opaque key looks like.
-    public static string CreatorLabel(string key, string? label, string? type) =>
-        !string.IsNullOrWhiteSpace(label) ? label!
-            : type == "system" || key == "system" ? S("Usage_Creators_System")
-            : type is null or "unknown" || key.StartsWith("unknown", StringComparison.Ordinal) ? S("Usage_Creators_NotRecorded")
-            : key;
-
-    private static Element FacetMenus(UsagePageState state, UsagePageController controller)
-    {
-        var options = state.Dashboard?.FilterOptions;
-        if (options is null || options.Count == 0) return Empty();
-        var terms = state.Filters.Query.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var menus = Facets
-            .Where(facet => options.TryGetValue(facet, out var values) && values.Count > 0)
-            .Select(facet =>
-            {
-                var values = options[facet];
-                var active = values.Count(v => terms.Contains($"{facet}:{v}"));
-                var label = S("Usage_Facet_" + facet) + (active > 0 ? $" ({active})" : "");
-                var target = Button(HStack(6,
-                            TextBlock(label).FontSize(13).VAlign(VerticalAlignment.Center),
-                            TextBlock("\uE70D").FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(10).VAlign(VerticalAlignment.Center)))
-                    .Padding(10, 4)
-                    .Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources)
-                    .AutomationName(S("Usage_Facet_" + facet))
-                    .AutomationId("UsageFacet_" + facet);
-                return MenuFlyout(target, values.Take(40).Select(v => (MenuFlyoutItemBase)ToggleMenuItem(v, terms.Contains($"{facet}:{v}"),
-                        _ => controller.ToggleQueryTerm($"{facet}:{v}"))).ToArray())
-                    .Margin(0, 0, 4, 4)
-                    .WithKey(facet);
-            })
-            .ToArray();
-        return Flow(menus).AutomationId("UsageFacets");
-    }
-
-    private static Element ActiveFilters(UsagePageState state, UsagePageController controller)
-    {
-        var filters = state.Filters;
-        var chips = new List<Element>();
-        foreach (var term in filters.Query.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-            chips.Add(Removable(term, () => controller.ToggleQueryTerm(term), "UsageChipQuery_" + term));
-        foreach (var day in filters.SelectedDays)
-        {
-            var label = UsageFormat.TryParseIso(day, out var date) ? UsageFormat.DayLabel(date, Culture) : day;
-            chips.Add(Removable(label, () => controller.ToggleDay(day, append: true), "UsageChipDay_" + day));
-        }
-        foreach (var hour in filters.SelectedHours)
-            chips.Add(Removable(UsageFormat.Hour(hour, Culture), () => controller.ToggleHour(hour, append: true), "UsageChipHour_" + hour));
-        if (filters.SelectedSessions.Count > 0)
-            chips.Add(Removable(FN("Usage_SelectedSessionsFormat", filters.SelectedSessions.Count), controller.CloseDetail, "UsageChipSessions"));
-        if (filters.CreatorKey is { } creator)
-            chips.Add(Removable(CreatorLabel(creator, state.Report?.CreatorOptions.FirstOrDefault(c => c.Key == creator)?.Actor?.Label, null),
-                () => controller.SetCreator(null), "UsageChipCreator"));
-        if (chips.Count == 0) return Empty();
-        chips.Add(SubtleButton(S("Usage_ClearFilters"), controller.ClearAllFilters, "UsageClearFilters").WithKey("clear"));
-        return Flow(chips.ToArray()).AutomationId("UsageActiveFilters");
-    }
-
-    private static Element Removable(string text, Action remove, string automationId) =>
-        Button(HStack(6,
-                    TextBlock(text).FontSize(12).VAlign(VerticalAlignment.Center).MaxWidth(240).TextTrimming(TextTrimming.CharacterEllipsis),
-                    TextBlock("\uE711").FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(10).VAlign(VerticalAlignment.Center)),
-                remove)
-            .Padding(10, 3)
-            .MinHeight(0)
-            .CornerRadius(12)
-            .Margin(0, 0, 6, 6)
-            .Resources(r =>
-            {
-                OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources(r);
-                r.Set("ButtonBackground", Theme.Ref("AccentFillColorTertiaryBrush"));
-            })
-            .ToolTip(F("Usage_RemoveFilterFormat", text))
-            .AutomationName(F("Usage_RemoveFilterFormat", text))
-            .AutomationId(automationId)
-            .WithKey(automationId);
+    private static Element DatePicker(DateOnly date, Action<DateOnly> changed, string name, string id) =>
+        CalendarDatePicker(new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue)),
+                value => { if (value is { } picked) changed(DateOnly.FromDateTime(picked.Date)); })
+            .MinWidth(0).HAlign(HorizontalAlignment.Stretch).PlaceholderText(name).AutomationName(name).AutomationId(id);
 }
 
 internal sealed record UsageQueryBoxProps(string Query, Action<string> Submit);
 
-/// <summary>Query input with a local draft so typing is not overwritten by re-renders; submits on Enter.</summary>
 internal sealed class UsageQueryBox : Component<UsageQueryBoxProps>
 {
     public override Element Render()
     {
         var (draft, setDraft) = UseState(Props.Query);
-        var external = Props.Query;
-        // An external change (facet chip, clear) replaces the draft.
-        UseEffect(() => setDraft(external), external);
-        var submit = Props.Submit;
-        return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                AutoSuggestBox(draft, setDraft, value => submit(value))
-                    .PlaceholderText(S("Usage_Query_Placeholder"))
-                    .QueryIcon(FontIcon("\uE71C"))
-                    .AutomationName(S("Usage_Query_Label"))
-                    .HelpText(S("Usage_Query_Help"))
-                    .AutomationId("UsageQuery")
-                    .Grid(column: 0),
-                Button(S("Usage_Query_Apply"), () => submit(draft))
-                    .Margin(8, 0, 0, 0)
-                    .IsEnabled(draft.Trim() != Props.Query.Trim())
-                    .AutomationId("UsageQueryApply")
-                    .Grid(column: 1));
+        UseEffect(() => setDraft(Props.Query), Props.Query);
+        return AutoSuggestBox(draft, setDraft, Props.Submit)
+            .PlaceholderText(S("Usage_Query_Placeholder")).QueryIcon(FontIcon("\uE71C"))
+            .AutomationName(S("Usage_Query_Label")).AutomationId("UsageQuery");
     }
 }

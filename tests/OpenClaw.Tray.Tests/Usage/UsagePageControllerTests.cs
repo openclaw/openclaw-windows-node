@@ -13,13 +13,10 @@ public sealed class UsagePageControllerTests
     public class UsageGateway : DispatchProxy
     {
         public bool Connected = true;
-        public int? CostDays;
         public readonly List<SessionsUsageQuery> Queries = [];
         public readonly List<string> Calls = [];
         public Func<SessionsUsageQuery, Task<UsageReadResult<SessionsUsageReport>>> Usage =
             _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(Report("agent:main:a")));
-        public Func<Task<UsageReadResult<SessionsUsageReport>>> Cost =
-            () => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(new SessionsUsageReport { Totals = new UsageTotals { TotalCost = 4 } }));
 
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
@@ -28,19 +25,9 @@ public sealed class UsagePageControllerTests
             {
                 "get_IsConnectedToGateway" => Connected,
                 "GetSessionsUsageAsync" => Query((SessionsUsageQuery)args![0]!),
-                "GetUsageCostSummaryAsync" => CostFor((int)args![0]!),
                 "GetProviderUsageAsync" => Task.FromResult(UsageReadResult<ProviderUsageSummary>.Ok(new ProviderUsageSummary(null, [], false))),
-                "GetSessionUsageTimeseriesAsync" => Task.FromResult(UsageReadResult<SessionUsageTimeseries>.Ok(new SessionUsageTimeseries(UsageReportState.Available, null, []))),
-                "GetSessionUsageLogsAsync" => Task.FromResult(UsageReadResult<IReadOnlyList<SessionUsageLogEntry>>.Ok(
-                    [new SessionUsageLogEntry(DateTimeOffset.UnixEpoch, "assistant", "Done\n[Tool: read]", null, null)])),
                 _ => throw new NotSupportedException(method.Name),
             };
-        }
-
-        private Task<UsageReadResult<SessionsUsageReport>> CostFor(int days)
-        {
-            CostDays = days;
-            return Cost();
         }
 
         private Task<UsageReadResult<SessionsUsageReport>> Query(SessionsUsageQuery query)
@@ -125,31 +112,21 @@ public sealed class UsagePageControllerTests
     }
 
     [Fact]
-    public async Task LegacyFallback_ReachesBackToACustomRangeAndTotalsOnlyItsDays()
+    public async Task UnsupportedGateway_ShowsNoFiguresAndStillLoadsProviderPlans()
     {
         var (controller, gateway, dispatcher) = Create();
         gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Unsupported());
-        UsageDailyTotals Day(string date, long tokens, double cost) =>
-            new(date, new UsageTotals { TotalTokens = tokens, TotalCost = cost });
-        gateway.Cost = () => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(new SessionsUsageReport
-        {
-            Totals = new UsageTotals { TotalTokens = 1000, TotalCost = 10 },
-            Aggregates = new UsageAggregates
-            {
-                CostDaily = [Day("2026-10-01", 100, 1), Day("2026-10-02", 200, 2), Day("2026-10-03", 300, 3), Day("2026-10-25", 400, 4)],
-            },
-        }));
 
-        controller.SetRange(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 3));
         controller.Activate();
-        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Loaded, Availability: UsageAvailability.Legacy });
+        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Loaded, Availability: UsageAvailability.Unsupported }
+            && controller.State.Providers.Phase == UsageLoadPhase.Loaded);
 
-        // Today is 2026-10-26, so a range starting on 2026-10-01 needs 26 days of legacy history.
-        Assert.Equal(26, gateway.CostDays);
-        var report = controller.State.Report!;
-        Assert.Equal(600, report.Totals.TotalTokens);
-        Assert.Equal(6, report.Totals.TotalCost, 6);
-        Assert.Equal(["2026-10-01", "2026-10-02", "2026-10-03"], report.Aggregates.CostDaily.Select(d => d.Date));
+        // Older than any Gateway setup installs: no substitute read and no partial figures.
+        Assert.Null(controller.State.Report);
+        Assert.Null(controller.State.Dashboard);
+        Assert.False(controller.State.ShowLoadError);
+        Assert.Equal(["GetProviderUsageAsync", "GetSessionsUsageAsync", "get_IsConnectedToGateway"],
+            gateway.Calls.Distinct().Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -181,7 +158,7 @@ public sealed class UsagePageControllerTests
     {
         var (controller, gateway, dispatcher) = Create();
         controller.SetQuery("agent:main");
-        controller.ToggleDay("2026-10-21", append: false);
+        controller.SetSort(UsageSort.Tokens);
         gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(Report("agent:main:a", "agent:main:b")));
 
         controller.Activate();
@@ -189,23 +166,21 @@ public sealed class UsagePageControllerTests
 
         Assert.True(controller.State.BasicGateway);
         Assert.Equal("", controller.State.Filters.Query);
-        Assert.Empty(controller.State.Filters.SelectedDays);
         var requests = gateway.Queries.Count;
 
         controller.SetQuery("model:gpt");
-        controller.ToggleHour(9, append: false);
-        controller.SetSort(UsageSort.Tokens);
+        controller.SetSort(UsageSort.Errors);
+        controller.ToggleSortDirection();
         controller.SetPage(50);
-        controller.SelectSession("agent:main:b", "main", append: false);
-        await dispatcher.PumpUntilAsync(() => controller.State.Detail?.Logs.Phase == UsageLoadPhase.Loaded);
+        controller.SelectSession("agent:main:b", "main");
+        await dispatcher.PumpUntilAsync(() => controller.State.Detail?.Row.Phase == UsageLoadPhase.Loaded);
         controller.CloseDetail();
 
-        // Selection is projected locally; only the detail reads went to the Gateway.
+        // Search, sort and paging are ignored; only the single-session detail read went to the Gateway.
         Assert.Equal(requests, gateway.Queries.Count(q => q.Key is null));
-        Assert.Empty(controller.State.Filters.SelectedSessions);
         Assert.Equal("", controller.State.Filters.Query);
-        Assert.Empty(controller.State.Filters.SelectedHours);
-        Assert.Equal(UsageSort.Cost, controller.State.Filters.Sort);
+        Assert.Equal(0, controller.State.Filters.Offset);
+        Assert.True(controller.State.Filters.SortDescending);
 
         // A Gateway that returns the overview re-enables them.
         gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(Report("agent:main:a") with { Overview = new UsageOverview() }));
@@ -235,26 +210,49 @@ public sealed class UsagePageControllerTests
     }
 
     [Fact]
-    public async Task SelectingASession_LoadsDetailsAndRecordsItAsRecent()
+    public async Task SelectingASession_ReadsThatSessionWithoutReloadingTheOverviewAndTogglesClosed()
     {
         var (controller, gateway, dispatcher) = Create();
         controller.Activate();
         await dispatcher.PumpUntilAsync(() => controller.State.Phase == UsageLoadPhase.Loaded);
+        var overviewReads = gateway.Queries.Count;
 
-        controller.SelectSession("agent:main:a", "main", append: false);
-        await dispatcher.PumpUntilAsync(() => controller.State.Detail is { Row.Phase: UsageLoadPhase.Loaded, Timeseries.Phase: UsageLoadPhase.Loaded, Logs.Phase: UsageLoadPhase.Loaded }
-            && controller.State.Phase == UsageLoadPhase.Loaded);
+        controller.SelectSession("agent:main:a", "main");
+        await dispatcher.PumpUntilAsync(() => controller.State.Detail is { Row.Phase: UsageLoadPhase.Loaded });
 
         var detailQuery = Assert.Single(gateway.Queries, q => q.Key is not null);
-        Assert.True(detailQuery.IncludeContextWeight);
-        Assert.Equal("main", detailQuery.AgentId);
-        Assert.Equal(["agent:main:a"], controller.State.Filters.SelectedSessions);
-        Assert.Equal(["agent:main:a"], controller.State.RecentKeys);
-        Assert.Equal([("read", 1)], controller.State.Detail!.Logs.Value![0].Tools);
+        Assert.Equal(("agent:main:a", "main"), (detailQuery.Key, detailQuery.AgentId));
+        Assert.Equal(("2026-10-20", "2026-10-26"), (detailQuery.StartDate, detailQuery.EndDate));
+        Assert.Equal(overviewReads, gateway.Queries.Count(q => q.Key is null));
+        Assert.Equal("agent:main:a", controller.State.Detail!.Row.Value!.Key);
+        Assert.True(Assert.Single(controller.State.Dashboard!.Sessions.Rows).Selected);
 
-        controller.SelectSession("agent:main:a", "main", append: false);
+        controller.SelectSession("agent:main:a", "main");
         Assert.Null(controller.State.Detail);
-        Assert.Empty(controller.State.Filters.SelectedSessions);
+        Assert.False(Assert.Single(controller.State.Dashboard!.Sessions.Rows).Selected);
+    }
+
+    [Fact]
+    public async Task OpenDetails_ReloadForANewRangeButNotForSearchSortOrPaging()
+    {
+        var (controller, gateway, dispatcher) = Create();
+        gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(Report("agent:main:a") with { Overview = new UsageOverview() }));
+        controller.Activate();
+        await dispatcher.PumpUntilAsync(() => controller.State.Phase == UsageLoadPhase.Loaded);
+        controller.SelectSession("agent:main:a", "main");
+        await dispatcher.PumpUntilAsync(() => controller.State.Detail is { Row.Phase: UsageLoadPhase.Loaded });
+        int DetailReads() => gateway.Queries.Count(q => q.Key is not null);
+
+        controller.SetQuery("model:gpt");
+        controller.SetSort(UsageSort.Tokens);
+        controller.SetPage(50);
+        Assert.Equal(1, DetailReads());
+
+        controller.SetPreset(UsagePreset.Last30Days);
+        Assert.Equal(2, DetailReads());
+        Assert.Equal("2026-09-27", gateway.Queries[^1].StartDate);
+        controller.SetScope(UsageScope.Family);
+        Assert.Equal(UsageScope.Family, Assert.Single(gateway.Queries.Skip(gateway.Queries.Count - 2), q => q.Key is not null).Scope);
     }
 
     [Fact]
@@ -330,7 +328,6 @@ public sealed class UsagePageControllerTests
         gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(capped));
 
         Assert.Equal(UsageExportError.TooMany, (await controller.ExportAsync(UsageExportFormat.SessionsCsv)).Error);
-        Assert.Equal(UsageExportError.TooMany, (await controller.ExportAsync(UsageExportFormat.Json)).Error);
         Assert.NotNull((await controller.ExportAsync(UsageExportFormat.DailyCsv)).Content);
 
         var pending = new TaskCompletionSource<UsageReadResult<SessionsUsageReport>>();
@@ -344,29 +341,25 @@ public sealed class UsagePageControllerTests
     }
 
     [Fact]
-    public async Task LegacyGateway_DropsAndIgnoresFiltersUsageCostCannotApply()
+    public async Task UnsupportedGateway_DropsAndIgnoresServerFilters()
     {
         var (controller, gateway, dispatcher) = Create();
         gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Unsupported());
-        controller.SetCreator("profile:ada");
         controller.SetQuery("agent:main");
 
         controller.Activate();
-        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Loaded, Availability: UsageAvailability.Legacy });
+        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Loaded, Availability: UsageAvailability.Unsupported });
 
         Assert.True(controller.State.ServerFiltersUnavailable);
-        Assert.Null(controller.State.Filters.CreatorKey);
         Assert.Equal("", controller.State.Filters.Query);
         controller.SetQuery("model:gpt");
-        controller.ToggleDay("2026-10-21", append: false);
+        controller.SetPage(50);
         Assert.Equal("", controller.State.Filters.Query);
-        Assert.Empty(controller.State.Filters.SelectedDays);
+        Assert.Equal(0, controller.State.Filters.Offset);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task LegacyFallback_ClosesSelectionAndRejectsLateDetailReplies(bool costUnsupported)
+    [Fact]
+    public async Task UnsupportedReply_ClosesSelectionAndRejectsLateDetailReplies()
     {
         var (controller, gateway, dispatcher) = Create();
         controller.Activate();
@@ -374,14 +367,11 @@ public sealed class UsagePageControllerTests
         var pending = new TaskCompletionSource<UsageReadResult<SessionsUsageReport>>(TaskCreationOptions.RunContinuationsAsynchronously);
         gateway.Usage = q => q.Key is not null ? pending.Task
             : Task.FromResult(UsageReadResult<SessionsUsageReport>.Unsupported());
-        if (costUnsupported)
-            gateway.Cost = () => Task.FromResult(UsageReadResult<SessionsUsageReport>.Unsupported());
 
-        controller.SelectSession("agent:main:a", "main", append: false);
+        controller.SelectSession("agent:main:a", "main");
         controller.Refresh();
-        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Loaded, Availability: UsageAvailability.Legacy });
+        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Loaded, Availability: UsageAvailability.Unsupported });
 
-        Assert.Empty(controller.State.Filters.SelectedSessions);
         Assert.Null(controller.State.Detail);
         dispatcher.Drain();
         var postedBeforeReply = dispatcher.Posted;
@@ -391,24 +381,24 @@ public sealed class UsagePageControllerTests
         await dispatcher.PumpUntilAsync(() => dispatcher.Posted >= postedBeforeReply + pendingReads);
         dispatcher.Drain();
         Assert.Null(controller.State.Detail);
-        controller.SelectSession("agent:main:a", "main", append: false);
-        Assert.Empty(controller.State.Filters.SelectedSessions);
+        controller.SelectSession("agent:main:a", "main");
+        Assert.Null(controller.State.Detail);
     }
 
     [Fact]
-    public async Task LegacyReloadFailure_ShowsTheErrorWhileRetainingTheLastSuccessfulReport()
+    public async Task ReloadFailure_ShowsTheErrorWhileRetainingTheLastSuccessfulReport()
     {
         var (controller, gateway, dispatcher) = Create();
-        gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Unsupported());
         controller.Activate();
-        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Loaded, Availability: UsageAvailability.Legacy });
+        await dispatcher.PumpUntilAsync(() => controller.State is { Phase: UsageLoadPhase.Loaded, Availability: UsageAvailability.Connected });
         var previous = controller.State.Report;
-        gateway.Cost = () => Task.FromResult(UsageReadResult<SessionsUsageReport>.Failed("Usage read failed"));
+        Assert.NotNull(previous);
+        gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Failed("Usage read failed"));
 
         controller.Refresh();
         await dispatcher.PumpUntilAsync(() => controller.State.Phase == UsageLoadPhase.Failed);
 
-        Assert.Equal(UsageAvailability.Legacy, controller.State.Availability);
+        Assert.Equal(UsageAvailability.Connected, controller.State.Availability);
         Assert.Same(previous, controller.State.Report);
         Assert.Equal("Usage read failed", controller.State.Error);
         Assert.True(controller.State.ShowLoadError);
@@ -425,7 +415,7 @@ public sealed class UsagePageControllerTests
         var pending = new TaskCompletionSource<UsageReadResult<SessionsUsageReport>>();
         gateway.Usage = query => query.Key is null ? pending.Task : Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(Report("b")));
         controller.Refresh();
-        controller.SelectSession("b", "main", append: false);
+        controller.SelectSession("b", "main");
         pending.SetResult(UsageReadResult<SessionsUsageReport>.Ok(Report("a", "b")));
         await dispatcher.PumpUntilAsync(() => controller.State.Phase == UsageLoadPhase.Loaded);
 

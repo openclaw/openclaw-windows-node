@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using OpenClaw.Shared.Usage;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Usage;
 using static Microsoft.UI.Reactor.Factories;
 
@@ -31,7 +32,6 @@ internal static class UsageUi
     public static readonly ThemeRef Caution = Theme.Ref("SystemFillColorCautionBrush");
     public static readonly ThemeRef Critical = Theme.Ref("SystemFillColorCriticalBrush");
     public static readonly ThemeRef CautionBackground = Theme.Ref("SystemFillColorCautionBackgroundBrush");
-    public static readonly ThemeRef CacheRead = Theme.Ref("UsageChartCacheReadBrush");
     public static readonly ThemeRef Other = Theme.Ref("ControlStrongStrokeColorDefaultBrush");
 
     public static CultureInfo Culture => CultureInfo.CurrentCulture;
@@ -51,6 +51,8 @@ internal static class UsageUi
     public static string AtLeast(string value, bool lowerBound) => lowerBound ? F("Usage_AtLeastFormat", value) : value;
 
     public static string Tokens(long tokens, bool lowerBound = false) => AtLeast(UsageFormat.Tokens(tokens, Culture), lowerBound);
+    public static string ReportedTokens(UsageTotals totals, string field, long value) =>
+        totals.HasValue(field) ? Tokens(value, totals.IsLowerBound) : Dash;
 
     public static string Cost(double cost, bool lowerBound = false) => AtLeast(UsageFormat.Cost(cost, Culture), lowerBound);
 
@@ -66,46 +68,7 @@ internal static class UsageUi
 
     public static string Dash => S("Usage_EmptyValue");
 
-    // ── palette ──
-
-    public static ThemeRef SeriesBrush(UsageSeries series) => series.Kind switch
-    {
-        UsageSeriesKind.Output or UsageSeriesKind.Total => Accent,
-        UsageSeriesKind.Input => Success,
-        UsageSeriesKind.CacheWrite => Caution,
-        UsageSeriesKind.CacheRead => CacheRead,
-        UsageSeriesKind.Other => Other,
-        _ => ProviderBrush(series.PaletteIndex),
-    };
-
-    public static ThemeRef KindBrush(UsageSeriesKind kind) => SeriesBrush(new UsageSeries("", kind, null, 0));
-
-    /// <summary>
-    /// Brushes for one chart's series. Provider series keep their page-wide name color unless two would share a slot,
-    /// in which case the later one moves to the next free slot so stacked segments stay distinct.
-    /// </summary>
-    public static IReadOnlyDictionary<string, ThemeRef> SeriesBrushes(IReadOnlyList<UsageSeries> series)
-    {
-        var result = new Dictionary<string, ThemeRef>(StringComparer.Ordinal);
-        var used = new HashSet<int>();
-        foreach (var s in series)
-        {
-            if (s.Kind != UsageSeriesKind.Provider)
-            {
-                result[s.Key] = SeriesBrush(s);
-                continue;
-            }
-            var slot = PaletteIndex(s.Label ?? s.Key);
-            for (var step = 0; step < PaletteSize && used.Contains(slot); step++) slot = (slot + 1) % PaletteSize;
-            used.Add(slot);
-            result[s.Key] = Palette(slot);
-        }
-        return result;
-    }
-
-    private static ThemeRef ProviderBrush(int index) => Palette(index);
-
-    // ── personality: palette, badges, avatars and motion ──
+    // ── personality: palette, badges and avatars ──
 
     public const int PaletteSize = 6;
 
@@ -132,27 +95,6 @@ internal static class UsageUi
         foreach (var c in key.ToLowerInvariant()) hash = (hash ^ c) * 16777619u;
         return (int)(hash % PaletteSize);
     }
-
-    /// <summary>Set by the page root from the system animation setting; motion helpers are no-ops when true.</summary>
-    [ThreadStatic] private static bool t_reduceMotion;
-
-    public static bool ReduceMotion
-    {
-        get => t_reduceMotion;
-        set => t_reduceMotion = value;
-    }
-
-    /// <summary>Fades and rises an element in when it first appears.</summary>
-    public static T Enter<T>(this T element) where T : Element =>
-        ReduceMotion
-            ? element
-            : element.Transition(Microsoft.UI.Reactor.Animation.Transition.Fade
-                + Microsoft.UI.Reactor.Animation.Transition.Slide(Microsoft.UI.Reactor.Animation.Edge.Bottom),
-                Microsoft.UI.Reactor.Animation.Curve.Ease(260));
-
-    /// <summary>Cascades the enter transitions of a container's children.</summary>
-    public static T Cascade<T>(this T container, int delayMs = 35) where T : Element =>
-        ReduceMotion ? container : container.Stagger(TimeSpan.FromMilliseconds(delayMs));
 
     /// <summary>Tinted rounded square holding a Fluent glyph, like Windows Settings cards.</summary>
     public static Element IconBadge(string glyph, int palette, double size = 32) =>
@@ -210,22 +152,9 @@ internal static class UsageUi
     public const string GlyphCost = "\uE8C7";
     public const string GlyphSessions = "\uE8BD";
     public const string GlyphMessages = "\uE8F2";
-    public const string GlyphSpeed = "\uEC4A";
     public const string GlyphTools = "\uE90F";
     public const string GlyphCache = "\uE8F7";
     public const string GlyphErrors = "\uE783";
-    public const string GlyphCalendar = "\uE787";
-
-    public static string SeriesLabel(UsageSeries series) => series.Kind switch
-    {
-        UsageSeriesKind.Output => S("Usage_Type_Output"),
-        UsageSeriesKind.Input => S("Usage_Type_Input"),
-        UsageSeriesKind.CacheWrite => S("Usage_Type_CacheWrite"),
-        UsageSeriesKind.CacheRead => S("Usage_Type_CacheRead"),
-        UsageSeriesKind.Other => S("Usage_Daily_Other"),
-        UsageSeriesKind.Total => S("Usage_Daily_Total"),
-        _ => series.Label ?? S("Usage_Unknown"),
-    };
 
     // ── building blocks ──
 
@@ -244,21 +173,35 @@ internal static class UsageUi
     /// <paramref name="framed"/> puts the body in one card; unframed bodies supply their own cards (overview grid).
     /// </summary>
     public static Element Section(
-        string title, string? subtitle, Element? actions, Element body, string automationId, bool framed = true)
+        string title, string? subtitle, Element? actions, Element body, string automationId, bool framed = true, bool stackActions = false)
     {
         Element heading = VStack(2,
-            TextBlock(title).FontSize(14).FontWeight(FontWeights.SemiBold)
+            TextBlock(title).FontSize(16).FontWeight(FontWeights.SemiBold)
+                .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(title)
                 .HeadingLevel(AutomationHeadingLevel.Level2).AutomationId(automationId + "Title"),
-            subtitle is null ? null : TextBlock(subtitle).FontSize(12).Foreground(SecondaryText).TextWrapping(TextWrapping.Wrap));
+            subtitle is null ? null : TextBlock(subtitle).FontSize(12).Foreground(SecondaryText).TextWrapping(TextWrapping.WrapWholeWords));
         var header = actions is null
             ? heading
-            : Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                heading.VAlign(VerticalAlignment.Bottom).Grid(column: 0),
-                actions.VAlign(VerticalAlignment.Bottom).Margin(12, 0, 0, 0).Grid(column: 1));
-        return VStack(8,
-                header.Margin(2, 0, 2, 0),
-                framed ? Card(body, automationId + "Card") : body)
+            : Grid(stackActions ? [GridSize.Star()] : [GridSize.Star(), GridSize.Auto],
+                stackActions ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
+                heading.VAlign(VerticalAlignment.Center).Grid(column: 0),
+                actions.VAlign(VerticalAlignment.Center)
+                    .Margin(stackActions ? 0 : PageResponsiveLayout.GapGroup, stackActions ? PageResponsiveLayout.GapInner : 0, 0, 0)
+                    .Grid(row: stackActions ? 1 : 0, column: stackActions ? 0 : 1));
+        return (framed
+                ? Card(VStack(16, header, body), automationId + "Card")
+                : VStack(12, header, body))
             .AutomationId(automationId);
+    }
+
+    public static Element Pair(bool sideBySide, Element left, Element right, string id)
+    {
+        return (Grid(sideBySide ? [GridSize.Star(), GridSize.Star()] : [GridSize.Star()],
+                sideBySide ? [GridSize.Auto] : [GridSize.Auto, GridSize.Auto],
+                left.VAlign(VerticalAlignment.Top).Grid(row: 0, column: 0).WithKey("left"),
+                right.VAlign(VerticalAlignment.Top).Grid(row: sideBySide ? 0 : 1, column: sideBySide ? 1 : 0).WithKey("right"))
+                with { ColumnSpacing = sideBySide ? PageResponsiveLayout.GapStack : 0, RowSpacing = sideBySide ? 0 : PageResponsiveLayout.GapStack })
+            .AutomationId(id);
     }
 
     /// <summary>A compact card for one stat or one ranked list inside an unframed section grid.</summary>
@@ -271,11 +214,12 @@ internal static class UsageUi
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch);
 
-    public static Element Note(string text) =>
-        TextBlock(text).FontSize(12).Foreground(SecondaryText).TextWrapping(TextWrapping.Wrap);
+    public static TextBlockElement Note(string text) =>
+        TextBlock(text).FontSize(12).Foreground(SecondaryText).TextWrapping(TextWrapping.WrapWholeWords).MaxWidth(640)
+            .HAlign(HorizontalAlignment.Left);
 
     public static Element EmptyText(string text, string automationId) =>
-        TextBlock(text).FontSize(13).Foreground(SecondaryText).TextWrapping(TextWrapping.Wrap)
+        TextBlock(text).FontSize(13).Foreground(SecondaryText).TextWrapping(TextWrapping.WrapWholeWords)
             .Margin(0, 4, 0, 4).AutomationId(automationId);
 
     /// <summary>Non-dismissible page banner with an optional action button.</summary>
@@ -350,19 +294,12 @@ internal static class UsageUi
         var visible = parts.Where(p => p.Share > 0).ToList();
         if (visible.Count == 0)
             return Border(null).Height(height).CornerRadius(height / 2).Background(Track).AccessibilityView(AccessibilityView.Raw);
-        return Border(Grid(visible.Select(p => GridSize.Star(p.Share)).ToArray(), [GridSize.Px(height)],
+        return Border(Grid(Array.ConvertAll(visible.ToArray(), p => GridSize.Star(p.Share)), [GridSize.Px(height)],
                     visible.Select((p, i) => (Element)Border(null).Background(p.Fill).Grid(column: i).WithKey("part:" + i)).ToArray()))
             .CornerRadius(height / 2)
             .Height(height)
             .AccessibilityView(AccessibilityView.Raw);
     }
-
-    /// <summary>
-    /// Left-to-right wrapping row sized to each child. Unlike WrapGrid (VariableSizedWrapGrid), cells are not
-    /// uniform, so wide controls and short labels can share a row without clipping.
-    /// </summary>
-    public static FlexElement Flow(params Element?[] children) =>
-        Flex(children) with { Wrap = Microsoft.UI.Reactor.Layout.FlexWrap.Wrap, AlignItems = Microsoft.UI.Reactor.Layout.FlexAlign.FlexStart };
 
     public static Element LegendItem(string label, ThemeRef fill, string? value = null) =>
         HStack(6,
@@ -371,9 +308,16 @@ internal static class UsageUi
             value is null ? null : TextBlock(value).FontSize(12).FontWeight(FontWeights.SemiBold).VAlign(VerticalAlignment.Center));
 
     /// <summary>Small rounded label.</summary>
-    public static Element Pill(string text, string automationId) =>
-        Border(TextBlock(text).FontSize(12).TextTrimming(TextTrimming.CharacterEllipsis).MaxWidth(220))
-            .Padding(8, 2).CornerRadius(10).Background(Track).AutomationId(automationId);
+    public static Element Pill(string text, string automationId, bool critical = false) =>
+        Border(TextBlock(text).FontSize(12).TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis).MaxWidth(220).ToolTip(text)
+                .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center)
+                .Foreground(critical ? Critical : Theme.Ref("TextFillColorPrimaryBrush")))
+            .Padding(8, 2).MinWidth(24).MinHeight(24).CornerRadius(12)
+            .Background(critical ? CriticalTint : Theme.Ref("UsageCountPillBrush"))
+            .VAlign(VerticalAlignment.Center).AutomationId(automationId);
+
+    public static string FriendlyDate(DateTimeOffset at, bool olderTime = false) =>
+        UsageFormat.FriendlyDate(at.LocalDateTime, DateTime.Now, Culture, S("Usage_Preset_Today"), olderTime);
 
     public static Element SubtleButton(string text, Action onClick, string automationId, string? glyph = null)
     {
@@ -395,9 +339,4 @@ internal static class UsageUi
             .ToolTip(name)
             .AutomationName(name)
             .AutomationId(automationId);
-
-    /// <summary>True when Ctrl is held, used for additive selection like the web page's modifier clicks.</summary>
-    public static bool ControlPressed() =>
-        Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(global::Windows.System.VirtualKey.Control)
-            .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
 }

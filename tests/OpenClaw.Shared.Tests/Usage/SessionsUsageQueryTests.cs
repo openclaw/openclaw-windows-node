@@ -21,12 +21,7 @@ public sealed class SessionsUsageQueryTests
             EndDate = "2026-10-26",
             TimeZone = UsageTimeZoneMode.Utc,
             Scope = UsageScope.Family,
-            CreatorKey = "profile:ada",
             Query = "model:gpt-5.1 has:errors",
-            SelectedDays = ["2026-10-25"],
-            SelectedHours = [9, 10],
-            SelectedSessions = ["agent:main:main"],
-            RecentKeys = ["a", "b", "c", "d", "e", "f", "g", "h", "i"],
             Offset = 50,
             Sort = UsageSort.Tokens,
             SortDescending = false,
@@ -34,7 +29,7 @@ public sealed class SessionsUsageQueryTests
         };
 
         Assert.Equal("""
-            {"startDate":"2026-10-20","endDate":"2026-10-26","agentScope":"all","mode":"utc","creatorKey":"profile:ada","groupBy":"family","limit":50,"projection":"overview","query":"model:gpt-5.1 has:errors","selectedDays":["2026-10-25"],"selectedHours":[9,10],"selectedSessions":["agent:main:main"],"offset":50,"recentKeys":["a","b","c","d","e","f","g","h"],"sort":"tokens","sortDirection":"asc","includeContextWeight":false}
+            {"startDate":"2026-10-20","endDate":"2026-10-26","agentScope":"all","mode":"utc","groupBy":"family","limit":50,"projection":"overview","query":"model:gpt-5.1 has:errors","offset":50,"sort":"tokens","sortDirection":"asc"}
             """, Serialize(query.ToParameters(TimeZoneInfo.Utc, Now)));
     }
 
@@ -44,12 +39,12 @@ public sealed class SessionsUsageQueryTests
         var query = new SessionsUsageQuery { StartDate = "2026-10-26", EndDate = "2026-10-26", TimeZone = UsageTimeZoneMode.Utc };
 
         Assert.Equal("""
-            {"startDate":"2026-10-26","endDate":"2026-10-26","agentScope":"all","mode":"utc","groupBy":"instance","limit":1000,"includeContextWeight":false}
+            {"startDate":"2026-10-26","endDate":"2026-10-26","agentScope":"all","mode":"utc","groupBy":"instance","limit":1000}
             """, Serialize(query.ToParameters(TimeZoneInfo.Utc, Now)));
     }
 
     [Fact]
-    public void DetailQuery_ReadsOneKeyWithContextWeightAndIgnoresTablePaging()
+    public void DetailQuery_ReadsOneKeyAndIgnoresTablePaging()
     {
         var query = new SessionsUsageQuery
         {
@@ -60,11 +55,10 @@ public sealed class SessionsUsageQueryTests
             Key = "agent:research:main",
             Offset = 50,
             Query = "ignored",
-            IncludeContextWeight = true,
         };
 
         Assert.Equal("""
-            {"startDate":"2026-10-20","endDate":"2026-10-26","agentId":"research","mode":"utc","groupBy":"instance","key":"agent:research:main","limit":1,"includeContextWeight":true}
+            {"startDate":"2026-10-20","endDate":"2026-10-26","agentId":"research","mode":"utc","groupBy":"instance","key":"agent:research:main","limit":1}
             """, Serialize(query.ToParameters(TimeZoneInfo.Utc, Now)));
     }
 
@@ -105,23 +99,21 @@ public sealed class SessionsUsageQueryTests
         var query = new SessionsUsageQuery
         {
             StartDate = "2026-10-20", EndDate = "2026-10-26", TimeZone = UsageTimeZoneMode.Utc,
-            Scope = UsageScope.Family, CreatorKey = "human:ada", OverviewProjection = true, Query = "has:errors",
-            SelectedDays = ["2026-10-21"], SelectedHours = [9], SelectedSessions = ["agent:main:a"],
-            RecentKeys = ["agent:main:a"], Offset = 50, Sort = UsageSort.Tokens, SortDescending = false,
+            Scope = UsageScope.Family, OverviewProjection = true, Query = "has:errors",
+            Offset = 50, Sort = UsageSort.Tokens, SortDescending = false,
         };
         Assert.True(query.UsesServerOverview);
 
         var basic = query.WithoutServerOverview();
 
         Assert.False(basic.UsesServerOverview);
-        // SessionsUsageParamsSchema in the published openclaw@2026.10.7 package.
+        // SessionsUsageParamsSchema in the published openclaw@2026.10.7 package. 2026.10.9 still lacks the overview parameters.
         string[] released = ["key", "agentId", "agentScope", "creatorKey", "startDate", "endDate", "mode", "range",
             "groupBy", "includeHistorical", "utcOffset", "timeZone", "limit", "includeContextWeight"];
         var parameters = basic.ToParameters();
         Assert.All(parameters.Keys, name => Assert.Contains(name, released));
         Assert.Equal(SessionsUsageQuery.FullRowLimit, parameters["limit"]);
         Assert.Equal("family", parameters["groupBy"]);
-        Assert.Equal("human:ada", parameters["creatorKey"]);
         Assert.False(new SessionsUsageQuery { StartDate = "2026-10-26", EndDate = "2026-10-26", Key = "k", Limit = 1 }.UsesServerOverview);
     }
 

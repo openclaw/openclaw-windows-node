@@ -734,19 +734,24 @@ x-colophon:
       usageChartCacheRead:
         resource: UsageChartCacheReadBrush
         themes: { dark: "#005fb8", highContrast: "#3ff23f" }
-        usage: Usage chart cache-read series. SystemAccentColorLight2 in light and SystemAccentColorDark1 in dark, the accent shade opposite AccentFillColorDefault so stacked series stay distinct; SystemColorGrayTextColor in high contrast. Other series bind accent, success, caution, critical and tertiary-text fills. Every chart also has a text or list equivalent.
+        usage: Cache-read segment of the Usage token breakdown. SystemAccentColorLight2 in light and SystemAccentColorDark1 in dark, the accent shade opposite AccentFillColorDefault so adjacent segments stay distinct; SystemColorGrayTextColor in high contrast. Other segments bind accent, success and caution fills. The daily chart also has an expandable text table.
       usagePalette1:
         resource: UsagePalette1Brush
         themes: { dark: "#99ebff", highContrast: "#1aebff" }
         usage: Usage page categorical slot 1 and data/selection accent. Follows the user's accent (SystemAccentColorDark1 light, Light2 dark); SystemColorHighlightColor keeps charts and selection marks visible in high contrast, where native button accent fills can match the plot background. Each palette slot has a matching UsagePaletteNTintBrush at 16% for badges, avatars and statistics; high-contrast tints use SystemColorWindowColor.
-      usageActivityText:
-        resource: UsageActivityTextBrush
-        themes: { dark: "#000000", highContrast: "#000000" }
-        usage: Text on filled weekday tiles. Uses native TextOnAccentFillColorPrimary normally and SystemColorHighlightTextColor in high contrast. UsageActivityMinimumOpacity keeps the normal 0.18 intensity floor but uses 1 in high contrast, preserving an opaque Highlight/HighlightText pair and full-opacity labels.
+      usageChartBar:
+        resource: UsageChartBarBrush
+        usage: Daily chart bars fade vertically from SystemAccentColorDark1 to Light1 in light theme, and Light2 to SystemAccentColor in dark theme. The mock's depth is expressed through native Windows accent shades, not fixed blue values. High contrast uses a solid SystemColorHighlightColor fill; the current-day opacity and dashed outline remain unchanged.
+      usageMastGradient:
+        resource: UsageMastGradientBrush
+        usage: Static accent-tinted mast backplate across the full page viewport, including the centered content's side margins. It stays anchored at the viewport top behind ordinary scrolling content, without intercepting input or making the header sticky. SystemAccentColor fades to transparent at 10% brush opacity over the top 320 logical pixels. High contrast uses a solid SystemColorWindowColor backplate. The rest of the page retains native Fluent card and window surfaces.
+      usageCountPill:
+        resource: UsageCountPillBrush
+        usage: Neutral section count pill. TextFillColorPrimary at 16% brush opacity with primary text. High contrast uses SystemColorButtonFaceColor. Attention counts use the existing critical tint and critical foreground instead.
       usagePalette2:
         resource: UsagePalette2Brush
         themes: { dark: "#4fc3c7", highContrast: "#8080ff" }
-        usage: Usage categorical teal. Agents, models, providers, channels and tools keep one slot page-wide (stable name hash); stacked provider series move to the next free slot on collision. High contrast uses SystemColorHotlightColor.
+        usage: Usage categorical teal. Agents, models and providers keep one slot page-wide (stable name hash). High contrast uses SystemColorHotlightColor.
       usagePalette3:
         resource: UsagePalette3Brush
         themes: { dark: "#b4a0ff", highContrast: "#ffffff" }

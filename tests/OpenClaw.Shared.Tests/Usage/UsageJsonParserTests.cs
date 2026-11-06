@@ -5,11 +5,58 @@ using Xunit;
 namespace OpenClaw.Shared.Tests.Usage;
 
 /// <summary>
-/// Pins the sessions.usage / timeseries / logs / usage.status projection against payloads shaped like
-/// openclaw/openclaw@5089aa71 src/shared/usage-types.ts. Expected values are written out by hand.
+/// Pins the sessions.usage / usage.status projection against payloads shaped like
+/// openclaw/openclaw@5089aa71 src/shared/usage-types.ts. Expected values are written out by hand. The payload keeps
+/// fields the page does not read (creators, latency, hourly vectors) to prove they are ignored without failing.
 /// </summary>
 public sealed class UsageJsonParserTests
 {
+    [Fact]
+    public void MissingOrMalformedProviderNumbers_DoNotBecomeZeroAllowanceOrBillingFacts()
+    {
+        var summary = UsageJsonParser.ParseProviderUsage(Parse("""
+            {"providers":[{"provider":"test","windows":[
+              {"label":"missing"},{"label":"text","usedPercent":"0"},{"label":"negative","usedPercent":-1},
+              {"label":"zero","usedPercent":0},{"label":"overage","usedPercent":130}],
+              "billing":[{"type":"balance","unit":"USD"},{"type":"budget","used":0,"unit":"USD"},
+              {"type":"balance","amount":0,"unit":"USD"},{"type":"balance","amount":-2,"unit":"USD"}]}]}
+            """));
+        var provider = Assert.Single(summary.Providers);
+        Assert.Equal(["zero", "overage"], provider.Windows.Select(window => window.Label));
+        Assert.Equal([0d, 130d], provider.Windows.Select(window => window.UsedPercent));
+        Assert.Equal([0d, -2d], provider.Billing.Select(billing => billing.Amount));
+        Assert.Null(provider.Plan);
+    }
+
+    [Fact]
+    public void CounterPresence_DistinguishesExplicitZeroFromMissingOrMalformedNumbers()
+    {
+        var report = UsageJsonParser.ParseSessionsUsage(Parse("""
+            {"totals":{"totalCost":0,"totalTokens":"0","input":null},
+             "aggregates":{"messages":{"total":0},"tools":{"totalCalls":0}}}
+            """));
+        Assert.True(report.Totals.HasValue("totalCost"));
+        Assert.False(report.Totals.HasValue("totalTokens"));
+        Assert.False(report.Totals.HasValue("input"));
+        Assert.False(report.SessionsKnown);
+        Assert.False(report.Aggregates.Messages.HasData);
+        Assert.False(report.Aggregates.Tools.HasData);
+    }
+
+    [Theory]
+    [InlineData("1.5")]
+    [InlineData("9223372036854775808")]
+    [InlineData("-1")]
+    public void InvalidIntegerTokenCounters_AreUnavailableRatherThanSuccessfulZero(string value)
+    {
+        var report = UsageJsonParser.ParseSessionsUsage(Parse(
+            $$$"""{"totals":{"totalTokens":{{{value}}},"totalCost":0.5}}"""));
+
+        Assert.False(report.Totals.HasValue("totalTokens"));
+        Assert.True(report.Totals.HasValue("totalCost"));
+        Assert.Equal(0.5, report.Totals.TotalCost);
+    }
+
     private const string OverviewPayload = """
     {
       "updatedAt": 1792540800000,
@@ -108,14 +155,12 @@ public sealed class UsageJsonParserTests
         var main = report.Sessions[0];
         Assert.Equal("anthropic", main.EffectiveProvider);
         Assert.Equal(2, main.HistoricalInstanceCount);
-        Assert.Equal("human", main.CreatedActor!.Type);
         Assert.True(main.Usage!.Totals.IsLowerBound);
         Assert.Equal(1550, main.Usage.Totals.TotalTokens);
         Assert.Equal(0.0125, main.Usage.Totals.TotalCost, 6);
         Assert.Equal(5_400_000, main.Usage.DurationMs);
         Assert.Equal(new UsageMessageCounts(12, 6, 6, 4, 4, 1), main.Usage.MessageCounts);
-        Assert.Equal(["read", "exec"], main.Usage.ToolUsage!.Tools.Select(t => t.Name));
-        Assert.Equal(7000, main.Usage.Latency!.P95Ms);
+        Assert.Equal(new UsageToolSummary(4, 2), main.Usage.ToolUsage);
 
         var pending = report.Sessions[1];
         Assert.Null(pending.Usage);
@@ -130,28 +175,22 @@ public sealed class UsageJsonParserTests
         Assert.Equal(2, aggregates.SessionCount);
         Assert.Equal("claude-sonnet-4.5", Assert.Single(aggregates.ByModel).Model);
         Assert.Equal("main", Assert.Single(aggregates.ByAgent).Name);
-        Assert.Equal("webchat", Assert.Single(aggregates.ByChannel).Name);
-        Assert.Equal("profile:ada", Assert.Single(aggregates.ByCreator).Creator.Key);
+        Assert.Equal("anthropic", Assert.Single(aggregates.ByProvider).Provider);
+        Assert.Equal(new UsageMessageCounts(12, 6, 6, 4, 4, 1), aggregates.Messages);
         Assert.Equal(0.003, Assert.Single(aggregates.CostDaily).Totals.OutputCost, 6);
-        Assert.Equal(UsageReportState.Unavailable, Assert.Single(aggregates.ModelDaily).Report);
-        Assert.Equal(12, Assert.Single(aggregates.Daily).Messages);
-        Assert.Equal(["profile:ada", "system"], report.CreatorOptions.Select(c => c.Key));
+        Assert.Equal(1, report.Totals.MissingCostEntries);
     }
 
     [Fact]
-    public void ParseSessionsUsage_NormalizesOverviewVectorsToFixedLengths()
+    public void ParseSessionsUsage_ReadsOverviewPagingWarningsAndFacets()
     {
         var overview = UsageJsonParser.ParseSessionsUsage(Parse(OverviewPayload)).Overview!;
 
-        Assert.Equal(24, overview.HourTokens.Count);
-        Assert.Equal(23, overview.HourTokens[23]);
-        Assert.Equal([10, 20, 0, 0, 0, 0, 0], overview.WeekdayTokens);
-        Assert.Equal(24, overview.HourlyMessages.Count);
-        Assert.False(overview.SelectedUsageComplete);
+        Assert.Equal(2, overview.Total);
+        Assert.Equal(5, overview.UnfilteredSessionCount);
+        Assert.Equal((0, 50), (overview.Offset, overview.Limit));
         Assert.Equal(["Unsupported filter: foo:bar"], overview.QueryWarnings);
         Assert.Equal(["exec", "read"], overview.FilterOptions["tool"]);
-        Assert.Equal(1550, overview.TableTotals.Tokens);
-        Assert.Equal("agent:main:webchat:main", Assert.Single(overview.SelectedRows).Key);
     }
 
     [Theory]
@@ -185,38 +224,6 @@ public sealed class UsageJsonParserTests
         var row = Assert.Single(report.Sessions);
         Assert.Null(row.UpdatedAt);
         Assert.Null(row.Usage!.DurationMs);
-    }
-
-    [Fact]
-    public void ParseTimeseries_ReadsPointsAndCapsAtTwoHundred()
-    {
-        var points = string.Join(",", Enumerable.Range(0, 205).Select(i =>
-            $$"""{"timestamp":{{1792450000000L + i * 60_000}},"input":10,"output":2,"cacheRead":3,"cacheWrite":1,"totalTokens":16,"cost":0.001,"cumulativeTokens":{{(i + 1) * 16}},"cumulativeCost":0.5}"""));
-        var series = UsageJsonParser.ParseTimeseries(Parse(
-            $$"""{"sessionId":"s-1","usageReport":{"state":"unavailable"},"points":[{{points}},{"input":5}]}"""));
-
-        Assert.Equal("s-1", series.SessionId);
-        Assert.Equal(UsageReportState.Unavailable, series.Report);
-        Assert.Equal(200, series.Points.Count);
-        Assert.Equal(16, series.Points[0].TotalTokens);
-        Assert.Equal(3200, series.Points[^1].CumulativeTokens);
-    }
-
-    [Fact]
-    public void ParseLogs_KeepsValidEntriesInOrder()
-    {
-        var logs = UsageJsonParser.ParseLogs(Parse("""
-            { "logs": [
-              { "timestamp": 1792450000000, "role": "user", "content": "Hi" },
-              { "timestamp": 1792450001000, "role": "assistant", "content": "[Tool: read]\nDone", "tokens": 42, "cost": 0.002 },
-              { "role": "assistant", "content": "missing timestamp" },
-              { "timestamp": 1792450002000, "content": "missing role" }
-            ] }
-            """));
-
-        Assert.Equal(["user", "assistant"], logs.Select(l => l.Role));
-        Assert.Equal(42, logs[1].Tokens);
-        Assert.Null(logs[0].Tokens);
     }
 
     [Fact]

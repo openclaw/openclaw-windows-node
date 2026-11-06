@@ -1,46 +1,40 @@
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
-using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
-using OpenClawTray.Presentation.Usage;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClawTray.Pages.Usage.UsageUi;
 
 namespace OpenClawTray.Pages.Usage;
 
 /// <summary>
-/// Native charts for the Usage page. Bars are focusable buttons whose stacked segments use proportional
-/// grid rows, so charts scale with layout, follow theme brushes and expose one automation item per bar.
+/// Native daily trend chart. Bars use proportional grid rows, so the chart scales with layout, follows theme brushes
+/// and exposes one automation item per day. The expandable daily table is its text equivalent.
 /// </summary>
 internal static class UsageCharts
 {
     public const double PlotHeight = 180;
     public const double AxisWidth = 56;
 
-    public record BarColumn(
-        string Key, double Total, IReadOnlyList<UsageChartSegment> Segments, string Label, string AccessibleText,
-        bool Selected, bool Pending, bool LowerBound);
+    public record BarColumn(string Key, double Value, string Label, string AccessibleText, bool Pending, bool LowerBound, bool Today = false);
 
-    /// <summary>Stacked column chart with a value axis. <paramref name="onActivate"/> receives the column key.</summary>
+    /// <summary>Single-series column chart with a value axis.</summary>
     public static Element Columns(
-        IReadOnlyList<BarColumn> columns, IReadOnlyList<UsageSeries> series, double ceiling, Func<double, string> axisLabel,
-        Action<string, bool>? onActivate, string automationId, double plotHeight = PlotHeight)
+        IReadOnlyList<BarColumn> columns, double ceiling, Func<double, string> axisLabel, string automationId,
+        double plotHeight = PlotHeight, double? average = null, double barWidth = 28)
     {
-        var brushes = SeriesBrushes(series);
-        var anySelected = columns.Any(c => c.Selected);
         var labelEvery = Math.Max(1, (int)Math.Ceiling(columns.Count / 8.0));
         // Labels are anchored on the last day, so it is always labelled. Each label spans back to the previous
         // anchor and ends under its own day, so labels never overlap and narrow columns do not clip them.
         bool Labelled(int index) => (columns.Count - 1 - index) % labelEvery == 0;
 
-        var plot = Grid(columns.Select(_ => GridSize.Star()).ToArray(), [GridSize.Px(plotHeight), GridSize.Auto],
+        var plot = Grid(Enumerable.Repeat(GridSize.Star(), columns.Count).ToArray(), [GridSize.Px(plotHeight), GridSize.Auto],
             columns.SelectMany((column, index) =>
             {
                 var first = Math.Max(0, index - labelEvery + 1);
                 return new Element?[]
                 {
-                    Bar(column, brushes, ceiling, anySelected, onActivate, automationId).Enter().Grid(row: 0, column: index).WithKey("bar:" + column.Key),
+                    Bar(column, ceiling, automationId, plotHeight, barWidth).Grid(row: 0, column: index).WithKey("bar:" + column.Key),
                     Labelled(index)
                         ? TextBlock(column.Label).FontSize(11).Foreground(TertiaryText)
                             .TextTrimming(TextTrimming.Clip)
@@ -51,8 +45,6 @@ internal static class UsageCharts
                         : null,
                 };
             }).ToArray());
-        // A cascade reads well for a week or a month; for long ranges it would delay the newest bars by seconds.
-        if (columns.Count <= 31) plot = plot.Cascade(14);
 
         var axis = Grid([GridSize.Star()], [GridSize.Star(), GridSize.Star()],
                 TextBlock(axisLabel(ceiling)).FontSize(11).Foreground(TertiaryText).VAlign(VerticalAlignment.Top).Grid(row: 0),
@@ -68,196 +60,75 @@ internal static class UsageCharts
             .VAlign(VerticalAlignment.Top)
             .AccessibilityView(AccessibilityView.Raw);
 
+        Element? averageLine = null;
+        if (average is >= 0 && ceiling > 0)
+        {
+            var y = Math.Clamp(plotHeight * (1 - average.Value / ceiling), 0, plotHeight);
+            averageLine = Grid(Enumerable.Repeat(GridSize.Star(), 40).ToArray(), [GridSize.Px(1)],
+                        Enumerable.Range(0, 40).Select(i => (Element)Border(null).Height(1).Background(SecondaryText)
+                            .Margin(0, 0, 4, 0).Grid(column: i)).ToArray())
+                .Margin(0, y, 0, 0).VAlign(VerticalAlignment.Top)
+                .AutomationId("UsageDailyAverage");
+        }
         return Grid([GridSize.Px(AxisWidth), GridSize.Star()], [GridSize.Auto],
                 axis.Grid(column: 0),
                 gridlines.Grid(column: 1),
                 Border(null).Height(1).Background(CardStroke).VAlign(VerticalAlignment.Top).Margin(0, plotHeight, 0, 0).Grid(column: 1),
+                averageLine?.Grid(column: 1),
                 plot.Grid(column: 1))
+            .HelpText(average is { } value ? F("Usage_DailyAverageFormat", axisLabel(value)) : "")
             .AutomationId(automationId);
     }
 
-    private static Element Bar(
-        BarColumn column, IReadOnlyDictionary<string, ThemeRef> brushes, double ceiling, bool anySelected,
-        Action<string, bool>? onActivate, string automationId)
+    public static Element AverageLegend(string label) =>
+        Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+            Grid(Enumerable.Repeat(GridSize.Px(6), 4).ToArray(), [GridSize.Px(1)],
+                Enumerable.Range(0, 4).Select(index => (Element)Border(null).Height(1).Background(SecondaryText)
+                    .Margin(0, 0, 2, 0).Grid(column: index)).ToArray())
+                .VAlign(VerticalAlignment.Center).AccessibilityHidden().Margin(0, 0, 8, 0).Grid(column: 0),
+            TextBlock(label).FontSize(11).Foreground(SecondaryText).TextWrapping(TextWrapping.NoWrap)
+                .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(label).Grid(column: 1))
+            .VAlign(VerticalAlignment.Center).AutomationName(label).AutomationId("UsageDailyAverageLegend");
+
+    private static Element Bar(BarColumn column, double ceiling, string automationId, double plotHeight, double barWidth)
     {
-        var segments = column.Segments.Where(s => s.Value > 0).ToList();
-        var total = segments.Sum(s => s.Value);
-        var headroom = Math.Max(ceiling - total, 0);
-        // Top-to-bottom: headroom, then segments with the first series at the bottom (upstream stack order).
-        var rows = new List<GridSize> { GridSize.Star(Math.Max(headroom, ceiling * 1e-6)) };
-        var stack = new List<Element?>();
-        var reversed = segments.AsEnumerable().Reverse().ToList();
-        for (var i = 0; i < reversed.Count; i++)
+        var value = Math.Max(0, column.Value);
+        var height = ceiling > 0 ? Math.Clamp(value / ceiling, 0, 1) * plotHeight : 0;
+        var marks = new List<Element?>();
+        if (value > 0)
         {
-            rows.Add(GridSize.Star(reversed[i].Value));
-            stack.Add(Border(null)
-                .Background(brushes.TryGetValue(reversed[i].SeriesKey, out var brush) ? brush : Accent)
-                .CornerRadius(i == 0 ? 2 : 0, i == 0 ? 2 : 0, 0, 0)
-                .Grid(row: i + 1));
+            marks.Add(Border(null).Background(Theme.Ref("UsageChartBarBrush")).Opacity(column.Today ? 0.4 : 1)
+                .Height(height).VAlign(VerticalAlignment.Bottom).CornerRadius(4, 4, 0, 0)
+                .AutomationId($"{automationId}_mark_{column.Key}"));
+            if (column.Today)
+                marks.Add(Grid([GridSize.Px(1), GridSize.Star(), GridSize.Px(1)], [GridSize.Px(1), GridSize.Star(), GridSize.Px(1)],
+                    Dashes(false).Grid(row: 0, columnSpan: 3),
+                    Dashes(true).Grid(row: 1, column: 0),
+                    Dashes(true).Grid(row: 1, column: 2),
+                    Dashes(false).Grid(row: 2, columnSpan: 3)).Height(height).VAlign(VerticalAlignment.Bottom));
         }
-        if (column.Pending)
+        else if (column.Pending)
         {
-            stack.Add(Border(null).Height(2).Background(Track).VAlign(VerticalAlignment.Bottom).Grid(row: rows.Count - 1));
+            marks.Add(Border(null).Background(Track).Height(2).VAlign(VerticalAlignment.Bottom));
         }
 
-        var visual = Grid([GridSize.Star()], rows.ToArray(), stack.ToArray())
-            .Margin(1, 0, 1, 0)
-            .MaxWidth(28)
+        var bar = Grid([GridSize.Star()], [GridSize.Px(plotHeight)], marks.ToArray())
+            .Height(plotHeight)
+            .Width(Math.Max(1, barWidth))
             .HAlign(HorizontalAlignment.Stretch)
-            .Opacity(anySelected && !column.Selected ? 0.4 : 1);
-
-        Element content = Border(visual)
-            .Background(column.Selected ? Track : Theme.Ref("SubtleFillColorTransparentBrush"))
-            .CornerRadius(4)
-            .Padding(1, 0, 1, 0);
-
-        if (onActivate is null)
-            return content.ToolTip(column.AccessibleText).AutomationName(column.AccessibleText);
-
-        return Button(content, () => onActivate(column.Key, ControlPressed()))
-            .Padding(0)
-            .MinWidth(0)
-            .MinHeight(0)
-            .BorderThickness(0)
-            .HAlign(HorizontalAlignment.Stretch)
-            .VAlign(VerticalAlignment.Stretch)
-            // Button centers content by default, which would collapse the star-row bar to zero height.
-            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
-            .VerticalContentAlignment(VerticalAlignment.Stretch)
-            .Resources(r => r
-                .Set("ButtonBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
-                .Set("ButtonBackgroundPointerOver", Theme.Ref("SubtleFillColorSecondaryBrush"))
-                .Set("ButtonBackgroundPressed", Theme.Ref("SubtleFillColorTertiaryBrush"))
-                .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush"))
-                .Set("ButtonBorderBrushPointerOver", Theme.Ref("SubtleFillColorTransparentBrush"))
-                .Set("ButtonBorderBrushPressed", Theme.Ref("SubtleFillColorTransparentBrush")))
-            .ToolTip(column.AccessibleText)
-            .AutomationName(column.AccessibleText)
-            .ItemStatus(column.Selected ? S("Usage_Selected") : "")
-            .AutomationId($"{automationId}_{column.Key}")
-            .WithKey(column.Key);
+            .ToolTip(column.AccessibleText);
+        return Flyout(Button(bar).Padding(0).MinWidth(0).MinHeight(0).Height(plotHeight)
+                .HAlign(HorizontalAlignment.Center).HorizontalContentAlignment(HorizontalAlignment.Stretch)
+                .VerticalContentAlignment(VerticalAlignment.Stretch)
+                .Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources)
+                .AutomationName(column.AccessibleText).AutomationId($"{automationId}_{column.Key}"),
+            VStack(8, TextBlock(column.AccessibleText).TextWrapping(TextWrapping.Wrap).MaxWidth(280)));
     }
 
-    public static Element Legend(IReadOnlyList<UsageSeries> series) =>
-        series.Count <= 1
-            ? Empty()
-            : Flow(series.Select(s => LegendItem(SeriesLabel(s), SeriesBrushes(series)[s.Key]).Margin(0, 0, 16, 4).WithKey(s.Key)).ToArray())
-                .AutomationId("UsageChartLegend");
-
-    // ── activity mosaic ──
-
-    public static Element ActivityStrip(
-        IReadOnlyList<UsageActivityCell> cells, Func<int, string> label, Func<int, bool> showLabel,
-        Action<int, bool>? onActivate, string automationId, double cellHeight, bool valuesInside = false)
-    {
-        var anySelected = cells.Any(c => c.Selected);
-        return Grid(cells.Select(_ => GridSize.Star()).ToArray(), [GridSize.Px(cellHeight), GridSize.Auto],
-                cells.SelectMany(cell => new Element?[]
-                {
-                    Cell(cell, label(cell.Index), anySelected, onActivate, automationId, valuesInside).Grid(row: 0, column: cell.Index)
-                        .WithKey($"cell:{cell.Index}"),
-                    !valuesInside && showLabel(cell.Index)
-                        ? TextBlock(label(cell.Index)).FontSize(11).Foreground(TertiaryText).HAlign(HorizontalAlignment.Left)
-                            .Margin(2, 4, 0, 0).AccessibilityView(AccessibilityView.Raw)
-                            .Grid(row: 1, column: cell.Index, columnSpan: Math.Min(4, cells.Count - cell.Index))
-                            .WithKey($"label:{cell.Index}")
-                        : null,
-                }).ToArray())
-            .AutomationId(automationId);
-    }
-
-    private static Element Cell(
-        UsageActivityCell cell, string label, bool anySelected, Action<int, bool>? onActivate, string automationId, bool valuesInside)
-    {
-        var text = F("Usage_Activity_CellFormat", label, UsageUi.Tokens(cell.Tokens));
-        var minimumOpacity = valuesInside ? ThemeResource.Double("UsageActivityMinimumOpacity") : 0.18;
-        Element swatch = Border(null)
-            .Background(cell.Tokens > 0 ? Accent : Track)
-            .Opacity(cell.Tokens > 0 ? minimumOpacity + (1 - minimumOpacity) * cell.Intensity : 1)
-            .CornerRadius(4)
-            .Margin(1.5);
-        if (valuesInside)
-        {
-            // Like the web page's day-of-week tiles: the day and its total sit on the tile. Strong tiles use on-accent text.
-            var strong = cell.Tokens > 0 && (minimumOpacity == 1 || cell.Intensity > 0.55);
-            var ink = strong ? Theme.Ref("UsageActivityTextBrush") : Theme.Ref("TextFillColorPrimaryBrush");
-            swatch = Grid([GridSize.Star()], [GridSize.Star()],
-                swatch,
-                VStack(0,
-                        TextBlock(label).FontSize(12).Foreground(ink).Opacity(minimumOpacity == 1 ? 1 : 0.85),
-                        TextBlock(UsageUi.Tokens(cell.Tokens)).FontSize(15).FontWeight(FontWeights.SemiBold).Foreground(ink))
-                    .AccessibilityView(AccessibilityView.Raw)
-                    .Margin(10, 6, 6, 6)
-                    .VAlign(VerticalAlignment.Center));
-        }
-        Element framed = Border(swatch)
-            .WithBorder(cell.Selected ? AccentText : Theme.Ref("SubtleFillColorTransparentBrush"), 2)
-            .CornerRadius(6)
-            .Opacity(anySelected && !cell.Selected ? 0.55 : 1);
-        if (onActivate is null)
-            return framed.ToolTip(text).AutomationName(text).AutomationId($"{automationId}_{cell.Index}");
-        return Button(framed, () => onActivate(cell.Index, ControlPressed()))
-            .Padding(0).MinWidth(0).MinHeight(0).BorderThickness(0)
-            .HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Stretch)
-            .HorizontalContentAlignment(HorizontalAlignment.Stretch).VerticalContentAlignment(VerticalAlignment.Stretch)
-            .Resources(r => r
-                .Set("ButtonBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
-                .Set("ButtonBackgroundPointerOver", Theme.Ref("SubtleFillColorSecondaryBrush"))
-                .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush"))
-                .Set("ButtonBorderBrushPointerOver", Theme.Ref("SubtleFillColorTransparentBrush")))
-            .ToolTip(text)
-            .AutomationName(text)
-            .ItemStatus(cell.Selected ? S("Usage_Selected") : "")
-            .AutomationId($"{automationId}_{cell.Index}")
-            .WithKey(cell.Index.ToString(System.Globalization.CultureInfo.InvariantCulture));
-    }
-
-    // ── long-range heatmap ──
-
-    public static Element Heatmap(UsageHeatmap heatmap)
-    {
-        const double cell = 11;
-        var weeks = heatmap.Weeks;
-        var dayLabels = new[] { DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday };
-        var grid = Grid(
-            new[] { GridSize.Px(32) }.Concat(weeks.Select(_ => GridSize.Px(cell + 3))).ToArray(),
-            Enumerable.Range(0, 7).Select(_ => GridSize.Px(cell + 3)).ToArray(),
-            dayLabels.Select(d => (Element)TextBlock(UsageFormat.ShortWeekday(d, Culture)).FontSize(10).Foreground(TertiaryText)
-                    .VAlign(VerticalAlignment.Center).AccessibilityView(AccessibilityView.Raw).Grid(row: (int)d, column: 0)
-                    .WithKey("day:" + (int)d))
-                .Concat(weeks.SelectMany((week, w) => week.Select(c =>
-                {
-                    var tip = c.InRange
-                        ? F("Usage_Heatmap_CellFormat", UsageFormat.FullDate(c.Date, Culture), UsageUi.Tokens(c.Tokens, c.LowerBound))
-                        : "";
-                    Element square = Border(null)
-                        .Size(cell, cell)
-                        .CornerRadius(2)
-                        .Background(c.Level > 0 ? Accent : Track)
-                        .Opacity(!c.InRange ? 0.25 : c.Level switch { 1 => 0.3, 2 => 0.5, 3 => 0.75, 4 => 1.0, _ => 1.0 })
-                        .AccessibilityView(AccessibilityView.Raw)
-                        .Grid(row: (int)c.Date.DayOfWeek, column: w + 1)
-                        .WithKey(UsageFilters.Iso(c.Date));
-                    return c.InRange ? square.ToolTip(tip) : square;
-                })))
-                .ToArray());
-        var legend = HStack(4,
-            TextBlock(S("Usage_Heatmap_Less")).FontSize(11).Foreground(TertiaryText).VAlign(VerticalAlignment.Center),
-            HStack(3, new[] { 0, 1, 2, 3, 4 }.Select(level => (Element)Border(null).Size(cell, cell).CornerRadius(2)
-                .Background(level > 0 ? Accent : Track)
-                .Opacity(level switch { 1 => 0.3, 2 => 0.5, 3 => 0.75, _ => 1.0 })
-                .WithKey("level:" + level)).ToArray()),
-            TextBlock(S("Usage_Heatmap_More")).FontSize(11).Foreground(TertiaryText).VAlign(VerticalAlignment.Center));
-        return VStack(8,
-            ScrollViewer(grid)
-                .Set(viewer =>
-                {
-                    viewer.HorizontalScrollBarVisibility = Microsoft.UI.Xaml.Controls.ScrollBarVisibility.Auto;
-                    viewer.HorizontalScrollMode = Microsoft.UI.Xaml.Controls.ScrollMode.Enabled;
-                    viewer.VerticalScrollBarVisibility = Microsoft.UI.Xaml.Controls.ScrollBarVisibility.Disabled;
-                    viewer.VerticalScrollMode = Microsoft.UI.Xaml.Controls.ScrollMode.Disabled;
-                })
-                .AutomationId("UsageHeatmapGrid"),
-            legend.HAlign(HorizontalAlignment.Right).AccessibilityView(AccessibilityView.Raw));
-    }
+    private static Element Dashes(bool vertical) =>
+        Grid(vertical ? [GridSize.Px(1)] : Enumerable.Repeat(GridSize.Star(), 6).ToArray(),
+            vertical ? Enumerable.Repeat(GridSize.Star(), 12).ToArray() : [GridSize.Px(1)],
+            Enumerable.Range(0, vertical ? 12 : 6).Select(index => (Element)Border(null).Background(Accent)
+                .Margin(0, 0, vertical ? 0 : 2, vertical ? 3 : 0)
+                .Grid(row: vertical ? index : 0, column: vertical ? 0 : index)).ToArray());
 }

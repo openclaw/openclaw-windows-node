@@ -17,13 +17,15 @@ namespace OpenClawTray.Pages;
 
 /// <summary>
 /// Thin XAML host for the Reactor Usage page. Owns the page lifetime: mounts <see cref="ReactorUsagePage"/>,
-/// forwards connection changes to <see cref="UsagePageController"/>, and performs the file-save side of export.
+/// forwards connection changes to <see cref="UsagePageController"/>, performs the file-save side of export, and
+/// routes the native chat and web Usage handoffs through the app's existing navigation owners.
 /// </summary>
 public sealed partial class UsagePage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private readonly UsageViewport _viewport = new();
     private UsagePageController? _controller;
+    private UsageExportWorkflow? _exportWorkflow;
     private ReactorHostControl? _host;
     private IOperatorGatewayClient? _trackedClient;
     private IGatewayConnectionManager? _connectionManager;
@@ -31,7 +33,6 @@ public sealed partial class UsagePage : Page
     public UsagePage()
     {
         InitializeComponent();
-        SizeChanged += (_, args) => _viewport.Update(args.NewSize.Width);
         Unloaded += (_, _) => Teardown();
     }
 
@@ -55,8 +56,15 @@ public sealed partial class UsagePage : Page
             () => CurrentApp.GatewayClient,
             () => DateOnly.FromDateTime(DateTime.Now),
             action => dispatcher.TryEnqueue(() => action()));
-        var props = new UsagePageProps(_controller, _viewport, OpenConnection, ExportAsync);
+        var (openWebUsage, openConversation) = UsageHandoffs.For(
+            (IAppCommands)CurrentApp, sessionKey => CurrentApp.PendingChatSessionKey = sessionKey);
+        var controller = _controller;
+        _exportWorkflow = new UsageExportWorkflow(controller, (name, content) => SaveCsvAsync(controller, name, content),
+            () => ReferenceEquals(_controller, controller), Logger.Warn);
+        var props = new UsagePageProps(_controller, _viewport, OpenConnection, openWebUsage, openConversation, _exportWorkflow.ExportAsync,
+            () => ((IAppCommands)CurrentApp).Navigate(UsageHandoffs.ChatPageTag), OpenExportFolderAsync);
         _host = new ReactorHostControl();
+        _host.SizeChanged += (_, args) => _viewport.Update(args.NewSize.Width);
         _host.Mount(_ => Component<ReactorUsagePage, UsagePageProps>(props));
         UsageHost.Child = _host;
     }
@@ -71,6 +79,7 @@ public sealed partial class UsagePage : Page
         DetachClient();
         _controller?.Dispose();
         _controller = null;
+        _exportWorkflow = null;
         if (_host is not null)
         {
             _host.Dispose();
@@ -112,45 +121,35 @@ public sealed partial class UsagePage : Page
 
     private void OpenConnection() => ((IAppCommands)CurrentApp).Navigate("connection");
 
-    private async Task ExportAsync(UsageExportFormat format)
+    private async Task<UsageSavedExport?> SaveCsvAsync(UsagePageController controller, string name, string content)
     {
-        var controller = _controller;
-        if (controller is null) return;
-        controller.SetExportNotice(null);
-        var (content, error) = await controller.ExportAsync(format);
-        // The page closed, or the Gateway changed, while usage was read: open no dialog for stale content.
-        if (!ReferenceEquals(_controller, controller) || (content is null && error is null)) return;
-        if (content is null)
-        {
-            controller.SetExportNotice(new UsageExportNotice(null, error));
-            return;
-        }
-
         var window = CurrentApp.ActiveHubWindow;
-        if (window is null)
+        if (window is null) throw new InvalidOperationException("The Usage save picker requires an active window.");
+        var picker = new FileSavePicker
         {
-            controller.SetExportNotice(new UsageExportNotice(null, UsageExportError.Failed));
-            return;
-        }
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            SuggestedFileName = System.IO.Path.GetFileNameWithoutExtension(name),
+        };
+        picker.FileTypeChoices.Add("CSV", new List<string> { ".csv" });
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+        var file = await picker.PickSaveFileAsync();
+        if (file is null || !ReferenceEquals(_controller, controller)) return null;
+        await FileIO.WriteTextAsync(file, content);
+        return new(file.Name, System.IO.Path.GetDirectoryName(file.Path));
+    }
+
+    private async Task OpenExportFolderAsync(string path)
+    {
         try
         {
-            var name = UsageExport.FileName(format, DateOnly.FromDateTime(DateTime.Now));
-            var extension = format == UsageExportFormat.Json ? ".json" : ".csv";
-            var picker = new FileSavePicker
-            {
-                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
-                SuggestedFileName = System.IO.Path.GetFileNameWithoutExtension(name),
-            };
-            picker.FileTypeChoices.Add(format == UsageExportFormat.Json ? "JSON" : "CSV", new List<string> { extension });
-            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
-            var file = await picker.PickSaveFileAsync();
-            if (file is null) return;
-            await FileIO.WriteTextAsync(file, content);
-            _controller?.SetExportNotice(new UsageExportNotice(file.Name, null));
+            var folder = await StorageFolder.GetFolderFromPathAsync(path);
+            if (!await global::Windows.System.Launcher.LaunchFolderAsync(folder))
+                throw new InvalidOperationException("Windows did not open the saved export folder.");
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.IO.IOException or InvalidOperationException or System.Runtime.InteropServices.COMException)
         {
-            _controller?.SetExportNotice(new UsageExportNotice(null, UsageExportError.Failed));
+            Logger.Warn($"[UsageExport] Open folder failed: {ex.GetType().Name}");
+            _controller?.SetExportNotice(new UsageExportNotice(null, UsageExportError.OpenFolder));
         }
     }
 }

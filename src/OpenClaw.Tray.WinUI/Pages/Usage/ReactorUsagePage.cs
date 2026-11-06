@@ -1,10 +1,11 @@
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
+using Microsoft.UI.Reactor.Hooks;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using OpenClaw.Shared.Usage;
-using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Usage;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClawTray.Pages.Usage.UsageUi;
@@ -14,23 +15,32 @@ namespace OpenClawTray.Pages.Usage;
 /// <summary>Page width published by the XAML host so sections can choose responsive column counts.</summary>
 internal sealed class UsageViewport
 {
-    public double Width { get; private set; } = 1000;
+    public double Width { get; private set; } = PageResponsiveLayout.WideMin;
 
     public event Action? Changed;
 
     public void Update(double width)
     {
-        if (width <= 0 || Math.Abs(width - Width) < 1) return;
-        Width = width;
+        var snapped = PageResponsiveLayout.Snap(width);
+        if (snapped <= 0 || snapped == Width) return;
+        Width = snapped;
         Changed?.Invoke();
     }
 }
 
+/// <summary>
+/// Page inputs. <see cref="OpenWebUsage"/> opens the Gateway's web Usage page through the app's Dashboard launcher;
+/// <see cref="OpenConversation"/> opens a session key in native chat.
+/// </summary>
 internal sealed record UsagePageProps(
     UsagePageController Controller,
     UsageViewport Viewport,
     Action OpenConnection,
-    Func<UsageExportFormat, Task> Export);
+    Action OpenWebUsage,
+    Action<string> OpenConversation,
+    Func<UsageExportFormat, Task> Export,
+    Action OpenChat,
+    Func<string, Task> OpenExportFolder);
 
 /// <summary>
 /// Reactor root of the native Usage page. Renders <see cref="UsagePageController.State"/>; all data loading,
@@ -38,16 +48,25 @@ internal sealed record UsagePageProps(
 /// </summary>
 internal sealed class ReactorUsagePage : Component<UsagePageProps>
 {
-    public const double MaxContentWidth = 1240;
-    public const double WideLayoutBreakpoint = 1100;
-
     public override Element Render()
     {
         var props = Props;
         var controller = props.Controller;
         var (state, setState) = UseState(controller.State);
         var (width, setWidth) = UseState(props.Viewport.Width);
-        UsageUi.ReduceMotion = UseReducedMotion();
+        var announce = this.UseAnnounce();
+        UseEffect((Func<Action>)(() =>
+        {
+            var cancelled = false;
+            if (state.ExportNotice is { } notice)
+                // Render effects can still be inside a native UIA/menu activation.
+                controller.PostUi(() =>
+                {
+                    if (!cancelled)
+                        announce.Announce(UsageExportFeedback.Message(notice), assertive: notice.Error is not null);
+                });
+            return () => cancelled = true;
+        }), state.ExportNotice);
 
         UseEffect((Func<Action>)(() =>
         {
@@ -66,32 +85,32 @@ internal sealed class ReactorUsagePage : Component<UsagePageProps>
             return () => props.Viewport.Changed -= Resized;
         }), props.Viewport);
 
-        var contentWidth = Math.Min(width, MaxContentWidth) - 48;
-        var header = UsageHeader.Render(state, controller, props.Export, contentWidth);
-        var sections = Banners(state, controller, props.OpenConnection).Concat(Body(state, controller, contentWidth))
-            .Select(section => section.Enter());
-        var body = VStack(24, sections.ToArray())
-            .Cascade(45)
-            .MaxWidth(MaxContentWidth)
+        var layout = new UsagePageLayout(width);
+        var header = UsageHeader.Render(state, props, layout, UseHighContrast());
+        // Sections render without entrance transitions: Reactor reconciles a keyed section against a transient
+        // transition host if data or a selection arrives mid-animation, which throws during the update.
+        var sections = Banners(state, props).Concat(Body(state, props, layout));
+        var body = VStack(PageResponsiveLayout.GapStack, sections.ToArray())
             .HAlign(HorizontalAlignment.Stretch)
-            .Padding(24, state.HeaderPinned ? 16 : 0, 24, 32);
+            .AutomationId("UsageBody");
 
-        if (state.HeaderPinned)
-        {
-            return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Star()],
-                    Border(header.MaxWidth(MaxContentWidth).HAlign(HorizontalAlignment.Stretch))
-                        .Padding(24, 16, 24, 12)
-                        .Background(Theme.Ref("SolidBackgroundFillColorBaseBrush"))
-                        .WithBorder(CardStroke, 0)
-                        .Grid(row: 0),
-                    PageScroll(body).Grid(row: 1))
-                .AutomationId("UsagePageRoot");
-        }
-
-        return PageScroll(VStack(SectionGap,
-                    header.MaxWidth(MaxContentWidth).HAlign(HorizontalAlignment.Stretch).Margin(24, 24, 24, 0),
-                    body))
+        var scroll = PageScroll(Grid([GridSize.Star()], [GridSize.Auto],
+                    VStack(PageResponsiveLayout.GapStack, header, body)
+                        .Padding(layout.Padding, PageResponsiveLayout.PaddingWide, layout.Padding, PageResponsiveLayout.PaddingWide)
+                        .Width(layout.ColumnWidth).HAlign(HorizontalAlignment.Center).AutomationId("UsageContentColumn")
+                        .Grid(row: 0).WithKey("content"))
+                .Width(width).HAlign(HorizontalAlignment.Left))
             .AutomationId("UsagePageRoot");
+        return Grid([GridSize.Star()], [GridSize.Star()],
+            Border(null).Height(320).VAlign(VerticalAlignment.Top).Background(Theme.Ref("UsageMastGradientBrush"))
+                .Set(border => border.IsHitTestVisible = false)
+                .AccessibilityHidden().AutomationId("UsageMastBackdrop").WithKey("backdrop"),
+            scroll.WithKey("scroll"),
+            UsageExportFeedback.Toast(state, props)?.WithKey("export-toast"),
+            UsageExportFeedback.Dialog(state, controller, props.Viewport)?.WithKey("export-dialog"),
+            announce.Region.LiveRegion(state.ExportNotice?.Error is not null
+                    ? AutomationLiveSetting.Assertive : AutomationLiveSetting.Polite)
+                .AutomationId("UsageResultAnnouncements").WithKey("announcements")).AutomationId("UsageSurface");
     }
 
     // Reactor's ScrollViewer scrolls horizontally by default; the page must measure content at the viewport width
@@ -103,27 +122,32 @@ internal sealed class ReactorUsagePage : Component<UsagePageProps>
             HorizontalScrollMode = Microsoft.UI.Xaml.Controls.ScrollMode.Disabled,
         };
 
-    private static IEnumerable<Element> Banners(UsagePageState state, UsagePageController controller, Action openConnection)
+    private static IEnumerable<Element> Banners(UsagePageState state, UsagePageProps props)
     {
         const Microsoft.UI.Xaml.Controls.InfoBarSeverity warning = Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning;
         const Microsoft.UI.Xaml.Controls.InfoBarSeverity error = Microsoft.UI.Xaml.Controls.InfoBarSeverity.Error;
         const Microsoft.UI.Xaml.Controls.InfoBarSeverity info = Microsoft.UI.Xaml.Controls.InfoBarSeverity.Informational;
+        var controller = props.Controller;
 
         if (state.Availability == UsageAvailability.Disconnected)
         {
             yield return Banner(S("UsagePage_GatewayDisconnected.Title"), S("UsagePage_GatewayDisconnected.Message"), warning,
-                "UsageDisconnectedBanner", S("UsagePage_OpenConnection.Content"), openConnection).WithKey("disconnected");
+                "UsageDisconnectedBanner", S("UsagePage_OpenConnection.Content"), props.OpenConnection).WithKey("disconnected");
         }
-        if (state.Availability == UsageAvailability.Forbidden)
-            yield return Banner(S("Usage_Forbidden_Title"), S("Usage_Forbidden_Message"), error, "UsageForbiddenBanner").WithKey("forbidden");
-        if (state.Availability == UsageAvailability.Legacy)
-            yield return Banner(S("Usage_Legacy_Title"), S("Usage_Legacy_Message"), info, "UsageLegacyBanner").WithKey("legacy");
-        if (state.BasicGateway)
-            yield return Banner(S("Usage_Basic_Title"), S("Usage_Basic_Message"), info, "UsageBasicBanner").WithKey("basic");
+        if (state.Availability is UsageAvailability.Forbidden or UsageAvailability.Unsupported)
+        {
+            yield return Card(HStack(16,
+                    IconBadge("\uE72E", 0, 40),
+                    Button(S("UsagePage_OpenConnection.Content"), props.OpenConnection)
+                        .AutomationName(S("UsagePage_OpenConnection.Content")).AutomationId("UsageAccessOpenConnection")),
+                state.Availability == UsageAvailability.Forbidden ? "UsageForbiddenPanel" : "UsageUnsupportedPanel")
+                .MaxWidth(520).HAlign(HorizontalAlignment.Left).WithKey("access");
+        }
         if (state.ShowLoadError)
         {
             var message = state.Error is { Length: > 0 } detail ? F("Usage_Error_MessageFormat", detail) : S("Usage_Error_Message");
-            yield return Banner(S("Usage_Error_Title"), message, error, "UsageErrorBanner", S("Usage_Retry"), controller.Refresh).WithKey("error");
+            yield return Banner(S("Usage_Error_Title"), message, state.Report is null ? error : warning,
+                "UsageErrorBanner", S("Usage_Retry"), controller.Refresh).WithKey("error");
         }
         if (state.Report is not { } report || state.Availability != UsageAvailability.Connected)
             yield break;
@@ -135,29 +159,21 @@ internal sealed class ReactorUsagePage : Component<UsagePageProps>
         }
         if (report.CacheStatus?.IsIncomplete == true || report.Sessions.Any(s => s.Computing))
         {
-            yield return (state.AutoRefreshPaused
-                    ? Banner(S("Usage_Cache_Title"), S("Usage_Cache_Paused"), info, "UsageCacheBanner", S("Usage_Refresh"), controller.Refresh)
-                    : Banner(S("Usage_Cache_Title"), S("Usage_Cache_Checking"), info, "UsageCacheBanner"))
-                .WithKey("cache");
+            var pending = report.Sessions.Count(session => session.Computing);
+            yield return Banner(pending > 0 ? F("Usage_ComputingFormat", Count(pending)) : S("Usage_Cache_Title"),
+                state.AutoRefreshPaused ? S("Usage_Cache_Paused") : S("Usage_Cache_Checking"), info,
+                "UsageCacheBanner", S("Usage_Refresh"), controller.Refresh).WithKey("cache");
         }
         if (state.Dashboard is { QueryWarnings.Count: > 0 } dashboard)
         {
             yield return Banner(S("Usage_QueryWarnings_Title"), string.Join(" ", dashboard.QueryWarnings), info, "UsageQueryWarningsBanner")
                 .WithKey("query-warnings");
         }
-        if (state.ExportNotice is { } notice)
-        {
-            yield return (notice.Error is { } exportError
-                    ? Banner(S("Usage_Export_FailedTitle"), S("Usage_Export_Error_" + exportError), error, "UsageExportBanner",
-                        S("Usage_Dismiss"), () => controller.SetExportNotice(null))
-                    : Banner(S("Usage_Export_SavedTitle"), F("Usage_Export_SavedFormat", notice.FileName ?? ""),
-                        Microsoft.UI.Xaml.Controls.InfoBarSeverity.Success, "UsageExportBanner", S("Usage_Dismiss"), () => controller.SetExportNotice(null)))
-                .WithKey("export");
-        }
     }
 
-    private static IEnumerable<Element> Body(UsagePageState state, UsagePageController controller, double width)
+    private static IEnumerable<Element> Body(UsagePageState state, UsagePageProps props, UsagePageLayout layout)
     {
+        if (state.Availability == UsageAvailability.Forbidden) yield break;
         var dashboard = state.Dashboard;
         if (dashboard is null)
         {
@@ -169,35 +185,25 @@ internal sealed class ReactorUsagePage : Component<UsagePageProps>
             yield break;
         }
 
-        if (dashboard.IsEmpty && !state.Filters.HasPopulationFilter && state.Availability != UsageAvailability.Legacy)
+        if (dashboard.IsEmpty && !state.Filters.HasQuery)
         {
-            yield return EmptyState(controller).WithKey("empty");
+            yield return EmptyState(props).WithKey("empty");
             yield return UsageSections.Providers(state).WithKey("providers");
             yield break;
         }
 
-        // Section order follows the web page: daily usage, started by, overview, cost windows, token activity,
-        // activity by time, sessions. Provider plans close the page.
-        yield return UsageSections.Daily(state, dashboard, controller, width).WithKey("daily");
-        if (state.Availability == UsageAvailability.Legacy)
-        {
-            if (dashboard.CostWindows.Count > 0)
-                yield return UsageSections.CostWindows(dashboard, state.Filters, width).WithKey("windows");
-            yield return UsageSections.Providers(state).WithKey("providers");
-            yield break;
-        }
-        if (dashboard.Creators.Count > 0)
-            yield return UsageSections.Creators(state, dashboard, controller).WithKey("creators");
-        yield return UsageSections.Insights(state, dashboard, width).WithKey("insights");
-        if (dashboard.CostWindows.Count > 0)
-            yield return UsageSections.CostWindows(dashboard, state.Filters, width).WithKey("windows");
-        if (dashboard.Heatmap is { } heatmap)
-            yield return UsageSections.HeatmapSection(heatmap).WithKey("heatmap");
-        // The activity mosaic needs the server-side overview, which released Gateways do not return.
-        if (!state.BasicGateway)
-            yield return UsageSections.Activity(state, dashboard, controller).WithKey("activity");
-        yield return UsageSessionsSection.Render(state, dashboard, controller, width).WithKey("sessions");
-        yield return UsageSections.Providers(state).WithKey("providers");
+        yield return UsageSections.NeedsYou(state, props, layout).WithKey("needs");
+        yield return Grid(layout.TwoColumns ? [GridSize.Px(layout.DailyWidth + PageResponsiveLayout.GapStack), GridSize.Star()] : [GridSize.Star()],
+                layout.TwoColumns ? [GridSize.Auto] : [GridSize.Auto, GridSize.Auto],
+                UsageSections.Daily(state, dashboard, props, layout.DailyWidth).VAlign(VerticalAlignment.Top)
+                    .Width(layout.TwoColumns ? layout.DailyWidth : layout.ContentWidth).HAlign(HorizontalAlignment.Left)
+                    .Grid(row: 0, column: 0).WithKey("daily"),
+                UsageSections.Providers(state).VAlign(VerticalAlignment.Top)
+                    .Margin(0, layout.TwoColumns ? 0 : PageResponsiveLayout.GapStack, 0, 0)
+                    .Grid(row: layout.TwoColumns ? 0 : 1, column: layout.TwoColumns ? 1 : 0).WithKey("providers"))
+            .AutomationId("UsageStage").WithKey("stage");
+        yield return UsageSections.Contributors(state, dashboard, props, layout).WithKey("contributors");
+        yield return UsageSessionsSection.Render(state, dashboard, props, layout).WithKey("sessions");
     }
 
     private static Element Loading() =>
@@ -211,15 +217,14 @@ internal sealed class ReactorUsagePage : Component<UsagePageProps>
             .AutomationName(S("Usage_Loading")),
             "UsageLoading");
 
-    private static Element EmptyState(UsagePageController controller) =>
+    private static Element EmptyState(UsagePageProps props) =>
         Card(VStack(8,
-                Image(UsageUi.SetupAssets + "OpenClawMascot.png").AccessibilityHidden().Size(112, 112).HAlign(HorizontalAlignment.Center)
-                    .Enter(),
                 TextBlock(S("Usage_Empty_Title")).FontSize(18).FontWeight(FontWeights.SemiBold).HAlign(HorizontalAlignment.Center)
                     .Margin(0, 8, 0, 0),
                 TextBlock(S("Usage_Empty_Message")).Foreground(SecondaryText).TextWrapping(TextWrapping.Wrap).MaxWidth(420)
                     .TextAlignment(TextAlignment.Center).HAlign(HorizontalAlignment.Center),
-                Button(S("Usage_Refresh"), controller.Refresh).HAlign(HorizontalAlignment.Center).Margin(0, 8, 0, 0).AutomationId("UsageEmptyRefresh"))
+                Button(S("Usage_OpenChat"), props.OpenChat).HAlign(HorizontalAlignment.Center).Margin(0, 8, 0, 0)
+                    .AutomationName(S("Usage_OpenChat")).AutomationId("UsageEmptyChat"))
             .Padding(0, 28, 0, 28),
             "UsageEmptyState");
 }

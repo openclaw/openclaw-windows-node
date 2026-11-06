@@ -1146,10 +1146,9 @@ public class LocalizationValidationTests
                         or "WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
                     // Usage page cognates: the natural term in these languages.
-                    "Usage_Metric_Tokens" or "Usage_Metric_TokensLower" => ["nl-nl", "pt-br"],
-                    "Usage_Overview_Messages" or "Usage_Overview_Sessions" or "Usage_Sessions_Title"
-                        or "Usage_Details_Conversation" or "Usage_Details_Role_assistant" => ["fr-fr"],
-                    "Usage_Facet_agent" => ["fr-fr", "nl-nl"],
+                    "Usage_Metric_Tokens" => ["nl-nl", "pt-br"],
+                    "Usage_Overview_Messages" or "Usage_Overview_Sessions" or "Usage_Sessions_Title" or "Usage_Options" => ["fr-fr"],
+                    "Usage_Facet_agent" or "Usage_Contributors_Agent" => ["fr-fr", "nl-nl"],
                     "Usage_Facet_model" => ["nl-nl"],
                     _ => [],
                 };

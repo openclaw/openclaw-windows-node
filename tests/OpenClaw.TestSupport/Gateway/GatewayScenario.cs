@@ -103,7 +103,7 @@ public sealed partial class GatewayScenario
         _allowChatSend = allowChatSend;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         _contextUsage = contextUsage;
-        // sessions.usage* are served by every scenario but never advertised, matching upstream.
+        // sessions.usage is served by every scenario but never advertised, matching upstream.
         UsageAnalytics = usageAnalytics ?? new UsageAnalyticsFixture();
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
@@ -480,6 +480,8 @@ public sealed partial class GatewayScenario
         }
         if (IsWrite(method))
             throw new FixtureRequestException("FIXTURE_READ_ONLY", "Fixture Gateway is read-only. This operation is not executed.");
+        if (_accessibilityBaseline && method == "sessions.usage")
+            return AccessibilitySessionsUsage(parameters);
         if (UsageAnalyticsFixture.Handles(method))
             return UsageAnalytics.Respond(method, parameters);
         if (method == "usage.status" && UsageAnalytics.RichProviders)

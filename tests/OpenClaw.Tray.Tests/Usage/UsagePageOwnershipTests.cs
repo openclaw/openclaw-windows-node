@@ -3,7 +3,8 @@ namespace OpenClaw.Tray.Tests.Usage;
 /// <summary>
 /// Pins the Usage page ownership split recorded in docs/ARCHITECTURE.md: the XAML page only hosts
 /// the Reactor tree, usage reads go through UsagePageController rather than AppState pushes, Gateway
-/// JSON is parsed in OpenClaw.Shared, and the views bind theme resources.
+/// JSON is parsed in OpenClaw.Shared, the views bind theme resources, and the web Usage handoff goes through the
+/// app's Dashboard launcher, which resolves credentials and reports launch failures, rather than a hand-built URL.
 /// </summary>
 public sealed class UsagePageOwnershipTests
 {
@@ -11,6 +12,7 @@ public sealed class UsagePageOwnershipTests
     [
         "JsonDocument", "JsonElement", "GetProperty(", "RequestUsage", "AppState",
         "Color.FromArgb", "Colors.", "new SolidColorBrush",
+        "http://", "https://", "LaunchUriAsync", "GatewayDashboardUrlBuilder",
     ];
 
     [Fact]

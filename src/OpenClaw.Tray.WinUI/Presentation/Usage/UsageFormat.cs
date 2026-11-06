@@ -4,7 +4,7 @@ namespace OpenClawTray.Presentation.Usage;
 
 /// <summary>
 /// Culture-aware Usage number formatting. Follows the upstream web rules (compact K/M/B tokens with one
-/// decimal, USD with 2/4/6 decimals by magnitude) but uses the user's number and date conventions.
+/// optional decimal, USD with 2/4/6 decimals by magnitude) but uses the user's number and date conventions.
 /// </summary>
 internal static class UsageFormat
 {
@@ -13,9 +13,9 @@ internal static class UsageFormat
         var magnitude = Math.Abs((double)tokens);
         return magnitude switch
         {
-            >= 1_000_000_000 => (tokens / 1_000_000_000d).ToString("0.0", culture) + "B",
-            >= 1_000_000 => (tokens / 1_000_000d).ToString("0.0", culture) + "M",
-            >= 1_000 => (tokens / 1_000d).ToString("0.0", culture) + "K",
+            >= 1_000_000_000 => (tokens / 1_000_000_000d).ToString("0.#", culture) + "B",
+            >= 1_000_000 => (tokens / 1_000_000d).ToString("0.#", culture) + "M",
+            >= 1_000 => (tokens / 1_000d).ToString("0.#", culture) + "K",
             _ => tokens.ToString("N0", culture),
         };
     }
@@ -63,15 +63,22 @@ internal static class UsageFormat
 
     public static string FullDate(DateOnly date, CultureInfo culture) => date.ToString("D", culture);
 
-    public static string ShortWeekday(DayOfWeek day, CultureInfo culture) => culture.DateTimeFormat.GetAbbreviatedDayName(day);
-
-    /// <summary>Hour-of-day label in the user's clock style, for example <c>9 AM</c> or <c>9:00</c>.</summary>
-    public static string Hour(int hour, CultureInfo culture)
+    /// <summary>Compact range for the mast; crossing a year keeps both years explicit.</summary>
+    public static string CompactRange(DateOnly start, DateOnly end, CultureInfo culture, string rangeFormat)
     {
-        var time = new DateTime(2000, 1, 1, Math.Clamp(hour, 0, 23), 0, 0, DateTimeKind.Unspecified);
-        return culture.DateTimeFormat.ShortTimePattern.Contains('t', StringComparison.Ordinal)
-            ? time.ToString("h tt", culture)
-            : time.ToString("H:mm", culture);
+        var crossesYear = start.Year != end.Year;
+        return string.Format(culture, rangeFormat,
+            crossesYear ? start.ToString("d", culture) : DayLabel(start, culture),
+            crossesYear ? end.ToString("d", culture) : DayLabel(end, culture));
+    }
+
+    public static string FriendlyDate(DateTime local, DateTime now, CultureInfo culture, string todayLabel, bool olderTime = false)
+    {
+        var days = (local.Date - now.Date).Days;
+        var day = days == 0 ? todayLabel
+            : Math.Abs(days) < 7 ? local.ToString("ddd", culture)
+            : DayLabel(DateOnly.FromDateTime(local), culture);
+        return days == 0 || Math.Abs(days) < 7 || olderTime ? $"{day} {local.ToString("t", culture)}" : day;
     }
 
     public static bool TryParseIso(string? value, out DateOnly date) =>

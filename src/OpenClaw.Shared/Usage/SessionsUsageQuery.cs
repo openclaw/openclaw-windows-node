@@ -33,20 +33,15 @@ public enum UsageSort
 public sealed record SessionsUsageQuery
 {
     public const int OverviewRowLimit = 50;
+    /// <summary>Rows per full read. Gateways without the server overview return at most this many sessions.</summary>
     public const int FullRowLimit = 1000;
-    public const int MaxRecentKeys = 8;
 
     public required string StartDate { get; init; }
     public required string EndDate { get; init; }
     public UsageScope Scope { get; init; } = UsageScope.Instance;
     public UsageTimeZoneMode TimeZone { get; init; } = UsageTimeZoneMode.Local;
     public string? AgentId { get; init; }
-    public string? CreatorKey { get; init; }
     public string? Query { get; init; }
-    public IReadOnlyList<string> SelectedDays { get; init; } = Array.Empty<string>();
-    public IReadOnlyList<int> SelectedHours { get; init; } = Array.Empty<int>();
-    public IReadOnlyList<string> SelectedSessions { get; init; } = Array.Empty<string>();
-    public IReadOnlyList<string>? RecentKeys { get; init; }
     public int Offset { get; init; }
     public UsageSort? Sort { get; init; }
     public bool? SortDescending { get; init; }
@@ -55,26 +50,20 @@ public sealed record SessionsUsageQuery
     public string? Key { get; init; }
     public bool OverviewProjection { get; init; }
     public int? Limit { get; init; }
-    public bool IncludeContextWeight { get; init; }
 
     /// <summary>True when the query uses parameters only Gateways with the server-side overview accept.</summary>
     public bool UsesServerOverview =>
-        Key is null && (OverviewProjection || !string.IsNullOrWhiteSpace(Query) || SelectedDays.Count > 0
-            || SelectedHours.Count > 0 || SelectedSessions.Count > 0 || RecentKeys is not null || Offset > 0
+        Key is null && (OverviewProjection || !string.IsNullOrWhiteSpace(Query) || Offset > 0
             || Sort is not null || SortDescending is not null);
 
     /// <summary>
-    /// The same range, scope, time zone and creator as a request released Gateways (2026.10.7) accept:
-    /// full rows and aggregates, without the overview projection, query, selections, paging or sort.
+    /// The same range, scope and time zone as a request released Gateways (2026.10.7 through 2026.10.9) accept:
+    /// full rows and aggregates, without the overview projection, query, paging or sort.
     /// </summary>
     public SessionsUsageQuery WithoutServerOverview() => this with
     {
         OverviewProjection = false,
         Query = null,
-        SelectedDays = Array.Empty<string>(),
-        SelectedHours = Array.Empty<int>(),
-        SelectedSessions = Array.Empty<string>(),
-        RecentKeys = null,
         Offset = 0,
         Sort = null,
         SortDescending = null,
@@ -107,8 +96,6 @@ public sealed record SessionsUsageQuery
             parameters["utcOffset"] = FormatUtcOffset(zone.GetUtcOffset(now ?? DateTimeOffset.UtcNow));
         }
 
-        if (!string.IsNullOrWhiteSpace(CreatorKey))
-            parameters["creatorKey"] = CreatorKey;
         parameters["groupBy"] = Scope == UsageScope.Family ? "family" : "instance";
 
         if (Key is not null)
@@ -121,16 +108,11 @@ public sealed record SessionsUsageQuery
             parameters["limit"] = Limit ?? (OverviewProjection ? OverviewRowLimit : FullRowLimit);
             if (OverviewProjection) parameters["projection"] = "overview";
             if (!string.IsNullOrWhiteSpace(Query)) parameters["query"] = Query;
-            if (SelectedDays.Count > 0) parameters["selectedDays"] = SelectedDays.ToArray();
-            if (SelectedHours.Count > 0) parameters["selectedHours"] = SelectedHours.ToArray();
-            if (SelectedSessions.Count > 0) parameters["selectedSessions"] = SelectedSessions.ToArray();
             if (Offset > 0) parameters["offset"] = Offset;
-            if (RecentKeys is not null) parameters["recentKeys"] = RecentKeys.Take(MaxRecentKeys).ToArray();
             if (Sort is { } sort) parameters["sort"] = sort.ToString().ToLowerInvariant();
             if (SortDescending is { } descending) parameters["sortDirection"] = descending ? "desc" : "asc";
         }
 
-        parameters["includeContextWeight"] = IncludeContextWeight;
         return parameters;
     }
 

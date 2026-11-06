@@ -7,19 +7,17 @@ public partial class OpenClawGatewayClient
 {
     private const string OperatorReadScope = "operator.read";
 
-    // sessions.usage* are registered upstream with advertise:false, so hello-ok never lists
-    // them. Support is learned from the first unknown-method reply and reset per connection.
+    // sessions.usage is registered upstream with advertise:false, so hello-ok never lists it.
+    // Support is learned from the first unknown-method reply and reset per connection.
     private volatile bool _sessionsUsageUnsupported;
     private volatile bool _sessionsUsageOverviewUnsupported;
-    private volatile bool _sessionsUsageTimeseriesUnsupported;
-    private volatile bool _sessionsUsageLogsUnsupported;
 
     /// <summary>
-    /// Reads <c>sessions.usage</c>. Released Gateways (2026.10.7) reject the server-side overview
+    /// Reads <c>sessions.usage</c>. Released Gateways (2026.10.7 through 2026.10.9) reject the server-side overview
     /// parameters, so on that rejection the read is retried once without them and later reads on the
     /// same connection skip them. Those replies carry no <see cref="SessionsUsageReport.Overview"/>.
-    /// A Gateway that still rejects a parameter has an older schema; it is treated like one without
-    /// <c>sessions.usage</c>, so callers fall back to <c>usage.cost</c>.
+    /// A Gateway that still rejects a parameter predates the oldest Gateway setup installs (2026.9.36); it is
+    /// reported as Unsupported, like one without <c>sessions.usage</c>.
     /// </summary>
     public async Task<UsageReadResult<SessionsUsageReport>> GetSessionsUsageAsync(
         SessionsUsageQuery query, int timeoutMs = 30000, CancellationToken cancellationToken = default)
@@ -39,7 +37,7 @@ public partial class OpenClawGatewayClient
         if (!IsRejectedParameter(result))
             return result;
         _sessionsUsageUnsupported = true;
-        _logger.Warn("sessions.usage parameters unsupported on gateway; using usage.cost");
+        _logger.Warn("sessions.usage parameters unsupported on gateway");
         return UsageReadResult<SessionsUsageReport>.Unsupported();
     }
 
@@ -58,33 +56,6 @@ public partial class OpenClawGatewayClient
         && message.Contains($"invalid {method} params", StringComparison.Ordinal)
         && message.Contains("unexpected property", StringComparison.Ordinal);
 
-    public async Task<UsageReadResult<SessionUsageTimeseries>> GetSessionUsageTimeseriesAsync(
-        string key, string? agentId = null, int timeoutMs = 30000, CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        if (_sessionsUsageTimeseriesUnsupported)
-            return UsageReadResult<SessionUsageTimeseries>.Unsupported();
-        var parameters = new Dictionary<string, object?> { ["key"] = key };
-        if (!string.IsNullOrWhiteSpace(agentId)) parameters["agentId"] = agentId;
-        return await ReadUsageAsync(
-            "sessions.usage.timeseries", parameters, timeoutMs, UsageJsonParser.ParseTimeseries,
-            () => _sessionsUsageTimeseriesUnsupported = true, cancellationToken).ConfigureAwait(false);
-    }
-
-    public async Task<UsageReadResult<IReadOnlyList<SessionUsageLogEntry>>> GetSessionUsageLogsAsync(
-        string key, string? agentId = null, int limit = 1000, int timeoutMs = 30000,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        if (_sessionsUsageLogsUnsupported)
-            return UsageReadResult<IReadOnlyList<SessionUsageLogEntry>>.Unsupported();
-        var parameters = new Dictionary<string, object?> { ["key"] = key, ["limit"] = Math.Clamp(limit, 1, 1000) };
-        if (!string.IsNullOrWhiteSpace(agentId)) parameters["agentId"] = agentId;
-        return await ReadUsageAsync(
-            "sessions.usage.logs", parameters, timeoutMs, UsageJsonParser.ParseLogs,
-            () => _sessionsUsageLogsUnsupported = true, cancellationToken).ConfigureAwait(false);
-    }
-
     /// <summary>
     /// Response-aware <c>usage.status</c> read for the Usage page. Independent of the tracked
     /// <see cref="RequestUsageStatusAsync"/> event path that feeds the tray menu.
@@ -93,16 +64,6 @@ public partial class OpenClawGatewayClient
         int timeoutMs = 30000, CancellationToken cancellationToken = default) =>
         ReadUsageAsync(
             "usage.status", null, timeoutMs, UsageJsonParser.ParseProviderUsage,
-            static () => { }, cancellationToken);
-
-    /// <summary>
-    /// Response-aware <c>usage.cost</c> read, used only when <c>sessions.usage</c> is unsupported.
-    /// Independent of the tracked <see cref="RequestUsageCostAsync"/> event path.
-    /// </summary>
-    public Task<UsageReadResult<SessionsUsageReport>> GetUsageCostSummaryAsync(
-        int days, int timeoutMs = 30000, CancellationToken cancellationToken = default) =>
-        ReadUsageAsync(
-            "usage.cost", new { days = Math.Clamp(days, 1, 366) }, timeoutMs, UsageJsonParser.ParseCostSummary,
             static () => { }, cancellationToken);
 
     private async Task<UsageReadResult<T>> ReadUsageAsync<T>(

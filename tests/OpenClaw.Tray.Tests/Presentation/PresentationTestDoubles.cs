@@ -62,6 +62,7 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     private readonly List<string> _operationLog = new();
 
     public List<string> Navigations { get; } = new();
+    public List<string?> DashboardPaths { get; } = new();
     public IReadOnlyList<string> OperationLog => _operationLog;
     public bool Disposed { get; private set; }
     public int ReconnectCount { get; private set; }
@@ -71,7 +72,7 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
 
     public void ClearOperationLog() => _operationLog.Clear();
 
-    public void OpenDashboard(string? path = null) { }
+    public void OpenDashboard(string? path = null) => DashboardPaths.Add(path);
     public void Navigate(string pageTag) => Navigations.Add(pageTag);
     public void Reconnect() => ReconnectCount++;
     public void Disconnect() { }

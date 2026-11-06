@@ -15,7 +15,7 @@ public sealed partial class GatewayFixtureProtocolTests
     };
 
     [Fact]
-    public async Task RealClient_UsageReadsReturnTypedOverviewDetailsAndProviderPlans()
+    public async Task RealClient_UsageReadsReturnTypedOverviewSessionDetailAndProviderPlans()
     {
         var token = CreateToken();
         var scenario = GatewayScenario.CreateUsageAnalytics();
@@ -28,25 +28,17 @@ public sealed partial class GatewayFixtureProtocolTests
         var report = overview.Value!;
         Assert.NotEmpty(report.Sessions);
         Assert.NotNull(report.Overview);
-        Assert.Equal(24, report.Overview!.HourTokens.Count);
-        Assert.Contains("tool", report.Overview.FilterOptions.Keys);
+        Assert.Contains("agent", report.Overview!.FilterOptions.Keys);
         Assert.True(report.Totals.TotalTokens > 0);
-        Assert.Equal(report.Totals.TotalTokens, report.Aggregates.Daily.Sum(d => d.Tokens));
+        Assert.Equal(report.Totals.TotalTokens, report.Aggregates.CostDaily.Sum(d => d.Totals.TotalTokens));
         var costs = report.Sessions.Select(s => s.Usage!.Totals.TotalCost).ToArray();
         Assert.Equal(costs.OrderByDescending(c => c), costs);
         Assert.Equal("fresh", report.CacheStatus!.Status);
 
         var key = report.Sessions[0].Key;
-        var detail = await client.GetSessionsUsageAsync(UsageWeek(overview: false) with { Key = key, IncludeContextWeight = true });
+        var detail = await client.GetSessionsUsageAsync(UsageWeek(overview: false) with { Key = key, AgentId = report.Sessions[0].AgentId });
         var row = Assert.Single(detail.Value!.Sessions);
         Assert.Equal(key, row.Key);
-        Assert.True(row.ContextWeight!.SystemPromptChars > 0);
-
-        var series = await client.GetSessionUsageTimeseriesAsync(key, row.AgentId);
-        Assert.Equal(UsageReadStatus.Ok, series.Status);
-        Assert.NotEmpty(series.Value!.Points);
-        var logs = await client.GetSessionUsageLogsAsync(key, row.AgentId);
-        Assert.Contains(logs.Value!, entry => entry.Role == "user");
 
         var providers = await client.GetProviderUsageAsync();
         Assert.Contains(providers.Value!.Providers, p => p.Billing.Count > 0);
@@ -61,7 +53,7 @@ public sealed partial class GatewayFixtureProtocolTests
         await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
         await using var connected = await ConnectedClient.OpenAsync(server, token);
         var client = connected.Client;
-        var query = UsageWeek() with { Query = "agent:main", SelectedDays = ["2026-10-20"], Sort = UsageSort.Cost };
+        var query = UsageWeek() with { Query = "agent:main", Sort = UsageSort.Cost };
 
         var first = await client.GetSessionsUsageAsync(query);
 
@@ -79,12 +71,12 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Equal(3, server.Requests.Count(r => r.Method == "sessions.usage"));
 
         var key = report.Sessions[0].Key;
-        var detail = await client.GetSessionsUsageAsync(UsageWeek(overview: false) with { Key = key, IncludeContextWeight = true });
+        var detail = await client.GetSessionsUsageAsync(UsageWeek(overview: false) with { Key = key });
         Assert.Equal(key, Assert.Single(detail.Value!.Sessions).Key);
     }
 
     [Fact]
-    public async Task RealClient_OlderSchemaThatRejectsTheReleasedParametersFallsBackToUsageCost()
+    public async Task RealClient_SchemaOlderThanTheInstalledGatewaysIsReportedUnsupportedOnce()
     {
         var token = CreateToken();
         var scenario = GatewayScenario.CreateUsageAnalytics(UsageAnalyticsMode.Released);

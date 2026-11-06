@@ -4,499 +4,405 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using OpenClaw.Shared.Usage;
+using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Usage;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClawTray.Pages.Usage.UsageUi;
 
 namespace OpenClawTray.Pages.Usage;
 
-/// <summary>Overview sections of the native Usage page, in the upstream web page's order.</summary>
 internal static class UsageSections
 {
-    public const int CreatorPreviewCount = 6;
-
-    /// <summary>Lays items out row-major in <paramref name="columns"/> equal columns.</summary>
-    public static Element Columns(int columns, IReadOnlyList<Element> items, double gap = 12)
+    public static Element Columns(int columns, IReadOnlyList<Element> items, double gap = PageResponsiveLayout.GapGroup)
     {
-        columns = Math.Max(1, Math.Min(columns, Math.Max(1, items.Count)));
-        var rows = (items.Count + columns - 1) / columns;
-        return Grid(Enumerable.Range(0, columns).Select(_ => GridSize.Star()).ToArray(),
-            Enumerable.Range(0, Math.Max(rows, 1)).Select(_ => GridSize.Auto).ToArray(),
-            items.Select((item, i) => item
-                    .Margin(i % columns == 0 ? 0 : gap / 2, i / columns == 0 ? 0 : gap, i % columns == columns - 1 ? 0 : gap / 2, 0)
-                    .Grid(row: i / columns, column: i % columns)
-                    .WithKey(item.Key ?? "cell:" + i))
-                .ToArray());
+        columns = Math.Max(1, columns);
+        return Grid(Enumerable.Repeat(GridSize.Star(), columns).ToArray(),
+            Enumerable.Repeat(GridSize.Auto, Math.Max(1, (items.Count + columns - 1) / columns)).ToArray(),
+            items.Select((item, index) => item.Grid(row: index / columns, column: index % columns)
+                .WithKey(item.Key ?? "cell:" + index)).ToArray()) with { ColumnSpacing = gap, RowSpacing = gap };
     }
 
-    public static int ColumnsFor(double width, double minColumnWidth, int max) =>
-        Math.Clamp((int)(width / minColumnWidth), 1, max);
+    public static Element Daily(UsagePageState state, UsageDashboard dashboard, UsagePageProps props, double width) =>
+        Component<UsageDailySection, UsageDailyProps>(new(state, dashboard, props.Controller, width));
 
-    // ── daily trend ──
+    public static Element Contributors(UsagePageState state, UsageDashboard dashboard, UsagePageProps props, UsagePageLayout layout) =>
+        Component<UsageContributorsSection, UsageContributorsProps>(new(state, dashboard, props, layout));
 
-    public static Element Daily(UsagePageState state, UsageDashboard dashboard, UsagePageController controller, double width)
+    public static Element Providers(UsagePageState state) =>
+        Component<UsageProvidersSection, UsagePageState>(state);
+
+    public static Element NeedsYou(UsagePageState state, UsagePageProps props, UsagePageLayout layout)
     {
-        var chart = dashboard.Chart;
-        var metric = state.Metric;
-        var title = metric == UsageMetric.Cost ? S("Usage_Daily_CostTitle") : S("Usage_Daily_TokensTitle");
-        var modes = SelectorBar(
-                [SelectorBarItem(S("Usage_Daily_Total")), SelectorBarItem(S("Usage_Daily_ByType")), SelectorBarItem(S("Usage_Daily_ByProvider"))],
-                (int)state.ChartMode,
-                index => controller.SetChartMode((UsageDailyChartMode)Math.Clamp(index, 0, 2)))
-            .AutomationName(S("Usage_Daily_ModeLabel"))
-            .AutomationId("UsageDailyMode");
-
-        var columns = chart.Days.Select(day =>
+        var attention = UsageInsights.Attention(state);
+        if (attention.Count == 0) return Empty();
+        var cards = attention.Take(attention.Count > 3 ? 2 : 3).Select(provider =>
         {
-            var label = UsageFormat.DayLabel(day.Date, Culture);
-            var text = day.Pending
-                ? F("Usage_Daily_PendingFormat", UsageFormat.FullDate(day.Date, Culture))
+            var window = provider.Windows.Where(window => window.ResetAt is null || window.ResetAt > DateTimeOffset.Now)
+                .OrderByDescending(w => w.UsedPercent).First();
+            var message = window.Label + (window.ResetAt is { } reset ? " · " + F("Usage_ResetAtFormat", FriendlyDate(reset, olderTime: true)) : "");
+            return (Element)Border(Grid([GridSize.Px(4), GridSize.Star()], [GridSize.Auto],
+                    Border(null).Background(Caution).Grid(column: 0),
+                    Border(Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                        IconBadge("\uE7BA", 3, 36).AutomationId("UsageAttentionIcon_" + provider.Provider)
+                            .VAlign(VerticalAlignment.Top).Margin(0, 0, PageResponsiveLayout.GapGroup, 0).Grid(column: 0),
+                        VStack(8,
+                            TextBlock(F("Usage_AllowanceWarningFormat", provider.DisplayName,
+                                    UsageFormat.Percent(window.UsedPercent / 100, Culture, 0)))
+                                .FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.WrapWholeWords)
+                                .AutomationId("UsageAttentionTitle_" + provider.Provider),
+                            Note(message).AutomationId("UsageAttentionMessage_" + provider.Provider),
+                            Button(TextBlock(S("Usage_SeeUsing")).TextWrapping(TextWrapping.NoWrap), () => props.Controller.InspectProvider(provider.Provider))
+                                .AutomationName(F("Usage_SeeUsingProviderFormat", provider.DisplayName))
+                                .AutomationId("UsageInspectProvider_" + provider.Provider).HAlign(HorizontalAlignment.Left)).Grid(column: 1)))
+                        .Padding(CardPadding).Grid(column: 1)))
+                .CornerRadius(CardRadius).Background(CardFill).WithBorder(CardStroke, 1)
+                .AutomationId("UsageAttentionCard_" + provider.Provider).HAlign(HorizontalAlignment.Stretch)
+                .WithKey(provider.Provider);
+        }).ToList();
+        if (attention.Count > 3)
+            cards.Add(Card(MenuFlyout(Button(F("Usage_MoreNeedsFormat", Count(attention.Count - 2)))
+                    .AutomationName(F("Usage_MoreNeedsFormat", Count(attention.Count - 2))),
+                attention.Skip(2).Select(provider => (MenuFlyoutItemBase)MenuItem(
+                    F("Usage_SeeUsingProviderFormat", provider.DisplayName),
+                    () => props.Controller.InspectProvider(provider.Provider))).ToArray()), "UsageMoreNeeds").WithKey("more"));
+        return VStack(12,
+            HStack(8, TextBlock(S("Usage_NeedsYou")).FontSize(18).FontWeight(FontWeights.SemiBold).AutomationId("UsageNeedsHeading"),
+                Pill(Count(attention.Count), "UsageNeedsCount", critical: true)),
+            Columns(layout.NeedsColumns, cards).AutomationId("UsageAttentionGrid")).AutomationId("UsageNeedsYou");
+    }
+
+    public static Element Activity(UsageDashboard dashboard, double width)
+    {
+        var a = dashboard.Activity;
+        Element[] stats =
+        [
+            InlineStat(a.Messages.HasData ? Count(a.Messages.Total) : Dash, S("Usage_Overview_Messages").ToLower(Culture),
+                a.Messages.HasData ? F("Usage_Activity_MessageSplitFormat", Count(a.Messages.User), Count(a.Messages.Assistant)) : null, "UsageStatMessages"),
+            InlineStat(a.ToolCallsKnown ? Count(a.ToolCalls) : Dash, S("Usage_Overview_ToolCalls").ToLower(Culture), null, "UsageStatToolCalls"),
+            InlineStat(a.Messages.HasData ? Count(a.Messages.Errors) : Dash, S("Usage_Overview_Errors").ToLower(Culture),
+                a.ErrorRate is { } rate ? UsageFormat.Percent(rate, Culture, 0) : null, "UsageStatErrors"),
+            InlineStat(a.CacheHitRate is { } hit ? UsageFormat.Percent(hit, Culture, 0) : Dash,
+                S("Usage_Overview_CacheHitRate").ToLower(Culture), null, "UsageStatCacheHit"),
+        ];
+        return Columns(UsagePageLayout.ActivityColumns(width), stats)
+            .AutomationId("UsageActivity");
+    }
+
+    private static Element InlineStat(string value, string label, string? sub, string id) =>
+        Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                TextBlock(value).FontSize(12).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.NoWrap)
+                    .AutomationId(id + "Value").Margin(0, 0, 4, 0).Grid(column: 0),
+                TextBlock(label + (sub is null ? "" : $" ({sub})")).FontSize(12).Foreground(SecondaryText)
+                    .TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis)
+                    .ToolTip(label + (sub is null ? "" : $" ({sub})")).Grid(column: 1))
+            .AutomationId(id);
+
+    internal static Element Fact(string label, string value, string? sub, string id) =>
+        VStack(3,
+            TextBlock(value).FontSize(22).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.NoWrap)
+                .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(value).AutomationId(id + "Value"),
+            TextBlock(label).FontSize(12).Foreground(SecondaryText).TextWrapping(TextWrapping.WrapWholeWords),
+            sub is null ? null : TextBlock(sub).FontSize(11).Foreground(SecondaryText).TextWrapping(TextWrapping.WrapWholeWords))
+            .AutomationName($"{label}: {value}. {sub}").AutomationId(id);
+}
+
+internal sealed record UsageDailyProps(UsagePageState State, UsageDashboard Dashboard, UsagePageController Controller, double Width);
+
+internal sealed class UsageDailySection : Component<UsageDailyProps>
+{
+    public override Element Render()
+    {
+        var (table, setTable) = UseState(false);
+        var state = Props.State;
+        var chart = Props.Dashboard.Chart;
+        var totals = state.Report!.Totals;
+        var summary = Props.Dashboard.Summary;
+        var compact = PageResponsiveLayout.TierFor(Props.Width) == PageWidthTier.Narrow;
+        var legendBelow = Props.Width - CardPadding * 2 < PageResponsiveLayout.MinWidth;
+        double? average = chart.Days.Count > 0 && !summary.Partial && !chart.Days.Any(day => day.Pending || day.LowerBound || day.MissingPrice)
+            ? chart.Days.Average(day => day.Value) : null;
+        string AxisLabel(double value) => state.Metric == UsageMetric.Cost
+            ? UsageFormat.Cost(value, Culture, value < 1 ? 2 : 0) : UsageFormat.Tokens((long)value, Culture);
+        var metric = SelectorBar([SelectorBarItem(S("Usage_Summary_EstimatedCost")), SelectorBarItem(S("Usage_Metric_Tokens"))],
+                state.Metric == UsageMetric.Cost ? 0 : 1,
+                index => Props.Controller.SetMetric(index == 0 ? UsageMetric.Cost : UsageMetric.Tokens))
+            .AutomationName(S("Usage_Filter_Show")).AutomationId("UsageMetric")
+            .HAlign(compact ? HorizontalAlignment.Left : HorizontalAlignment.Center)
+            .VAlign(VerticalAlignment.Center).Margin(0).WithKey("metric");
+        var itemPadding = ThemeResource.Thickness("SelectorBarItemPadding");
+        // Rebalance native item padding without changing spacing between labels, restoring it on Wide.
+        metric = metric.Set(selector =>
+        {
+            foreach (var item in selector.Items)
+                item.Padding = compact
+                    ? new Thickness(0, itemPadding.Top, itemPadding.Left + itemPadding.Right, itemPadding.Bottom)
+                    : itemPadding;
+        });
+        var legend = average is { } mean
+            ? UsageCharts.AverageLegend(F("Usage_DailyAverageFormat", AxisLabel(mean))).Margin(0).WithKey("average") : null;
+        var view = SelectorBar([SelectorBarItem(S("Usage_Chart")), SelectorBarItem(S("Usage_Table"))], table ? 1 : 0,
+                index => setTable(index == 1))
+            .AutomationName(S("Usage_ChartView")).AutomationId("UsageChartView")
+            .VAlign(VerticalAlignment.Center).Margin(0).WithKey("view");
+        var selectors = Grid(compact ? [GridSize.Star(), GridSize.Auto] : [GridSize.Auto, GridSize.Star(), GridSize.Auto],
+                compact ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
+                TextBlock(S("Usage_PerDay")).FontSize(16).FontWeight(FontWeights.SemiBold)
+                    .VAlign(VerticalAlignment.Center).Margin(0).AutomationId("UsagePerDayTitle").Grid(column: 0).WithKey("title"),
+                !compact ? metric.Grid(column: 1) : null,
+                Grid(legendBelow ? [GridSize.Auto] : [GridSize.Auto, GridSize.Auto], [GridSize.Auto],
+                    !legendBelow ? legend?.Margin(0, 0, PageResponsiveLayout.GapGroup, 0).Grid(column: 0) : null,
+                    view.Grid(column: legendBelow ? 0 : 1))
+                    .VAlign(VerticalAlignment.Center).Margin(0).Grid(column: compact ? 1 : 2).WithKey("view-group"),
+                compact ? (Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                    metric.Grid(column: 0),
+                    legendBelow ? legend?.Grid(column: 1) : null) with { ColumnSpacing = PageResponsiveLayout.GapGroup })
+                    .Margin(0, PageResponsiveLayout.GapInner, 0, 0).Grid(row: 1, columnSpan: 2)
+                    .AutomationId("UsageDailyMetricRow").WithKey("metric-row") : null);
+        var today = DateOnly.FromDateTime(state.Filters.TimeZone == UsageTimeZoneMode.Utc ? DateTime.UtcNow : DateTime.Now);
+        var columns = chart.Days.Select(day => new UsageCharts.BarColumn(
+            day.Iso, day.Value, day.Date == today ? S("Usage_Preset_Today") : UsageFormat.DayLabel(day.Date, Culture),
+            day.Pending ? F("Usage_Daily_PendingFormat", UsageFormat.FullDate(day.Date, Culture))
                 : F("Usage_Daily_BarFormat", UsageFormat.FullDate(day.Date, Culture),
-                    UsageUi.Tokens(day.Tokens, day.LowerBound), AnalysisCost(day.Cost, day.LowerBound));
-            return new UsageCharts.BarColumn(day.Iso, day.Total, day.Segments, label, text, day.Selected, day.Pending, day.LowerBound);
-        }).ToList();
-
-        Element body = chart.IsEmpty && !chart.Days.Any(d => d.Pending)
-            ? EmptyText(S("Usage_Daily_Empty"), "UsageDailyEmpty")
-            : VStack(12,
-                UsageCharts.Columns(columns, chart.Series, chart.Ceiling,
-                    value => metric == UsageMetric.Cost ? UsageFormat.Cost(value, Culture, value < 1 ? 2 : 0) : UsageFormat.Tokens((long)value, Culture),
-                    state.ServerFiltersUnavailable ? null : (string iso, bool append) => controller.ToggleDay(iso, append), "UsageDailyChart"),
-                UsageCharts.Legend(chart.Series),
-                state.ServerFiltersUnavailable ? null : Note(S("Usage_Daily_Hint")));
-
-        return Section(title, UsageHeader.RangeCaption(state.Filters), modes, VStack(16,
-                body,
-                Border(null).Height(1).Background(CardStroke),
-                Breakdown(dashboard, metric),
-                Component<UsageDailyTable, UsageDailyTableProps>(new UsageDailyTableProps(chart))),
-            "UsageDaily");
+                    day.TokensKnown ? Tokens(day.Tokens, day.LowerBound) : Dash, DayCost(day)),
+            day.Pending, day.LowerBound, day.Date == today)).ToList();
+        Element body = table ? DailyTable(chart) : UsageCharts.Columns(columns, chart.Ceiling,
+            AxisLabel, "UsageDailyChart", average: average,
+            barWidth: Math.Min(36, Math.Max(1, (Props.Width - UsageCharts.AxisWidth - CardPadding * 2) / Math.Max(1, columns.Count) * 0.6)));
+        var inside = Props.Width - CardPadding * 2;
+        return Card(VStack(PageResponsiveLayout.GapStack, selectors.AutomationId("UsageDailyControls"), body,
+            Border(null).Height(1).Background(CardStroke),
+            UsageSections.Columns(PageResponsiveLayout.TileColumns(inside, UsagePageLayout.StatMinWidth, 3), [
+                UsageSections.Fact(S("Usage_Metric_Tokens"), ReportedTokens(totals, "totalTokens", totals.TotalTokens),
+                    F("Usage_Details_TokenSplitFormat", ReportedTokens(totals, "input", totals.Input), ReportedTokens(totals, "output", totals.Output)), "UsageSummaryTokens"),
+                UsageSections.Fact(F("Usage_CacheWrittenFormat", ReportedTokens(totals, "cacheWrite", totals.CacheWrite)),
+                    ReportedTokens(totals, "cacheRead", totals.CacheRead), null, "UsageSummaryCache"),
+                UsageSections.Fact(S("Usage_Overview_Sessions"), summary.SessionsKnown ? AtLeast(Count(summary.Sessions), summary.SessionsAtLeast) : Dash, null, "UsageSummarySessions")])
+                .AutomationId("UsageDailyFacts"),
+            Border(null).Height(1).Background(CardStroke),
+            UsageSections.Activity(Props.Dashboard, inside)), "UsageDaily");
     }
 
-    private static Element Breakdown(UsageDashboard dashboard, UsageMetric metric)
+    private static Element DailyTable(UsageDailyChart chart)
     {
-        var parts = dashboard.Breakdown;
-        var lowerBound = dashboard.Summary.LowerBound;
-        return VStack(8,
-                TextBlock(metric == UsageMetric.Cost ? S("Usage_Breakdown_CostTitle") : S("Usage_Breakdown_TokensTitle"))
-                    .FontSize(13).FontWeight(FontWeights.SemiBold),
-                StackedBar(parts.Select(p => (p.Share, KindBrush(p.Kind))).ToList()),
-                Flow(parts.Select(p => LegendItem(
-                        SeriesLabel(new UsageSeries("", p.Kind, null, 0)),
-                        KindBrush(p.Kind),
-                        $"{Metric(metric, p.Tokens, p.Cost, lowerBound)} ({UsageFormat.Percent(p.Share, Culture, 0)})")
-                    .Margin(0, 0, 20, 4)
-                    .AutomationName($"{SeriesLabel(new UsageSeries("", p.Kind, null, 0))}: {Metric(metric, p.Tokens, p.Cost, lowerBound)}")
-                    .WithKey(p.Kind.ToString())).ToArray()))
-            .AutomationId("UsageBreakdown");
+        var rows = chart.Days.Reverse().Select(day =>
+            Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                TextBlock(UsageFormat.DayLabel(day.Date, Culture)).FontSize(12).TextWrapping(TextWrapping.NoWrap).Grid(column: 0),
+                TextBlock(day.Pending ? S("Usage_Daily_NotLoaded") : chart.Metric == UsageMetric.Cost
+                        ? DayCost(day) : Tokens(day.Tokens, day.LowerBound))
+                    .FontSize(12).TextWrapping(TextWrapping.NoWrap).Grid(column: 1)).Padding(0, 5)
+                .AutomationName(UsageFormat.FullDate(day.Date, Culture) + ": " + (day.Pending ? S("Usage_Daily_NotLoaded")
+                    : chart.Metric == UsageMetric.Cost ? DayCost(day) : Tokens(day.Tokens, day.LowerBound)))
+                .AutomationId("UsageDailyRow_" + day.Iso).WithKey(day.Iso)).ToArray();
+        return VStack(2, rows).AutomationName(S("Usage_ChartView")).AutomationId("UsageDailyTable");
     }
 
-    // ── cost windows ──
+    private static string DayCost(UsageChartDay day) =>
+        !day.CostKnown ? Dash : day.MissingPrice && day.Cost == 0
+            ? S("Usage_Overview_Unpriced") : AnalysisCost(day.Cost, day.LowerBound || day.MissingPrice);
+}
 
-    public static Element CostWindows(UsageDashboard dashboard, UsageFilters filters, double width)
+internal sealed class UsageProvidersSection : Component<UsagePageState>
+{
+    public override Element Render()
     {
-        var today = DateOnly.FromDateTime(DateTime.Now);
-        var tiles = dashboard.CostWindows.Select(w =>
+        var (all, setAll) = UseState(false);
+        var providers = Props.Providers;
+        var items = providers.Value?.Providers.OrderByDescending(provider => provider.Windows.Count > 0
+                ? provider.Windows.Max(window => window.UsedPercent) : -1).ToList() ?? [];
+        var rows = items.Take(all ? items.Count : 4).Select(provider => Provider(provider).WithKey(provider.Provider)).ToList();
+        if (providers.Phase == UsageLoadPhase.Failed)
+            rows.Insert(0, Note(S("Usage_Providers_Unavailable")).WithKey("failed"));
+        if (Props.Availability == UsageAvailability.Disconnected && providers.Value?.UpdatedAt is { } at)
+            rows.Insert(0, Note(F("Usage_LastKnownFormat", at.ToLocalTime().ToString("t", Culture))).WithKey("offline"));
+        if (providers.Value?.Refreshing == true) rows.Insert(0, Note(S("Usage_Providers_Refreshing")).WithKey("refreshing"));
+        if (items.Count == 0)
+            rows.Add(EmptyText(S(providers.IsLoading ? "Usage_Providers_Loading" : "Usage_Providers_Empty"), "UsageProvidersEmpty").WithKey("empty"));
+        if (items.Count > 4)
+            rows.Add(SubtleButton(all ? S("Usage_ShowLess") : F("Usage_ShowMoreFormat", Count(items.Count - 4)),
+                () => setAll(!all), "UsageProvidersMore").WithKey("more"));
+        return Section(S("Usage_Providers_Title"), null, null,
+            VStack(PageResponsiveLayout.GapInner, rows.ToArray()), "UsageProviders");
+    }
+
+    private static Element Provider(ProviderUsageSnapshot provider)
+    {
+        var windows = provider.Windows.OrderByDescending(window => window.UsedPercent).ToList();
+        var highest = windows.FirstOrDefault();
+        var percent = highest is null ? Dash : UsageFormat.Percent(highest.UsedPercent / 100, Culture, 0);
+        var accessible = new List<string> { provider.DisplayName };
+        var info = new List<Element>
         {
-            var label = w.IsSelectedRange ? S("Usage_CostWindows_SelectedRange")
-                : w.Days == 1 ? (w.EndDate == today ? S("Usage_Preset_Today") : UsageFormat.DayLabel(w.EndDate, Culture))
-                : F("Usage_CostWindows_LastDaysFormat", w.Days);
-            var lower = w.Totals.IsLowerBound;
-            var sub = UsageUi.Tokens(w.Totals.TotalTokens, lower) + " " + S("Usage_Metric_TokensLower")
-                + (w.Days > 1 ? " · " + F("Usage_CostWindows_PerDayFormat", AnalysisCost(w.Totals.TotalCost / w.Days, lower)) : "");
-            return Stat(label, AnalysisCost(w.Totals.TotalCost, lower), sub, "UsageCostWindow_" + w.Days,
-                glyph: w.IsSelectedRange ? GlyphCalendar : GlyphCost, palette: w.IsSelectedRange ? 0 : 5).WithKey("window:" + w.Days);
-        }).ToList();
-        return Section(S("Usage_CostWindows_Title"), F("Usage_CostWindows_SubtitleFormat", UsageFormat.FullDate(filters.End, Culture)), null,
-            Columns(ColumnsFor(width, 190, tiles.Count), tiles), "UsageCostWindows");
-    }
-
-    // ── creators ──
-
-    public static Element Creators(UsagePageState state, UsageDashboard dashboard, UsagePageController controller) =>
-        Component<UsageCreatorsSection, UsageCreatorsProps>(new UsageCreatorsProps(dashboard.Creators, state.Metric, controller.SetCreator));
-
-    // ── insights ──
-
-    public static Element Insights(UsagePageState state, UsageDashboard dashboard, double width)
-    {
-        var i = dashboard.Insights;
-        var empty = Dash;
-        var stats = new List<Element>
+            TextBlock(provider.DisplayName).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.WrapWholeWords).WithKey("name"),
+        };
+        if (provider.Plan is { Length: > 0 } plan)
         {
-            Stat(S("Usage_Overview_Messages"), Count(i.Messages.Total),
-                F("Usage_Overview_MessagesSubFormat", Count(i.Messages.User), Count(i.Messages.Assistant)), "UsageStatMessages",
-                glyph: GlyphMessages, palette: 0),
-            Stat(S("Usage_Overview_Throughput"),
-                i.ThroughputTokensPerMinute is { } tpm ? F("Usage_Overview_TokensPerMinuteFormat", UsageUi.Tokens((long)Math.Round(tpm))) : empty,
-                i.ThroughputCostPerMinute is { } cpm ? F("Usage_Overview_CostPerMinuteFormat", AnalysisCost(cpm)) : empty,
-                "UsageStatThroughput", tooltip: S("Usage_Overview_ThroughputHint"), glyph: GlyphSpeed, palette: 3),
-            Stat(S("Usage_Overview_ToolCalls"), Count(i.Tools.TotalCalls),
-                FN("Usage_Overview_ToolsUsedFormat", i.Tools.UniqueTools), "UsageStatToolCalls", glyph: GlyphTools, palette: 1),
-            Stat(S("Usage_Overview_AvgTokens"), i.AverageTokensPerMessage is { } avg ? UsageUi.Tokens(avg) : empty,
-                FN("Usage_Overview_AcrossMessagesFormat", i.Messages.Total), "UsageStatAvgTokens", glyph: GlyphTokens, palette: 2),
-            Stat(S("Usage_Overview_CacheHitRate"), i.CacheHitRate is { } hit ? UsageFormat.Percent(hit, Culture) : empty,
-                F("Usage_Overview_CacheSubFormat", UsageUi.Tokens(i.CacheRead, i.Partial), UsageUi.Tokens(i.CacheBase, i.Partial)),
-                "UsageStatCacheHit",
-                i.Partial || i.CacheHitRate is null ? null : i.CacheHitRate > 0.6 ? Success : i.CacheHitRate > 0.3 ? Caution : Critical,
-                S("Usage_Overview_CacheHint"), GlyphCache, 1),
-            Stat(S("Usage_Overview_ErrorRate"), UsageFormat.Percent(i.ErrorRate, Culture, 2),
-                F("Usage_Overview_ErrorSubFormat", Count(i.Messages.Errors),
-                    i.AverageSessionDurationMs is { } d ? UsageFormat.Duration(d) : empty),
-                "UsageStatErrorRate",
-                i.ErrorRate > 0.05 ? Critical : i.ErrorRate > 0.01 ? Caution : Success,
-                S("Usage_Overview_ErrorHint"), GlyphErrors),
-            Stat(S("Usage_Overview_AvgCost"), i.AverageCostPerMessage is { } c ? AnalysisCost(c) : empty,
-                F("Usage_Overview_TotalCostFormat", AnalysisCost(i.TotalCost, i.Partial)), "UsageStatAvgCost",
-                tooltip: i.MissingCost ? S("Usage_Overview_AvgCostHintMissing") : S("Usage_Overview_AvgCostHint"), glyph: GlyphCost, palette: 5),
-            Stat(S("Usage_Overview_Sessions"), Count(i.Sessions),
-                F("Usage_Overview_SessionsInRangeFormat", Count(i.TotalSessions)), "UsageStatSessions", glyph: GlyphSessions, palette: 4),
-            Stat(S("Usage_Overview_Errors"), Count(i.Messages.Errors),
-                F("Usage_Overview_ToolResultsFormat", Count(i.Messages.ToolResults)), "UsageStatErrors",
-                i.Messages.Errors > 0 ? Critical : Success, glyph: GlyphErrors),
-        }.Select((e, index) => e.WithKey("stat:" + index)).ToList();
-
-        var lists = new[]
-        {
-            (UsageInsightList.TopModels, "Usage_Overview_TopModels", "Usage_Overview_NoModelData"),
-            (UsageInsightList.TopProviders, "Usage_Overview_TopProviders", "Usage_Overview_NoProviderData"),
-            (UsageInsightList.TopTools, "Usage_Overview_TopTools", "Usage_Overview_NoToolCalls"),
-            (UsageInsightList.TopAgents, "Usage_Overview_TopAgents", "Usage_Overview_NoAgentData"),
-            (UsageInsightList.TopChannels, "Usage_Overview_TopChannels", "Usage_Overview_NoChannelData"),
-            (UsageInsightList.PeakErrorDays, "Usage_Overview_PeakErrorDays", "Usage_Overview_NoErrorData"),
-        }.Select(l => Tile(InsightList(l.Item1, S(l.Item2), S(l.Item3), i.Lists[l.Item1])).WithKey(l.Item1.ToString())).ToList();
-        // Hourly error counts come from the server overview, which released Gateways do not return.
-        var errorHours = state.BasicGateway
-            ? null
-            : Tile(InsightList(UsageInsightList.PeakErrorHours, S("Usage_Overview_PeakErrorHours"), S("Usage_Overview_NoErrorData"),
-                i.Lists[UsageInsightList.PeakErrorHours])).WithKey("error-hours");
-
-        // Like the web page: a grid of stat cards, then one card per ranked list, then peak error hours full width.
-        return Section(S("Usage_Overview_Title"), null, null, VStack(12,
-                Columns(ColumnsFor(width, 220, 3), stats.Select(s => Tile(s).WithKey(s.Key ?? "stat")).ToList(), 12),
-                Columns(ColumnsFor(width, 300, 3), lists, 12),
-                errorHours),
-            "UsageInsights", framed: false);
-    }
-
-    private static Element InsightList(UsageInsightList kind, string title, string emptyText, IReadOnlyList<UsageInsightItem> items)
-    {
-        var isError = kind is UsageInsightList.PeakErrorDays or UsageInsightList.PeakErrorHours;
-        var rows = items.Select((item, index) =>
-        {
-            var label = kind switch
-            {
-                UsageInsightList.PeakErrorDays when UsageFormat.TryParseIso(item.Label, out var date) => UsageFormat.DayLabel(date, Culture),
-                UsageInsightList.PeakErrorHours when int.TryParse(item.Label, out var hour) => UsageFormat.Hour(hour, Culture),
-                _ when string.IsNullOrWhiteSpace(item.Label) => S("Usage_Unknown"),
-                _ => item.Label,
-            };
-            var value = kind switch
-            {
-                UsageInsightList.TopTools => FN("Usage_Overview_CallsFormat", item.Count ?? 0),
-                _ when isError => UsageFormat.Percent(item.Rate ?? 0, Culture, 2),
-                _ when item.Unpriced => S("Usage_Overview_Unpriced"),
-                _ => AnalysisCost(item.Cost, item.LowerBound),
-            };
-            var subParts = new List<string>();
-            if (item.Source is { Length: > 0 } source) subParts.Add(source);
-            if (isError)
-            {
-                subParts.Add(FN("Usage_Overview_ErrorsCountFormat", item.Errors ?? 0));
-                subParts.Add(FN("Usage_Overview_MessagesCountFormat", item.Messages ?? 0));
-            }
-            else if (kind != UsageInsightList.TopTools)
-            {
-                subParts.Add(UsageUi.Tokens(item.Tokens, item.LowerBound));
-                if (item.Count is { } count) subParts.Add(FN("Usage_Overview_MessagesCountFormat", count));
-            }
-            var sub = string.Join(" · ", subParts);
-            // Each item keeps its own palette color (the same agent, model or provider is the same color everywhere).
-            var colorKey = kind == UsageInsightList.TopModels ? item.Source ?? item.Label : item.Label;
-            var fill = isError ? Critical : Palette(PaletteIndex(colorKey));
-            Element? mark = kind switch
-            {
-                UsageInsightList.TopModels => ProviderMark(item.Source, 24),
-                UsageInsightList.TopProviders => ProviderMark(item.Label, 24),
-                UsageInsightList.TopAgents or UsageInsightList.TopChannels => Avatar(label, item.Label, 24),
-                UsageInsightList.TopTools => IconBadge(GlyphTools, PaletteIndex(item.Label), 24),
-                _ => null,
-            };
-            var valueText = TextBlock(value).FontSize(13).FontWeight(FontWeights.SemiBold).Margin(8, 0, 0, 0);
-            Element text = VStack(4,
-                Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                    TextBlock(label).FontSize(13).TextTrimming(TextTrimming.CharacterEllipsis).Grid(column: 0),
-                    (isError ? valueText.Foreground(Critical) : valueText).Grid(column: 1)),
-                ShareBar(item.Weight, fill, 6),
-                sub.Length == 0 ? null : TextBlock(sub).FontSize(11).Foreground(TertiaryText).TextTrimming(TextTrimming.CharacterEllipsis));
-            return (mark is null
-                    ? text
-                    : Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                        mark.VAlign(VerticalAlignment.Top).Margin(0, 0, 10, 0).Grid(column: 0),
-                        text.Grid(column: 1)))
-                .AutomationName($"{label}: {value}{(sub.Length == 0 ? "" : ". " + sub)}")
-                .AutomationId($"UsageInsight_{kind}_{index}")
-                .WithKey(kind + ":" + (item.Source is { } keySource ? keySource + "/" : "") + item.Label);
-        }).ToArray();
-        return VStack(10,
-                TextBlock(title).FontSize(13).FontWeight(FontWeights.SemiBold).HeadingLevel(AutomationHeadingLevel.Level3),
-                rows.Length == 0 ? EmptyText(emptyText, $"UsageInsightEmpty_{kind}") : VStack(10, rows))
-            .AutomationId("UsageInsight_" + kind);
-    }
-
-    // ── activity ──
-
-    public static Element Activity(UsagePageState state, UsageDashboard dashboard, UsagePageController controller)
-    {
-        var activity = dashboard.Activity;
-        var zone = state.Filters.TimeZone == UsageTimeZoneMode.Utc ? S("Usage_TimeZone_Utc") : TimeZoneInfo.Local.StandardName;
-        if (!activity.HasTimelineData)
-            return Section(S("Usage_Mosaic_Title"), null, null, EmptyText(S("Usage_Mosaic_NoTimeline"), "UsageMosaicEmpty"), "UsageActivity");
-
-        var weekdays = activity.Weekdays;
-        var peak = new List<string>();
-        if (activity.PeakHour is { } peakHour) peak.Add(F("Usage_Mosaic_PeakHourFormat", UsageFormat.Hour(peakHour, Culture)));
-        if (activity.PeakWeekday is { } peakDay) peak.Add(F("Usage_Mosaic_PeakDayFormat", Culture.DateTimeFormat.GetDayName(peakDay)));
-        return Section(S("Usage_Mosaic_Title"), F("Usage_Mosaic_SubtitleFormat", zone), null, VStack(16,
-                TextBlock(S("Usage_Mosaic_Weekdays")).FontSize(12).Foreground(SecondaryText),
-                UsageCharts.ActivityStrip(weekdays, d => UsageFormat.ShortWeekday((DayOfWeek)d, Culture), _ => true, null, "UsageWeekdays", 64,
-                    valuesInside: true),
-                TextBlock(S("Usage_Mosaic_Hours")).FontSize(12).Foreground(SecondaryText),
-                UsageCharts.ActivityStrip(activity.Hours, h => UsageFormat.Hour(h, Culture), h => h % 4 == 0,
-                    (hour, append) => controller.ToggleHour(hour, append), "UsageHours", 40),
-                Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                    Note(string.Join(" · ", peak.Prepend(S("Usage_Mosaic_Hint")))).Grid(column: 0),
-                    HStack(4,
-                        TextBlock(S("Usage_Heatmap_Less")).FontSize(11).Foreground(TertiaryText),
-                        Border(null).Size(12, 12).CornerRadius(2).Background(Accent).Opacity(0.2),
-                        Border(null).Size(12, 12).CornerRadius(2).Background(Accent).Opacity(0.6),
-                        Border(null).Size(12, 12).CornerRadius(2).Background(Accent),
-                        TextBlock(S("Usage_Heatmap_More")).FontSize(11).Foreground(TertiaryText))
-                        .AccessibilityView(AccessibilityView.Raw).Grid(column: 1))),
-            "UsageActivity");
-    }
-
-    public static Element HeatmapSection(UsageHeatmap heatmap)
-    {
-        var active = heatmap.Weeks.SelectMany(w => w).Count(c => c.InRange && c.Tokens > 0);
-        return Section(S("Usage_Heatmap_Title"), F("Usage_Heatmap_SubtitleFormat", Count(active)), null,
-            UsageCharts.Heatmap(heatmap), "UsageHeatmap");
-    }
-
-    // ── provider plans ──
-
-    public static Element Providers(UsagePageState state)
-    {
-        var providers = state.Providers;
-        Element body;
-        if (providers.Value is null)
-        {
-            body = providers.Phase switch
-            {
-                UsageLoadPhase.Loading => HStack(12, ProgressRing().Size(18, 18),
-                    TextBlock(S("Usage_Providers_Loading")).Foreground(SecondaryText).VAlign(VerticalAlignment.Center)).AutomationId("UsageProvidersLoading"),
-                UsageLoadPhase.Failed => EmptyText(S("Usage_Providers_Unavailable"), "UsageProvidersUnavailable"),
-                _ => EmptyText(S("Usage_Providers_Empty"), "UsageProvidersEmpty"),
-            };
+            accessible.Add(plan);
+            info.Add(Note(plan).WithKey("plan"));
         }
-        else if (providers.Value.Providers.Count == 0)
+        foreach (var (window, index) in windows.Select((window, index) => (window, index)))
         {
-            body = EmptyText(providers.Value.Refreshing ? S("Usage_Providers_Refreshing") : S("Usage_Providers_Empty"), "UsageProvidersEmpty");
+            var reset = window.ResetAt is { } at ? F("Usage_ResetAtFormat", FriendlyDate(at, olderTime: true)) : "";
+            var text = string.Join(" · ", new[] { window.Label, window.GroupLabel,
+                UsageFormat.Percent(window.UsedPercent / 100, Culture, 0), reset }.Where(value => !string.IsNullOrEmpty(value)));
+            accessible.Add(text);
+            info.Add(Note(text).WithKey("window:" + index));
         }
-        else
-        {
-            body = Flow(providers.Value.Providers.Select(p => ProviderCard(p).Width(300).Margin(0, 0, 12, 12).WithKey(p.Provider)).ToArray())
-                .AutomationId("UsageProviderCards");
-        }
-        var note = providers.Phase == UsageLoadPhase.Failed && providers.Value is not null ? S("Usage_Providers_Stalled")
-            : providers.Value?.Refreshing == true ? S("Usage_Providers_Refreshing") : S("Usage_Providers_Subtitle");
-        return Section(S("Usage_Providers_Title"), note, null, body, "UsageProviders");
-    }
-
-    private static Element ProviderCard(ProviderUsageSnapshot provider)
-    {
-        var rows = new List<Element>();
-        foreach (var (window, index) in provider.Windows.Select((w, i) => (w, i)))
-        {
-            var label = window.GroupLabel is { Length: > 0 } group ? $"{window.Label} · {group}" : window.Label;
-            var used = Math.Clamp(window.UsedPercent / 100, 0, 1);
-            var reset = window.ResetAt is { } at
-                ? at <= DateTimeOffset.Now ? S("Usage_Providers_ResetNow") : F("Usage_Providers_ResetsFormat", Relative(at))
-                : null;
-            rows.Add(VStack(4,
-                    Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                        TextBlock(label).FontSize(12).Foreground(SecondaryText).Grid(column: 0),
-                        TextBlock(F("Usage_Providers_UsedFormat", UsageFormat.Percent(used, Culture, 0))).FontSize(12).FontWeight(FontWeights.SemiBold).Grid(column: 1)),
-                    ShareBar(used, used >= 0.9 ? Critical : used >= 0.7 ? Caution : Accent),
-                    reset is null ? null : TextBlock(reset).FontSize(11).Foreground(TertiaryText))
-                .AutomationName($"{label}: {UsageFormat.Percent(used, Culture, 0)}{(reset is null ? "" : ". " + reset)}")
-                .WithKey("window:" + index));
-        }
-        foreach (var (billing, index) in provider.Billing.Select((b, i) => (b, i)))
+        foreach (var (billing, index) in provider.Billing.Select((billing, index) => (billing, index)))
         {
             var label = billing.Label ?? S("Usage_Providers_Billing_" + billing.Type);
             var amount = Money(billing.Amount, billing.Unit);
-            Element content = billing.Type == "budget" && billing.Limit is > 0 and var limit
-                ? VStack(4,
-                    Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                        TextBlock(label).FontSize(12).Foreground(SecondaryText).Grid(column: 0),
-                        TextBlock(F("Usage_Providers_BudgetFormat", amount, Money(limit, billing.Unit))).FontSize(12).FontWeight(FontWeights.SemiBold).Grid(column: 1)),
-                    ShareBar(billing.Amount / limit, billing.Amount / limit >= 0.9 ? Critical : Accent))
-                : Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                    TextBlock(label).FontSize(12).Foreground(SecondaryText).Grid(column: 0),
-                    TextBlock(amount).FontSize(12).FontWeight(FontWeights.SemiBold).Grid(column: 1));
-            rows.Add(content.AutomationName($"{label}: {amount}").WithKey("billing:" + index));
+            var text = label + ": " + (billing.Limit is { } limit
+                ? F("Usage_Providers_BudgetFormat", amount, Money(limit, billing.Unit)) : amount);
+            accessible.Add(text);
+            info.Add(Note(text).WithKey("billing:" + index));
         }
-        if (provider.CostHistory is { } history)
+        if (provider.Summary is { Length: > 0 } summary)
         {
-            var total = history.Daily.Sum(d => d.Amount);
-            rows.Add(Note(F("Usage_Providers_CostHistoryFormat", Money(total, history.Unit), history.PeriodDays)).WithKey("history"));
+            accessible.Add(summary);
+            info.Add(Note(summary).WithKey("summary"));
         }
-        if (provider.Summary is { Length: > 0 } summary) rows.Add(Note(summary).WithKey("summary"));
         if (provider.Error is { Length: > 0 } error)
         {
-            rows.Add(Border(TextBlock(error).FontSize(12).TextWrapping(TextWrapping.Wrap))
-                .Padding(8).CornerRadius(4).Background(CautionBackground).WithKey("error"));
+            accessible.Add(error);
+            info.Add(TextBlock(error).Foreground(Critical).TextWrapping(TextWrapping.WrapWholeWords).WithKey("error"));
         }
-        if (rows.Count == 0) rows.Add(Note(S("Usage_Providers_NoQuota")).WithKey("none"));
-
-        return Card(VStack(10,
-                Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                    ProviderMark(provider.Provider, 32).VAlign(VerticalAlignment.Center).Margin(0, 0, 10, 0).Grid(column: 0),
-                    VStack(0,
-                        TextBlock(provider.DisplayName).FontSize(14).FontWeight(FontWeights.SemiBold),
-                        TextBlock(provider.AccountEmail ?? provider.Provider).FontSize(11).Foreground(TertiaryText)
-                            .TextTrimming(TextTrimming.CharacterEllipsis)).VAlign(VerticalAlignment.Center).Grid(column: 1),
-                    provider.Plan is { Length: > 0 } plan ? Pill(plan, "UsageProviderPlan_" + provider.Provider).VAlign(VerticalAlignment.Center).Grid(column: 2) : null),
-                VStack(10, rows.ToArray())),
-            "UsageProvider_" + provider.Provider);
+        else if (windows.Count == 0 && provider.Billing.Count == 0) info.Add(Note(S("Usage_Providers_NoQuota")).WithKey("noquota"));
+        Element ring = highest is null
+            ? Border(TextBlock(Dash).HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
+                .Size(56, 56).CornerRadius(28).WithBorder(CardStroke, 2)
+            : Grid([GridSize.Auto], [GridSize.Auto],
+                ProgressRing(Math.Clamp(highest.UsedPercent, 0, 100)).Size(56, 56)
+                    .Foreground(highest.UsedPercent >= 75 ? Caution : Accent)
+                    .AutomationName(F("Usage_AllowanceWarningFormat", provider.DisplayName, percent)),
+                TextBlock(percent).FontSize(12).HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center).AccessibilityHidden());
+        return Border(Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                ring.VAlign(VerticalAlignment.Center).Margin(0, 0, PageResponsiveLayout.GapStack, 0).Grid(column: 0),
+                VStack(4, info.ToArray()).Grid(column: 1)))
+            .Padding(PageResponsiveLayout.GapGroup).CornerRadius(CardRadius).Background(CardFill).WithBorder(CardStroke, 1)
+            .AutomationName(string.Join(", ", accessible)).AutomationId("UsageProvider_" + provider.Provider);
     }
 
     private static string Money(double amount, string unit) =>
-        unit.Length == 3 && unit.All(char.IsUpper)
-            ? amount.ToString("C", CurrencyFormat(unit))
-            : F("Usage_Providers_CreditsFormat", amount.ToString("N2", Culture), unit);
-
-    private static System.Globalization.NumberFormatInfo CurrencyFormat(string isoCode)
-    {
-        var format = (System.Globalization.NumberFormatInfo)Culture.NumberFormat.Clone();
-        format.CurrencySymbol = isoCode == "USD" ? "$" : isoCode + " ";
-        return format;
-    }
-
-    private static string Relative(DateTimeOffset at) =>
-        UsageFormat.Duration(Math.Max(0, (at - DateTimeOffset.Now).TotalMilliseconds));
+        unit == "USD" ? Cost(amount) : F("Usage_Providers_CreditsFormat", amount.ToString("N2", Culture), unit);
 }
 
-internal sealed record UsageDailyTableProps(UsageDailyChart Chart);
+internal sealed record UsageContributorsProps(UsagePageState State, UsageDashboard Dashboard, UsagePageProps Actions, UsagePageLayout Layout);
 
-/// <summary>Text equivalent of the daily chart, rendered only when expanded.</summary>
-internal sealed class UsageDailyTable : Component<UsageDailyTableProps>
+internal sealed class UsageContributorsSection : Component<UsageContributorsProps>
 {
+    private static readonly UsageContributorKind[] Kinds = [UsageContributorKind.Agent, UsageContributorKind.Model, UsageContributorKind.Provider];
+
     public override Element Render()
     {
-        var (expanded, setExpanded) = UseState(false);
-        var rows = expanded
-            ? Props.Chart.Days.Where(d => d.Tokens > 0 || d.Cost > 0 || d.Pending).Reverse().Select(d =>
-                    (Element)Grid([GridSize.Star(), GridSize.Px(110), GridSize.Px(110)], [GridSize.Auto],
-                            TextBlock(UsageFormat.FullDate(d.Date, Culture)).FontSize(12).Grid(column: 0),
-                            TextBlock(d.Pending ? S("Usage_Daily_NotLoaded") : UsageUi.Tokens(d.Tokens, d.LowerBound)).FontSize(12)
-                                .HAlign(HorizontalAlignment.Right).Grid(column: 1),
-                            TextBlock(d.Pending ? "" : AnalysisCost(d.Cost, d.LowerBound)).FontSize(12)
-                                .HAlign(HorizontalAlignment.Right).Grid(column: 2))
-                        .Padding(0, 2)
-                        .WithKey(d.Iso))
-                .ToArray()
-            : [];
-        Element content = expanded
-            ? VStack(4, new Element[]
-                {
-                    Grid([GridSize.Star(), GridSize.Px(110), GridSize.Px(110)], [GridSize.Auto],
-                        TextBlock(S("Usage_Table_Date")).FontSize(12).Foreground(SecondaryText).Grid(column: 0),
-                        TextBlock(S("Usage_Metric_Tokens")).FontSize(12).Foreground(SecondaryText).HAlign(HorizontalAlignment.Right).Grid(column: 1),
-                        TextBlock(S("Usage_Metric_Cost")).FontSize(12).Foreground(SecondaryText).HAlign(HorizontalAlignment.Right).Grid(column: 2))
-                        .WithKey("header"),
-                }.Concat(rows).ToArray())
-            : Empty();
-        return Expander(S("Usage_Daily_ShowTable"), content, expanded, setExpanded)
-            .HAlign(HorizontalAlignment.Stretch)
-            .AutomationId("UsageDailyTable");
-    }
-}
-
-internal sealed record UsageCreatorsProps(IReadOnlyList<UsageCreatorRow> Creators, UsageMetric Metric, Action<string?> Select);
-
-/// <summary>"Started by" attribution with a short preview and an expand action.</summary>
-internal sealed class UsageCreatorsSection : Component<UsageCreatorsProps>
-{
-    public override Element Render()
-    {
-        var (showAll, setShowAll) = UseState(false);
-        var creators = Props.Creators;
-        var visible = showAll ? creators : creators.Take(UsageSections.CreatorPreviewCount).ToList();
-        var select = Props.Select;
-        var metric = Props.Metric;
-        // Table layout like the web page: identity (with share bar), tokens, cost, sessions. The shown metric is bold.
-        GridSize[] columns = [GridSize.Px(3), GridSize.Px(42), GridSize.Star(), GridSize.Px(96), GridSize.Px(96), GridSize.Px(80)];
-        Element Cell(string text, int column, bool primary) =>
-            TextBlock(text).FontSize(13).FontWeight(primary ? FontWeights.SemiBold : FontWeights.Normal)
-                .Foreground(primary ? Theme.Ref("TextFillColorPrimaryBrush") : SecondaryText)
-                .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Center).Grid(column: column);
-        var header = Grid(columns, [GridSize.Auto],
-                TextBlock(S("Usage_Creators_Identity")).FontSize(12).Foreground(SecondaryText).Grid(column: 2),
-                TextBlock(S("Usage_Metric_Tokens")).FontSize(12).Foreground(SecondaryText).HAlign(HorizontalAlignment.Right).Grid(column: 3),
-                TextBlock(S("Usage_Metric_Cost")).FontSize(12).Foreground(SecondaryText).HAlign(HorizontalAlignment.Right).Grid(column: 4),
-                TextBlock(S("Usage_Overview_Sessions")).FontSize(12).Foreground(SecondaryText).HAlign(HorizontalAlignment.Right).Grid(column: 5))
-            .Padding(8, 0, 8, 6)
-            .AccessibilityView(AccessibilityView.Raw)
-            .WithKey("header");
-        var rows = visible.Select(c =>
+        var (kind, setKind) = UseState(UsageContributorKind.Agent);
+        var (expanded, setExpanded) = UseState<string?>(null);
+        var sectionRef = UseRef<FrameworkElement?>(null);
+        UseEffect(() =>
         {
-            var name = UsageHeader.CreatorLabel(c.Key, c.Label, c.ActorType);
-            var recorded = c.ActorType is "human" or "agent" or "system";
-            var tokens = UsageUi.Tokens(c.Tokens, c.LowerBound);
-            var cost = AnalysisCost(c.Cost, c.LowerBound);
-            var type = S("Usage_Creators_Type_" + (recorded ? c.ActorType : "unknown"));
-            var tone = PaletteIndex(c.Key);
-            return (Element)Button(Grid(columns, [GridSize.Auto],
-                        // Non-color selection cue that also survives high contrast, matching session rows.
-                        Border(null).Width(3).CornerRadius(1.5).Background(c.Selected ? Accent : Theme.Ref("SubtleFillColorTransparentBrush"))
-                            .VAlign(VerticalAlignment.Stretch).Grid(column: 0),
-                        (recorded
-                            ? Avatar(name, c.Key, 30)
-                            : Border(TextBlock("?").AccessibilityHidden().FontSize(13).FontWeight(FontWeights.SemiBold).Foreground(SecondaryText)
-                                    .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
-                                .Size(30, 30).CornerRadius(15).Background(Track).AccessibilityView(AccessibilityView.Raw))
-                            .VAlign(VerticalAlignment.Center).Margin(6, 0, 0, 0).Grid(column: 1),
-                        VStack(4,
-                            HStack(6,
-                                TextBlock(name).FontSize(13).FontWeight(FontWeights.SemiBold).TextTrimming(TextTrimming.CharacterEllipsis),
-                                TextBlock(type).FontSize(11).Foreground(TertiaryText).VAlign(VerticalAlignment.Bottom)),
-                            ShareBar(c.Weight, recorded ? Palette(tone) : Other, 4).MaxWidth(320).HAlign(HorizontalAlignment.Left))
-                            .VAlign(VerticalAlignment.Center).Grid(column: 2),
-                        Cell(tokens, 3, metric == UsageMetric.Tokens),
-                        Cell(cost, 4, metric == UsageMetric.Cost),
-                        Cell(Count(c.Sessions), 5, false)),
-                    () => select(c.Key))
-                .HAlign(HorizontalAlignment.Stretch)
-                .HorizontalContentAlignment(HorizontalAlignment.Stretch)
-                .Padding(8, 8)
-                .Resources(r =>
-                {
-                    OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources(r);
-                    if (c.Selected) r.Set("ButtonBackground", PaletteTint(tone));
-                })
-                .ToolTip(c.Selected ? S("Usage_Creators_ClearFilter") : S("Usage_Creators_Filter"))
-                .AutomationName($"{name}, {type}: {tokens} {S("Usage_Metric_TokensLower")}, {cost}, {FN("Usage_Creators_SessionsFormat", c.Sessions)}")
-                .ItemStatus(c.Selected ? S("Usage_Selected") : "")
-                .AutomationId("UsageCreator_" + c.Key)
-                .WithKey(c.Key);
-        }).Prepend(header).ToList();
-        if (creators.Count > UsageSections.CreatorPreviewCount)
+            if (Props.State.FocusProvider is { } provider)
+            {
+                setKind(UsageContributorKind.Provider);
+                setExpanded(provider);
+                sectionRef.Current?.StartBringIntoView();
+            }
+        }, Props.State.FocusProviderRequest);
+        var items = Props.Dashboard.Contributors[kind];
+        var metric = Props.State.Metric;
+        var ordered = items.OrderByDescending(item => metric == UsageMetric.Cost ? item.Cost : item.Tokens).ToList();
+        var top = ordered.Take(5).ToList();
+        var tail = ordered.Skip(5).ToList();
+        var total = metric == UsageMetric.Cost ? ordered.Sum(item => item.Cost) : ordered.Sum(item => (double)item.Tokens);
+        var knownShares = !Props.Dashboard.Summary.Partial && ordered.All(item => !item.LowerBound &&
+            (metric == UsageMetric.Cost ? item.CostKnown && !item.Unpriced : item.TokensKnown));
+        double Share(UsageContributor item) => total > 0 ? (metric == UsageMetric.Cost ? item.Cost : item.Tokens) / total : 0;
+        var parts = top.Select(item => (Share(item), Palette(PaletteIndex(item.Label)))).ToList();
+        if (tail.Count > 0) parts.Add((tail.Sum(Share), Other));
+        Element ContributorRow(UsageContributor item)
         {
-            rows.Add(SubtleButton(showAll ? S("Usage_Creators_ShowFewer") : F("Usage_Creators_ShowMoreFormat", creators.Count - UsageSections.CreatorPreviewCount),
-                () => setShowAll(!showAll), "UsageCreatorsMore").WithKey("more"));
+            var id = item.Provider is { } provider && kind == UsageContributorKind.Model ? provider + "/" + item.Label : item.Label;
+            var open = expanded == id;
+            var loaded = UsageInsights.LoadedSessions(Props.Dashboard.Sessions, kind, item);
+            var entries = loaded.Take(3).Select(row =>
+                (Element)Button(Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                        TextBlock(row.Title).FontSize(12).TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis)
+                            .ToolTip(row.Title).Margin(0, 0, PageResponsiveLayout.GapInner, 0).Grid(column: 0),
+                        TextBlock((metric == UsageMetric.Cost ? row.CostKnown : row.TokensKnown)
+                            ? Metric(metric, row.Tokens, row.Cost, row.LowerBound) : Dash).FontSize(12).TextWrapping(TextWrapping.NoWrap).Grid(column: 1)),
+                    () => Props.Actions.Controller.SelectSession(row.Key, row.AgentId))
+                    .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
+                    .AutomationName(row.Title).AutomationId("UsageContributorSession_" + row.Key)
+                    .Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources).WithKey(row.Key)).ToList();
+            if (entries.Count == 0) entries.Add(Note(S("Usage_NoLoadedSessions")).WithKey("empty"));
+            if (kind == UsageContributorKind.Agent && !Props.State.ServerFiltersUnavailable)
+                entries.Add(SubtleButton(F("Usage_ShowOnlyFormat", item.Label),
+                    () => Props.Actions.Controller.SetQuery("agent:" + item.Label), "UsageContributorFilter_" + item.Label).WithKey("filter"));
+            var value = (!(metric == UsageMetric.Cost ? item.CostKnown : item.TokensKnown) ? Dash
+                : item.Unpriced && metric == UsageMetric.Cost ? S("Usage_Overview_Unpriced")
+                : Metric(metric, item.Tokens, item.Cost, item.LowerBound)) + (knownShares ? " · " + UsageFormat.Percent(Share(item), Culture, 0) : "");
+            var narrow = Props.Layout.Narrow;
+            return (Element)VStack(4,
+                Button(Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto, GridSize.Auto],
+                    narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
+                    Border(null).Size(10, 10).CornerRadius(2).Background(Palette(PaletteIndex(item.Label)))
+                        .Margin(0, 0, 10, 0).VAlign(VerticalAlignment.Center).Grid(column: 0),
+                    TextBlock(item.Label).TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis)
+                        .ToolTip(item.Label).Grid(column: 1, columnSpan: narrow ? 2 : 1),
+                    TextBlock(value).TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(value)
+                        .Margin(narrow ? 0 : PageResponsiveLayout.GapGroup, narrow ? 4 : 0, 0, 0)
+                        .Grid(row: narrow ? 1 : 0, column: narrow ? 1 : 2),
+                    TextBlock(open ? "\uE70E" : "\uE70D").FontSize(10).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                        .AccessibilityHidden().Margin(12, 0, 0, 0).VAlign(VerticalAlignment.Center)
+                        .Grid(column: 3, rowSpan: narrow ? 2 : 1)), () => setExpanded(open ? null : id))
+                    .HorizontalContentAlignment(HorizontalAlignment.Stretch).HAlign(HorizontalAlignment.Stretch)
+                    .Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources)
+                    .AutomationName(item.Label).ItemStatus(S(open ? "Usage_Selected" : "Usage_Sessions_SelectHint"))
+                    .AutomationId("UsageContributor_" + kind + "_" + item.Label),
+                open ? VStack(4, new[] { Note(S("Usage_LoadedSessions")) }.Concat(entries).ToArray()).Margin(20, 0, 0, 8) : null)
+                .WithKey(id);
         }
-        return Section(S("Usage_Creators_Title"), S("Usage_Creators_Subtitle"), null, VStack(2, rows.ToArray()), "UsageCreators");
+        var rows = top.Select(ContributorRow).ToList();
+        if (kind == UsageContributorKind.Provider && Props.State.FocusProvider is { } focus && !items.Any(item => item.Label == focus))
+            rows.Insert(0, Note(F("Usage_NoProviderUsageFormat", focus)).WithKey("missing-provider"));
+        if (tail.Count > 0)
+            rows.Add(Expander(F("Usage_OtherFormat", Count(tail.Count)), VStack(4,
+                    tail.Select(ContributorRow).ToArray()),
+                expanded == "$other" || tail.Any(item => expanded == (kind == UsageContributorKind.Model ? item.Provider + "/" + item.Label : item.Label)),
+                value => setExpanded(value ? "$other" : null))
+                .WithKey("other"));
+        if (rows.Count == 0) rows.Add(Note(S("Usage_Overview_NoAgentData")).WithKey("empty"));
+        var highlight = Highlights(Props.Dashboard, metric, Props.Actions);
+        return Section(S("Usage_Contributors_Title"), null,
+            SelectorBar(Kinds.Select(value => SelectorBarItem(S("Usage_Contributors_" + value))).ToArray(),
+                    Array.IndexOf(Kinds, kind), index => { if (index >= 0 && index < Kinds.Length) { setKind(Kinds[index]); setExpanded(null); } })
+                .AutomationName(S("Usage_Contributors_Label")).AutomationId("UsageContributorsKind"),
+            VStack(16,
+                knownShares ? StackedBar(parts).AutomationId("UsageContributorShares") : null,
+                Pair(Props.Layout.TwoColumns,
+                    VStack(6, rows.ToArray()), highlight, "UsageContributorLayout")),
+            "UsageContributors", stackActions: Props.Layout.Narrow).OnMountAdd(control => sectionRef.Current = control);
+    }
+
+    private static Element Highlights(UsageDashboard dashboard, UsageMetric metric, UsagePageProps actions)
+    {
+        var entries = new List<Element> { TextBlock(S("Usage_Highlights")).FontWeight(FontWeights.SemiBold).WithKey("title") };
+        var costly = dashboard.Sessions.Rows.Where(row => !row.Computing).OrderByDescending(row => row.Cost).FirstOrDefault();
+        if (costly is not null && costly.Cost > 0 && !dashboard.Summary.Partial
+            && dashboard.Sessions.Rows.All(row => row.CostKnown && !row.LowerBound))
+            entries.Add(VStack(4,
+                Note(S("Usage_CostliestLoaded")),
+                Button(TextBlock(costly.Title).TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2)
+                        .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(costly.Title), () => actions.Controller.SelectSession(costly.Key, costly.AgentId))
+                    .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Left)
+                    .AutomationName(costly.Title).Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources),
+                Note(AnalysisCost(costly.Cost, costly.LowerBound))).WithKey("costliest"));
+        var peak = dashboard.Chart.Days.Where(day => !day.Pending).OrderByDescending(day => day.Value).FirstOrDefault();
+        if (peak is not null && peak.Value > 0 && !dashboard.Summary.Partial
+            && dashboard.Chart.Days.All(day => !day.Pending && !day.LowerBound && !day.MissingPrice))
+            entries.Add(Note(F("Usage_BusiestDayFormat", UsageFormat.DayLabel(peak.Date, Culture),
+                Metric(metric, peak.Tokens, peak.Cost, peak.LowerBound))).WithKey("peak"));
+        if (dashboard.Summary.MissingCostEntries > 0)
+            entries.Add(Note(FN("Usage_MissingCostNoteFormat", dashboard.Summary.MissingCostEntries)).WithKey("missing"));
+        return Border(VStack(12, entries.ToArray())).Padding(16).CornerRadius(CardRadius).Background(Track).AutomationId("UsageHighlights");
     }
 }
