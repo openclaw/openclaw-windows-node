@@ -133,7 +133,12 @@ function Get-PromotionCiRun {
                 'UI, functional, and accessibility tests', 'Setup and connect E2E', 'Revocation recovery E2E',
                 'Network recovery E2E', 'x64 release publish smoke', 'ARM64 release publish',
                 'MSIX artifacts (x64)', 'MSIX artifacts (arm64)', 'Multi-architecture Store MSIX bundle')) {
-                $matching = @($jobs | Where-Object name -CEQ $required)
+                $acceptedNames = @($required)
+                if ($required -cin @('Setup and connect E2E', 'Revocation recovery E2E', 'Network recovery E2E')) {
+                    # Preserve historical alphas while admitting the renamed WSL-only lanes.
+                    $acceptedNames += "$required (WSL Latest)"
+                }
+                $matching = @($jobs | Where-Object { $_.name -cin $acceptedNames })
                 if ($matching.Count -ne 1 -or $matching[0].conclusion -cne 'success') {
                     throw "Candidate run $($run.id) lacks successful required job '$required'."
                 }
