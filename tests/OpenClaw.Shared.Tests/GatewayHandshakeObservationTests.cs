@@ -19,6 +19,8 @@ public sealed class GatewayHandshakeObservationTests
         var endpoint = (IPEndPoint)reserved.LocalEndPoint!;
         using var client = new OpenClawGatewayClient($"ws://127.0.0.1:{endpoint.Port}", "fixture-token",
             NullLogger.Instance, identityPath: temp.Path);
+        var connectionFailures = new List<GatewayErrorKind>();
+        client.ConnectionFailure += (_, kind) => connectionFailures.Add(kind);
         var failed = new TaskCompletionSource<GatewayHandshakeObservation>(TaskCreationOptions.RunContinuationsAsynchronously);
         client.HandshakeObserved += (_, observation) =>
         {
@@ -30,6 +32,7 @@ public sealed class GatewayHandshakeObservationTests
         var observation = await failed.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(GatewayErrorKind.Network, observation.FailureKind);
+        Assert.Equal(GatewayErrorKind.Network, Assert.Single(connectionFailures));
         Assert.True(observation.TransportGeneration > 0);
     }
 
@@ -100,6 +103,19 @@ public sealed class GatewayHandshakeObservationTests
     }
 
     [Theory]
+    [InlineData(SocketError.ConnectionReset)]
+    [InlineData(SocketError.TimedOut)]
+    public async Task TransportFailure_TypedSecureConnectionError_IsTls(SocketError socketError)
+    {
+        await AssertTransportFailureAsync(
+            new System.Net.WebSockets.WebSocketException("unable to connect",
+                new System.Net.Http.HttpRequestException(
+                    System.Net.Http.HttpRequestError.SecureConnectionError, "sensitive-sentinel",
+                    new IOException("connection failed", new SocketException((int)socketError)))),
+            GatewayErrorKind.Tls);
+    }
+
+    [Theory]
     [InlineData("401", GatewayErrorKind.Auth)]
     [InlineData("429", GatewayErrorKind.RateLimited)]
     [InlineData("500", GatewayErrorKind.Server)]
@@ -119,13 +135,17 @@ public sealed class GatewayHandshakeObservationTests
         using var temp = new TempDirectory();
         using var client = new ObservationClient(temp.Path);
         var observations = new List<GatewayHandshakeObservation>();
+        var connectionFailures = new List<GatewayErrorKind>();
         client.HandshakeObserved += (_, observation) => observations.Add(observation);
+        client.ConnectionFailure += (_, kind) => connectionFailures.Add(kind);
         await client.BeginAttemptAsync(1);
 
         client.ObserveTransport(1, GatewayHandshakePhase.Failed, error);
+        client.ObserveConnectionException(error);
 
         Assert.Equal(expected, Assert.Single(observations,
             observation => observation.Phase == GatewayHandshakePhase.Failed).FailureKind);
+        Assert.Equal(expected, Assert.Single(connectionFailures));
         Assert.DoesNotContain("sensitive-", JsonSerializer.Serialize(observations));
     }
 
@@ -234,6 +254,8 @@ public sealed class GatewayHandshakeObservationTests
 
         public void ObserveTransport(long generation, GatewayHandshakePhase phase, Exception? error = null) =>
             OnTransportObservation(generation, phase, error);
+
+        public void ObserveConnectionException(Exception error) => OnConnectionException(error);
 
         public void CancelLifetime() =>
             ((CancellationTokenSource)typeof(WebSocketClientBase)

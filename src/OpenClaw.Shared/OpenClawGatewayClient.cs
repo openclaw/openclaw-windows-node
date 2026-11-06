@@ -250,6 +250,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             if (current is System.Security.Authentication.AuthenticationException)
                 return GatewayErrorKind.Tls;
+            if (current is System.Net.Http.HttpRequestException
+                { HttpRequestError: System.Net.Http.HttpRequestError.SecureConnectionError })
+                return GatewayErrorKind.Tls;
             if (current is System.Net.Sockets.SocketException or TimeoutException)
                 return GatewayErrorKind.Network;
         }
@@ -521,7 +524,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     protected override void OnConnectionException(Exception exception)
     {
         Volatile.Write(ref _startupRejection, null);
-        RaiseConnectionFailure(GatewayErrorClassifier.Classify(exception.ToString()));
+        RaiseConnectionFailure(ClassifyTransportObservation(exception));
     }
 
     protected override void OnReconnectAuthorizationDenied(
