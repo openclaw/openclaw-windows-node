@@ -82,9 +82,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private ServiceProvider? _services;
 
     /// <summary>
-    /// Page type → view-model type map used by the navigation activation hook. The Settings
-    /// page resolves its view model from DI and binds it as the page DataContext; pages absent
-    /// from the map take the no-op activation path.
+    /// Page type → view-model type map used by the navigation activation hook. General and
+    /// notification preferences share the settings view model; pages absent from the map take
+    /// the no-op activation path.
     /// </summary>
     private static readonly IReadOnlyDictionary<Type, Type> PageViewModelMap =
         new Dictionary<Type, Type>

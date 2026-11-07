@@ -45,7 +45,7 @@ settles it, under that lock, to whichever model the receipt names. Setup's
 ownership check never settles it: it reports the ownership as unavailable
 until the runtime does.
 
-The Default model page changes Local AI's fallback only on the Gateway Local AI
+The Models page changes Local AI's fallback only on the Gateway Local AI
 is bound to. On any other Gateway it writes that Gateway's default and leaves
 Local AI alone. Models whose provider still needs sign-in are listed but cannot
 be made the default.

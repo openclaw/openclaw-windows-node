@@ -28,10 +28,10 @@ internal enum HubPageKind
     Voice,
     Sandbox,
     Settings,
+    About,
     Notifications,
     Debug,
     Sessions,
-    AgentEvents,
     Cron,
     Workspace
 }
@@ -107,7 +107,6 @@ internal static class HubPageRegistry
             HubPageKind.Connection => ("HubWindow_NavigationViewItem_88.Content", FluentIconCatalog.Plug),
             HubPageKind.LocalAi => ("HubWindow_NavigationViewItem_LocalAi.Content", FluentIconCatalog.Inference),
             HubPageKind.Sessions => ("HubWindow_NavigationViewItem_91.Content", FluentIconCatalog.Sessions),
-            HubPageKind.AgentEvents => ("HubWindow_NavigationViewItem_94.Content", FluentIconCatalog.AgentEvents),
             HubPageKind.DefaultModel => ("HubWindow_NavigationViewItem_DefaultModel.Content", FluentIconCatalog.Settings),
             HubPageKind.Cron => ("HubWindow_NavigationViewItem_124.Content", FluentIconCatalog.Cron),
             HubPageKind.Workspace => ("WorkspacePage_TextBlock_22.Text", FluentIconCatalog.Workspace),
@@ -116,6 +115,7 @@ internal static class HubPageRegistry
             HubPageKind.Usage => ("HubWindow_NavigationViewItem_121.Content", FluentIconCatalog.Money),
             HubPageKind.Permissions => ("HubWindow_NavigationViewItem_136.Content", FluentIconCatalog.Permissions),
             HubPageKind.Settings => ("HubWindow_NavigationViewItem_133.Content", FluentIconCatalog.Settings),
+            HubPageKind.About => ("HubWindow_AboutItem.Content", FluentIconCatalog.About),
             HubPageKind.Notifications => ("Onboarding_Perm_Notifications", FluentIconCatalog.Notifications),
             HubPageKind.Debug => ("HubWindow_NavigationViewItem_145.Content", FluentIconCatalog.Bug),
             _ => throw new ArgumentException("No search presentation is registered for this destination.", nameof(tag))
@@ -148,8 +148,6 @@ internal static class HubPageRegistry
         "Command_GoToChat_Subtitle",
         "Command_GoToSessions_Title",
         "Command_GoToSessions_Subtitle",
-        "Command_GoToAgentEvents_Title",
-        "Command_GoToAgentEvents_Subtitle",
         "Command_GoToCron_Title",
         "Command_GoToCron_Subtitle",
         "Command_GoToWorkspace_Title",
@@ -166,6 +164,10 @@ internal static class HubPageRegistry
         "Command_GoToPermissions_Subtitle",
         "Command_GoToSettings_Title",
         "Command_GoToSettings_Subtitle",
+        "Command_GoToNotificationPreferences_Title",
+        "Command_GoToNotificationPreferences_Subtitle",
+        "Command_GoToAbout_Title",
+        "Command_GoToAbout_Subtitle",
         "Command_GoToNotifications_Title",
         "Command_GoToNotifications_Subtitle",
         "Command_OpenDashboard_Title",
@@ -184,8 +186,10 @@ internal static class HubPageRegistry
     /// <summary>Maps a route alias to its canonical companion tag for the current agent.</summary>
     public static string NormalizeTag(string tag, string currentAgentId) => tag switch
     {
-        "home" or "general" => "connection",
-        "about" or "info" => "settings",
+        "home" => "connection",
+        "general" => "settings",
+        "about" or "info" => "about",
+        "notification-preferences" => "settings",
         "nodes" => "instances",
         "cron" => $"agent:{currentAgentId}:cron",
         "workspace" => $"agent:{currentAgentId}:workspace",
@@ -204,12 +208,13 @@ internal static class HubPageRegistry
         "capabilities" or "permissions" => HubPageKind.Permissions,
         "voice" => HubPageKind.Voice,
         "sandbox" => HubPageKind.Sandbox,
-        "settings" or "info" or "about" => HubPageKind.Settings,
+        "settings" or "notification-preferences" => HubPageKind.Settings,
+        "info" or "about" => HubPageKind.About,
         "notifications" => HubPageKind.Notifications,
         "debug" => HubPageKind.Debug,
-        "home" or "general" => HubPageKind.Connection,
+        "home" => HubPageKind.Connection,
+        "general" => HubPageKind.Settings,
         "conversations" or "sessions" => HubPageKind.Sessions,
-        "agentevents" => HubPageKind.AgentEvents,
         "cron" => HubPageKind.Cron,
         "workspace" => HubPageKind.Workspace,
         _ when tag?.StartsWith("agent:", StringComparison.Ordinal) == true => ResolveAgentPage(tag),
@@ -225,7 +230,6 @@ internal static class HubPageRegistry
         return parts[2] switch
         {
             "sessions" => HubPageKind.Sessions,
-            "agentevents" => HubPageKind.AgentEvents,
             "cron" => HubPageKind.Cron,
             "workspace" => HubPageKind.Workspace,
             _ => null
@@ -250,7 +254,6 @@ internal static class HubPageRegistry
             tag.Equals("chat", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("sessions", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("instances", StringComparison.OrdinalIgnoreCase) ||
-            tag.Equals("agentevents", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("config", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("usage", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("cron", StringComparison.OrdinalIgnoreCase) ||
@@ -273,10 +276,10 @@ internal static class HubPageRegistry
         HubPageKind.Voice => typeof(VoiceSettingsPage),
         HubPageKind.Sandbox => typeof(SandboxPage),
         HubPageKind.Settings => typeof(SettingsPage),
+        HubPageKind.About => typeof(AboutPage),
         HubPageKind.Notifications => typeof(NotificationsPage),
         HubPageKind.Debug => typeof(DebugPage),
         HubPageKind.Sessions => typeof(SessionsPage),
-        HubPageKind.AgentEvents => typeof(AgentEventsPage),
         HubPageKind.Cron => typeof(CronPage),
         HubPageKind.Workspace => typeof(WorkspacePage),
         _ => null
@@ -293,7 +296,6 @@ internal static class HubPageRegistry
         AddNavigation(commands, context, "AI", "Command_GoToDefaultModel", "model");
         AddNavigation(commands, context, "💬", "Command_GoToChat", "chat");
         AddNavigation(commands, context, "🧠", "Command_GoToSessions", "sessions");
-        AddNavigation(commands, context, "🧠", "Command_GoToAgentEvents", "agentevents");
         commands.Add(new HubCommand(
             "🧠",
             Format(context, "Command_GoToCron_Title", context.CurrentAgentId),
@@ -311,6 +313,8 @@ internal static class HubPageRegistry
         AddNavigation(commands, context, "🛡️", "Command_GoToPermissions", "permissions");
         AddNavigation(commands, context, "⚙️", "Command_GoToSettings", "settings");
         AddNavigation(commands, context, "🔔", "Command_GoToNotifications", "notifications");
+        AddNavigation(commands, context, "🔔", "Command_GoToNotificationPreferences", "notification-preferences");
+        AddNavigation(commands, context, "ℹ️", "Command_GoToAbout", "about");
         commands.Add(new HubCommand(
             "🌐",
             Get(context, "Command_OpenDashboard_Title"),

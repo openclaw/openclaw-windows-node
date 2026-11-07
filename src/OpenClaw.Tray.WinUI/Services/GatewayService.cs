@@ -132,7 +132,6 @@ internal sealed class GatewayService
         client.CronRunsUpdated += OnCronRunsUpdated;
         client.ConfigUpdated += OnConfigUpdated;
         client.ConfigSchemaUpdated += OnConfigSchemaUpdated;
-        client.AgentEventReceived += OnAgentEventReceived;
         client.NodePairListUpdated += OnNodePairListUpdated;
         client.DevicePairListUpdated += OnDevicePairListUpdated;
         client.ModelsListUpdated += OnModelsListUpdated;
@@ -164,7 +163,6 @@ internal sealed class GatewayService
         client.CronRunsUpdated -= OnCronRunsUpdated;
         client.ConfigUpdated -= OnConfigUpdated;
         client.ConfigSchemaUpdated -= OnConfigSchemaUpdated;
-        client.AgentEventReceived -= OnAgentEventReceived;
         client.NodePairListUpdated -= OnNodePairListUpdated;
         client.DevicePairListUpdated -= OnDevicePairListUpdated;
         client.ModelsListUpdated -= OnModelsListUpdated;
@@ -419,12 +417,6 @@ internal sealed class GatewayService
 
         foreach (var preview in payload.Previews)
             _state.SetSessionPreview(preview.Key, preview);
-    }
-
-    private void OnAgentEventReceived(object? sender, AgentEventInfo evt)
-    {
-        if (sender != _currentClient) return;
-        EnqueueModelUpdate(() => _state.AddAgentEvent(evt));
     }
 
     // ── Category A: Simple data (just update AppState) ──────────────────

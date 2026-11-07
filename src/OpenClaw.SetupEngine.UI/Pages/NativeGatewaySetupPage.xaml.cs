@@ -141,7 +141,9 @@ public sealed partial class NativeGatewaySetupPage : Page
 
     private async Task RunOperationAsync(CancellationToken cancellationToken)
     {
-        AttachLog(SetupWindow.Active?.NativeSetupLog);
+        var log = SetupWindow.Active?.NativeSetupLog;
+        using var logLease = log?.RetainForOperation();
+        AttachLog(log);
         FailureBar.IsOpen = false;
         _loggedStep = -1;
         _log?.Info("Native Gateway setup started.");

@@ -191,36 +191,6 @@ internal sealed class AppState : INotifyPropertyChanged, IChatAgentRosterSource
     private DateTime _lastCheckTime = DateTime.Now;
     public DateTime LastCheckTime { get => _lastCheckTime; set => SetField(ref _lastCheckTime, value); }
 
-    // ── Agent events (ring buffer, newest-first) ────────────────────────
-
-    private readonly List<AgentEventInfo> _agentEvents = new();
-    public IReadOnlyList<AgentEventInfo> AgentEvents => _agentEvents;
-
-    /// <summary>Fires on UI thread when a new event is added.</summary>
-    public event Action<AgentEventInfo>? AgentEventAdded;
-
-    public void AddAgentEvent(AgentEventInfo evt)
-    {
-#if !OPENCLAW_TRAY_TESTS
-        if (_dispatcher != null && !_dispatcher.HasThreadAccess)
-        {
-            throw new InvalidOperationException("AppState.AddAgentEvent must be called on UI thread");
-        }
-#endif
-        _agentEvents.Insert(0, evt);
-        if (_agentEvents.Count > MaxAgentEvents)
-            _agentEvents.RemoveRange(MaxAgentEvents, _agentEvents.Count - MaxAgentEvents);
-        AgentEventAdded?.Invoke(evt);
-    }
-
-    public void ClearAgentEvents()
-    {
-        _agentEvents.Clear();
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AgentEvents)));
-    }
-
-    private const int MaxAgentEvents = 400;
-
     // ── Session previews (thread-safe, not observable) ───────────────────
 
     private readonly Dictionary<string, SessionPreviewInfo> _sessionPreviews = new();
@@ -304,7 +274,6 @@ internal sealed class AppState : INotifyPropertyChanged, IChatAgentRosterSource
         CronList = null;
         CronStatus = null;
         CronRuns = null;
-        ClearAgentEvents();
         lock (_sessionPreviewsLock) _sessionPreviews.Clear();
     }
 }
