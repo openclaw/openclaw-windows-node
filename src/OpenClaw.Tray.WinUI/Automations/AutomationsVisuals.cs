@@ -33,8 +33,10 @@ internal sealed record AutomationsHost(
     public Action<FrameworkElement>? RevealElement { get; init; }
     public Func<string?> GatewayDisplayName { get; init; } = static () => null;
     public Func<ElementTheme> ActualTheme { get; init; } = static () => ElementTheme.Default;
+    public Func<string> DraftScope { get; init; } = Guid.NewGuid().ToString;
     /// <summary>Carries an outside "show this job" request (Hub search) to the mounted root. One instance per host, shared by the copies the root makes.</summary>
     public AutomationsRevealChannel Reveals { get; init; } = new();
+    public AutomationsViewportState Viewport { get; init; } = new();
 }
 
 /// <summary>
@@ -45,6 +47,7 @@ internal sealed record AutomationsHost(
 internal static class AutomationsVisuals
 {
     internal const double Gap = 8;
+    internal const double AgendaColumnsMinWidth = 820;
     internal const double SectionGap = 16;
     internal const double PagePadding = 24;
     internal const double EditorHeight = 640;

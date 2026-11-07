@@ -603,8 +603,9 @@ public sealed class CronJobFormTests
         Assert.False(patch.ContainsKey("sessionTarget"));
         Assert.False(patch.ContainsKey("wakeMode"));
         Assert.Equal("route", patch["sessionKey"]!.GetValue<string>());
-        Assert.True(patch["idleOnly"]!.GetValue<bool>());
-        Assert.Equal("user", patch["activeHours"]!["timezone"]!.GetValue<string>());
+        Assert.False(patch.ContainsKey("idleOnly"));
+        Assert.False(patch.ContainsKey("activeHours"));
+        Assert.Empty((CronJobForm.FromJob(job) with { Name = "Renamed" }).ValidateForNative(job));
         var payload = patch["payload"]!.AsObject();
         Assert.Equal("New prompt", payload["message"]!.GetValue<string>());
         Assert.Equal("p/1", payload["model"]!.GetValue<string>());
@@ -621,6 +622,30 @@ public sealed class CronJobFormTests
         Assert.Equal(2, alert["after"]!.GetValue<int>());
         Assert.Equal(60_000, alert["cooldownMs"]!.GetValue<long>());
         Assert.True(alert["includeSkipped"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void NativeTiming_RejectsCopiesAndChangesWithoutDiscardingTheSavedValues()
+    {
+        var job = CronJsonReader.ParseJob(JsonDocument.Parse("""
+        {"id":"j","name":"J","enabled":true,"configRevision":"r","idleOnly":false,
+         "schedule":{"kind":"every","everyMs":600000},"payload":{"kind":"agentTurn","message":"m"},
+         "activeHours":{"start":"09:00","end":"17:00","timezone":"user"}}
+        """).RootElement)!;
+        var form = CronJobForm.FromJob(job);
+        Assert.Empty(form.ValidateForNative(job));
+        var patch = (form with { Name = "Renamed" }).BuildDefinition(job);
+        Assert.False(patch.ContainsKey("activeHours"));
+        Assert.False(patch.ContainsKey("idleOnly"));
+        Assert.Equal(CronFormError.TimingWebManaged,
+            (form with { ActiveHoursEnabled = false }).ValidateForNative(job)[CronFormField.Timing]);
+        Assert.Equal(CronFormError.TimingWebManaged,
+            (form with { IdleOnly = true }).ValidateForNative(job)[CronFormField.Timing]);
+        var copy = CronJobForm.FromClone(job, "Copy");
+        Assert.Equal(CronFormError.TimingWebManaged, copy.ValidateForNative(null, job)[CronFormField.Timing]);
+        Assert.True(copy.ActiveHoursEnabled);
+        Assert.Equal("user", copy.ActiveHoursTimezone);
+        Assert.False(copy.IdleOnly);
     }
 
     [Fact]

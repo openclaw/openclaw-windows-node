@@ -7980,8 +7980,11 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
     <value>Voer een geldige IANA-tijdzone, local of user in.</value>
   </data>
+  <data name="Automations_Error_TimingWebManaged" xml:space="preserve">
+    <value>Gebruik Openen op het web om actieve uren of wachten tot inactiviteit te kopiëren of wijzigen. Eenvoudige wijzigingen behouden de opgeslagen instellingen.</value>
+  </data>
   <data name="Automations_Error_AgentMessageRequired" xml:space="preserve">
-    <value>Prompt is vereist.</value>
+    <value>Beschrijf de taak die deze agent moet uitvoeren.</value>
   </data>
   <data name="Automations_Error_CronExprRequired" xml:space="preserve">
     <value>Cron-expressie is vereist.</value>
@@ -8002,7 +8005,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Moet 0 of groter zijn.</value>
   </data>
   <data name="Automations_Error_NameRequired" xml:space="preserve">
-    <value>Naam is vereist.</value>
+    <value>Voer een naam in.</value>
   </data>
   <data name="Automations_Error_ScheduleAtInvalid" xml:space="preserve">
     <value>Kies een geldige datum en tijd.</value>
@@ -8032,10 +8035,10 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Triggerscript is vereist wanneer de voorwaardetrigger is ingeschakeld.</value>
   </data>
   <data name="Automations_Error_WebhookUrlInvalid" xml:space="preserve">
-    <value>Voer een geldige HTTPS-URL in zonder ingesloten referenties.</value>
+    <value>Voer een HTTPS-webhook-URL in.</value>
   </data>
   <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
-    <value>Webhook-URL is vereist.</value>
+    <value>Voer een HTTPS-webhook-URL in.</value>
   </data>
   <data name="Automations_Field_ActiveHours" xml:space="preserve">
     <value>Actieve uren</value>
@@ -8876,4 +8879,21 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Review_Repeats" xml:space="preserve"><value>Herhaalt</value></data>
   <data name="Automations_Review_RunPermissionError" xml:space="preserve"><value>“{0}” kon niet worden gestart. Deze verbinding mist de machtiging operator.admin.</value></data>
   <data name="Automations_Review_Close" xml:space="preserve"><value>Sluiten</value></data>
+  <data name="Automations_Designer_RequiredField" xml:space="preserve"><value>{0} (Verplicht)</value></data>
+  <data name="Automations_Designer_ValidationSummary" xml:space="preserve"><value>Vul de verplichte velden in voordat u opslaat.</value></data>
+  <data name="Automations_Designer_ChooseDate" xml:space="preserve"><value>Kies een datum.</value></data>
+  <data name="Automations_Error_TimeRequired" xml:space="preserve"><value>Kies een tijd.</value></data>
+  <data name="Automations_Error_WeekdayRequired" xml:space="preserve"><value>Kies een dag van de week.</value></data>
+  <data name="Automations_Error_ChannelRequired" xml:space="preserve"><value>Voer een kanaal in.</value></data>
+  <data name="Automations_Designer_DraftKept" xml:space="preserve"><value>Concept bewaard voor deze sessie.</value></data>
+  <data name="Automations_Designer_DiscardDraft" xml:space="preserve"><value>Concept verwijderen</value></data>
+  <data name="Automations_Designer_ShowMore" xml:space="preserve"><value>Meer tonen</value></data>
+  <data name="Automations_Designer_ShowFewer" xml:space="preserve"><value>Minder tonen</value></data>
+  <data name="Automations_Designer_ShowAll" xml:space="preserve"><value>Alle {0} tonen</value></data>
+  <data name="Automations_Designer_Expanded" xml:space="preserve"><value>Uitgevouwen</value></data>
+  <data name="Automations_Designer_Collapsed" xml:space="preserve"><value>Ingevouwen</value></data>
+  <data name="Automations_Designer_RunOrder" xml:space="preserve"><value>Uitvoering {0} in deze geschiedenis (tijd niet opgegeven)</value></data>
+  <data name="Automations_Designer_ScheduleAsOf" xml:space="preserve"><value>Planning bijgewerkt om {0}</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Navigatie uitklappen</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Navigatie inklappen</value></data>
 </root>

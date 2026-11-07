@@ -12,6 +12,38 @@ namespace OpenClaw.Shared.Tests;
 public sealed partial class GatewayFixtureProtocolTests
 {
     [Fact]
+    public async Task HostGlobalOverviewSurvivesPageDisposalAndScopedReadsDoNotInferMissingOwners()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateAutomations(additionalJobs: 205);
+        scenario.SetCronJobOwner("morning-brief", null);
+        scenario.OmitCronEffectiveAgentId = true;
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var overview = new AutomationsOverviewSource(() => connected.Client, ui.Post);
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, overviewSource: overview);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.OverviewLoaded && !store.State.ListLoading);
+        Assert.Equal(213, store.State.OverviewJobs.Count);
+        Assert.Contains(store.State.OverviewJobs, job => job.Id == "morning-brief" && job.Owner is null);
+        Assert.Null(overview.State.AttentionCount);
+        Assert.All(server.Requests.Where(request => request.Method == "cron.list"), request => Assert.Equal("main", request.AgentId));
+
+        await ui.InvokeAsync(() => store.SetAgentFilter(null));
+        await WaitForAsync(() => overview.State.IsCurrent && store.State.OverviewLoaded);
+        Assert.Equal(214, overview.State.Jobs.Length);
+        Assert.Equal(1, overview.State.AttentionCount);
+        var global = overview.State;
+        await ui.InvokeAsync(() => store.SetAgentFilter("ops"));
+        await WaitForAsync(() => store.State.OverviewLoaded && !store.State.ListLoading);
+        Assert.Equal(GatewayScenario.AutomationsOtherAgentJobId, Assert.Single(store.State.OverviewJobs).Id);
+        Assert.Same(global, overview.State);
+        await ui.InvokeAsync(store.Dispose);
+        Assert.Equal(1, overview.State.AttentionCount);
+    }
+
+    [Fact]
     public async Task AutomationsStore_ExcludedAgentSelectionRetiresLateReadsButPreservesQueuedRun()
     {
         var token = CreateToken();
@@ -339,6 +371,51 @@ public sealed partial class GatewayFixtureProtocolTests
         var request = Assert.Single(server.Requests, r => r.Method == method);
         Assert.Equal("error:INVALID_PARAMS", request.Outcome);
         Assert.Equal("weekly-digest", (await connected.Client.GetCronJobAsync("weekly-digest")).Id);
+    }
+
+    [Fact]
+    public async Task Automations_BasicEditPreservesInheritedTimingOnAStrictGatewayAndBlocksCopies()
+    {
+        var scenario = GatewayScenario.CreateAutomations();
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        IOperatorGatewayClient client = connected.Client;
+        var original = await client.GetCronJobAsync("morning-brief");
+        var withTiming = await client.UpdateCronJobDetailedAsync(original.Id, original.ConfigRevision,
+            JsonNode.Parse("""{"activeHours":{"start":"08:00","end":"17:00","timezone":"user"},"idleOnly":true}""")!.AsObject());
+        scenario.RejectUnsupportedCronTimingFields = true;
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post, (_, ct) => Task.Delay(Timeout.Infinite, ct));
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded);
+
+        var saved = await await ui.InvokeAsync(() => store.SaveAsync(
+            CronJobForm.FromJob(withTiming) with { Name = "Basic rename" }, withTiming));
+        Assert.IsType<AutomationsSaveResult.Saved>(saved);
+        var after = await client.GetCronJobAsync(original.Id);
+        Assert.Equal("Basic rename", after.Name);
+        Assert.Equal(new CronActiveHours("08:00", "17:00", "user"), after.ActiveHours);
+        Assert.True(after.IdleOnly);
+
+        var count = server.Requests.Count(request => request.Method is "cron.add" or "cron.update");
+        var copyForm = CronJobForm.FromClone(after, "Copied");
+        var copy = await await ui.InvokeAsync(() => store.SaveAsync(copyForm, null, after));
+        Assert.Equal(CronFormError.TimingWebManaged,
+            Assert.IsType<AutomationsSaveResult.Invalid>(copy).Errors[CronFormField.Timing]);
+        var changed = await await ui.InvokeAsync(() => store.SaveAsync(
+            CronJobForm.FromJob(after) with { IdleOnly = false }, after));
+        Assert.IsType<AutomationsSaveResult.Invalid>(changed);
+        Assert.Equal(count, server.Requests.Count(request => request.Method is "cron.add" or "cron.update"));
+        Assert.True(copyForm.ActiveHoursEnabled);
+        Assert.True(copyForm.IdleOnly);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.UpdateCronJobDetailedAsync(after.Id, after.ConfigRevision,
+                JsonNode.Parse("""{"activeHours":null}""")!.AsObject()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.AddCronJobDetailedAsync(JsonNode.Parse("""{"idleOnly":true}""")!.AsObject()));
+        Assert.True((await client.GetCronJobAsync(after.Id)).IdleOnly);
     }
 
     [Fact]

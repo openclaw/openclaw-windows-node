@@ -6,7 +6,7 @@
     xmlns:controls="using:OpenClawTray.Controls"
     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
 
-    <Grid x:Name="RootGrid">
+    <Grid x:Name="RootGrid" KeyDown="OnNavigationKeyDown">
         <Grid x:Name="NavContentHost" SizeChanged="OnNavContentHostSizeChanged">
             <Grid.Clip>
                 <RectangleGeometry x:Name="NavContentClip"/>

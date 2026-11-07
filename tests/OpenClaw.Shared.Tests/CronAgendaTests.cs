@@ -43,6 +43,52 @@ public sealed class CronAgendaTests
     }
 
     [Fact]
+    public void EarlierTodayPrioritizesFailuresThenUsesReportedTimesWithinEachStatus()
+    {
+        var now = new DateTimeOffset(2030, 1, 7, 12, 0, 0, TimeSpan.Zero);
+        CronJob Earlier(string id, int minutes, string status) => Job(id) with
+        {
+            State = new() { LastRunAtMs = now.AddMinutes(-minutes).ToUnixTimeMilliseconds(), LastRunStatus = status },
+        };
+        var agenda = CronAgenda.Create([
+            Earlier("success-new", 1, "ok"), Earlier("failure-old", 40, "error"),
+            Earlier("failure-new", 20, "error"), Earlier("skipped", 5, "skipped"),
+        ], now, TimeZoneInfo.Utc);
+        Assert.Equal(["failure-new", "failure-old", "success-new", "skipped"], agenda.EarlierToday.Select(job => job.Id));
+    }
+
+    [Fact]
+    public void ClearedNativeTimeIsInvalidWithoutChangingTheSavedSchedule()
+    {
+        var saved = Job("daily", kind: CronScheduleKind.Cron) with
+        { Schedule = new(CronScheduleKind.Cron, "cron", Expr: "0 7 * * *", Tz: "UTC") };
+        var form = CronJobForm.FromJob(saved) with { ScheduleTimeMissing = true };
+        Assert.Equal(CronFormError.TimeRequired, form.Validate()[CronFormField.ScheduleTime]);
+        Assert.Equal("0 7 * * *", form.CronExpr);
+        var repaired = form with { ScheduleTimeMissing = false };
+        Assert.Empty(repaired.Validate());
+        Assert.False(repaired.BuildDefinition(saved).ContainsKey("scheduleTimeMissing"));
+        Assert.False(repaired.BuildDefinition(saved).ContainsKey("schedule"));
+        Assert.Equal("0 7 * * *", repaired.BuildDefinition()["schedule"]!["expr"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void ClearedNativeWeekdaySurvivesEditsWithoutChangingTheSavedSchedule()
+    {
+        var saved = Job("weekly", kind: CronScheduleKind.Cron) with
+        { Schedule = new(CronScheduleKind.Cron, "cron", Expr: "0 7 * * 1", Tz: "UTC") };
+        var draft = CronJobForm.FromJob(saved) with { ScheduleDayMissing = true, Name = "Edited weekly name" };
+        Assert.Equal(CronFormError.WeekdayRequired, draft.Validate()[CronFormField.ScheduleDay]);
+        Assert.Equal("0 7 * * 1", draft.CronExpr);
+        var repaired = draft with { ScheduleDayMissing = false };
+        Assert.Empty(repaired.Validate());
+        Assert.False(repaired.BuildDefinition(saved).ContainsKey("scheduleDayMissing"));
+        Assert.False(repaired.BuildDefinition(saved).ContainsKey("schedule"));
+        Assert.Equal("0 7 * * 1", repaired.BuildDefinition()["schedule"]!["expr"]!.GetValue<string>());
+        Assert.False(draft.WithScheduleKind(CronScheduleKind.Every).ScheduleDayMissing);
+    }
+
+    [Fact]
     public void CalendarGroupsUseReportedInstantsWithoutSynthesizingMissingNextRuns()
     {
         var now = new DateTimeOffset(2030, 1, 7, 12, 0, 0, TimeSpan.Zero);

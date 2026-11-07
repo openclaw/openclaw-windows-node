@@ -38,6 +38,7 @@ namespace OpenClawTray.Pages;
 /// </summary>
 public sealed partial class DebugPage : Page
 {
+    private const double CompactLayoutWidth = 720;
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
 
     private AppState? _appState;
@@ -90,12 +91,21 @@ public sealed partial class DebugPage : Page
     public DebugPage()
     {
         InitializeComponent();
+        SizeChanged += OnLayoutSizeChanged;
         Unloaded += (_, _) =>
         {
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
             CurrentApp.SettingsChanged -= OnSettingsChanged;
             StopCopyFeedbackTimer();
         };
+    }
+
+    private void OnLayoutSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var orientation = e.NewSize.Width < CompactLayoutWidth ? Orientation.Vertical : Orientation.Horizontal;
+        TelemetryProtocols.Orientation = orientation;
+        TelemetryActions.Orientation = orientation;
+        DetailActions.Orientation = orientation;
     }
 
     public void Initialize()

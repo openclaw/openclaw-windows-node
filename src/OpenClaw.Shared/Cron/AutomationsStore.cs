@@ -47,6 +47,8 @@ public sealed record AutomationsSnapshot
     public string? AgentFilter { get; init; } = "main";
     public bool Connected { get; init; }
     public bool CanManage { get; init; }
+    /// <summary>Retains disabled offline controls only for a previously authorized operator.</summary>
+    public bool LastKnownCanManage { get; init; }
     public AutomationsView View { get; init; } = AutomationsView.Jobs;
 
     public CronListQuery ListQuery { get; init; } = new();
@@ -58,7 +60,7 @@ public sealed record AutomationsSnapshot
     public bool ListLoaded { get; init; }
     public string? ListError { get; init; }
     public bool ReadDenied { get; init; }
-    /// <summary>Complete current-agent inventory, independent of browse filters and pagination.</summary>
+    /// <summary>Complete agent-filter inventory (all agents when null), independent of browse filters and pagination.</summary>
     public IReadOnlyList<CronJob> OverviewJobs { get; init; } = Array.Empty<CronJob>();
     public bool OverviewLoaded { get; init; }
     public string? OverviewError { get; init; }
@@ -139,6 +141,8 @@ public sealed class AutomationsStore : IDisposable
     private readonly Func<IOperatorGatewayClient?> _client;
     private readonly Action<Action> _post;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private readonly AutomationsOverviewSource _overviewSource;
+    private readonly bool _ownsOverviewSource;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<string, CancellationTokenSource> _runWatchers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _runBaseline = new(StringComparer.Ordinal);
@@ -158,11 +162,15 @@ public sealed class AutomationsStore : IDisposable
         string agentId,
         Func<IOperatorGatewayClient?> client,
         Action<Action> post,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        AutomationsOverviewSource? overviewSource = null)
     {
         _client = client;
         _post = post;
         _delay = delay ?? Task.Delay;
+        _ownsOverviewSource = overviewSource is null;
+        _overviewSource = overviewSource ?? new AutomationsOverviewSource(client, post);
+        _overviewSource.Changed += OnGlobalOverviewChanged;
         var agent = NormalizeAgent(agentId);
         _state = new AutomationsSnapshot
         {
@@ -205,9 +213,14 @@ public sealed class AutomationsStore : IDisposable
     public void Refresh()
     {
         var client = _client();
+        _overviewSource.SetConnection(client);
         var connected = client is { IsConnectedToGateway: true };
         var canManage = connected && client!.GrantedOperatorScopes.Contains(CronProtocol.AdminScope, StringComparer.Ordinal);
-        Set(s => s with { Connected = connected, CanManage = canManage });
+        Set(s => s with
+        {
+            Connected = connected, CanManage = canManage,
+            LastKnownCanManage = connected ? canManage : s.LastKnownCanManage,
+        });
         if (!connected)
         {
             ++_overviewGeneration;
@@ -234,11 +247,11 @@ public sealed class AutomationsStore : IDisposable
     }
 
     /// <summary>Gateway <c>cron</c> events invalidate the list, stats, the open job and its history.</summary>
-    public void OnGatewayCronEvent()
+    public void OnGatewayCronEvent(bool globalOverviewHandled = false)
     {
         if (!_state.Connected) return;
         _ = LoadListAsync();
-        _ = LoadStatsAsync();
+        _ = LoadStatsAsync(refreshGlobalOverview: !globalOverviewHandled);
         if (_state.SelectedJobId is { } selected)
             _ = LoadSelectedAsync(selected, quiet: true);
         if (_state.RunsLoaded)
@@ -492,11 +505,16 @@ public sealed class AutomationsStore : IDisposable
         }
     }
 
-    public async Task LoadStatsAsync()
+    public async Task LoadStatsAsync(bool refreshGlobalOverview = true)
     {
         var client = _client();
         if (client is null || !_state.Connected) return;
-        _ = LoadOverviewAsync();
+        if (_state.IsAllAgents)
+        {
+            ApplyGlobalOverview(_overviewSource.State);
+            if (refreshGlobalOverview) _ = _overviewSource.RefreshAsync();
+        }
+        else _ = LoadScopedOverviewAsync();
         var agent = _state.AgentFilter;
         var generation = ++_statsGeneration;
         try
@@ -530,12 +548,26 @@ public sealed class AutomationsStore : IDisposable
         }
     }
 
-    private async Task LoadOverviewAsync()
+    private void OnGlobalOverviewChanged(object? sender, AutomationsOverviewSnapshot snapshot)
+    {
+        if (_state.IsAllAgents) ApplyGlobalOverview(snapshot);
+    }
+
+    private void ApplyGlobalOverview(AutomationsOverviewSnapshot snapshot) => Set(s => s with
+    {
+        OverviewJobs = snapshot.Jobs,
+        OverviewLoaded = snapshot.HasLoaded,
+        OverviewError = snapshot.Error,
+        LastSeenAtMs = snapshot.LastSyncAtMs,
+    });
+
+    private async Task LoadScopedOverviewAsync()
         {
             var client = _client();
             if (client is null || !_state.Connected) return;
             var generation = ++_overviewGeneration;
             var agent = _state.AgentFilter;
+            if (agent is null) return;
             try
             {
                 var jobs = new List<CronJob>();
@@ -1027,7 +1059,7 @@ public sealed class AutomationsStore : IDisposable
         if (!_state.CanManage)
             return new AutomationsSaveResult.Failed("Automation changes require operator.admin access.");
         var normalized = form.Normalize();
-        var errors = normalized.Validate();
+        var errors = normalized.ValidateForNative(editing, cloneSource);
         if (errors.Count > 0)
             return new AutomationsSaveResult.Invalid(errors);
 
@@ -1092,5 +1124,7 @@ public sealed class AutomationsStore : IDisposable
         _lifetime.Cancel();
         _lifetime.Dispose();
         _disposed = true;
+        _overviewSource.Changed -= OnGlobalOverviewChanged;
+        if (_ownsOverviewSource) _overviewSource.Dispose();
     }
 }

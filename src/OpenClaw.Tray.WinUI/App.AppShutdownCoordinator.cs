@@ -112,6 +112,15 @@ public partial class App
         }
 
         var connectionManager = _connectionManager;
+        var automationsOverview = _automationsOverview;
+        if (automationsOverview is not null)
+            steps.Add(new AppShutdownStep("Automations overview", () =>
+            {
+                automationsOverview.Dispose();
+                if (ReferenceEquals(_automationsOverview, automationsOverview))
+                    _automationsOverview = null;
+                return ValueTask.CompletedTask;
+            }));
         if (connectionManager is not null)
         {
             steps.Add(new AppShutdownStep("gateway client", async () =>

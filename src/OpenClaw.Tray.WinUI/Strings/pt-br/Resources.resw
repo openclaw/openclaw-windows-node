@@ -8031,8 +8031,11 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
     <value>Insira um fuso horário IANA válido, local ou user.</value>
   </data>
+  <data name="Automations_Error_TimingWebManaged" xml:space="preserve">
+    <value>Use Abrir na Web para copiar ou alterar horários ativos ou a espera por inatividade. Edições básicas mantêm as configurações salvas.</value>
+  </data>
   <data name="Automations_Error_AgentMessageRequired" xml:space="preserve">
-    <value>O prompt é obrigatório.</value>
+    <value>Descreva a tarefa que este agente deve executar.</value>
   </data>
   <data name="Automations_Error_CronExprRequired" xml:space="preserve">
     <value>A expressão Cron é obrigatória.</value>
@@ -8053,7 +8056,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
     <value>Deve ser 0 ou maior.</value>
   </data>
   <data name="Automations_Error_NameRequired" xml:space="preserve">
-    <value>O nome é obrigatório.</value>
+    <value>Informe um nome.</value>
   </data>
   <data name="Automations_Error_ScheduleAtInvalid" xml:space="preserve">
     <value>Escolha uma data e hora válidas.</value>
@@ -8083,10 +8086,10 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
     <value>O script de gatilho é obrigatório quando o gatilho de condição está ativado.</value>
   </data>
   <data name="Automations_Error_WebhookUrlInvalid" xml:space="preserve">
-    <value>Insira uma URL HTTPS válida sem credenciais incorporadas.</value>
+    <value>Informe uma URL de webhook HTTPS.</value>
   </data>
   <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
-    <value>A URL do webhook é obrigatória.</value>
+    <value>Informe uma URL de webhook HTTPS.</value>
   </data>
   <data name="Automations_Field_ActiveHours" xml:space="preserve">
     <value>Horário ativo</value>
@@ -8927,4 +8930,21 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_Review_Repeats" xml:space="preserve"><value>Repete</value></data>
   <data name="Automations_Review_RunPermissionError" xml:space="preserve"><value>Não foi possível iniciar “{0}”. Esta conexão não tem a permissão operator.admin.</value></data>
   <data name="Automations_Review_Close" xml:space="preserve"><value>Fechar</value></data>
+  <data name="Automations_Designer_RequiredField" xml:space="preserve"><value>{0} (Obrigatório)</value></data>
+  <data name="Automations_Designer_ValidationSummary" xml:space="preserve"><value>Preencha os campos obrigatórios antes de salvar.</value></data>
+  <data name="Automations_Designer_ChooseDate" xml:space="preserve"><value>Escolha uma data.</value></data>
+  <data name="Automations_Error_TimeRequired" xml:space="preserve"><value>Escolha um horário.</value></data>
+  <data name="Automations_Error_WeekdayRequired" xml:space="preserve"><value>Escolha um dia da semana.</value></data>
+  <data name="Automations_Error_ChannelRequired" xml:space="preserve"><value>Informe um canal.</value></data>
+  <data name="Automations_Designer_DraftKept" xml:space="preserve"><value>Rascunho mantido para esta sessão.</value></data>
+  <data name="Automations_Designer_DiscardDraft" xml:space="preserve"><value>Descartar rascunho</value></data>
+  <data name="Automations_Designer_ShowMore" xml:space="preserve"><value>Mostrar mais</value></data>
+  <data name="Automations_Designer_ShowFewer" xml:space="preserve"><value>Mostrar menos</value></data>
+  <data name="Automations_Designer_ShowAll" xml:space="preserve"><value>Mostrar todos os {0}</value></data>
+  <data name="Automations_Designer_Expanded" xml:space="preserve"><value>Expandido</value></data>
+  <data name="Automations_Designer_Collapsed" xml:space="preserve"><value>Recolhido</value></data>
+  <data name="Automations_Designer_RunOrder" xml:space="preserve"><value>Execução {0} neste histórico (horário não informado)</value></data>
+  <data name="Automations_Designer_ScheduleAsOf" xml:space="preserve"><value>Agendamento às {0}</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Expandir navegação</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Recolher navegação</value></data>
 </root>

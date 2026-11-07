@@ -1,8 +1,10 @@
 using System.Xml.Linq;
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Hosting;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -12,6 +14,7 @@ using OpenClaw.Shared.Cron;
 using OpenClaw.TestSupport.Gateway;
 using OpenClawTray.Automations;
 using OpenClawTray.Presentation;
+using Xunit.Abstractions;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClaw.Tray.UITests.TestSupport;
 
@@ -19,10 +22,12 @@ namespace OpenClaw.Tray.UITests;
 
 [Collection(UICollection.Name)]
 [Trait("Category", "ProductionResources")]
-public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui)
+public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOutputHelper output)
 {
     private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan ToastPersistenceBoundary = TimeSpan.FromSeconds(5);
+    // DIPs, not physical pixels. Native fit also depends on the owned HWND's scale and chrome.
+    private const int ProofClientHeight = 900;
     private const int SteadyScrollFrames = 3;
 
     [Fact]
@@ -139,6 +144,9 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui)
         Border? surface = null;
         Window? proofWindow = null;
         IntPtr proofHandle = IntPtr.Zero;
+        global::Windows.Graphics.SizeInt32 requestedClient = default;
+        double requestedScale = 0;
+        var viewport = new AutomationsViewportState();
         try
         {
             await ui.RunOnUIAsync(() =>
@@ -151,13 +159,14 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui)
             {
                 store!.Select("morning-brief");
                 var host = new AutomationsHost(store, new AutomationsText(key => catalog[key]), () => access,
-                    () => { }, _ => { }, _ => { }, _ => true, () => ["main", "ops"]);
+                    () => { }, _ => { }, _ => { }, _ => true, () => ["main", "ops"])
+                { Viewport = viewport };
                 renderer = new ReactorHostControl { RequestedTheme = ElementTheme.Light };
                 renderer.Mount(_ => Component<AutomationsRoot, AutomationsRootProps>(new(host)));
                 surface = new Border
                 {
                     Width = width,
-                    Height = 1100,
+                    Height = ProofClientHeight,
                     HorizontalAlignment = HorizontalAlignment.Left,
                     VerticalAlignment = VerticalAlignment.Top,
                     Child = renderer,
@@ -175,14 +184,20 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui)
                 "mounted surface attached to its XamlRoot"));
             await ui.RunOnUIAsync(() =>
             {
-                var scale = surface!.XamlRoot.RasterizationScale;
-                proofWindow!.AppWindow.ResizeClient(new global::Windows.Graphics.SizeInt32(
-                    (int)Math.Ceiling(width * scale), (int)Math.Ceiling(1100 * scale)));
+                requestedScale = surface!.XamlRoot.RasterizationScale;
+                requestedClient = new global::Windows.Graphics.SizeInt32(
+                    (int)Math.Ceiling(width * requestedScale), (int)Math.Ceiling(ProofClientHeight * requestedScale));
+                proofWindow!.AppWindow.ResizeClient(requestedClient);
             });
-            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                PageResponsiveLayout.Snap(surface!.XamlRoot.Size.Width) >= width
-                && PageResponsiveLayout.Snap(surface.XamlRoot.Size.Height) >= 1100,
-                "owned client contains the required page-host viewport"));
+            await ui.RunOnUIAsync(async () =>
+            {
+                await WaitForRenderedConditionAsync(() =>
+                    PageResponsiveLayout.Snap(surface!.XamlRoot.Size.Width) >= width
+                    && PageResponsiveLayout.Snap(surface.XamlRoot.Size.Height) >= ProofClientHeight,
+                    "owned client contains the required page-host viewport",
+                    () => RecordViewportGeometry(proofWindow!, surface!, requestedClient, requestedScale, artifacts, "viewport-timeout"));
+                RecordViewportGeometry(proofWindow!, surface!, requestedClient, requestedScale, artifacts, "viewport-ready");
+            });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
                 Controls(surface!).Any(element => AutomationProperties.GetAutomationId(element) == "AutomationDetailColumns")
                 && Math.Abs(Find(surface!, "AutomationsRoot").ActualWidth - width) < 1
@@ -206,9 +221,37 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui)
             }
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
                 Controls(Find(surface!, "AutomationDetail")).Any(element => element is Expander
-                    && AutomationProperties.GetAutomationId(element).StartsWith("AutomationRunExpand:", StringComparison.Ordinal)),
+                    && AutomationProperties.GetAutomationId(element).StartsWith("AutomationRunExpand:", StringComparison.Ordinal))
+                && Find(surface!, "AutomationsBackdrop").ActualHeight > 0,
                 "inline run summary disclosure"));
             await ui.YieldToRenderAsync();
+            ScrollView? retainedScroll = null;
+            FrameworkElement? retainedMast = null;
+            double originalBackdropHeight = 0;
+            await ui.RunOnUIAsync(() =>
+            {
+                retainedScroll = Assert.IsType<ScrollView>(Find(surface!, "AutomationsList"));
+                retainedMast = Find(surface!, "AutomationsMast");
+                originalBackdropHeight = Find(surface!, "AutomationsBackdrop").ActualHeight;
+                viewport.ApplyTopInset(56);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                Assert.IsType<ScrollView>(Find(surface!, "AutomationsList")).Margin.Top == 56
+                && Math.Abs(Find(surface!, "AutomationsBackdrop").ActualHeight - originalBackdropHeight - 56) < 1,
+                "inset-only change at constant width updates scroll and measured backdrop"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(retainedScroll, Find(surface!, "AutomationsList"));
+                Assert.Same(retainedMast, Find(surface!, "AutomationsMast"));
+                Assert.Equal(width, surface!.ActualWidth);
+                Assert.InRange(Math.Abs(Bounds(Find(surface, "AutomationsBackdrop"), surface).Top), 0, 1);
+                Assert.True(Bounds(retainedMast!, surface).Top >= 56);
+                viewport.ApplyTopInset(0);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                Assert.IsType<ScrollView>(Find(surface!, "AutomationsList")).Margin.Top == 0
+                && Math.Abs(Find(surface!, "AutomationsBackdrop").ActualHeight - originalBackdropHeight) < 1,
+                "removing inset restores retained full viewport"));
             await ui.RunOnUIAsync(() =>
             {
                 surface!.UpdateLayout();
@@ -319,14 +362,20 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui)
                     await ui.RunOnUIAsync(() =>
                     {
                         surface!.Width = reusedWidth;
-                        var scale = surface.XamlRoot.RasterizationScale;
-                        proofWindow!.AppWindow.ResizeClient(new global::Windows.Graphics.SizeInt32(
-                            (int)Math.Ceiling(reusedWidth * scale), (int)Math.Ceiling(1100 * scale)));
+                        requestedScale = surface.XamlRoot.RasterizationScale;
+                        requestedClient = new global::Windows.Graphics.SizeInt32(
+                            (int)Math.Ceiling(reusedWidth * requestedScale), (int)Math.Ceiling(ProofClientHeight * requestedScale));
+                        proofWindow!.AppWindow.ResizeClient(requestedClient);
                     });
-                    await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                        Math.Abs(Find(surface!, "AutomationsRoot").ActualWidth - reusedWidth) < 1
-                        && Math.Abs(Find(surface!, "AutomationsMast").ActualWidth - PageResponsiveLayout.ContentWidth(reusedWidth)) < 1,
-                        "same mounted page resized without replacing its element pool"));
+                    await ui.RunOnUIAsync(async () =>
+                    {
+                        await WaitForRenderedConditionAsync(() =>
+                            Math.Abs(Find(surface!, "AutomationsRoot").ActualWidth - reusedWidth) < 1
+                            && Math.Abs(Find(surface!, "AutomationsMast").ActualWidth - PageResponsiveLayout.ContentWidth(reusedWidth)) < 1,
+                            "same mounted page resized without replacing its element pool",
+                            () => RecordViewportGeometry(proofWindow!, surface!, requestedClient, requestedScale, artifacts, "resize-timeout"));
+                        RecordViewportGeometry(proofWindow!, surface!, requestedClient, requestedScale, artifacts, "resize-ready");
+                    });
                     await ui.YieldToRenderAsync();
                     await ui.RunOnUIAsync(() =>
                     {
@@ -384,6 +433,31 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui)
     private void RequireProductionResources() =>
         Assert.True(ui.UsesProductionResources,
             $"Run Category=ProductionResources in its own test process with {TestAppResourceLoader.ProfileVariable}=Production.");
+
+    private string RecordViewportGeometry(Window window, FrameworkElement surface,
+        global::Windows.Graphics.SizeInt32 requestedClient, double requestedScale, string artifacts, string phase)
+    {
+        var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        var native = OwnedWindowCapture.ReadCurrentProcessGeometry(handle);
+        var work = DisplayArea.GetFromWindowId(window.AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        var xamlRoot = surface.XamlRoot;
+        var json = JsonSerializer.Serialize(new
+        {
+            phase,
+            timestampUtc = DateTimeOffset.UtcNow,
+            requestedDip = new { width = surface.Width, height = surface.Height },
+            requestedScale,
+            requestedClientPixels = new { requestedClient.Width, requestedClient.Height },
+            native,
+            monitorWorkAreaPixels = new { work.X, work.Y, work.Width, work.Height },
+            xamlRoot = new { xamlRoot.RasterizationScale, xamlRoot.Size.Width, xamlRoot.Size.Height },
+            surfaceDip = new { surface.ActualWidth, surface.ActualHeight, surface.IsLoaded },
+            window.ExtendsContentIntoTitleBar,
+        });
+        File.AppendAllText(Path.Combine(artifacts, "viewport-geometry.jsonl"), json + Environment.NewLine);
+        output.WriteLine($"automations-viewport: {json}");
+        return json;
+    }
 
     /// <summary>The accent wash is a root layer behind the ScrollView: content scrolls, the wash stays put.</summary>
     private async Task AssertViewportBackdropAsync(Border surface, double width, Action<string>? save)

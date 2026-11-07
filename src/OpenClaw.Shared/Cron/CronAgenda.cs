@@ -32,7 +32,8 @@ public sealed record CronAgenda(
         };
         var earlier = jobs.Where(j => j.State.LastRunAtMs is { } at && at <= now.ToUnixTimeMilliseconds()
             && TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(at), zone).Date == today)
-            .OrderByDescending(j => j.State.LastRunAtMs).ToArray();
+            .OrderByDescending(j => j.State.LastRunStatus == "error")
+            .ThenByDescending(j => j.State.LastRunAtMs).ToArray();
         return new(groups.Where(g => g.Jobs.Count > 0).ToArray(),
             live.Where(j => !j.IsRunning && IsRepeating(j.Schedule)).ToArray(),
             live.Where(j => !j.IsRunning && j.Schedule.Kind is CronScheduleKind.Event or CronScheduleKind.Stream or CronScheduleKind.OnExit).ToArray(),

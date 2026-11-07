@@ -299,6 +299,50 @@ public sealed class WorkspaceWindowProofTests
         Capture(app, theme, "settings-chrome");
     }
 
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public async Task SettingsNavigation_EscapeReturnsFocus_WithoutClosingFromPageOrSearch(string theme)
+    {
+        using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme, initialRoute: "settings");
+        var root = AutomationElement.FromHandle(app.HubWindowHandle);
+        await WaitUntilAsync(() => IsVisible(root, "SettingsSearch"));
+        Assert.Equal("Collapse navigation", Find(root, "SettingsTogglePane").Current.Name);
+
+        await FocusForKeyboardAsync(app, root, "SettingsPageAutoStart");
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        Assert.True(IsVisible(root, "SettingsSearch"));
+        Assert.True(Find(root, "SettingsPageAutoStart").Current.HasKeyboardFocus);
+
+        await FocusForKeyboardAsync(app, root, "SettingsNavSettings");
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        await WaitUntilAsync(() => !IsVisible(root, "SettingsSearch") &&
+            Find(root, "SettingsTogglePane").Current.HasKeyboardFocus);
+        Assert.Equal("Expand navigation", Find(root, "SettingsTogglePane").Current.Name);
+        Assert.True(IsVisible(root, "SettingsPageMarker"));
+
+        System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+        await WaitUntilAsync(() => IsVisible(root, "SettingsSearch"));
+        Assert.Equal("Collapse navigation", Find(root, "SettingsTogglePane").Current.Name);
+        Assert.True(Find(root, "SettingsTogglePane").Current.HasKeyboardFocus);
+
+        Invoke(Find(root, "SettingsSearch"));
+        await WaitUntilAsync(() => FindPopup(root, "SettingsSearchBox")?.Current.HasKeyboardFocus == true);
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        await WaitUntilAsync(() => FindPopup(root, "SettingsSearchBox") is null);
+        Assert.True(IsVisible(root, "SettingsSearch"));
+        Assert.Equal("Collapse navigation", Find(root, "SettingsTogglePane").Current.Name);
+        Assert.True(IsVisible(root, "SettingsPageMarker"));
+
+        await FocusForKeyboardAsync(app, root, "SettingsTogglePane");
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        await WaitUntilAsync(() => !IsVisible(root, "SettingsSearch") &&
+            Find(root, "SettingsTogglePane").Current.HasKeyboardFocus);
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        Assert.Equal("Expand navigation", Find(root, "SettingsTogglePane").Current.Name);
+        Assert.True(IsVisible(root, "SettingsPageMarker"));
+    }
+
     private static async Task VerifySettingsFooterAsync(AutomationElement root, bool compact)
     {
         // Settings ends with the same account, Dashboard and bell footer as Chat.

@@ -8046,8 +8046,11 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
     <value>Enter a valid IANA time zone, local, or user.</value>
   </data>
+  <data name="Automations_Error_TimingWebManaged" xml:space="preserve">
+    <value>Use Open in web to copy or change active hours or wait-until-idle settings. Basic edits keep the saved settings.</value>
+  </data>
   <data name="Automations_Error_AgentMessageRequired" xml:space="preserve">
-    <value>Prompt is required.</value>
+    <value>Describe the task this agent should run.</value>
   </data>
   <data name="Automations_Error_CronExprRequired" xml:space="preserve">
     <value>Cron expression is required.</value>
@@ -8068,7 +8071,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Must be 0 or greater.</value>
   </data>
   <data name="Automations_Error_NameRequired" xml:space="preserve">
-    <value>Name is required.</value>
+    <value>Enter a name.</value>
   </data>
   <data name="Automations_Error_ScheduleAtInvalid" xml:space="preserve">
     <value>Pick a valid date and time.</value>
@@ -8098,10 +8101,10 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Trigger script is required when the condition trigger is on.</value>
   </data>
   <data name="Automations_Error_WebhookUrlInvalid" xml:space="preserve">
-    <value>Enter a valid HTTPS URL without embedded credentials.</value>
+    <value>Enter an HTTPS webhook URL.</value>
   </data>
   <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
-    <value>Webhook URL is required.</value>
+    <value>Enter an HTTPS webhook URL.</value>
   </data>
   <data name="Automations_Field_ActiveHours" xml:space="preserve">
     <value>Active hours</value>
@@ -8942,4 +8945,21 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Review_Repeats" xml:space="preserve"><value>Repeats</value></data>
   <data name="Automations_Review_RunPermissionError" xml:space="preserve"><value>Couldn't start “{0}”. This connection is missing the operator.admin permission.</value></data>
   <data name="Automations_Review_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Automations_Designer_RequiredField" xml:space="preserve"><value>{0} (Required)</value></data>
+  <data name="Automations_Designer_ValidationSummary" xml:space="preserve"><value>Complete the required fields before saving.</value></data>
+  <data name="Automations_Designer_ChooseDate" xml:space="preserve"><value>Choose a date.</value></data>
+  <data name="Automations_Error_TimeRequired" xml:space="preserve"><value>Choose a time.</value></data>
+  <data name="Automations_Error_WeekdayRequired" xml:space="preserve"><value>Choose a day of the week.</value></data>
+  <data name="Automations_Error_ChannelRequired" xml:space="preserve"><value>Enter a channel.</value></data>
+  <data name="Automations_Designer_DraftKept" xml:space="preserve"><value>Draft kept for this session.</value></data>
+  <data name="Automations_Designer_DiscardDraft" xml:space="preserve"><value>Discard draft</value></data>
+  <data name="Automations_Designer_ShowMore" xml:space="preserve"><value>Show more</value></data>
+  <data name="Automations_Designer_ShowFewer" xml:space="preserve"><value>Show fewer</value></data>
+  <data name="Automations_Designer_ShowAll" xml:space="preserve"><value>Show all {0}</value></data>
+  <data name="Automations_Designer_Expanded" xml:space="preserve"><value>Expanded</value></data>
+  <data name="Automations_Designer_Collapsed" xml:space="preserve"><value>Collapsed</value></data>
+  <data name="Automations_Designer_RunOrder" xml:space="preserve"><value>Run {0} in this history (time not supplied)</value></data>
+  <data name="Automations_Designer_ScheduleAsOf" xml:space="preserve"><value>Schedule as of {0}</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Expand navigation</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Collapse navigation</value></data>
 </root>

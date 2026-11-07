@@ -117,6 +117,16 @@ public sealed partial class GatewayScenario
     public bool CronSchedulerEnabled { get; set; } = true;
     public string? CronReadError { get; set; }
     public string? CronStatusReadError { get; set; }
+    /// <summary>Models older list responses that omit resolved-owner metadata.</summary>
+    public bool OmitCronEffectiveAgentId { get; set; }
+    public bool RejectUnsupportedCronTimingFields { get; set; }
+
+    /// <summary>Supplies explicit agenda instants without implementing client grouping or layout.</summary>
+    public void SetCronJobNextRun(string id, long atMs)
+    {
+        var jobs = _cronJobs ?? throw new InvalidOperationException("Automations are not enabled.");
+        lock (jobs) jobs[id]["state"]!["nextRunAtMs"] = atMs;
+    }
 
     /// <summary>When set, <c>cron.run</c> is accepted but stays queued: no history or last-run state yet.</summary>
     public bool QueueCronRunsOnly { get; set; }
@@ -318,7 +328,7 @@ public sealed partial class GatewayScenario
         var page = all.Skip(offset).Take(limit).Select(j =>
         {
             var row = j.DeepClone().AsObject();
-            row["effectiveAgentId"] = Owner(j);
+            if (!OmitCronEffectiveAgentId) row["effectiveAgentId"] = Owner(j);
             return JsonSerializer.SerializeToElement(row);
         }).ToArray();
         var hasMore = offset + page.Length < all.Count;
@@ -346,6 +356,7 @@ public sealed partial class GatewayScenario
     private JsonObject AddJob(Dictionary<string, JsonObject> jobs, JsonElement p)
     {
         ValidateProperties(p, JobFields);
+        ValidateCronTimingProperties(p);
         _ = RequiredString(p, "name");
         if (!p.TryGetProperty("schedule", out var schedule)) throw new FixtureRequestException("INVALID_REQUEST", "schedule is required.");
         ValidateSchedule(schedule);
@@ -373,6 +384,7 @@ public sealed partial class GatewayScenario
         CheckRevision(job, p);
         if (!p.TryGetProperty("patch", out var patch)) throw new FixtureRequestException("INVALID_REQUEST", "Missing patch.");
         ValidateProperties(patch, [.. JobFields, "state"]);
+        ValidateCronTimingProperties(patch);
         if (patch.TryGetProperty("schedule", out var schedule)) ValidateSchedule(schedule);
         var updated = job.DeepClone().AsObject();
         foreach (var field in patch.EnumerateObject())
@@ -401,6 +413,13 @@ public sealed partial class GatewayScenario
         updated["updatedAtMs"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         jobs[job["id"]!.GetValue<string>()] = updated;
         return updated;
+    }
+
+    private void ValidateCronTimingProperties(JsonElement parameters)
+    {
+        if (RejectUnsupportedCronTimingFields &&
+            (parameters.TryGetProperty("activeHours", out _) || parameters.TryGetProperty("idleOnly", out _)))
+            throw new FixtureRequestException("INVALID_PARAMS", "Unsupported automation timing property.");
     }
 
     private object RunJob(Dictionary<string, JsonObject> jobs, JsonElement p)

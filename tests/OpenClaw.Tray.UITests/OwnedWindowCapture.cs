@@ -18,6 +18,25 @@ internal static class OwnedWindowCapture
         finally { SetThreadDpiAwarenessContext(previous); }
     }
 
+    internal sealed record WindowGeometry(string Hwnd, uint ProcessId, DateTime ProcessStartedUtc, uint Dpi,
+        Rectangle WindowPixels, Rectangle ClientPixels, Size SystemMaxTrackPixels);
+
+    internal static WindowGeometry ReadCurrentProcessGeometry(IntPtr handle) => WithPhysicalCoordinates(() =>
+    {
+        GetWindowThreadProcessId(handle, out var owner);
+        Assert.Equal((uint)Environment.ProcessId, owner);
+        Assert.True(GetWindowRect(handle, out var window), "Cannot measure the owned window rectangle.");
+        Assert.True(GetClientRect(handle, out var client), "Cannot measure the owned client rectangle.");
+        var dpi = GetDpiForWindow(handle);
+        Assert.True(dpi > 0);
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        const int smCxMaxTrack = 59, smCyMaxTrack = 60;
+        return new WindowGeometry($"0x{handle:X}", owner, process.StartTime.ToUniversalTime(), dpi,
+            Rectangle.FromLTRB(window.Left, window.Top, window.Right, window.Bottom),
+            Rectangle.FromLTRB(client.Left, client.Top, client.Right, client.Bottom),
+            new Size(GetSystemMetricsForDpi(smCxMaxTrack, dpi), GetSystemMetricsForDpi(smCyMaxTrack, dpi)));
+    });
+
     internal static global::System.Windows.Rect ReadOwnedBounds(GatewayFixtureRun run, AutomationElement window)
     {
         var handle = new IntPtr(window.Current.NativeWindowHandle);
@@ -125,6 +144,8 @@ internal static class OwnedWindowCapture
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern int GetSystemMetricsForDpi(int index, uint dpi);
+    [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr window, out NativeRect rect);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(
         IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out NativeRect rect);

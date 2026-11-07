@@ -8,6 +8,7 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared.Cron;
+using OpenClawTray.Chat;
 using OpenClawTray.Services;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClawTray.Automations.AutomationsVisuals;
@@ -114,7 +115,7 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
                 rows.Add(RenderRun(host, run, job is null, expanded == run.Key,
                     () => setExpanded(expanded == run.Key ? null : run.Key),
                     first: i == 0,
-                    last: last).Enter(reduceMotion).WithKey(run.Key));
+                    last: last, runOrder: i).Enter(reduceMotion).WithKey(run.Key));
             }
             if (state.RunsHasMore)
             {
@@ -169,7 +170,8 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
         Action toggleExpanded,
         bool first,
         bool last,
-        bool inline = false)
+        bool inline = false,
+        int runOrder = 0)
     {
         var t = host.Text;
         var (brush, glyph) = RunTone(run.Status);
@@ -185,7 +187,7 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
             showJob ? TextBlock(run.JobName ?? run.JobId).FontWeight(FontWeights.SemiBold).TextTrimming(TextTrimming.CharacterEllipsis) : Empty(),
             at is { } ms
                 ? Secondary(inline ? t.RunTimestamp(ms) : t.DateTime(ms), 12).VAlign(VerticalAlignment.Center).ToolTip(t.Relative(ms))
-                : Secondary(AutomationsText.Unavailable, 12).VAlign(VerticalAlignment.Center));
+                : Secondary(t.Format("Designer_RunOrder", runOrder + 1), 12).VAlign(VerticalAlignment.Center));
         var headline = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
             statusLine.Grid(column: 0),
             (!string.IsNullOrWhiteSpace(run.SessionKey)
@@ -195,7 +197,7 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
         var chips = new List<Element>();
         if (run.DurationMs is { } duration)
             chips.Add(Pill(t.Duration(duration), Theme.SecondaryText, Theme.SystemNeutralBackground, GlyphClock));
-        if (run.DeliveryStatus is { } delivery)
+        if (run.DeliveryStatus is { } delivery && !(run.Status != "ok" && delivery == "delivered"))
             chips.Add(Pill(t.DeliveryStatus(delivery),
                 delivery == "delivered" ? Theme.SystemSuccess : delivery == "not-delivered" ? Theme.SystemCritical : Theme.SecondaryText,
                 delivery == "delivered" ? Theme.SystemSuccessBackground : delivery == "not-delivered" ? Theme.SystemCriticalBackground : Theme.SystemNeutralBackground,
@@ -210,7 +212,9 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
 
         var details = new List<Element?>
         {
-            inline && expanded ? Empty() : TextBlock(full).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords).IsTextSelectionEnabled(true)
+            inline && expanded ? Empty() : expanded && run.Status == "ok"
+                ? ReactorChatTimeline.BuildSafeMarkdown(full, host.CopyText).AutomationId($"AutomationRunSummary:{run.Key}")
+                : TextBlock(full).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords).IsTextSelectionEnabled(true)
                 .Foreground(isError ? Theme.SystemCritical : Theme.PrimaryText)
                 .MaxLines(expanded ? 0 : 3)
                 .AutomationId($"AutomationRunSummary:{run.Key}"),
@@ -229,7 +233,9 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
                 chips.Count == 0 ? Empty() : (FlexRow(chips.ToArray()) with { Wrap = Microsoft.UI.Reactor.Layout.FlexWrap.Wrap, ColumnGap = 6, RowGap = 6 }),
                 VStack(4, details.ToArray()),
                 inline ? Expander(t["Redesign_Response"],
-                        TextBlock(display.FullText ?? text).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords).IsTextSelectionEnabled(true),
+                        run.Status == "ok"
+                            ? ReactorChatTimeline.BuildSafeMarkdown(display.FullText ?? text, host.CopyText)
+                            : TextBlock(display.FullText ?? text).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords).IsTextSelectionEnabled(true),
                         expanded, _ => toggleExpanded())
                     .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
                     .Background(Theme.Ref("SubtleFillColorTransparentBrush")).BorderThickness(0)

@@ -11,6 +11,8 @@ public enum CronFormField
 {
     Name,
     ScheduleAt,
+    ScheduleTime,
+    ScheduleDay,
     EveryAmount,
     CronExpr,
     CronTz,
@@ -25,6 +27,7 @@ public enum CronFormField
     TriggerScript,
     FailureAlertAfter,
     FailureAlertCooldown,
+    Timing,
 }
 
 /// <summary>Validation outcomes; the UI owns their localized wording.</summary>
@@ -32,6 +35,8 @@ public enum CronFormError
 {
     NameRequired,
     ScheduleAtInvalid,
+    TimeRequired,
+    WeekdayRequired,
     EveryAmountInvalid,
     TriggerIntervalTooShort,
     CronExprRequired,
@@ -45,12 +50,14 @@ public enum CronFormError
     AgentMessageRequired,
     TimeoutInvalid,
     DeliveryModeRequired,
+    ChannelRequired,
     WebhookUrlRequired,
     WebhookUrlInvalid,
     ActiveHoursTimeInvalid,
     ActiveHoursTimezoneInvalid,
     FailureAlertAfterInvalid,
     FailureAlertCooldownInvalid,
+    TimingWebManaged,
 }
 
 /// <summary>
@@ -58,7 +65,8 @@ public enum CronFormError
 /// editor can bind it directly; <see cref="BuildDefinition"/> converts it to the
 /// Gateway's add/update shape, including explicit nulls that clear saved values.
 /// The native editor shows only everyday fields; the rest are loaded from the saved job
-/// and written back unchanged so a basic edit never resets web-managed settings.
+/// and preserved so a basic edit never resets web-managed settings. Unchanged timing
+/// fields are omitted from update patches for released Gateway compatibility.
 /// </summary>
 public sealed record CronJobForm
 {
@@ -71,6 +79,10 @@ public sealed record CronJobForm
 
     public CronScheduleKind ScheduleKind { get; init; } = CronScheduleKind.Every;
     public DateTimeOffset? ScheduleAt { get; init; }
+    /// <summary>Native picker draft state only; never written into a Gateway definition.</summary>
+    public bool ScheduleTimeMissing { get; init; }
+    /// <summary>Native weekday picker draft state only; never written into a Gateway definition.</summary>
+    public bool ScheduleDayMissing { get; init; }
     public string EveryAmount { get; init; } = "30";
     public CronDurationUnit EveryUnit { get; init; } = CronDurationUnit.Minutes;
     public string CronExpr { get; init; } = "0 7 * * *";
@@ -278,7 +290,7 @@ public sealed record CronJobForm
     {
         if (kind == ScheduleKind)
             return this;
-        var form = this with { ScheduleKind = kind };
+        var form = this with { ScheduleKind = kind, ScheduleTimeMissing = false, ScheduleDayMissing = false };
         if (kind == CronScheduleKind.At)
             form = form with { DeleteAfterRun = true, ScheduleAt = ScheduleAt ?? NextWholeHour(DateTimeOffset.Now) };
         else if (ScheduleKind == CronScheduleKind.At)
@@ -300,6 +312,7 @@ public sealed record CronJobForm
         if (ScheduleKind == CronScheduleKind.At)
         {
             if (ScheduleAt is null) errors[CronFormField.ScheduleAt] = CronFormError.ScheduleAtInvalid;
+            if (ScheduleTimeMissing) errors[CronFormField.ScheduleTime] = CronFormError.TimeRequired;
         }
         else if (ScheduleKind == CronScheduleKind.Every)
         {
@@ -309,6 +322,8 @@ public sealed record CronJobForm
         }
         else if (ScheduleKind == CronScheduleKind.Cron)
         {
+            if (ScheduleTimeMissing) errors[CronFormField.ScheduleTime] = CronFormError.TimeRequired;
+            if (ScheduleDayMissing) errors[CronFormField.ScheduleDay] = CronFormError.WeekdayRequired;
             if (string.IsNullOrWhiteSpace(CronExpr)) errors[CronFormField.CronExpr] = CronFormError.CronExprRequired;
             if (!IsValidTimezone(CronTz, allowAliases: false)) errors[CronFormField.CronTz] = CronFormError.TimezoneInvalid;
             if (!ScheduleExact && StaggerAmount.Trim().Length > 0 && ParseStagger(StaggerAmount, StaggerUnit) is null)
@@ -385,6 +400,24 @@ public sealed record CronJobForm
     }
 
     /// <summary>
+    /// Validates the native editor's supported contract without discarding inherited timing settings.
+    /// Copies and changes to web-managed timing require web management until support can be negotiated.
+    /// </summary>
+    public IReadOnlyDictionary<CronFormField, CronFormError> ValidateForNative(CronJob? editing, CronJob? cloneSource = null)
+    {
+        var errors = new Dictionary<CronFormField, CronFormError>(Validate());
+        var hours = ActiveHoursEnabled
+            ? new CronActiveHours(ActiveHoursStart, ActiveHoursEnd, ActiveHoursTimezone.Trim().Length > 0 ? ActiveHoursTimezone.Trim() : null)
+            : null;
+        var unsupported = editing is not null
+            ? hours != editing.ActiveHours || IdleOnly != (editing.IdleOnly == true)
+            : hours is not null || IdleOnly || cloneSource?.ActiveHours is not null || cloneSource?.IdleOnly is not null;
+        if (unsupported)
+            errors[CronFormField.Timing] = CronFormError.TimingWebManaged;
+        return errors;
+    }
+
+    /// <summary>
     /// Builds the definition sent as <c>cron.add</c> params or as the <c>cron.update</c> patch.
     /// For updates, cleared optional values are sent as explicit nulls; for creates they are omitted.
     /// </summary>
@@ -426,18 +459,21 @@ public sealed record CronJobForm
             job["trigger"] = null;
         }
 
-        if (form.ActiveHoursEnabled)
+        var activeHours = form.ActiveHoursEnabled
+            ? new CronActiveHours(form.ActiveHoursStart, form.ActiveHoursEnd, form.ActiveHoursTimezone.Trim().Length > 0 ? form.ActiveHoursTimezone.Trim() : null)
+            : null;
+        if (form.ActiveHoursEnabled && (!isUpdate || activeHours != editing!.ActiveHours))
         {
             var hours = new JsonObject { ["start"] = form.ActiveHoursStart, ["end"] = form.ActiveHoursEnd };
             if (form.ActiveHoursTimezone.Trim().Length > 0) hours["timezone"] = form.ActiveHoursTimezone.Trim();
             job["activeHours"] = hours;
         }
-        else if (editing?.ActiveHours is not null)
+        else if (!form.ActiveHoursEnabled && editing?.ActiveHours is not null)
         {
             job["activeHours"] = null;
         }
 
-        if (form.IdleOnly || editing?.IdleOnly is not null)
+        if (isUpdate ? form.IdleOnly != (editing!.IdleOnly == true) : form.IdleOnly)
             job["idleOnly"] = form.IdleOnly;
 
         if (form.BuildDelivery(editing) is { } delivery)

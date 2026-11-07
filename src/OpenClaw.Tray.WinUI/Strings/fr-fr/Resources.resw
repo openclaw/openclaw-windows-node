@@ -7979,8 +7979,11 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
     <value>Saisissez un fuseau horaire IANA valide, local ou user.</value>
   </data>
+  <data name="Automations_Error_TimingWebManaged" xml:space="preserve">
+    <value>Utilisez Ouvrir sur le Web pour copier ou modifier les heures actives ou l'attente d'inactivité. Les modifications simples conservent les paramètres enregistrés.</value>
+  </data>
   <data name="Automations_Error_AgentMessageRequired" xml:space="preserve">
-    <value>L&apos;invite est obligatoire.</value>
+    <value>Décrivez la tâche que cet agent doit exécuter.</value>
   </data>
   <data name="Automations_Error_CronExprRequired" xml:space="preserve">
     <value>L&apos;expression cron est obligatoire.</value>
@@ -8001,7 +8004,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
     <value>Doit être supérieur ou égal à 0.</value>
   </data>
   <data name="Automations_Error_NameRequired" xml:space="preserve">
-    <value>Le nom est obligatoire.</value>
+    <value>Saisissez un nom.</value>
   </data>
   <data name="Automations_Error_ScheduleAtInvalid" xml:space="preserve">
     <value>Choisissez une date et une heure valides.</value>
@@ -8031,10 +8034,10 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
     <value>Le script de déclenchement est obligatoire lorsque le déclencheur conditionnel est activé.</value>
   </data>
   <data name="Automations_Error_WebhookUrlInvalid" xml:space="preserve">
-    <value>Saisissez une URL HTTPS valide sans identifiants intégrés.</value>
+    <value>Saisissez une URL de webhook HTTPS.</value>
   </data>
   <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
-    <value>L&apos;URL du webhook est obligatoire.</value>
+    <value>Saisissez une URL de webhook HTTPS.</value>
   </data>
   <data name="Automations_Field_ActiveHours" xml:space="preserve">
     <value>Heures actives</value>
@@ -8875,4 +8878,21 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Automations_Review_Repeats" xml:space="preserve"><value>Répétition</value></data>
   <data name="Automations_Review_RunPermissionError" xml:space="preserve"><value>Impossible de démarrer « {0} ». Cette connexion ne dispose pas de l'autorisation operator.admin.</value></data>
   <data name="Automations_Review_Close" xml:space="preserve"><value>Fermer</value></data>
+  <data name="Automations_Designer_RequiredField" xml:space="preserve"><value>{0} (Obligatoire)</value></data>
+  <data name="Automations_Designer_ValidationSummary" xml:space="preserve"><value>Remplissez les champs obligatoires avant d'enregistrer.</value></data>
+  <data name="Automations_Designer_ChooseDate" xml:space="preserve"><value>Choisissez une date.</value></data>
+  <data name="Automations_Error_TimeRequired" xml:space="preserve"><value>Choisissez une heure.</value></data>
+  <data name="Automations_Error_WeekdayRequired" xml:space="preserve"><value>Choisissez un jour de la semaine.</value></data>
+  <data name="Automations_Error_ChannelRequired" xml:space="preserve"><value>Saisissez un canal.</value></data>
+  <data name="Automations_Designer_DraftKept" xml:space="preserve"><value>Brouillon conservé pour cette session.</value></data>
+  <data name="Automations_Designer_DiscardDraft" xml:space="preserve"><value>Supprimer le brouillon</value></data>
+  <data name="Automations_Designer_ShowMore" xml:space="preserve"><value>Afficher plus</value></data>
+  <data name="Automations_Designer_ShowFewer" xml:space="preserve"><value>Afficher moins</value></data>
+  <data name="Automations_Designer_ShowAll" xml:space="preserve"><value>Tout afficher ({0})</value></data>
+  <data name="Automations_Designer_Expanded" xml:space="preserve"><value>Développé</value></data>
+  <data name="Automations_Designer_Collapsed" xml:space="preserve"><value>Réduit</value></data>
+  <data name="Automations_Designer_RunOrder" xml:space="preserve"><value>Exécution {0} dans cet historique (heure non fournie)</value></data>
+  <data name="Automations_Designer_ScheduleAsOf" xml:space="preserve"><value>Planification à {0}</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Développer la navigation</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Réduire la navigation</value></data>
 </root>

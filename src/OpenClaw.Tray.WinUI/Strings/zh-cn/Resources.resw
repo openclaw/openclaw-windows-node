@@ -7979,8 +7979,11 @@
   <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
     <value>请输入有效的 IANA 时区、local 或 user。</value>
   </data>
+  <data name="Automations_Error_TimingWebManaged" xml:space="preserve">
+    <value>请使用“在网页中打开”来复制或更改活动时段或等待空闲设置。基本编辑会保留已保存的设置。</value>
+  </data>
   <data name="Automations_Error_AgentMessageRequired" xml:space="preserve">
-    <value>提示为必填项。</value>
+    <value>请描述此代理应执行的任务。</value>
   </data>
   <data name="Automations_Error_CronExprRequired" xml:space="preserve">
     <value>Cron 表达式为必填项。</value>
@@ -8001,7 +8004,7 @@
     <value>必须大于或等于 0。</value>
   </data>
   <data name="Automations_Error_NameRequired" xml:space="preserve">
-    <value>名称为必填项。</value>
+    <value>请输入名称。</value>
   </data>
   <data name="Automations_Error_ScheduleAtInvalid" xml:space="preserve">
     <value>请选择有效的日期和时间。</value>
@@ -8031,10 +8034,10 @@
     <value>启用条件触发器时，触发脚本为必填项。</value>
   </data>
   <data name="Automations_Error_WebhookUrlInvalid" xml:space="preserve">
-    <value>请输入不含嵌入凭据的有效 HTTPS URL。</value>
+    <value>请输入 HTTPS Webhook URL。</value>
   </data>
   <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
-    <value>Webhook URL 为必填项。</value>
+    <value>请输入 HTTPS Webhook URL。</value>
   </data>
   <data name="Automations_Field_ActiveHours" xml:space="preserve">
     <value>活动时段</value>
@@ -8875,4 +8878,21 @@
   <data name="Automations_Review_Repeats" xml:space="preserve"><value>重复</value></data>
   <data name="Automations_Review_RunPermissionError" xml:space="preserve"><value>无法启动“{0}”。此连接缺少 operator.admin 权限。</value></data>
   <data name="Automations_Review_Close" xml:space="preserve"><value>关闭</value></data>
+  <data name="Automations_Designer_RequiredField" xml:space="preserve"><value>{0}（必填）</value></data>
+  <data name="Automations_Designer_ValidationSummary" xml:space="preserve"><value>请填写必填字段后再保存。</value></data>
+  <data name="Automations_Designer_ChooseDate" xml:space="preserve"><value>请选择日期。</value></data>
+  <data name="Automations_Error_TimeRequired" xml:space="preserve"><value>请选择时间。</value></data>
+  <data name="Automations_Error_WeekdayRequired" xml:space="preserve"><value>请选择星期几。</value></data>
+  <data name="Automations_Error_ChannelRequired" xml:space="preserve"><value>请输入频道。</value></data>
+  <data name="Automations_Designer_DraftKept" xml:space="preserve"><value>草稿已为本次会话保留。</value></data>
+  <data name="Automations_Designer_DiscardDraft" xml:space="preserve"><value>丢弃草稿</value></data>
+  <data name="Automations_Designer_ShowMore" xml:space="preserve"><value>显示更多</value></data>
+  <data name="Automations_Designer_ShowFewer" xml:space="preserve"><value>显示更少</value></data>
+  <data name="Automations_Designer_ShowAll" xml:space="preserve"><value>显示全部 {0} 项</value></data>
+  <data name="Automations_Designer_Expanded" xml:space="preserve"><value>已展开</value></data>
+  <data name="Automations_Designer_Collapsed" xml:space="preserve"><value>已折叠</value></data>
+  <data name="Automations_Designer_RunOrder" xml:space="preserve"><value>此历史记录中的第 {0} 次运行（未提供时间）</value></data>
+  <data name="Automations_Designer_ScheduleAsOf" xml:space="preserve"><value>截至 {0} 的计划</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>展开导航</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>折叠导航</value></data>
 </root>

@@ -66,4 +66,32 @@ pairing.
 
 ## Relationship to other validation
 
+### Settings navigation keyboard contract
+
+The Settings pane toggle exposes **Expand navigation** or **Collapse navigation**
+according to its state. Escape closes an expanded pane only while focus is in
+its navigation controls and returns focus to the toggle. Page controls keep
+their own Escape behavior; native search flyouts, menus and ContentDialogs
+handle dismissal before the shell. Collapsing the pane does not change the page.
+`WorkspaceWindowProofTests.SettingsNavigation_EscapeReturnsFocus_WithoutClosingFromPageOrSearch`
+checks the mounted Settings boundary in Light and Dark themes.
+
+Workspace retains its 800-DIP minimum width. `WorkspaceSettingsLayout` uses
+the host width, not an embedded page's smaller content width, to prepare
+below-720-DIP rail presentation without changing destination or history.
+That branch is unreachable through normal resizing while the minimum remains
+800. Narrow expansion is temporary; returning to wide restores the saved pane
+preference and requested embedding. Resize waits for a modal dialog to close
+without replacing a pending navigation request or remounting the page.
+Source guards do not establish native focus, layout, six-locale reachability
+or text-scaling proof; those require the authorized isolated current-build lane.
+
+The integrated Config, Local AI, Default Model, Voice, Notifications, Event
+Stream and Diagnostics layouts use each page's allocated width after rail or
+sidebar subtraction. Action rows stack below 720 DIPs; Config additionally
+measures its editor grid at 728 DIPs and retains its tree and draft controls
+while stacking tree/detail panes. `SchemaConfigEditor` stretches generated
+fields within their available width. Source guards and XAML parsing do not
+establish populated native rendering, focus retention or text-scaling proof.
+
 Accessibility scans do not replace the required agent closeout validation in `AGENTS.md`. They are an additional focused lane for WinUI accessibility work and a formal CI gate documented in `docs\TEST_COVERAGE.md`.

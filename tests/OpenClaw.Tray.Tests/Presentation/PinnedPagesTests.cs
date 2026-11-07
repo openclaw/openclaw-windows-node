@@ -361,7 +361,17 @@ public sealed class PinnedPagesTests
         Assert.Contains("_sidebarInvoked = true;", pins);
         Assert.Contains("args.Reason == InfoBarCloseReason.CloseButton", window);
         Assert.Contains("EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen", window);
-        Assert.Contains("EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && Destination.Embedded", window);
+        var operation = window[window.IndexOf("private void ShowOperation(", StringComparison.Ordinal)..
+            window.IndexOf("private void OnEmbeddedOperationClosed(", StringComparison.Ordinal)];
+        Assert.Contains("EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && _settings is { ContentOnly: true }", operation);
+        Assert.DoesNotContain("Destination.Embedded", operation);
+        var presentation = window[window.IndexOf("private void ApplySettingsPresentation(", StringComparison.Ordinal)..
+            window.IndexOf("private bool HasChatNavigationFocus(", StringComparison.Ordinal)];
+        Assert.Contains("WorkspaceSettingsLayout.Project(Root.ActualWidth, Destination.Embedded)", presentation);
+        Assert.Contains("view.ContentOnly = embedded", presentation);
+        Assert.Contains("EmbeddedOperationInfo.Severity = OperationInfo.Severity", presentation);
+        Assert.Contains("EmbeddedOperationInfo.Message = OperationInfo.Message", presentation);
+        Assert.DoesNotContain("OperationInfo.IsOpen = false", presentation);
         Assert.Contains("SettingsSection.Children.Insert(0, view)", window);
         Assert.Contains("AccessibilityView.Raw", pins);
         Assert.Contains("SelectsOnInvoked = false", pins);

@@ -74,7 +74,9 @@ internal sealed class AutomationsText(Func<string, string> lookup, Func<DateTime
     };
 
     /// <summary>Live summary for an unsaved native schedule; null when incomplete or web-managed.</summary>
-    public string? FormSchedule(CronJobForm form) => form.ScheduleKind switch
+    public string? FormSchedule(CronJobForm form) => (form.ScheduleTimeMissing && (form.ScheduleKind is CronScheduleKind.At or CronScheduleKind.Cron))
+        || (form.ScheduleDayMissing && form.ScheduleKind == CronScheduleKind.Cron)
+        ? null : form.ScheduleKind switch
     {
         CronScheduleKind.At => form.ScheduleAt is { } at ? Once(at) : null,
         CronScheduleKind.Every => CronDurations.ParseMs(form.EveryAmount, form.EveryUnit) is { } ms ? Every(ms) : null,

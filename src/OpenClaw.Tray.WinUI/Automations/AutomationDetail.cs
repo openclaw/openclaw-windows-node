@@ -29,7 +29,8 @@ internal sealed class AutomationDetail : Component<AutomationDetailProps>
         var (expandedRun, setExpandedRun) = UseState<string?>(null);
         var runs = state.RunsQuery.JobId == job.Id ? state.Runs : Array.Empty<CronRunEntry>();
         var left = VStack(16,
-            Section(t["Section_Schedule"],
+            Section(!state.Connected && state.LastSeenAtMs is { } synced
+                    ? t.Format("Designer_ScheduleAsOf", t.Clock(synced)) : t["Section_Schedule"],
                 TextBlock(t.Schedule(job.Schedule)).FontSize(16).FontWeight(FontWeights.SemiBold)
                     .TextWrapping(TextWrapping.WrapWholeWords).AutomationId("AutomationScheduleSummary"),
                 Fact(t["Field_Timezone"], job.Schedule.Kind == CronScheduleKind.Cron ? job.Schedule.Tz ?? t["GatewayTimezone"] : null, "AutomationFactTz"),
@@ -64,8 +65,8 @@ internal sealed class AutomationDetail : Component<AutomationDetailProps>
             state.RunsError is { } error ? ErrorText(error, "AutomationRunsError")
                 : !state.RunsLoaded || state.RunsQuery.JobId != job.Id ? Secondary(t["Runs_Loading"])
                 : runs.Count == 0 ? Secondary(t["Runs_EmptyHint"]) : Empty(),
-            VStack(8, runs.Take(3).Select(run => AutomationRuns.RenderRun(host, run, false, expandedRun == run.Key,
-                () => setExpandedRun(expandedRun == run.Key ? null : run.Key), false, false, inline: true).WithKey(run.Key)).ToArray()),
+            VStack(8, runs.Take(3).Select((run, index) => AutomationRuns.RenderRun(host, run, false, expandedRun == run.Key,
+                () => setExpandedRun(expandedRun == run.Key ? null : run.Key), false, false, inline: true, runOrder: index).WithKey(run.Key)).ToArray()),
             GlyphButton(GlyphOpenInBrowser, t["Redesign_AllRunsWeb"], () => host.OpenWeb(job.Id), $"AutomationAllRunsWeb:{job.Id}", state.Connected));
         Element details = (Props.Narrow ? (Element)VStack(16, left, right)
             : Grid([GridSize.Star(), GridSize.Star()], [GridSize.Auto], left.Margin(0, 0, 8, 0).Grid(column: 0), right.Margin(8, 0, 0, 0).Grid(column: 1)))
@@ -116,7 +117,7 @@ internal sealed class AutomationDetail : Component<AutomationDetailProps>
                 await store.RemoveAsync(job.Id);
         }, operationName: "Remove automation");
         var primary = new List<AppBarItemBase>();
-        if (state.CanManage)
+        if (state.CanManage || (!state.Connected && state.LastKnownCanManage))
         {
             primary.Add(AppBarButton(t["RunNow"], () => _ = store.RunNowAsync(job.Id), "Play") with { IsEnabled = canAct });
             primary.Add(AppBarButton(job.Enabled ? t["Pause"] : t["Resume"],
@@ -134,7 +135,7 @@ internal sealed class AutomationDetail : Component<AutomationDetailProps>
             secondary.Add(AppBarButton(t["Redesign_LastRunChat"], () => host.OpenChat(lastSession), "Message"));
         secondary.Add(AppBarButton(t["OpenInWeb"], () => host.OpenWeb(job.Id), "OpenInNewWindow") with { IsEnabled = state.Connected });
         secondary.Add(AppBarButton(t["CopyId"], copyId, "Copy"));
-        if (state.CanManage)
+        if (state.CanManage || (!state.Connected && state.LastKnownCanManage))
         {
             secondary.Add(AppBarButton(t["Redesign_CopyAsNew"], () => actions.Duplicate(job), "Copy") with { IsEnabled = canAct });
             secondary.Add(AppBarSeparator());

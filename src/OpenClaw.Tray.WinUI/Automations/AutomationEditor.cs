@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
+using Microsoft.UI.Reactor.Hooks;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared.Cron;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClawTray.Automations.AutomationsVisuals;
@@ -28,7 +31,7 @@ internal sealed record AutomationEditorProps(
 /// <summary>
 /// Create, edit and clone editor for everyday automations: what it is, when it runs,
 /// what it does and where results go. Settings it does not show are loaded from the
-/// saved job and written back unchanged; those, and web-managed schedules or actions,
+/// saved job and preserved, omitting unchanged timing fields from update patches; those, and web-managed schedules or actions,
 /// are changed in the Gateway web dashboard.
 /// </summary>
 internal sealed class AutomationEditor : Component<AutomationEditorProps>
@@ -48,16 +51,20 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
     private static readonly CronDurationUnit[] EveryUnits = [CronDurationUnit.Seconds, CronDurationUnit.Minutes, CronDurationUnit.Hours, CronDurationUnit.Days];
     private static readonly Lazy<string[]> TimeZones = new(LoadTimeZones);
     private static readonly Lazy<string?> LocalTimeZone = new(LoadLocalTimeZone);
+    private static readonly TimeSpan UnselectedTime = TimeSpan.FromSeconds(-1);
 
     /// <summary>Fields this editor renders. Errors on any other (preserved) field are shown with the web notice.</summary>
     private static readonly HashSet<CronFormField> VisibleFields =
     [
         CronFormField.Name, CronFormField.ScheduleAt, CronFormField.EveryAmount, CronFormField.CronExpr,
         CronFormField.CronTz, CronFormField.PayloadText, CronFormField.DeliveryMode, CronFormField.DeliveryTo,
+        CronFormField.ScheduleTime, CronFormField.ScheduleDay,
     ];
 
     public override Element Render()
     {
+        var rootRef = this.UseElementRef<Microsoft.UI.Xaml.Controls.Grid>();
+        var announce = this.UseAnnounce();
         var (host, session, agentId, canManage, updateSession, onClose) = Props;
         var t = host.Text;
         var form = session.Form;
@@ -68,26 +75,54 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
         var source = session.Source;
         var editing = session.Mode == EditorMode.Edit ? source : null;
         var cloneSource = session.Mode == EditorMode.Clone ? source : null;
+        var preview = SchedulePreview(t, form);
+        UseEffect(() =>
+        {
+            if (preview is not null) announce.Announce(preview);
+        }, preview ?? "");
 
         void Update(Func<CronJobForm, CronJobForm> change, bool sessionTargetChanged = false)
         {
             updateSession(current =>
             {
                 var next = current.Form.WithStaleThreadCleared(change(current.Form).Normalize(sessionTargetChanged));
-                return current with { Form = next, Errors = current.Submitted ? next.Validate() : current.Errors };
+                return current with { Form = next, Errors = current.Submitted ? Validate(next,
+                    current.Mode == EditorMode.Edit ? current.Source : null,
+                    current.Mode == EditorMode.Clone ? current.Source : null) : current.Errors };
             });
         }
 
         async Task SaveAsync(bool runAfter)
         {
-            var validation = form.Normalize().Validate();
+            var validation = new Dictionary<CronFormField, CronFormError>(Validate(form.Normalize(), editing, cloneSource));
+            if (rootRef.Current is { } validationRoot)
+            {
+                var timeId = form.ScheduleKind == CronScheduleKind.At ? "AutomationEditorRunTime" : "AutomationEditorCalendarTime";
+                if (FindControl(validationRoot, timeId) is Microsoft.UI.Xaml.Controls.TimePicker { SelectedTime: null })
+                    validation[CronFormField.ScheduleTime] = CronFormError.TimeRequired;
+                if (FindControl(validationRoot, "AutomationEditorWeekday") is Microsoft.UI.Xaml.Controls.ComboBox { SelectedIndex: < 0 })
+                    validation[CronFormField.ScheduleDay] = CronFormError.WeekdayRequired;
+            }
             updateSession(current => current with { Submitted = true, Errors = validation });
             if (validation.Count > 0)
             {
+                var message = validation.Count == 1 && validation.TryGetValue(CronFormField.Timing, out var timingError)
+                    ? t.FormError(timingError) : t["Designer_ValidationSummary"];
                 updateSession(current => current with
                 {
-                    Banner = (t["Editor_CantSave"], validation.Count == 1 ? t["Editor_FixOne"] : t.Format("Editor_FixMany", validation.Count), InfoBarSeverity.Error),
+                    Banner = (t["Editor_CantSave"], message, InfoBarSeverity.Error),
                 });
+                announce.Announce(message, assertive: true);
+                if (rootRef.Current is { } root)
+                    root.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                    {
+                        var id = FirstInvalidControl(validation, form);
+                        if (FindControl(root, id) is { } control)
+                        {
+                            control.StartBringIntoView();
+                            control.Focus(FocusState.Programmatic);
+                        }
+                    });
                 return;
             }
             updateSession(current => current with { Saving = true, Banner = null });
@@ -128,7 +163,8 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
             }
         }
 
-        string? Err(CronFormField field) => errors.TryGetValue(field, out var e) ? t.FormError(e) : null;
+        string? Err(CronFormField field) => errors.TryGetValue(field, out var e)
+            ? e == CronFormError.ScheduleAtInvalid ? t["Designer_ChooseDate"] : t.FormError(e) : null;
 
         var title = session.Mode switch
         {
@@ -144,11 +180,18 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
                 : null,
             canManage ? null : (InfoBar(null, host.Store.State.Connected ? t["ReadOnly"] : t["Disconnected_BannerBody"]) with
                 { Severity = InfoBarSeverity.Warning, IsClosable = false }).AutomationId("AutomationEditorAccess"),
-            source is null ? null : RenderPreserved(host, source, errors),
+            source is null ? null : RenderPreserved(host, source, errors,
+                form.ValidateForNative(editing, cloneSource).ContainsKey(CronFormField.Timing)),
             RenderBasics(host, form, Update, Err, editing?.Owner ?? agentId, editing is not null),
             RenderAction(host, form, Update, Err, source),
             RenderSchedule(host, form, Update, Err, source),
             RenderDelivery(t, form, Update, Err, SavedTargets(host.Store.State.Jobs)),
+            session.RestoredDraft ? HStack(8, Secondary(t["Designer_DraftKept"]),
+                HyperlinkButton(t["Designer_DiscardDraft"], null, () => updateSession(current => current with
+                {
+                    Form = current.InitialForm, Submitted = false, RestoredDraft = false,
+                    Errors = ImmutableDictionary<CronFormField, CronFormError>.Empty, Banner = null,
+                })).AutomationId("AutomationEditorDiscardDraft")).AutomationId("AutomationEditorDraftNotice") : null,
         };
 
         var footer = Border(Grid(Props.Narrow ? [GridSize.Star()] : [GridSize.Auto, GridSize.Auto, GridSize.Star(), GridSize.Auto],
@@ -183,15 +226,66 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
                     .IsEnabled(!saving)
                     .AutomationId("AutomationEditorForm")
                     .Grid(row: 1),
-                footer.Grid(row: 2))
-            .AutomationId("AutomationEditor");
+                footer.Grid(row: 2),
+                announce.Region.AutomationId("AutomationEditorAnnouncements"))
+            .AutomationId("AutomationEditor").Ref(rootRef);
     }
 
-    private static Element? RenderPreserved(AutomationsHost host, CronJob source, IReadOnlyDictionary<CronFormField, CronFormError> errors)
+    private static IReadOnlyDictionary<CronFormField, CronFormError> Validate(CronJobForm form, CronJob? source, CronJob? cloneSource = null)
+    {
+        var errors = new Dictionary<CronFormField, CronFormError>(form.ValidateForNative(source, cloneSource));
+        // Gateway's inherited "last" route may omit a destination. Preserve it on ordinary edits.
+        if (form.DeliveryMode == "announce" && form.DeliveryTarget != "owner" && string.IsNullOrWhiteSpace(form.DeliveryTo)
+            && !(source?.Delivery is { Mode: "announce" } saved && string.IsNullOrWhiteSpace(saved.To)
+                && saved.Channel == form.DeliveryChannel && saved.Target == null))
+            errors[CronFormField.DeliveryTo] = CronFormError.ChannelRequired;
+        return errors;
+    }
+
+    private static string? SchedulePreview(AutomationsText text, CronJobForm form)
+    {
+        var sentence = text.FormSchedule(form);
+        if (sentence is null) return null;
+        return form.ScheduleKind == CronScheduleKind.At
+            ? text.Format("Schedule_WithTimezone", sentence, TimeZoneInfo.Local.DisplayName)
+            : form.ScheduleKind == CronScheduleKind.Cron && string.IsNullOrWhiteSpace(form.CronTz)
+                ? text.Format("Schedule_WithTimezone", sentence, text["GatewayTimezone"]) : sentence;
+    }
+
+    private static string FirstInvalidControl(IReadOnlyDictionary<CronFormField, CronFormError> errors, CronJobForm form)
+    {
+        (CronFormField Field, string Id)[] order =
+        [
+            (CronFormField.Name, "AutomationEditorName"),
+            (CronFormField.PayloadText, "AutomationEditorPrompt"),
+            (CronFormField.ScheduleAt, "AutomationEditorRunDate"),
+            (CronFormField.ScheduleTime, form.ScheduleKind == CronScheduleKind.At ? "AutomationEditorRunTime" : "AutomationEditorCalendarTime"),
+            (CronFormField.ScheduleDay, "AutomationEditorWeekday"),
+            (CronFormField.EveryAmount, "AutomationEditorEveryAmount"),
+            (CronFormField.CronExpr, "AutomationEditorScheduleKind"),
+            (CronFormField.CronTz, "AutomationEditorTimezone"),
+            (CronFormField.DeliveryMode, "AutomationEditorDeliveryMode"),
+            (CronFormField.DeliveryTo, form.DeliveryMode == "webhook" ? "AutomationEditorWebhook" : "AutomationEditorTo"),
+        ];
+        return order.FirstOrDefault(item => errors.ContainsKey(item.Field)).Id ?? "AutomationEditorSave";
+    }
+
+    private static Control? FindControl(DependencyObject parent, string id)
+    {
+        if (parent is Control control && Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control) == id) return control;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            if (FindControl(VisualTreeHelper.GetChild(parent, i), id) is { } found) return found;
+        return null;
+    }
+
+    private static Element? RenderPreserved(AutomationsHost host, CronJob source, IReadOnlyDictionary<CronFormField, CronFormError> errors,
+        bool timingWebManaged)
     {
         var t = host.Text;
         var settings = t.PreservedSettings(source);
         var hiddenErrors = errors.Where(e => !VisibleFields.Contains(e.Key)).Select(e => t.FormError(e.Value)).Distinct().ToList();
+        if (timingWebManaged && !hiddenErrors.Contains(t.FormError(CronFormError.TimingWebManaged)))
+            hiddenErrors.Add(t.FormError(CronFormError.TimingWebManaged));
         if (settings.Count == 0 && hiddenErrors.Count == 0)
             return null;
         var parts = new List<string>();
@@ -223,7 +317,8 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
         VStack(12, TextBlock(title).FontSize(16).FontWeight(FontWeights.SemiBold), VStack(8, children));
 
     private static Element Field(Element control, string? error, string? help = null) =>
-        VStack(4, control, help is null ? Empty() : Secondary(help), ErrorText(error, ""));
+        VStack(4, control.HelpText(error ?? help ?? "").ItemStatus(error ?? ""),
+            help is null ? Empty() : Secondary(help), ErrorText(error, ""));
 
     private static Element Text(string header, string value, Action<string> changed, string automationId, string? placeholder = null, bool multiline = false, bool showHeader = true)
     {
@@ -268,7 +363,7 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
     {
         var t = host.Text;
         return Section(t["Section_Basics"],
-            Field(Text(t["Field_Name"], form.Name, v => update(f => f with { Name = v }, false), "AutomationEditorName"), err(CronFormField.Name)),
+            Field(Text(t.Format("Designer_RequiredField", t["Field_Name"]), form.Name, v => update(f => f with { Name = v }, false), "AutomationEditorName"), err(CronFormField.Name)),
             Row(
                 // Blank keeps an edited job's owner (the patch omits agentId); it never moves the job.
                 Field(Suggest(t["Field_Agent"], form.AgentId, host.Store.State.FilterAgents(host.KnownAgents()), v => update(f => f with { AgentId = v }, false), "AutomationEditorAgent", agentHint), null,
@@ -325,7 +420,11 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
                 update(f => f.WithScheduleKind(index == 0 ? CronScheduleKind.At : CronScheduleKind.Every), false);
             else
                 update(f => f.WithScheduleKind(CronScheduleKind.Cron) with
-                { CronExpr = CronCalendar.Build(CalendarPatterns[index - 2].Pattern, parsed?.Time ?? CronCalendar.DefaultTime, CronCalendar.WeeklyDay(f.CronExpr)) }, false);
+                {
+                    CronExpr = CronCalendar.Build(CalendarPatterns[index - 2].Pattern, parsed?.Time ?? CronCalendar.DefaultTime, CronCalendar.WeeklyDay(f.CronExpr)),
+                    ScheduleTimeMissing = false,
+                    ScheduleDayMissing = false,
+                }, false);
         }, "AutomationEditorScheduleKind"));
 
         switch (form.ScheduleKind)
@@ -343,9 +442,14 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
                         CalendarDatePicker(form.ScheduleAt, date => update(f => f with { ScheduleAt = Combine(date, f.ScheduleAt?.TimeOfDay ?? at.TimeOfDay) }, false))
                             .AutomationId("AutomationEditorRunDate").AutomationName(t["Field_RunDate"])),
                     VStack(4, Secondary(t["Field_RunTime"], 13),
-                        TimePicker(at.TimeOfDay, time => update(f => f with { ScheduleAt = Combine(f.ScheduleAt ?? at, time) }, false))
+                        TimePicker(form.ScheduleTimeMissing ? UnselectedTime : at.TimeOfDay, time => update(f => f with
+                        {
+                            ScheduleTimeMissing = time < TimeSpan.Zero,
+                            ScheduleAt = time < TimeSpan.Zero ? f.ScheduleAt : Combine(f.ScheduleAt ?? at, time),
+                        }, false))
                             .AutomationId("AutomationEditorRunTime").AutomationName(t["Field_RunTime"]))));
                 children.Add(ErrorText(err(CronFormField.ScheduleAt), "AutomationEditorRunAtError"));
+                children.Add(ErrorText(err(CronFormField.ScheduleTime), "AutomationEditorTimeError"));
                 // One-time runs are entered in this PC's zone and saved as an absolute instant.
                 children.Add(Secondary(t.Format("Help_RunAtLocal", TimeZoneInfo.Local.DisplayName)).AutomationId("AutomationEditorRunAtZone"));
                 children.Add(Check(t["Field_DeleteAfterRun"], form.DeleteAfterRun, v => update(f => f with { DeleteAfterRun = v }, false),
@@ -366,7 +470,11 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
                 children.Add(Row(
                     calendar is { Pattern: not CronCalendarPattern.Hourly } chosen
                         ? VStack(4, Secondary(t["Field_RunTime"], 13),
-                            TimePicker(chosen.Time, picked => update(f => f with { CronExpr = CronCalendar.Build(chosen.Pattern, picked, CronCalendar.WeeklyDay(f.CronExpr)) }, false))
+                            TimePicker(form.ScheduleTimeMissing ? UnselectedTime : chosen.Time, picked => update(f => f with
+                            {
+                                ScheduleTimeMissing = picked < TimeSpan.Zero,
+                                CronExpr = picked < TimeSpan.Zero ? f.CronExpr : CronCalendar.Build(chosen.Pattern, picked, CronCalendar.WeeklyDay(f.CronExpr)),
+                            }, false))
                                 .AutomationId("AutomationEditorCalendarTime").AutomationName(t["Field_RunTime"]))
                         : Empty(),
                     Field(Suggest(t["Field_Timezone"], form.CronTz, TimeZones.Value, v => update(f => f with { CronTz = v }, false), "AutomationEditorTimezone", t["Placeholder_Timezone"]),
@@ -377,14 +485,22 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
                         .AutomationId("AutomationEditorUseLocalTimezone"));
                 }
                 if (calendar is { Pattern: CronCalendarPattern.Weekly } weekly)
-                    children.Add(Choice(t["Redesign_Weekday"], CultureInfo.CurrentCulture.DateTimeFormat.DayNames,
-                        (int)CronCalendar.WeeklyDay(form.CronExpr),
-                        i => update(f => f with { CronExpr = CronCalendar.Build(weekly.Pattern, weekly.Time, (DayOfWeek)i) }, false),
-                        "AutomationEditorWeekday"));
+                {
+                    children.Add(ComboBox(CultureInfo.CurrentCulture.DateTimeFormat.DayNames,
+                        form.ScheduleDayMissing ? -1 : (int)CronCalendar.WeeklyDay(form.CronExpr),
+                        i => update(f => f with
+                        {
+                            ScheduleDayMissing = i < 0,
+                            CronExpr = i < 0 ? f.CronExpr : CronCalendar.Build(weekly.Pattern, weekly.Time, (DayOfWeek)i),
+                        }, false)).Header(t["Redesign_Weekday"]).MinWidth(200)
+                        .AutomationName(t["Redesign_Weekday"]).AutomationId("AutomationEditorWeekday"));
+                    children.Add(ErrorText(err(CronFormField.ScheduleDay), "AutomationEditorWeekdayError"));
+                }
+                children.Add(ErrorText(err(CronFormField.ScheduleTime), "AutomationEditorTimeError"));
                 break;
         }
 
-        var summary = t.FormSchedule(form);
+        var summary = SchedulePreview(t, form);
         var summaryTone = Kind(form.ScheduleKind);
         children.Add(Border(HStack(Gap, Glyph(summaryTone.Glyph, 14, summaryTone.Brush),
                 TextBlock(summary ?? t["Schedule_Incomplete"]).FontSize(13).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.WrapWholeWords)
@@ -411,9 +527,8 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
         }
         else
         {
-            // The section heading already names the field, so the box carries it only as its accessible name.
-            children.Add(Field(Text(label, form.PayloadText,
-                    v => update(f => f with { PayloadText = v }, false), "AutomationEditorPrompt", t["Placeholder_Prompt"], multiline: true, showHeader: false),
+            children.Add(Field(Text(t.Format("Designer_RequiredField", label), form.PayloadText,
+                    v => update(f => f with { PayloadText = v }, false), "AutomationEditorPrompt", multiline: true),
                 err(CronFormField.PayloadText)));
         }
 

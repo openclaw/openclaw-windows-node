@@ -623,7 +623,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr window);
 
-    private static void ClickOwnedElement(GatewayFixtureRun run, AutomationElement window, AutomationElement target)
+    private void ClickOwnedElement(GatewayFixtureRun run, AutomationElement window, AutomationElement target)
     {
         run.EnsureRunning();
         Assert.Equal(run.AppProcessId, window.Current.ProcessId);
@@ -634,7 +634,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         Assert.NotEqual(IntPtr.Zero, previous);
         try
         {
-            Assert.Equal(handle, GetForegroundWindow());
+            AssertOwnedForeground(run, handle, "before-target-hit-test");
             var bounds = target.Current.BoundingRectangle;
             Assert.True(bounds.Width > 0 && bounds.Height > 0 && !target.Current.IsOffscreen);
             var point = new FixturePoint { X = (int)(bounds.Left + bounds.Width / 2), Y = (int)(bounds.Top + bounds.Height / 2) };
@@ -651,7 +651,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.True(SetCursorPos(point.X, point.Y));
             Assert.True(GetCursorPos(out var actual));
             Assert.Equal(point, actual);
-            Assert.Equal(handle, GetForegroundWindow());
+            AssertOwnedForeground(run, handle, "before-native-pointer-input");
             Assert.Equal(handle, GetAncestor(WindowFromPoint(actual), 2));
             var inputs = new[]
             {
@@ -665,6 +665,41 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         finally { SetThreadDpiAwarenessContext(previous); }
     }
 
+    private void AssertOwnedForeground(GatewayFixtureRun run, IntPtr expected, string phase)
+    {
+        var actual = GetForegroundWindow();
+        if (actual != expected)
+        {
+            object WindowState(IntPtr handle)
+            {
+                var threadId = GetWindowThreadProcessId(handle, out var processId);
+                return new
+                {
+                    hwnd = handle.ToInt64(),
+                    threadId,
+                    processId,
+                    belongsToTaskApp = processId == run.AppProcessId,
+                    exists = IsWindow(handle),
+                    visible = IsWindowVisible(handle),
+                    minimized = IsIconic(handle),
+                    maximized = IsZoomed(handle),
+                };
+            }
+
+            // Read ownership and native state only, never foreign window text or pixels.
+            output.WriteLine("fixture-foreground-mismatch: " + JsonSerializer.Serialize(new
+            {
+                phase,
+                timestampUtc = DateTimeOffset.UtcNow,
+                appProcessId = run.AppProcessId,
+                runnerProcessId = Environment.ProcessId,
+                expected = WindowState(expected),
+                actual = WindowState(actual),
+            }));
+        }
+        Assert.Equal(expected, actual);
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct FixturePoint { public int X, Y; }
     [StructLayout(LayoutKind.Sequential)]
@@ -673,6 +708,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     private struct FixtureMouse { public int X, Y; public uint Data, Flags, Time; public nuint Extra; }
     [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsZoomed(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(FixturePoint point);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);

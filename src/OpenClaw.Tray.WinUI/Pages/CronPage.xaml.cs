@@ -6,6 +6,7 @@ using OpenClaw.Shared.Cron;
 using OpenClawTray.Automations;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -18,10 +19,11 @@ namespace OpenClawTray.Pages;
 
 /// <summary>
 /// WinUI host for the native Automations surface. Owns the <see cref="AutomationsStore"/>
-/// (initially filtered to the route agent), gateway event wiring and app handoffs;
+/// (initially filtered to the route agent), scoped gateway event wiring and app handoffs.
+/// Borrows the host-owned global <see cref="AutomationsOverviewSource"/> without disposing it;
 /// all presentation lives in the Reactor tree under <c>Automations\</c>.
 /// </summary>
-public sealed partial class CronPage : Page
+public sealed partial class CronPage : Page, ISettingsPageContentInset
 {
     private const string SearchUnavailableMarker = "[Search] automation-destination-unavailable";
 
@@ -33,6 +35,9 @@ public sealed partial class CronPage : Page
     private ReactorHostControl? _host;
     private IOperatorGatewayClient? _subscribedClient;
     private string? _storeAgentId;
+    private readonly AutomationsViewportState _viewport = new();
+
+    void ISettingsPageContentInset.ApplyTopInset(double topInset) => _viewport.ApplyTopInset(topInset);
 
     /// <summary>Agent from the <c>agent:{id}:cron</c> route; set by the Settings shell before <see cref="Initialize"/>.</summary>
     public string AgentId { get; set; } = "main";
@@ -71,7 +76,8 @@ public sealed partial class CronPage : Page
             {
                 if (dispatcher.HasThreadAccess) action();
                 else dispatcher.TryEnqueue(() => action());
-            });
+            },
+            overviewSource: CurrentApp.AutomationsOverview);
 
         var host = new AutomationsHost(
             _store,
@@ -86,6 +92,9 @@ public sealed partial class CronPage : Page
         {
             GatewayDisplayName = ConnectedGatewayDisplayName,
             ActualTheme = () => ActualTheme,
+            Viewport = _viewport,
+            DraftScope = () => $"{CurrentApp.ConnectionManager?.CurrentSnapshot.GatewayId
+                ?? CurrentApp.ConnectionManager?.CurrentSnapshot.GatewayUrl ?? "offline"}:{agentId}",
         };
         _reveals = host.Reveals;
         _host?.Dispose();
@@ -131,7 +140,7 @@ public sealed partial class CronPage : Page
     }
 
     private void OnCronEvent(object? sender, JsonElement payload) =>
-        DispatcherQueue?.TryEnqueue(() => _store?.OnGatewayCronEvent());
+        DispatcherQueue?.TryEnqueue(() => _store?.OnGatewayCronEvent(globalOverviewHandled: true));
 
     private static void OpenChat(string sessionKey)
     {
