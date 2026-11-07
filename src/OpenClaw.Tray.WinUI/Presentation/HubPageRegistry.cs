@@ -8,6 +8,7 @@
 
 using System.Collections.Immutable;
 using System.Globalization;
+using OpenClawTray.Helpers;
 #if !OPENCLAW_TRAY_TESTS
 using OpenClawTray.Pages;
 #endif
@@ -20,7 +21,6 @@ internal enum HubPageKind
     Connection,
     LocalAi,
     DefaultModel,
-    Channels,
     Instances,
     Config,
     Usage,
@@ -97,12 +97,43 @@ internal sealed record HubCommandContext(
 /// <summary>Centralizes Hub routes, command construction, page resolution, and command search.</summary>
 internal static class HubPageRegistry
 {
+    internal static (string TitleKey, string Icon) SearchPresentation(string tag) => tag switch
+    {
+        "chat" => ("HubWindow_NavigationViewItem_82.Content", FluentIconCatalog.Chat),
+        "dashboard" => ("Search_Dashboard", FluentIconCatalog.Dashboard),
+        "channels" => ("Search_Dashboard_Channels", FluentIconCatalog.Channels),
+        _ => ResolvePage(tag) switch
+        {
+            HubPageKind.Connection => ("HubWindow_NavigationViewItem_88.Content", FluentIconCatalog.Plug),
+            HubPageKind.LocalAi => ("HubWindow_NavigationViewItem_LocalAi.Content", FluentIconCatalog.Inference),
+            HubPageKind.Sessions => ("HubWindow_NavigationViewItem_91.Content", FluentIconCatalog.Sessions),
+            HubPageKind.AgentEvents => ("HubWindow_NavigationViewItem_94.Content", FluentIconCatalog.AgentEvents),
+            HubPageKind.DefaultModel => ("HubWindow_NavigationViewItem_DefaultModel.Content", FluentIconCatalog.Settings),
+            HubPageKind.Cron => ("HubWindow_NavigationViewItem_124.Content", FluentIconCatalog.Cron),
+            HubPageKind.Workspace => ("WorkspacePage_TextBlock_22.Text", FluentIconCatalog.Workspace),
+            HubPageKind.Instances => ("HubWindow_NavigationViewItem_112.Content", FluentIconCatalog.Devices),
+            HubPageKind.Config => ("HubWindow_NavigationViewItem_118.Content", FluentIconCatalog.Settings),
+            HubPageKind.Usage => ("HubWindow_NavigationViewItem_121.Content", FluentIconCatalog.Money),
+            HubPageKind.Permissions => ("HubWindow_NavigationViewItem_136.Content", FluentIconCatalog.Permissions),
+            HubPageKind.Settings => ("HubWindow_NavigationViewItem_133.Content", FluentIconCatalog.Settings),
+            HubPageKind.Notifications => ("Onboarding_Perm_Notifications", FluentIconCatalog.Notifications),
+            HubPageKind.Debug => ("HubWindow_NavigationViewItem_145.Content", FluentIconCatalog.Bug),
+            _ => throw new ArgumentException("No search presentation is registered for this destination.", nameof(tag))
+        }
+    };
+
     internal static string GetNativeSetupPage(OpenClaw.SetupEngine.SetupNativeDestination destination) => destination switch
     {
         OpenClaw.SetupEngine.SetupNativeDestination.Chat => "chat",
+        _ => throw new ArgumentOutOfRangeException(nameof(destination)),
+    };
+
+    /// <summary>Channel setup destinations open the Gateway dashboard instead of a native page.</summary>
+    internal static string? GetNativeSetupDashboardPath(OpenClaw.SetupEngine.SetupNativeDestination destination) => destination switch
+    {
         OpenClaw.SetupEngine.SetupNativeDestination.WhatsApp or OpenClaw.SetupEngine.SetupNativeDestination.Telegram or
             OpenClaw.SetupEngine.SetupNativeDestination.Channels => "channels",
-        _ => throw new ArgumentOutOfRangeException(nameof(destination)),
+        _ => null,
     };
 
     public static ImmutableArray<string> CommandResourceKeys { get; } =
@@ -167,14 +198,12 @@ internal static class HubPageRegistry
         "connection" => HubPageKind.Connection,
         "local-ai" => HubPageKind.LocalAi,
         "model" => HubPageKind.DefaultModel,
-        "channels" => HubPageKind.Channels,
         "nodes" or "instances" => HubPageKind.Instances,
         "config" => HubPageKind.Config,
         "usage" => HubPageKind.Usage,
         "capabilities" or "permissions" => HubPageKind.Permissions,
         "voice" => HubPageKind.Voice,
         "sandbox" => HubPageKind.Sandbox,
-        "activity" => HubPageKind.Channels,
         "settings" or "info" or "about" => HubPageKind.Settings,
         "notifications" => HubPageKind.Notifications,
         "debug" => HubPageKind.Debug,
@@ -220,7 +249,6 @@ internal static class HubPageRegistry
         return tag.StartsWith("agent:", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("chat", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("sessions", StringComparison.OrdinalIgnoreCase) ||
-            tag.Equals("channels", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("instances", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("agentevents", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("config", StringComparison.OrdinalIgnoreCase) ||
@@ -238,7 +266,6 @@ internal static class HubPageRegistry
         HubPageKind.Connection => typeof(ConnectionPage),
         HubPageKind.LocalAi => typeof(LocalAiPage),
         HubPageKind.DefaultModel => typeof(DefaultModelPage),
-        HubPageKind.Channels => typeof(ChannelsPage),
         HubPageKind.Instances => typeof(InstancesPage),
         HubPageKind.Config => typeof(ConfigPage),
         HubPageKind.Usage => typeof(UsagePage),
@@ -312,20 +339,6 @@ internal static class HubPageRegistry
         }
 
         return commands.ToImmutable();
-    }
-
-    /// <summary>Returns commands matching the user query by title, subtitle, or route metadata.</summary>
-    public static ImmutableArray<HubCommand> SearchCommands(
-        IEnumerable<HubCommand> commands,
-        string? query)
-    {
-        var trimmed = query?.Trim() ?? string.Empty;
-        var filtered = string.IsNullOrEmpty(trimmed)
-            ? commands.Take(8)
-            : commands.Where(command =>
-                command.Title.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
-                (command.Subtitle?.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ?? false)).Take(10);
-        return filtered.ToImmutableArray();
     }
 
     private static void AddNavigation(

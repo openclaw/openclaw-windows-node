@@ -6,6 +6,53 @@ namespace OpenClaw.Tray.Tests;
 
 public class StartupSetupStateTests
 {
+    [Theory]
+    [InlineData("OpenClaw.Gateway_test", false, false, "ws://127.0.0.1:18789", false)]
+    [InlineData("", false, false, "ws://127.0.0.1:18789", false)]
+    [InlineData("OpenClaw.Gateway_test", false, true, "ws://127.0.0.1:18789", true)]
+    [InlineData("OpenClaw.Gateway_test", true, false, "ws://127.0.0.1:18789", true)]
+    [InlineData(null, true, false, "wss://openclaw.tailnet.ts.net", true)]
+    [InlineData(null, false, false, "ws://localhost:18789", true)]
+    [InlineData(null, false, false, "wss://gateway.example.test", false)]
+    [InlineData(null, false, true, "wss://gateway.example.test", true)]
+    [InlineData(null, false, false, null, false)]
+    public void HasWslInstallationForSettings_PreservesWslEvidenceWithoutTreatingNativeAsWsl(
+        string? nativePackageFamilyName,
+        bool hasManagedWslRecord,
+        bool hasSetupState,
+        string? legacyGatewayUrl,
+        bool expected)
+    {
+        var records = new List<GatewayRecord>();
+        GatewayRecord? activeGateway = null;
+        if (hasManagedWslRecord)
+        {
+            activeGateway = new GatewayRecord
+            {
+                Id = "wsl",
+                Url = "wss://openclaw.tailnet.ts.net",
+                IsLocal = true,
+                SetupManagedDistroName = "OpenClawGateway",
+            };
+            records.Add(activeGateway);
+        }
+        if (nativePackageFamilyName is not null)
+        {
+            activeGateway = new GatewayRecord
+            {
+                Id = "native",
+                Url = "ws://127.0.0.1:18789",
+                IsLocal = true,
+                FriendlyName = "Local (OpenClawGateway)",
+                NativePackageFamilyName = nativePackageFamilyName,
+            };
+            records.Add(activeGateway);
+        }
+
+        Assert.Equal(expected, SetupExistingGatewayClassifier.HasWslInstallationForSettings(
+            hasSetupState, records, activeGateway, legacyGatewayUrl));
+    }
+
     [Fact]
     public void RequiresSetup_ReturnsFalse_WhenNodeHasStoredDeviceToken()
     {

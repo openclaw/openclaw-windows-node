@@ -467,20 +467,14 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
-    public void SettingsShellView_TitleSearchBox_ProjectsCommandTitles()
+    public void SettingsShellView_SearchUsesSharedPopupWithReadableResultTitles()
     {
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml");
-        var searchStart = xaml.IndexOf("<AutoSuggestBox x:Uid=\"TitleSearchBox\"", StringComparison.Ordinal);
-        Assert.True(searchStart >= 0, "The title search box must exist.");
-
-        var searchEnd = xaml.IndexOf('>', searchStart);
-        Assert.True(searchEnd > searchStart, "The title search box opening tag must be complete.");
-
-        var searchTag = xaml.Substring(searchStart, searchEnd - searchStart);
-        Assert.Contains("TextMemberPath=\"Title\"", searchTag);
-
-        var commandItem = Read("src", "OpenClaw.Tray.WinUI", "Windows", "CommandPaletteDialog.xaml.cs");
-        Assert.Contains("public override string ToString() => Title;", commandItem);
+        Assert.Contains("<controls:SearchHost", xaml);
+        Assert.DoesNotContain("<AutoSuggestBox", xaml);
+        var host = Read("src", "OpenClaw.Tray.WinUI", "Controls", "SearchHost.xaml");
+        Assert.Contains("Text=\"{Binding Title}\"", host);
+        Assert.Contains("Text=\"{Binding Detail}\"", host);
     }
 
     [Fact]

@@ -26,7 +26,6 @@ public sealed class HubPageRegistryTests
     [InlineData("nodes", (int)HubPageKind.Instances)]
     [InlineData("capabilities", (int)HubPageKind.Permissions)]
     [InlineData("permissions", (int)HubPageKind.Permissions)]
-    [InlineData("activity", (int)HubPageKind.Channels)]
     [InlineData("conversations", (int)HubPageKind.Sessions)]
     [InlineData("info", (int)HubPageKind.Settings)]
     [InlineData("agent:main", (int)HubPageKind.Workspace)]
@@ -42,6 +41,8 @@ public sealed class HubPageRegistryTests
     [Theory]
     [InlineData("bindings")]
     [InlineData("chat")]
+    [InlineData("channels")]
+    [InlineData("activity")]
     [InlineData("PERMISSIONS")]
     [InlineData("Agent:main")]
     [InlineData("agent:main:unknown")]
@@ -60,7 +61,6 @@ public sealed class HubPageRegistryTests
     [InlineData("AGENT:MAIN")]
     [InlineData("chat")]
     [InlineData("SESSIONS")]
-    [InlineData("channels")]
     [InlineData("instances")]
     [InlineData("agentevents")]
     [InlineData("config")]
@@ -74,6 +74,7 @@ public sealed class HubPageRegistryTests
 
     [Theory]
     [InlineData("connection")]
+    [InlineData("channels")]
     [InlineData("permissions")]
     [InlineData("local-ai")]
     [InlineData("model")]
@@ -145,31 +146,6 @@ public sealed class HubPageRegistryTests
         Assert.Equal(["Go to session: session/z", "Go to session: session/a"], commands.TakeLast(2).Select(command => command.Title).ToArray());
         Assert.Equal(new string?[] { "sessions/session/z", "sessions/session/a" }, commands.TakeLast(2).Select(command => command.Action.Value).ToArray());
         Assert.All(commands.TakeLast(2), command => Assert.Equal("Open in dashboard", command.Subtitle));
-    }
-
-    [Fact]
-    public void Search_EmptyReturnsFirstEightAndQueryMatchesTitleOrSubtitleInInsertionOrder()
-    {
-        var commands = Enumerable.Range(0, 14)
-            .Select(index => new HubCommand(
-                index.ToString(),
-                index is 2 or 11 ? $"Target {index}" : $"Title {index}",
-                index is 4 or 12 ? $"TARGET subtitle {index}" : $"Subtitle {index}",
-                HubCommandAction.Navigate(index.ToString())))
-            .ToImmutableArray();
-
-        Assert.Equal(Enumerable.Range(0, 8).Select(i => i.ToString()), HubPageRegistry.SearchCommands(commands, "   ").Select(c => c.Icon));
-        Assert.Equal(["2", "4", "11", "12"], HubPageRegistry.SearchCommands(commands, "target").Select(c => c.Icon));
-    }
-
-    [Fact]
-    public void Search_QueryIsLimitedToFirstTenMatches()
-    {
-        var commands = Enumerable.Range(0, 12)
-            .Select(index => new HubCommand("", $"Match {index}", null, HubCommandAction.Navigate(index.ToString())))
-            .ToImmutableArray();
-
-        Assert.Equal(10, HubPageRegistry.SearchCommands(commands, "MATCH").Length);
     }
 
     private static HubCommandContext Context(
