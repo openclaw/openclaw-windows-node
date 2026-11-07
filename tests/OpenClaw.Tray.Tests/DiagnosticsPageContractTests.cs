@@ -691,11 +691,11 @@ public sealed class DiagnosticsPageContractTests
         var footer = Read("src", "OpenClaw.Tray.WinUI", "Controls", "WorkspacePaneFooter.xaml.cs");
         foreach (var shell in new[] { hub, workspace, footer })
         {
-            Assert.DoesNotContain("SyncBellItems(", shell);
+            Assert.DoesNotContain("SyncInboxItems(", shell);
             Assert.DoesNotContain("GatewayRowDetail.Text", shell);
             Assert.DoesNotContain("CountEnabledCapabilities(", shell);
         }
-        Assert.Contains("SyncBellItems(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "NotificationFlyoutContent.xaml.cs"));
+        Assert.Contains("SyncInboxItems(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs"));
         Assert.Contains("ConnectionStatusPresenter.NodeRow(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "GatewayStatusContent.xaml.cs"));
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Controls", "WorkspacePaneFooter.xaml");
         Assert.Contains("Opening=\"OnNotificationsOpening\"", xaml);

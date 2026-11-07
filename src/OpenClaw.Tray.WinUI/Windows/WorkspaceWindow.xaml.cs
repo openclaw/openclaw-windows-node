@@ -391,7 +391,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         else
         {
             var notifications = new NotificationsPage();
-            notifications.Initialize(_notifications);
+            notifications.Initialize(_notifications, InboxCommands(openPage: null));
             ContentHost.Children.Add(notifications);
         }
 
@@ -1039,7 +1039,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     /// <summary>Wires one footer to the window-owned state and commands, then applies current state.</summary>
     private void ConfigureFooter(WorkspacePaneFooter footer)
     {
-        footer.BindNotifications(_notifications, () => Navigate(new(WorkspacePageId.Notifications)));
+        footer.BindNotifications(_notifications, InboxCommands(openPage: () => Navigate(new(WorkspacePageId.Notifications))));
         footer.DashboardRequested += (_, _) => OpenDashboard();
         if (footer.Layout != WorkspacePaneFooterLayout.TitleBar)
             footer.SetOwnerMenu(BuildOwnerMenu(footer));
@@ -1144,10 +1144,40 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateNotificationsBadge()
     {
-        var count = _notifications.Snapshot.ActiveNotifications.Count;
-        var helpText = LocalizationHelper.Format("NotificationsFlyout_ActiveCountFormat", count);
+        var badge = InboxProjection.Build(_notifications.Snapshot.ActiveNotifications).Badge;
+        var helpText = badge.IsVisible
+            ? LocalizationHelper.Format("Inbox_CountFormat", badge.Count)
+            : LocalizationHelper.GetString("Inbox_NothingWaiting");
         foreach (var footer in Footers)
-            footer.ApplyNotificationCount(count, helpText);
+            footer.ApplyInboxBadge(badge, helpText);
+    }
+
+    /// <summary>Window navigation for Inbox rows: chat routes select the session; other routes use Settings routing.</summary>
+    private InboxViewCommands InboxCommands(Action? openPage) => new(
+        OpenInboxRoute,
+        () => OnSettingsWorkspaceRoute(InboxRoutes.NotificationSettings),
+        openPage);
+
+    private void OpenInboxRoute(string route)
+    {
+        if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey) && sessionKey is not null)
+        {
+            SelectSession(sessionKey);
+            return;
+        }
+        if (string.Equals(route, "chat", StringComparison.OrdinalIgnoreCase))
+        {
+            NavigateHome();
+            return;
+        }
+        try
+        {
+            OnSettingsWorkspaceRoute(route);
+        }
+        catch (ArgumentException ex)
+        {
+            new AppLogger().Warn($"[Inbox] Ignored unknown notification route: {ex.Message}");
+        }
     }
     private void OnBack(object sender, RoutedEventArgs e) => NavigateBack();
     private void OnForward(object sender, RoutedEventArgs e) => NavigateForward();
