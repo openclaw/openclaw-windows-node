@@ -59,13 +59,78 @@ public sealed class InstallerIssAssertionTests
             @"Name: ""{group}\OpenClaw Companion Settings""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""{#MyProtocol}://commandcenter""; IconFilename: ""{app}\{#MyAppExeName}""; AppUserModelID: ""{#MyAppAumid}""",
             @"Name: ""{group}\OpenClaw Chat""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""{#MyProtocol}://chat""; IconFilename: ""{app}\{#MyAppExeName}""; AppUserModelID: ""{#MyAppAumid}""",
             @"Name: ""{group}\Check for Updates""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""{#MyProtocol}://check-updates""; IconFilename: ""{app}\{#MyAppExeName}""; AppUserModelID: ""{#MyAppAumid}""",
-            @"Name: ""{autodesktop}\{#MyAppName}""; Filename: ""{app}\{#MyAppExeName}""; Tasks: desktopicon; AppUserModelID: ""{#MyAppAumid}""",
-            @"Name: ""{userstartup}\{#MyAppName}""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""--background""; Tasks: startupicon; AppUserModelID: ""{#MyAppAumid}"""
+            @"Name: ""{autodesktop}\{#MyAppName}""; Filename: ""{app}\{#MyAppExeName}""; Tasks: desktopicon; AppUserModelID: ""{#MyAppAumid}"""
         })
         {
             Assert.Contains(iconEntry, iss);
         }
         Assert.DoesNotContain("AppUserModelID: \"OpenClaw.Tray.WinUI\"", iss);
+    }
+
+    [Fact]
+    public void Installer_StartupTaskUsesTheRegistrationSettingsManages()
+    {
+        var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
+
+        Assert.DoesNotContain(@"Name: ""{userstartup}", iss);
+        Assert.Contains(@"Subkey: ""SOFTWARE\Microsoft\Windows\CurrentVersion\Run""; ValueType: string; ValueName: ""{#MyAutoStartName}""; ValueData: """"""{app}\{#MyAppExeName}"""" --background""; Tasks: startupicon", iss);
+        Assert.Contains(@"Name: ""startupicon"";", iss);
+        Assert.Contains("Check: IsFreshInstall", iss);
+        Assert.Contains("MigrateLegacyStartupShortcut;", iss);
+    }
+
+    [Fact]
+    public void Installer_StartupShortcutMigrationAlwaysQuotesTheExecutable()
+    {
+        var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
+        var start = iss.IndexOf("procedure MigrateLegacyStartupShortcut;", StringComparison.Ordinal);
+        var end = iss.IndexOf("procedure CurStepChanged", start, StringComparison.Ordinal);
+        var migration = iss[start..end];
+
+        // AddQuotes only quotes paths containing spaces, unlike the Run writer and app reader.
+        Assert.Contains("""ExpectedRunCommand := '"' + ExpandConstant('{app}\{#MyAppExeName}') + '" --background';""", migration);
+        Assert.DoesNotContain("AddQuotes(", migration);
+    }
+
+    [Fact]
+    public void Installer_ArgumentFreeRunMigrationAlwaysQuotesTheExecutable()
+    {
+        var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
+        var start = iss.IndexOf("procedure MigrateLegacyBackgroundLaunch;", StringComparison.Ordinal);
+        var end = iss.IndexOf("  try", start, StringComparison.Ordinal);
+        var runMigration = iss[start..end];
+
+        Assert.Contains("CompareText(RemoveQuotes(RunCommand), ExecutablePath) = 0", runMigration);
+        Assert.Contains("""'{#MyAutoStartName}', '"' + ExecutablePath + '" --background')""", runMigration);
+        Assert.DoesNotContain("AddQuotes(ExecutablePath)", runMigration);
+    }
+
+    [Fact]
+    public void Installer_DoesNotMigrateAWindowsDisabledStartupShortcut()
+    {
+        var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
+        var start = iss.IndexOf("function StartupEntryMayRun", StringComparison.Ordinal);
+        Assert.True(start >= 0, "Migration must inspect Windows StartupFolder approval before creating a Run value.");
+        var end = iss.IndexOf("procedure CurStepChanged", start, StringComparison.Ordinal);
+        var migration = iss[start..end];
+        Assert.Contains(@"CurrentVersion\Explorer", migration);
+        Assert.Contains("RegistryNamesContain(Names, 'StartupApproved')", migration);
+        Assert.Contains("RegistryNamesContain(Names, EntryKind)", migration);
+        Assert.Contains("RegistryNamesContain(Names, ApprovalName)", migration);
+        Assert.Matches(@"if not RegGetSubkeyNames\(HKCU, ApprovalKey, Names\) then\s*Exit;", migration);
+        Assert.Matches(@"if not RegGetValueNames\(HKCU, ApprovalKey, Names\) then\s*Exit;", migration);
+        Assert.DoesNotContain("Result := not RegValueExists", migration);
+        Assert.Contains("RegQueryBinaryValue", migration);
+        Assert.Contains("Length(Approval) <> 12", migration);
+        Assert.Contains("(Ord(Approval[1]) = 2) or (Ord(Approval[1]) = 6)", migration);
+        Assert.Contains("Ord(Approval[2]) = 0", migration);
+        Assert.Contains("Ord(Approval[3]) = 0", migration);
+        Assert.Contains("Ord(Approval[4]) = 0", migration);
+        Assert.Matches(@"if not StartupEntryMayRun\('StartupFolder', '\{#MyAppName\}\.lnk'\) then\s*Exit;", migration);
+        Assert.Matches(@"if not StartupEntryMayRun\('Run', '\{#MyAutoStartName\}'\) then\s*Exit;", migration);
+        Assert.Matches(@"if CompareText\(RunCommand, ExpectedRunCommand\) <> 0 then\s*Exit;", migration);
+        Assert.True(migration.IndexOf("if not StartupEntryMayRun('Run'", StringComparison.Ordinal) <
+            migration.IndexOf("RegWriteStringValue", StringComparison.Ordinal));
     }
 
     [Fact]

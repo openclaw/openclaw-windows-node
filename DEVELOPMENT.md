@@ -493,13 +493,19 @@ Consequences to expect while both are installed:
   the running instance and exits, so opening the Store entry while the Inno build
   is running surfaces the Inno window with no error shown.
 - Both can register autostart, so which build starts at logon is a race. The
-  Inno installer's "Start when Windows starts" task creates a Startup folder
-  shortcut (`installer.iss:124`, `{userstartup}`); the Inno app's own Settings
-  toggle creates a logon scheduled task and an `HKCU\...\Run` value; the packaged
-  build uses the manifest's `windows.startupTask`. Neither build suppresses the
-  other, so the race persists across reboots. Windows Settings lists all of them
-  under the same name, and a Startup folder shortcut is labelled by its target
-  executable, so they cannot be told apart there.
+  Inno installer's "Start when Windows starts" task, offered on a fresh install
+  only, writes the same `HKCU\...\Run` value that the Inno app's Settings toggle
+  manages, and that toggle prefers a logon scheduled task where Windows allows one;
+  the packaged build uses the manifest's `windows.startupTask`. Neither build
+  suppresses the other, so the race persists across reboots. Windows Settings lists
+  all of them under the same name, so they cannot be told apart there. An upgrade
+  moves an enabled Startup folder shortcut from an earlier installer to the Run
+  value. A Windows-disabled shortcut, or one with unreadable or unrecognized
+  approval metadata, is left in place rather than enabled under a new identity.
+  An enabled shortcut is also retained when the destination Run entry is disabled,
+  unreadable, or points to a different command.
+  Startup reconciliation adopts only this executable's enabled installer Run
+  command; a scheduled task's existence alone never raises an Off preference.
 - Settings, gateway records, and device identities carry over either way. A
   packaged process reads the existing per-user data through the merged MSIX view,
   so there is no re-pairing.

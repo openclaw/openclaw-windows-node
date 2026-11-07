@@ -102,7 +102,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "startupicon"; Description: "Start {#MyAppName} when Windows starts"; GroupDescription: "Startup:"; Flags: unchecked
+; Offered on a fresh install only. An upgrade inherits earlier task selections, which would turn
+; autostart back on after the user turned it off in Settings.
+Name: "startupicon"; Description: "Start {#MyAppName} when Windows starts"; GroupDescription: "Startup:"; Flags: unchecked; Check: IsFreshInstall
 
 [Files]
 ; WinUI Tray app - include all files (WinUI needs DLLs, not single-file)
@@ -133,6 +135,8 @@ Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}"; ValueType: string; ValueNa
 Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"",0"
 Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+; The same Run value the Settings toggle reads and removes.
+Root: HKCU; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAutoStartName}"; ValueData: """{app}\{#MyAppExeName}"" --background"; Tasks: startupicon
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; AppUserModelID: "{#MyAppAumid}"
@@ -142,12 +146,14 @@ Name: "{group}\OpenClaw Chat"; Filename: "{app}\{#MyAppExeName}"; Parameters: "{
 Name: "{group}\Check for Updates"; Filename: "{app}\{#MyAppExeName}"; Parameters: "{#MyProtocol}://check-updates"; IconFilename: "{app}\{#MyAppExeName}"; AppUserModelID: "{#MyAppAumid}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; AppUserModelID: "{#MyAppAumid}"
-Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--background"; Tasks: startupicon; AppUserModelID: "{#MyAppAumid}"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent; Check: ShouldLaunchTray
 
 [Code]
+const
+  StartupRunKey = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run';
+
 var
   VCRuntimeInstallSucceeded: Boolean;
   LocalGatewayCleanupChoiceInitialized: Boolean;
@@ -315,6 +321,11 @@ begin
 end;
 #endif
 
+function IsFreshInstall: Boolean;
+begin
+  Result := WizardForm.PrevAppDir = '';
+end;
+
 function ShouldLaunchTray: Boolean;
 begin
 #if vcRedist != ""
@@ -480,7 +491,7 @@ begin
     if CompareText(RemoveQuotes(RunCommand), ExecutablePath) = 0 then
     begin
       if RegWriteStringValue(HKCU, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
-          '{#MyAutoStartName}', AddQuotes(ExecutablePath) + ' --background') then
+          '{#MyAutoStartName}', '"' + ExecutablePath + '" --background') then
         Log('Migrated existing Run registration to background launch.')
       else
         Log('Could not migrate Run registration. Re-enable Start with Windows in Settings.');
@@ -515,10 +526,100 @@ begin
   end;
 end;
 
+function RegistryNamesContain(const Names: TArrayOfString; const Name: string): Boolean;
+var
+  Index: Integer;
+begin
+  Result := False;
+  for Index := 0 to GetArrayLength(Names) - 1 do
+    if CompareText(Names[Index], Name) = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+end;
+
+function StartupEntryMayRun(const EntryKind, ApprovalName: string): Boolean;
+var
+  ApprovalKey: string;
+  Approval: AnsiString;
+  Names: TArrayOfString;
+begin
+  { Windows keeps Startup Apps disablement separately from the shortcut. Do not replace
+    a disabled or unrecognized entry with a new, enabled Run identity. Leave it in place. }
+  Result := False;
+  ApprovalKey := 'SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer';
+  { Enumerate each existing parent to prove absence. RegValueExists alone also returns
+    False on access denied, which must not be mistaken for an enabled default. }
+  if not RegGetSubkeyNames(HKCU, ApprovalKey, Names) then
+    Exit;
+  Result := not RegistryNamesContain(Names, 'StartupApproved');
+  if Result then
+    Exit;
+  ApprovalKey := ApprovalKey + '\StartupApproved';
+  if not RegGetSubkeyNames(HKCU, ApprovalKey, Names) then
+    Exit;
+  Result := not RegistryNamesContain(Names, EntryKind);
+  if Result then
+    Exit;
+  ApprovalKey := ApprovalKey + '\' + EntryKind;
+  if not RegGetValueNames(HKCU, ApprovalKey, Names) then
+    Exit;
+  Result := not RegistryNamesContain(Names, ApprovalName);
+  if Result then
+    Exit;
+  if not RegQueryBinaryValue(HKCU, ApprovalKey, ApprovalName, Approval) then
+    Exit;
+  if Length(Approval) <> 12 then
+    Exit;
+  Result := ((Ord(Approval[1]) = 2) or (Ord(Approval[1]) = 6)) and
+    (Ord(Approval[2]) = 0) and (Ord(Approval[3]) = 0) and (Ord(Approval[4]) = 0);
+end;
+
+procedure MigrateLegacyStartupShortcut;
+var
+  ShortcutPath: string;
+  RunCommand: string;
+  ExpectedRunCommand: string;
+begin
+  { Retire an enabled shortcut only when this installation has an enabled replacement.
+    Preserve disabled, unknown, or conflicting identities without rewriting Windows approval. }
+  ShortcutPath := ExpandConstant('{userstartup}\{#MyAppName}.lnk');
+  if not FileExists(ShortcutPath) then
+    Exit;
+  if not StartupEntryMayRun('StartupFolder', '{#MyAppName}.lnk') then
+    Exit;
+  if not StartupEntryMayRun('Run', '{#MyAutoStartName}') then
+    Exit;
+
+  { Match the always-quoted [Registry] writer and app reader, even for paths without spaces. }
+  ExpectedRunCommand := '"' + ExpandConstant('{app}\{#MyAppExeName}') + '" --background';
+  if RegValueExists(HKCU, StartupRunKey, '{#MyAutoStartName}') then
+  begin
+    if not RegQueryStringValue(HKCU, StartupRunKey, '{#MyAutoStartName}', RunCommand) then
+      Exit;
+    if CompareText(RunCommand, ExpectedRunCommand) <> 0 then
+      Exit;
+  end
+  else if not RegWriteStringValue(HKCU, StartupRunKey, '{#MyAutoStartName}', ExpectedRunCommand) then
+  begin
+    Log('Could not migrate the Startup folder shortcut. It was left in place.');
+    Exit;
+  end;
+
+  if DeleteFile(ShortcutPath) then
+    Log('Migrated Startup folder shortcut to the Run registration.')
+  else
+    Log('Could not remove the Startup folder shortcut.');
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
+  begin
+    MigrateLegacyStartupShortcut;
     MigrateLegacyBackgroundLaunch;
+  end;
 end;
 
 procedure EnsureLocalGatewayCleanupChoice;
